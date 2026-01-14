@@ -284,6 +284,15 @@ void BuildGraph(void) {
         for (int i = 0; i < numEnts; i++) {
             for (int j = i + 1; j < numEnts; j++) {
                 int e1 = chunkEnts[i], e2 = chunkEnts[j];
+                
+                // Check if edge already exists (can happen when entrances share 2 chunks)
+                bool exists = false;
+                for (int k = 0; k < adjListCount[e1] && !exists; k++) {
+                    int edgeIdx = adjList[e1][k];
+                    if (graphEdges[edgeIdx].to == e2) exists = true;
+                }
+                if (exists) continue;
+                
                 int cost = AStarChunk(entrances[e1].x, entrances[e1].y, entrances[e2].x, entrances[e2].y, minX, minY, maxX, maxY);
                 if (cost >= 0 && graphEdgeCount < MAX_EDGES - 1) {
                     int edgeIdx1 = graphEdgeCount;
@@ -327,44 +336,31 @@ static void GetAffectedChunks(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     }
 }
 
-// Index remapping after entrance compaction (used by RebuildAffectedEdges)
-static int entranceOldToNew[MAX_ENTRANCES];
-static int entrancesKeptCount = 0;
+// Check if an entrance touches any affected chunk
+static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    int c1 = entrances[entranceIdx].chunk1;
+    int c2 = entrances[entranceIdx].chunk2;
+    int cy1 = c1 / chunksX, cx1 = c1 % chunksX;
+    int cy2 = c2 / chunksX, cx2 = c2 % chunksX;
+    return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
+}
 
-// Rebuild entrances for borders of dirty chunks only
-static void RebuildDirtyEntrances(void) {
-    // Mark which entrances to keep (those not touching dirty chunks)
-    bool keepEntrance[MAX_ENTRANCES];
-    for (int i = 0; i < entranceCount; i++) {
-        int c1 = entrances[i].chunk1;
-        int c2 = entrances[i].chunk2;
-        int cy1 = c1 / chunksX, cx1 = c1 % chunksX;
-        int cy2 = c2 / chunksX, cx2 = c2 % chunksX;
-        // Keep if neither chunk is dirty
-        keepEntrance[i] = !chunkDirty[cy1][cx1] && !chunkDirty[cy2][cx2];
-    }
-    
-    // Compact entrances array - remove those we're not keeping
+// Rebuild entrances for affected chunks (simpler approach - no keeping/remapping)
+static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    // Remove entrances that touch any affected chunk
     int newCount = 0;
-    int oldEntranceCount = entranceCount;
-    for (int i = 0; i < oldEntranceCount; i++) {
-        if (keepEntrance[i]) {
-            entranceOldToNew[i] = newCount;
+    for (int i = 0; i < entranceCount; i++) {
+        if (!EntranceTouchesAffected(i, affectedChunks)) {
             entrances[newCount++] = entrances[i];
-        } else {
-            entranceOldToNew[i] = -1;  // Removed
         }
     }
-    
-    entrancesKeptCount = newCount;
     int keptCount = newCount;
     
-    // Now rebuild entrances for dirty chunk borders
+    // Rebuild entrances for borders where at least one chunk is affected
     // Horizontal borders (between cy and cy+1)
     for (int cy = 0; cy < chunksY - 1; cy++) {
         for (int cx = 0; cx < chunksX; cx++) {
-            // Only rebuild if either chunk is dirty
-            if (!chunkDirty[cy][cx] && !chunkDirty[cy+1][cx]) continue;
+            if (!affectedChunks[cy][cx] && !affectedChunks[cy+1][cx]) continue;
             
             int borderY = (cy + 1) * CHUNK_SIZE;
             int startX = cx * CHUNK_SIZE;
@@ -377,7 +373,6 @@ static void RebuildDirtyEntrances(void) {
                 bool open = (grid[borderY - 1][x] == CELL_WALKABLE && grid[borderY][x] == CELL_WALKABLE);
                 if (open && runStart < 0) runStart = i;
                 else if (!open && runStart >= 0) {
-                    // Add entrances for this run
                     int length = i - runStart;
                     int pos = 0;
                     while (length > 0 && newCount < MAX_ENTRANCES) {
@@ -407,8 +402,7 @@ static void RebuildDirtyEntrances(void) {
     // Vertical borders (between cx and cx+1)
     for (int cy = 0; cy < chunksY; cy++) {
         for (int cx = 0; cx < chunksX - 1; cx++) {
-            // Only rebuild if either chunk is dirty
-            if (!chunkDirty[cy][cx] && !chunkDirty[cy][cx+1]) continue;
+            if (!affectedChunks[cy][cx] && !affectedChunks[cy][cx+1]) continue;
             
             int borderX = (cx + 1) * CHUNK_SIZE;
             int startY = cy * CHUNK_SIZE;
@@ -451,56 +445,77 @@ static void RebuildDirtyEntrances(void) {
     TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total", keptCount, newCount);
 }
 
-// Rebuild graph edges for affected chunks only
+// Storage for old entrances before rebuild (used for edge remapping)
+static Entrance oldEntrances[MAX_ENTRANCES];
+static int oldEntranceCount = 0;
+
+// Save entrances before rebuilding (call before RebuildAffectedEntrances)
+static void SaveOldEntrances(void) {
+    oldEntranceCount = entranceCount;
+    for (int i = 0; i < entranceCount; i++) {
+        oldEntrances[i] = entrances[i];
+    }
+}
+
+// Find new index for an entrance by matching position
+static int FindEntranceByPosition(int x, int y) {
+    for (int i = 0; i < entranceCount; i++) {
+        if (entrances[i].x == x && entrances[i].y == y) {
+            return i;
+        }
+    }
+    return -1;  // Not found (entrance was removed)
+}
+
+// Get shared chunk between two entrances, returns -1 if none
+static int GetSharedChunk(int e1, int e2) {
+    int c1a = entrances[e1].chunk1, c1b = entrances[e1].chunk2;
+    int c2a = entrances[e2].chunk1, c2b = entrances[e2].chunk2;
+    if (c1a == c2a || c1a == c2b) return c1a;
+    if (c1b == c2a || c1b == c2b) return c1b;
+    return -1;
+}
+
+// Check if an entrance (by new index) touches any affected chunk
+static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    int c1 = entrances[idx].chunk1;
+    int c2 = entrances[idx].chunk2;
+    int cy1 = c1 / chunksX, cx1 = c1 % chunksX;
+    int cy2 = c2 / chunksX, cx2 = c2 % chunksX;
+    return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
+}
+
+// Rebuild graph edges - keep edges in unaffected chunks, rebuild affected
 static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
-    // Remove edges that involve affected chunks, and remap indices for kept edges
+    // Step 1: Keep edges where both entrances don't touch any affected chunk
     int newEdgeCount = 0;
     
-    // First pass: identify edges to keep, remap indices, and compact
     for (int i = 0; i < graphEdgeCount; i++) {
-        int e1 = graphEdges[i].from;
-        int e2 = graphEdges[i].to;
+        int oldE1 = graphEdges[i].from;
+        int oldE2 = graphEdges[i].to;
         
-        // Remap to new indices
-        int newE1 = entranceOldToNew[e1];
-        int newE2 = entranceOldToNew[e2];
+        // Find new indices by position lookup
+        int newE1 = FindEntranceByPosition(oldEntrances[oldE1].x, oldEntrances[oldE1].y);
+        int newE2 = FindEntranceByPosition(oldEntrances[oldE2].x, oldEntrances[oldE2].y);
         
-        // Skip if either entrance was removed
+        // Skip if either entrance no longer exists
         if (newE1 < 0 || newE2 < 0) continue;
         
-        // An edge exists because two entrances share a chunk.
-        // We need to find the shared chunk and check if it's affected.
-        int c1a = entrances[newE1].chunk1, c1b = entrances[newE1].chunk2;
-        int c2a = entrances[newE2].chunk1, c2b = entrances[newE2].chunk2;
+        // Skip if either entrance touches an affected chunk
+        if (NewEntranceTouchesAffected(newE1, affectedChunks)) continue;
+        if (NewEntranceTouchesAffected(newE2, affectedChunks)) continue;
         
-        // Find the shared chunk between the two entrances
-        int sharedChunk = -1;
-        if (c1a == c2a || c1a == c2b) sharedChunk = c1a;
-        else if (c1b == c2a || c1b == c2b) sharedChunk = c1b;
-        
-        // Only discard edge if its shared chunk is affected
-        bool affected = false;
-        if (sharedChunk >= 0) {
-            int scx = sharedChunk % chunksX;
-            int scy = sharedChunk / chunksX;
-            affected = affectedChunks[scy][scx];
-        }
-        
-        if (!affected) {
-            // Keep edge with remapped indices
-            graphEdges[newEdgeCount++] = (GraphEdge){newE1, newE2, graphEdges[i].cost};
-        }
+        // Keep this edge with remapped indices
+        graphEdges[newEdgeCount++] = (GraphEdge){newE1, newE2, graphEdges[i].cost};
     }
     
     int keptEdges = newEdgeCount;
     graphEdgeCount = newEdgeCount;
     
-    // Clear and rebuild adjacency list for all nodes
+    // Step 2: Rebuild adjacency lists from kept edges
     for (int i = 0; i < entranceCount; i++) {
         adjListCount[i] = 0;
     }
-    
-    // Re-add kept edges to adjacency list
     for (int i = 0; i < keptEdges; i++) {
         int e1 = graphEdges[i].from;
         if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
@@ -508,11 +523,11 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
         }
     }
     
-    // Now rebuild edges for affected chunks
+    // Step 3: Rebuild edges for all chunks
+    // For unaffected chunks, edges were already kept in step 1
+    // For affected chunks, we need to run A* to compute new edges
     for (int cy = 0; cy < chunksY; cy++) {
         for (int cx = 0; cx < chunksX; cx++) {
-            if (!affectedChunks[cy][cx]) continue;
-            
             int chunk = cy * chunksX + cx;
             int minX = cx * CHUNK_SIZE;
             int minY = cy * CHUNK_SIZE;
@@ -534,13 +549,11 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
                 for (int j = i + 1; j < numEnts; j++) {
                     int e1 = chunkEnts[i], e2 = chunkEnts[j];
                     
-                    // Check if this edge already exists (in kept edges or newly added)
+                    // Check if edge already exists (from kept edges)
                     bool exists = false;
-                    for (int k = 0; k < graphEdgeCount && !exists; k++) {
-                        if ((graphEdges[k].from == e1 && graphEdges[k].to == e2) ||
-                            (graphEdges[k].from == e2 && graphEdges[k].to == e1)) {
-                            exists = true;
-                        }
+                    for (int k = 0; k < adjListCount[e1] && !exists; k++) {
+                        int edgeIdx = adjList[e1][k];
+                        if (graphEdges[edgeIdx].to == e2) exists = true;
                     }
                     if (exists) continue;
                     
@@ -591,10 +604,13 @@ void UpdateDirtyChunks(void) {
         }
     }
     
-    // Rebuild entrances for dirty chunk borders
-    RebuildDirtyEntrances();
+    // Save old entrances for edge remapping
+    SaveOldEntrances();
     
-    // Rebuild edges for affected chunks
+    // Rebuild entrances for affected chunks
+    RebuildAffectedEntrances(affectedChunks);
+    
+    // Rebuild edges (keeps edges in unaffected chunks, rebuilds affected)
     RebuildAffectedEdges(affectedChunks);
     
     // Clear dirty flags
