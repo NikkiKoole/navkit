@@ -9,9 +9,6 @@
 #define MAX_EDGES 65536*2
 #define MAX_EDGES_PER_NODE 64  // Max edges per entrance for adjacency list
 
-#define CHUNKS_X (GRID_WIDTH / CHUNK_SIZE)
-#define CHUNKS_Y (GRID_HEIGHT / CHUNK_SIZE)
-
 typedef struct { int x, y; } Point;
 
 typedef struct {
@@ -43,8 +40,8 @@ extern double hpaAbstractTime;    // Time for abstract graph search
 extern double hpaRefinementTime;  // Time for path refinement (local A*)
 extern Point startPos;
 extern Point goalPos;
-extern AStarNode nodeData[GRID_HEIGHT][GRID_WIDTH];
-extern bool chunkDirty[CHUNKS_Y][CHUNKS_X];
+extern AStarNode nodeData[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern bool chunkDirty[MAX_CHUNKS_Y][MAX_CHUNKS_X];
 
 // Abstract graph node for HPA* search
 typedef struct {
@@ -70,5 +67,8 @@ void RunAStar(void);
 void RunHPAStar(void);
 void RunJPS(void);
 int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY);
+
+// Incremental update functions
+void UpdateDirtyChunks(void);
 
 #endif // PATHFINDING_H

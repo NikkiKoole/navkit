@@ -21,14 +21,14 @@ const char* pathAlgorithmNames[] = {"A*", "HPA*", "JPS"};
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
     float size = CELL_SIZE * zoom;
-    for (int y = 0; y < GRID_HEIGHT; y++)
-        for (int x = 0; x < GRID_WIDTH; x++)
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
             if (grid[y][x] == CELL_WALKABLE) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, WHITE);
             }
-    for (int y = 0; y < GRID_HEIGHT; y++)
-        for (int x = 0; x < GRID_WIDTH; x++)
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
             if (grid[y][x] == CELL_WALL) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, WHITE);
@@ -38,14 +38,14 @@ void DrawCellGrid(void) {
 void DrawChunkBoundaries(void) {
     float cellSize = CELL_SIZE * zoom;
     float chunkPixels = CHUNK_SIZE * cellSize;
-    for (int cy = 0; cy <= CHUNKS_Y; cy++) {
+    for (int cy = 0; cy <= chunksY; cy++) {
         Vector2 s = {offset.x, offset.y + cy * chunkPixels};
-        Vector2 e = {offset.x + CHUNKS_X * chunkPixels, offset.y + cy * chunkPixels};
+        Vector2 e = {offset.x + chunksX * chunkPixels, offset.y + cy * chunkPixels};
         DrawLineEx(s, e, 3.0f, RED);
     }
-    for (int cx = 0; cx <= CHUNKS_X; cx++) {
+    for (int cx = 0; cx <= chunksX; cx++) {
         Vector2 s = {offset.x + cx * chunkPixels, offset.y};
-        Vector2 e = {offset.x + cx * chunkPixels, offset.y + CHUNKS_Y * chunkPixels};
+        Vector2 e = {offset.x + cx * chunkPixels, offset.y + chunksY * chunkPixels};
         DrawLineEx(s, e, 3.0f, RED);
     }
 }
@@ -110,7 +110,7 @@ void HandleInput(void) {
     if (!setStart && !setGoal && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT && grid[y][x] != CELL_WALL) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] != CELL_WALL) {
             grid[y][x] = CELL_WALL;
             MarkChunkDirty(x, y);
         }
@@ -118,7 +118,7 @@ void HandleInput(void) {
     if (!setStart && !setGoal && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT && grid[y][x] != CELL_WALKABLE) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] != CELL_WALKABLE) {
             grid[y][x] = CELL_WALKABLE;
             MarkChunkDirty(x, y);
         }
@@ -126,7 +126,7 @@ void HandleInput(void) {
     if (setStart && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT && grid[y][x] == CELL_WALKABLE) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] == CELL_WALKABLE) {
             startPos = (Point){x, y};
             pathLength = 0;
         }
@@ -134,7 +134,7 @@ void HandleInput(void) {
     if (setGoal && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT && grid[y][x] == CELL_WALKABLE) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] == CELL_WALKABLE) {
             goalPos = (Point){x, y};
             pathLength = 0;
         }
@@ -146,7 +146,12 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_FOUR)) GeneratePerlin();
     if (IsKeyPressed(KEY_E)) BuildEntrances();
     if (IsKeyPressed(KEY_B)) BuildGraph();
+    if (IsKeyPressed(KEY_U)) UpdateDirtyChunks();  // Incremental update
     if (IsKeyPressed(KEY_P)) {
+        // Auto-update dirty chunks before HPA* pathfinding
+        if (pathAlgorithm == 1 && needsRebuild) {
+            UpdateDirtyChunks();
+        }
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
@@ -158,8 +163,8 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_V)) showGraph = !showGraph;
     if (IsKeyPressed(KEY_R)) {
         zoom = 1.0f;
-        offset.x = (1280 - GRID_WIDTH * CELL_SIZE * zoom) / 2.0f;
-        offset.y = (800 - GRID_HEIGHT * CELL_SIZE * zoom) / 2.0f;
+        offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+        offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     }
 }
 
@@ -170,8 +175,8 @@ int main(void) {
     texWall = LoadTexture("wall.png");
     SetTargetFPS(60);
     InitGrid();
-    offset.x = (screenWidth - GRID_WIDTH * CELL_SIZE * zoom) / 2.0f;
-    offset.y = (screenHeight - GRID_HEIGHT * CELL_SIZE * zoom) / 2.0f;
+    offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
+    offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
     while (!WindowShouldClose()) {
         HandleInput();
@@ -191,7 +196,7 @@ int main(void) {
         } else {
             DrawText(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
-        DrawText("S/G+Click | P: Path | T: Algo | D: Dir | 1-4: Gen | E: Entrances | B: Graph", 5, screenHeight - 20, 14, GRAY);
+        DrawText("S/G+Click | P: Path | T: Algo | D: Dir | 1-4: Gen | E: Entrances | B: Graph | U: Update", 5, screenHeight - 20, 14, GRAY);
         EndDrawing();
     }
     UnloadTexture(texGrass);

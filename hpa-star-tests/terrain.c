@@ -6,15 +6,15 @@
 static int permutation[512];
 
 void InitGrid(void) {
-    for (int y = 0; y < GRID_HEIGHT; y++)
-        for (int x = 0; x < GRID_WIDTH; x++)
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
             grid[y][x] = CELL_WALKABLE;
 }
 
 void GenerateSparse(float density) {
     InitGrid();
-    for (int y = 0; y < GRID_HEIGHT; y++)
-        for (int x = 0; x < GRID_WIDTH; x++)
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
                 grid[y][x] = CELL_WALL;
     needsRebuild = true;
@@ -74,8 +74,8 @@ void GeneratePerlin(void) {
     float scale = 0.015f;
 
     // First pass: terrain noise for trees
-    for (int y = 0; y < GRID_HEIGHT; y++) {
-        for (int x = 0; x < GRID_WIDTH; x++) {
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
             float n = OctavePerlin(x * scale, y * scale, 4, 0.5f);
             // n < 0.45 = forest, n > 0.55 = city, between = transition
             float density;
@@ -90,8 +90,8 @@ void GeneratePerlin(void) {
     }
 
     // Second pass: city walls where noise > 0.5
-    for (int wy = CHUNK_SIZE/2; wy < GRID_HEIGHT; wy += CHUNK_SIZE / 2) {
-        for (int wx = 0; wx < GRID_WIDTH;) {
+    for (int wy = CHUNK_SIZE/2; wy < gridHeight; wy += CHUNK_SIZE / 2) {
+        for (int wx = 0; wx < gridWidth;) {
             float n = OctavePerlin(wx * scale, wy * scale, 4, 0.5f);
             if (n < 0.5f) { wx += 6; continue; }
 
@@ -101,11 +101,11 @@ void GeneratePerlin(void) {
             int gapSize = (int)(5 - intensity * 2);    // 5-3
             if (gapSize < 2) gapSize = 2;
 
-            for (int x = wx; x < wx + wallLen && x < GRID_WIDTH; x++) {
+            for (int x = wx; x < wx + wallLen && x < gridWidth; x++) {
                 float n2 = OctavePerlin(x * scale, wy * scale, 4, 0.5f);
                 if (n2 > 0.48f) {
                     grid[wy][x] = CELL_WALL;
-                    if (wy + 1 < GRID_HEIGHT) grid[wy + 1][x] = CELL_WALL;
+                    if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
                 }
             }
             wx += wallLen + gapSize;
@@ -113,8 +113,8 @@ void GeneratePerlin(void) {
     }
 
     // Vertical walls
-    for (int wx = CHUNK_SIZE/2; wx < GRID_WIDTH; wx += CHUNK_SIZE / 2) {
-        for (int wy = 0; wy < GRID_HEIGHT;) {
+    for (int wx = CHUNK_SIZE/2; wx < gridWidth; wx += CHUNK_SIZE / 2) {
+        for (int wy = 0; wy < gridHeight;) {
             float n = OctavePerlin(wx * scale, wy * scale, 4, 0.5f);
             if (n < 0.5f) { wy += 6; continue; }
 
@@ -123,11 +123,11 @@ void GeneratePerlin(void) {
             int gapSize = (int)(5 - intensity * 2);
             if (gapSize < 2) gapSize = 2;
 
-            for (int y = wy; y < wy + wallLen && y < GRID_HEIGHT; y++) {
+            for (int y = wy; y < wy + wallLen && y < gridHeight; y++) {
                 float n2 = OctavePerlin(wx * scale, y * scale, 4, 0.5f);
                 if (n2 > 0.48f) {
                     grid[y][wx] = CELL_WALL;
-                    if (wx + 1 < GRID_WIDTH) grid[y][wx + 1] = CELL_WALL;
+                    if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
                 }
             }
             wy += wallLen + gapSize;
@@ -139,30 +139,30 @@ void GeneratePerlin(void) {
 
 void GenerateCity(void) {
     InitGrid();
-    for (int wy = CHUNK_SIZE; wy < GRID_HEIGHT; wy += CHUNK_SIZE / 2) {
-        for (int wx = 0; wx < GRID_WIDTH; wx++) {
+    for (int wy = CHUNK_SIZE; wy < gridHeight; wy += CHUNK_SIZE / 2) {
+        for (int wx = 0; wx < gridWidth; wx++) {
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
-            for (int x = wx; x < wx + gapPos && x < GRID_WIDTH; x++) {
+            for (int x = wx; x < wx + gapPos && x < gridWidth; x++) {
                 grid[wy][x] = CELL_WALL;
-                if (wy + 1 < GRID_HEIGHT) grid[wy + 1][x] = CELL_WALL;
+                if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
             }
             wx += gapPos + gapSize;
         }
     }
-    for (int wx = CHUNK_SIZE; wx < GRID_WIDTH; wx += CHUNK_SIZE / 2) {
-        for (int wy = 0; wy < GRID_HEIGHT; wy++) {
+    for (int wx = CHUNK_SIZE; wx < gridWidth; wx += CHUNK_SIZE / 2) {
+        for (int wy = 0; wy < gridHeight; wy++) {
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
-            for (int y = wy; y < wy + gapPos && y < GRID_HEIGHT; y++) {
+            for (int y = wy; y < wy + gapPos && y < gridHeight; y++) {
                 grid[y][wx] = CELL_WALL;
-                if (wx + 1 < GRID_WIDTH) grid[y][wx + 1] = CELL_WALL;
+                if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
             }
             wy += gapPos + gapSize;
         }
     }
-    for (int y = 0; y < GRID_HEIGHT; y++)
-        for (int x = 0; x < GRID_WIDTH; x++)
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
             if (grid[y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 5)
                 grid[y][x] = CELL_WALL;
     needsRebuild = true;
@@ -171,47 +171,47 @@ void GenerateCity(void) {
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = CHUNK_SIZE * 4;
-    int zonesX = (GRID_WIDTH + zoneSize - 1) / zoneSize;
-    int zonesY = (GRID_HEIGHT + zoneSize - 1) / zoneSize;
+    int zonesX = (gridWidth + zoneSize - 1) / zoneSize;
+    int zonesY = (gridHeight + zoneSize - 1) / zoneSize;
     int zones[16][16];
     for (int zy = 0; zy < zonesY && zy < 16; zy++)
         for (int zx = 0; zx < zonesX && zx < 16; zx++)
             zones[zy][zx] = GetRandomValue(0, 100) < 50 ? 1 : 0;
 
-    for (int wy = CHUNK_SIZE; wy < GRID_HEIGHT; wy += CHUNK_SIZE / 2) {
-        for (int wx = 0; wx < GRID_WIDTH; wx++) {
+    for (int wy = CHUNK_SIZE; wy < gridHeight; wy += CHUNK_SIZE / 2) {
+        for (int wx = 0; wx < gridWidth; wx++) {
             int zx = wx / zoneSize, zy = wy / zoneSize;
             if (zx >= 16 || zy >= 16 || zones[zy][zx] == 0) { wx += GetRandomValue(10, 30); continue; }
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
-            for (int x = wx; x < wx + gapPos && x < GRID_WIDTH; x++) {
+            for (int x = wx; x < wx + gapPos && x < gridWidth; x++) {
                 int zx2 = x / zoneSize;
                 if (zx2 < 16 && zones[zy][zx2] == 1) {
                     grid[wy][x] = CELL_WALL;
-                    if (wy + 1 < GRID_HEIGHT) grid[wy + 1][x] = CELL_WALL;
+                    if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
                 }
             }
             wx += gapPos + gapSize;
         }
     }
-    for (int wx = CHUNK_SIZE; wx < GRID_WIDTH; wx += CHUNK_SIZE / 2) {
-        for (int wy = 0; wy < GRID_HEIGHT; wy++) {
+    for (int wx = CHUNK_SIZE; wx < gridWidth; wx += CHUNK_SIZE / 2) {
+        for (int wy = 0; wy < gridHeight; wy++) {
             int zx = wx / zoneSize, zy = wy / zoneSize;
             if (zx >= 16 || zy >= 16 || zones[zy][zx] == 0) { wy += GetRandomValue(10, 30); continue; }
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
-            for (int y = wy; y < wy + gapPos && y < GRID_HEIGHT; y++) {
+            for (int y = wy; y < wy + gapPos && y < gridHeight; y++) {
                 int zy2 = y / zoneSize;
                 if (zy2 < 16 && zones[zy2][zx] == 1) {
                     grid[y][wx] = CELL_WALL;
-                    if (wx + 1 < GRID_WIDTH) grid[y][wx + 1] = CELL_WALL;
+                    if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
                 }
             }
             wy += gapPos + gapSize;
         }
     }
-    for (int y = 0; y < GRID_HEIGHT; y++) {
-        for (int x = 0; x < GRID_WIDTH; x++) {
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
             if (grid[y][x] == CELL_WALKABLE) {
                 int zx = x / zoneSize, zy = y / zoneSize;
                 bool isCity = (zx < 16 && zy < 16 && zones[zy][zx] == 1);
