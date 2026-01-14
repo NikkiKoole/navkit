@@ -10,7 +10,7 @@ TARGETS := crowd hpa-star
 
 # Source files for each target
 crowd_SRC     := crowd-steering/crowd-raylib-betterstats5.c
-hpa-star_SRC  := hpa-star-tests/test7.c hpa-star-tests/terrain.c hpa-star-tests/pathfinding.c
+hpa-star_SRC  := hpa-star-tests/test7.c hpa-star-tests/grid.c hpa-star-tests/terrain.c hpa-star-tests/pathfinding.c
 all: $(TARGETS)
 
 # Pattern rule: build any target from its corresponding _SRC

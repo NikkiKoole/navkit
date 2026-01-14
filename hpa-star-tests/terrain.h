@@ -1,18 +1,7 @@
 #ifndef TERRAIN_H
 #define TERRAIN_H
 
-#include "raylib.h"
-
-typedef enum { CELL_WALKABLE, CELL_WALL } CellType;
-
-// Grid dimensions - must match main file
-#define GRID_WIDTH  (128*4)
-#define GRID_HEIGHT (128*4)
-#define CHUNK_SIZE  32
-
-// External grid reference (defined in main file)
-extern CellType grid[GRID_HEIGHT][GRID_WIDTH];
-extern bool needsRebuild;
+#include "grid.h"
 
 // Terrain generation functions
 void InitGrid(void);

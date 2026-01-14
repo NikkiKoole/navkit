@@ -1,8 +1,7 @@
 #ifndef PATHFINDING_H
 #define PATHFINDING_H
 
-#include "terrain.h"
-#include <stdbool.h>
+#include "grid.h"
 
 #define MAX_ENTRANCE_WIDTH 6
 #define MAX_ENTRANCES (4096*4)

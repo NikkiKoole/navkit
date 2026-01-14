@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "grid.h"
 #include "terrain.h"
 #include "pathfinding.h"
 #include <stdio.h>
@@ -7,8 +8,6 @@
 
 #define CELL_SIZE   32
 
-CellType grid[GRID_HEIGHT][GRID_WIDTH];
-bool needsRebuild = false;
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
 Texture2D texGrass;
