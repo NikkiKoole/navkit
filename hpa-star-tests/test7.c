@@ -13,7 +13,10 @@ Vector2 offset = {0, 0};
 Texture2D texGrass;
 Texture2D texWall;
 bool showGraph = false;
-bool useHPA = true;  // Toggle between HPA* and vanilla A*
+
+// Pathfinding algorithm selection: 0=A*, 1=HPA*, 2=JPS
+int pathAlgorithm = 0;
+const char* pathAlgorithmNames[] = {"A*", "HPA*", "JPS"};
 
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
@@ -144,12 +147,14 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_E)) BuildEntrances();
     if (IsKeyPressed(KEY_B)) BuildGraph();
     if (IsKeyPressed(KEY_P)) {
-        if (useHPA)
-            RunHPAStar();
-        else
-            RunAStar();
+        switch (pathAlgorithm) {
+            case 0: RunAStar(); break;
+            case 1: RunHPAStar(); break;
+            case 2: RunJPS(); break;
+        }
     }
-    if (IsKeyPressed(KEY_T)) useHPA = !useHPA;  // Toggle pathfinding mode
+    if (IsKeyPressed(KEY_T)) pathAlgorithm = (pathAlgorithm + 1) % 3;  // Cycle through algorithms
+    if (IsKeyPressed(KEY_D)) use8Dir = !use8Dir;  // Toggle 4-dir/8-dir
     if (IsKeyPressed(KEY_V)) showGraph = !showGraph;
     if (IsKeyPressed(KEY_R)) {
         zoom = 1.0f;
@@ -178,14 +183,15 @@ int main(void) {
         DrawEntrances();
         DrawPath();
         DrawFPS(5, 5);
-        DrawText(TextFormat("Entrances: %d | Edges: %d | Mode: %s", entranceCount, graphEdgeCount, useHPA ? "HPA*" : "A*"), 5, 25, 16, WHITE);
-        if (useHPA && hpaAbstractTime > 0) {
+        DrawText(TextFormat("Algo: %s | Dir: %s | Entrances: %d | Edges: %d", 
+                 pathAlgorithmNames[pathAlgorithm], use8Dir ? "8-dir" : "4-dir", entranceCount, graphEdgeCount), 5, 25, 16, WHITE);
+        if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawText(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)", 
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
         } else {
             DrawText(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
-        DrawText("S/G+Click | P: Path | T: Toggle HPA/A* | 1-4: Gen | E: Entrances | B: Graph | V: Show", 5, screenHeight - 20, 14, GRAY);
+        DrawText("S/G+Click | P: Path | T: Algo | D: Dir | 1-4: Gen | E: Entrances | B: Graph", 5, screenHeight - 20, 14, GRAY);
         EndDrawing();
     }
     UnloadTexture(texGrass);

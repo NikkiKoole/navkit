@@ -23,8 +23,20 @@ AbstractNode abstractNodes[MAX_ABSTRACT_NODES];
 int abstractPath[MAX_ENTRANCES + 2];
 int abstractPathLength = 0;
 
+// Movement direction mode
+bool use8Dir = false;
+
 int Heuristic(int x1, int y1, int x2, int y2) {
     return abs(x1 - x2) + abs(y1 - y2);
+}
+
+// 8-directional heuristic (Chebyshev/diagonal distance)
+static int Heuristic8Dir(int x1, int y1, int x2, int y2) {
+    int dx = abs(x1 - x2);
+    int dy = abs(y1 - y2);
+    int minD = dx < dy ? dx : dy;
+    int maxD = dx > dy ? dx : dy;
+    return 10 * maxD + 4 * minD;
 }
 
 void MarkChunkDirty(int cellX, int cellY) {
@@ -108,11 +120,21 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
             nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
 
     nodeData[sy][sx].g = 0;
-    nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy);
+    if (use8Dir) {
+        nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+    } else {
+        nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+    }
     nodeData[sy][sx].open = true;
 
-    int dx[] = {0, 1, 0, -1};
-    int dy[] = {-1, 0, 1, 0};
+    int dx4[] = {0, 1, 0, -1};
+    int dy4[] = {-1, 0, 1, 0};
+    int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int* dx = use8Dir ? dx8 : dx4;
+    int* dy = use8Dir ? dy8 : dy4;
+    int numDirs = use8Dir ? 8 : 4;
 
     while (1) {
         int bestX = -1, bestY = -1, bestF = 999999;
@@ -127,14 +149,26 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
         if (bestX == gx && bestY == gy) return nodeData[gy][gx].g;
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
             if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
-            int ng = nodeData[bestY][bestX].g + 1;
+            
+            // Prevent corner cutting for diagonal movement
+            if (use8Dir && dx[i] != 0 && dy[i] != 0) {
+                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                    continue;
+            }
+            
+            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int ng = nodeData[bestY][bestX].g + moveCost;
             if (ng < nodeData[ny][nx].g) {
                 nodeData[ny][nx].g = ng;
-                nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy);
+                if (use8Dir) {
+                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
+                } else {
+                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                }
                 nodeData[ny][nx].open = true;
             }
         }
@@ -185,11 +219,22 @@ void RunAStar(void) {
             nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
 
     nodeData[startPos.y][startPos.x].g = 0;
-    nodeData[startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y);
+    if (use8Dir) {
+        nodeData[startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
+    } else {
+        nodeData[startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
+    }
     nodeData[startPos.y][startPos.x].open = true;
 
-    int dx[] = {0, 1, 0, -1};
-    int dy[] = {-1, 0, 1, 0};
+    // Direction arrays
+    int dx4[] = {0, 1, 0, -1};
+    int dy4[] = {-1, 0, 1, 0};
+    int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int* dx = use8Dir ? dx8 : dx4;
+    int* dy = use8Dir ? dy8 : dy4;
+    int numDirs = use8Dir ? 8 : 4;
 
     while (1) {
         int bestX = -1, bestY = -1, bestF = 999999;
@@ -214,14 +259,29 @@ void RunAStar(void) {
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
         nodesExplored++;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < 0 || nx >= GRID_WIDTH || ny < 0 || ny >= GRID_HEIGHT) continue;
             if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
-            int ng = nodeData[bestY][bestX].g + 1;
+            
+            // For diagonal movement, check that we can actually move diagonally
+            // (not cutting corners through walls)
+            if (use8Dir && dx[i] != 0 && dy[i] != 0) {
+                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                    continue;
+            }
+            
+            // Cost: 10 for cardinal, 14 for diagonal
+            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int ng = nodeData[bestY][bestX].g + moveCost;
+            
             if (ng < nodeData[ny][nx].g) {
                 nodeData[ny][nx].g = ng;
-                nodeData[ny][nx].f = ng + Heuristic(nx, ny, goalPos.x, goalPos.y);
+                if (use8Dir) {
+                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, goalPos.x, goalPos.y);
+                } else {
+                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, goalPos.x, goalPos.y) * 10;
+                }
                 nodeData[ny][nx].parentX = bestX;
                 nodeData[ny][nx].parentY = bestY;
                 nodeData[ny][nx].open = true;
@@ -256,9 +316,20 @@ static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY
 
 // Reconstruct cell-level path between two points within a chunk
 static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, int maxLen) {
-    int chunk = GetChunk(sx, sy);
-    int minX, minY, maxX, maxY;
-    GetChunkBounds(chunk, &minX, &minY, &maxX, &maxY);
+    // Get bounds that cover both start and goal chunks
+    int startChunk = GetChunk(sx, sy);
+    int goalChunk = GetChunk(gx, gy);
+    
+    int minX1, minY1, maxX1, maxY1;
+    int minX2, minY2, maxX2, maxY2;
+    GetChunkBounds(startChunk, &minX1, &minY1, &maxX1, &maxY1);
+    GetChunkBounds(goalChunk, &minX2, &minY2, &maxX2, &maxY2);
+    
+    // Union of both chunk bounds
+    int minX = minX1 < minX2 ? minX1 : minX2;
+    int minY = minY1 < minY2 ? minY1 : minY2;
+    int maxX = maxX1 > maxX2 ? maxX1 : maxX2;
+    int maxY = maxY1 > maxY2 ? maxY1 : maxY2;
     
     // Expand bounds by 1 to allow crossing chunk borders
     if (minX > 0) minX--;
@@ -272,11 +343,21 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
             nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
     
     nodeData[sy][sx].g = 0;
-    nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy);
+    if (use8Dir) {
+        nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+    } else {
+        nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+    }
     nodeData[sy][sx].open = true;
     
-    int dx[] = {0, 1, 0, -1};
-    int dy[] = {-1, 0, 1, 0};
+    int dx4[] = {0, 1, 0, -1};
+    int dy4[] = {-1, 0, 1, 0};
+    int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int* dx = use8Dir ? dx8 : dx4;
+    int* dy = use8Dir ? dy8 : dy4;
+    int numDirs = use8Dir ? 8 : 4;
     
     while (1) {
         int bestX = -1, bestY = -1, bestF = 999999;
@@ -303,14 +384,26 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
         }
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
             if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
-            int ng = nodeData[bestY][bestX].g + 1;
+            
+            // Prevent corner cutting for diagonal movement
+            if (use8Dir && dx[i] != 0 && dy[i] != 0) {
+                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                    continue;
+            }
+            
+            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int ng = nodeData[bestY][bestX].g + moveCost;
             if (ng < nodeData[ny][nx].g) {
                 nodeData[ny][nx].g = ng;
-                nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy);
+                if (use8Dir) {
+                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
+                } else {
+                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                }
                 nodeData[ny][nx].parentX = bestX;
                 nodeData[ny][nx].parentY = bestY;
                 nodeData[ny][nx].open = true;
@@ -369,6 +462,8 @@ void RunHPAStar(void) {
     
     int minX, minY, maxX, maxY;
     
+    double connectStartTime = GetTime();
+    
     // Connect start to entrances in start chunk
     GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
     if (maxX < GRID_WIDTH) maxX++;
@@ -404,6 +499,8 @@ void RunHPAStar(void) {
             }
         }
     }
+    
+    double connectTime = (GetTime() - connectStartTime) * 1000.0;
     
     // A* on abstract graph
     double abstractStartTime = GetTime();
@@ -537,6 +634,194 @@ void RunHPAStar(void) {
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
     
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "HPA*: total=%.2fms (abstract=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
-             lastPathTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
+             lastPathTime, connectTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+}
+
+// ============== JPS Implementation ==============
+
+static bool IsWalkable(int x, int y) {
+    if (x < 0 || x >= GRID_WIDTH || y < 0 || y >= GRID_HEIGHT) return false;
+    return grid[y][x] == CELL_WALKABLE;
+}
+
+// Jump in a cardinal direction (4-dir or 8-dir)
+static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy) {
+    int nx = x + dx;
+    int ny = y + dy;
+    
+    if (!IsWalkable(nx, ny)) return false;
+    
+    if (nx == gx && ny == gy) {
+        *jx = nx;
+        *jy = ny;
+        return true;
+    }
+    
+    // Diagonal movement
+    if (dx != 0 && dy != 0) {
+        // Check for forced neighbors
+        if ((!IsWalkable(nx - dx, ny) && IsWalkable(nx - dx, ny + dy)) ||
+            (!IsWalkable(nx, ny - dy) && IsWalkable(nx + dx, ny - dy))) {
+            *jx = nx;
+            *jy = ny;
+            return true;
+        }
+        // Recursively jump in cardinal directions
+        int tempX, tempY;
+        if (Jump(nx, ny, dx, 0, gx, gy, &tempX, &tempY)) {
+            *jx = nx;
+            *jy = ny;
+            return true;
+        }
+        if (Jump(nx, ny, 0, dy, gx, gy, &tempX, &tempY)) {
+            *jx = nx;
+            *jy = ny;
+            return true;
+        }
+    } else {
+        // Horizontal movement
+        if (dx != 0) {
+            if ((!IsWalkable(nx, ny + 1) && IsWalkable(nx + dx, ny + 1)) ||
+                (!IsWalkable(nx, ny - 1) && IsWalkable(nx + dx, ny - 1))) {
+                *jx = nx;
+                *jy = ny;
+                return true;
+            }
+        }
+        // Vertical movement
+        if (dy != 0) {
+            if ((!IsWalkable(nx + 1, ny) && IsWalkable(nx + 1, ny + dy)) ||
+                (!IsWalkable(nx - 1, ny) && IsWalkable(nx - 1, ny + dy))) {
+                *jx = nx;
+                *jy = ny;
+                return true;
+            }
+        }
+    }
+    
+    // Continue jumping in this direction
+    return Jump(nx, ny, dx, dy, gx, gy, jx, jy);
+}
+
+void RunJPS(void) {
+    if (startPos.x < 0 || goalPos.x < 0) return;
+    
+    pathLength = 0;
+    nodesExplored = 0;
+    double startTime = GetTime();
+    
+    // Initialize node data
+    for (int y = 0; y < GRID_HEIGHT; y++)
+        for (int x = 0; x < GRID_WIDTH; x++)
+            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+    
+    nodeData[startPos.y][startPos.x].g = 0;
+    if (use8Dir) {
+        nodeData[startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
+    } else {
+        nodeData[startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
+    }
+    nodeData[startPos.y][startPos.x].open = true;
+    
+    // Direction arrays
+    int dx4[] = {0, 1, 0, -1};
+    int dy4[] = {-1, 0, 1, 0};
+    int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int* dx = use8Dir ? dx8 : dx4;
+    int* dy = use8Dir ? dy8 : dy4;
+    int numDirs = use8Dir ? 8 : 4;
+    
+    while (1) {
+        // Find node with lowest f
+        int bestX = -1, bestY = -1, bestF = 999999;
+        for (int y = 0; y < GRID_HEIGHT; y++)
+            for (int x = 0; x < GRID_WIDTH; x++)
+                if (nodeData[y][x].open && nodeData[y][x].f < bestF) {
+                    bestF = nodeData[y][x].f;
+                    bestX = x;
+                    bestY = y;
+                }
+        
+        if (bestX < 0) break;  // No path
+        
+        if (bestX == goalPos.x && bestY == goalPos.y) {
+            // Reconstruct path
+            int cx = goalPos.x, cy = goalPos.y;
+            while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
+                path[pathLength++] = (Point){cx, cy};
+                int px = nodeData[cy][cx].parentX;
+                int py = nodeData[cy][cx].parentY;
+                
+                // For JPS, we need to fill in intermediate points
+                if (px >= 0 && py >= 0) {
+                    int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
+                    int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
+                    int ix = cx + stepX;
+                    int iy = cy + stepY;
+                    while ((ix != px || iy != py) && pathLength < MAX_PATH) {
+                        path[pathLength++] = (Point){ix, iy};
+                        ix += stepX;
+                        iy += stepY;
+                    }
+                }
+                cx = px;
+                cy = py;
+            }
+            break;
+        }
+        
+        nodeData[bestY][bestX].open = false;
+        nodeData[bestY][bestX].closed = true;
+        nodesExplored++;
+        
+        // Explore neighbors using JPS
+        for (int i = 0; i < numDirs; i++) {
+            int jx, jy;
+            
+            if (use8Dir) {
+                // Try to jump in this direction
+                if (!Jump(bestX, bestY, dx[i], dy[i], goalPos.x, goalPos.y, &jx, &jy))
+                    continue;
+            } else {
+                // For 4-dir, just do regular A* neighbor expansion (JPS needs diagonals)
+                jx = bestX + dx[i];
+                jy = bestY + dy[i];
+                if (!IsWalkable(jx, jy)) continue;
+            }
+            
+            if (nodeData[jy][jx].closed) continue;
+            
+            // Calculate cost
+            int dist = abs(jx - bestX) + abs(jy - bestY);
+            if (use8Dir) {
+                // Diagonal distance
+                int ddx = abs(jx - bestX);
+                int ddy = abs(jy - bestY);
+                dist = 10 * (ddx > ddy ? ddx : ddy) + 4 * (ddx < ddy ? ddx : ddy);
+            } else {
+                dist *= 10;
+            }
+            
+            int ng = nodeData[bestY][bestX].g + dist;
+            
+            if (ng < nodeData[jy][jx].g) {
+                nodeData[jy][jx].g = ng;
+                if (use8Dir) {
+                    nodeData[jy][jx].f = ng + Heuristic8Dir(jx, jy, goalPos.x, goalPos.y);
+                } else {
+                    nodeData[jy][jx].f = ng + Heuristic(jx, jy, goalPos.x, goalPos.y) * 10;
+                }
+                nodeData[jy][jx].parentX = bestX;
+                nodeData[jy][jx].parentY = bestY;
+                nodeData[jy][jx].open = true;
+            }
+        }
+    }
+    
+    lastPathTime = (GetTime() - startTime) * 1000.0;
+    TraceLog(LOG_INFO, "JPS (%s): time=%.2fms, nodes=%d, path=%d", 
+             use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
 }
