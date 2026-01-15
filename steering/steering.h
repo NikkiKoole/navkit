@@ -101,6 +101,93 @@ SteeringOutput steering_hide(const SteeringAgent* agent, Vector2 pursuerPos,
 SteeringOutput steering_shadow(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel,
                                float approachDist);
 
+// Orbit - circle around a target at fixed radius
+// center: point to orbit around
+// radius: desired orbit distance
+// clockwise: 1 for clockwise, -1 for counter-clockwise
+SteeringOutput steering_orbit(const SteeringAgent* agent, Vector2 center, 
+                              float radius, int clockwise);
+
+// Evade Multiple - flee from multiple threats with distance-based weighting
+// threatPositions/threatVelocities: arrays of threat positions and velocities
+// threatCount: number of threats
+// maxPrediction: maximum prediction time for each threat
+// panicRadius: threats beyond this distance are ignored
+SteeringOutput steering_evade_multiple(const SteeringAgent* agent,
+                                       const Vector2* threatPositions,
+                                       const Vector2* threatVelocities,
+                                       int threatCount,
+                                       float maxPrediction,
+                                       float panicRadius);
+
+// Patrol - visit waypoints in sequence with optional pauses
+// waypoints: array of positions to visit
+// waypointCount: number of waypoints
+// arriveRadius: distance at which waypoint is considered "reached"
+// currentWaypoint: pointer to current waypoint index (state, updated by function)
+// Returns: steering toward current waypoint using arrive
+SteeringOutput steering_patrol(const SteeringAgent* agent,
+                               const Vector2* waypoints, int waypointCount,
+                               float arriveRadius,
+                               int* currentWaypoint);
+
+// Explore - systematically cover a region, preferring unvisited areas
+// bounds: rectangular area to explore
+// cellSize: size of grid cells for tracking visits
+// visitedGrid: array of visit times (caller allocates: gridW * gridH floats)
+// gridWidth/gridHeight: dimensions of visited grid
+// currentTime: current simulation time (for staleness calculation)
+SteeringOutput steering_explore(const SteeringAgent* agent,
+                                Rectangle bounds, float cellSize,
+                                float* visitedGrid, int gridWidth, int gridHeight,
+                                float currentTime);
+
+// Forage - wander until resource detected, then seek it
+// resources: array of resource positions
+// resourceCount: number of resources
+// detectionRadius: how far agent can "see" resources
+// wanderAngle: pointer to persistent wander state
+// wanderRadius/wanderDistance/wanderJitter: wander parameters
+// Returns steering toward nearest visible resource, or wander if none visible
+SteeringOutput steering_forage(const SteeringAgent* agent,
+                               const Vector2* resources, int resourceCount,
+                               float detectionRadius,
+                               float* wanderAngle,
+                               float wanderRadius, float wanderDistance, float wanderJitter);
+
+// Guard - protect a position, wander nearby but return if too far
+// guardPos: position to guard
+// guardRadius: maximum distance to wander from guard position
+// wanderAngle: pointer to persistent wander state
+// wanderRadius/wanderDistance/wanderJitter: wander parameters
+SteeringOutput steering_guard(const SteeringAgent* agent,
+                              Vector2 guardPos, float guardRadius,
+                              float* wanderAngle,
+                              float wanderRadius, float wanderDistance, float wanderJitter);
+
+// Queue Follow - follow in a line behind a leader at fixed spacing
+// leaderPos: position of the agent directly ahead (or leader for first follower)
+// leaderVel: velocity of the agent directly ahead
+// followDistance: desired distance behind the leader
+// Returns steering to maintain queue position
+SteeringOutput steering_queue_follow(const SteeringAgent* agent,
+                                     Vector2 leaderPos, Vector2 leaderVel,
+                                     float followDistance);
+
+// Predictive Avoid - look ahead in time and smoothly avoid collisions
+// Based on Social Force Model with predictive component
+// otherPositions/otherVelocities: arrays of other agent positions and velocities
+// otherCount: number of other agents
+// timeHorizon: how far ahead to look (seconds)
+// personalSpace: minimum comfortable distance
+// Returns repulsion force from predicted collisions
+SteeringOutput steering_predictive_avoid(const SteeringAgent* agent,
+                                         const Vector2* otherPositions,
+                                         const Vector2* otherVelocities,
+                                         int otherCount,
+                                         float timeHorizon,
+                                         float personalSpace);
+
 // ============================================================================
 // Obstacle/Wall Behaviors
 // ============================================================================
@@ -168,6 +255,15 @@ SteeringOutput steering_collision_avoid(const SteeringAgent* agent,
                                         const Vector2* neighborPositions, const Vector2* neighborVelocities, 
                                         int neighborCount, float agentRadius);
 
+// Queuing - orderly line behavior at bottlenecks (Reynolds "doorway" idea)
+// Agents slow/stop when others are ahead, preventing pushing
+// neighborPositions/neighborVelocities: arrays of neighbor positions and velocities
+// queueRadius: distance to check for agents ahead
+// brakeDistance: distance at which to start braking
+SteeringOutput steering_queue(const SteeringAgent* agent,
+                              const Vector2* neighborPositions, const Vector2* neighborVelocities,
+                              int neighborCount, float queueRadius, float brakeDistance);
+
 // ============================================================================
 // Combination Helpers
 // ============================================================================
@@ -194,5 +290,37 @@ SteeringOutput steering_zero(void);
 float steering_vec_length(Vector2 v);
 Vector2 steering_vec_normalize(Vector2 v);
 float steering_vec_distance(Vector2 a, Vector2 b);
+
+// ============================================================================
+// Hard Collision Resolution
+// ============================================================================
+
+// Resolve penetration with circular obstacles
+// Call after steering_apply to prevent agents from passing through obstacles
+// agentRadius: collision radius of the agent
+void steering_resolve_obstacle_collision(SteeringAgent* agent,
+                                         const CircleObstacle* obstacles,
+                                         int obstacleCount,
+                                         float agentRadius);
+
+// Resolve penetration with wall segments
+// Call after steering_apply to prevent agents from passing through walls
+// agentRadius: collision radius of the agent
+void steering_resolve_wall_collision(SteeringAgent* agent,
+                                     const Wall* walls,
+                                     int wallCount,
+                                     float agentRadius);
+
+// Resolve penetration with other agents (agent-agent collision)
+// Call after steering_apply to prevent agents from overlapping
+// agentIndex: index of this agent in the agents array
+// allAgents: array of all agents
+// agentCount: total number of agents
+// agentRadius: collision radius of agents
+void steering_resolve_agent_collision(SteeringAgent* agent,
+                                      int agentIndex,
+                                      SteeringAgent* allAgents,
+                                      int agentCount,
+                                      float agentRadius);
 
 #endif // STEERING_H

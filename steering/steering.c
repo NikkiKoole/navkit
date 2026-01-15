@@ -51,6 +51,12 @@ static inline Vector2 vec_truncate(Vector2 v, float maxLen) {
     return v;
 }
 
+static inline float clamp(float value, float min, float max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+}
+
 static float wrap_angle(float angle) {
     while (angle > PI) angle -= 2 * PI;
     while (angle < -PI) angle += 2 * PI;
@@ -327,6 +333,318 @@ SteeringOutput steering_shadow(const SteeringAgent* agent, Vector2 targetPos, Ve
         // Close enough, match velocity
         return steering_match_velocity(agent, targetVel, 0.5f);
     }
+}
+
+SteeringOutput steering_orbit(const SteeringAgent* agent, Vector2 center,
+                              float radius, int clockwise) {
+    SteeringOutput output = steering_zero();
+    
+    Vector2 toCenter = vec_sub(center, agent->pos);
+    float dist = steering_vec_length(toCenter);
+    
+    if (dist < 1e-6f) {
+        // At center, pick arbitrary direction
+        output.linear = (Vector2){agent->maxSpeed, 0};
+        return output;
+    }
+    
+    // Normalize direction to center
+    Vector2 radial = steering_vec_normalize(toCenter);
+    
+    // Tangent is perpendicular to radial (rotated 90 degrees)
+    // clockwise = 1: rotate right; clockwise = -1: rotate left
+    Vector2 tangent = {
+        -radial.y * clockwise,
+        radial.x * clockwise
+    };
+    
+    // Desired velocity is along tangent
+    Vector2 desired = vec_mul(tangent, agent->maxSpeed);
+    
+    // Correct for radius error
+    float radiusError = dist - radius;
+    float correctionStrength = radiusError * 2.0f;
+    
+    // Add radial correction (toward center if too far, away if too close)
+    desired = vec_add(desired, vec_mul(radial, correctionStrength));
+    
+    // Truncate to max speed
+    desired = vec_truncate(desired, agent->maxSpeed);
+    
+    output.linear = vec_sub(desired, agent->vel);
+    return output;
+}
+
+SteeringOutput steering_evade_multiple(const SteeringAgent* agent,
+                                       const Vector2* threatPositions,
+                                       const Vector2* threatVelocities,
+                                       int threatCount,
+                                       float maxPrediction,
+                                       float panicRadius) {
+    SteeringOutput output = steering_zero();
+    Vector2 totalEvasion = {0, 0};
+    float totalWeight = 0;
+    
+    for (int i = 0; i < threatCount; i++) {
+        Vector2 toThreat = vec_sub(threatPositions[i], agent->pos);
+        float dist = steering_vec_length(toThreat);
+        
+        // Ignore threats beyond panic radius
+        if (dist > panicRadius || dist < 1e-6f) continue;
+        
+        // Predict threat's future position
+        float speed = steering_vec_length(agent->vel);
+        float prediction = (speed > 0) ? dist / speed : maxPrediction;
+        if (prediction > maxPrediction) prediction = maxPrediction;
+        
+        Vector2 predictedPos = vec_add(threatPositions[i], 
+                                       vec_mul(threatVelocities[i], prediction));
+        
+        // Flee direction from predicted position
+        Vector2 fleeDir = vec_sub(agent->pos, predictedPos);
+        fleeDir = steering_vec_normalize(fleeDir);
+        
+        // Weight by inverse distance squared (closer = much more urgent)
+        float weight = 1.0f / (dist * dist);
+        
+        totalEvasion = vec_add(totalEvasion, vec_mul(fleeDir, weight));
+        totalWeight += weight;
+    }
+    
+    if (totalWeight > 0) {
+        // Average and scale to max speed
+        totalEvasion = vec_mul(totalEvasion, 1.0f / totalWeight);
+        totalEvasion = steering_vec_normalize(totalEvasion);
+        totalEvasion = vec_mul(totalEvasion, agent->maxSpeed);
+        
+        output.linear = vec_sub(totalEvasion, agent->vel);
+    }
+    
+    return output;
+}
+
+SteeringOutput steering_patrol(const SteeringAgent* agent,
+                               const Vector2* waypoints, int waypointCount,
+                               float arriveRadius,
+                               int* currentWaypoint) {
+    SteeringOutput output = steering_zero();
+    
+    if (waypointCount == 0) return output;
+    
+    // Clamp current waypoint to valid range
+    if (*currentWaypoint >= waypointCount) *currentWaypoint = 0;
+    if (*currentWaypoint < 0) *currentWaypoint = 0;
+    
+    Vector2 target = waypoints[*currentWaypoint];
+    float dist = steering_vec_distance(agent->pos, target);
+    
+    // Check if we've reached the waypoint
+    if (dist < arriveRadius) {
+        // Advance to next waypoint
+        *currentWaypoint = (*currentWaypoint + 1) % waypointCount;
+        target = waypoints[*currentWaypoint];
+    }
+    
+    // Arrive at current waypoint
+    return steering_arrive(agent, target, arriveRadius * 2.0f);
+}
+
+SteeringOutput steering_explore(const SteeringAgent* agent,
+                                Rectangle bounds, float cellSize,
+                                float* visitedGrid, int gridWidth, int gridHeight,
+                                float currentTime) {
+    // Mark current cell as visited
+    int agentCellX = (int)((agent->pos.x - bounds.x) / cellSize);
+    int agentCellY = (int)((agent->pos.y - bounds.y) / cellSize);
+    
+    if (agentCellX >= 0 && agentCellX < gridWidth &&
+        agentCellY >= 0 && agentCellY < gridHeight) {
+        visitedGrid[agentCellY * gridWidth + agentCellX] = currentTime;
+    }
+    
+    // Find the stalest (least recently visited) cell
+    float maxStaleness = -1;
+    int targetCellX = agentCellX;
+    int targetCellY = agentCellY;
+    
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            float lastVisit = visitedGrid[y * gridWidth + x];
+            float staleness = currentTime - lastVisit;
+            
+            // Add distance penalty (prefer closer stale cells)
+            float cellCenterX = bounds.x + (x + 0.5f) * cellSize;
+            float cellCenterY = bounds.y + (y + 0.5f) * cellSize;
+            float dist = steering_vec_distance(agent->pos, (Vector2){cellCenterX, cellCenterY});
+            
+            // Staleness score: high staleness good, high distance bad
+            float score = staleness - dist * 0.01f;
+            
+            if (score > maxStaleness) {
+                maxStaleness = score;
+                targetCellX = x;
+                targetCellY = y;
+            }
+        }
+    }
+    
+    // Seek center of target cell
+    Vector2 target = {
+        bounds.x + (targetCellX + 0.5f) * cellSize,
+        bounds.y + (targetCellY + 0.5f) * cellSize
+    };
+    
+    return steering_seek(agent, target);
+}
+
+SteeringOutput steering_forage(const SteeringAgent* agent,
+                               const Vector2* resources, int resourceCount,
+                               float detectionRadius,
+                               float* wanderAngle,
+                               float wanderRadius, float wanderDistance, float wanderJitter) {
+    // Find nearest visible resource
+    float nearestDist = detectionRadius + 1; // Start beyond detection range
+    int nearestIdx = -1;
+    
+    for (int i = 0; i < resourceCount; i++) {
+        float dist = steering_vec_distance(agent->pos, resources[i]);
+        if (dist < detectionRadius && dist < nearestDist) {
+            nearestDist = dist;
+            nearestIdx = i;
+        }
+    }
+    
+    if (nearestIdx >= 0) {
+        // Resource found! Seek it
+        return steering_arrive(agent, resources[nearestIdx], 20.0f);
+    } else {
+        // No resource visible, wander
+        return steering_wander(agent, wanderRadius, wanderDistance, wanderJitter, wanderAngle);
+    }
+}
+
+SteeringOutput steering_guard(const SteeringAgent* agent,
+                              Vector2 guardPos, float guardRadius,
+                              float* wanderAngle,
+                              float wanderRadius, float wanderDistance, float wanderJitter) {
+    float dist = steering_vec_distance(agent->pos, guardPos);
+    
+    if (dist > guardRadius) {
+        // Too far from guard position, return to it
+        return steering_arrive(agent, guardPos, guardRadius * 0.5f);
+    } else if (dist > guardRadius * 0.7f) {
+        // Getting far, blend wander with return
+        SteeringOutput wander = steering_wander(agent, wanderRadius, wanderDistance, wanderJitter, wanderAngle);
+        SteeringOutput ret = steering_seek(agent, guardPos);
+        
+        float returnWeight = (dist - guardRadius * 0.5f) / (guardRadius * 0.5f);
+        SteeringOutput outputs[2] = {wander, ret};
+        float weights[2] = {1.0f - returnWeight, returnWeight};
+        return steering_blend(outputs, weights, 2);
+    } else {
+        // Within guard area, wander freely
+        return steering_wander(agent, wanderRadius, wanderDistance, wanderJitter, wanderAngle);
+    }
+}
+
+SteeringOutput steering_queue_follow(const SteeringAgent* agent,
+                                     Vector2 leaderPos, Vector2 leaderVel,
+                                     float followDistance) {
+    // Calculate the target position behind the leader
+    Vector2 leaderDir = steering_vec_normalize(leaderVel);
+    if (vec_len_sq(leaderVel) < 1e-6f) {
+        // Leader not moving, just arrive at current offset
+        Vector2 toLeader = vec_sub(leaderPos, agent->pos);
+        leaderDir = steering_vec_normalize(toLeader);
+    }
+    
+    // Target is behind the leader
+    Vector2 targetPos = vec_sub(leaderPos, vec_mul(leaderDir, followDistance));
+    
+    // Use arrive to smoothly reach the target position
+    SteeringOutput arrive = steering_arrive(agent, targetPos, followDistance * 0.5f);
+    
+    // Also try to match the leader's velocity for smoother following
+    SteeringOutput matchVel = steering_match_velocity(agent, leaderVel, 0.3f);
+    
+    SteeringOutput outputs[2] = {arrive, matchVel};
+    float weights[2] = {1.5f, 1.0f};
+    return steering_blend(outputs, weights, 2);
+}
+
+SteeringOutput steering_predictive_avoid(const SteeringAgent* agent,
+                                         const Vector2* otherPositions,
+                                         const Vector2* otherVelocities,
+                                         int otherCount,
+                                         float timeHorizon,
+                                         float personalSpace) {
+    SteeringOutput output = steering_zero();
+    Vector2 totalForce = {0, 0};
+    
+    // Social force model parameters
+    const float A = 800.0f;      // Repulsion strength
+    const float B = 0.4f;        // Repulsion falloff (larger = longer range)
+    
+    for (int i = 0; i < otherCount; i++) {
+        Vector2 relPos = vec_sub(otherPositions[i], agent->pos);
+        Vector2 relVel = vec_sub(otherVelocities[i], agent->vel);
+        float dist = steering_vec_length(relPos);
+        
+        if (dist < 1e-6f) continue;
+        
+        // Find time to closest approach
+        float relSpeed2 = vec_len_sq(relVel);
+        float timeToClosest = 0;
+        
+        if (relSpeed2 > 1e-6f) {
+            // t = -dot(relPos, relVel) / |relVel|^2
+            timeToClosest = -vec_dot(relPos, relVel) / relSpeed2;
+        }
+        
+        // Clamp to time horizon
+        if (timeToClosest < 0) timeToClosest = 0;
+        if (timeToClosest > timeHorizon) timeToClosest = timeHorizon;
+        
+        // Predict positions at closest approach
+        Vector2 myFuturePos = vec_add(agent->pos, vec_mul(agent->vel, timeToClosest));
+        Vector2 otherFuturePos = vec_add(otherPositions[i], vec_mul(otherVelocities[i], timeToClosest));
+        
+        Vector2 futureSeparation = vec_sub(myFuturePos, otherFuturePos);
+        float futureDist = steering_vec_length(futureSeparation);
+        
+        if (futureDist < 1e-6f) {
+            // Will collide exactly - use current relative position
+            futureSeparation = vec_sub(agent->pos, otherPositions[i]);
+            futureDist = steering_vec_length(futureSeparation);
+            if (futureDist < 1e-6f) {
+                // Same position - push in random direction
+                futureSeparation = (Vector2){1, 0};
+                futureDist = 1;
+            }
+        }
+        
+        // Calculate repulsion force using exponential falloff (Social Force Model)
+        // Force increases exponentially as distance decreases
+        float effectiveDist = futureDist - personalSpace;
+        if (effectiveDist < 0.1f) effectiveDist = 0.1f;
+        
+        float strength = A * expf(-effectiveDist / (B * personalSpace));
+        
+        // Urgency factor - stronger force for imminent collisions
+        float urgency = 1.0f;
+        if (timeToClosest < timeHorizon * 0.5f) {
+            urgency = 1.0f + (1.0f - timeToClosest / (timeHorizon * 0.5f)) * 2.0f;
+        }
+        
+        // Direction away from predicted collision
+        Vector2 avoidDir = steering_vec_normalize(futureSeparation);
+        
+        // Apply force
+        totalForce = vec_add(totalForce, vec_mul(avoidDir, strength * urgency));
+    }
+    
+    output.linear = totalForce;
+    return output;
 }
 
 // ============================================================================
@@ -704,6 +1022,64 @@ SteeringOutput steering_collision_avoid(const SteeringAgent* agent,
     return output;
 }
 
+SteeringOutput steering_queue(const SteeringAgent* agent,
+                              const Vector2* neighborPositions, const Vector2* neighborVelocities,
+                              int neighborCount, float queueRadius, float brakeDistance) {
+    SteeringOutput output = steering_zero();
+    
+    // Get agent's forward direction
+    Vector2 forward = steering_vec_normalize(agent->vel);
+    if (vec_len_sq(agent->vel) < 1e-6f) {
+        forward = (Vector2){cosf(agent->orientation), sinf(agent->orientation)};
+    }
+    
+    float brakeForce = 0.0f;
+    
+    for (int i = 0; i < neighborCount; i++) {
+        Vector2 toNeighbor = vec_sub(neighborPositions[i], agent->pos);
+        float dist = steering_vec_length(toNeighbor);
+        
+        // Skip if too far
+        if (dist > queueRadius || dist < 1e-6f) continue;
+        
+        // Check if neighbor is ahead of us (dot product > 0 means ahead)
+        float dot = vec_dot(forward, toNeighbor);
+        if (dot <= 0) continue; // Behind us, ignore
+        
+        // Check if neighbor is roughly in our path (not too far to the side)
+        Vector2 toNeighborNorm = steering_vec_normalize(toNeighbor);
+        float alignment = vec_dot(forward, toNeighborNorm);
+        if (alignment < 0.7f) continue; // Too far off to the side
+        
+        // Check if neighbor is slower or stationary (we'd be catching up)
+        float neighborSpeed = steering_vec_length(neighborVelocities[i]);
+        float ourSpeed = steering_vec_length(agent->vel);
+        
+        // Calculate braking based on distance
+        if (dist < brakeDistance) {
+            // The closer we are, the more we brake
+            float brakeFactor = 1.0f - (dist / brakeDistance);
+            
+            // Brake harder if we're faster than them
+            if (ourSpeed > neighborSpeed + 10.0f) {
+                brakeFactor *= 1.5f;
+            }
+            
+            if (brakeFactor > brakeForce) {
+                brakeForce = brakeFactor;
+            }
+        }
+    }
+    
+    if (brakeForce > 0) {
+        // Apply braking force opposite to velocity
+        Vector2 brake = vec_mul(agent->vel, -brakeForce * 2.0f);
+        output.linear = brake;
+    }
+    
+    return output;
+}
+
 // ============================================================================
 // Combination Helpers
 // ============================================================================
@@ -734,4 +1110,117 @@ SteeringOutput steering_priority(const SteeringOutput* outputs, int count, float
         }
     }
     return steering_zero();
+}
+
+// ============================================================================
+// Hard Collision Resolution
+// ============================================================================
+
+void steering_resolve_obstacle_collision(SteeringAgent* agent,
+                                         const CircleObstacle* obstacles,
+                                         int obstacleCount,
+                                         float agentRadius) {
+    for (int i = 0; i < obstacleCount; i++) {
+        Vector2 toAgent = vec_sub(agent->pos, obstacles[i].center);
+        float dist = steering_vec_length(toAgent);
+        float minDist = obstacles[i].radius + agentRadius;
+
+        if (dist < minDist && dist > 0.001f) {
+            // Penetrating - push agent out
+            Vector2 normal = vec_mul(toAgent, 1.0f / dist);
+            agent->pos = vec_add(obstacles[i].center, vec_mul(normal, minDist));
+
+            // Cancel velocity component going into obstacle
+            float velDot = vec_dot(agent->vel, normal);
+            if (velDot < 0) {
+                agent->vel = vec_sub(agent->vel, vec_mul(normal, velDot));
+            }
+        } else if (dist <= 0.001f) {
+            // Agent exactly at center - push in arbitrary direction
+            agent->pos.x = obstacles[i].center.x + minDist;
+        }
+    }
+}
+
+void steering_resolve_wall_collision(SteeringAgent* agent,
+                                     const Wall* walls,
+                                     int wallCount,
+                                     float agentRadius) {
+    for (int i = 0; i < wallCount; i++) {
+        // Find closest point on wall segment to agent
+        Vector2 wallVec = vec_sub(walls[i].end, walls[i].start);
+        float wallLenSq = vec_len_sq(wallVec);
+
+        if (wallLenSq < 0.001f) continue;  // Degenerate wall
+
+        float wallLen = sqrtf(wallLenSq);
+        Vector2 wallDir = vec_mul(wallVec, 1.0f / wallLen);
+
+        Vector2 toAgent = vec_sub(agent->pos, walls[i].start);
+        float projection = vec_dot(toAgent, wallDir);
+        projection = clamp(projection, 0, wallLen);
+
+        Vector2 closestPoint = vec_add(walls[i].start, vec_mul(wallDir, projection));
+        Vector2 toAgentFromWall = vec_sub(agent->pos, closestPoint);
+        float dist = steering_vec_length(toAgentFromWall);
+
+        if (dist < agentRadius) {
+            // Penetrating - push agent out
+            Vector2 normal;
+            if (dist > 0.001f) {
+                normal = vec_mul(toAgentFromWall, 1.0f / dist);
+            } else {
+                // Agent exactly on wall - use perpendicular
+                normal = (Vector2){-wallDir.y, wallDir.x};
+            }
+
+            agent->pos = vec_add(closestPoint, vec_mul(normal, agentRadius));
+
+            // Cancel velocity component going into wall
+            float velDot = vec_dot(agent->vel, normal);
+            if (velDot < 0) {
+                agent->vel = vec_sub(agent->vel, vec_mul(normal, velDot));
+            }
+        }
+    }
+}
+
+void steering_resolve_agent_collision(SteeringAgent* agent,
+                                      int agentIndex,
+                                      SteeringAgent* allAgents,
+                                      int agentCount,
+                                      float agentRadius) {
+    float minDist = agentRadius * 2.0f;  // Both agents have same radius
+
+    for (int i = 0; i < agentCount; i++) {
+        if (i == agentIndex) continue;
+
+        Vector2 toAgent = vec_sub(agent->pos, allAgents[i].pos);
+        float dist = steering_vec_length(toAgent);
+
+        if (dist < minDist && dist > 0.001f) {
+            // Overlapping - push both agents apart (half each)
+            Vector2 normal = vec_mul(toAgent, 1.0f / dist);
+            float overlap = minDist - dist;
+            float pushDist = overlap * 0.5f;
+
+            agent->pos = vec_add(agent->pos, vec_mul(normal, pushDist));
+            allAgents[i].pos = vec_sub(allAgents[i].pos, vec_mul(normal, pushDist));
+
+            // Cancel velocity components going into each other
+            float velDot = vec_dot(agent->vel, normal);
+            if (velDot < 0) {
+                agent->vel = vec_sub(agent->vel, vec_mul(normal, velDot * 0.5f));
+            }
+
+            float otherVelDot = vec_dot(allAgents[i].vel, normal);
+            if (otherVelDot > 0) {
+                allAgents[i].vel = vec_sub(allAgents[i].vel, vec_mul(normal, otherVelDot * 0.5f));
+            }
+        } else if (dist <= 0.001f) {
+            // Agents exactly overlapping - push in arbitrary direction
+            agent->pos.x += agentRadius;
+            allAgents[i].pos.x -= agentRadius;
+        }
+    }
 }
