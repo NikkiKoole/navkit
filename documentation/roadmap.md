@@ -22,31 +22,62 @@ These must be implemented in order - each layer builds on the previous.
 │  Wall representation, obstacle shapes, ray casting, wall slide  │
 │  Requires: steering behaviors                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  LAYER 1: Full Steering Behaviors                    ← START    │
-│  Seek, flee, arrive, pursuit, evasion, wander, containment      │
-│  Currently have: separation only                                │
+│  LAYER 1: Full Steering Behaviors                    ✓ DONE     │
+│  All Craig Reynolds behaviors implemented                       │
+│  See steering/steering.h for full API                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Layer 1: Full Steering Behaviors
-- [ ] **Seek** - move toward a target position
-- [ ] **Flee** - move away from a target position
-- [ ] **Arrive** - seek with deceleration (smooth stop)
-- [ ] **Pursuit** - seek a moving target's predicted position
-- [ ] **Evasion** - flee from a moving target's predicted position
-- [ ] **Wander** - natural-looking random movement
-- [ ] **Containment** - stay within boundaries
+### Layer 1: Full Steering Behaviors ✓
+
+**Individual Behaviors:**
+- [x] **Seek** - move toward a target position
+- [x] **Flee** - move away from a target position
+- [x] **Arrive** - seek with deceleration (smooth stop)
+- [x] **Pursuit** - seek a moving target's predicted position
+- [x] **Evasion** - flee from a moving target's predicted position
+- [x] **Offset Pursuit** - pursue with lateral offset (strafing, fly-by)
+- [x] **Wander** - natural-looking random movement
+- [x] **Containment** - stay within boundaries
+- [x] **Face** - rotate to look at target (orientation only)
+- [x] **Look Where You're Going** - face movement direction
+- [x] **Match Velocity** - match another agent's velocity
+- [x] **Interpose** - position between two agents
+- [x] **Hide** - use obstacles to hide from pursuer
+- [x] **Shadow** - approach then match target's heading
+
+**Obstacle/Wall Behaviors:**
+- [x] **Obstacle Avoidance** - feeler rays to avoid circular obstacles
+- [x] **Wall Avoidance** - steer away from line segment walls
+- [x] **Wall Following** - maintain offset from walls
+- [x] **Path Following** - follow waypoints smoothly
+- [x] **Flow Field Following** - align with vector field
+
+**Group Behaviors:**
+- [x] **Separation** - repel from nearby agents
+- [x] **Cohesion** - move toward group center
+- [x] **Alignment** - match neighbors' heading
+- [x] **Flocking** - separation + cohesion + alignment combined
+- [x] **Leader Following** - follow behind a leader
+- [x] **Collision Avoidance** - predict and avoid collisions
+
+**Combination Helpers:**
+- [x] **Blended Steering** - weighted sum of behaviors
+- [x] **Priority Steering** - first non-zero behavior wins
+
+**Files:** `steering/steering.h`, `steering/steering.c`
+**Demo:** `make steer` then press 1-9, 0, Q, W, E for scenarios
 
 ### Layer 2: Static Obstacles & Walls
-- [ ] **Wall representation** - line segments or grid-based
-- [ ] **Obstacle shapes** - circles, AABBs, convex polygons
+- [x] **Wall representation** - line segments (Wall struct)
+- [x] **Obstacle shapes** - circles (CircleObstacle struct)
 - [ ] **Spatial queries** - "what obstacles are near me?"
 - [ ] **Ray casting** - line-of-sight, wall detection ahead
-- [ ] **Obstacle avoidance steering** - feeler rays or force fields
+- [x] **Obstacle avoidance steering** - feeler rays or force fields
 - [ ] **Wall sliding** - slide along walls rather than stopping
 
 ### Layer 3: Pathfinding Integration
-- [ ] **Path following behavior** - smoothly traverse waypoints
+- [x] **Path following behavior** - smoothly traverse waypoints
 - [ ] **Path smoothing** - string-pulling, remove unnecessary waypoints
 - [ ] **Dynamic replanning** - request new path when blocked
 
@@ -54,7 +85,7 @@ These must be implemented in order - each layer builds on the previous.
 - [ ] **Queuing** - orderly lines at bottlenecks
 - [ ] **Yielding** - agents give way to each other
 - [ ] **Lane preference** - keep-right/left for counter-flow
-- [ ] **Following** - agents follow others
+- [x] **Following** - agents follow others (Leader Following)
 - [ ] **Personal space** - context-dependent spacing
 
 See [social-navigation.md](social-navigation.md) for detailed design.
@@ -121,7 +152,7 @@ We experimented with ORCA but removed it because:
 ├───────────────────┼─────────────────────────────┤
 │  Pathfinding      │  Local Avoidance            │
 │  - A* ✓           │  - Separation ✓             │
-│  - HPA* ✓         │  - Steering behaviors       │
+│  - HPA* ✓         │  - Steering behaviors ✓     │
 │  - JPS ✓          │  - Social navigation        │
 │  - Flow Fields    │                             │
 ├───────────────────┴─────────────────────────────┤

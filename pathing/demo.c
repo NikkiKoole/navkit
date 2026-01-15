@@ -6,6 +6,19 @@
 #include <stdlib.h>
 #include <math.h>
 
+static Font* g_comicFont = NULL;
+
+static void DrawTextShadow(const char *text, int x, int y, int size, Color col) {
+    if (g_comicFont && g_comicFont->texture.id > 0) {
+        Vector2 pos = { (float)x, (float)y };
+        DrawTextEx(*g_comicFont, text, (Vector2){ pos.x + 1, pos.y + 1 }, (float)size, 1, BLACK);
+        DrawTextEx(*g_comicFont, text, pos, (float)size, 1, col);
+    } else {
+        DrawText(text, x + 1, y + 1, size, BLACK);
+        DrawText(text, x, y, size, col);
+    }
+}
+
 #define CELL_SIZE   32
 #define MAX_AGENTS  50
 
@@ -146,7 +159,7 @@ void SpawnAgents(int count) {
     startPos = (Point){-1, -1};
     goalPos = (Point){-1, -1};
     pathLength = 0;
-    
+
     double totalTime = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnAgents: %d agents in %.2fms (avg %.2fms per agent)", count, totalTime, totalTime / count);
 }
@@ -267,6 +280,8 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     texGrass = LoadTexture("assets/grass.png");
     texWall = LoadTexture("assets/wall.png");
+    Font comicFont = LoadFont("assets/comic.fnt");
+     g_comicFont = &comicFont;  // Comment out to use default font
     SetTargetFPS(60);
     InitGrid();
     //InitGridWithSizeAndChunkSize(128, 128, 32, 16);
@@ -283,20 +298,21 @@ int main(void) {
         DrawEntrances();
         DrawPath();
         DrawAgents();
-        DrawFPS(5, 5);
-        DrawText(TextFormat("Algo: %s | Dir: %s | Entrances: %d | Edges: %d | Agents: %d",
+        DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
+        DrawTextShadow(TextFormat("Algo: %s | Dir: %s | Entrances: %d | Edges: %d | Agents: %d",
                  pathAlgorithmNames[pathAlgorithm], use8Dir ? "8-dir" : "4-dir", entranceCount, graphEdgeCount, agentCount), 5, 25, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
-            DrawText(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
+            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
         } else {
-            DrawText(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
+            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
-        DrawText("S/G+Click | P: Path | T: Algo | D: Dir | 1-5: Gen | E: Entrances | B: Graph | U: Update | A: Agents", 5, screenHeight - 20, 14, GRAY);
+        DrawTextShadow("S/G+Click | P: Path | T: Algo | D: Dir | 1-5: Gen | E: Entrances | B: Graph | U: Update | A: Agents", 5, screenHeight - 20, 14, GRAY);
         EndDrawing();
     }
     UnloadTexture(texGrass);
     UnloadTexture(texWall);
+    UnloadFont(comicFont);
     CloseWindow();
     return 0;
 }

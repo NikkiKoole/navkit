@@ -6,10 +6,11 @@ CFLAGS  := -std=c11 -O2 -I. -Wall -Wextra
 LDFLAGS := $(shell pkg-config --libs raylib)
 
 # Define your targets here
-TARGETS := steer path
+TARGETS := steer crowd path
 
 # Source files for each target
-steer_SRC       := steering/demo.c
+steer_SRC       := steering/demo.c steering/steering.c
+crowd_SRC       := crowd-experiment/demo.c
 path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
 
 # Test target (no raylib needed for tests)
@@ -27,6 +28,6 @@ test: $(test_SRC)
 	./test
 
 clean:
-	rm -f $(TARGETS) test
+	rm -f $(TARGETS) test crowd
 
 .PHONY: all clean $(TARGETS) test
