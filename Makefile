@@ -9,8 +9,8 @@ LDFLAGS := $(shell pkg-config --libs raylib)
 TARGETS := steer path
 
 # Source files for each target
-steer_SRC     := steering/demo.c
-path_SRC      := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
+steer_SRC       := steering/demo.c
+path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
 
 # Test target (no raylib needed for tests)
 test_SRC      := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c

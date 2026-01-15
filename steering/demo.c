@@ -461,17 +461,19 @@ int main(void) {
         if (IsKeyPressed(KEY_C)) cullDraw = !cullDraw;
         if (IsKeyPressed(KEY_Y)) ySortOn = !ySortOn;
 
-        float panSpeed = 800.0f / cam.zoom;
-        if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT))  cam.target.x -= panSpeed * dt;
-        if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) cam.target.x += panSpeed * dt;
-        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP))    cam.target.y -= panSpeed * dt;
-        if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN))  cam.target.y += panSpeed * dt;
-
+        // Mouse wheel zoom
         float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) {
             cam.zoom *= (1.0f + wheel * 0.1f);
             if (cam.zoom < 0.1f) cam.zoom = 0.1f;
             if (cam.zoom > 6.0f) cam.zoom = 6.0f;
+        }
+
+        // Middle mouse drag to pan
+        if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+            Vector2 delta = GetMouseDelta();
+            cam.target.x -= delta.x / cam.zoom;
+            cam.target.y -= delta.y / cam.zoom;
         }
 
         cam.target.x = fminf(fmaxf(cam.target.x, 0.0f), WORLD_W);
@@ -698,7 +700,7 @@ int main(void) {
         EndMode2D();
 
         // Overlay text
-        DrawTextShadow("WASD/Arrows: pan | Wheel: zoom | V: avoidance | R: draw | C: cull | Y: y-sort", 12, 12, 18, RAYWHITE);
+        DrawTextShadow("MMB: pan | Wheel: zoom | V: avoidance | R: draw | C: cull | Y: y-sort", 12, 12, 18, RAYWHITE);
         DrawTextShadow(avoidanceOn ? "Avoidance: ON (speed-relative + cache opt)" : "Avoidance: OFF (true baseline)",
                  12, 36, 18, avoidanceOn ? GREEN : RED);
         DrawTextShadow(drawAgents ? "Draw: ON" : "Draw: OFF", 12, 60, 18, drawAgents ? GREEN : RED);
@@ -781,7 +783,7 @@ int main(void) {
     MemFree(agentCell);
     MemFree(cellAgents);
     MemFree(agents);
-      UnloadTexture(agentTex);
+    UnloadTexture(agentTex);
     CloseWindow();
     return 0;
 }
