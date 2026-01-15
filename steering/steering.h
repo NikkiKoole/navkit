@@ -39,6 +39,14 @@ typedef struct {
     int count;
 } Path;
 
+typedef struct {
+    Vector2 anchorPos;        // Formation center position
+    Vector2 anchorVel;        // Formation center velocity
+    float anchorOrientation;  // Formation facing direction
+    Vector2* slotOffsets;     // Local offsets for each slot
+    int slotCount;            // Number of slots
+} Formation;
+
 // ============================================================================
 // Individual Behaviors
 // ============================================================================
@@ -587,5 +595,239 @@ float ctx_get_danger(const ContextSteering* ctx, int slot);
 
 // Get the "masked" value (interest - danger, clamped to 0)
 float ctx_get_masked_value(const ContextSteering* ctx, int slot);
+
+// ============================================================================
+// Curvature-Limited Steering (Vehicle/Unicycle Model)
+// ============================================================================
+// For agents that can't strafe - cars, bikes, creatures with turn limits.
+// Uses (speed, heading) instead of velocity vector.
+//
+// Motion model:
+//   x' = speed * cos(heading)
+//   y' = speed * sin(heading)
+//   heading' = turnRate
+//
+// Reference: Robotics locomotion models, Ackermann steering geometry
+// ============================================================================
+
+typedef struct {
+    Vector2 pos;
+    float speed;           // Current speed (scalar, always >= 0)
+    float heading;         // Direction in radians
+    float maxSpeed;
+    float minSpeed;        // Can be negative for reverse
+    float maxAccel;        // Max linear acceleration
+    float maxDecel;        // Max braking deceleration (positive value)
+    float maxTurnRate;     // Max turn rate in radians/second
+} CurvatureLimitedAgent;
+
+// Initialize a curvature-limited agent with sensible defaults
+void curv_agent_init(CurvatureLimitedAgent* agent, Vector2 pos, float heading);
+
+// Get the velocity vector for a curvature-limited agent
+Vector2 curv_agent_velocity(const CurvatureLimitedAgent* agent);
+
+// Convert desired velocity to curvature-limited steering output
+// Returns acceleration and turn rate that respects agent's limits
+SteeringOutput steering_curvature_limit(const CurvatureLimitedAgent* agent,
+                                        Vector2 desiredVelocity);
+
+// Apply steering to curvature-limited agent
+void curv_agent_apply(CurvatureLimitedAgent* agent, SteeringOutput steering, float dt);
+
+// Seek for curvature-limited agent
+SteeringOutput curv_seek(const CurvatureLimitedAgent* agent, Vector2 target);
+
+// Arrive for curvature-limited agent
+SteeringOutput curv_arrive(const CurvatureLimitedAgent* agent, Vector2 target, float slowRadius);
+
+// ============================================================================
+// Pure Pursuit Path Tracking
+// ============================================================================
+// Industry-standard path following for vehicles. Picks a lookahead point on
+// the path and calculates the curvature needed to reach it.
+//
+// Key insight: steering angle = atan(2 * L * sin(alpha) / lookahead_dist)
+// where alpha is the angle to the lookahead point.
+//
+// Reference: Coulter 1992, "Implementation of the Pure Pursuit Path Tracking Algorithm"
+// ============================================================================
+
+// Pure Pursuit - vehicle path tracking with lookahead
+// lookaheadDist: how far ahead on path to aim (larger = smoother, smaller = tighter)
+// Returns steering for curvature-limited agent
+SteeringOutput steering_pure_pursuit(const CurvatureLimitedAgent* agent,
+                                     const Path* path,
+                                     float lookaheadDist,
+                                     int* currentSegment);
+
+// ============================================================================
+// Stanley Controller
+// ============================================================================
+// Path tracking that corrects for cross-track error (lateral drift).
+// Used by Stanford's Stanley in DARPA Grand Challenge.
+//
+// Steering = heading_error + atan(k * cross_track_error / speed)
+//
+// Reference: Thrun et al., "Stanley: The Robot that Won the DARPA Grand Challenge"
+// ============================================================================
+
+// Stanley controller - path tracking with cross-track correction
+// k: cross-track gain (higher = more aggressive correction, typical 1.0-3.0)
+SteeringOutput steering_stanley(const CurvatureLimitedAgent* agent,
+                                const Path* path,
+                                float k,
+                                int* currentSegment);
+
+// ============================================================================
+// Dynamic Window Approach (DWA)
+// ============================================================================
+// Sampling-based local planner that evaluates whole trajectories.
+// Often beats hand-tuned vector blending in cluttered environments.
+//
+// Algorithm:
+// 1. Define velocity window based on current state + acceleration limits
+// 2. Sample candidate (speed, turnRate) pairs
+// 3. Simulate each forward, score by goal progress + clearance + smoothness
+// 4. Return steering toward best trajectory
+//
+// Reference: Fox, Burgard, Thrun 1997, "The Dynamic Window Approach to
+//            Collision Avoidance"
+// ============================================================================
+
+typedef struct {
+    float timeHorizon;      // How far ahead to simulate (1.0-2.0s typical)
+    float dt;               // Simulation timestep (0.1s typical)
+    int linearSamples;      // Speed samples (5-7 typical)
+    int angularSamples;     // Turn rate samples (7-11 typical)
+    float goalWeight;       // Weight for goal progress (1.0 typical)
+    float clearanceWeight;  // Weight for obstacle distance (0.5 typical)
+    float speedWeight;      // Weight for maintaining speed (0.3 typical)
+    float smoothWeight;     // Weight for smooth trajectory (0.2 typical)
+} DWAParams;
+
+DWAParams dwa_default_params(void);
+
+// Dynamic Window Approach - sampling-based local planner
+// Works with curvature-limited agents
+SteeringOutput steering_dwa(const CurvatureLimitedAgent* agent,
+                            Vector2 goal,
+                            const CircleObstacle* obstacles, int obstacleCount,
+                            const Wall* walls, int wallCount,
+                            DWAParams params);
+
+// ============================================================================
+// ClearPath Multi-Agent Avoidance
+// ============================================================================
+// Alternative to ORCA - finds velocity closest to desired that avoids
+// collision cones of all nearby agents.
+//
+// Reference: Guy et al., "ClearPath: Highly Parallel Collision Avoidance
+//            for Multi-Agent Simulation"
+// ============================================================================
+
+// ClearPath - collision-free velocity selection
+// Returns steering to achieve a collision-free velocity closest to desired
+SteeringOutput steering_clearpath(const SteeringAgent* agent,
+                                  Vector2 desiredVelocity,
+                                  const Vector2* otherPositions,
+                                  const Vector2* otherVelocities,
+                                  const float* otherRadii,
+                                  int otherCount,
+                                  float agentRadius,
+                                  float timeHorizon);
+
+// ============================================================================
+// Topological Flocking (k-Nearest Neighbors)
+// ============================================================================
+// Based on starling research: interaction with fixed number of neighbors
+// (typically 6-7) rather than all within radius. More stable across
+// density changes.
+//
+// Reference: Ballerini et al. 2008, "Interaction ruling animal collective
+//            behavior depends on topological rather than metric distance"
+// ============================================================================
+
+// Topological flocking - interact with k nearest neighbors
+// k: number of neighbors (6-7 based on starling research)
+// agentIndex: index of this agent in allPositions/allVelocities (-1 if not in arrays)
+SteeringOutput steering_flocking_topological(const SteeringAgent* agent,
+                                             const Vector2* allPositions,
+                                             const Vector2* allVelocities,
+                                             int totalCount,
+                                             int agentIndex,
+                                             int k,
+                                             float separationDist,
+                                             float separationWeight,
+                                             float cohesionWeight,
+                                             float alignmentWeight);
+
+// ============================================================================
+// Couzin Zones Model
+// ============================================================================
+// Biologically grounded collective motion with three explicit zones:
+// - Zone of Repulsion (ZOR): very close -> separate
+// - Zone of Orientation (ZOO): medium distance -> align
+// - Zone of Attraction (ZOA): far -> cohere
+//
+// Optional blind angle simulates rear blind spot.
+//
+// Reference: Couzin et al. 2002, "Collective Memory and Spatial Sorting
+//            in Animal Groups"
+// ============================================================================
+
+typedef struct {
+    float zorRadius;    // Zone of Repulsion radius (innermost)
+    float zooRadius;    // Zone of Orientation radius (middle)
+    float zoaRadius;    // Zone of Attraction radius (outermost)
+    float blindAngle;   // Rear blind spot (0 = full vision, PI = 180° blind behind)
+    float turnRate;     // How fast agent turns toward desired direction
+} CouzinParams;
+
+CouzinParams couzin_default_params(void);
+
+// Couzin zones model - biologically grounded collective motion
+// Returns desired direction (as steering toward that direction)
+SteeringOutput steering_couzin(const SteeringAgent* agent,
+                               const Vector2* neighborPositions,
+                               const Vector2* neighborVelocities,
+                               int neighborCount,
+                               CouzinParams params);
+
+// ============================================================================
+// Hungarian Algorithm (Munkres) for Formation Slot Assignment
+// ============================================================================
+// Optimally assigns agents to formation slots minimizing total cost.
+// O(n³) algorithm. Reduces criss-crossing when formation changes.
+//
+// Reference: Kuhn 1955, "The Hungarian Method for the Assignment Problem"
+// ============================================================================
+
+// Maximum agents for Hungarian algorithm (stack allocation)
+#define HUNGARIAN_MAX_SIZE 32
+
+// Solve optimal agent-to-slot assignment
+// costMatrix: [n x n] matrix where costMatrix[i*n + j] = cost of assigning agent i to slot j
+// n: number of agents/slots (must be square, pad with high costs if needed)
+// assignment: output array, assignment[i] = slot index for agent i
+// Returns total cost of assignment
+float hungarian_solve(const float* costMatrix, int n, int* assignment);
+
+// Build cost matrix from agent positions to slot positions
+// Uses Euclidean distance as cost
+void hungarian_build_cost_matrix(const Vector2* agentPositions, int agentCount,
+                                 const Vector2* slotPositions, int slotCount,
+                                 float* costMatrix);
+
+// Formation with automatic slot reassignment
+// Reassigns slots when total cost exceeds threshold or on demand
+SteeringOutput steering_formation_hungarian(const SteeringAgent* agent,
+                                            int agentIndex,
+                                            const Vector2* allAgentPositions,
+                                            int agentCount,
+                                            const Formation* formation,
+                                            int* slotAssignments,
+                                            float reassignThreshold,
+                                            float arriveRadius);
 
 #endif // STEERING_H

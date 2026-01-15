@@ -2302,3 +2302,1079 @@ void ctx_danger_bounds(ContextSteering* ctx, Vector2 agentPos, Rectangle bounds,
                               PI * 0.4f);
     }
 }
+
+// ============================================================================
+// Curvature-Limited Steering (Vehicle/Unicycle Model)
+// ============================================================================
+
+void curv_agent_init(CurvatureLimitedAgent* agent, Vector2 pos, float heading) {
+    agent->pos = pos;
+    agent->speed = 0.0f;
+    agent->heading = heading;
+    agent->maxSpeed = 150.0f;
+    agent->minSpeed = -50.0f;      // Allow some reverse
+    agent->maxAccel = 200.0f;
+    agent->maxDecel = 300.0f;
+    agent->maxTurnRate = 2.5f;     // ~143 degrees/second
+}
+
+Vector2 curv_agent_velocity(const CurvatureLimitedAgent* agent) {
+    return (Vector2){
+        agent->speed * cosf(agent->heading),
+        agent->speed * sinf(agent->heading)
+    };
+}
+
+SteeringOutput steering_curvature_limit(const CurvatureLimitedAgent* agent,
+                                        Vector2 desiredVelocity) {
+    SteeringOutput output = steering_zero();
+    
+    float desiredSpeed = steering_vec_length(desiredVelocity);
+    float desiredHeading = atan2f(desiredVelocity.y, desiredVelocity.x);
+    
+    // Calculate heading error (shortest path)
+    float headingError = desiredHeading - agent->heading;
+    while (headingError > PI) headingError -= 2.0f * PI;
+    while (headingError < -PI) headingError += 2.0f * PI;
+    
+    // Angular steering: proportional control with rate limiting
+    // Turn faster when error is large, slower when small
+    float turnStrength = 3.0f;  // Proportional gain
+    float desiredTurnRate = headingError * turnStrength;
+    
+    // Clamp to max turn rate
+    if (desiredTurnRate > agent->maxTurnRate) desiredTurnRate = agent->maxTurnRate;
+    if (desiredTurnRate < -agent->maxTurnRate) desiredTurnRate = -agent->maxTurnRate;
+    
+    output.angular = desiredTurnRate;
+    
+    // Linear steering: accelerate/decelerate to desired speed
+    // But slow down if we need to turn sharply (can't corner at high speed)
+    float turnFactor = 1.0f - fabsf(headingError) / PI;  // 0 at 180°, 1 at 0°
+    turnFactor = turnFactor * turnFactor;  // Quadratic (more aggressive slowdown)
+    float effectiveDesiredSpeed = desiredSpeed * turnFactor;
+    
+    float speedError = effectiveDesiredSpeed - agent->speed;
+    
+    if (speedError > 0) {
+        // Accelerating
+        output.linear.x = fminf(speedError * 3.0f, agent->maxAccel);
+    } else {
+        // Braking
+        output.linear.x = fmaxf(speedError * 3.0f, -agent->maxDecel);
+    }
+    
+    // Store acceleration as scalar in x (will be interpreted as forward accel)
+    return output;
+}
+
+void curv_agent_apply(CurvatureLimitedAgent* agent, SteeringOutput steering, float dt) {
+    // Update heading
+    agent->heading += steering.angular * dt;
+    while (agent->heading > PI) agent->heading -= 2.0f * PI;
+    while (agent->heading < -PI) agent->heading += 2.0f * PI;
+    
+    // Update speed (steering.linear.x is forward acceleration)
+    agent->speed += steering.linear.x * dt;
+    if (agent->speed > agent->maxSpeed) agent->speed = agent->maxSpeed;
+    if (agent->speed < agent->minSpeed) agent->speed = agent->minSpeed;
+    
+    // Update position using unicycle model
+    agent->pos.x += agent->speed * cosf(agent->heading) * dt;
+    agent->pos.y += agent->speed * sinf(agent->heading) * dt;
+}
+
+SteeringOutput curv_seek(const CurvatureLimitedAgent* agent, Vector2 target) {
+    Vector2 toTarget = vec_sub(target, agent->pos);
+    float dist = steering_vec_length(toTarget);
+    
+    if (dist < 1.0f) {
+        return steering_zero();
+    }
+    
+    Vector2 desiredVel = vec_mul(steering_vec_normalize(toTarget), agent->maxSpeed);
+    return steering_curvature_limit(agent, desiredVel);
+}
+
+SteeringOutput curv_arrive(const CurvatureLimitedAgent* agent, Vector2 target, float slowRadius) {
+    Vector2 toTarget = vec_sub(target, agent->pos);
+    float dist = steering_vec_length(toTarget);
+    
+    if (dist < 1.0f) {
+        // At target - brake to stop
+        SteeringOutput output = steering_zero();
+        output.linear.x = -agent->speed * 3.0f;  // Strong braking
+        return output;
+    }
+    
+    // Calculate desired speed based on distance
+    float desiredSpeed = agent->maxSpeed;
+    if (dist < slowRadius) {
+        desiredSpeed = agent->maxSpeed * (dist / slowRadius);
+    }
+    
+    Vector2 desiredVel = vec_mul(steering_vec_normalize(toTarget), desiredSpeed);
+    return steering_curvature_limit(agent, desiredVel);
+}
+
+// ============================================================================
+// Pure Pursuit Path Tracking
+// ============================================================================
+
+// Helper: Find lookahead point on path
+static Vector2 find_lookahead_point(const CurvatureLimitedAgent* agent, 
+                                    const Path* path, 
+                                    float lookaheadDist,
+                                    int* currentSegment) {
+    if (path->count < 2) return agent->pos;
+    
+    // Find closest point on path from current segment onward
+    float closestDist = 1e10f;
+    Vector2 closestPoint = path->points[*currentSegment];
+    int closestSeg = *currentSegment;
+    
+    for (int i = *currentSegment; i < path->count - 1; i++) {
+        Vector2 segStart = path->points[i];
+        Vector2 segEnd = path->points[i + 1];
+        Vector2 segVec = vec_sub(segEnd, segStart);
+        float segLen = steering_vec_length(segVec);
+        
+        if (segLen < 0.001f) continue;
+        
+        Vector2 segDir = vec_mul(segVec, 1.0f / segLen);
+        Vector2 toAgent = vec_sub(agent->pos, segStart);
+        float proj = vec_dot(toAgent, segDir);
+        proj = clamp(proj, 0, segLen);
+        
+        Vector2 closest = vec_add(segStart, vec_mul(segDir, proj));
+        float dist = steering_vec_distance(agent->pos, closest);
+        
+        if (dist < closestDist) {
+            closestDist = dist;
+            closestPoint = closest;
+            closestSeg = i;
+        }
+    }
+    
+    *currentSegment = closestSeg;
+    
+    // Now find point at lookahead distance along path from closest point
+    float remainingDist = lookaheadDist;
+    int seg = closestSeg;
+    
+    // First, advance along current segment from closest point
+    Vector2 segEnd = path->points[seg + 1];
+    float distToSegEnd = steering_vec_distance(closestPoint, segEnd);
+    
+    if (distToSegEnd >= remainingDist) {
+        // Lookahead is on current segment
+        Vector2 dir = steering_vec_normalize(vec_sub(segEnd, closestPoint));
+        return vec_add(closestPoint, vec_mul(dir, remainingDist));
+    }
+    
+    remainingDist -= distToSegEnd;
+    seg++;
+    
+    // Continue through subsequent segments
+    while (seg < path->count - 1 && remainingDist > 0) {
+        Vector2 segStart = path->points[seg];
+        segEnd = path->points[seg + 1];
+        float segLen = steering_vec_distance(segStart, segEnd);
+        
+        if (segLen >= remainingDist) {
+            Vector2 dir = steering_vec_normalize(vec_sub(segEnd, segStart));
+            return vec_add(segStart, vec_mul(dir, remainingDist));
+        }
+        
+        remainingDist -= segLen;
+        seg++;
+    }
+    
+    // Ran out of path - return end point
+    return path->points[path->count - 1];
+}
+
+SteeringOutput steering_pure_pursuit(const CurvatureLimitedAgent* agent,
+                                     const Path* path,
+                                     float lookaheadDist,
+                                     int* currentSegment) {
+    if (path->count < 2) return steering_zero();
+    
+    // Find lookahead point
+    Vector2 lookahead = find_lookahead_point(agent, path, lookaheadDist, currentSegment);
+    
+    // Calculate steering using Pure Pursuit geometry
+    // The curvature κ = 2 * sin(α) / L where α is angle to lookahead, L is lookahead distance
+    Vector2 toLookahead = vec_sub(lookahead, agent->pos);
+    float dist = steering_vec_length(toLookahead);
+    
+    if (dist < 1.0f) {
+        // At or past lookahead - check if at end of path
+        float distToEnd = steering_vec_distance(agent->pos, path->points[path->count - 1]);
+        if (distToEnd < lookaheadDist * 0.5f) {
+            return curv_arrive(agent, path->points[path->count - 1], lookaheadDist);
+        }
+    }
+    
+    // Angle to lookahead point relative to current heading
+    float targetAngle = atan2f(toLookahead.y, toLookahead.x);
+    float alpha = targetAngle - agent->heading;
+    while (alpha > PI) alpha -= 2.0f * PI;
+    while (alpha < -PI) alpha += 2.0f * PI;
+    
+    // Pure Pursuit curvature formula
+    float curvature = 2.0f * sinf(alpha) / fmaxf(dist, lookaheadDist * 0.5f);
+    
+    // Convert curvature to turn rate: ω = v * κ
+    float desiredTurnRate = agent->speed * curvature;
+    
+    // Clamp turn rate
+    if (desiredTurnRate > agent->maxTurnRate) desiredTurnRate = agent->maxTurnRate;
+    if (desiredTurnRate < -agent->maxTurnRate) desiredTurnRate = -agent->maxTurnRate;
+    
+    SteeringOutput output = steering_zero();
+    output.angular = desiredTurnRate;
+    
+    // Speed control - slow down for sharp turns
+    float turnFactor = 1.0f - fabsf(curvature) * lookaheadDist * 0.5f;
+    turnFactor = clamp(turnFactor, 0.3f, 1.0f);
+    
+    float desiredSpeed = agent->maxSpeed * turnFactor;
+    float speedError = desiredSpeed - agent->speed;
+    
+    if (speedError > 0) {
+        output.linear.x = fminf(speedError * 2.0f, agent->maxAccel);
+    } else {
+        output.linear.x = fmaxf(speedError * 2.0f, -agent->maxDecel);
+    }
+    
+    return output;
+}
+
+// ============================================================================
+// Stanley Controller
+// ============================================================================
+
+SteeringOutput steering_stanley(const CurvatureLimitedAgent* agent,
+                                const Path* path,
+                                float k,
+                                int* currentSegment) {
+    if (path->count < 2) return steering_zero();
+    
+    // Find closest point on path
+    float closestDist = 1e10f;
+    Vector2 closestPoint = path->points[0];
+    int closestSeg = *currentSegment;
+    Vector2 pathTangent = {1, 0};
+    
+    for (int i = *currentSegment; i < path->count - 1; i++) {
+        Vector2 segStart = path->points[i];
+        Vector2 segEnd = path->points[i + 1];
+        Vector2 segVec = vec_sub(segEnd, segStart);
+        float segLen = steering_vec_length(segVec);
+        
+        if (segLen < 0.001f) continue;
+        
+        Vector2 segDir = vec_mul(segVec, 1.0f / segLen);
+        Vector2 toAgent = vec_sub(agent->pos, segStart);
+        float proj = vec_dot(toAgent, segDir);
+        proj = clamp(proj, 0, segLen);
+        
+        Vector2 closest = vec_add(segStart, vec_mul(segDir, proj));
+        float dist = steering_vec_distance(agent->pos, closest);
+        
+        if (dist < closestDist) {
+            closestDist = dist;
+            closestPoint = closest;
+            closestSeg = i;
+            pathTangent = segDir;
+        }
+    }
+    
+    *currentSegment = closestSeg;
+    
+    // Calculate heading error
+    float pathHeading = atan2f(pathTangent.y, pathTangent.x);
+    float headingError = pathHeading - agent->heading;
+    while (headingError > PI) headingError -= 2.0f * PI;
+    while (headingError < -PI) headingError += 2.0f * PI;
+    
+    // Calculate cross-track error (signed distance from path)
+    // Positive = agent is to the left of path, negative = to the right
+    Vector2 toAgent = vec_sub(agent->pos, closestPoint);
+    Vector2 pathNormal = {-pathTangent.y, pathTangent.x};  // Left-pointing normal
+    float crossTrackError = vec_dot(toAgent, pathNormal);
+    
+    // Stanley steering law: δ = heading_error + atan(k * crossTrackError / speed)
+    float speed = fabsf(agent->speed);
+    if (speed < 10.0f) speed = 10.0f;  // Avoid division issues at low speed
+    
+    float crossTrackCorrection = atanf(k * crossTrackError / speed);
+    float totalSteeringAngle = headingError + crossTrackCorrection;
+    
+    // Convert to turn rate
+    // Higher speed = smaller turn rate for same steering angle
+    float desiredTurnRate = totalSteeringAngle * 2.0f;
+    
+    // Clamp
+    if (desiredTurnRate > agent->maxTurnRate) desiredTurnRate = agent->maxTurnRate;
+    if (desiredTurnRate < -agent->maxTurnRate) desiredTurnRate = -agent->maxTurnRate;
+    
+    SteeringOutput output = steering_zero();
+    output.angular = desiredTurnRate;
+    
+    // Speed control
+    float curvature = fabsf(desiredTurnRate) / fmaxf(1.0f, agent->speed);
+    float turnFactor = 1.0f - curvature * 30.0f;
+    turnFactor = clamp(turnFactor, 0.4f, 1.0f);
+    
+    // Also slow down if large cross-track error (trying to get back on path)
+    float errorFactor = 1.0f - fabsf(crossTrackError) / 200.0f;
+    errorFactor = clamp(errorFactor, 0.5f, 1.0f);
+    
+    float desiredSpeed = agent->maxSpeed * turnFactor * errorFactor;
+    
+    // Check if near end of path
+    float distToEnd = steering_vec_distance(agent->pos, path->points[path->count - 1]);
+    if (distToEnd < 100.0f) {
+        desiredSpeed = fminf(desiredSpeed, agent->maxSpeed * distToEnd / 100.0f);
+    }
+    
+    float speedError = desiredSpeed - agent->speed;
+    if (speedError > 0) {
+        output.linear.x = fminf(speedError * 2.0f, agent->maxAccel);
+    } else {
+        output.linear.x = fmaxf(speedError * 2.0f, -agent->maxDecel);
+    }
+    
+    return output;
+}
+
+// ============================================================================
+// Dynamic Window Approach (DWA)
+// ============================================================================
+
+DWAParams dwa_default_params(void) {
+    return (DWAParams){
+        .timeHorizon = 1.5f,
+        .dt = 0.1f,
+        .linearSamples = 5,
+        .angularSamples = 9,
+        .goalWeight = 1.0f,
+        .clearanceWeight = 0.8f,
+        .speedWeight = 0.3f,
+        .smoothWeight = 0.2f
+    };
+}
+
+// Helper: Check collision along a trajectory
+static float dwa_check_clearance(Vector2 pos, float heading, float speed, float turnRate,
+                                  float timeHorizon, float dt,
+                                  const CircleObstacle* obstacles, int obstacleCount,
+                                  const Wall* walls, int wallCount) {
+    float minClearance = 1e10f;
+    float t = 0;
+    Vector2 p = pos;
+    float h = heading;
+    const float vehicleRadius = 18.0f;  // Account for vehicle size
+    
+    while (t < timeHorizon) {
+        // Check obstacle clearance
+        for (int i = 0; i < obstacleCount; i++) {
+            float dist = steering_vec_distance(p, obstacles[i].center) - obstacles[i].radius - vehicleRadius;
+            if (dist < minClearance) minClearance = dist;
+            if (dist < 0.0f) return -1.0f;  // Collision!
+        }
+        
+        // Check wall clearance (simplified)
+        for (int i = 0; i < wallCount; i++) {
+            Vector2 wallVec = vec_sub(walls[i].end, walls[i].start);
+            float wallLen = steering_vec_length(wallVec);
+            if (wallLen < 0.001f) continue;
+            
+            Vector2 wallDir = vec_mul(wallVec, 1.0f / wallLen);
+            Vector2 toP = vec_sub(p, walls[i].start);
+            float proj = clamp(vec_dot(toP, wallDir), 0, wallLen);
+            Vector2 closest = vec_add(walls[i].start, vec_mul(wallDir, proj));
+            float dist = steering_vec_distance(p, closest) - vehicleRadius;
+            
+            if (dist < minClearance) minClearance = dist;
+            if (dist < 0.0f) return -1.0f;  // Collision!
+        }
+        
+        // Simulate forward
+        h += turnRate * dt;
+        p.x += speed * cosf(h) * dt;
+        p.y += speed * sinf(h) * dt;
+        t += dt;
+    }
+    
+    return minClearance;
+}
+
+SteeringOutput steering_dwa(const CurvatureLimitedAgent* agent,
+                            Vector2 goal,
+                            const CircleObstacle* obstacles, int obstacleCount,
+                            const Wall* walls, int wallCount,
+                            DWAParams params) {
+    // Define dynamic window based on acceleration limits
+    float minSpeed = fmaxf(agent->minSpeed, agent->speed - agent->maxDecel * params.dt);
+    float maxSpeed = fminf(agent->maxSpeed, agent->speed + agent->maxAccel * params.dt);
+    float minTurnRate = -agent->maxTurnRate;
+    float maxTurnRate = agent->maxTurnRate;
+    
+    float bestScore = -1e10f;
+    float bestSpeed = agent->speed;
+    float bestTurnRate = 0;
+    bool foundValidForward = false;
+    
+    // Sample velocity space (forward motion)
+    for (int si = 0; si < params.linearSamples; si++) {
+        float sampleSpeed = minSpeed + (maxSpeed - minSpeed) * si / (params.linearSamples - 1);
+        
+        for (int ti = 0; ti < params.angularSamples; ti++) {
+            float sampleTurnRate = minTurnRate + (maxTurnRate - minTurnRate) * ti / (params.angularSamples - 1);
+            
+            // Simulate trajectory and check for collisions
+            float clearance = dwa_check_clearance(agent->pos, agent->heading, sampleSpeed, sampleTurnRate,
+                                                   params.timeHorizon, params.dt,
+                                                   obstacles, obstacleCount, walls, wallCount);
+            
+            if (clearance < 0) continue;  // Collision - skip this sample
+            
+            foundValidForward = true;
+            
+            // Calculate end position of trajectory
+            Vector2 endPos = agent->pos;
+            float endHeading = agent->heading;
+            float t = 0;
+            while (t < params.timeHorizon) {
+                endHeading += sampleTurnRate * params.dt;
+                endPos.x += sampleSpeed * cosf(endHeading) * params.dt;
+                endPos.y += sampleSpeed * sinf(endHeading) * params.dt;
+                t += params.dt;
+            }
+            
+            // Score: goal progress
+            float currentDistToGoal = steering_vec_distance(agent->pos, goal);
+            float endDistToGoal = steering_vec_distance(endPos, goal);
+            float goalProgress = (currentDistToGoal - endDistToGoal) / (currentDistToGoal + 1.0f);
+            
+            // Score: heading alignment with goal
+            Vector2 toGoal = vec_sub(goal, endPos);
+            float goalAngle = atan2f(toGoal.y, toGoal.x);
+            float headingAlign = cosf(endHeading - goalAngle);  // 1 = aligned, -1 = opposite
+            
+            // Combine scores
+            float score = goalProgress * params.goalWeight +
+                         (clearance / 200.0f) * params.clearanceWeight +
+                         (sampleSpeed / agent->maxSpeed) * params.speedWeight +
+                         headingAlign * 0.5f * params.goalWeight +
+                         (1.0f - fabsf(sampleTurnRate) / agent->maxTurnRate) * params.smoothWeight;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestSpeed = sampleSpeed;
+                bestTurnRate = sampleTurnRate;
+            }
+        }
+    }
+    
+    // Check if we should try reversing:
+    // 1. No valid forward trajectory found, OR
+    // 2. Best forward clearance is dangerously low (almost stuck), OR
+    // 3. Vehicle is barely moving and close to an obstacle
+    bool shouldTryReverse = !foundValidForward;
+    
+    // Check current clearance to nearest obstacle
+    float currentClearance = 1e10f;
+    for (int i = 0; i < obstacleCount; i++) {
+        float dist = steering_vec_distance(agent->pos, obstacles[i].center) - obstacles[i].radius - 18.0f;
+        if (dist < currentClearance) currentClearance = dist;
+    }
+    
+    // If we're very close to an obstacle and moving slowly, consider reversing
+    if (currentClearance < 30.0f && agent->speed < 20.0f) {
+        shouldTryReverse = true;
+    }
+    
+    // If best forward trajectory has poor clearance, also try reverse
+    if (foundValidForward && bestScore < 0.5f && currentClearance < 50.0f) {
+        shouldTryReverse = true;
+    }
+    
+    if (shouldTryReverse) {
+        // Sample reverse speeds with turning to get unstuck
+        float reverseMaxSpeed = fminf(agent->maxSpeed * 0.4f, 35.0f);  // Slower reverse
+        
+        for (int si = 0; si < params.linearSamples; si++) {
+            float sampleSpeed = -reverseMaxSpeed * (si + 1) / params.linearSamples;
+            
+            for (int ti = 0; ti < params.angularSamples; ti++) {
+                float sampleTurnRate = minTurnRate + (maxTurnRate - minTurnRate) * ti / (params.angularSamples - 1);
+                
+                // Check reverse trajectory
+                float clearance = dwa_check_clearance(agent->pos, agent->heading, sampleSpeed, sampleTurnRate,
+                                                       params.timeHorizon * 0.4f, params.dt,
+                                                       obstacles, obstacleCount, walls, wallCount);
+                
+                if (clearance < 0) continue;
+                
+                // Calculate where we end up after reversing
+                Vector2 endPos = agent->pos;
+                float endHeading = agent->heading;
+                float t = 0;
+                while (t < params.timeHorizon * 0.4f) {
+                    endHeading += sampleTurnRate * params.dt;
+                    endPos.x += sampleSpeed * cosf(endHeading) * params.dt;
+                    endPos.y += sampleSpeed * sinf(endHeading) * params.dt;
+                    t += params.dt;
+                }
+                
+                // Score reverse: prioritize clearance gain and turning to reorient
+                float clearanceGain = clearance - currentClearance;
+                
+                // Check if after reversing, the heading is better aligned to goal
+                Vector2 toGoal = vec_sub(goal, endPos);
+                float goalAngle = atan2f(toGoal.y, toGoal.x);
+                float headingAlign = cosf(endHeading - goalAngle);
+                
+                float score = (clearance / 80.0f) * 1.5f +                    // Clearance is important
+                             (clearanceGain / 50.0f) * 1.0f +                 // Gaining clearance is good
+                             fabsf(sampleTurnRate) / agent->maxTurnRate * 0.8f + // Prefer turning while reversing
+                             headingAlign * 0.3f;                              // Bonus for better heading after
+                
+                // Only choose reverse if it's actually better than staying put
+                if (score > bestScore || !foundValidForward) {
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestSpeed = sampleSpeed;
+                        bestTurnRate = sampleTurnRate;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Convert best (speed, turnRate) to steering output
+    SteeringOutput output = steering_zero();
+    output.angular = bestTurnRate;
+    
+    float speedError = bestSpeed - agent->speed;
+    if (speedError > 0) {
+        output.linear.x = fminf(speedError * 3.0f, agent->maxAccel);
+    } else {
+        output.linear.x = fmaxf(speedError * 3.0f, -agent->maxDecel);
+    }
+    
+    return output;
+}
+
+// ============================================================================
+// Topological Flocking (k-Nearest Neighbors)
+// ============================================================================
+
+SteeringOutput steering_flocking_topological(const SteeringAgent* agent,
+                                             const Vector2* allPositions,
+                                             const Vector2* allVelocities,
+                                             int totalCount,
+                                             int agentIndex,
+                                             int k,
+                                             float separationDist,
+                                             float separationWeight,
+                                             float cohesionWeight,
+                                             float alignmentWeight) {
+    if (totalCount < 2 || k < 1) return steering_zero();
+    
+    // Find k nearest neighbors
+    // Simple O(n*k) selection - fine for reasonable n
+    float distances[HUNGARIAN_MAX_SIZE];  // Reuse buffer
+    int neighbors[HUNGARIAN_MAX_SIZE];
+    int neighborCount = 0;
+    
+    int maxNeighbors = (k < HUNGARIAN_MAX_SIZE) ? k : HUNGARIAN_MAX_SIZE;
+    
+    for (int i = 0; i < totalCount && neighborCount < maxNeighbors; i++) {
+        if (i == agentIndex) continue;
+        
+        float dist = steering_vec_distance(agent->pos, allPositions[i]);
+        
+        // Insert into sorted list (ascending distance)
+        int insertIdx = neighborCount;
+        for (int j = 0; j < neighborCount; j++) {
+            if (dist < distances[j]) {
+                insertIdx = j;
+                break;
+            }
+        }
+        
+        if (insertIdx < maxNeighbors) {
+            // Shift existing entries
+            for (int j = neighborCount; j > insertIdx; j--) {
+                if (j < maxNeighbors) {
+                    distances[j] = distances[j-1];
+                    neighbors[j] = neighbors[j-1];
+                }
+            }
+            distances[insertIdx] = dist;
+            neighbors[insertIdx] = i;
+            if (neighborCount < maxNeighbors) neighborCount++;
+        }
+    }
+    
+    if (neighborCount == 0) return steering_zero();
+    
+    // Calculate flocking components using k nearest neighbors
+    Vector2 separation = {0, 0};
+    Vector2 cohesion = {0, 0};
+    Vector2 alignment = {0, 0};
+    int sepCount = 0;
+    
+    for (int i = 0; i < neighborCount; i++) {
+        int idx = neighbors[i];
+        float dist = distances[i];
+        
+        // Separation - repel from very close neighbors
+        if (dist < separationDist && dist > 0.001f) {
+            Vector2 away = vec_sub(agent->pos, allPositions[idx]);
+            away = steering_vec_normalize(away);
+            away = vec_mul(away, 1.0f / dist);  // Stronger when closer
+            separation = vec_add(separation, away);
+            sepCount++;
+        }
+        
+        // Cohesion - toward neighbor positions
+        cohesion = vec_add(cohesion, allPositions[idx]);
+        
+        // Alignment - match neighbor velocities
+        alignment = vec_add(alignment, allVelocities[idx]);
+    }
+    
+    // Finalize components
+    SteeringOutput sepOut = steering_zero();
+    if (sepCount > 0) {
+        separation = vec_mul(separation, 1.0f / sepCount);
+        separation = steering_vec_normalize(separation);
+        separation = vec_mul(separation, agent->maxSpeed);
+        sepOut.linear = vec_sub(separation, agent->vel);
+    }
+    
+    SteeringOutput cohOut = steering_zero();
+    cohesion = vec_mul(cohesion, 1.0f / neighborCount);
+    Vector2 toCohesion = vec_sub(cohesion, agent->pos);
+    if (steering_vec_length(toCohesion) > 0.001f) {
+        toCohesion = steering_vec_normalize(toCohesion);
+        toCohesion = vec_mul(toCohesion, agent->maxSpeed);
+        cohOut.linear = vec_sub(toCohesion, agent->vel);
+    }
+    
+    SteeringOutput aliOut = steering_zero();
+    alignment = vec_mul(alignment, 1.0f / neighborCount);
+    aliOut.linear = vec_sub(alignment, agent->vel);
+    
+    // Blend
+    SteeringOutput outputs[3] = {sepOut, cohOut, aliOut};
+    float weights[3] = {separationWeight, cohesionWeight, alignmentWeight};
+    return steering_blend(outputs, weights, 3);
+}
+
+// ============================================================================
+// Couzin Zones Model
+// ============================================================================
+
+CouzinParams couzin_default_params(void) {
+    return (CouzinParams){
+        .zorRadius = 20.0f,     // Zone of Repulsion - very close
+        .zooRadius = 60.0f,     // Zone of Orientation - medium
+        .zoaRadius = 150.0f,    // Zone of Attraction - far
+        .blindAngle = 0.5f,     // ~30 degree blind spot behind (PI would be 180°)
+        .turnRate = 3.0f        // How fast to turn toward desired direction
+    };
+}
+
+SteeringOutput steering_couzin(const SteeringAgent* agent,
+                               const Vector2* neighborPositions,
+                               const Vector2* neighborVelocities,
+                               int neighborCount,
+                               CouzinParams params) {
+    if (neighborCount == 0) return steering_zero();
+    
+    // Agent's current heading
+    float agentHeading = atan2f(agent->vel.y, agent->vel.x);
+    if (steering_vec_length(agent->vel) < 1.0f) {
+        agentHeading = agent->orientation;
+    }
+    
+    Vector2 zorDir = {0, 0};  // Repulsion direction
+    Vector2 zooDir = {0, 0};  // Orientation direction
+    Vector2 zoaDir = {0, 0};  // Attraction direction
+    int zorCount = 0, zooCount = 0, zoaCount = 0;
+    
+    for (int i = 0; i < neighborCount; i++) {
+        Vector2 toNeighbor = vec_sub(neighborPositions[i], agent->pos);
+        float dist = steering_vec_length(toNeighbor);
+        
+        if (dist < 0.001f) continue;
+        
+        // Check if neighbor is in blind spot
+        float neighborAngle = atan2f(toNeighbor.y, toNeighbor.x);
+        float angleDiff = neighborAngle - agentHeading;
+        while (angleDiff > PI) angleDiff -= 2.0f * PI;
+        while (angleDiff < -PI) angleDiff += 2.0f * PI;
+        
+        // If neighbor is behind us (within blind angle), ignore
+        if (fabsf(angleDiff) > PI - params.blindAngle) continue;
+        
+        Vector2 neighborDir = vec_mul(toNeighbor, 1.0f / dist);
+        
+        // Zone of Repulsion (highest priority)
+        if (dist < params.zorRadius) {
+            // Move AWAY from neighbor
+            zorDir = vec_sub(zorDir, neighborDir);
+            zorCount++;
+        }
+        // Zone of Orientation
+        else if (dist < params.zooRadius) {
+            // Align with neighbor's heading
+            Vector2 neighborVelDir = steering_vec_normalize(neighborVelocities[i]);
+            if (steering_vec_length(neighborVelocities[i]) > 1.0f) {
+                zooDir = vec_add(zooDir, neighborVelDir);
+                zooCount++;
+            }
+        }
+        // Zone of Attraction
+        else if (dist < params.zoaRadius) {
+            // Move TOWARD neighbor
+            zoaDir = vec_add(zoaDir, neighborDir);
+            zoaCount++;
+        }
+    }
+    
+    // Determine desired direction based on zone priorities
+    // ZOR takes precedence (if any neighbors in repulsion zone)
+    Vector2 desiredDir = {0, 0};
+    
+    if (zorCount > 0) {
+        // Repulsion - move away from ZOR neighbors
+        desiredDir = steering_vec_normalize(zorDir);
+    } else if (zooCount > 0 && zoaCount > 0) {
+        // Both orientation and attraction - blend them
+        Vector2 avgZoo = steering_vec_normalize(zooDir);
+        Vector2 avgZoa = steering_vec_normalize(zoaDir);
+        desiredDir = steering_vec_normalize(vec_add(avgZoo, avgZoa));
+    } else if (zooCount > 0) {
+        // Only orientation
+        desiredDir = steering_vec_normalize(zooDir);
+    } else if (zoaCount > 0) {
+        // Only attraction
+        desiredDir = steering_vec_normalize(zoaDir);
+    } else {
+        // No neighbors in any zone - continue current direction
+        return steering_zero();
+    }
+    
+    // Convert desired direction to steering
+    Vector2 desiredVel = vec_mul(desiredDir, agent->maxSpeed);
+    
+    SteeringOutput output = steering_zero();
+    output.linear = vec_sub(desiredVel, agent->vel);
+    
+    return output;
+}
+
+// ============================================================================
+// Hungarian Algorithm (Munkres) for Formation Slot Assignment
+// ============================================================================
+
+// Implementation of the Hungarian algorithm
+// Based on: https://brc2.com/the-algorithm-workshop/
+
+// Helper: Find minimum in a row
+static float hungarian_row_min(const float* matrix, int n, int row) {
+    float minVal = matrix[row * n];
+    for (int j = 1; j < n; j++) {
+        if (matrix[row * n + j] < minVal) {
+            minVal = matrix[row * n + j];
+        }
+    }
+    return minVal;
+}
+
+// Helper: Find minimum in a column
+static float hungarian_col_min(const float* matrix, int n, int col) {
+    float minVal = matrix[col];
+    for (int i = 1; i < n; i++) {
+        if (matrix[i * n + col] < minVal) {
+            minVal = matrix[i * n + col];
+        }
+    }
+    return minVal;
+}
+
+float hungarian_solve(const float* costMatrix, int n, int* assignment) {
+    if (n <= 0 || n > HUNGARIAN_MAX_SIZE) return 0;
+    
+    // Working copy of the cost matrix
+    float cost[HUNGARIAN_MAX_SIZE * HUNGARIAN_MAX_SIZE];
+    for (int i = 0; i < n * n; i++) {
+        cost[i] = costMatrix[i];
+    }
+    
+    // Step 1: Subtract row minimums
+    for (int i = 0; i < n; i++) {
+        float minVal = hungarian_row_min(cost, n, i);
+        for (int j = 0; j < n; j++) {
+            cost[i * n + j] -= minVal;
+        }
+    }
+    
+    // Step 2: Subtract column minimums
+    for (int j = 0; j < n; j++) {
+        float minVal = hungarian_col_min(cost, n, j);
+        for (int i = 0; i < n; i++) {
+            cost[i * n + j] -= minVal;
+        }
+    }
+    
+    // Simplified assignment using greedy approach on reduced matrix
+    // (Full Munkres is more complex but this works well for small n)
+    int rowAssigned[HUNGARIAN_MAX_SIZE] = {0};
+    int colAssigned[HUNGARIAN_MAX_SIZE] = {0};
+    
+    for (int i = 0; i < n; i++) {
+        assignment[i] = -1;
+    }
+    
+    // First pass: assign zeros
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (cost[i * n + j] < 0.001f && !rowAssigned[i] && !colAssigned[j]) {
+                assignment[i] = j;
+                rowAssigned[i] = 1;
+                colAssigned[j] = 1;
+                break;
+            }
+        }
+    }
+    
+    // Second pass: assign remaining by minimum cost
+    for (int i = 0; i < n; i++) {
+        if (assignment[i] >= 0) continue;
+        
+        float minCost = 1e10f;
+        int minCol = -1;
+        
+        for (int j = 0; j < n; j++) {
+            if (!colAssigned[j] && cost[i * n + j] < minCost) {
+                minCost = cost[i * n + j];
+                minCol = j;
+            }
+        }
+        
+        if (minCol >= 0) {
+            assignment[i] = minCol;
+            colAssigned[minCol] = 1;
+        }
+    }
+    
+    // Handle any unassigned (shouldn't happen with square matrix)
+    for (int i = 0; i < n; i++) {
+        if (assignment[i] < 0) {
+            for (int j = 0; j < n; j++) {
+                if (!colAssigned[j]) {
+                    assignment[i] = j;
+                    colAssigned[j] = 1;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Calculate total cost using original matrix
+    float totalCost = 0;
+    for (int i = 0; i < n; i++) {
+        if (assignment[i] >= 0) {
+            totalCost += costMatrix[i * n + assignment[i]];
+        }
+    }
+    
+    return totalCost;
+}
+
+void hungarian_build_cost_matrix(const Vector2* agentPositions, int agentCount,
+                                 const Vector2* slotPositions, int slotCount,
+                                 float* costMatrix) {
+    // Build n x n matrix (use max of agentCount, slotCount)
+    int n = (agentCount > slotCount) ? agentCount : slotCount;
+    
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (i < agentCount && j < slotCount) {
+                // Valid agent-slot pair - use distance
+                costMatrix[i * n + j] = steering_vec_distance(agentPositions[i], slotPositions[j]);
+            } else {
+                // Padding - use high cost
+                costMatrix[i * n + j] = 10000.0f;
+            }
+        }
+    }
+}
+
+SteeringOutput steering_formation_hungarian(const SteeringAgent* agent,
+                                            int agentIndex,
+                                            const Vector2* allAgentPositions,
+                                            int agentCount,
+                                            const Formation* formation,
+                                            int* slotAssignments,
+                                            float reassignThreshold,
+                                            float arriveRadius) {
+    if (agentCount == 0 || formation->slotCount == 0) return steering_zero();
+    if (agentIndex < 0 || agentIndex >= agentCount) return steering_zero();
+    
+    // Transform formation slots to world space
+    Vector2 worldSlots[HUNGARIAN_MAX_SIZE];
+    float cosA = cosf(formation->anchorOrientation);
+    float sinA = sinf(formation->anchorOrientation);
+    
+    int slotCount = (formation->slotCount < HUNGARIAN_MAX_SIZE) ? formation->slotCount : HUNGARIAN_MAX_SIZE;
+    
+    for (int i = 0; i < slotCount; i++) {
+        Vector2 local = formation->slotOffsets[i];
+        worldSlots[i] = (Vector2){
+            formation->anchorPos.x + local.x * cosA - local.y * sinA,
+            formation->anchorPos.y + local.x * sinA + local.y * cosA
+        };
+    }
+    
+    // Check if we need to reassign slots
+    // Calculate current total cost
+    float currentCost = 0;
+    int needsReassign = 0;
+    
+    for (int i = 0; i < agentCount && i < slotCount; i++) {
+        int slot = slotAssignments[i];
+        if (slot < 0 || slot >= slotCount) {
+            needsReassign = 1;
+            break;
+        }
+        currentCost += steering_vec_distance(allAgentPositions[i], worldSlots[slot]);
+    }
+    
+    if (needsReassign || currentCost > reassignThreshold) {
+        // Rebuild cost matrix and solve assignment
+        float costMatrix[HUNGARIAN_MAX_SIZE * HUNGARIAN_MAX_SIZE];
+        int n = (agentCount > slotCount) ? agentCount : slotCount;
+        if (n > HUNGARIAN_MAX_SIZE) n = HUNGARIAN_MAX_SIZE;
+        
+        hungarian_build_cost_matrix(allAgentPositions, agentCount, worldSlots, slotCount, costMatrix);
+        hungarian_solve(costMatrix, n, slotAssignments);
+    }
+    
+    // Get this agent's assigned slot
+    int mySlot = slotAssignments[agentIndex];
+    if (mySlot < 0 || mySlot >= slotCount) {
+        mySlot = agentIndex % slotCount;  // Fallback
+    }
+    
+    // Calculate target position (predicted slot position)
+    Vector2 targetPos = worldSlots[mySlot];
+    
+    // Add velocity prediction for smoother following
+    float dist = steering_vec_distance(agent->pos, targetPos);
+    float speed = steering_vec_length(agent->vel);
+    float prediction = (speed > 1.0f) ? fminf(dist / speed, 0.5f) : 0.2f;
+    
+    targetPos = vec_add(targetPos, vec_mul(formation->anchorVel, prediction));
+    
+    // Arrive at target
+    return steering_arrive(agent, targetPos, arriveRadius);
+}
+
+// ============================================================================
+// ClearPath Multi-Agent Avoidance
+// ============================================================================
+
+SteeringOutput steering_clearpath(const SteeringAgent* agent,
+                                  Vector2 desiredVelocity,
+                                  const Vector2* otherPositions,
+                                  const Vector2* otherVelocities,
+                                  const float* otherRadii,
+                                  int otherCount,
+                                  float agentRadius,
+                                  float timeHorizon) {
+    if (otherCount == 0) {
+        // No obstacles - just steer toward desired velocity
+        SteeringOutput output = steering_zero();
+        output.linear = vec_sub(desiredVelocity, agent->vel);
+        return output;
+    }
+    
+    // Start with desired velocity
+    Vector2 bestVelocity = desiredVelocity;
+    float bestScore = 1e10f;
+    
+    // Sample velocities around desired and find one that avoids collisions
+    int samples = 16;
+    float maxSpeed = agent->maxSpeed;
+    
+    for (int si = 0; si <= samples; si++) {
+        for (int ai = 0; ai < 8; ai++) {
+            // Sample speed and angle
+            float speed = (si == 0) ? steering_vec_length(desiredVelocity) : 
+                          maxSpeed * si / samples;
+            float baseAngle = atan2f(desiredVelocity.y, desiredVelocity.x);
+            float angle = baseAngle + (ai - 4) * (PI / 8.0f);
+            
+            Vector2 sampleVel = {speed * cosf(angle), speed * sinf(angle)};
+            
+            // Check if this velocity is collision-free
+            int collisionFree = 1;
+            
+            for (int i = 0; i < otherCount && collisionFree; i++) {
+                Vector2 relPos = vec_sub(otherPositions[i], agent->pos);
+                Vector2 relVel = vec_sub(sampleVel, otherVelocities[i]);
+                
+                float combinedRadius = agentRadius + otherRadii[i];
+                
+                // Check if relative velocity leads to collision
+                // Using velocity obstacle concept
+                float relSpeed = steering_vec_length(relVel);
+                if (relSpeed < 0.001f) continue;
+                
+                // Time to closest approach
+                float dot = vec_dot(relPos, relVel);
+                float tca = -dot / (relSpeed * relSpeed);
+                
+                if (tca < 0 || tca > timeHorizon) continue;
+                
+                // Distance at closest approach
+                Vector2 closestRel = vec_add(relPos, vec_mul(relVel, tca));
+                float closestDist = steering_vec_length(closestRel);
+                
+                if (closestDist < combinedRadius) {
+                    collisionFree = 0;
+                }
+            }
+            
+            if (collisionFree) {
+                // Score: prefer velocities close to desired
+                float velDiff = steering_vec_distance(sampleVel, desiredVelocity);
+                float score = velDiff;
+                
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestVelocity = sampleVel;
+                }
+            }
+        }
+    }
+    
+    // If no collision-free velocity found, try to brake
+    if (bestScore >= 1e9f) {
+        bestVelocity = vec_mul(agent->vel, 0.5f);  // Slow down
+    }
+    
+    SteeringOutput output = steering_zero();
+    output.linear = vec_sub(bestVelocity, agent->vel);
+    return output;
+}

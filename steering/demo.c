@@ -84,6 +84,10 @@ typedef enum {
     SCENARIO_CTX_MAZE,
     SCENARIO_CTX_CROWD,
     SCENARIO_CTX_PREDATOR_PREY,
+    SCENARIO_TOPOLOGICAL_FLOCK,
+    SCENARIO_COUZIN_ZONES,
+    SCENARIO_VEHICLE_PURSUIT,
+    SCENARIO_DWA_NAVIGATION,
     SCENARIO_COUNT
 } Scenario;
 
@@ -127,7 +131,11 @@ const char* scenarioNames[] = {
     "CTX: Obstacle Course",
     "CTX: Maze Navigation",
     "CTX: Crowd Flow",
-    "CTX: Predator Escape"
+    "CTX: Predator Escape",
+    "Topological Flocking (k-NN)",
+    "Couzin Zones Model",
+    "Vehicle Pure Pursuit",
+    "DWA Navigation"
 };
 
 // Agent data
@@ -237,6 +245,35 @@ Vector2 ctxTargets[MAX_AGENTS];         // Individual targets for each agent
 Vector2 ctxMazeGoal;                    // Goal position for maze scenario
 int ctxPredatorIndex = 0;               // Which agent is the predator
 bool ctxShowMaps = true;                // Toggle to show interest/danger maps
+
+// Couzin zones state
+CouzinParams couzinParams;
+
+// Vehicle/curvature-limited state
+CurvatureLimitedAgent vehicles[MAX_AGENTS];
+int vehicleCount = 0;
+int vehiclePathSegments[MAX_AGENTS];  // Per-vehicle path segment tracking
+float vehicleLookahead = 80.0f;
+
+// DWA navigation state  
+DWAParams dwaParams;
+Vector2 dwaGoal;
+
+// DWA recovery state machine
+typedef enum {
+    DWA_NORMAL,
+    DWA_BACKUP,
+    DWA_TURN_IN_PLACE
+} DWAMode;
+
+DWAMode dwaMode = DWA_NORMAL;
+float dwaStuckTimer = 0;
+float dwaBackupTimer = 0;
+float dwaTurnTimer = 0;
+float dwaPrevDistToGoal = 0;
+float dwaPrevSpeed = 0;
+float dwaPrevTurnRate = 0;
+int dwaTurnDirection = 0;  // -1 or 1, picked when entering backup
 
 // ============================================================================
 // Helper Functions
@@ -1351,7 +1388,8 @@ static void SetupCtxMaze(void) {
     // Goal at the end of the maze
     ctxMazeGoal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT / 2};
     
-    // Create maze walls
+    // Create maze walls - designed to be solvable!
+    // Path: start left -> go up through gap -> right -> down through gap -> right -> up -> goal
     wallCount = 10;
     // Outer boundary
     walls[0] = (Wall){{50, 100}, {SCREEN_WIDTH - 50, 100}};   // Top
@@ -1359,13 +1397,18 @@ static void SetupCtxMaze(void) {
     walls[2] = (Wall){{50, 100}, {50, 620}};                  // Left
     walls[3] = (Wall){{SCREEN_WIDTH - 50, 100}, {SCREEN_WIDTH - 50, 620}};  // Right
     
-    // Internal maze walls
-    walls[4] = (Wall){{250, 100}, {250, 400}};    // Vertical barrier 1
-    walls[5] = (Wall){{450, 220}, {450, 620}};    // Vertical barrier 2
-    walls[6] = (Wall){{650, 100}, {650, 500}};    // Vertical barrier 3
-    walls[7] = (Wall){{850, 200}, {850, 620}};    // Vertical barrier 4
-    walls[8] = (Wall){{250, 400}, {450, 400}};    // Horizontal connector
-    walls[9] = (Wall){{650, 500}, {850, 500}};    // Horizontal connector
+    // Internal maze walls with gaps for passage
+    // Wall 1: vertical from top, gap at bottom
+    walls[4] = (Wall){{280, 100}, {280, 450}};
+    // Wall 2: vertical from bottom, gap at top  
+    walls[5] = (Wall){{500, 170}, {500, 620}};
+    // Wall 3: vertical from top, gap at bottom
+    walls[6] = (Wall){{720, 100}, {720, 480}};
+    // Wall 4: vertical from bottom, gap at top
+    walls[7] = (Wall){{940, 140}, {940, 620}};
+    // Horizontal walls to create more interesting paths
+    walls[8] = (Wall){{280, 450}, {500, 450}};   // Connects wall 1 to wall 2
+    walls[9] = (Wall){{720, 480}, {940, 480}};   // Connects wall 3 to wall 4
 }
 
 static void SetupCtxCrowd(void) {
@@ -1443,6 +1486,111 @@ static void SetupCtxPredatorPrey(void) {
     obstacles[4] = (CircleObstacle){{900, 200}, 50};
 }
 
+// ============================================================================
+// New Steering Behavior Scenarios Setup
+// ============================================================================
+
+static void SetupTopologicalFlock(void) {
+    // Topological flocking with k-nearest neighbors
+    agentCount = 50;
+    
+    Vector2 center = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+    for (int i = 0; i < agentCount; i++) {
+        float angle = randf(0, 2 * PI);
+        float dist = randf(50, 200);
+        Vector2 pos = {
+            center.x + cosf(angle) * dist,
+            center.y + sinf(angle) * dist
+        };
+        InitAgent(&agents[i], pos);
+        agents[i].maxSpeed = 100.0f;
+        agents[i].vel = (Vector2){randf(-30, 30), randf(-30, 30)};
+    }
+}
+
+static void SetupCouzinZones(void) {
+    // Couzin zones model - biologically grounded flocking
+    agentCount = 40;
+    couzinParams = couzin_default_params();
+    
+    Vector2 center = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+    for (int i = 0; i < agentCount; i++) {
+        float angle = randf(0, 2 * PI);
+        float dist = randf(30, 150);
+        Vector2 pos = {
+            center.x + cosf(angle) * dist,
+            center.y + sinf(angle) * dist
+        };
+        InitAgent(&agents[i], pos);
+        agents[i].maxSpeed = 80.0f;
+        float velAngle = randf(0, 2 * PI);
+        agents[i].vel = (Vector2){cosf(velAngle) * 40, sinf(velAngle) * 40};
+    }
+}
+
+static void SetupVehiclePursuit(void) {
+    // Vehicle with curvature limits following a path using Pure Pursuit
+    vehicleCount = 3;
+    
+    // Create vehicles at different starting positions along the path
+    for (int i = 0; i < vehicleCount; i++) {
+        curv_agent_init(&vehicles[i], (Vector2){150 + i * 100, 550 - i * 30}, 0);
+        vehicles[i].maxSpeed = 100.0f + i * 15;
+        vehicles[i].maxTurnRate = 2.5f - i * 0.4f;  // Different turn capabilities
+    }
+    for (int i = 0; i < vehicleCount; i++) {
+        vehiclePathSegments[i] = 0;
+    }
+    vehicleLookahead = 80.0f;
+    
+    // Create a closed-loop racetrack path (loops back to start)
+    path.count = 12;
+    pathPoints[0] = (Vector2){150, 550};
+    pathPoints[1] = (Vector2){300, 350};
+    pathPoints[2] = (Vector2){450, 250};
+    pathPoints[3] = (Vector2){650, 200};
+    pathPoints[4] = (Vector2){850, 250};
+    pathPoints[5] = (Vector2){1050, 200};
+    pathPoints[6] = (Vector2){1150, 350};
+    pathPoints[7] = (Vector2){1100, 500};
+    pathPoints[8] = (Vector2){900, 600};
+    pathPoints[9] = (Vector2){650, 580};
+    pathPoints[10] = (Vector2){400, 620};
+    pathPoints[11] = (Vector2){200, 600};  // Connects back toward pathPoints[0]
+}
+
+static void SetupDWANavigation(void) {
+    // Dynamic Window Approach navigation through obstacles
+    vehicleCount = 1;
+    curv_agent_init(&vehicles[0], (Vector2){100, SCREEN_HEIGHT/2}, 0);
+    vehicles[0].maxSpeed = 100.0f;
+    vehicles[0].maxTurnRate = 2.5f;
+    
+    dwaParams = dwa_default_params();
+    dwaGoal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
+    
+    // Reset state machine
+    dwaMode = DWA_NORMAL;
+    dwaStuckTimer = 0;
+    dwaBackupTimer = 0;
+    dwaTurnTimer = 0;
+    dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+    dwaPrevSpeed = 0;
+    dwaPrevTurnRate = 0;
+    dwaTurnDirection = 0;
+    
+    // Dense obstacle field
+    obstacleCount = 8;
+    obstacles[0] = (CircleObstacle){{350, 300}, 50};
+    obstacles[1] = (CircleObstacle){{500, 450}, 60};
+    obstacles[2] = (CircleObstacle){{650, 280}, 45};
+    obstacles[3] = (CircleObstacle){{400, 550}, 55};
+    obstacles[4] = (CircleObstacle){{750, 500}, 40};
+    obstacles[5] = (CircleObstacle){{550, 200}, 35};
+    obstacles[6] = (CircleObstacle){{850, 350}, 50};
+    obstacles[7] = (CircleObstacle){{950, 500}, 45};
+}
+
 static void SetupScenario(Scenario scenario) {
     currentScenario = scenario;
     obstacleCount = 0;
@@ -1492,6 +1640,10 @@ static void SetupScenario(Scenario scenario) {
         case SCENARIO_CTX_MAZE: SetupCtxMaze(); break;
         case SCENARIO_CTX_CROWD: SetupCtxCrowd(); break;
         case SCENARIO_CTX_PREDATOR_PREY: SetupCtxPredatorPrey(); break;
+        case SCENARIO_TOPOLOGICAL_FLOCK: SetupTopologicalFlock(); break;
+        case SCENARIO_COUZIN_ZONES: SetupCouzinZones(); break;
+        case SCENARIO_VEHICLE_PURSUIT: SetupVehiclePursuit(); break;
+        case SCENARIO_DWA_NAVIGATION: SetupDWANavigation(); break;
         default: break;
     }
 }
@@ -3196,7 +3348,7 @@ static void UpdateMurmuration(float dt) {
 // ============================================================================
 
 static void UpdateSFMCorridor(float dt) {
-    // Gather all agent positions and velocities for the SFM calculation
+    // Gather all agent positions and velocities
     Vector2 allPos[MAX_AGENTS];
     Vector2 allVel[MAX_AGENTS];
     for (int i = 0; i < agentCount; i++) {
@@ -3205,39 +3357,96 @@ static void UpdateSFMCorridor(float dt) {
     }
 
     for (int i = 0; i < agentCount; i++) {
-        // Build arrays excluding self
-        Vector2 otherPos[MAX_AGENTS];
-        Vector2 otherVel[MAX_AGENTS];
-        int otherCount = 0;
+        bool goingRight = (i < sfmLeftCount);
+        
+        // Separate agents into same-direction and opposite-direction
+        Vector2 sameDir[MAX_AGENTS], sameDirVel[MAX_AGENTS];
+        Vector2 oppDir[MAX_AGENTS], oppDirVel[MAX_AGENTS];
+        int sameCount = 0, oppCount = 0;
+        
         for (int j = 0; j < agentCount; j++) {
-            if (j != i) {
-                otherPos[otherCount] = allPos[j];
-                otherVel[otherCount] = allVel[j];
-                otherCount++;
+            if (j == i) continue;
+            bool otherGoingRight = (j < sfmLeftCount);
+            float dist = steering_vec_distance(agents[i].pos, allPos[j]);
+            if (dist < 120.0f) {
+                if (goingRight == otherGoingRight) {
+                    sameDir[sameCount] = allPos[j];
+                    sameDirVel[sameCount] = allVel[j];
+                    sameCount++;
+                } else {
+                    oppDir[oppCount] = allPos[j];
+                    oppDirVel[oppCount] = allVel[j];
+                    oppCount++;
+                }
             }
         }
+        
+        // Seek goal
+        SteeringOutput seek = steering_seek(&agents[i], sfmGoals[i]);
+        
+        // Strong alignment with same-direction agents (promotes lane formation)
+        SteeringOutput align = {0};
+        if (sameCount > 0) {
+            align = steering_alignment(&agents[i], sameDirVel, sameCount);
+        }
+        
+        // Cohesion with same-direction (stay in your lane cluster)
+        SteeringOutput cohSame = {0};
+        if (sameCount > 0) {
+            cohSame = steering_cohesion(&agents[i], sameDir, sameCount);
+        }
+        
+        // Mild separation from same-direction
+        SteeringOutput sepSame = {0};
+        if (sameCount > 0) {
+            sepSame = steering_separation(&agents[i], sameDir, sameCount, 25.0f);
+        }
+        
+        // Avoid opposite-direction agents with lateral bias to break symmetry
+        // Everyone passes on the right (relative to their direction of travel)
+        SteeringOutput avoidOpp = {0};
+        if (oppCount > 0) {
+            avoidOpp = steering_predictive_avoid(&agents[i], oppDir, oppDirVel, oppCount, 0.8f, 30.0f);
+            
+            // Add rightward bias relative to direction of travel
+            // Going right: dodge downward (positive Y), Going left: dodge upward (negative Y)
+            float lateralBias = goingRight ? 60.0f : -60.0f;
+            
+            // Only apply bias if there's actually an oncoming agent nearby
+            for (int k = 0; k < oppCount; k++) {
+                float dist = steering_vec_distance(agents[i].pos, oppDir[k]);
+                if (dist < 80.0f) {
+                    avoidOpp.linear.y += lateralBias;
+                    break;
+                }
+            }
+        }
+        
+        // Wall avoidance
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 50.0f);
+        
+        // Blend: alignment and cohesion help form lanes, moderate avoid for oncoming
+        SteeringOutput outputs[6] = {seek, align, cohSame, sepSame, avoidOpp, wallAvoid};
+        float weights[6] = {1.2f, 1.0f, 0.3f, 0.5f, 0.8f, 2.0f};
+        SteeringOutput combined = steering_blend(outputs, weights, 6);
+        
+        steering_apply(&agents[i], combined, dt);
+        ResolveCollisions(&agents[i], i);
 
-        // Apply Social Force Model
-        SteeringOutput sfm = steering_social_force(&agents[i], sfmGoals[i],
-                                                    otherPos, otherVel, otherCount,
-                                                    walls, wallCount,
-                                                    obstacles, obstacleCount,
-                                                    sfmParams);
-        steering_apply(&agents[i], sfm, dt);
-
-        // Check if agent reached goal - respawn on opposite side
+        // Check if agent reached goal - respawn on opposite side, keep Y to maintain lane
         float distToGoal = steering_vec_distance(agents[i].pos, sfmGoals[i]);
         if (distToGoal < 50.0f) {
-            if (i < sfmLeftCount) {
+            float currentY = agents[i].pos.y;  // Preserve lane
+            if (goingRight) {
                 // Left-to-right agent reached right side, respawn on left
-                agents[i].pos = (Vector2){randf(80, 150), randf(230, 490)};
+                agents[i].pos = (Vector2){randf(80, 150), currentY};
                 agents[i].vel = (Vector2){randf(20, 40), 0};
-                sfmGoals[i] = (Vector2){SCREEN_WIDTH - 80, agents[i].pos.y};
+                sfmGoals[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
             } else {
                 // Right-to-left agent reached left side, respawn on right
-                agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), randf(230, 490)};
+                agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), currentY};
                 agents[i].vel = (Vector2){randf(-40, -20), 0};
-                sfmGoals[i] = (Vector2){80, agents[i].pos.y};
+                sfmGoals[i] = (Vector2){80, currentY};
             }
         }
     }
@@ -3565,72 +3774,79 @@ static void UpdateCtxCrowd(float dt) {
     }
     
     for (int i = 0; i < agentCount; i++) {
-        ContextSteering* ctx = &ctxAgents[i];
+        bool goingRight = (i < halfCount);
         
-        ctx_clear(ctx);
+        // Separate agents into same-direction and opposite-direction
+        Vector2 sameDir[MAX_AGENTS], sameDirVel[MAX_AGENTS];
+        Vector2 oppDir[MAX_AGENTS], oppDirVel[MAX_AGENTS];
+        int sameCount = 0, oppCount = 0;
         
-        // Interest: seek target
-        ctx_interest_seek(ctx, agents[i].pos, ctxTargets[i], 1.0f);
-        
-        // Interest: momentum for smoother flow
-        ctx_interest_velocity(ctx, agents[i].vel, 0.4f);
-        
-        // Danger: walls
-        ctx_danger_walls(ctx, agents[i].pos, 8.0f, walls, wallCount, 60.0f);
-        
-        // Danger: other agents (predictive)
-        Vector2 otherPos[MAX_AGENTS];
-        Vector2 otherVel[MAX_AGENTS];
-        int otherCount = 0;
         for (int j = 0; j < agentCount; j++) {
-            if (j != i) {
-                otherPos[otherCount] = allPos[j];
-                otherVel[otherCount] = allVel[j];
-                otherCount++;
+            if (j == i) continue;
+            bool otherGoingRight = (j < halfCount);
+            float dist = steering_vec_distance(agents[i].pos, allPos[j]);
+            if (dist < 100.0f) {
+                if (goingRight == otherGoingRight) {
+                    sameDir[sameCount] = allPos[j];
+                    sameDirVel[sameCount] = allVel[j];
+                    sameCount++;
+                } else {
+                    oppDir[oppCount] = allPos[j];
+                    oppDirVel[oppCount] = allVel[j];
+                    oppCount++;
+                }
             }
         }
-        ctx_danger_agents_predictive(ctx, agents[i].pos, agents[i].vel,
-                                     otherPos, otherVel, otherCount, 20.0f, 1.5f);
         
-        // Get direction
-        float speed;
-        Vector2 dir = ctx_get_direction_smooth(ctx, &speed);
+        // Seek target (strong)
+        SteeringOutput seek = steering_seek(&agents[i], ctxTargets[i]);
         
-        // Apply movement
-        Vector2 desired = {dir.x * agents[i].maxSpeed * speed, dir.y * agents[i].maxSpeed * speed};
-        Vector2 steering = {desired.x - agents[i].vel.x, desired.y - agents[i].vel.y};
-        
-        float steerLen = steering_vec_length(steering);
-        if (steerLen > agents[i].maxForce) {
-            steering.x = steering.x / steerLen * agents[i].maxForce;
-            steering.y = steering.y / steerLen * agents[i].maxForce;
+        // Align with same-direction agents (form lanes)
+        SteeringOutput align = {0};
+        if (sameCount > 0) {
+            align = steering_alignment(&agents[i], sameDirVel, sameCount);
         }
         
-        agents[i].vel.x += steering.x * dt;
-        agents[i].vel.y += steering.y * dt;
-        
-        float velLen = steering_vec_length(agents[i].vel);
-        if (velLen > agents[i].maxSpeed) {
-            agents[i].vel.x = agents[i].vel.x / velLen * agents[i].maxSpeed;
-            agents[i].vel.y = agents[i].vel.y / velLen * agents[i].maxSpeed;
+        // Mild separation from same-direction agents
+        SteeringOutput sepSame = {0};
+        if (sameCount > 0) {
+            sepSame = steering_separation(&agents[i], sameDir, sameCount, 20.0f);
         }
         
-        agents[i].pos.x += agents[i].vel.x * dt;
-        agents[i].pos.y += agents[i].vel.y * dt;
+        // Stronger avoidance of opposite-direction agents (but not extreme)
+        SteeringOutput avoidOpp = {0};
+        if (oppCount > 0) {
+            // Use predictive avoidance but with shorter horizon
+            avoidOpp = steering_predictive_avoid(&agents[i], oppDir, oppDirVel, oppCount, 1.0f, 25.0f);
+        }
         
-        // Respawn if reached target
+        // Wall avoidance
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 40.0f);
+        
+        // Blend: seek is primary, alignment helps form lanes, mild same-sep, moderate opp-avoid
+        SteeringOutput outputs[5] = {seek, align, sepSame, avoidOpp, wallAvoid};
+        float weights[5] = {1.5f, 0.8f, 0.3f, 1.0f, 2.0f};
+        SteeringOutput combined = steering_blend(outputs, weights, 5);
+        
+        steering_apply(&agents[i], combined, dt);
+        
+        // Hard collision resolution
+        ResolveCollisions(&agents[i], i);
+        
+        // Respawn if reached target - keep Y position to maintain lane
         float distToTarget = steering_vec_distance(agents[i].pos, ctxTargets[i]);
         if (distToTarget < 50.0f) {
-            if (i < halfCount) {
-                // Left-to-right: respawn on left
-                agents[i].pos = (Vector2){randf(80, 150), randf(150, SCREEN_HEIGHT - 150)};
+            float currentY = agents[i].pos.y;  // Preserve lane
+            if (goingRight) {
+                // Left-to-right: respawn on left, same Y
+                agents[i].pos = (Vector2){randf(80, 150), currentY};
                 agents[i].vel = (Vector2){30, 0};
-                ctxTargets[i] = (Vector2){SCREEN_WIDTH - 80, agents[i].pos.y};
+                ctxTargets[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
             } else {
-                // Right-to-left: respawn on right
-                agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), randf(150, SCREEN_HEIGHT - 150)};
+                // Right-to-left: respawn on right, same Y
+                agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), currentY};
                 agents[i].vel = (Vector2){-30, 0};
-                ctxTargets[i] = (Vector2){80, agents[i].pos.y};
+                ctxTargets[i] = (Vector2){80, currentY};
             }
         }
     }
@@ -3782,6 +3998,364 @@ static void UpdateCtxPredatorPrey(float dt) {
     DrawRectangleLinesEx(bounds, 2, (Color){100, 100, 100, 100});
 }
 
+// ============================================================================
+// New Steering Behavior Updates
+// ============================================================================
+
+static void UpdateTopologicalFlock(float dt) {
+    Rectangle bounds = {50, 50, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 100};
+    
+    // Gather all positions and velocities
+    Vector2 allPos[MAX_AGENTS];
+    Vector2 allVel[MAX_AGENTS];
+    for (int i = 0; i < agentCount; i++) {
+        allPos[i] = agents[i].pos;
+        allVel[i] = agents[i].vel;
+    }
+    
+    for (int i = 0; i < agentCount; i++) {
+        // Topological flocking - use k=6 nearest neighbors (like real starlings!)
+        SteeringOutput flock = steering_flocking_topological(
+            &agents[i], allPos, allVel, agentCount, i,
+            6,          // k nearest neighbors
+            30.0f,      // separation distance
+            2.0f, 1.0f, 1.5f);  // sep, coh, align weights
+        
+        SteeringOutput contain = steering_containment(&agents[i], bounds, 100.0f);
+        
+        SteeringOutput outputs[2] = {flock, contain};
+        float weights[2] = {1.0f, 2.0f};
+        steering_apply(&agents[i], steering_blend(outputs, weights, 2), dt);
+        ResolveCollisions(&agents[i], i);
+    }
+}
+
+static void UpdateCouzinZones(float dt) {
+    Rectangle bounds = {50, 50, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 100};
+    
+    // Gather all positions and velocities
+    Vector2 allPos[MAX_AGENTS];
+    Vector2 allVel[MAX_AGENTS];
+    for (int i = 0; i < agentCount; i++) {
+        allPos[i] = agents[i].pos;
+        allVel[i] = agents[i].vel;
+    }
+    
+    // Adjust parameters with keyboard
+    if (IsKeyDown(KEY_Q)) couzinParams.zorRadius += 20.0f * dt;
+    if (IsKeyDown(KEY_A)) couzinParams.zorRadius = fmaxf(10.0f, couzinParams.zorRadius - 20.0f * dt);
+    if (IsKeyDown(KEY_W)) couzinParams.zooRadius += 30.0f * dt;
+    if (IsKeyDown(KEY_S) && !IsKeyDown(KEY_LEFT_CONTROL)) couzinParams.zooRadius = fmaxf(couzinParams.zorRadius + 10, couzinParams.zooRadius - 30.0f * dt);
+    if (IsKeyDown(KEY_E)) couzinParams.zoaRadius += 40.0f * dt;
+    if (IsKeyDown(KEY_D)) couzinParams.zoaRadius = fmaxf(couzinParams.zooRadius + 10, couzinParams.zoaRadius - 40.0f * dt);
+    if (IsKeyDown(KEY_R)) couzinParams.blindAngle = fminf(PI, couzinParams.blindAngle + 0.5f * dt);
+    if (IsKeyDown(KEY_F)) couzinParams.blindAngle = fmaxf(0, couzinParams.blindAngle - 0.5f * dt);
+    
+    for (int i = 0; i < agentCount; i++) {
+        // Build neighbor arrays (exclude self)
+        Vector2 neighborPos[MAX_AGENTS];
+        Vector2 neighborVel[MAX_AGENTS];
+        int neighborCount = 0;
+        for (int j = 0; j < agentCount; j++) {
+            if (j != i) {
+                neighborPos[neighborCount] = allPos[j];
+                neighborVel[neighborCount] = allVel[j];
+                neighborCount++;
+            }
+        }
+        
+        SteeringOutput couzin = steering_couzin(&agents[i], neighborPos, neighborVel, neighborCount, couzinParams);
+        SteeringOutput contain = steering_containment(&agents[i], bounds, 100.0f);
+        
+        SteeringOutput outputs[2] = {couzin, contain};
+        float weights[2] = {1.0f, 2.0f};
+        steering_apply(&agents[i], steering_blend(outputs, weights, 2), dt);
+        ResolveCollisions(&agents[i], i);
+    }
+    
+    // Draw zone radii visualization for first agent
+    if (agentCount > 0) {
+        DrawCircleLinesV(agents[0].pos, couzinParams.zorRadius, RED);
+        DrawCircleLinesV(agents[0].pos, couzinParams.zooRadius, YELLOW);
+        DrawCircleLinesV(agents[0].pos, couzinParams.zoaRadius, GREEN);
+        
+        // Draw blind angle arc
+        if (couzinParams.blindAngle > 0.01f) {
+            float heading = atan2f(agents[0].vel.y, agents[0].vel.x);
+            float blindStart = heading + PI - couzinParams.blindAngle / 2;
+            float blindEnd = heading + PI + couzinParams.blindAngle / 2;
+            for (float a = blindStart; a < blindEnd; a += 0.1f) {
+                Vector2 p1 = {agents[0].pos.x + cosf(a) * 40, agents[0].pos.y + sinf(a) * 40};
+                Vector2 p2 = {agents[0].pos.x + cosf(a + 0.1f) * 40, agents[0].pos.y + sinf(a + 0.1f) * 40};
+                DrawLineV(p1, p2, DARKGRAY);
+            }
+        }
+    }
+    
+    // Draw parameter info
+    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinParams.zorRadius), 10, 90, 16, RED);
+    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinParams.zooRadius), 10, 110, 16, YELLOW);
+    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinParams.zoaRadius), 10, 130, 16, GREEN);
+    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinParams.blindAngle), 10, 150, 16, GRAY);
+}
+
+static void UpdateVehiclePursuit(float dt) {
+    // Adjust lookahead with keyboard (use Q/A since UP/DOWN may conflict with agent count)
+    if (IsKeyDown(KEY_Q)) vehicleLookahead = fminf(200.0f, vehicleLookahead + 50.0f * dt);
+    if (IsKeyDown(KEY_A)) vehicleLookahead = fmaxf(30.0f, vehicleLookahead - 50.0f * dt);
+    
+    for (int i = 0; i < vehicleCount; i++) {
+        int segment = vehiclePathSegments[i];
+        SteeringOutput steering;
+        
+        // Check if on last segment or past it - need to steer toward first point to loop
+        float distToLast = steering_vec_distance(vehicles[i].pos, pathPoints[path.count - 1]);
+        float distToFirst = steering_vec_distance(vehicles[i].pos, pathPoints[0]);
+        
+        if (segment >= path.count - 2 && distToLast < vehicleLookahead * 1.5f) {
+            // On last segment and approaching end - steer toward first point to complete loop
+            steering = curv_seek(&vehicles[i], pathPoints[0]);
+            
+            // If we're close to the first point, reset segment to continue normal path following
+            if (distToFirst < vehicleLookahead) {
+                segment = 0;
+            }
+        } else {
+            // Normal pure pursuit path following
+            steering = steering_pure_pursuit(&vehicles[i], &path, vehicleLookahead, &segment);
+        }
+        
+        vehiclePathSegments[i] = segment;
+        curv_agent_apply(&vehicles[i], steering, dt);
+    }
+    
+    // Draw closed loop path
+    for (int i = 0; i < path.count; i++) {
+        int next = (i + 1) % path.count;  // Wrap around to create loop
+        DrawLineEx(pathPoints[i], pathPoints[next], 3, SKYBLUE);
+    }
+    // Mark waypoints
+    for (int i = 0; i < path.count; i++) {
+        DrawCircleV(pathPoints[i], 6, BLUE);
+    }
+    
+    // Draw vehicles as oriented rectangles
+    for (int i = 0; i < vehicleCount; i++) {
+        float heading = vehicles[i].heading;
+        Vector2 pos = vehicles[i].pos;
+        
+        // Vehicle body (rotated rectangle)
+        Vector2 forward = {cosf(heading), sinf(heading)};
+        Vector2 right = {-sinf(heading), cosf(heading)};
+        
+        Vector2 corners[4] = {
+            {pos.x + forward.x * 15 + right.x * 8, pos.y + forward.y * 15 + right.y * 8},
+            {pos.x + forward.x * 15 - right.x * 8, pos.y + forward.y * 15 - right.y * 8},
+            {pos.x - forward.x * 10 - right.x * 8, pos.y - forward.y * 10 - right.y * 8},
+            {pos.x - forward.x * 10 + right.x * 8, pos.y - forward.y * 10 + right.y * 8}
+        };
+        
+        Color vehColor = (i == 0) ? GOLD : (i == 1) ? SKYBLUE : GREEN;
+        DrawTriangle(corners[0], corners[1], corners[2], vehColor);
+        DrawTriangle(corners[0], corners[2], corners[3], vehColor);
+        
+        // Draw direction indicator
+        Vector2 tip = {pos.x + forward.x * 20, pos.y + forward.y * 20};
+        DrawLineEx(pos, tip, 2, WHITE);
+    }
+    
+    // Draw lookahead info
+    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleLookahead), 10, 90, 16, YELLOW);
+}
+
+static void UpdateDWANavigation(float dt) {
+    // Click to set new goal
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        dwaGoal = GetMousePosition();
+        dwaMode = DWA_NORMAL;
+        dwaStuckTimer = 0;
+        dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+    }
+    
+    // Constants for recovery behavior
+    const float STUCK_TIME = 1.0f;          // seconds without progress before recovery (was 0.5)
+    const float PROGRESS_EPS = 0.5f;        // minimum progress per frame - lower = more tolerant (was 1.0)
+    const float BACKUP_TIME = 0.5f;         // how long to reverse
+    const float BACKUP_SPEED = -40.0f;      // reverse speed
+    const float CLEARANCE_OK = 20.0f;       // clearance threshold - lower = less scared (was 40)
+    const float TURN_TIME_MAX = 0.6f;       // max time to turn in place
+    const float NEAR_GOAL_DIST = 50.0f;     // "near goal" threshold - only recover when very close (was 80)
+    
+    float distToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+    float progress = dwaPrevDistToGoal - distToGoal;  // positive = getting closer
+    bool makingProgress = (progress > PROGRESS_EPS * dt);
+    
+    // Calculate current clearance
+    float currentClearance = 1e10f;
+    int nearestObstacle = -1;
+    for (int i = 0; i < obstacleCount; i++) {
+        float dist = steering_vec_distance(vehicles[0].pos, obstacles[i].center) - obstacles[i].radius - 18.0f;
+        if (dist < currentClearance) {
+            currentClearance = dist;
+            nearestObstacle = i;
+        }
+    }
+    
+    // Stuck detection
+    if (!makingProgress && dwaMode == DWA_NORMAL) {
+        dwaStuckTimer += dt;
+    } else if (makingProgress) {
+        dwaStuckTimer = 0;
+    }
+    
+    SteeringOutput steering = steering_zero();
+    
+    switch (dwaMode) {
+        case DWA_NORMAL: {
+            // Use DWA for normal navigation
+            steering = steering_dwa(&vehicles[0], dwaGoal, obstacles, obstacleCount, walls, wallCount, dwaParams);
+            
+            // Smoothing: blend with previous command to reduce jitter
+            // This prevents the rapid flip-flopping that causes oscillation
+            float smoothFactor = 0.3f;  // How much to blend with previous (0 = no smoothing, 1 = fully smooth)
+            
+            // Smooth speed changes
+            steering.linear.x = dwaPrevSpeed * smoothFactor + steering.linear.x * (1.0f - smoothFactor);
+            
+            // Smooth turn rate, but with extra penalty for direction flips
+            if (dwaPrevTurnRate != 0 && steering.angular != 0) {
+                bool flipped = (dwaPrevTurnRate > 0) != (steering.angular > 0);
+                if (flipped && !makingProgress) {
+                    // Strong bias toward previous direction when flipping without progress
+                    steering.angular = dwaPrevTurnRate * 0.8f + steering.angular * 0.2f;
+                } else {
+                    // Normal smoothing
+                    steering.angular = dwaPrevTurnRate * smoothFactor + steering.angular * (1.0f - smoothFactor);
+                }
+            }
+            
+            // Check if we should enter recovery
+            // Only backup when TRULY stuck: not moving AND not making progress for a while
+            bool nearGoal = distToGoal < NEAR_GOAL_DIST;
+            bool stuck = dwaStuckTimer > STUCK_TIME;
+            bool barelyMoving = fabsf(vehicles[0].speed) < 10.0f;
+            bool actuallyBlocked = currentClearance < CLEARANCE_OK && barelyMoving;
+            
+            // Only enter recovery if stuck AND (very close to goal OR actually blocked by obstacle in front)
+            if (stuck && barelyMoving && (nearGoal || actuallyBlocked)) {
+                dwaMode = DWA_BACKUP;
+                dwaBackupTimer = BACKUP_TIME;
+                dwaStuckTimer = 0;
+                
+                // Pick turn direction: away from nearest obstacle, and commit to it
+                if (nearestObstacle >= 0) {
+                    Vector2 toObs = {
+                        obstacles[nearestObstacle].center.x - vehicles[0].pos.x,
+                        obstacles[nearestObstacle].center.y - vehicles[0].pos.y
+                    };
+                    // Cross product with forward vector to determine which side obstacle is on
+                    float cross = cosf(vehicles[0].heading) * toObs.y - sinf(vehicles[0].heading) * toObs.x;
+                    dwaTurnDirection = (cross > 0) ? -1 : 1;  // Turn away from obstacle
+                } else {
+                    dwaTurnDirection = 1;  // Default: turn right
+                }
+            }
+            break;
+        }
+        
+        case DWA_BACKUP: {
+            dwaBackupTimer -= dt;
+            
+            // Reverse with consistent turn direction (committed, no flip-flopping)
+            steering.linear.x = BACKUP_SPEED;
+            steering.angular = dwaTurnDirection * vehicles[0].maxTurnRate * 0.6f;
+            
+            // Exit backup when time is up or we've gained clearance
+            if (dwaBackupTimer <= 0 || currentClearance >= CLEARANCE_OK * 1.5f) {
+                dwaMode = DWA_TURN_IN_PLACE;
+                dwaTurnTimer = TURN_TIME_MAX;
+            }
+            break;
+        }
+        
+        case DWA_TURN_IN_PLACE: {
+            dwaTurnTimer -= dt;
+            
+            // Calculate angle to goal
+            Vector2 toGoal = {dwaGoal.x - vehicles[0].pos.x, dwaGoal.y - vehicles[0].pos.y};
+            float goalAngle = atan2f(toGoal.y, toGoal.x);
+            float angleDiff = goalAngle - vehicles[0].heading;
+            // Normalize to [-PI, PI]
+            while (angleDiff > PI) angleDiff -= 2 * PI;
+            while (angleDiff < -PI) angleDiff += 2 * PI;
+            
+            // Turn toward goal (with small creep forward to help)
+            steering.linear.x = 10.0f;  // Tiny creep forward
+            steering.angular = (angleDiff > 0 ? 1.0f : -1.0f) * vehicles[0].maxTurnRate * 0.8f;
+            
+            // Exit turn when facing goal or time is up
+            if (fabsf(angleDiff) < 0.2f || dwaTurnTimer <= 0) {
+                dwaMode = DWA_NORMAL;
+                dwaStuckTimer = 0;
+            }
+            break;
+        }
+    }
+    
+    curv_agent_apply(&vehicles[0], steering, dt);
+    
+    // Update previous values for next frame
+    dwaPrevDistToGoal = distToGoal;
+    dwaPrevSpeed = steering.linear.x;
+    dwaPrevTurnRate = steering.angular;
+    
+    // Reset if reached goal
+    if (distToGoal < 30.0f) {
+        // Pick a new random goal on the other side
+        if (dwaGoal.x > SCREEN_WIDTH / 2) {
+            dwaGoal = (Vector2){randf(80, 200), randf(150, SCREEN_HEIGHT - 150)};
+        } else {
+            dwaGoal = (Vector2){randf(SCREEN_WIDTH - 200, SCREEN_WIDTH - 80), randf(150, SCREEN_HEIGHT - 150)};
+        }
+        dwaMode = DWA_NORMAL;
+        dwaStuckTimer = 0;
+        dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+    }
+    
+    // Draw goal
+    DrawCircleV(dwaGoal, 20, (Color){0, 255, 0, 100});
+    DrawCircleLinesV(dwaGoal, 20, GREEN);
+    DrawTextShadow("GOAL", (int)dwaGoal.x - 18, (int)dwaGoal.y - 8, 16, WHITE);
+    
+    // Draw mode indicator
+    const char* modeStr = (dwaMode == DWA_NORMAL) ? "NORMAL" : 
+                          (dwaMode == DWA_BACKUP) ? "BACKUP" : "TURNING";
+    Color modeColor = (dwaMode == DWA_NORMAL) ? GREEN : 
+                      (dwaMode == DWA_BACKUP) ? RED : YELLOW;
+    DrawTextShadow(modeStr, 10, 130, 20, modeColor);
+    
+    // Draw vehicle
+    float heading = vehicles[0].heading;
+    Vector2 pos = vehicles[0].pos;
+    
+    Vector2 forward = {cosf(heading), sinf(heading)};
+    Vector2 right = {-sinf(heading), cosf(heading)};
+    
+    Vector2 corners[4] = {
+        {pos.x + forward.x * 15 + right.x * 10, pos.y + forward.y * 15 + right.y * 10},
+        {pos.x + forward.x * 15 - right.x * 10, pos.y + forward.y * 15 - right.y * 10},
+        {pos.x - forward.x * 12 - right.x * 10, pos.y - forward.y * 12 - right.y * 10},
+        {pos.x - forward.x * 12 + right.x * 10, pos.y - forward.y * 12 + right.y * 10}
+    };
+    
+    // Color vehicle by mode
+    Color vehicleColor = (dwaMode == DWA_NORMAL) ? GOLD : 
+                         (dwaMode == DWA_BACKUP) ? ORANGE : YELLOW;
+    DrawTriangle(corners[0], corners[1], corners[2], vehicleColor);
+    DrawTriangle(corners[0], corners[2], corners[3], vehicleColor);
+    DrawLineEx(pos, (Vector2){pos.x + forward.x * 25, pos.y + forward.y * 25}, 3, WHITE);
+}
+
 static void UpdateScenario(float dt) {
     switch (currentScenario) {
         case SCENARIO_SEEK: UpdateSeek(dt); break;
@@ -3824,6 +4398,10 @@ static void UpdateScenario(float dt) {
         case SCENARIO_CTX_MAZE: UpdateCtxMaze(dt); break;
         case SCENARIO_CTX_CROWD: UpdateCtxCrowd(dt); break;
         case SCENARIO_CTX_PREDATOR_PREY: UpdateCtxPredatorPrey(dt); break;
+        case SCENARIO_TOPOLOGICAL_FLOCK: UpdateTopologicalFlock(dt); break;
+        case SCENARIO_COUZIN_ZONES: UpdateCouzinZones(dt); break;
+        case SCENARIO_VEHICLE_PURSUIT: UpdateVehiclePursuit(dt); break;
+        case SCENARIO_DWA_NAVIGATION: UpdateDWANavigation(dt); break;
         default: break;
     }
 }
@@ -4072,6 +4650,22 @@ static void DrawScenario(void) {
         DrawAgent(&agents[ctxPredatorIndex], RED);
         DrawVelocityVector(&agents[ctxPredatorIndex], MAROON);
         DrawTextShadow("PREDATOR", (int)predPos.x - 30, (int)predPos.y - 25, 14, RED);
+    } else if (currentScenario == SCENARIO_TOPOLOGICAL_FLOCK) {
+        // Topological flock - all same color with velocity vectors
+        for (int i = 0; i < agentCount; i++) {
+            DrawAgent(&agents[i], (Color){100, 180, 220, 255});
+            DrawVelocityVector(&agents[i], WHITE);
+        }
+    } else if (currentScenario == SCENARIO_COUZIN_ZONES) {
+        // Couzin zones - agents colored by zone behavior
+        for (int i = 0; i < agentCount; i++) {
+            DrawAgent(&agents[i], (Color){150, 200, 150, 255});
+            DrawVelocityVector(&agents[i], WHITE);
+        }
+    } else if (currentScenario == SCENARIO_VEHICLE_PURSUIT || 
+               currentScenario == SCENARIO_DWA_NAVIGATION) {
+        // Vehicles are drawn in their update functions
+        // Just draw obstacles here
     } else {
         // Standard drawing
         for (int i = 0; i < agentCount; i++) {
@@ -4226,6 +4820,10 @@ int main(void) {
             case SCENARIO_CTX_MAZE: instructions = "Context Steering: Click to set goal. Watch how agent navigates tight corridors smoothly."; break;
             case SCENARIO_CTX_CROWD: instructions = "Context Steering: Bidirectional flow with predictive collision avoidance"; break;
             case SCENARIO_CTX_PREDATOR_PREY: instructions = "Context Steering: Prey use danger maps to escape predator intelligently"; break;
+            case SCENARIO_TOPOLOGICAL_FLOCK: instructions = "Topological Flocking: Uses k=6 nearest neighbors (like real starlings!)"; break;
+            case SCENARIO_COUZIN_ZONES: instructions = "Couzin Zones: Q/A=ZOR, W/S=ZOO, E/D=ZOA, R/F=blind angle"; break;
+            case SCENARIO_VEHICLE_PURSUIT: instructions = "Pure Pursuit: Vehicles with turn-rate limits follow looping path. Q/A=lookahead"; break;
+            case SCENARIO_DWA_NAVIGATION: instructions = "Dynamic Window Approach: Click to set goal. Vehicle samples trajectories."; break;
             default: break;
         }
         DrawTextShadow(instructions, 10, SCREEN_HEIGHT - 30, 18, GRAY);
