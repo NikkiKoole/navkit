@@ -17,6 +17,12 @@
 // Y-SORTING:
 //  - Visible agents sorted by Y for correct 2.5D draw order
 //  - Uses insertion sort (fast for mostly-sorted data frame-to-frame)
+//
+// TODO: BODY SIZE
+//  - Currently avoidance treats agents as points (center-to-center distance only)
+//  - AGENT_SIZE/AGENT_RADIUS/BODY_RADIUS are only used for debug rendering, not avoidance
+//  - To prevent visual overlap, factor BODY_RADIUS into avoidance calculation
+//    (repel when edges touch, not when centers overlap)
 
 #include "../vendor/raylib.h"
 #include <math.h>
@@ -26,7 +32,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define AGENT_COUNT 100000
+#define AGENT_COUNT 1000
 
 #define WORLD_W 4000.0f
 #define WORLD_H 4000.0f
@@ -41,6 +47,7 @@
 #define AVOID_RADIUS         40.0f
 #define AVOID_STRENGTH_SCALE 0.5f
 #define AVOID_MAX_NEIGHBORS  10
+#define BODY_RADIUS          8.0f   // Minimum separation distance (half of agent visual size)
 
 #define STUCK_THRESHOLD      1.5f
 #define WIGGLE_STRENGTH      40.0f
@@ -438,6 +445,7 @@ int main(void) {
     bool drawAgents = true;
     bool cullDraw = true;
     bool ySortOn = true;  // Toggle Y-sorting with Y key
+    bool drawHitAreas = false;  // Toggle hit area debug with H key
     uint32_t frame = 0;
 
     const float arriveEps2 = ARRIVE_EPS * ARRIVE_EPS;
@@ -470,6 +478,7 @@ int main(void) {
         if (IsKeyPressed(KEY_R)) drawAgents = !drawAgents;
         if (IsKeyPressed(KEY_C)) cullDraw = !cullDraw;
         if (IsKeyPressed(KEY_Y)) ySortOn = !ySortOn;
+        if (IsKeyPressed(KEY_H)) drawHitAreas = !drawHitAreas;
 
         // Mouse wheel zoom
         float wheel = GetMouseWheelMove();
@@ -704,18 +713,30 @@ int main(void) {
                  Rectangle dst = { p.x, p.y, agentTex.width, agentTex.height };
                  Vector2 origin = { agentTex.width* 0.5f, agentTex.height };
                  DrawTexturePro(agentTex, src, dst, origin, 0.0f, col);
+
+                 // Debug: draw body radius (used for avoidance)
+                 if (drawHitAreas) {
+                     Rectangle hitRect = {
+                         p.x - BODY_RADIUS,
+                         p.y - BODY_RADIUS,
+                         BODY_RADIUS * 2.0f,
+                         BODY_RADIUS * 2.0f
+                     };
+                     DrawRectangleLinesEx(hitRect, 1.0f, YELLOW);
+                 }
             }
         }
 
         EndMode2D();
 
         // Overlay text
-        DrawTextShadow("MMB: pan | Wheel: zoom | V: avoidance | R: draw | C: cull | Y: y-sort", 12, 12, 18, RAYWHITE);
+        DrawTextShadow("MMB: pan | Wheel: zoom | V: avoidance | R: draw | C: cull | Y: y-sort | H: hitboxes", 12, 12, 18, RAYWHITE);
         DrawTextShadow(avoidanceOn ? "Avoidance: ON (speed-relative + cache opt)" : "Avoidance: OFF (true baseline)",
                  12, 36, 18, avoidanceOn ? GREEN : RED);
         DrawTextShadow(drawAgents ? "Draw: ON" : "Draw: OFF", 12, 60, 18, drawAgents ? GREEN : RED);
         DrawTextShadow(cullDraw ? "Cull: ON" : "Cull: OFF", 120, 60, 18, cullDraw ? GREEN : RED);
         DrawTextShadow(ySortOn ? "Y-Sort: ON" : "Y-Sort: OFF", 230, 60, 18, ySortOn ? GREEN : RED);
+        DrawTextShadow(drawHitAreas ? "Hitbox: ON" : "Hitbox: OFF", 350, 60, 18, drawHitAreas ? YELLOW : GRAY);
 
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 12, 84, 18, LIME);
 

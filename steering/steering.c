@@ -1081,6 +1081,284 @@ SteeringOutput steering_queue(const SteeringAgent* agent,
 }
 
 // ============================================================================
+// Social Force Model (Helbing & Molnar 1995)
+// ============================================================================
+
+SocialForceParams sfm_default_params(void) {
+    SocialForceParams params;
+    // =======================================================================
+    // Social Force Model parameters from Helbing & Molnar 1995 / Helbing 2000
+    // 
+    // References:
+    //   - Original: https://arxiv.org/abs/cond-mat/9805244
+    //   - Parameters: https://pedestriandynamics.org/models/social_force_model/
+    //
+    // Original paper values (SI units):
+    //   A = 2000 N        (interaction strength)
+    //   B = 0.08 m        (interaction range - this is ~8cm!)
+    //   k = 120,000 kg/s² (body compression constant)
+    //   κ = 240,000 kg/(m·s) (friction constant)
+    //   r = 0.3 m         (body radius)
+    //   τ = 0.5 s         (relaxation time)
+    //   m = 80 kg         (mass)
+    //
+    // Our scale: ~50 pixels per meter (screen is 1280x720, represents ~25x14m)
+    // We skip mass, treating force as acceleration directly.
+    // =======================================================================
+    
+    params.tau = 0.5f;              // τ = 0.5s - relaxation time (unchanged)
+    params.agentStrength = 2000.0f; // A = 2000 - interaction strength (unchanged)
+    params.agentRange = 4.0f;       // B = 0.08m → 0.08 * 50 = 4 pixels
+                                    // CRITICAL: This controls exponential falloff!
+                                    // exp((r-d)/B) decays to ~0 beyond a few B distances
+    params.wallStrength = 2000.0f;  // Same as agent strength
+    params.wallRange = 4.0f;        // Same as agent range
+    params.bodyRadius = 15.0f;      // r = 0.3m → 0.3 * 50 = 15 pixels
+    return params;
+}
+
+// Helper: closest point on line segment (same as existing but needed here)
+static Vector2 sfm_closest_point_on_segment(Vector2 p, Vector2 a, Vector2 b) {
+    Vector2 ab = vec_sub(b, a);
+    Vector2 ap = vec_sub(p, a);
+    
+    float t = vec_dot(ap, ab) / vec_dot(ab, ab);
+    t = fmaxf(0.0f, fminf(1.0f, t));
+    
+    return vec_add(a, vec_mul(ab, t));
+}
+
+SteeringOutput steering_social_force(const SteeringAgent* agent,
+                                     Vector2 goal,
+                                     const Vector2* otherPositions,
+                                     const Vector2* otherVelocities,
+                                     int otherCount,
+                                     const Wall* walls,
+                                     int wallCount,
+                                     const CircleObstacle* obstacles,
+                                     int obstacleCount,
+                                     SocialForceParams params) {
+    SteeringOutput output = steering_zero();
+    
+    // ========================================
+    // 1. DRIVING FORCE (toward goal)
+    // ========================================
+    // F_driving = (desired_velocity - current_velocity) / tau
+    // This is what makes agents move toward their goal
+    
+    Vector2 toGoal = vec_sub(goal, agent->pos);
+    float distToGoal = steering_vec_length(toGoal);
+    
+    Vector2 desiredVel;
+    if (distToGoal > 1.0f) {
+        desiredVel = vec_mul(steering_vec_normalize(toGoal), agent->maxSpeed);
+    } else {
+        desiredVel = (Vector2){0, 0};
+    }
+    
+    Vector2 drivingForce = vec_mul(vec_sub(desiredVel, agent->vel), 1.0f / params.tau);
+    
+    // ========================================
+    // 2. AGENT REPULSION (from other people)
+    // ========================================
+    // F_agent = A * exp((r_ij - d_ij) / B) * n_ij
+    // Exponential repulsion - very strong when close, weak when far
+    // Plus contact forces when agents physically overlap
+    
+    Vector2 agentRepulsion = {0, 0};
+    
+    for (int i = 0; i < otherCount; i++) {
+        Vector2 diff = vec_sub(agent->pos, otherPositions[i]);
+        float dist = steering_vec_length(diff);
+        
+        if (dist < 1.0f) dist = 1.0f;  // Prevent division by zero
+        
+        Vector2 normal = vec_mul(diff, 1.0f / dist);
+        
+        // Combined body radii
+        float combinedRadius = params.bodyRadius * 2.0f;
+        
+        // Psychological/social repulsion (exponential falloff)
+        // Stronger when distance is less than combined radius
+        float socialForce = params.agentStrength * expf((combinedRadius - dist) / params.agentRange);
+        
+        // Physical contact force (only when overlapping)
+        // From Helbing: k=120,000 kg/s², κ=240,000 kg/(m·s)
+        // We skip mass (80kg), so: k/m = 120000/80 = 1500, κ/m = 240000/80 = 3000
+        float contactForce = 0.0f;
+        if (dist < combinedRadius) {
+            float overlap = combinedRadius - dist;
+            contactForce = 1500.0f * overlap;  // k/m = 1500
+            
+            // Sliding friction (tangential to contact normal)
+            Vector2 tangent = {-normal.y, normal.x};
+            Vector2 relVel = vec_sub(otherVelocities[i], agent->vel);
+            float tangentVel = vec_dot(relVel, tangent);
+            Vector2 frictionForce = vec_mul(tangent, 3000.0f * overlap * tangentVel);  // κ/m = 3000
+            agentRepulsion = vec_add(agentRepulsion, frictionForce);
+        }
+        
+        // Total repulsion from this agent
+        float totalStrength = socialForce + contactForce;
+        agentRepulsion = vec_add(agentRepulsion, vec_mul(normal, totalStrength));
+    }
+    
+    // ========================================
+    // 3. WALL REPULSION (from walls)
+    // ========================================
+    // Same exponential model but from closest point on wall
+    
+    Vector2 wallRepulsion = {0, 0};
+    
+    for (int i = 0; i < wallCount; i++) {
+        Vector2 closest = sfm_closest_point_on_segment(agent->pos, walls[i].start, walls[i].end);
+        Vector2 diff = vec_sub(agent->pos, closest);
+        float dist = steering_vec_length(diff);
+        
+        if (dist < 1.0f) dist = 1.0f;
+        
+        Vector2 normal = vec_mul(diff, 1.0f / dist);
+        
+        // Psychological repulsion from wall
+        float socialForce = params.wallStrength * expf((params.bodyRadius - dist) / params.wallRange);
+        
+        // Physical contact force when touching wall
+        float contactForce = 0.0f;
+        if (dist < params.bodyRadius) {
+            float overlap = params.bodyRadius - dist;
+            contactForce = 1500.0f * overlap;
+            
+            // Wall friction
+            Vector2 tangent = {-normal.y, normal.x};
+            float tangentVel = vec_dot(agent->vel, tangent);
+            Vector2 frictionForce = vec_mul(tangent, -3000.0f * overlap * tangentVel);
+            wallRepulsion = vec_add(wallRepulsion, frictionForce);
+        }
+        
+        float totalStrength = socialForce + contactForce;
+        wallRepulsion = vec_add(wallRepulsion, vec_mul(normal, totalStrength));
+    }
+    
+    // ========================================
+    // 4. OBSTACLE REPULSION (from circular obstacles)
+    // ========================================
+    
+    Vector2 obstacleRepulsion = {0, 0};
+    
+    for (int i = 0; i < obstacleCount; i++) {
+        Vector2 diff = vec_sub(agent->pos, obstacles[i].center);
+        float dist = steering_vec_length(diff);
+        
+        if (dist < 1.0f) dist = 1.0f;
+        
+        Vector2 normal = vec_mul(diff, 1.0f / dist);
+        
+        // Distance from surface of obstacle
+        float surfaceDist = dist - obstacles[i].radius;
+        
+        // Psychological repulsion
+        float socialForce = params.wallStrength * expf((params.bodyRadius - surfaceDist) / params.wallRange);
+        
+        // Physical contact force
+        float contactForce = 0.0f;
+        if (surfaceDist < params.bodyRadius) {
+            float overlap = params.bodyRadius - surfaceDist;
+            contactForce = 1500.0f * overlap;
+        }
+        
+        float totalStrength = socialForce + contactForce;
+        obstacleRepulsion = vec_add(obstacleRepulsion, vec_mul(normal, totalStrength));
+    }
+    
+    // ========================================
+    // 5. SUM ALL FORCES
+    // ========================================
+    
+    output.linear = vec_add(drivingForce, 
+                    vec_add(agentRepulsion, 
+                    vec_add(wallRepulsion, obstacleRepulsion)));
+    
+    return output;
+}
+
+SteeringOutput steering_social_force_simple(const SteeringAgent* agent,
+                                            Vector2 goal,
+                                            const Vector2* otherPositions,
+                                            const Vector2* otherVelocities,
+                                            int otherCount,
+                                            SocialForceParams params) {
+    // Call full version with no walls/obstacles
+    return steering_social_force(agent, goal, otherPositions, otherVelocities, otherCount,
+                                 NULL, 0, NULL, 0, params);
+}
+
+// ============================================================================
+// Intelligent Driver Model (IDM) - Car Following
+// ============================================================================
+
+IDMParams idm_default_params(void) {
+    // =======================================================================
+    // IDM parameters from Treiber, Hennecke, Helbing (2000)
+    // Reference: https://traffic-simulation.de/info/info_IDM.html
+    //
+    // Original paper values (SI units):
+    //   v0 = 120 km/h = 33.3 m/s (desired speed)
+    //   T  = 1.5 s               (safe time headway)
+    //   s0 = 2 m                 (minimum gap in jam)
+    //   a  = 0.3 m/s^2           (max acceleration)
+    //   b  = 3.0 m/s^2           (comfortable braking)
+    //   delta = 4                (acceleration exponent)
+    //
+    // Our scale: ~50 pixels per meter
+    // =======================================================================
+    return (IDMParams){
+        .v0 = 150.0f,      // 3 m/s * 50 = 150 px/s (urban speed for demo)
+        .T = 1.5f,         // 1.5 second time headway (unchanged)
+        .s0 = 15.0f,       // 0.3m * 50 = 15 pixels minimum gap
+        .a = 100.0f,       // 2 m/s^2 * 50 = 100 px/s^2 (snappier for demo)
+        .b = 150.0f,       // 3 m/s^2 * 50 = 150 px/s^2
+        .delta = 4.0f,     // Standard exponent (unchanged)
+        .length = 30.0f    // ~0.6m * 50 = 30 pixels car length
+    };
+}
+
+float idm_acceleration(const IDMParams* p, float gap, float speed, float deltaV) {
+    // IDM acceleration formula:
+    // dv/dt = a * [1 - (v/v0)^delta - (s*/s)^2]
+    //
+    // where s* (desired dynamical distance) is:
+    // s* = s0 + v*T + (v*deltaV) / (2*sqrt(a*b))
+    
+    // Calculate desired gap s*
+    float s_star = p->s0 + speed * p->T + (speed * deltaV) / (2.0f * sqrtf(p->a * p->b));
+    if (s_star < p->s0) s_star = p->s0;  // Never less than minimum gap
+    
+    // Free road term: 1 - (v/v0)^delta
+    // This makes acceleration decrease as we approach desired speed
+    float v_ratio = speed / p->v0;
+    float free_term = 1.0f - powf(v_ratio, p->delta);
+    
+    // Interaction term: (s*/s)^2
+    // This creates braking when gap is smaller than desired
+    float interaction_term = 0.0f;
+    if (gap > 0.1f) {
+        interaction_term = (s_star / gap) * (s_star / gap);
+    } else {
+        // Emergency braking if gap is nearly zero
+        interaction_term = 100.0f;
+    }
+    
+    // Full acceleration
+    float acc = p->a * (free_term - interaction_term);
+    
+    // Clamp to reasonable bounds
+    if (acc < -p->b * 2.0f) acc = -p->b * 2.0f;  // Max emergency braking
+    if (acc > p->a) acc = p->a;                   // Max acceleration
+    
+    return acc;
+}
+
+// ============================================================================
 // Combination Helpers
 // ============================================================================
 
@@ -1222,5 +1500,805 @@ void steering_resolve_agent_collision(SteeringAgent* agent,
             agent->pos.x += agentRadius;
             allAgents[i].pos.x -= agentRadius;
         }
+    }
+}
+
+// ============================================================================
+// Context Steering Implementation
+// ============================================================================
+// Reference: Andrew Fray, "Context Steering" (Game AI Pro 2, Chapter 18)
+// ============================================================================
+
+// Helper: Catmull-Rom spline interpolation for smooth direction selection
+static float ctx_catmull_rom(float p0, float p1, float p2, float p3, float t) {
+    float t2 = t * t;
+    float t3 = t2 * t;
+    return 0.5f * ((2.0f * p1) +
+                   (-p0 + p2) * t +
+                   (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2 +
+                   (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
+}
+
+// Helper: Wrap slot index for circular array access
+static inline int ctx_wrap_slot(int slot, int slotCount) {
+    while (slot < 0) slot += slotCount;
+    while (slot >= slotCount) slot -= slotCount;
+    return slot;
+}
+
+// Helper: Angle difference (shortest path)
+static float ctx_angle_diff(float a, float b) {
+    float diff = b - a;
+    while (diff > PI) diff -= 2.0f * PI;
+    while (diff < -PI) diff += 2.0f * PI;
+    return diff;
+}
+
+void ctx_init(ContextSteering* ctx, int slotCount) {
+    if (slotCount < 4) slotCount = 4;
+    if (slotCount > CTX_MAX_SLOTS) slotCount = CTX_MAX_SLOTS;
+    
+    ctx->slotCount = slotCount;
+    ctx->interest.slotCount = slotCount;
+    ctx->danger.slotCount = slotCount;
+    ctx->prevInterest.slotCount = slotCount;
+    ctx->prevDanger.slotCount = slotCount;
+    
+    // Precompute slot directions (evenly distributed around the circle)
+    float angleStep = (2.0f * PI) / slotCount;
+    for (int i = 0; i < slotCount; i++) {
+        float angle = i * angleStep;
+        ctx->slotAngles[i] = angle;
+        ctx->slotDirections[i] = (Vector2){cosf(angle), sinf(angle)};
+    }
+    
+    // Default configuration
+    ctx->dangerThreshold = 0.1f;
+    ctx->interestThreshold = 0.05f;
+    ctx->temporalSmoothing = 0.3f;
+    ctx->dangerDecay = 1.0f;
+    ctx->interestFalloff = 0.5f;
+    ctx->hysteresis = 0.2f;
+    ctx->lastChosenDirection = (Vector2){1.0f, 0.0f};
+    
+    // Clear all maps
+    ctx_clear(ctx);
+}
+
+void ctx_clear(ContextSteering* ctx) {
+    // Save previous maps for temporal smoothing
+    for (int i = 0; i < ctx->slotCount; i++) {
+        ctx->prevInterest.values[i] = ctx->interest.values[i];
+        ctx->prevInterest.distances[i] = ctx->interest.distances[i];
+        ctx->prevDanger.values[i] = ctx->danger.values[i];
+        ctx->prevDanger.distances[i] = ctx->danger.distances[i];
+    }
+    
+    // Clear current maps
+    for (int i = 0; i < ctx->slotCount; i++) {
+        ctx->interest.values[i] = 0.0f;
+        ctx->interest.distances[i] = 1e10f;
+        ctx->danger.values[i] = 0.0f;
+        ctx->danger.distances[i] = 1e10f;
+    }
+}
+
+Vector2 ctx_slot_direction(const ContextSteering* ctx, int slot) {
+    if (slot < 0 || slot >= ctx->slotCount) return (Vector2){1.0f, 0.0f};
+    return ctx->slotDirections[slot];
+}
+
+float ctx_slot_angle(const ContextSteering* ctx, int slot) {
+    if (slot < 0 || slot >= ctx->slotCount) return 0.0f;
+    return ctx->slotAngles[slot];
+}
+
+int ctx_direction_to_slot(const ContextSteering* ctx, Vector2 direction) {
+    float len = steering_vec_length(direction);
+    if (len < 1e-6f) return 0;
+    
+    float angle = atan2f(direction.y, direction.x);
+    if (angle < 0) angle += 2.0f * PI;
+    
+    float angleStep = (2.0f * PI) / ctx->slotCount;
+    int slot = (int)((angle + angleStep * 0.5f) / angleStep) % ctx->slotCount;
+    return slot;
+}
+
+float ctx_get_interest(const ContextSteering* ctx, int slot) {
+    if (slot < 0 || slot >= ctx->slotCount) return 0.0f;
+    return ctx->interest.values[slot];
+}
+
+float ctx_get_danger(const ContextSteering* ctx, int slot) {
+    if (slot < 0 || slot >= ctx->slotCount) return 0.0f;
+    return ctx->danger.values[slot];
+}
+
+float ctx_get_masked_value(const ContextSteering* ctx, int slot) {
+    if (slot < 0 || slot >= ctx->slotCount) return 0.0f;
+    float interest = ctx->interest.values[slot];
+    float danger = ctx->danger.values[slot];
+    return fmaxf(0.0f, interest - danger);
+}
+
+// ============================================================================
+// Map Writing Operations
+// ============================================================================
+
+void ctx_write_slot(ContextMap* map, const ContextSteering* ctx,
+                    Vector2 direction, float value, float distance, int mode) {
+    int slot = ctx_direction_to_slot(ctx, direction);
+    
+    switch (mode) {
+        case 0: // Max mode (keep highest)
+            if (value > map->values[slot]) {
+                map->values[slot] = value;
+                map->distances[slot] = distance;
+            }
+            break;
+        case 1: // Add mode (cumulative)
+            map->values[slot] += value;
+            if (distance < map->distances[slot]) {
+                map->distances[slot] = distance;
+            }
+            break;
+        case 2: // Replace mode
+            map->values[slot] = value;
+            map->distances[slot] = distance;
+            break;
+    }
+}
+
+void ctx_write_slot_spread(ContextMap* map, const ContextSteering* ctx,
+                           Vector2 direction, float value, float distance, float spreadAngle) {
+    int centerSlot = ctx_direction_to_slot(ctx, direction);
+    float angleStep = (2.0f * PI) / ctx->slotCount;
+    
+    // Calculate how many slots the spread covers
+    int spreadSlots = (int)(spreadAngle / angleStep) + 1;
+    
+    for (int offset = -spreadSlots; offset <= spreadSlots; offset++) {
+        int slot = ctx_wrap_slot(centerSlot + offset, ctx->slotCount);
+        
+        // Calculate falloff based on angular distance from center
+        float slotAngle = ctx->slotAngles[slot];
+        float centerAngle = ctx->slotAngles[centerSlot];
+        float angleDist = fabsf(ctx_angle_diff(slotAngle, centerAngle));
+        
+        // Cosine falloff for smooth spread
+        float falloff = 1.0f;
+        if (spreadAngle > 0.001f) {
+            falloff = fmaxf(0.0f, cosf((angleDist / spreadAngle) * (PI * 0.5f)));
+        }
+        
+        float spreadValue = value * falloff;
+        
+        // Write with max mode
+        if (spreadValue > map->values[slot]) {
+            map->values[slot] = spreadValue;
+            map->distances[slot] = distance;
+        }
+    }
+}
+
+void ctx_blur_map(ContextMap* map, int slotCount, float blurStrength) {
+    if (blurStrength < 0.001f) return;
+    
+    float temp[CTX_MAX_SLOTS];
+    
+    // Simple 3-tap blur kernel [0.25, 0.5, 0.25]
+    for (int i = 0; i < slotCount; i++) {
+        int prev = ctx_wrap_slot(i - 1, slotCount);
+        int next = ctx_wrap_slot(i + 1, slotCount);
+        
+        float blurred = map->values[prev] * 0.25f +
+                        map->values[i] * 0.5f +
+                        map->values[next] * 0.25f;
+        
+        // Blend between original and blurred
+        temp[i] = map->values[i] * (1.0f - blurStrength) + blurred * blurStrength;
+    }
+    
+    for (int i = 0; i < slotCount; i++) {
+        map->values[i] = temp[i];
+    }
+}
+
+void ctx_merge_maps(ContextMap* dest, const ContextMap* sources, int sourceCount, int slotCount) {
+    // Take maximum value from all sources for each slot
+    for (int i = 0; i < slotCount; i++) {
+        dest->values[i] = 0.0f;
+        dest->distances[i] = 1e10f;
+        
+        for (int s = 0; s < sourceCount; s++) {
+            if (sources[s].values[i] > dest->values[i]) {
+                dest->values[i] = sources[s].values[i];
+                dest->distances[i] = sources[s].distances[i];
+            }
+        }
+    }
+}
+
+void ctx_apply_temporal_smoothing(ContextSteering* ctx) {
+    float blend = ctx->temporalSmoothing;
+    
+    for (int i = 0; i < ctx->slotCount; i++) {
+        // Blend current with previous
+        ctx->interest.values[i] = ctx->interest.values[i] * (1.0f - blend) +
+                                   ctx->prevInterest.values[i] * blend;
+        ctx->danger.values[i] = ctx->danger.values[i] * (1.0f - blend) +
+                                 ctx->prevDanger.values[i] * blend;
+    }
+}
+
+// ============================================================================
+// Direction Selection
+// ============================================================================
+
+Vector2 ctx_get_direction(ContextSteering* ctx, float* outSpeed) {
+    // Apply temporal smoothing if enabled
+    if (ctx->temporalSmoothing > 0.001f) {
+        ctx_apply_temporal_smoothing(ctx);
+    }
+    
+    // Step 1: Find minimum danger value
+    float minDanger = 1e10f;
+    for (int i = 0; i < ctx->slotCount; i++) {
+        if (ctx->danger.values[i] < minDanger) {
+            minDanger = ctx->danger.values[i];
+        }
+    }
+    
+    // Step 2: Mask slots - interest only counts where danger is at minimum (or near it)
+    float maskedValues[CTX_MAX_SLOTS];
+    for (int i = 0; i < ctx->slotCount; i++) {
+        float danger = ctx->danger.values[i];
+        float interest = ctx->interest.values[i];
+        
+        // Slot is "safe" if danger is at or near minimum
+        float dangerMargin = minDanger + ctx->dangerThreshold;
+        if (danger <= dangerMargin) {
+            maskedValues[i] = interest;
+        } else {
+            // Danger masks this slot - reduce interest proportionally
+            float dangerFactor = (danger - dangerMargin) / (1.0f - dangerMargin + 0.001f);
+            maskedValues[i] = interest * fmaxf(0.0f, 1.0f - dangerFactor);
+        }
+        
+        // Apply interest threshold
+        if (maskedValues[i] < ctx->interestThreshold) {
+            maskedValues[i] = 0.0f;
+        }
+    }
+    
+    // Step 3: Add hysteresis (bias toward previous direction)
+    if (ctx->hysteresis > 0.001f) {
+        int prevSlot = ctx_direction_to_slot(ctx, ctx->lastChosenDirection);
+        maskedValues[prevSlot] += ctx->hysteresis;
+        
+        // Also boost adjacent slots slightly for smoother transitions
+        int prevLeft = ctx_wrap_slot(prevSlot - 1, ctx->slotCount);
+        int prevRight = ctx_wrap_slot(prevSlot + 1, ctx->slotCount);
+        maskedValues[prevLeft] += ctx->hysteresis * 0.5f;
+        maskedValues[prevRight] += ctx->hysteresis * 0.5f;
+    }
+    
+    // Step 4: Find slot with highest masked value
+    int bestSlot = 0;
+    float bestValue = -1e10f;
+    
+    for (int i = 0; i < ctx->slotCount; i++) {
+        if (maskedValues[i] > bestValue) {
+            bestValue = maskedValues[i];
+            bestSlot = i;
+        }
+    }
+    
+    // Calculate speed based on interest strength
+    if (outSpeed) {
+        *outSpeed = fminf(1.0f, bestValue);
+    }
+    
+    // Update last chosen direction
+    ctx->lastChosenDirection = ctx->slotDirections[bestSlot];
+    
+    return ctx->slotDirections[bestSlot];
+}
+
+Vector2 ctx_get_direction_smooth(ContextSteering* ctx, float* outSpeed) {
+    // Apply temporal smoothing if enabled
+    if (ctx->temporalSmoothing > 0.001f) {
+        ctx_apply_temporal_smoothing(ctx);
+    }
+    
+    // Calculate masked values (same as ctx_get_direction)
+    float minDanger = 1e10f;
+    for (int i = 0; i < ctx->slotCount; i++) {
+        if (ctx->danger.values[i] < minDanger) {
+            minDanger = ctx->danger.values[i];
+        }
+    }
+    
+    float maskedValues[CTX_MAX_SLOTS];
+    for (int i = 0; i < ctx->slotCount; i++) {
+        float danger = ctx->danger.values[i];
+        float interest = ctx->interest.values[i];
+        
+        float dangerMargin = minDanger + ctx->dangerThreshold;
+        if (danger <= dangerMargin) {
+            maskedValues[i] = interest;
+        } else {
+            float dangerFactor = (danger - dangerMargin) / (1.0f - dangerMargin + 0.001f);
+            maskedValues[i] = interest * fmaxf(0.0f, 1.0f - dangerFactor);
+        }
+        
+        if (maskedValues[i] < ctx->interestThreshold) {
+            maskedValues[i] = 0.0f;
+        }
+    }
+    
+    // Add hysteresis
+    if (ctx->hysteresis > 0.001f) {
+        int prevSlot = ctx_direction_to_slot(ctx, ctx->lastChosenDirection);
+        maskedValues[prevSlot] += ctx->hysteresis;
+        maskedValues[ctx_wrap_slot(prevSlot - 1, ctx->slotCount)] += ctx->hysteresis * 0.5f;
+        maskedValues[ctx_wrap_slot(prevSlot + 1, ctx->slotCount)] += ctx->hysteresis * 0.5f;
+    }
+    
+    // Find best slot
+    int bestSlot = 0;
+    float bestValue = -1e10f;
+    
+    for (int i = 0; i < ctx->slotCount; i++) {
+        if (maskedValues[i] > bestValue) {
+            bestValue = maskedValues[i];
+            bestSlot = i;
+        }
+    }
+    
+    // Sub-slot interpolation using Catmull-Rom spline
+    // Get 4 neighboring values for spline
+    int p0 = ctx_wrap_slot(bestSlot - 1, ctx->slotCount);
+    int p1 = bestSlot;
+    int p2 = ctx_wrap_slot(bestSlot + 1, ctx->slotCount);
+    int p3 = ctx_wrap_slot(bestSlot + 2, ctx->slotCount);
+    
+    // Find the peak of the spline between p1 and p2
+    // Sample at multiple points and find maximum
+    float bestT = 0.0f;
+    float bestSplineValue = maskedValues[p1];
+    
+    for (int sample = 0; sample <= 10; sample++) {
+        float t = sample / 10.0f;
+        float splineValue = ctx_catmull_rom(
+            maskedValues[p0], maskedValues[p1],
+            maskedValues[p2], maskedValues[p3], t);
+        
+        if (splineValue > bestSplineValue) {
+            bestSplineValue = splineValue;
+            bestT = t;
+        }
+    }
+    
+    // Also check the left side (between p0 and p1)
+    int pp0 = ctx_wrap_slot(bestSlot - 2, ctx->slotCount);
+    for (int sample = 0; sample <= 10; sample++) {
+        float t = sample / 10.0f;
+        float splineValue = ctx_catmull_rom(
+            maskedValues[pp0], maskedValues[p0],
+            maskedValues[p1], maskedValues[p2], t);
+        
+        if (splineValue > bestSplineValue) {
+            bestSplineValue = splineValue;
+            bestT = t - 1.0f;  // Negative offset indicates left side
+        }
+    }
+    
+    // Interpolate angle
+    float angleStep = (2.0f * PI) / ctx->slotCount;
+    float interpolatedAngle = ctx->slotAngles[bestSlot] + bestT * angleStep;
+    
+    Vector2 result = {cosf(interpolatedAngle), sinf(interpolatedAngle)};
+    
+    if (outSpeed) {
+        *outSpeed = fminf(1.0f, bestSplineValue);
+    }
+    
+    ctx->lastChosenDirection = result;
+    return result;
+}
+
+// ============================================================================
+// Interest Behaviors
+// ============================================================================
+
+void ctx_interest_seek(ContextSteering* ctx, Vector2 agentPos, Vector2 target, float strength) {
+    Vector2 toTarget = vec_sub(target, agentPos);
+    float distance = steering_vec_length(toTarget);
+    
+    if (distance < 1.0f) return;  // Already at target
+    
+    Vector2 direction = vec_mul(toTarget, 1.0f / distance);
+    
+    // Write with spread so adjacent slots get some interest too
+    float spreadAngle = (2.0f * PI) / ctx->slotCount;  // One slot width
+    ctx_write_slot_spread(&ctx->interest, ctx, direction, strength, distance, spreadAngle);
+}
+
+void ctx_interest_pursuit(ContextSteering* ctx, Vector2 agentPos, Vector2 agentVel,
+                          Vector2 targetPos, Vector2 targetVel, float strength, float maxPrediction) {
+    // Predict future position
+    Vector2 toTarget = vec_sub(targetPos, agentPos);
+    float distance = steering_vec_length(toTarget);
+    
+    if (distance < 1.0f) return;
+    
+    float speed = steering_vec_length(agentVel);
+    float prediction = (speed > 1.0f) ? distance / speed : maxPrediction;
+    if (prediction > maxPrediction) prediction = maxPrediction;
+    
+    Vector2 predictedPos = vec_add(targetPos, vec_mul(targetVel, prediction));
+    
+    ctx_interest_seek(ctx, agentPos, predictedPos, strength);
+}
+
+void ctx_interest_waypoints(ContextSteering* ctx, Vector2 agentPos,
+                            const Vector2* waypoints, int waypointCount, float strength) {
+    if (waypointCount == 0) return;
+    
+    // Find closest waypoint
+    float closestDist = 1e10f;
+    int closestIdx = 0;
+    
+    for (int i = 0; i < waypointCount; i++) {
+        float dist = steering_vec_distance(agentPos, waypoints[i]);
+        if (dist < closestDist) {
+            closestDist = dist;
+            closestIdx = i;
+        }
+    }
+    
+    // Primary interest toward closest waypoint
+    ctx_interest_seek(ctx, agentPos, waypoints[closestIdx], strength);
+    
+    // Secondary interest toward next waypoint (for smoother paths)
+    int nextIdx = (closestIdx + 1) % waypointCount;
+    if (nextIdx != closestIdx) {
+        float nextDist = steering_vec_distance(agentPos, waypoints[nextIdx]);
+        float nextStrength = strength * 0.5f * (closestDist / (closestDist + nextDist));
+        ctx_interest_seek(ctx, agentPos, waypoints[nextIdx], nextStrength);
+    }
+}
+
+void ctx_interest_velocity(ContextSteering* ctx, Vector2 velocity, float strength) {
+    float speed = steering_vec_length(velocity);
+    if (speed < 1.0f) return;
+    
+    Vector2 direction = vec_mul(velocity, 1.0f / speed);
+    
+    // Momentum interest - spread wider for smoother turns
+    float spreadAngle = (2.0f * PI) / ctx->slotCount * 1.5f;
+    ctx_write_slot_spread(&ctx->interest, ctx, direction, strength, 0.0f, spreadAngle);
+}
+
+void ctx_interest_openness(ContextSteering* ctx, Vector2 agentPos,
+                           const CircleObstacle* obstacles, int obstacleCount,
+                           const Wall* walls, int wallCount, float strength) {
+    // Cast rays in each slot direction and measure "openness"
+    float maxLookahead = 200.0f;
+    
+    for (int slot = 0; slot < ctx->slotCount; slot++) {
+        Vector2 dir = ctx->slotDirections[slot];
+        float minDist = maxLookahead;
+        
+        // Check obstacles
+        for (int i = 0; i < obstacleCount; i++) {
+            // Simple ray-circle intersection
+            Vector2 toCenter = vec_sub(obstacles[i].center, agentPos);
+            float proj = vec_dot(toCenter, dir);
+            if (proj < 0 || proj > maxLookahead) continue;
+            
+            Vector2 closest = vec_add(agentPos, vec_mul(dir, proj));
+            float perpDist = steering_vec_distance(closest, obstacles[i].center);
+            
+            if (perpDist < obstacles[i].radius) {
+                float hitDist = proj - sqrtf(obstacles[i].radius * obstacles[i].radius - perpDist * perpDist);
+                if (hitDist > 0 && hitDist < minDist) {
+                    minDist = hitDist;
+                }
+            }
+        }
+        
+        // Check walls (simplified ray-line intersection)
+        for (int i = 0; i < wallCount; i++) {
+            Vector2 wallVec = vec_sub(walls[i].end, walls[i].start);
+            Vector2 rayVec = vec_mul(dir, maxLookahead);
+            
+            float d = rayVec.x * (-wallVec.y) - rayVec.y * (-wallVec.x);
+            if (fabsf(d) < 1e-6f) continue;
+            
+            Vector2 toWallStart = vec_sub(walls[i].start, agentPos);
+            float t = (toWallStart.x * (-wallVec.y) - toWallStart.y * (-wallVec.x)) / d;
+            float u = (toWallStart.x * rayVec.y - toWallStart.y * rayVec.x) / d;
+            
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                float hitDist = t * maxLookahead;
+                if (hitDist < minDist) {
+                    minDist = hitDist;
+                }
+            }
+        }
+        
+        // Openness is proportional to ray distance
+        float openness = minDist / maxLookahead;
+        ctx->interest.values[slot] += openness * strength;
+    }
+}
+
+void ctx_interest_flow(ContextSteering* ctx, Vector2 agentPos,
+                       Vector2 (*getFlowDirection)(Vector2 pos), float strength) {
+    if (!getFlowDirection) return;
+    
+    Vector2 flowDir = getFlowDirection(agentPos);
+    float flowLen = steering_vec_length(flowDir);
+    
+    if (flowLen > 0.001f) {
+        flowDir = vec_mul(flowDir, 1.0f / flowLen);
+        ctx_write_slot_spread(&ctx->interest, ctx, flowDir, strength, 0.0f,
+                              (2.0f * PI) / ctx->slotCount);
+    }
+}
+
+// ============================================================================
+// Danger Behaviors
+// ============================================================================
+
+void ctx_danger_obstacles(ContextSteering* ctx, Vector2 agentPos, float agentRadius,
+                          const CircleObstacle* obstacles, int obstacleCount,
+                          float falloffDistance) {
+    for (int i = 0; i < obstacleCount; i++) {
+        Vector2 toObstacle = vec_sub(obstacles[i].center, agentPos);
+        float distance = steering_vec_length(toObstacle);
+        float surfaceDist = distance - obstacles[i].radius - agentRadius;
+        
+        if (surfaceDist > falloffDistance) continue;  // Too far to matter
+        
+        // Direction toward obstacle
+        Vector2 direction = (distance > 0.001f) ?
+            vec_mul(toObstacle, 1.0f / distance) : (Vector2){1.0f, 0.0f};
+        
+        // Danger strength (exponential falloff)
+        float danger;
+        if (surfaceDist <= 0) {
+            danger = 1.0f;  // Maximum danger if touching/inside
+        } else {
+            danger = 1.0f - (surfaceDist / falloffDistance);
+            danger = danger * danger;  // Quadratic falloff (stronger close up)
+        }
+        
+        // Angular spread based on obstacle's apparent size
+        float apparentSize = atan2f(obstacles[i].radius, fmaxf(1.0f, distance));
+        float spreadAngle = apparentSize + (PI / ctx->slotCount);
+        
+        ctx_write_slot_spread(&ctx->danger, ctx, direction, danger, surfaceDist, spreadAngle);
+    }
+}
+
+void ctx_danger_walls(ContextSteering* ctx, Vector2 agentPos, float agentRadius,
+                      const Wall* walls, int wallCount, float lookahead) {
+    // Cast a ray in each slot direction
+    for (int slot = 0; slot < ctx->slotCount; slot++) {
+        Vector2 dir = ctx->slotDirections[slot];
+        float minDist = lookahead;
+        
+        for (int w = 0; w < wallCount; w++) {
+            Vector2 wallVec = vec_sub(walls[w].end, walls[w].start);
+            Vector2 rayVec = vec_mul(dir, lookahead);
+            
+            float d = rayVec.x * (-wallVec.y) - rayVec.y * (-wallVec.x);
+            if (fabsf(d) < 1e-6f) continue;
+            
+            Vector2 toWallStart = vec_sub(walls[w].start, agentPos);
+            float t = (toWallStart.x * (-wallVec.y) - toWallStart.y * (-wallVec.x)) / d;
+            float u = (toWallStart.x * rayVec.y - toWallStart.y * rayVec.x) / d;
+            
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+                float hitDist = t * lookahead - agentRadius;
+                if (hitDist < minDist) {
+                    minDist = hitDist;
+                }
+            }
+        }
+        
+        // Also check proximity to wall segments (not just ray hits)
+        for (int w = 0; w < wallCount; w++) {
+            // Check if slot direction points roughly toward this wall
+            Vector2 wallMid = vec_mul(vec_add(walls[w].start, walls[w].end), 0.5f);
+            Vector2 toWall = vec_sub(wallMid, agentPos);
+            float wallDist = steering_vec_length(toWall);
+            
+            if (wallDist > lookahead * 2) continue;
+            
+            // Find closest point on wall to agent
+            Vector2 wallVec = vec_sub(walls[w].end, walls[w].start);
+            float wallLen = steering_vec_length(wallVec);
+            if (wallLen < 0.001f) continue;
+            
+            Vector2 wallDir = vec_mul(wallVec, 1.0f / wallLen);
+            Vector2 toAgent = vec_sub(agentPos, walls[w].start);
+            float proj = vec_dot(toAgent, wallDir);
+            proj = clamp(proj, 0, wallLen);
+            
+            Vector2 closestPoint = vec_add(walls[w].start, vec_mul(wallDir, proj));
+            Vector2 toClosest = vec_sub(closestPoint, agentPos);
+            float closestDist = steering_vec_length(toClosest);
+            
+            if (closestDist < minDist && closestDist < lookahead) {
+                // Check if this slot points toward the closest point
+                if (closestDist > 0.001f) {
+                    Vector2 closestDir = vec_mul(toClosest, 1.0f / closestDist);
+                    float alignment = vec_dot(dir, closestDir);
+                    if (alignment > 0.7f) {
+                        minDist = closestDist - agentRadius;
+                    }
+                }
+            }
+        }
+        
+        // Convert distance to danger
+        if (minDist < lookahead) {
+            float danger = 1.0f - (fmaxf(0.0f, minDist) / lookahead);
+            danger = danger * danger;  // Quadratic falloff
+            
+            if (danger > ctx->danger.values[slot]) {
+                ctx->danger.values[slot] = danger;
+                ctx->danger.distances[slot] = minDist;
+            }
+        }
+    }
+}
+
+void ctx_danger_agents(ContextSteering* ctx, Vector2 agentPos,
+                       const Vector2* otherPositions, int otherCount,
+                       float personalSpace, float falloffDistance) {
+    for (int i = 0; i < otherCount; i++) {
+        Vector2 toOther = vec_sub(otherPositions[i], agentPos);
+        float distance = steering_vec_length(toOther);
+        
+        if (distance > personalSpace + falloffDistance) continue;
+        if (distance < 0.001f) continue;
+        
+        Vector2 direction = vec_mul(toOther, 1.0f / distance);
+        
+        // Danger based on proximity
+        float danger;
+        if (distance <= personalSpace) {
+            danger = 1.0f;
+        } else {
+            float excess = distance - personalSpace;
+            danger = 1.0f - (excess / falloffDistance);
+        }
+        danger = fmaxf(0.0f, danger);
+        
+        // Spread to cover the "width" of the other agent
+        float spreadAngle = atan2f(personalSpace * 0.5f, fmaxf(1.0f, distance)) +
+                           (PI / ctx->slotCount);
+        
+        ctx_write_slot_spread(&ctx->danger, ctx, direction, danger, distance, spreadAngle);
+    }
+}
+
+void ctx_danger_agents_predictive(ContextSteering* ctx, Vector2 agentPos, Vector2 agentVel,
+                                  const Vector2* otherPositions, const Vector2* otherVelocities,
+                                  int otherCount, float personalSpace, float timeHorizon) {
+    for (int i = 0; i < otherCount; i++) {
+        Vector2 relPos = vec_sub(otherPositions[i], agentPos);
+        Vector2 relVel = vec_sub(otherVelocities[i], agentVel);
+        float relSpeed2 = vec_len_sq(relVel);
+        
+        // Find time to closest approach
+        float tca = 0;
+        if (relSpeed2 > 1.0f) {
+            tca = -vec_dot(relPos, relVel) / relSpeed2;
+        }
+        tca = clamp(tca, 0, timeHorizon);
+        
+        // Position at closest approach
+        Vector2 futureRelPos = vec_add(relPos, vec_mul(relVel, tca));
+        float futureDist = steering_vec_length(futureRelPos);
+        
+        // Current distance also matters
+        float currentDist = steering_vec_length(relPos);
+        
+        // Use the more concerning distance
+        float effectiveDist = fminf(currentDist, futureDist);
+        
+        if (effectiveDist > personalSpace * 3) continue;
+        if (currentDist < 0.001f) continue;
+        
+        // Direction toward current position (we avoid where they are/will be)
+        Vector2 currentDir = vec_mul(relPos, 1.0f / currentDist);
+        
+        // Danger based on closest approach
+        float danger = 1.0f - (effectiveDist / (personalSpace * 3));
+        danger = fmaxf(0.0f, danger);
+        
+        // Urgency increases for imminent collisions
+        if (tca < timeHorizon * 0.5f && futureDist < personalSpace) {
+            danger = fminf(1.0f, danger * 1.5f);
+        }
+        
+        float spreadAngle = atan2f(personalSpace, fmaxf(1.0f, effectiveDist)) +
+                           (PI / ctx->slotCount);
+        
+        ctx_write_slot_spread(&ctx->danger, ctx, currentDir, danger, effectiveDist, spreadAngle);
+    }
+}
+
+void ctx_danger_threats(ContextSteering* ctx, Vector2 agentPos,
+                        const Vector2* threatPositions, int threatCount,
+                        float panicRadius, float awareRadius) {
+    for (int i = 0; i < threatCount; i++) {
+        Vector2 toThreat = vec_sub(threatPositions[i], agentPos);
+        float distance = steering_vec_length(toThreat);
+        
+        if (distance > awareRadius) continue;
+        if (distance < 0.001f) continue;
+        
+        Vector2 direction = vec_mul(toThreat, 1.0f / distance);
+        
+        // Danger is maximum within panic radius, then falls off
+        float danger;
+        if (distance <= panicRadius) {
+            danger = 1.0f;
+        } else {
+            float t = (distance - panicRadius) / (awareRadius - panicRadius);
+            danger = 1.0f - t * t;  // Quadratic falloff
+        }
+        
+        // Threats project a wide danger cone
+        float spreadAngle = PI * 0.25f;  // 45 degrees
+        if (distance < panicRadius) {
+            spreadAngle = PI * 0.4f;  // Wider when very close
+        }
+        
+        ctx_write_slot_spread(&ctx->danger, ctx, direction, danger, distance, spreadAngle);
+    }
+}
+
+void ctx_danger_bounds(ContextSteering* ctx, Vector2 agentPos, Rectangle bounds, float margin) {
+    // Check each boundary
+    float leftDist = agentPos.x - bounds.x;
+    float rightDist = (bounds.x + bounds.width) - agentPos.x;
+    float topDist = agentPos.y - bounds.y;
+    float bottomDist = (bounds.y + bounds.height) - agentPos.y;
+    
+    // Left boundary
+    if (leftDist < margin) {
+        float danger = 1.0f - (leftDist / margin);
+        ctx_write_slot_spread(&ctx->danger, ctx, (Vector2){-1, 0}, danger, leftDist,
+                              PI * 0.4f);
+    }
+    
+    // Right boundary
+    if (rightDist < margin) {
+        float danger = 1.0f - (rightDist / margin);
+        ctx_write_slot_spread(&ctx->danger, ctx, (Vector2){1, 0}, danger, rightDist,
+                              PI * 0.4f);
+    }
+    
+    // Top boundary
+    if (topDist < margin) {
+        float danger = 1.0f - (topDist / margin);
+        ctx_write_slot_spread(&ctx->danger, ctx, (Vector2){0, -1}, danger, topDist,
+                              PI * 0.4f);
+    }
+    
+    // Bottom boundary
+    if (bottomDist < margin) {
+        float danger = 1.0f - (bottomDist / margin);
+        ctx_write_slot_spread(&ctx->danger, ctx, (Vector2){0, 1}, danger, bottomDist,
+                              PI * 0.4f);
     }
 }
