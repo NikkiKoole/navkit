@@ -1,5 +1,5 @@
 #include "terrain.h"
-#include "raylib.h"
+#include "../vendor/raylib.h"
 #include <math.h>
 
 // Simple Perlin-like noise

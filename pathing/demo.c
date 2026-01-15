@@ -1,4 +1,4 @@
-#include "raylib.h"
+#include "../vendor/raylib.h"
 #include "grid.h"
 #include "terrain.h"
 #include "pathfinding.h"
@@ -265,8 +265,8 @@ void HandleInput(void) {
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
-    texGrass = LoadTexture("grass.png");
-    texWall = LoadTexture("wall.png");
+    texGrass = LoadTexture("assets/grass.png");
+    texWall = LoadTexture("assets/wall.png");
     SetTargetFPS(60);
     InitGrid();
     //InitGridWithSizeAndChunkSize(128, 128, 32, 16);

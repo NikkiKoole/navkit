@@ -1,9 +1,9 @@
-#include "c89spec.h"
-#include "raylib.h"
+#include "../vendor/c89spec.h"
+#include "../vendor/raylib.h"
 #include <stdlib.h>
-#include "../hpa-star-tests/grid.h"
-#include "../hpa-star-tests/terrain.h"
-#include "../hpa-star-tests/pathfinding.h"
+#include "../pathing/grid.h"
+#include "../pathing/terrain.h"
+#include "../pathing/pathfinding.h"
 
 // Test grid size - 4x4 chunks = 128x128 cells
 #define TEST_GRID_SIZE (DEFAULT_CHUNK_SIZE * 3)

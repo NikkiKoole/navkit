@@ -1,5 +1,5 @@
 #include "pathfinding.h"
-#include "raylib.h"
+#include "../vendor/raylib.h"
 #include <stdlib.h>
 
 // State
@@ -102,7 +102,127 @@ static int HeapPop(void) {
     return result;
 }
 
+// ============================================================================
+// Binary heap for chunk-level A* (uses grid coordinates packed as x + y * MAX_GRID_WIDTH)
+// ============================================================================
+#define CHUNK_HEAP_CAPACITY (MAX_GRID_WIDTH * MAX_GRID_HEIGHT / 4)  // Quarter of max grid
 
+typedef struct {
+    int* nodes;      // Packed coordinates (x + y * MAX_GRID_WIDTH)
+    int size;
+    int capacity;
+} ChunkHeap;
+
+static ChunkHeap chunkHeap;
+static int chunkHeapStorage[CHUNK_HEAP_CAPACITY];
+
+// Heap position tracking for decrease-key operation
+static int heapPos[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+static inline int PackCoord(int x, int y) { return x + y * MAX_GRID_WIDTH; }
+static inline int UnpackX(int packed) { return packed % MAX_GRID_WIDTH; }
+static inline int UnpackY(int packed) { return packed / MAX_GRID_WIDTH; }
+
+static void ChunkHeapInit(void) {
+    chunkHeap.nodes = chunkHeapStorage;
+    chunkHeap.size = 0;
+    chunkHeap.capacity = CHUNK_HEAP_CAPACITY;
+}
+
+static void ChunkHeapSwap(int i, int j) {
+    int nodeI = chunkHeap.nodes[i];
+    int nodeJ = chunkHeap.nodes[j];
+    chunkHeap.nodes[i] = nodeJ;
+    chunkHeap.nodes[j] = nodeI;
+    // Update position tracking
+    heapPos[UnpackY(nodeI)][UnpackX(nodeI)] = j;
+    heapPos[UnpackY(nodeJ)][UnpackX(nodeJ)] = i;
+}
+
+static void ChunkHeapBubbleUp(int idx) {
+    while (idx > 0) {
+        int parent = (idx - 1) / 2;
+        int cx = UnpackX(chunkHeap.nodes[idx]);
+        int cy = UnpackY(chunkHeap.nodes[idx]);
+        int px = UnpackX(chunkHeap.nodes[parent]);
+        int py = UnpackY(chunkHeap.nodes[parent]);
+        if (nodeData[cy][cx].f < nodeData[py][px].f) {
+            ChunkHeapSwap(idx, parent);
+            idx = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+static void ChunkHeapBubbleDown(int idx) {
+    while (1) {
+        int left = 2 * idx + 1;
+        int right = 2 * idx + 2;
+        int smallest = idx;
+        
+        int sx = UnpackX(chunkHeap.nodes[smallest]);
+        int sy = UnpackY(chunkHeap.nodes[smallest]);
+        int smallestF = nodeData[sy][sx].f;
+        
+        if (left < chunkHeap.size) {
+            int lx = UnpackX(chunkHeap.nodes[left]);
+            int ly = UnpackY(chunkHeap.nodes[left]);
+            if (nodeData[ly][lx].f < smallestF) {
+                smallest = left;
+                smallestF = nodeData[ly][lx].f;
+            }
+        }
+        if (right < chunkHeap.size) {
+            int rx = UnpackX(chunkHeap.nodes[right]);
+            int ry = UnpackY(chunkHeap.nodes[right]);
+            if (nodeData[ry][rx].f < smallestF) {
+                smallest = right;
+            }
+        }
+        
+        if (smallest != idx) {
+            ChunkHeapSwap(idx, smallest);
+            idx = smallest;
+        } else {
+            break;
+        }
+    }
+}
+
+static void ChunkHeapPush(int x, int y) {
+    if (chunkHeap.size >= chunkHeap.capacity) return;
+    int packed = PackCoord(x, y);
+    int idx = chunkHeap.size;
+    chunkHeap.nodes[idx] = packed;
+    heapPos[y][x] = idx;
+    chunkHeap.size++;
+    ChunkHeapBubbleUp(idx);
+}
+
+static bool ChunkHeapPop(int* outX, int* outY) {
+    if (chunkHeap.size == 0) return false;
+    int packed = chunkHeap.nodes[0];
+    *outX = UnpackX(packed);
+    *outY = UnpackY(packed);
+    heapPos[*outY][*outX] = -1;
+    chunkHeap.size--;
+    if (chunkHeap.size > 0) {
+        chunkHeap.nodes[0] = chunkHeap.nodes[chunkHeap.size];
+        int nx = UnpackX(chunkHeap.nodes[0]);
+        int ny = UnpackY(chunkHeap.nodes[0]);
+        heapPos[ny][nx] = 0;
+        ChunkHeapBubbleDown(0);
+    }
+    return true;
+}
+
+static void ChunkHeapDecreaseKey(int x, int y) {
+    int idx = heapPos[y][x];
+    if (idx >= 0 && idx < chunkHeap.size) {
+        ChunkHeapBubbleUp(idx);
+    }
+}
 
 // Movement direction mode
 bool use8Dir = true;
@@ -198,10 +318,15 @@ void BuildEntrances(void) {
 }
 
 int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+    // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
-        for (int x = minX; x < maxX; x++)
+        for (int x = minX; x < maxX; x++) {
             nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            heapPos[y][x] = -1;
+        }
 
+    ChunkHeapInit();
+    
     nodeData[sy][sx].g = 0;
     if (use8Dir) {
         nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
@@ -209,6 +334,7 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
         nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
     }
     nodeData[sy][sx].open = true;
+    ChunkHeapPush(sx, sy);
 
     int dx4[] = {0, 1, 0, -1};
     int dy4[] = {-1, 0, 1, 0};
@@ -219,19 +345,12 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
     int* dy = use8Dir ? dy8 : dy4;
     int numDirs = use8Dir ? 8 : 4;
 
-    while (1) {
-        int bestX = -1, bestY = -1, bestF = 999999;
-        for (int y = minY; y < maxY; y++)
-            for (int x = minX; x < maxX; x++)
-                if (nodeData[y][x].open && nodeData[y][x].f < bestF) {
-                    bestF = nodeData[y][x].f;
-                    bestX = x;
-                    bestY = y;
-                }
-        if (bestX < 0) return -1;
+    int bestX, bestY;
+    while (ChunkHeapPop(&bestX, &bestY)) {
         if (bestX == gx && bestY == gy) return nodeData[gy][gx].g;
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
+        
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
@@ -246,6 +365,7 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
             int ng = nodeData[bestY][bestX].g + moveCost;
             if (ng < nodeData[ny][nx].g) {
+                bool wasOpen = nodeData[ny][nx].open;
                 nodeData[ny][nx].g = ng;
                 if (use8Dir) {
                     nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
@@ -253,9 +373,15 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
                     nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
                 }
                 nodeData[ny][nx].open = true;
+                if (wasOpen) {
+                    ChunkHeapDecreaseKey(nx, ny);
+                } else {
+                    ChunkHeapPush(nx, ny);
+                }
             }
         }
     }
+    return -1;  // No path found
 }
 
 void BuildGraph(void) {
@@ -751,10 +877,14 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
     maxX += expandX; if (maxX > gridWidth) maxX = gridWidth;
     maxY += expandY; if (maxY > gridHeight) maxY = gridHeight;
     
-    // Run A* in this region
+    // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
-        for (int x = minX; x < maxX; x++)
+        for (int x = minX; x < maxX; x++) {
             nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            heapPos[y][x] = -1;
+        }
+    
+    ChunkHeapInit();
     
     nodeData[sy][sx].g = 0;
     if (use8Dir) {
@@ -763,6 +893,7 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
         nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
     }
     nodeData[sy][sx].open = true;
+    ChunkHeapPush(sx, sy);
     
     int dx4[] = {0, 1, 0, -1};
     int dy4[] = {-1, 0, 1, 0};
@@ -773,16 +904,8 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
     int* dy = use8Dir ? dy8 : dy4;
     int numDirs = use8Dir ? 8 : 4;
     
-    while (1) {
-        int bestX = -1, bestY = -1, bestF = 999999;
-        for (int y = minY; y < maxY; y++)
-            for (int x = minX; x < maxX; x++)
-                if (nodeData[y][x].open && nodeData[y][x].f < bestF) {
-                    bestF = nodeData[y][x].f;
-                    bestX = x;
-                    bestY = y;
-                }
-        if (bestX < 0) return 0;  // No path
+    int bestX, bestY;
+    while (ChunkHeapPop(&bestX, &bestY)) {
         if (bestX == gx && bestY == gy) {
             // Reconstruct path
             int len = 0;
@@ -798,6 +921,7 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
         }
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
+        
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
@@ -812,6 +936,7 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
             int ng = nodeData[bestY][bestX].g + moveCost;
             if (ng < nodeData[ny][nx].g) {
+                bool wasOpen = nodeData[ny][nx].open;
                 nodeData[ny][nx].g = ng;
                 if (use8Dir) {
                     nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
@@ -821,9 +946,15 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
                 nodeData[ny][nx].parentX = bestX;
                 nodeData[ny][nx].parentY = bestY;
                 nodeData[ny][nx].open = true;
+                if (wasOpen) {
+                    ChunkHeapDecreaseKey(nx, ny);
+                } else {
+                    ChunkHeapPush(nx, ny);
+                }
             }
         }
     }
+    return 0;  // No path found
 }
 
 void RunHPAStar(void) {

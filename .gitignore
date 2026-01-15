@@ -1,0 +1,8 @@
+# Build artifacts
+path
+steer
+test
+tests/test_pathfinding
+
+# macOS
+.DS_Store
