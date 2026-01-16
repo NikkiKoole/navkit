@@ -447,6 +447,8 @@ static ArriveScenario arriveScenario = {
     .defaultSlowRadius = 100.0f,
 };
 
+static Vector2 arriveTarget = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+
 // Dock scenario state
 // NOTE: True docking (arrive + align to orientation) requires Vehicle
 // which has explicit orientation control. The basic Boid uses pure Reynolds
@@ -2202,9 +2204,6 @@ static void UpdateDeparture(float dt) {
     SteeringOutput steering = steering_departure(&agents[0], target, departureScenario.slowRadius);
     steering_apply(&agents[0], steering, dt);
     ResolveCollisions(&agents[0], 0);
-
-    // Draw the slow radius circle around mouse
-    DrawCircleLinesV(target, departureScenario.slowRadius, (Color){255, 100, 100, 100});
 }
 
 static void UpdateArrive(float dt) {
@@ -5434,6 +5433,14 @@ static void DrawScenario(void) {
                currentScenario == SCENARIO_DWA_NAVIGATION) {
         // Vehicles are drawn in their update functions
         // Just draw obstacles here
+    } else if (currentScenario == SCENARIO_DEPARTURE) {
+        // Draw agent
+        DrawAgent(&agents[0], SKYBLUE);
+        DrawVelocityVector(&agents[0], GREEN);
+
+        // Draw slow radius around mouse (target)
+        Vector2 target = GetMousePosition();
+        DrawCircleLinesV(target, departureScenario.slowRadius, (Color){255, 100, 100, 100});
     } else if (currentScenario == SCENARIO_FLOW_FIELD) {
         // Draw flow field visualization (grid of arrows)
         const int gridSpacing = 50;
