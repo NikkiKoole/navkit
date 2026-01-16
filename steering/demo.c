@@ -339,76 +339,31 @@ Boid targetAgent;
 // Current scenario
 Scenario currentScenario = SCENARIO_SEEK;
 
-// Patrol waypoints and state
-Vector2 patrolWaypoints[8];
-int patrolWaypointCount = 0;
-int currentPatrolWaypoint = 0;
+// Patrol waypoints and state - now using patrolState struct
 
-// Explore grid
-float exploreGrid[EXPLORE_GRID_WIDTH * EXPLORE_GRID_HEIGHT];
-float exploreTime = 0;
+// Explore grid - now using exploreState struct
 
-// Forage resources
-Vector2 resources[MAX_RESOURCES];
-int resourceCount = 0;
+// Forage resources - now using forageState struct
 
-// Guard position
-Vector2 guardPosition;
+// Guard position - now using guardState struct
 
-// Capture the Flag state
-Vector2 flagPos;
-Vector2 blueBase;
-Vector2 redBase;
-int flagCarrier = -1;  // -1 = no one, 0-2 = blue team, 3-5 = red team
-int blueScore = 0;
-int redScore = 0;
+// Capture the Flag state - now using captureFlagState struct
 
-// Escort convoy path
-Vector2 convoyPath[10];
-int convoyPathCount = 0;
-int convoySegment = 0;
+// Escort convoy state - now using escortConvoyState struct
 
-// Fish school state
-int sharkIndex = 0;  // Which agent is the shark
+// Fish school state - now using fishSharkState struct
 
-// Wolf pack state
-int wolfCount = 4;       // Number of wolves (including alpha)
-int preyStartIndex = 4;  // Prey start at this index
+// Wolf pack state - now using wolfPackState struct
 
-// Evacuation state
-Vector2 fireCenter;
-float fireRadius = 50.0f;
-Vector2 exitPositions[3];
-int exitCount = 2;
+// Evacuation state - now using evacuationState struct
 
-// Traffic state
-int trafficLightState = 0;  // 0 = NS green, 1 = NS yellow, 2 = EW green, 3 = EW yellow
-float trafficTimer = 0;
-int carCount = 0;
-int pedCount = 0;
-
-// IDM car state
+// Traffic state - now using trafficState struct
+// (CarDirection enum kept here for type definition)
 typedef enum { CAR_DIR_NORTH, CAR_DIR_SOUTH, CAR_DIR_EAST, CAR_DIR_WEST } CarDirection;
-CarDirection carDirections[MAX_AGENTS];
-IDMParams carIDM[MAX_AGENTS];
-float carSpeeds[MAX_AGENTS];  // Current speed (separate from vel for IDM)
 
-// Pedestrian crossing state
-Vector2 pedTargets[MAX_AGENTS];  // Target position for each pedestrian
+// Murmuration state - now using murmurationState struct
 
-// Murmuration state
-float waveTime = 0;
-bool waveActive = false;
-Vector2 waveCenter;
-float waveRadius = 0;
-
-// Social Force Model state
-SocialForceParams sfmParams;
-Vector2 sfmGoals[MAX_AGENTS];      // Individual goals for each agent
-int sfmLeftCount = 0;              // Agents going left-to-right
-int sfmRightCount = 0;             // Agents going right-to-left
-int sfmExitCount = 0;              // Number of exits for evacuation
-Vector2 sfmExits[4];               // Exit positions
+// Social Force Model state - now using sfmState struct
 
 // Agent separation toggle (S key)
 bool agentSeparationEnabled = true;
@@ -416,12 +371,7 @@ bool agentSeparationEnabled = true;
 // Collision resolution toggle (C key) - pushes agents apart if they overlap
 bool collisionResolutionEnabled = true;
 
-// Context Steering state
-ContextSteering ctxAgents[MAX_AGENTS];  // One context steering system per agent
-Vector2 ctxTargets[MAX_AGENTS];         // Individual targets for each agent
-Vector2 ctxMazeGoal;                    // Goal position for maze scenario
-int ctxPredatorIndex = 0;               // Which agent is the predator
-bool ctxShowMaps = true;                // Toggle to show interest/danger maps
+// Context Steering state - now using ctxState struct
 
 // Couzin zones state
 CouzinParams couzinParams;
@@ -1183,24 +1133,24 @@ static EscortConvoyState escortConvoyState;
 
 // FishShark state
 typedef struct {
-    int sharkIndex;
+    int sharkIdx;
 } FishSharkState;
 
 static FishSharkState fishSharkState;
 
 // WolfPack state
 typedef struct {
-    int wolfCount;
-    int preyStartIndex;
+    int count;
+    int preyStartIdx;
 } WolfPackState;
 
 static WolfPackState wolfPackState;
 
 // Evacuation state
 typedef struct {
-    Vector2 fireCenter;
-    float fireRadius;
-    Vector2 exitPositions[3];
+    Vector2 center;
+    float radius;
+    Vector2 exits[3];
     int exitCount;
 } EvacuationState;
 
@@ -1210,22 +1160,22 @@ static EvacuationState evacuationState;
 typedef struct {
     int lightState;  // 0 = NS green, 1 = NS yellow, 2 = EW green, 3 = EW yellow
     float timer;
-    int carCount;
-    int pedCount;
-    CarDirection carDirections[MAX_AGENTS];
-    IDMParams carIDM[MAX_AGENTS];
-    float carSpeeds[MAX_AGENTS];
-    Vector2 pedTargets[MAX_AGENTS];
+    int numCars;
+    int numPeds;
+    CarDirection directions[MAX_AGENTS];
+    IDMParams idm[MAX_AGENTS];
+    float speeds[MAX_AGENTS];
+    Vector2 targets[MAX_AGENTS];
 } TrafficState;
 
 static TrafficState trafficState;
 
 // Murmuration state
 typedef struct {
-    float waveTime;
-    bool waveActive;
-    Vector2 waveCenter;
-    float waveRadius;
+    float time;
+    bool active;
+    Vector2 center;
+    float radius;
 } MurmurationState;
 
 static MurmurationState murmurationState;
@@ -1275,17 +1225,7 @@ int vehicleCount = 0;
 int vehiclePathSegments[MAX_AGENTS];  // Per-vehicle path segment tracking
 float vehicleLookahead = 80.0f;
 
-// DWA navigation state (legacy globals - TODO: migrate to dwaState)
-DWAParams dwaParams;
-Vector2 dwaGoal;
-DWAMode dwaMode = DWA_NORMAL;
-float dwaStuckTimer = 0;
-float dwaBackupTimer = 0;
-float dwaTurnTimer = 0;
-float dwaPrevDistToGoal = 0;
-float dwaPrevSpeed = 0;
-float dwaPrevTurnRate = 0;
-int dwaTurnDirection = 0;  // -1 or 1, picked when entering backup
+// DWA navigation state - now using dwaState struct
 
 // Flow field state
 typedef enum {
@@ -1864,15 +1804,15 @@ static void SetupPatrol(void) {
     agents[0].maxForce = patrolScenario.maxForce;
 
     // Set up patrol waypoints in a pattern
-    patrolWaypointCount = 6;
-    patrolWaypoints[0] = (Vector2){200, 200};
-    patrolWaypoints[1] = (Vector2){600, 150};
-    patrolWaypoints[2] = (Vector2){1000, 200};
-    patrolWaypoints[3] = (Vector2){1000, 500};
-    patrolWaypoints[4] = (Vector2){600, 550};
-    patrolWaypoints[5] = (Vector2){200, 500};
+    patrolState.waypointCount = 6;
+    patrolState.waypoints[0] = (Vector2){200, 200};
+    patrolState.waypoints[1] = (Vector2){600, 150};
+    patrolState.waypoints[2] = (Vector2){1000, 200};
+    patrolState.waypoints[3] = (Vector2){1000, 500};
+    patrolState.waypoints[4] = (Vector2){600, 550};
+    patrolState.waypoints[5] = (Vector2){200, 500};
 
-    currentPatrolWaypoint = 0;
+    patrolState.currentWaypoint = 0;
 }
 
 static void SetupExplore(void) {
@@ -1882,9 +1822,9 @@ static void SetupExplore(void) {
     agents[0].maxForce = exploreScenario.maxForce;
 
     // Initialize explore grid (all cells start as "never visited")
-    exploreTime = 0;
+    exploreState.time = 0;
     for (int i = 0; i < EXPLORE_GRID_WIDTH * EXPLORE_GRID_HEIGHT; i++) {
-        exploreGrid[i] = -100.0f; // Very stale
+        exploreState.grid[i] = -100.0f; // Very stale
     }
 }
 
@@ -1900,9 +1840,9 @@ static void SetupForage(void) {
     }
 
     // Scatter resources
-    resourceCount = 20;
-    for (int i = 0; i < resourceCount; i++) {
-        resources[i] = (Vector2){randf(200, SCREEN_WIDTH-100), randf(100, SCREEN_HEIGHT-100)};
+    forageState.resourceCount = 20;
+    for (int i = 0; i < forageState.resourceCount; i++) {
+        forageState.resources[i] = (Vector2){randf(200, SCREEN_WIDTH-100), randf(100, SCREEN_HEIGHT-100)};
     }
 }
 
@@ -1910,13 +1850,13 @@ static void SetupGuard(void) {
     agentCount = 3;
 
     // Three guards at different positions
-    guardPosition = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+    guardState.position = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
 
     for (int i = 0; i < agentCount; i++) {
         float angle = (2 * PI * i) / agentCount;
         Vector2 pos = {
-            guardPosition.x + cosf(angle) * 100,
-            guardPosition.y + sinf(angle) * 100
+            guardState.position.x + cosf(angle) * 100,
+            guardState.position.y + sinf(angle) * 100
         };
         InitAgent(&agents[i], pos);
         agents[i].maxSpeed = guardScenario.maxSpeed;
@@ -1946,7 +1886,7 @@ static void SetupCaptureFlag(void) {
     agentCount = 6;
 
     // Blue team (agents 0-2) on left
-    blueBase = (Vector2){100, SCREEN_HEIGHT/2};
+    captureFlagState.blueBase = (Vector2){100, SCREEN_HEIGHT/2};
     for (int i = 0; i < 3; i++) {
         InitAgent(&agents[i], (Vector2){150, SCREEN_HEIGHT/2 - 50 + i * 50});
         agents[i].maxSpeed = captureFlagScenario.teamSpeed;
@@ -1954,7 +1894,7 @@ static void SetupCaptureFlag(void) {
     }
 
     // Red team (agents 3-5) on right
-    redBase = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
+    captureFlagState.redBase = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
     for (int i = 3; i < 6; i++) {
         InitAgent(&agents[i], (Vector2){SCREEN_WIDTH - 150, SCREEN_HEIGHT/2 - 50 + (i-3) * 50});
         agents[i].maxSpeed = captureFlagScenario.teamSpeed;
@@ -1962,10 +1902,10 @@ static void SetupCaptureFlag(void) {
     }
 
     // Flag in center
-    flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
-    flagCarrier = -1;
-    blueScore = 0;
-    redScore = 0;
+    captureFlagState.flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+    captureFlagState.flagCarrier = -1;
+    captureFlagState.blueScore = 0;
+    captureFlagState.redScore = 0;
 }
 
 static void SetupEscortConvoy(void) {
@@ -1989,17 +1929,17 @@ static void SetupEscortConvoy(void) {
     agents[5].maxSpeed = 80.0f;
 
     // Convoy path
-    convoyPathCount = 6;
-    convoyPath[0] = (Vector2){100, SCREEN_HEIGHT/2};
-    convoyPath[1] = (Vector2){400, 200};
-    convoyPath[2] = (Vector2){700, 400};
-    convoyPath[3] = (Vector2){900, 200};
-    convoyPath[4] = (Vector2){1100, 400};
-    convoyPath[5] = (Vector2){1150, SCREEN_HEIGHT/2};
+    escortConvoyState.pathCount = 6;
+    escortConvoyState.path[0] = (Vector2){100, SCREEN_HEIGHT/2};
+    escortConvoyState.path[1] = (Vector2){400, 200};
+    escortConvoyState.path[2] = (Vector2){700, 400};
+    escortConvoyState.path[3] = (Vector2){900, 200};
+    escortConvoyState.path[4] = (Vector2){1100, 400};
+    escortConvoyState.path[5] = (Vector2){1150, SCREEN_HEIGHT/2};
 
-    path.points = convoyPath;
-    path.count = convoyPathCount;
-    convoySegment = 0;
+    path.points = escortConvoyState.path;
+    path.count = escortConvoyState.pathCount;
+    escortConvoyState.currentSegment = 0;
 }
 
 static void SetupFishShark(void) {
@@ -2016,10 +1956,10 @@ static void SetupFishShark(void) {
     }
 
     // Shark (last agent)
-    sharkIndex = agentCount - 1;
-    InitAgent(&agents[sharkIndex], (Vector2){100, SCREEN_HEIGHT/2});
-    agents[sharkIndex].maxSpeed = fishSharkScenario.sharkCruiseSpeed;
-    wanderAngles[sharkIndex] = 0;
+    fishSharkState.sharkIdx = agentCount - 1;
+    InitAgent(&agents[fishSharkState.sharkIdx], (Vector2){100, SCREEN_HEIGHT/2});
+    agents[fishSharkState.sharkIdx].maxSpeed = fishSharkScenario.sharkCruiseSpeed;
+    wanderAngles[fishSharkState.sharkIdx] = 0;
 
     // Add some rocks for fish to hide behind
     obstacleCount = 4;
@@ -2055,9 +1995,9 @@ static void SetupPedestrian(void) {
 static void SetupWolfPack(void) {
     // Wolves: agents 0-3 (index 0 is alpha)
     // Prey: agents 4+
-    wolfCount = 4;
-    preyStartIndex = wolfCount;
-    agentCount = wolfCount + 12;  // 4 wolves + 12 prey
+    wolfPackState.count = 4;
+    wolfPackState.preyStartIdx = wolfPackState.count;
+    agentCount = wolfPackState.count + 12;  // 4 wolves + 12 prey
 
     // Alpha wolf at center-left
     InitAgent(&agents[0], (Vector2){200, SCREEN_HEIGHT/2});
@@ -2065,8 +2005,8 @@ static void SetupWolfPack(void) {
     wanderAngles[0] = 0;
 
     // Pack wolves spread around alpha
-    for (int i = 1; i < wolfCount; i++) {
-        float angle = (2 * PI * i) / (wolfCount - 1);
+    for (int i = 1; i < wolfPackState.count; i++) {
+        float angle = (2 * PI * i) / (wolfPackState.count - 1);
         Vector2 pos = {
             200 + cosf(angle) * wolfPackScenario.packFollowDistance,
             SCREEN_HEIGHT/2 + sinf(angle) * wolfPackScenario.packFollowDistance
@@ -2077,7 +2017,7 @@ static void SetupWolfPack(void) {
     }
 
     // Prey herd on right side
-    for (int i = preyStartIndex; i < agentCount; i++) {
+    for (int i = wolfPackState.preyStartIdx; i < agentCount; i++) {
         Vector2 pos = {
             randf(700, SCREEN_WIDTH - 150),
             randf(150, SCREEN_HEIGHT - 150)
@@ -2092,13 +2032,13 @@ static void SetupEvacuation(void) {
     agentCount = 40;
 
     // Fire starts in center
-    fireCenter = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
-    fireRadius = evacuationScenario.initialFireRadius;
+    evacuationState.center = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+    evacuationState.radius = evacuationScenario.initialFireRadius;
 
     // Two exits on sides - positioned far OUTSIDE the room so agents run through and pour out
-    exitCount = 2;
-    exitPositions[0] = (Vector2){-100, SCREEN_HEIGHT/2};   // Left exit (far outside)
-    exitPositions[1] = (Vector2){SCREEN_WIDTH + 100, SCREEN_HEIGHT/2};  // Right exit (far outside)
+    evacuationState.exitCount = 2;
+    evacuationState.exits[0] = (Vector2){-100, SCREEN_HEIGHT/2};   // Left exit (far outside)
+    evacuationState.exits[1] = (Vector2){SCREEN_WIDTH + 100, SCREEN_HEIGHT/2};  // Right exit (far outside)
 
     // Walls forming room with exit gaps
     wallCount = 6;
@@ -2118,7 +2058,7 @@ static void SetupEvacuation(void) {
         Vector2 pos;
         do {
             pos = (Vector2){randf(100, SCREEN_WIDTH - 100), randf(150, SCREEN_HEIGHT - 150)};
-        } while (steering_vec_distance(pos, fireCenter) < fireRadius + 50);
+        } while (steering_vec_distance(pos, evacuationState.center) < evacuationState.radius + 50);
 
         InitAgent(&agents[i], pos);
         agents[i].maxSpeed = evacuationScenario.agentSpeed + randf(-evacuationScenario.agentSpeedVariation, evacuationScenario.agentSpeedVariation);
@@ -2128,13 +2068,13 @@ static void SetupEvacuation(void) {
 
 static void SetupTraffic(void) {
     // Traffic intersection with IDM car-following model
-    // Cars: first carCount agents, Pedestrians: remaining agents
-    carCount = 8;
-    pedCount = 12;
-    agentCount = carCount + pedCount;
+    // Cars: first trafficState.numCars agents, Pedestrians: remaining agents
+    trafficState.numCars = 8;
+    trafficState.numPeds = 12;
+    agentCount = trafficState.numCars + trafficState.numPeds;
 
-    trafficLightState = 0;
-    trafficTimer = 0;
+    trafficState.lightState = 0;
+    trafficState.timer = 0;
 
     // Road layout constants
     float roadCenterX = SCREEN_WIDTH / 2.0f;
@@ -2159,15 +2099,15 @@ static void SetupTraffic(void) {
     walls[3] = (Wall){{boundLeft, boundBottom}, {boundLeft, boundTop}};    // Left
 
     // Spawn cars with IDM parameters
-    for (int i = 0; i < carCount; i++) {
+    for (int i = 0; i < trafficState.numCars; i++) {
         IDMParams idm = idm_default_params();
         idm.v0 = 120.0f + randf(-20.0f, 20.0f);  // Slight speed variation
-        carIDM[i] = idm;
-        carSpeeds[i] = idm.v0 * 0.8f;  // Start at 80% desired speed
+        trafficState.idm[i] = idm;
+        trafficState.speeds[i] = idm.v0 * 0.8f;  // Start at 80% desired speed
 
         // Assign direction: 2 cars per direction
         CarDirection dir = (CarDirection)(i % 4);
-        carDirections[i] = dir;
+        trafficState.directions[i] = dir;
 
         Vector2 pos;
         switch (dir) {
@@ -2191,8 +2131,8 @@ static void SetupTraffic(void) {
     // Pedestrians start in corners with targets on opposite side (crossing the road)
     // 4 corners: NW(0), NE(1), SE(2), SW(3)
     // Pedestrians cross diagonally or straight across
-    for (int i = carCount; i < agentCount; i++) {
-        int corner = (i - carCount) % 4;
+    for (int i = trafficState.numCars; i < agentCount; i++) {
+        int corner = (i - trafficState.numCars) % 4;
         Vector2 pos, target;
 
         // Starting positions in each corner
@@ -2219,7 +2159,7 @@ static void SetupTraffic(void) {
 
         InitAgent(&agents[i], pos);
         agents[i].maxSpeed = 60.0f;
-        pedTargets[i] = target;
+        trafficState.targets[i] = target;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 }
@@ -2227,8 +2167,8 @@ static void SetupTraffic(void) {
 static void SetupMurmuration(void) {
     agentCount = 100;  // Best with many birds
 
-    waveActive = false;
-    waveTime = 0;
+    murmurationState.active = false;
+    murmurationState.time = 0;
 
     // Start birds in loose cluster
     Vector2 center = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
@@ -2256,12 +2196,12 @@ static void SetupSFMCorridor(void) {
     // Bidirectional corridor - demonstrates emergent lane formation
     // Half the agents go left-to-right, half go right-to-left
 
-    sfmParams = sfm_default_params();
+    sfmState.params = sfm_default_params();
     // Use defaults - they're now properly tuned
 
-    sfmLeftCount = 25;   // Going left to right
-    sfmRightCount = 25;  // Going right to left
-    agentCount = sfmLeftCount + sfmRightCount;
+    sfmState.leftCount = 25;   // Going left to right
+    sfmState.rightCount = 25;  // Going right to left
+    agentCount = sfmState.leftCount + sfmState.rightCount;
 
     // Corridor walls
     wallCount = 2;
@@ -2269,7 +2209,7 @@ static void SetupSFMCorridor(void) {
     walls[1] = (Wall){{50, 520}, {SCREEN_WIDTH - 50, 520}};   // Bottom wall
 
     // Spawn left-to-right agents on left side
-    for (int i = 0; i < sfmLeftCount; i++) {
+    for (int i = 0; i < sfmState.leftCount; i++) {
         Vector2 pos = {
             randf(80, 200),
             randf(230, 490)
@@ -2280,11 +2220,11 @@ static void SetupSFMCorridor(void) {
         agents[i].vel = (Vector2){randf(20, 40), 0};
 
         // Goal is on right side
-        sfmGoals[i] = (Vector2){SCREEN_WIDTH - 80, pos.y};
+        sfmState.goals[i] = (Vector2){SCREEN_WIDTH - 80, pos.y};
     }
 
     // Spawn right-to-left agents on right side
-    for (int i = sfmLeftCount; i < agentCount; i++) {
+    for (int i = sfmState.leftCount; i < agentCount; i++) {
         Vector2 pos = {
             randf(SCREEN_WIDTH - 200, SCREEN_WIDTH - 80),
             randf(230, 490)
@@ -2295,17 +2235,17 @@ static void SetupSFMCorridor(void) {
         agents[i].vel = (Vector2){randf(-40, -20), 0};
 
         // Goal is on left side
-        sfmGoals[i] = (Vector2){80, pos.y};
+        sfmState.goals[i] = (Vector2){80, pos.y};
     }
 }
 
 static void SetupSFMEvacuation(void) {
     // Room evacuation - demonstrates arching at exits and faster-is-slower effect
 
-    sfmParams = sfm_default_params();
+    sfmState.params = sfm_default_params();
     // Use defaults - properly tuned now
     // Slightly lower tau for more "panicked" response
-    sfmParams.tau = 0.4f;
+    sfmState.params.tau = 0.4f;
 
     agentCount = 60;
 
@@ -2326,9 +2266,9 @@ static void SetupSFMEvacuation(void) {
     walls[7] = (Wall){{630, 620}, {600, 580}};
 
     // Exit positions
-    sfmExitCount = 2;
-    sfmExits[0] = (Vector2){540, 660};  // Bottom exit
-    sfmExits[1] = (Vector2){SCREEN_WIDTH - 60, 320};  // Right exit
+    sfmState.exitCount = 2;
+    sfmState.exits[0] = (Vector2){540, 660};  // Bottom exit
+    sfmState.exits[1] = (Vector2){SCREEN_WIDTH - 60, 320};  // Right exit
 
     // Spawn agents throughout room
     for (int i = 0; i < agentCount; i++) {
@@ -2342,16 +2282,16 @@ static void SetupSFMEvacuation(void) {
         agents[i].vel = (Vector2){0, 0};
 
         // Each agent seeks nearest exit
-        float dist0 = steering_vec_distance(pos, sfmExits[0]);
-        float dist1 = steering_vec_distance(pos, sfmExits[1]);
-        sfmGoals[i] = (dist0 < dist1) ? sfmExits[0] : sfmExits[1];
+        float dist0 = steering_vec_distance(pos, sfmState.exits[0]);
+        float dist1 = steering_vec_distance(pos, sfmState.exits[1]);
+        sfmState.goals[i] = (dist0 < dist1) ? sfmState.exits[0] : sfmState.exits[1];
     }
 }
 
 static void SetupSFMCrossing(void) {
     // Four-way crossing - demonstrates complex emergent flow patterns
 
-    sfmParams = sfm_default_params();
+    sfmState.params = sfm_default_params();
     // Use defaults - properly tuned now
 
     agentCount = 60;  // 15 from each direction
@@ -2370,7 +2310,7 @@ static void SetupSFMCrossing(void) {
         agents[idx].maxSpeed = 70.0f + randf(-10, 10);
         agents[idx].maxForce = 500.0f;
         agents[idx].vel = (Vector2){30, 0};
-        sfmGoals[idx] = (Vector2){SCREEN_WIDTH - 80, pos.y};
+        sfmState.goals[idx] = (Vector2){SCREEN_WIDTH - 80, pos.y};
         idx++;
     }
 
@@ -2381,7 +2321,7 @@ static void SetupSFMCrossing(void) {
         agents[idx].maxSpeed = 70.0f + randf(-10, 10);
         agents[idx].maxForce = 500.0f;
         agents[idx].vel = (Vector2){-30, 0};
-        sfmGoals[idx] = (Vector2){80, pos.y};
+        sfmState.goals[idx] = (Vector2){80, pos.y};
         idx++;
     }
 
@@ -2392,7 +2332,7 @@ static void SetupSFMCrossing(void) {
         agents[idx].maxSpeed = 70.0f + randf(-10, 10);
         agents[idx].maxForce = 500.0f;
         agents[idx].vel = (Vector2){0, 30};
-        sfmGoals[idx] = (Vector2){pos.x, SCREEN_HEIGHT - 80};
+        sfmState.goals[idx] = (Vector2){pos.x, SCREEN_HEIGHT - 80};
         idx++;
     }
 
@@ -2403,7 +2343,7 @@ static void SetupSFMCrossing(void) {
         agents[idx].maxSpeed = 70.0f + randf(-10, 10);
         agents[idx].maxForce = 500.0f;
         agents[idx].vel = (Vector2){0, -30};
-        sfmGoals[idx] = (Vector2){pos.x, 80};
+        sfmState.goals[idx] = (Vector2){pos.x, 80};
         idx++;
     }
 
@@ -2426,11 +2366,11 @@ static void SetupCtxObstacleCourse(void) {
         agents[i].maxForce = 400.0f;
 
         // Initialize context steering for this agent
-        ctx_init(&ctxAgents[i], 16);  // 16 directions for good resolution
-        ctxAgents[i].temporalSmoothing = 0.4f;
-        ctxAgents[i].hysteresis = 0.15f;
+        ctx_init(&ctxState.agents[i], 16);  // 16 directions for good resolution
+        ctxState.agents[i].temporalSmoothing = 0.4f;
+        ctxState.agents[i].hysteresis = 0.15f;
 
-        ctxTargets[i] = (Vector2){SCREEN_WIDTH - 100, 360};
+        ctxState.targets[i] = (Vector2){SCREEN_WIDTH - 100, 360};
     }
 
     // Dense obstacle field
@@ -2457,13 +2397,13 @@ static void SetupCtxMaze(void) {
     agents[0].maxForce = 350.0f;
 
     // Initialize context steering with higher resolution for tight spaces
-    ctx_init(&ctxAgents[0], 24);
-    ctxAgents[0].temporalSmoothing = 0.5f;
-    ctxAgents[0].hysteresis = 0.25f;  // Higher hysteresis to avoid jitter in corridors
-    ctxAgents[0].dangerThreshold = 0.15f;
+    ctx_init(&ctxState.agents[0], 24);
+    ctxState.agents[0].temporalSmoothing = 0.5f;
+    ctxState.agents[0].hysteresis = 0.25f;  // Higher hysteresis to avoid jitter in corridors
+    ctxState.agents[0].dangerThreshold = 0.15f;
 
     // Goal at the end of the maze
-    ctxMazeGoal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT / 2};
+    ctxState.mazeGoal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT / 2};
 
     // Create maze walls - designed to be solvable!
     // Path: start left -> go up through gap -> right -> down through gap -> right -> up -> goal
@@ -2501,11 +2441,11 @@ static void SetupCtxCrowd(void) {
         agents[i].maxSpeed = 80.0f + randf(-15, 15);
         agents[i].maxForce = 300.0f;
 
-        ctx_init(&ctxAgents[i], 16);
-        ctxAgents[i].temporalSmoothing = 0.35f;
-        ctxAgents[i].hysteresis = 0.1f;
+        ctx_init(&ctxState.agents[i], 16);
+        ctxState.agents[i].temporalSmoothing = 0.35f;
+        ctxState.agents[i].hysteresis = 0.1f;
 
-        ctxTargets[i] = (Vector2){SCREEN_WIDTH - 80, pos.y};
+        ctxState.targets[i] = (Vector2){SCREEN_WIDTH - 80, pos.y};
     }
 
     // Right-to-left agents
@@ -2515,11 +2455,11 @@ static void SetupCtxCrowd(void) {
         agents[i].maxSpeed = 80.0f + randf(-15, 15);
         agents[i].maxForce = 300.0f;
 
-        ctx_init(&ctxAgents[i], 16);
-        ctxAgents[i].temporalSmoothing = 0.35f;
-        ctxAgents[i].hysteresis = 0.1f;
+        ctx_init(&ctxState.agents[i], 16);
+        ctxState.agents[i].temporalSmoothing = 0.35f;
+        ctxState.agents[i].hysteresis = 0.1f;
 
-        ctxTargets[i] = (Vector2){80, pos.y};
+        ctxState.targets[i] = (Vector2){80, pos.y};
     }
 
     // Corridor walls
@@ -2531,7 +2471,7 @@ static void SetupCtxCrowd(void) {
 static void SetupCtxPredatorPrey(void) {
     // Predator-prey: prey use context steering to escape, predator pursues
     agentCount = 15;
-    ctxPredatorIndex = agentCount - 1;  // Last agent is predator
+    ctxState.predatorIndex = agentCount - 1;  // Last agent is predator
 
     // Prey agents
     for (int i = 0; i < agentCount - 1; i++) {
@@ -2540,19 +2480,19 @@ static void SetupCtxPredatorPrey(void) {
         agents[i].maxSpeed = 130.0f;  // Prey are faster
         agents[i].maxForce = 400.0f;
 
-        ctx_init(&ctxAgents[i], 16);
-        ctxAgents[i].temporalSmoothing = 0.25f;  // Lower smoothing for quick reactions
-        ctxAgents[i].hysteresis = 0.05f;
-        ctxAgents[i].dangerThreshold = 0.08f;
+        ctx_init(&ctxState.agents[i], 16);
+        ctxState.agents[i].temporalSmoothing = 0.25f;  // Lower smoothing for quick reactions
+        ctxState.agents[i].hysteresis = 0.05f;
+        ctxState.agents[i].dangerThreshold = 0.08f;
 
         wanderAngles[i] = randf(0, 2 * PI);
     }
 
     // Predator (uses regular steering, not context)
-    InitAgent(&agents[ctxPredatorIndex], (Vector2){100, SCREEN_HEIGHT / 2});
-    agents[ctxPredatorIndex].maxSpeed = 100.0f;  // Slower but persistent
-    agents[ctxPredatorIndex].maxForce = 300.0f;
-    wanderAngles[ctxPredatorIndex] = 0;
+    InitAgent(&agents[ctxState.predatorIndex], (Vector2){100, SCREEN_HEIGHT / 2});
+    agents[ctxState.predatorIndex].maxSpeed = 100.0f;  // Slower but persistent
+    agents[ctxState.predatorIndex].maxForce = 300.0f;
+    wanderAngles[ctxState.predatorIndex] = 0;
 
     // Some obstacles for prey to use for escape
     obstacleCount = 5;
@@ -2643,18 +2583,18 @@ static void SetupDWANavigation(void) {
     vehicles[0].maxSpeed = 100.0f;
     vehicles[0].maxTurnRate = 2.5f;
 
-    dwaParams = dwa_default_params();
-    dwaGoal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
+    dwaState.params = dwa_default_params();
+    dwaState.goal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
 
     // Reset state machine
-    dwaMode = DWA_NORMAL;
-    dwaStuckTimer = 0;
-    dwaBackupTimer = 0;
-    dwaTurnTimer = 0;
-    dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
-    dwaPrevSpeed = 0;
-    dwaPrevTurnRate = 0;
-    dwaTurnDirection = 0;
+    dwaState.mode = DWA_NORMAL;
+    dwaState.stuckTimer = 0;
+    dwaState.backupTimer = 0;
+    dwaState.turnTimer = 0;
+    dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+    dwaState.prevSpeed = 0;
+    dwaState.prevTurnRate = 0;
+    dwaState.turnDirection = 0;
 
     // Dense obstacle field
     obstacleCount = 8;
@@ -2698,8 +2638,8 @@ static void SetupScenario(Scenario scenario) {
     wallCount = 0;
     path.points = pathPoints;  // Reset to default array (Convoy changes this)
     path.count = 0;
-    resourceCount = 0;
-    patrolWaypointCount = 0;
+    forageState.resourceCount = 0;
+    patrolState.waypointCount = 0;
 
     scenarios[scenario].setup();
 }
@@ -3267,19 +3207,19 @@ static void UpdateEvadeMultiple(float dt) {
 }
 
 static void UpdatePatrol(float dt) {
-    SteeringOutput patrol = steering_patrol(&agents[0], patrolWaypoints, patrolWaypointCount,
-                                            patrolScenario.waypointRadius, &currentPatrolWaypoint);
+    SteeringOutput patrol = steering_patrol(&agents[0], patrolState.waypoints, patrolState.waypointCount,
+                                            patrolScenario.waypointRadius, &patrolState.currentWaypoint);
     steering_apply(&agents[0], patrol, dt);
     ResolveCollisions(&agents[0], 0);
 }
 
 static void UpdateExplore(float dt) {
-    exploreTime += dt;
+    exploreState.time += dt;
 
     Rectangle bounds = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
     SteeringOutput explore = steering_explore(&agents[0], bounds, EXPLORE_CELL_SIZE,
-                                               exploreGrid, EXPLORE_GRID_WIDTH, EXPLORE_GRID_HEIGHT,
-                                               exploreTime);
+                                               exploreState.grid, EXPLORE_GRID_WIDTH, EXPLORE_GRID_HEIGHT,
+                                               exploreState.time);
     steering_apply(&agents[0], explore, dt);
     ResolveCollisions(&agents[0], 0);
 }
@@ -3288,7 +3228,7 @@ static void UpdateForage(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     for (int i = 0; i < agentCount; i++) {
-        SteeringOutput forage = steering_forage(&agents[i], resources, resourceCount,
+        SteeringOutput forage = steering_forage(&agents[i], forageState.resources, forageState.resourceCount,
                                                  forageScenario.detectRange, &wanderAngles[i],
                                                  forageScenario.wanderRadius,
                                                  forageScenario.wanderDistance,
@@ -3301,10 +3241,10 @@ static void UpdateForage(float dt) {
         ResolveCollisions(&agents[i], i);
 
         // Check if agent collected a resource
-        for (int r = 0; r < resourceCount; r++) {
-            if (steering_vec_distance(agents[i].pos, resources[r]) < forageScenario.collectRadius) {
+        for (int r = 0; r < forageState.resourceCount; r++) {
+            if (steering_vec_distance(agents[i].pos, forageState.resources[r]) < forageScenario.collectRadius) {
                 // Respawn resource at random location
-                resources[r] = (Vector2){randf(200, SCREEN_WIDTH-100), randf(100, SCREEN_HEIGHT-100)};
+                forageState.resources[r] = (Vector2){randf(200, SCREEN_WIDTH-100), randf(100, SCREEN_HEIGHT-100)};
             }
         }
     }
@@ -3312,10 +3252,10 @@ static void UpdateForage(float dt) {
 
 static void UpdateGuard(float dt) {
     // Guards wander but stay near guard position (mouse controlled)
-    guardPosition = GetMousePosition();
+    guardState.position = GetMousePosition();
 
     for (int i = 0; i < agentCount; i++) {
-        SteeringOutput guard = steering_guard(&agents[i], guardPosition, guardScenario.guardRadius,
+        SteeringOutput guard = steering_guard(&agents[i], guardState.position, guardScenario.guardRadius,
                                                &wanderAngles[i],
                                                guardScenario.wanderRadius,
                                                guardScenario.wanderDistance,
@@ -3362,8 +3302,8 @@ static void UpdateCaptureFlag(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     // Update flag carrier position
-    if (flagCarrier >= 0) {
-        flagPos = agents[flagCarrier].pos;
+    if (captureFlagState.flagCarrier >= 0) {
+        captureFlagState.flagPos = agents[captureFlagState.flagCarrier].pos;
     }
 
     // Blue team behavior (agents 0-2)
@@ -3374,27 +3314,27 @@ static void UpdateCaptureFlag(float dt) {
         Vector2 redPos[3] = {agents[3].pos, agents[4].pos, agents[5].pos};
         Vector2 redVel[3] = {agents[3].vel, agents[4].vel, agents[5].vel};
 
-        if (flagCarrier == i) {
+        if (captureFlagState.flagCarrier == i) {
             // Has flag - return to base!
-            SteeringOutput seekBase = steering_seek(&agents[i], blueBase);
+            SteeringOutput seekBase = steering_seek(&agents[i], captureFlagState.blueBase);
             SteeringOutput evade = steering_evade_multiple(&agents[i], redPos, redVel, 3, 1.0f, captureFlagScenario.evadeDistance);
             SteeringOutput outputs[2] = {seekBase, evade};
             float weights[2] = {1.5f, 2.0f};
             steering = steering_blend(outputs, weights, 2);
             agents[i].maxSpeed = captureFlagScenario.teamSpeed * captureFlagScenario.carryingSpeedPenalty;
-        } else if (flagCarrier < 0) {
+        } else if (captureFlagState.flagCarrier < 0) {
             // No one has flag - go get it
-            SteeringOutput seekFlag = steering_seek(&agents[i], flagPos);
+            SteeringOutput seekFlag = steering_seek(&agents[i], captureFlagState.flagPos);
             SteeringOutput evade = steering_evade_multiple(&agents[i], redPos, redVel, 3, 1.0f, 100.0f);
             SteeringOutput outputs[2] = {seekFlag, evade};
             float weights[2] = {1.0f, 1.5f};
             steering = steering_blend(outputs, weights, 2);
-        } else if (flagCarrier >= 3) {
+        } else if (captureFlagState.flagCarrier >= 3) {
             // Red has flag - pursue carrier
-            steering = steering_pursuit(&agents[i], agents[flagCarrier].pos, agents[flagCarrier].vel, 1.0f);
+            steering = steering_pursuit(&agents[i], agents[captureFlagState.flagCarrier].pos, agents[captureFlagState.flagCarrier].vel, 1.0f);
         } else {
             // Teammate has flag - escort them
-            SteeringOutput follow = steering_seek(&agents[i], agents[flagCarrier].pos);
+            SteeringOutput follow = steering_seek(&agents[i], agents[captureFlagState.flagCarrier].pos);
             SteeringOutput evade = steering_evade_multiple(&agents[i], redPos, redVel, 3, 1.0f, 100.0f);
             SteeringOutput outputs[2] = {follow, evade};
             float weights[2] = {1.0f, 1.5f};
@@ -3416,27 +3356,27 @@ static void UpdateCaptureFlag(float dt) {
         Vector2 bluePos[3] = {agents[0].pos, agents[1].pos, agents[2].pos};
         Vector2 blueVel[3] = {agents[0].vel, agents[1].vel, agents[2].vel};
 
-        if (flagCarrier == i) {
+        if (captureFlagState.flagCarrier == i) {
             // Has flag - return to base!
-            SteeringOutput seekBase = steering_seek(&agents[i], redBase);
+            SteeringOutput seekBase = steering_seek(&agents[i], captureFlagState.redBase);
             SteeringOutput evade = steering_evade_multiple(&agents[i], bluePos, blueVel, 3, 1.0f, captureFlagScenario.evadeDistance);
             SteeringOutput outputs[2] = {seekBase, evade};
             float weights[2] = {1.5f, 2.0f};
             steering = steering_blend(outputs, weights, 2);
             agents[i].maxSpeed = captureFlagScenario.teamSpeed * captureFlagScenario.carryingSpeedPenalty;
-        } else if (flagCarrier < 0) {
+        } else if (captureFlagState.flagCarrier < 0) {
             // No one has flag - go get it
-            SteeringOutput seekFlag = steering_seek(&agents[i], flagPos);
+            SteeringOutput seekFlag = steering_seek(&agents[i], captureFlagState.flagPos);
             SteeringOutput evade = steering_evade_multiple(&agents[i], bluePos, blueVel, 3, 1.0f, 100.0f);
             SteeringOutput outputs[2] = {seekFlag, evade};
             float weights[2] = {1.0f, 1.5f};
             steering = steering_blend(outputs, weights, 2);
-        } else if (flagCarrier < 3) {
+        } else if (captureFlagState.flagCarrier < 3) {
             // Blue has flag - pursue carrier
-            steering = steering_pursuit(&agents[i], agents[flagCarrier].pos, agents[flagCarrier].vel, 1.0f);
+            steering = steering_pursuit(&agents[i], agents[captureFlagState.flagCarrier].pos, agents[captureFlagState.flagCarrier].vel, 1.0f);
         } else {
             // Teammate has flag - escort them
-            SteeringOutput follow = steering_seek(&agents[i], agents[flagCarrier].pos);
+            SteeringOutput follow = steering_seek(&agents[i], agents[captureFlagState.flagCarrier].pos);
             SteeringOutput evade = steering_evade_multiple(&agents[i], bluePos, blueVel, 3, 1.0f, 100.0f);
             SteeringOutput outputs[2] = {follow, evade};
             float weights[2] = {1.0f, 1.5f};
@@ -3451,10 +3391,10 @@ static void UpdateCaptureFlag(float dt) {
     }
 
     // Check flag pickup
-    if (flagCarrier < 0) {
+    if (captureFlagState.flagCarrier < 0) {
         for (int i = 0; i < agentCount; i++) {
-            if (steering_vec_distance(agents[i].pos, flagPos) < 20.0f) {
-                flagCarrier = i;
+            if (steering_vec_distance(agents[i].pos, captureFlagState.flagPos) < 20.0f) {
+                captureFlagState.flagCarrier = i;
                 agents[i].maxSpeed = 100.0f;
                 break;
             }
@@ -3462,38 +3402,38 @@ static void UpdateCaptureFlag(float dt) {
     }
 
     // Check flag capture / tag
-    if (flagCarrier >= 0 && flagCarrier < 3) {
+    if (captureFlagState.flagCarrier >= 0 && captureFlagState.flagCarrier < 3) {
         // Blue has flag
-        if (steering_vec_distance(agents[flagCarrier].pos, blueBase) < 30.0f) {
+        if (steering_vec_distance(agents[captureFlagState.flagCarrier].pos, captureFlagState.blueBase) < 30.0f) {
             // Blue scores!
-            blueScore++;
-            flagCarrier = -1;
-            flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+            captureFlagState.blueScore++;
+            captureFlagState.flagCarrier = -1;
+            captureFlagState.flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
             for (int i = 0; i < 3; i++) agents[i].maxSpeed = 120.0f;
         }
         // Check if tagged by red
         for (int i = 3; i < 6; i++) {
-            if (steering_vec_distance(agents[flagCarrier].pos, agents[i].pos) < 25.0f) {
-                flagCarrier = -1;
-                flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+            if (steering_vec_distance(agents[captureFlagState.flagCarrier].pos, agents[i].pos) < 25.0f) {
+                captureFlagState.flagCarrier = -1;
+                captureFlagState.flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
                 for (int j = 0; j < 3; j++) agents[j].maxSpeed = 120.0f;
                 break;
             }
         }
-    } else if (flagCarrier >= 3) {
+    } else if (captureFlagState.flagCarrier >= 3) {
         // Red has flag
-        if (steering_vec_distance(agents[flagCarrier].pos, redBase) < 30.0f) {
+        if (steering_vec_distance(agents[captureFlagState.flagCarrier].pos, captureFlagState.redBase) < 30.0f) {
             // Red scores!
-            redScore++;
-            flagCarrier = -1;
-            flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+            captureFlagState.redScore++;
+            captureFlagState.flagCarrier = -1;
+            captureFlagState.flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
             for (int i = 3; i < 6; i++) agents[i].maxSpeed = 120.0f;
         }
         // Check if tagged by blue
         for (int i = 0; i < 3; i++) {
-            if (steering_vec_distance(agents[flagCarrier].pos, agents[i].pos) < 25.0f) {
-                flagCarrier = -1;
-                flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
+            if (steering_vec_distance(agents[captureFlagState.flagCarrier].pos, agents[i].pos) < 25.0f) {
+                captureFlagState.flagCarrier = -1;
+                captureFlagState.flagPos = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
                 for (int j = 3; j < 6; j++) agents[j].maxSpeed = 120.0f;
                 break;
             }
@@ -3505,14 +3445,14 @@ static void UpdateEscortConvoy(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     // VIP follows path
-    SteeringOutput vipPath = steering_path_follow(&agents[0], &path, 40.0f, &convoySegment);
+    SteeringOutput vipPath = steering_path_follow(&agents[0], &path, 40.0f, &escortConvoyState.currentSegment);
     steering_apply(&agents[0], vipPath, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Reset VIP if reached end
-    if (steering_vec_distance(agents[0].pos, convoyPath[convoyPathCount-1]) < 30) {
-        agents[0].pos = convoyPath[0];
-        convoySegment = 0;
+    if (steering_vec_distance(agents[0].pos, escortConvoyState.path[escortConvoyState.pathCount-1]) < 30) {
+        agents[0].pos = escortConvoyState.path[0];
+        escortConvoyState.currentSegment = 0;
     }
 
     // Get threat positions
@@ -3586,7 +3526,7 @@ static void UpdateFishShark(float dt) {
     float nearestDist = 1e10f;
     int nearestFish = -1;
     for (int i = 0; i < agentCount - 1; i++) {
-        float dist = steering_vec_distance(agents[sharkIndex].pos, agents[i].pos);
+        float dist = steering_vec_distance(agents[fishSharkState.sharkIdx].pos, agents[i].pos);
         if (dist < nearestDist) {
             nearestDist = dist;
             nearestFish = i;
@@ -3596,26 +3536,26 @@ static void UpdateFishShark(float dt) {
     // Shark behavior
     if (nearestDist < 250.0f && nearestFish >= 0) {
         // Hunt mode - faster and pursuing
-        agents[sharkIndex].maxSpeed = 130.0f;
-        SteeringOutput pursuit = steering_pursuit(&agents[sharkIndex],
+        agents[fishSharkState.sharkIdx].maxSpeed = 130.0f;
+        SteeringOutput pursuit = steering_pursuit(&agents[fishSharkState.sharkIdx],
                                                    agents[nearestFish].pos, agents[nearestFish].vel, 1.0f);
-        SteeringOutput contain = steering_containment(&agents[sharkIndex], bounds, 100);
+        SteeringOutput contain = steering_containment(&agents[fishSharkState.sharkIdx], bounds, 100);
         SteeringOutput outputs[2] = {pursuit, contain};
         float weights[2] = {1.0f, 1.5f};
-        steering_apply(&agents[sharkIndex], steering_blend(outputs, weights, 2), dt);
+        steering_apply(&agents[fishSharkState.sharkIdx], steering_blend(outputs, weights, 2), dt);
     } else {
         // Cruise mode - slower, wandering
-        agents[sharkIndex].maxSpeed = 70.0f;
-        SteeringOutput wander = steering_wander(&agents[sharkIndex], 40, 80, 0.2f, &wanderAngles[sharkIndex]);
-        SteeringOutput contain = steering_containment(&agents[sharkIndex], bounds, 100);
+        agents[fishSharkState.sharkIdx].maxSpeed = 70.0f;
+        SteeringOutput wander = steering_wander(&agents[fishSharkState.sharkIdx], 40, 80, 0.2f, &wanderAngles[fishSharkState.sharkIdx]);
+        SteeringOutput contain = steering_containment(&agents[fishSharkState.sharkIdx], bounds, 100);
         SteeringOutput outputs[2] = {wander, contain};
         float weights[2] = {1.0f, 2.0f};
-        steering_apply(&agents[sharkIndex], steering_blend(outputs, weights, 2), dt);
+        steering_apply(&agents[fishSharkState.sharkIdx], steering_blend(outputs, weights, 2), dt);
     }
 
     // Fish behavior
     for (int i = 0; i < agentCount - 1; i++) {
-        float distToShark = steering_vec_distance(agents[i].pos, agents[sharkIndex].pos);
+        float distToShark = steering_vec_distance(agents[i].pos, agents[fishSharkState.sharkIdx].pos);
 
         // Gather neighbors (other fish, not shark)
         Vector2 neighborPos[MAX_AGENTS];
@@ -3635,8 +3575,8 @@ static void UpdateFishShark(float dt) {
         SteeringOutput steering;
         if (distToShark < panicRadius) {
             // PANIC! Try to hide or evade
-            SteeringOutput hide = steering_hide(&agents[i], agents[sharkIndex].pos, obstacles, obstacleCount);
-            SteeringOutput evade = steering_evasion(&agents[i], agents[sharkIndex].pos, agents[sharkIndex].vel, 1.0f);
+            SteeringOutput hide = steering_hide(&agents[i], agents[fishSharkState.sharkIdx].pos, obstacles, obstacleCount);
+            SteeringOutput evade = steering_evasion(&agents[i], agents[fishSharkState.sharkIdx].pos, agents[fishSharkState.sharkIdx].vel, 1.0f);
             SteeringOutput sep = steering_separation(&agents[i], neighborPos, neighborCount, 25.0f);
 
             // Check if there's a good hiding spot
@@ -3668,7 +3608,7 @@ static void UpdateFishShark(float dt) {
     }
 
     // Resolve shark collisions too
-    ResolveCollisions(&agents[sharkIndex], sharkIndex);
+    ResolveCollisions(&agents[fishSharkState.sharkIdx], fishSharkState.sharkIdx);
 }
 
 static void UpdatePedestrian(float dt) {
@@ -3739,7 +3679,7 @@ static void UpdateWolfPack(float dt) {
     // Find nearest prey to alpha for pack coordination
     int nearestPreyToAlpha = -1;
     float nearestDistToAlpha = 1e10f;
-    for (int i = preyStartIndex; i < agentCount; i++) {
+    for (int i = wolfPackState.preyStartIdx; i < agentCount; i++) {
         float dist = steering_vec_distance(agents[0].pos, agents[i].pos);
         if (dist < nearestDistToAlpha) {
             nearestDistToAlpha = dist;
@@ -3765,11 +3705,11 @@ static void UpdateWolfPack(float dt) {
     ResolveCollisions(&agents[0], 0);
 
     // Pack wolves: follow alpha, but break off to pursue close prey
-    for (int i = 1; i < wolfCount; i++) {
+    for (int i = 1; i < wolfPackState.count; i++) {
         // Find nearest prey to this wolf
         int nearestPrey = -1;
         float nearestDist = 1e10f;
-        for (int j = preyStartIndex; j < agentCount; j++) {
+        for (int j = wolfPackState.preyStartIdx; j < agentCount; j++) {
             float dist = steering_vec_distance(agents[i].pos, agents[j].pos);
             if (dist < nearestDist) {
                 nearestDist = dist;
@@ -3780,7 +3720,7 @@ static void UpdateWolfPack(float dt) {
         // Gather other wolves for separation
         Vector2 wolfPos[MAX_AGENTS];
         int wolfNeighborCount = 0;
-        for (int j = 0; j < wolfCount; j++) {
+        for (int j = 0; j < wolfPackState.count; j++) {
             if (j != i) wolfPos[wolfNeighborCount++] = agents[j].pos;
         }
 
@@ -3810,17 +3750,17 @@ static void UpdateWolfPack(float dt) {
     // Prey herd behavior: flock + evade wolves
     Vector2 wolfPositions[MAX_AGENTS];
     Vector2 wolfVelocities[MAX_AGENTS];
-    for (int i = 0; i < wolfCount; i++) {
+    for (int i = 0; i < wolfPackState.count; i++) {
         wolfPositions[i] = agents[i].pos;
         wolfVelocities[i] = agents[i].vel;
     }
 
-    for (int i = preyStartIndex; i < agentCount; i++) {
+    for (int i = wolfPackState.preyStartIdx; i < agentCount; i++) {
         // Gather herd neighbors
         Vector2 neighborPos[MAX_AGENTS];
         Vector2 neighborVel[MAX_AGENTS];
         int neighborCount = 0;
-        for (int j = preyStartIndex; j < agentCount; j++) {
+        for (int j = wolfPackState.preyStartIdx; j < agentCount; j++) {
             if (i != j) {
                 float dist = steering_vec_distance(agents[i].pos, agents[j].pos);
                 if (dist < 100.0f) {
@@ -3833,7 +3773,7 @@ static void UpdateWolfPack(float dt) {
 
         // Calculate threat level (closer wolves = more threat)
         float threatLevel = 0;
-        for (int w = 0; w < wolfCount; w++) {
+        for (int w = 0; w < wolfPackState.count; w++) {
             float dist = steering_vec_distance(agents[i].pos, agents[w].pos);
             if (dist < 250.0f) {
                 threatLevel += (250.0f - dist) / 250.0f;
@@ -3847,7 +3787,7 @@ static void UpdateWolfPack(float dt) {
 
         // Evade wolves
         SteeringOutput evade = steering_evade_multiple(&agents[i], wolfPositions, wolfVelocities,
-                                                        wolfCount, 1.0f, 200.0f);
+                                                        wolfPackState.count, 1.0f, 200.0f);
 
         // Containment
         SteeringOutput contain = steering_containment(&agents[i], bounds, 100);
@@ -3862,26 +3802,26 @@ static void UpdateWolfPack(float dt) {
 
 static void UpdateEvacuation(float dt) {
     // Grow fire over time
-    fireRadius += evacuationScenario.fireGrowthRate * dt;
-    if (fireRadius > 350.0f) fireRadius = 350.0f;  // Cap fire size
+    evacuationState.radius += evacuationScenario.fireGrowthRate * dt;
+    if (evacuationState.radius > 350.0f) evacuationState.radius = 350.0f;  // Cap fire size
 
     for (int i = 0; i < agentCount; i++) {
         // Find nearest exit
-        Vector2 nearestExit = exitPositions[0];
-        float nearestExitDist = steering_vec_distance(agents[i].pos, exitPositions[0]);
-        for (int e = 1; e < exitCount; e++) {
-            float dist = steering_vec_distance(agents[i].pos, exitPositions[e]);
+        Vector2 nearestExit = evacuationState.exits[0];
+        float nearestExitDist = steering_vec_distance(agents[i].pos, evacuationState.exits[0]);
+        for (int e = 1; e < evacuationState.exitCount; e++) {
+            float dist = steering_vec_distance(agents[i].pos, evacuationState.exits[e]);
             if (dist < nearestExitDist) {
                 nearestExitDist = dist;
-                nearestExit = exitPositions[e];
+                nearestExit = evacuationState.exits[e];
             }
         }
 
         // Calculate panic factor based on distance to fire
-        float distToFire = steering_vec_distance(agents[i].pos, fireCenter);
+        float distToFire = steering_vec_distance(agents[i].pos, evacuationState.center);
         float panicFactor = 1.0f;
-        if (distToFire < fireRadius + 150.0f) {
-            panicFactor = 1.0f + (1.0f - (distToFire - fireRadius) / 150.0f) * 2.0f;
+        if (distToFire < evacuationState.radius + 150.0f) {
+            panicFactor = 1.0f + (1.0f - (distToFire - evacuationState.radius) / 150.0f) * 2.0f;
             panicFactor = fmaxf(1.0f, fminf(panicFactor, 3.0f));
         }
 
@@ -3908,8 +3848,8 @@ static void UpdateEvacuation(float dt) {
 
         // Flee from fire if too close
         SteeringOutput fleeFire = {0};
-        if (distToFire < fireRadius + 100.0f) {
-            fleeFire = steering_flee(&agents[i], fireCenter);
+        if (distToFire < evacuationState.radius + 100.0f) {
+            fleeFire = steering_flee(&agents[i], evacuationState.center);
         }
 
         // Combine with panic-adjusted weights
@@ -3926,12 +3866,12 @@ static void UpdateEvacuation(float dt) {
 
         // Respawn if escaped through exit (far outside) or caught by fire
         bool escaped = (agents[i].pos.x < -50 || agents[i].pos.x > SCREEN_WIDTH + 50);
-        if (escaped || distToFire < fireRadius - 10.0f) {
+        if (escaped || distToFire < evacuationState.radius - 10.0f) {
             // Respawn at random safe location
             Vector2 pos;
             do {
                 pos = (Vector2){randf(100, SCREEN_WIDTH - 100), randf(150, SCREEN_HEIGHT - 150)};
-            } while (steering_vec_distance(pos, fireCenter) < fireRadius + 80);
+            } while (steering_vec_distance(pos, evacuationState.center) < evacuationState.radius + 80);
             agents[i].pos = pos;
             agents[i].vel = (Vector2){0, 0};
         }
@@ -3943,27 +3883,27 @@ static void UpdateTraffic(float dt) {
     // Reference: Treiber, Hennecke, Helbing (2000) - "Congested traffic states..."
 
     // Update traffic light state machine
-    trafficTimer += dt;
+    trafficState.timer += dt;
     float greenDuration = 5.0f;
     float yellowDuration = 1.5f;
 
-    if (trafficLightState == 0 && trafficTimer > greenDuration) {
-        trafficLightState = 1;  // NS yellow
-        trafficTimer = 0;
-    } else if (trafficLightState == 1 && trafficTimer > yellowDuration) {
-        trafficLightState = 2;  // EW green
-        trafficTimer = 0;
-    } else if (trafficLightState == 2 && trafficTimer > greenDuration) {
-        trafficLightState = 3;  // EW yellow
-        trafficTimer = 0;
-    } else if (trafficLightState == 3 && trafficTimer > yellowDuration) {
-        trafficLightState = 0;  // NS green
-        trafficTimer = 0;
+    if (trafficState.lightState == 0 && trafficState.timer > greenDuration) {
+        trafficState.lightState = 1;  // NS yellow
+        trafficState.timer = 0;
+    } else if (trafficState.lightState == 1 && trafficState.timer > yellowDuration) {
+        trafficState.lightState = 2;  // EW green
+        trafficState.timer = 0;
+    } else if (trafficState.lightState == 2 && trafficState.timer > greenDuration) {
+        trafficState.lightState = 3;  // EW yellow
+        trafficState.timer = 0;
+    } else if (trafficState.lightState == 3 && trafficState.timer > yellowDuration) {
+        trafficState.lightState = 0;  // NS green
+        trafficState.timer = 0;
     }
 
     // Light states: 0=NS green, 1=NS yellow, 2=EW green, 3=EW yellow
-    bool nsGreen = (trafficLightState == 0);
-    bool ewGreen = (trafficLightState == 2);
+    bool nsGreen = (trafficState.lightState == 0);
+    bool ewGreen = (trafficState.lightState == 2);
 
     // Road geometry
     float roadHalfWidth = 60.0f;
@@ -3982,13 +3922,13 @@ static void UpdateTraffic(float dt) {
     float stopLineWest = intersectionRight + 10;    // Cars going west stop here
 
     // Update cars using IDM
-    for (int i = 0; i < carCount; i++) {
-        CarDirection dir = carDirections[i];
-        IDMParams* idm = &carIDM[i];
+    for (int i = 0; i < trafficState.numCars; i++) {
+        CarDirection dir = trafficState.directions[i];
+        IDMParams* idm = &trafficState.idm[i];
 
         // Get position along direction of travel
         float myPos, mySpeed;
-        mySpeed = carSpeeds[i];
+        mySpeed = trafficState.speeds[i];
 
         switch (dir) {
             case CAR_DIR_SOUTH: myPos = agents[i].pos.y; break;
@@ -4001,8 +3941,8 @@ static void UpdateTraffic(float dt) {
         float leaderPos = 100000.0f;  // Very far ahead
         float leaderSpeed = idm->v0;  // Assume moving at desired speed if no leader
 
-        for (int j = 0; j < carCount; j++) {
-            if (i == j || carDirections[j] != dir) continue;
+        for (int j = 0; j < trafficState.numCars; j++) {
+            if (i == j || trafficState.directions[j] != dir) continue;
 
             float otherPos;
             switch (dir) {
@@ -4015,7 +3955,7 @@ static void UpdateTraffic(float dt) {
             // Is this car ahead of us?
             if (otherPos > myPos && otherPos < leaderPos) {
                 leaderPos = otherPos;
-                leaderSpeed = carSpeeds[j];
+                leaderSpeed = trafficState.speeds[j];
             }
         }
 
@@ -4075,27 +4015,27 @@ static void UpdateTraffic(float dt) {
         float acc = idm_acceleration(idm, gap, mySpeed, deltaV);
 
         // Update speed
-        carSpeeds[i] += acc * dt;
-        if (carSpeeds[i] < 0) carSpeeds[i] = 0;
-        if (carSpeeds[i] > idm->v0) carSpeeds[i] = idm->v0;
+        trafficState.speeds[i] += acc * dt;
+        if (trafficState.speeds[i] < 0) trafficState.speeds[i] = 0;
+        if (trafficState.speeds[i] > idm->v0) trafficState.speeds[i] = idm->v0;
 
         // Update position based on direction
         switch (dir) {
             case CAR_DIR_SOUTH:
-                agents[i].pos.y += carSpeeds[i] * dt;
-                agents[i].vel = (Vector2){0, carSpeeds[i]};
+                agents[i].pos.y += trafficState.speeds[i] * dt;
+                agents[i].vel = (Vector2){0, trafficState.speeds[i]};
                 break;
             case CAR_DIR_NORTH:
-                agents[i].pos.y -= carSpeeds[i] * dt;
-                agents[i].vel = (Vector2){0, -carSpeeds[i]};
+                agents[i].pos.y -= trafficState.speeds[i] * dt;
+                agents[i].vel = (Vector2){0, -trafficState.speeds[i]};
                 break;
             case CAR_DIR_EAST:
-                agents[i].pos.x += carSpeeds[i] * dt;
-                agents[i].vel = (Vector2){carSpeeds[i], 0};
+                agents[i].pos.x += trafficState.speeds[i] * dt;
+                agents[i].vel = (Vector2){trafficState.speeds[i], 0};
                 break;
             case CAR_DIR_WEST:
-                agents[i].pos.x -= carSpeeds[i] * dt;
-                agents[i].vel = (Vector2){-carSpeeds[i], 0};
+                agents[i].pos.x -= trafficState.speeds[i] * dt;
+                agents[i].vel = (Vector2){-trafficState.speeds[i], 0};
                 break;
         }
 
@@ -4128,29 +4068,29 @@ static void UpdateTraffic(float dt) {
                 break;
         }
         if (respawn) {
-            carSpeeds[i] = idm->v0 * 0.8f;  // Reset speed on respawn
+            trafficState.speeds[i] = idm->v0 * 0.8f;  // Reset speed on respawn
         }
     }
 
     // Update pedestrians - they seek their target on the opposite side
-    for (int i = carCount; i < agentCount; i++) {
+    for (int i = trafficState.numCars; i < agentCount; i++) {
         // Gather car positions for avoidance
         Vector2 carPositions[MAX_AGENTS];
         Vector2 carVelocities[MAX_AGENTS];
-        for (int c = 0; c < carCount; c++) {
+        for (int c = 0; c < trafficState.numCars; c++) {
             carPositions[c] = agents[c].pos;
             carVelocities[c] = agents[c].vel;
         }
 
         // Seek target (crossing the road)
-        SteeringOutput seek = steering_seek(&agents[i], pedTargets[i]);
+        SteeringOutput seek = steering_seek(&agents[i], trafficState.targets[i]);
 
         // Predictive avoidance of cars
         SteeringOutput predictAvoid = steering_predictive_avoid(&agents[i], carPositions, carVelocities,
-                                                                 carCount, 2.5f, 35.0f);
+                                                                 trafficState.numCars, 2.5f, 35.0f);
 
         // Immediate separation from cars
-        SteeringOutput immediateSep = steering_separation(&agents[i], carPositions, carCount, 40.0f);
+        SteeringOutput immediateSep = steering_separation(&agents[i], carPositions, trafficState.numCars, 40.0f);
 
         // Wall avoidance to stay in bounds
         SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 40.0f);
@@ -4158,7 +4098,7 @@ static void UpdateTraffic(float dt) {
         // Separate from other pedestrians
         Vector2 pedPositions[MAX_AGENTS];
         int pedNearby = 0;
-        for (int j = carCount; j < agentCount; j++) {
+        for (int j = trafficState.numCars; j < agentCount; j++) {
             if (i != j) {
                 pedPositions[pedNearby++] = agents[j].pos;
             }
@@ -4170,21 +4110,21 @@ static void UpdateTraffic(float dt) {
         steering_apply(&agents[i], steering_blend(outputs, weights, 5), dt);
 
         // Check if reached target - swap start/target positions
-        float distToTarget = steering_vec_distance(agents[i].pos, pedTargets[i]);
+        float distToTarget = steering_vec_distance(agents[i].pos, trafficState.targets[i]);
         if (distToTarget < 25.0f) {
             // Swap: current target becomes new start, old start area becomes new target
-            Vector2 oldTarget = pedTargets[i];
-            int corner = (i - carCount) % 4;
+            Vector2 oldTarget = trafficState.targets[i];
+            int corner = (i - trafficState.numCars) % 4;
             float cx = roadCenterX;
             float cy = roadCenterY;
             float inner = roadHalfWidth + 10.0f;
 
             // Set new target to opposite corner
             switch (corner) {
-                case 0: pedTargets[i] = (Vector2){cx - inner - randf(10, 50), cy - inner - randf(10, 50)}; break;
-                case 1: pedTargets[i] = (Vector2){cx + inner + randf(10, 50), cy - inner - randf(10, 50)}; break;
-                case 2: pedTargets[i] = (Vector2){cx + inner + randf(10, 50), cy + inner + randf(10, 50)}; break;
-                case 3: pedTargets[i] = (Vector2){cx - inner - randf(10, 50), cy + inner + randf(10, 50)}; break;
+                case 0: trafficState.targets[i] = (Vector2){cx - inner - randf(10, 50), cy - inner - randf(10, 50)}; break;
+                case 1: trafficState.targets[i] = (Vector2){cx + inner + randf(10, 50), cy - inner - randf(10, 50)}; break;
+                case 2: trafficState.targets[i] = (Vector2){cx + inner + randf(10, 50), cy + inner + randf(10, 50)}; break;
+                case 3: trafficState.targets[i] = (Vector2){cx - inner - randf(10, 50), cy + inner + randf(10, 50)}; break;
             }
             // Slight position adjustment to avoid instant re-triggering
             agents[i].pos = oldTarget;
@@ -4199,7 +4139,7 @@ static void UpdateTraffic(float dt) {
         if (agents[i].pos.x < boundLeft - 10 || agents[i].pos.x > boundRight + 10 ||
             agents[i].pos.y < boundTop - 10 || agents[i].pos.y > boundBottom + 10) {
             // Respawn in a random corner
-            int corner = (i - carCount) % 4;
+            int corner = (i - trafficState.numCars) % 4;
             float cx = roadCenterX;
             float cy = roadCenterY;
             float inner = roadHalfWidth + 10.0f;
@@ -4219,25 +4159,25 @@ static void UpdateMurmuration(float dt) {
     Rectangle bounds = {100, 100, SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200};
 
     // Trigger waves more frequently, or on mouse click
-    waveTime += dt;
-    if (!waveActive) {
+    murmurationState.time += dt;
+    if (!murmurationState.active) {
         // Trigger wave on mouse click or periodically (every ~3 seconds)
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            waveActive = true;
-            waveCenter = GetMousePosition();
-            waveRadius = 0;
+            murmurationState.active = true;
+            murmurationState.center = GetMousePosition();
+            murmurationState.radius = 0;
         } else if (randf(0, 1) < 0.005f) {  // Random waves
-            waveActive = true;
-            waveCenter = agents[(int)randf(0, agentCount - 1)].pos;
-            waveRadius = 0;
+            murmurationState.active = true;
+            murmurationState.center = agents[(int)randf(0, agentCount - 1)].pos;
+            murmurationState.radius = 0;
         }
     }
 
     // Update wave
-    if (waveActive) {
-        waveRadius += 300.0f * dt;  // Wave expansion speed
-        if (waveRadius > 600.0f) {
-            waveActive = false;
+    if (murmurationState.active) {
+        murmurationState.radius += 300.0f * dt;  // Wave expansion speed
+        if (murmurationState.radius > 600.0f) {
+            murmurationState.active = false;
         }
     }
 
@@ -4271,14 +4211,14 @@ static void UpdateMurmuration(float dt) {
 
         // Wave disturbance - much stronger ripple effect
         SteeringOutput waveSteering = {0};
-        if (waveActive) {
-            float distToWaveCenter = steering_vec_distance(agents[i].pos, waveCenter);
-            float distToWaveRing = fabsf(distToWaveCenter - waveRadius);
+        if (murmurationState.active) {
+            float distToWaveCenter = steering_vec_distance(agents[i].pos, murmurationState.center);
+            float distToWaveRing = fabsf(distToWaveCenter - murmurationState.radius);
             float waveWidth = 80.0f;  // Wider wave band
 
             if (distToWaveRing < waveWidth) {
                 // Bird is in the wave - add strong outward impulse
-                Vector2 awayFromCenter = {agents[i].pos.x - waveCenter.x, agents[i].pos.y - waveCenter.y};
+                Vector2 awayFromCenter = {agents[i].pos.x - murmurationState.center.x, agents[i].pos.y - murmurationState.center.y};
                 float len = steering_vec_length(awayFromCenter);
                 if (len > 0.1f) {
                     awayFromCenter.x /= len;
@@ -4292,7 +4232,7 @@ static void UpdateMurmuration(float dt) {
         }
 
         // Wave gets higher priority when active
-        float waveWeight = waveActive ? 3.0f : 0.0f;
+        float waveWeight = murmurationState.active ? 3.0f : 0.0f;
         SteeringOutput outputs[3] = {flock, contain, waveSteering};
         float weights[3] = {1.0f, 1.0f, waveWeight};
         steering_apply(&agents[i], steering_blend(outputs, weights, 3), dt);
@@ -4314,7 +4254,7 @@ static void UpdateSFMCorridor(float dt) {
     }
 
     for (int i = 0; i < agentCount; i++) {
-        bool goingRight = (i < sfmLeftCount);
+        bool goingRight = (i < sfmState.leftCount);
 
         // Separate agents into same-direction and opposite-direction
         Vector2 sameDir[MAX_AGENTS], sameDirVel[MAX_AGENTS];
@@ -4323,7 +4263,7 @@ static void UpdateSFMCorridor(float dt) {
 
         for (int j = 0; j < agentCount; j++) {
             if (j == i) continue;
-            bool otherGoingRight = (j < sfmLeftCount);
+            bool otherGoingRight = (j < sfmState.leftCount);
             float dist = steering_vec_distance(agents[i].pos, allPos[j]);
             if (dist < 120.0f) {
                 if (goingRight == otherGoingRight) {
@@ -4339,7 +4279,7 @@ static void UpdateSFMCorridor(float dt) {
         }
 
         // Seek goal
-        SteeringOutput seek = steering_seek(&agents[i], sfmGoals[i]);
+        SteeringOutput seek = steering_seek(&agents[i], sfmState.goals[i]);
 
         // Strong alignment with same-direction agents (promotes lane formation)
         SteeringOutput align = {0};
@@ -4391,19 +4331,19 @@ static void UpdateSFMCorridor(float dt) {
         ResolveCollisions(&agents[i], i);
 
         // Check if agent reached goal - respawn on opposite side, keep Y to maintain lane
-        float distToGoal = steering_vec_distance(agents[i].pos, sfmGoals[i]);
+        float distToGoal = steering_vec_distance(agents[i].pos, sfmState.goals[i]);
         if (distToGoal < 50.0f) {
             float currentY = agents[i].pos.y;  // Preserve lane
             if (goingRight) {
                 // Left-to-right agent reached right side, respawn on left
                 agents[i].pos = (Vector2){randf(80, 150), currentY};
                 agents[i].vel = (Vector2){randf(20, 40), 0};
-                sfmGoals[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
+                sfmState.goals[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
             } else {
                 // Right-to-left agent reached left side, respawn on right
                 agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), currentY};
                 agents[i].vel = (Vector2){randf(-40, -20), 0};
-                sfmGoals[i] = (Vector2){80, currentY};
+                sfmState.goals[i] = (Vector2){80, currentY};
             }
         }
     }
@@ -4434,24 +4374,24 @@ static void UpdateSFMEvacuation(float dt) {
         }
 
         // Apply Social Force Model
-        SteeringOutput sfm = steering_social_force(&agents[i], sfmGoals[i],
+        SteeringOutput sfm = steering_social_force(&agents[i], sfmState.goals[i],
                                                     otherPos, otherVel, otherCount,
                                                     walls, wallCount,
                                                     obstacles, obstacleCount,
-                                                    sfmParams);
+                                                    sfmState.params);
         steering_apply(&agents[i], sfm, dt);
 
         // Check if agent reached exit - respawn inside room
-        float distToGoal = steering_vec_distance(agents[i].pos, sfmGoals[i]);
+        float distToGoal = steering_vec_distance(agents[i].pos, sfmState.goals[i]);
         if (distToGoal < 40.0f) {
             evacuatedCount++;
             // Respawn at random location inside room
             agents[i].pos = (Vector2){randf(150, SCREEN_WIDTH - 150), randf(150, 570)};
             agents[i].vel = (Vector2){0, 0};
             // Reassign nearest exit
-            float dist0 = steering_vec_distance(agents[i].pos, sfmExits[0]);
-            float dist1 = steering_vec_distance(agents[i].pos, sfmExits[1]);
-            sfmGoals[i] = (dist0 < dist1) ? sfmExits[0] : sfmExits[1];
+            float dist0 = steering_vec_distance(agents[i].pos, sfmState.exits[0]);
+            float dist1 = steering_vec_distance(agents[i].pos, sfmState.exits[1]);
+            sfmState.goals[i] = (dist0 < dist1) ? sfmState.exits[0] : sfmState.exits[1];
         }
     }
 }
@@ -4479,15 +4419,15 @@ static void UpdateSFMCrossing(float dt) {
         }
 
         // Apply Social Force Model (no walls in crossing scenario)
-        SteeringOutput sfm = steering_social_force(&agents[i], sfmGoals[i],
+        SteeringOutput sfm = steering_social_force(&agents[i], sfmState.goals[i],
                                                     otherPos, otherVel, otherCount,
                                                     NULL, 0,
                                                     NULL, 0,
-                                                    sfmParams);
+                                                    sfmState.params);
         steering_apply(&agents[i], sfm, dt);
 
         // Check if agent reached goal - respawn on opposite side
-        float distToGoal = steering_vec_distance(agents[i].pos, sfmGoals[i]);
+        float distToGoal = steering_vec_distance(agents[i].pos, sfmState.goals[i]);
         if (distToGoal < 50.0f || agents[i].pos.x < 30 || agents[i].pos.x > SCREEN_WIDTH - 30 ||
             agents[i].pos.y < 30 || agents[i].pos.y > SCREEN_HEIGHT - 30) {
             // Determine which direction this agent was going based on goal
@@ -4498,22 +4438,22 @@ static void UpdateSFMCrossing(float dt) {
                 case 0:  // From left going right
                     agents[i].pos = (Vector2){randf(50, 150), randf(250, 470)};
                     agents[i].vel = (Vector2){30, 0};
-                    sfmGoals[i] = (Vector2){SCREEN_WIDTH - 80, agents[i].pos.y};
+                    sfmState.goals[i] = (Vector2){SCREEN_WIDTH - 80, agents[i].pos.y};
                     break;
                 case 1:  // From right going left
                     agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 50), randf(250, 470)};
                     agents[i].vel = (Vector2){-30, 0};
-                    sfmGoals[i] = (Vector2){80, agents[i].pos.y};
+                    sfmState.goals[i] = (Vector2){80, agents[i].pos.y};
                     break;
                 case 2:  // From top going down
                     agents[i].pos = (Vector2){randf(400, 880), randf(50, 150)};
                     agents[i].vel = (Vector2){0, 30};
-                    sfmGoals[i] = (Vector2){agents[i].pos.x, SCREEN_HEIGHT - 80};
+                    sfmState.goals[i] = (Vector2){agents[i].pos.x, SCREEN_HEIGHT - 80};
                     break;
                 case 3:  // From bottom going up
                     agents[i].pos = (Vector2){randf(400, 880), randf(SCREEN_HEIGHT - 150, SCREEN_HEIGHT - 50)};
                     agents[i].vel = (Vector2){0, -30};
-                    sfmGoals[i] = (Vector2){agents[i].pos.x, 80};
+                    sfmState.goals[i] = (Vector2){agents[i].pos.x, 80};
                     break;
             }
         }
@@ -4526,7 +4466,7 @@ static void UpdateSFMCrossing(float dt) {
 
 // Helper: Draw context map visualization for an agent
 static void DrawContextMap(const ContextSteering* ctx, Vector2 pos, float radius) {
-    if (!ctxShowMaps) return;
+    if (!ctxState.showMaps) return;
 
     for (int i = 0; i < ctx->slotCount; i++) {
         Vector2 dir = ctx->slotDirections[i];
@@ -4549,13 +4489,13 @@ static void UpdateCtxObstacleCourse(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 100};
 
     for (int i = 0; i < agentCount; i++) {
-        ContextSteering* ctx = &ctxAgents[i];
+        ContextSteering* ctx = &ctxState.agents[i];
 
         // Clear maps for this frame
         ctx_clear(ctx);
 
         // Interest: seek the goal
-        ctx_interest_seek(ctx, agents[i].pos, ctxTargets[i], 1.0f);
+        ctx_interest_seek(ctx, agents[i].pos, ctxState.targets[i], 1.0f);
 
         // Interest: slight preference for current velocity (momentum)
         ctx_interest_velocity(ctx, agents[i].vel, 0.3f);
@@ -4606,7 +4546,7 @@ static void UpdateCtxObstacleCourse(float dt) {
         steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
 
         // Reset if reached goal
-        if (steering_vec_distance(agents[i].pos, ctxTargets[i]) < 30.0f) {
+        if (steering_vec_distance(agents[i].pos, ctxState.targets[i]) < 30.0f) {
             agents[i].pos = (Vector2){100, 150 + i * 100};
             agents[i].vel = (Vector2){0, 0};
         }
@@ -4614,16 +4554,16 @@ static void UpdateCtxObstacleCourse(float dt) {
 }
 
 static void UpdateCtxMaze(float dt) {
-    ContextSteering* ctx = &ctxAgents[0];
+    ContextSteering* ctx = &ctxState.agents[0];
 
     // Clear maps
     ctx_clear(ctx);
 
     // Interest: seek goal (click to change goal position)
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        ctxMazeGoal = GetMousePosition();
+        ctxState.mazeGoal = GetMousePosition();
     }
-    ctx_interest_seek(ctx, agents[0].pos, ctxMazeGoal, 1.0f);
+    ctx_interest_seek(ctx, agents[0].pos, ctxState.mazeGoal, 1.0f);
 
     // Interest: openness (prefer open directions)
     ctx_interest_openness(ctx, agents[0].pos, obstacles, obstacleCount, walls, wallCount, 0.4f);
@@ -4701,7 +4641,7 @@ static void UpdateCtxCrowd(float dt) {
         }
 
         // Seek target (strong)
-        SteeringOutput seek = steering_seek(&agents[i], ctxTargets[i]);
+        SteeringOutput seek = steering_seek(&agents[i], ctxState.targets[i]);
 
         // Align with same-direction agents (form lanes)
         SteeringOutput align = {0};
@@ -4736,19 +4676,19 @@ static void UpdateCtxCrowd(float dt) {
         ResolveCollisions(&agents[i], i);
 
         // Respawn if reached target - keep Y position to maintain lane
-        float distToTarget = steering_vec_distance(agents[i].pos, ctxTargets[i]);
+        float distToTarget = steering_vec_distance(agents[i].pos, ctxState.targets[i]);
         if (distToTarget < 50.0f) {
             float currentY = agents[i].pos.y;  // Preserve lane
             if (goingRight) {
                 // Left-to-right: respawn on left, same Y
                 agents[i].pos = (Vector2){randf(80, 150), currentY};
                 agents[i].vel = (Vector2){30, 0};
-                ctxTargets[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
+                ctxState.targets[i] = (Vector2){SCREEN_WIDTH - 80, currentY};
             } else {
                 // Right-to-left: respawn on right, same Y
                 agents[i].pos = (Vector2){randf(SCREEN_WIDTH - 150, SCREEN_WIDTH - 80), currentY};
                 agents[i].vel = (Vector2){-30, 0};
-                ctxTargets[i] = (Vector2){80, currentY};
+                ctxState.targets[i] = (Vector2){80, currentY};
             }
         }
     }
@@ -4758,12 +4698,12 @@ static void UpdateCtxPredatorPrey(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH - 100, SCREEN_HEIGHT - 100};
 
     // Predator position for danger calculations
-    Vector2 predatorPos = agents[ctxPredatorIndex].pos;
+    Vector2 predatorPos = agents[ctxState.predatorIndex].pos;
 
     // Find nearest prey to predator
     int nearestPrey = -1;
     float nearestDist = 1e10f;
-    for (int i = 0; i < ctxPredatorIndex; i++) {
+    for (int i = 0; i < ctxState.predatorIndex; i++) {
         float dist = steering_vec_distance(predatorPos, agents[i].pos);
         if (dist < nearestDist) {
             nearestDist = dist;
@@ -4772,8 +4712,8 @@ static void UpdateCtxPredatorPrey(float dt) {
     }
 
     // Update prey using context steering
-    for (int i = 0; i < ctxPredatorIndex; i++) {
-        ContextSteering* ctx = &ctxAgents[i];
+    for (int i = 0; i < ctxState.predatorIndex; i++) {
+        ContextSteering* ctx = &ctxState.agents[i];
 
         ctx_clear(ctx);
 
@@ -4809,7 +4749,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         // Danger: other prey (mild separation)
         Vector2 otherPrey[MAX_AGENTS];
         int preyCount = 0;
-        for (int j = 0; j < ctxPredatorIndex; j++) {
+        for (int j = 0; j < ctxState.predatorIndex; j++) {
             if (j != i) otherPrey[preyCount++] = agents[j].pos;
         }
         ctx_danger_agents(ctx, agents[i].pos, otherPrey, preyCount, 15.0f, 25.0f);
@@ -4852,7 +4792,7 @@ static void UpdateCtxPredatorPrey(float dt) {
     }
 
     // Update predator (regular steering - pursuit)
-    Boid* predator = &agents[ctxPredatorIndex];
+    Boid* predator = &agents[ctxState.predatorIndex];
 
     if (nearestPrey >= 0 && nearestDist < 300.0f) {
         // Hunt mode: pursue nearest prey
@@ -4868,7 +4808,7 @@ static void UpdateCtxPredatorPrey(float dt) {
     } else {
         // Wander mode
         predator->maxSpeed = 80.0f;
-        SteeringOutput wander = steering_wander(predator, 40, 80, 0.3f, &wanderAngles[ctxPredatorIndex]);
+        SteeringOutput wander = steering_wander(predator, 40, 80, 0.3f, &wanderAngles[ctxState.predatorIndex]);
         SteeringOutput contain = steering_containment(predator, bounds, 100.0f);
 
         SteeringOutput outputs[2] = {wander, contain};
@@ -4989,10 +4929,10 @@ static void UpdateVehiclePursuit(float dt) {
 static void UpdateDWANavigation(float dt) {
     // Click to set new goal
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        dwaGoal = GetMousePosition();
-        dwaMode = DWA_NORMAL;
-        dwaStuckTimer = 0;
-        dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+        dwaState.goal = GetMousePosition();
+        dwaState.mode = DWA_NORMAL;
+        dwaState.stuckTimer = 0;
+        dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
     }
 
     // Constants for recovery behavior
@@ -5004,8 +4944,8 @@ static void UpdateDWANavigation(float dt) {
     const float TURN_TIME_MAX = 0.6f;       // max time to turn in place
     const float NEAR_GOAL_DIST = 50.0f;     // "near goal" threshold - only recover when very close (was 80)
 
-    float distToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
-    float progress = dwaPrevDistToGoal - distToGoal;  // positive = getting closer
+    float distToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+    float progress = dwaState.prevDistToGoal - distToGoal;  // positive = getting closer
     bool makingProgress = (progress > PROGRESS_EPS * dt);
 
     // Calculate current clearance
@@ -5020,50 +4960,50 @@ static void UpdateDWANavigation(float dt) {
     }
 
     // Stuck detection
-    if (!makingProgress && dwaMode == DWA_NORMAL) {
-        dwaStuckTimer += dt;
+    if (!makingProgress && dwaState.mode == DWA_NORMAL) {
+        dwaState.stuckTimer += dt;
     } else if (makingProgress) {
-        dwaStuckTimer = 0;
+        dwaState.stuckTimer = 0;
     }
 
     SteeringOutput steering = steering_zero();
 
-    switch (dwaMode) {
+    switch (dwaState.mode) {
         case DWA_NORMAL: {
             // Use DWA for normal navigation
-            steering = steering_dwa(&vehicles[0], dwaGoal, obstacles, obstacleCount, walls, wallCount, dwaParams);
+            steering = steering_dwa(&vehicles[0], dwaState.goal, obstacles, obstacleCount, walls, wallCount, dwaState.params);
 
             // Smoothing: blend with previous command to reduce jitter
             // This prevents the rapid flip-flopping that causes oscillation
             float smoothFactor = 0.3f;  // How much to blend with previous (0 = no smoothing, 1 = fully smooth)
 
             // Smooth speed changes
-            steering.linear.x = dwaPrevSpeed * smoothFactor + steering.linear.x * (1.0f - smoothFactor);
+            steering.linear.x = dwaState.prevSpeed * smoothFactor + steering.linear.x * (1.0f - smoothFactor);
 
             // Smooth turn rate, but with extra penalty for direction flips
-            if (dwaPrevTurnRate != 0 && steering.angular != 0) {
-                bool flipped = (dwaPrevTurnRate > 0) != (steering.angular > 0);
+            if (dwaState.prevTurnRate != 0 && steering.angular != 0) {
+                bool flipped = (dwaState.prevTurnRate > 0) != (steering.angular > 0);
                 if (flipped && !makingProgress) {
                     // Strong bias toward previous direction when flipping without progress
-                    steering.angular = dwaPrevTurnRate * 0.8f + steering.angular * 0.2f;
+                    steering.angular = dwaState.prevTurnRate * 0.8f + steering.angular * 0.2f;
                 } else {
                     // Normal smoothing
-                    steering.angular = dwaPrevTurnRate * smoothFactor + steering.angular * (1.0f - smoothFactor);
+                    steering.angular = dwaState.prevTurnRate * smoothFactor + steering.angular * (1.0f - smoothFactor);
                 }
             }
 
             // Check if we should enter recovery
             // Only backup when TRULY stuck: not moving AND not making progress for a while
             bool nearGoal = distToGoal < NEAR_GOAL_DIST;
-            bool stuck = dwaStuckTimer > STUCK_TIME;
+            bool stuck = dwaState.stuckTimer > STUCK_TIME;
             bool barelyMoving = fabsf(vehicles[0].speed) < 10.0f;
             bool actuallyBlocked = currentClearance < CLEARANCE_OK && barelyMoving;
 
             // Only enter recovery if stuck AND (very close to goal OR actually blocked by obstacle in front)
             if (stuck && barelyMoving && (nearGoal || actuallyBlocked)) {
-                dwaMode = DWA_BACKUP;
-                dwaBackupTimer = BACKUP_TIME;
-                dwaStuckTimer = 0;
+                dwaState.mode = DWA_BACKUP;
+                dwaState.backupTimer = BACKUP_TIME;
+                dwaState.stuckTimer = 0;
 
                 // Pick turn direction: away from nearest obstacle, and commit to it
                 if (nearestObstacle >= 0) {
@@ -5073,34 +5013,34 @@ static void UpdateDWANavigation(float dt) {
                     };
                     // Cross product with forward vector to determine which side obstacle is on
                     float cross = cosf(vehicles[0].heading) * toObs.y - sinf(vehicles[0].heading) * toObs.x;
-                    dwaTurnDirection = (cross > 0) ? -1 : 1;  // Turn away from obstacle
+                    dwaState.turnDirection = (cross > 0) ? -1 : 1;  // Turn away from obstacle
                 } else {
-                    dwaTurnDirection = 1;  // Default: turn right
+                    dwaState.turnDirection = 1;  // Default: turn right
                 }
             }
             break;
         }
 
         case DWA_BACKUP: {
-            dwaBackupTimer -= dt;
+            dwaState.backupTimer -= dt;
 
             // Reverse with consistent turn direction (committed, no flip-flopping)
             steering.linear.x = BACKUP_SPEED;
-            steering.angular = dwaTurnDirection * vehicles[0].maxTurnRate * 0.6f;
+            steering.angular = dwaState.turnDirection * vehicles[0].maxTurnRate * 0.6f;
 
             // Exit backup when time is up or we've gained clearance
-            if (dwaBackupTimer <= 0 || currentClearance >= CLEARANCE_OK * 1.5f) {
-                dwaMode = DWA_TURN_IN_PLACE;
-                dwaTurnTimer = TURN_TIME_MAX;
+            if (dwaState.backupTimer <= 0 || currentClearance >= CLEARANCE_OK * 1.5f) {
+                dwaState.mode = DWA_TURN_IN_PLACE;
+                dwaState.turnTimer = TURN_TIME_MAX;
             }
             break;
         }
 
         case DWA_TURN_IN_PLACE: {
-            dwaTurnTimer -= dt;
+            dwaState.turnTimer -= dt;
 
             // Calculate angle to goal
-            Vector2 toGoal = {dwaGoal.x - vehicles[0].pos.x, dwaGoal.y - vehicles[0].pos.y};
+            Vector2 toGoal = {dwaState.goal.x - vehicles[0].pos.x, dwaState.goal.y - vehicles[0].pos.y};
             float goalAngle = atan2f(toGoal.y, toGoal.x);
             float angleDiff = goalAngle - vehicles[0].heading;
             // Normalize to [-PI, PI]
@@ -5112,9 +5052,9 @@ static void UpdateDWANavigation(float dt) {
             steering.angular = (angleDiff > 0 ? 1.0f : -1.0f) * vehicles[0].maxTurnRate * 0.8f;
 
             // Exit turn when facing goal or time is up
-            if (fabsf(angleDiff) < 0.2f || dwaTurnTimer <= 0) {
-                dwaMode = DWA_NORMAL;
-                dwaStuckTimer = 0;
+            if (fabsf(angleDiff) < 0.2f || dwaState.turnTimer <= 0) {
+                dwaState.mode = DWA_NORMAL;
+                dwaState.stuckTimer = 0;
             }
             break;
         }
@@ -5123,21 +5063,21 @@ static void UpdateDWANavigation(float dt) {
     curv_agent_apply(&vehicles[0], steering, dt);
 
     // Update previous values for next frame
-    dwaPrevDistToGoal = distToGoal;
-    dwaPrevSpeed = steering.linear.x;
-    dwaPrevTurnRate = steering.angular;
+    dwaState.prevDistToGoal = distToGoal;
+    dwaState.prevSpeed = steering.linear.x;
+    dwaState.prevTurnRate = steering.angular;
 
     // Reset if reached goal
     if (distToGoal < 30.0f) {
         // Pick a new random goal on the other side
-        if (dwaGoal.x > SCREEN_WIDTH / 2) {
-            dwaGoal = (Vector2){randf(80, 200), randf(150, SCREEN_HEIGHT - 150)};
+        if (dwaState.goal.x > SCREEN_WIDTH / 2) {
+            dwaState.goal = (Vector2){randf(80, 200), randf(150, SCREEN_HEIGHT - 150)};
         } else {
-            dwaGoal = (Vector2){randf(SCREEN_WIDTH - 200, SCREEN_WIDTH - 80), randf(150, SCREEN_HEIGHT - 150)};
+            dwaState.goal = (Vector2){randf(SCREEN_WIDTH - 200, SCREEN_WIDTH - 80), randf(150, SCREEN_HEIGHT - 150)};
         }
-        dwaMode = DWA_NORMAL;
-        dwaStuckTimer = 0;
-        dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
+        dwaState.mode = DWA_NORMAL;
+        dwaState.stuckTimer = 0;
+        dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
     }
 }
 
@@ -5559,13 +5499,13 @@ static void DrawPatrol(void) {
     DrawVelocityVector(&agents[0], GREEN);
     
     // Draw patrol waypoints and path
-    for (int i = 0; i < patrolWaypointCount; i++) {
-        Color waypointColor = (i == currentPatrolWaypoint) ? GREEN : GRAY;
-        DrawCircleV(patrolWaypoints[i], 12, waypointColor);
-        DrawText(TextFormat("%d", i + 1), (int)patrolWaypoints[i].x - 4, (int)patrolWaypoints[i].y - 6, 14, WHITE);
+    for (int i = 0; i < patrolState.waypointCount; i++) {
+        Color waypointColor = (i == patrolState.currentWaypoint) ? GREEN : GRAY;
+        DrawCircleV(patrolState.waypoints[i], 12, waypointColor);
+        DrawText(TextFormat("%d", i + 1), (int)patrolState.waypoints[i].x - 4, (int)patrolState.waypoints[i].y - 6, 14, WHITE);
         // Draw line to next waypoint
-        int next = (i + 1) % patrolWaypointCount;
-        DrawLineEx(patrolWaypoints[i], patrolWaypoints[next], 2, (Color){100, 100, 100, 150});
+        int next = (i + 1) % patrolState.waypointCount;
+        DrawLineEx(patrolState.waypoints[i], patrolState.waypoints[next], 2, (Color){100, 100, 100, 150});
     }
 }
 
@@ -5577,7 +5517,7 @@ static void DrawExplore(void) {
     for (int gx = 0; gx < EXPLORE_GRID_WIDTH; gx++) {
         for (int gy = 0; gy < EXPLORE_GRID_HEIGHT; gy++) {
             int idx = gy * EXPLORE_GRID_WIDTH + gx;
-            float staleness = exploreTime - exploreGrid[idx];
+            float staleness = exploreState.time - exploreState.grid[idx];
             
             float intensity = fminf(staleness / 10.0f, 1.0f);
             unsigned char r = (unsigned char)(50 + intensity * 150);
@@ -5604,9 +5544,9 @@ static void DrawForage(void) {
     }
     
     // Draw resources
-    for (int r = 0; r < resourceCount; r++) {
-        DrawCircleV(resources[r], 8, GREEN);
-        DrawCircleLinesV(resources[r], 8, DARKGREEN);
+    for (int r = 0; r < forageState.resourceCount; r++) {
+        DrawCircleV(forageState.resources[r], 8, GREEN);
+        DrawCircleLinesV(forageState.resources[r], 8, DARKGREEN);
     }
     // Draw detection radius for first agent
     DrawCircleLinesV(agents[0].pos, 120, (Color){0, 255, 0, 50});
@@ -5619,8 +5559,8 @@ static void DrawGuard(void) {
     }
     
     // Draw guard zone
-    DrawCircleLinesV(guardPosition, 150, (Color){255, 255, 0, 100});
-    DrawCircleV(guardPosition, 10, YELLOW);
+    DrawCircleLinesV(guardState.position, 150, (Color){255, 255, 0, 100});
+    DrawCircleV(guardState.position, 10, YELLOW);
 }
 
 static void DrawQueueFollow(void) {
@@ -5641,31 +5581,31 @@ static void DrawQueueFollow(void) {
 static void DrawCaptureFlag(void) {
     // Blue team
     for (int i = 0; i < 3; i++) {
-        Color c = (flagCarrier == i) ? YELLOW : BLUE;
+        Color c = (captureFlagState.flagCarrier == i) ? YELLOW : BLUE;
         DrawAgent(&agents[i], c);
         DrawVelocityVector(&agents[i], SKYBLUE);
     }
     // Red team
     for (int i = 3; i < 6; i++) {
-        Color c = (flagCarrier == i) ? YELLOW : RED;
+        Color c = (captureFlagState.flagCarrier == i) ? YELLOW : RED;
         DrawAgent(&agents[i], c);
         DrawVelocityVector(&agents[i], ORANGE);
     }
     
     // Draw bases
-    DrawCircleV(blueBase, 30, (Color){0, 100, 255, 100});
-    DrawCircleLinesV(blueBase, 30, BLUE);
-    DrawCircleV(redBase, 30, (Color){255, 100, 100, 100});
-    DrawCircleLinesV(redBase, 30, RED);
+    DrawCircleV(captureFlagState.blueBase, 30, (Color){0, 100, 255, 100});
+    DrawCircleLinesV(captureFlagState.blueBase, 30, BLUE);
+    DrawCircleV(captureFlagState.redBase, 30, (Color){255, 100, 100, 100});
+    DrawCircleLinesV(captureFlagState.redBase, 30, RED);
     
     // Draw flag
-    if (flagCarrier < 0) {
-        DrawCircleV(flagPos, 12, YELLOW);
-        DrawCircleLinesV(flagPos, 12, ORANGE);
+    if (captureFlagState.flagCarrier < 0) {
+        DrawCircleV(captureFlagState.flagPos, 12, YELLOW);
+        DrawCircleLinesV(captureFlagState.flagPos, 12, ORANGE);
     }
     
     // Draw score
-    DrawTextShadow(TextFormat("Blue: %d  Red: %d", blueScore, redScore),
+    DrawTextShadow(TextFormat("Blue: %d  Red: %d", captureFlagState.blueScore, captureFlagState.redScore),
                    SCREEN_WIDTH/2 - 60, 20, 24, WHITE);
 }
 
@@ -5687,11 +5627,11 @@ static void DrawEscortConvoy(void) {
     }
     
     // Draw convoy path
-    for (int i = 0; i < convoyPathCount - 1; i++) {
-        DrawLineEx(convoyPath[i], convoyPath[i+1], 2, (Color){100, 100, 100, 150});
+    for (int i = 0; i < escortConvoyState.pathCount - 1; i++) {
+        DrawLineEx(escortConvoyState.path[i], escortConvoyState.path[i+1], 2, (Color){100, 100, 100, 150});
     }
-    for (int i = 0; i < convoyPathCount; i++) {
-        DrawCircleV(convoyPath[i], 6, (Color){100, 100, 100, 200});
+    for (int i = 0; i < escortConvoyState.pathCount; i++) {
+        DrawCircleV(escortConvoyState.path[i], 6, (Color){100, 100, 100, 200});
     }
 }
 
@@ -5700,23 +5640,23 @@ static void DrawFishShark(void) {
     
     // Fish (blue shades)
     for (int i = 0; i < agentCount - 1; i++) {
-        float distToShark = steering_vec_distance(agents[i].pos, agents[sharkIndex].pos);
+        float distToShark = steering_vec_distance(agents[i].pos, agents[fishSharkState.sharkIdx].pos);
         Color fishColor = (distToShark < 180.0f) ? (Color){255, 200, 100, 255} : SKYBLUE;
         DrawAgent(&agents[i], fishColor);
     }
     // Shark (dark gray/red)
     float nearestDist = 1e10f;
     for (int i = 0; i < agentCount - 1; i++) {
-        float dist = steering_vec_distance(agents[sharkIndex].pos, agents[i].pos);
+        float dist = steering_vec_distance(agents[fishSharkState.sharkIdx].pos, agents[i].pos);
         if (dist < nearestDist) nearestDist = dist;
     }
     Color sharkColor = (nearestDist < 250.0f) ? RED : DARKGRAY;
-    DrawAgent(&agents[sharkIndex], sharkColor);
-    DrawVelocityVector(&agents[sharkIndex], MAROON);
+    DrawAgent(&agents[fishSharkState.sharkIdx], sharkColor);
+    DrawVelocityVector(&agents[fishSharkState.sharkIdx], MAROON);
     
     // Draw shark's detection radius
-    DrawCircleLinesV(agents[sharkIndex].pos, 250, (Color){255, 0, 0, 50});
-    DrawCircleLinesV(agents[sharkIndex].pos, panicRadius, (Color){255, 100, 0, 80});
+    DrawCircleLinesV(agents[fishSharkState.sharkIdx].pos, 250, (Color){255, 0, 0, 50});
+    DrawCircleLinesV(agents[fishSharkState.sharkIdx].pos, panicRadius, (Color){255, 100, 0, 80});
 }
 
 static void DrawPedestrian(void) {
@@ -5739,13 +5679,13 @@ static void DrawWolfPack(void) {
     DrawAgent(&agents[0], MAROON);
     DrawVelocityVector(&agents[0], RED);
     DrawTextShadow("ALPHA", (int)agents[0].pos.x - 18, (int)agents[0].pos.y - 25, 12, RED);
-    for (int i = 1; i < wolfCount; i++) {
+    for (int i = 1; i < wolfPackState.count; i++) {
         DrawAgent(&agents[i], RED);
         DrawVelocityVector(&agents[i], ORANGE);
         DrawCircleLinesV(agents[i].pos, 100, (Color){255, 0, 0, 50});
     }
     // Prey: green
-    for (int i = preyStartIndex; i < agentCount; i++) {
+    for (int i = wolfPackState.preyStartIdx; i < agentCount; i++) {
         DrawAgent(&agents[i], GREEN);
         DrawVelocityVector(&agents[i], LIME);
     }
@@ -5754,10 +5694,10 @@ static void DrawWolfPack(void) {
 static void DrawEvacuation(void) {
     // Color agents by panic level
     for (int i = 0; i < agentCount; i++) {
-        float distToFire = steering_vec_distance(agents[i].pos, fireCenter);
+        float distToFire = steering_vec_distance(agents[i].pos, evacuationState.center);
         float panic = 0;
-        if (distToFire < fireRadius + 150.0f) {
-            panic = 1.0f - (distToFire - fireRadius) / 150.0f;
+        if (distToFire < evacuationState.radius + 150.0f) {
+            panic = 1.0f - (distToFire - evacuationState.radius) / 150.0f;
             panic = fmaxf(0, fminf(panic, 1.0f));
         }
         Color color = {
@@ -5770,9 +5710,9 @@ static void DrawEvacuation(void) {
     }
     
     // Draw fire
-    DrawCircleV(fireCenter, fireRadius, (Color){255, 100, 0, 150});
-    DrawCircleLinesV(fireCenter, fireRadius, RED);
-    DrawCircleLinesV(fireCenter, fireRadius + 50, (Color){255, 200, 0, 100});
+    DrawCircleV(evacuationState.center, evacuationState.radius, (Color){255, 100, 0, 150});
+    DrawCircleLinesV(evacuationState.center, evacuationState.radius, RED);
+    DrawCircleLinesV(evacuationState.center, evacuationState.radius + 50, (Color){255, 200, 0, 100});
     
     // Draw exit markers
     DrawRectangle(40, SCREEN_HEIGHT/2 - 60, 20, 120, (Color){0, 255, 0, 100});
@@ -5816,10 +5756,10 @@ static void DrawTraffic(void) {
     DrawLineEx((Vector2){stopLineWest, roadCenterY + 5}, (Vector2){stopLineWest, intersectionBottom}, 3, WHITE);
     
     // Draw traffic lights
-    bool nsGreen = (trafficLightState == 0);
-    bool ewGreen = (trafficLightState == 2);
-    Color nsColor = nsGreen ? GREEN : (trafficLightState == 1 ? YELLOW : RED);
-    Color ewColor = ewGreen ? GREEN : (trafficLightState == 3 ? YELLOW : RED);
+    bool nsGreen = (trafficState.lightState == 0);
+    bool ewGreen = (trafficState.lightState == 2);
+    Color nsColor = nsGreen ? GREEN : (trafficState.lightState == 1 ? YELLOW : RED);
+    Color ewColor = ewGreen ? GREEN : (trafficState.lightState == 3 ? YELLOW : RED);
     DrawCircleV((Vector2){intersectionLeft - 20, intersectionTop - 20}, 12, nsColor);
     DrawCircleV((Vector2){intersectionRight + 20, intersectionBottom + 20}, 12, nsColor);
     DrawCircleV((Vector2){intersectionLeft - 20, intersectionBottom + 20}, 12, ewColor);
@@ -5831,8 +5771,8 @@ static void DrawTraffic(void) {
     }
     
     // Cars
-    for (int i = 0; i < carCount; i++) {
-        CarDirection dir = carDirections[i];
+    for (int i = 0; i < trafficState.numCars; i++) {
+        CarDirection dir = trafficState.directions[i];
         bool isNS = (dir == CAR_DIR_NORTH || dir == CAR_DIR_SOUTH);
         Color carColor = isNS ? BLUE : ORANGE;
         if (isNS) {
@@ -5842,7 +5782,7 @@ static void DrawTraffic(void) {
         }
     }
     // Pedestrians
-    for (int i = carCount; i < agentCount; i++) {
+    for (int i = trafficState.numCars; i < agentCount; i++) {
         DrawCircleV(agents[i].pos, 6, WHITE);
     }
 }
@@ -5865,10 +5805,10 @@ static void DrawMurmuration(void) {
     }
     
     // Draw wave if active
-    if (waveActive && waveRadius > 0) {
-        float alpha = 200.0f * (1.0f - waveRadius / 800.0f);
-        DrawCircleLinesV(waveCenter, waveRadius, (Color){255, 255, 100, (unsigned char)fmaxf(alpha, 30)});
-        DrawCircleLinesV(waveCenter, waveRadius - 10, (Color){255, 200, 50, (unsigned char)fmaxf(alpha * 0.5f, 20)});
+    if (murmurationState.active && murmurationState.radius > 0) {
+        float alpha = 200.0f * (1.0f - murmurationState.radius / 800.0f);
+        DrawCircleLinesV(murmurationState.center, murmurationState.radius, (Color){255, 255, 100, (unsigned char)fmaxf(alpha, 30)});
+        DrawCircleLinesV(murmurationState.center, murmurationState.radius - 10, (Color){255, 200, 50, (unsigned char)fmaxf(alpha * 0.5f, 20)});
     }
     
     DrawRectangleLinesEx(bounds, 1, (Color){100, 100, 100, 50});
@@ -5878,7 +5818,7 @@ static void DrawMurmuration(void) {
 static void DrawSFMCorridor(void) {
     // Color by direction
     for (int i = 0; i < agentCount; i++) {
-        Color color = (i < sfmLeftCount) ? (Color){100, 150, 220, 255} : (Color){220, 120, 100, 255};
+        Color color = (i < sfmState.leftCount) ? (Color){100, 150, 220, 255} : (Color){220, 120, 100, 255};
         DrawAgent(&agents[i], color);
         DrawVelocityVector(&agents[i], WHITE);
     }
@@ -5895,7 +5835,7 @@ static void DrawSFMCorridor(void) {
 static void DrawSFMEvacuation(void) {
     // Color by distance to exit
     for (int i = 0; i < agentCount; i++) {
-        float distToExit = steering_vec_distance(agents[i].pos, sfmGoals[i]);
+        float distToExit = steering_vec_distance(agents[i].pos, sfmState.goals[i]);
         float urgency = fminf(distToExit / 300.0f, 1.0f);
         Color color = {
             (unsigned char)(100 + urgency * 120),
@@ -5912,10 +5852,10 @@ static void DrawSFMEvacuation(void) {
     }
     
     // Draw exits
-    for (int e = 0; e < sfmExitCount; e++) {
-        DrawCircleV(sfmExits[e], 35, (Color){0, 255, 0, 50});
-        DrawCircleV(sfmExits[e], 25, (Color){0, 255, 0, 100});
-        DrawTextShadow("EXIT", (int)sfmExits[e].x - 15, (int)sfmExits[e].y - 8, 16, WHITE);
+    for (int e = 0; e < sfmState.exitCount; e++) {
+        DrawCircleV(sfmState.exits[e], 35, (Color){0, 255, 0, 50});
+        DrawCircleV(sfmState.exits[e], 25, (Color){0, 255, 0, 100});
+        DrawTextShadow("EXIT", (int)sfmState.exits[e].x - 15, (int)sfmState.exits[e].y - 8, 16, WHITE);
     }
     
     int evacuatedCount = 0;
@@ -5953,26 +5893,26 @@ static void DrawCtxObstacleCourse(void) {
         DrawAgent(&agents[i], agentColor);
         DrawVelocityVector(&agents[i], WHITE);
         
-        if (ctxShowMaps && i == 0) {
-            ContextSteering* ctx = &ctxAgents[i];
+        if (ctxState.showMaps && i == 0) {
+            ContextSteering* ctx = &ctxState.agents[i];
             DrawContextMap(ctx, agents[i].pos, 50.0f);
         }
     }
     
-    DrawCircleV(ctxTargets[0], 20, (Color){0, 255, 0, 100});
-    DrawCircleLinesV(ctxTargets[0], 20, GREEN);
-    DrawTextShadow("GOAL", (int)ctxTargets[0].x - 18, (int)ctxTargets[0].y - 8, 16, WHITE);
+    DrawCircleV(ctxState.targets[0], 20, (Color){0, 255, 0, 100});
+    DrawCircleLinesV(ctxState.targets[0], 20, GREEN);
+    DrawTextShadow("GOAL", (int)ctxState.targets[0].x - 18, (int)ctxState.targets[0].y - 8, 16, WHITE);
 }
 
 static void DrawCtxMaze(void) {
     DrawAgent(&agents[0], GOLD);
     DrawVelocityVector(&agents[0], WHITE);
     
-    ContextSteering* ctx = &ctxAgents[0];
+    ContextSteering* ctx = &ctxState.agents[0];
     DrawContextMap(ctx, agents[0].pos, 60.0f);
     
-    DrawCircleV(ctxMazeGoal, 15, (Color){0, 255, 0, 150});
-    DrawCircleLinesV(ctxMazeGoal, 15, GREEN);
+    DrawCircleV(ctxState.mazeGoal, 15, (Color){0, 255, 0, 150});
+    DrawCircleLinesV(ctxState.mazeGoal, 15, GREEN);
     
     for (int w = 0; w < wallCount; w++) {
         DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
@@ -5997,24 +5937,24 @@ static void DrawCtxCrowd(void) {
 
 static void DrawCtxPredatorPrey(void) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
-    Vector2 predatorPos = agents[ctxPredatorIndex].pos;
+    Vector2 predatorPos = agents[ctxState.predatorIndex].pos;
     
     // Prey
-    for (int i = 0; i < ctxPredatorIndex; i++) {
+    for (int i = 0; i < ctxState.predatorIndex; i++) {
         float dist = steering_vec_distance(agents[i].pos, predatorPos);
         Color preyColor = (dist < 150.0f) ? (Color){255, 220, 100, 255} : GREEN;
         DrawAgent(&agents[i], preyColor);
         DrawVelocityVector(&agents[i], LIME);
         
-        if (ctxShowMaps && dist < 150.0f) {
-            ContextSteering* ctx = &ctxAgents[i];
+        if (ctxState.showMaps && dist < 150.0f) {
+            ContextSteering* ctx = &ctxState.agents[i];
             DrawContextMap(ctx, agents[i].pos, 50.0f);
         }
     }
     
     // Predator
-    DrawAgent(&agents[ctxPredatorIndex], RED);
-    DrawVelocityVector(&agents[ctxPredatorIndex], MAROON);
+    DrawAgent(&agents[ctxState.predatorIndex], RED);
+    DrawVelocityVector(&agents[ctxState.predatorIndex], MAROON);
     DrawTextShadow("PREDATOR", (int)predatorPos.x - 30, (int)predatorPos.y - 25, 14, RED);
     
     DrawCircleLinesV(predatorPos, 300, (Color){255, 0, 0, 50});
@@ -6097,15 +6037,15 @@ static void DrawVehiclePursuit(void) {
 
 static void DrawDWANavigation(void) {
     // Draw goal
-    DrawCircleV(dwaGoal, 20, (Color){0, 255, 0, 100});
-    DrawCircleLinesV(dwaGoal, 20, GREEN);
-    DrawTextShadow("GOAL", (int)dwaGoal.x - 18, (int)dwaGoal.y - 8, 16, WHITE);
+    DrawCircleV(dwaState.goal, 20, (Color){0, 255, 0, 100});
+    DrawCircleLinesV(dwaState.goal, 20, GREEN);
+    DrawTextShadow("GOAL", (int)dwaState.goal.x - 18, (int)dwaState.goal.y - 8, 16, WHITE);
     
     // Mode indicator
-    const char* modeStr = (dwaMode == DWA_NORMAL) ? "NORMAL" : 
-                          (dwaMode == DWA_BACKUP) ? "BACKUP" : "TURN";
-    Color modeColor = (dwaMode == DWA_NORMAL) ? GREEN : 
-                      (dwaMode == DWA_BACKUP) ? ORANGE : YELLOW;
+    const char* modeStr = (dwaState.mode == DWA_NORMAL) ? "NORMAL" : 
+                          (dwaState.mode == DWA_BACKUP) ? "BACKUP" : "TURN";
+    Color modeColor = (dwaState.mode == DWA_NORMAL) ? GREEN : 
+                      (dwaState.mode == DWA_BACKUP) ? ORANGE : YELLOW;
     DrawTextShadow(modeStr, 10, 130, 20, modeColor);
     
     // Draw vehicle
