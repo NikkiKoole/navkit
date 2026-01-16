@@ -374,7 +374,11 @@ bool collisionResolutionEnabled = true;
 // Context Steering state - now using ctxState struct
 
 // Couzin zones state
-CouzinParams couzinParams;
+typedef struct {
+    CouzinParams params;
+} CouzinState;
+
+static CouzinState couzinState;
 
 // Seek scenario state
 typedef struct {
@@ -1067,6 +1071,104 @@ static MurmurationScenario murmurationScenario = {
     .defaultCohesionWeight = 1.0f,
 };
 
+typedef struct {
+    float speed;
+    float maxForce;
+    float separationDistance;
+    float separationWeight;
+    float cohesionWeight;
+    float alignmentWeight;
+    int kNeighbors;
+} TopologicalFlockScenario;
+
+static TopologicalFlockScenario topologicalFlockScenario = {
+    .speed = 100.0f,
+    .maxForce = 300.0f,
+    .separationDistance = 30.0f,
+    .separationWeight = 2.0f,
+    .cohesionWeight = 1.0f,
+    .alignmentWeight = 1.5f,
+    .kNeighbors = 6,
+};
+
+typedef struct {
+    float carSpeed;      // Base car speed (v0 in IDM)
+    float pedSpeed;      // Pedestrian speed
+} TrafficScenario;
+
+static TrafficScenario trafficScenario = {
+    .carSpeed = 120.0f,
+    .pedSpeed = 50.0f,
+};
+
+typedef struct {
+    float bodyguardSpeed;
+    float vipSpeed;
+    float threatSpeed;
+} InterposeScenario;
+
+static InterposeScenario interposeScenario = {
+    .bodyguardSpeed = 200.0f,
+    .vipSpeed = 60.0f,
+    .threatSpeed = 80.0f,
+};
+
+typedef struct {
+    float leaderSpeed;
+    float followerSpeed;
+    float formationOffset;  // Distance between formation members
+} FormationScenario;
+
+static FormationScenario formationScenario = {
+    .leaderSpeed = 80.0f,
+    .followerSpeed = 120.0f,
+    .formationOffset = 50.0f,
+};
+
+typedef struct {
+    float agentSpeed;
+    float doorwayWidth;  // Not easily changeable at runtime, but nice to have
+} QueuingScenario;
+
+static QueuingScenario queuingScenario = {
+    .agentSpeed = 80.0f,
+    .doorwayWidth = 120.0f,
+};
+
+typedef struct {
+    float preySpeed;
+    float predatorSpeed;
+} EvadeMultipleScenario;
+
+static EvadeMultipleScenario evadeMultipleScenario = {
+    .preySpeed = 160.0f,
+    .predatorSpeed = 100.0f,
+};
+
+typedef struct {
+    float minSpeed;
+    float maxSpeed;
+    float maxForce;
+} PedestrianScenario;
+
+static PedestrianScenario pedestrianScenario = {
+    .minSpeed = 70.0f,
+    .maxSpeed = 130.0f,
+    .maxForce = 400.0f,
+};
+
+typedef struct {
+    float vipSpeed;
+    float escortSpeed;
+    float threatSpeed;
+} EscortConvoyScenario;
+
+static EscortConvoyScenario escortConvoyScenario = {
+    .vipSpeed = 60.0f,
+    .escortSpeed = 100.0f,
+    .threatSpeed = 80.0f,
+};
+
 // ============================================================================
 // Runtime State Structs - transient data that resets on scenario setup
 // ============================================================================
@@ -1219,15 +1321,7 @@ typedef struct {
 
 static DWAState dwaState;
 
-// Vehicle/curvature-limited state
-Vehicle vehicles[MAX_AGENTS];
-int vehicleCount = 0;
-int vehiclePathSegments[MAX_AGENTS];  // Per-vehicle path segment tracking
-float vehicleLookahead = 80.0f;
-
-// DWA navigation state - now using dwaState struct
-
-// Flow field state
+// Flow field types
 typedef enum {
     FLOW_FIELD_VORTEX,      // Circular vortex pattern
     FLOW_FIELD_PERLIN,      // Perlin-noise-like organic flow
@@ -1237,9 +1331,31 @@ typedef enum {
     FLOW_FIELD_COUNT
 } FlowFieldType;
 
-FlowFieldType currentFlowFieldType = FLOW_FIELD_VORTEX;
-Vector2 flowFieldCenter;
-float flowFieldTime = 0;
+// Vehicle Pursuit state (shared with DWA which also uses vehicles)
+typedef struct {
+    Vehicle agents[MAX_AGENTS];
+    int count;
+    int pathSegments[MAX_AGENTS];
+    float lookahead;
+} VehicleState;
+
+static VehicleState vehicleState = {
+    .count = 0,
+    .lookahead = 80.0f,
+};
+
+// Flow Field state
+typedef struct {
+    FlowFieldType fieldType;
+    Vector2 center;
+    float time;
+} FlowFieldState;
+
+static FlowFieldState flowFieldState = {
+    .fieldType = FLOW_FIELD_VORTEX,
+    .center = {0, 0},
+    .time = 0,
+};
 
 // ============================================================================
 // Helper Functions
@@ -1647,16 +1763,16 @@ static void SetupInterpose(void) {
 
     // Bodyguard (blue) - tries to stay between VIP and threat
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 200.0f;
+    agents[0].maxSpeed = interposeScenario.bodyguardSpeed;
 
     // VIP (green) - wanders around
     InitAgent(&agents[1], (Vector2){300, 400});
-    agents[1].maxSpeed = 60.0f;
+    agents[1].maxSpeed = interposeScenario.vipSpeed;
     wanderAngles[1] = 0;
 
     // Threat (red) - pursues VIP
     InitAgent(&agents[2], (Vector2){900, 300});
-    agents[2].maxSpeed = 80.0f;
+    agents[2].maxSpeed = interposeScenario.threatSpeed;
 }
 
 static void SetupFormation(void) {
@@ -1665,25 +1781,27 @@ static void SetupFormation(void) {
 
     // Leader
     InitAgent(&agents[0], (Vector2){200, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 80.0f;
+    agents[0].maxSpeed = formationScenario.leaderSpeed;
     wanderAngles[0] = 0;
 
     // Followers in V-formation offsets (local coordinates)
+    float offset = formationScenario.formationOffset;
+    
     // Follower 1: back-left
-    InitAgent(&agents[1], (Vector2){150, SCREEN_HEIGHT/2 - 50});
-    agents[1].maxSpeed = 120.0f;
+    InitAgent(&agents[1], (Vector2){150, SCREEN_HEIGHT/2 - offset});
+    agents[1].maxSpeed = formationScenario.followerSpeed;
 
     // Follower 2: back-right
-    InitAgent(&agents[2], (Vector2){150, SCREEN_HEIGHT/2 + 50});
-    agents[2].maxSpeed = 120.0f;
+    InitAgent(&agents[2], (Vector2){150, SCREEN_HEIGHT/2 + offset});
+    agents[2].maxSpeed = formationScenario.followerSpeed;
 
     // Follower 3: further back-left
-    InitAgent(&agents[3], (Vector2){100, SCREEN_HEIGHT/2 - 100});
-    agents[3].maxSpeed = 120.0f;
+    InitAgent(&agents[3], (Vector2){100, SCREEN_HEIGHT/2 - offset * 2});
+    agents[3].maxSpeed = formationScenario.followerSpeed;
 
     // Follower 4: further back-right
-    InitAgent(&agents[4], (Vector2){100, SCREEN_HEIGHT/2 + 100});
-    agents[4].maxSpeed = 120.0f;
+    InitAgent(&agents[4], (Vector2){100, SCREEN_HEIGHT/2 + offset * 2});
+    agents[4].maxSpeed = formationScenario.followerSpeed;
 }
 
 static void SetupQueuing(void) {
@@ -1695,7 +1813,7 @@ static void SetupQueuing(void) {
         float x = 100 + (i % 5) * 80;
         float y = 200 + (i / 5) * 120;
         InitAgent(&agents[i], (Vector2){x, y});
-        agents[i].maxSpeed = 80.0f + randf(-20, 20);
+        agents[i].maxSpeed = queuingScenario.agentSpeed + randf(-20, 20);
     }
 
     // Create walls forming a doorway/bottleneck
@@ -1780,21 +1898,21 @@ static void SetupEvadeMultiple(void) {
 
     // Prey (agent 0) - starts in center
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 160.0f;
+    agents[0].maxSpeed = evadeMultipleScenario.preySpeed;
     wanderAngles[0] = 0;
 
     // Predators (agents 1-4) - surround the prey
     InitAgent(&agents[1], (Vector2){200, 200});
-    agents[1].maxSpeed = 100.0f;
+    agents[1].maxSpeed = evadeMultipleScenario.predatorSpeed;
 
     InitAgent(&agents[2], (Vector2){SCREEN_WIDTH - 200, 200});
-    agents[2].maxSpeed = 100.0f;
+    agents[2].maxSpeed = evadeMultipleScenario.predatorSpeed;
 
     InitAgent(&agents[3], (Vector2){200, SCREEN_HEIGHT - 200});
-    agents[3].maxSpeed = 100.0f;
+    agents[3].maxSpeed = evadeMultipleScenario.predatorSpeed;
 
     InitAgent(&agents[4], (Vector2){SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200});
-    agents[4].maxSpeed = 100.0f;
+    agents[4].maxSpeed = evadeMultipleScenario.predatorSpeed;
 }
 
 static void SetupPatrol(void) {
@@ -1913,20 +2031,20 @@ static void SetupEscortConvoy(void) {
 
     // VIP (agent 0) - follows path
     InitAgent(&agents[0], (Vector2){100, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 60.0f;
+    agents[0].maxSpeed = escortConvoyScenario.vipSpeed;
 
     // Escorts (agents 1-3) - protect VIP
     for (int i = 1; i <= 3; i++) {
         InitAgent(&agents[i], (Vector2){100 + (i-1) * 30, SCREEN_HEIGHT/2 + (i % 2 == 0 ? 50 : -50)});
-        agents[i].maxSpeed = 100.0f;
+        agents[i].maxSpeed = escortConvoyScenario.escortSpeed;
     }
 
     // Threats (agents 4-5) - try to reach VIP
     InitAgent(&agents[4], (Vector2){SCREEN_WIDTH - 200, 200});
-    agents[4].maxSpeed = 80.0f;
+    agents[4].maxSpeed = escortConvoyScenario.threatSpeed;
 
     InitAgent(&agents[5], (Vector2){SCREEN_WIDTH - 200, SCREEN_HEIGHT - 200});
-    agents[5].maxSpeed = 80.0f;
+    agents[5].maxSpeed = escortConvoyScenario.threatSpeed;
 
     // Convoy path
     escortConvoyState.pathCount = 6;
@@ -1987,8 +2105,8 @@ static void SetupPedestrian(void) {
         }
 
         InitAgent(&agents[i], (Vector2){x, y});
-        agents[i].maxSpeed = randf(70, 130);  // Varied walking speeds
-        agents[i].maxForce = 400.0f;  // Higher force for responsive avoidance
+        agents[i].maxSpeed = randf(pedestrianScenario.minSpeed, pedestrianScenario.maxSpeed);
+        agents[i].maxForce = pedestrianScenario.maxForce;
     }
 }
 
@@ -2101,7 +2219,7 @@ static void SetupTraffic(void) {
     // Spawn cars with IDM parameters
     for (int i = 0; i < trafficState.numCars; i++) {
         IDMParams idm = idm_default_params();
-        idm.v0 = 120.0f + randf(-20.0f, 20.0f);  // Slight speed variation
+        idm.v0 = trafficScenario.carSpeed + randf(-20.0f, 20.0f);  // Slight speed variation
         trafficState.idm[i] = idm;
         trafficState.speeds[i] = idm.v0 * 0.8f;  // Start at 80% desired speed
 
@@ -2158,7 +2276,7 @@ static void SetupTraffic(void) {
         }
 
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 60.0f;
+        agents[i].maxSpeed = trafficScenario.pedSpeed;
         trafficState.targets[i] = target;
         wanderAngles[i] = randf(0, 2 * PI);
     }
@@ -2520,7 +2638,8 @@ static void SetupTopologicalFlock(void) {
             center.y + sinf(angle) * dist
         };
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 100.0f;
+        agents[i].maxSpeed = topologicalFlockScenario.speed;
+        agents[i].maxForce = topologicalFlockScenario.maxForce;
         agents[i].vel = (Vector2){randf(-30, 30), randf(-30, 30)};
     }
 }
@@ -2528,7 +2647,7 @@ static void SetupTopologicalFlock(void) {
 static void SetupCouzinZones(void) {
     // Couzin zones model - biologically grounded flocking
     agentCount = 40;
-    couzinParams = couzin_default_params();
+    couzinState.params = couzin_default_params();
 
     Vector2 center = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
     for (int i = 0; i < agentCount; i++) {
@@ -2547,18 +2666,18 @@ static void SetupCouzinZones(void) {
 
 static void SetupVehiclePursuit(void) {
     // Vehicle with curvature limits following a path using Pure Pursuit
-    vehicleCount = 3;
+    vehicleState.count = 3;
 
     // Create vehicles at different starting positions along the path
-    for (int i = 0; i < vehicleCount; i++) {
-        curv_agent_init(&vehicles[i], (Vector2){150 + i * 100, 550 - i * 30}, 0);
-        vehicles[i].maxSpeed = 100.0f + i * 15;
-        vehicles[i].maxTurnRate = 2.5f - i * 0.4f;  // Different turn capabilities
+    for (int i = 0; i < vehicleState.count; i++) {
+        curv_agent_init(&vehicleState.agents[i], (Vector2){150 + i * 100, 550 - i * 30}, 0);
+        vehicleState.agents[i].maxSpeed = 100.0f + i * 15;
+        vehicleState.agents[i].maxTurnRate = 2.5f - i * 0.4f;  // Different turn capabilities
     }
-    for (int i = 0; i < vehicleCount; i++) {
-        vehiclePathSegments[i] = 0;
+    for (int i = 0; i < vehicleState.count; i++) {
+        vehicleState.pathSegments[i] = 0;
     }
-    vehicleLookahead = 80.0f;
+    vehicleState.lookahead = 80.0f;
 
     // Create a closed-loop racetrack path (loops back to start)
     path.count = 12;
@@ -2578,10 +2697,10 @@ static void SetupVehiclePursuit(void) {
 
 static void SetupDWANavigation(void) {
     // Dynamic Window Approach navigation through obstacles
-    vehicleCount = 1;
-    curv_agent_init(&vehicles[0], (Vector2){100, SCREEN_HEIGHT/2}, 0);
-    vehicles[0].maxSpeed = 100.0f;
-    vehicles[0].maxTurnRate = 2.5f;
+    vehicleState.count = 1;
+    curv_agent_init(&vehicleState.agents[0], (Vector2){100, SCREEN_HEIGHT/2}, 0);
+    vehicleState.agents[0].maxSpeed = 100.0f;
+    vehicleState.agents[0].maxTurnRate = 2.5f;
 
     dwaState.params = dwa_default_params();
     dwaState.goal = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
@@ -2591,7 +2710,7 @@ static void SetupDWANavigation(void) {
     dwaState.stuckTimer = 0;
     dwaState.backupTimer = 0;
     dwaState.turnTimer = 0;
-    dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+    dwaState.prevDistToGoal = steering_vec_distance(vehicleState.agents[0].pos, dwaState.goal);
     dwaState.prevSpeed = 0;
     dwaState.prevTurnRate = 0;
     dwaState.turnDirection = 0;
@@ -2613,9 +2732,9 @@ static void SetupFlowField(void) {
     // Reference: Reynolds GDC 1999 - "Flow Field Following"
     agentCount = 20;
 
-    flowFieldCenter = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
-    flowFieldTime = 0;
-    currentFlowFieldType = FLOW_FIELD_VORTEX;
+    flowFieldState.center = (Vector2){SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2};
+    flowFieldState.time = 0;
+    flowFieldState.fieldType = FLOW_FIELD_VORTEX;
 
     // Scatter agents across the screen
     for (int i = 0; i < agentCount; i++) {
@@ -4835,12 +4954,17 @@ static void UpdateTopologicalFlock(float dt) {
     }
 
     for (int i = 0; i < agentCount; i++) {
-        // Topological flocking - use k=6 nearest neighbors (like real starlings!)
+        // Topological flocking - use k nearest neighbors (like real starlings!)
+        agents[i].maxSpeed = topologicalFlockScenario.speed;
+        agents[i].maxForce = topologicalFlockScenario.maxForce;
+        
         SteeringOutput flock = steering_flocking_topological(
             &agents[i], allPos, allVel, agentCount, i,
-            6,          // k nearest neighbors
-            30.0f,      // separation distance
-            2.0f, 1.0f, 1.5f);  // sep, coh, align weights
+            topologicalFlockScenario.kNeighbors,
+            topologicalFlockScenario.separationDistance,
+            topologicalFlockScenario.separationWeight,
+            topologicalFlockScenario.cohesionWeight,
+            topologicalFlockScenario.alignmentWeight);
 
         SteeringOutput contain = steering_containment(&agents[i], bounds, 100.0f);
 
@@ -4863,14 +4987,14 @@ static void UpdateCouzinZones(float dt) {
     }
 
     // Adjust parameters with keyboard
-    if (IsKeyDown(KEY_Q)) couzinParams.zorRadius += 20.0f * dt;
-    if (IsKeyDown(KEY_A)) couzinParams.zorRadius = fmaxf(10.0f, couzinParams.zorRadius - 20.0f * dt);
-    if (IsKeyDown(KEY_W)) couzinParams.zooRadius += 30.0f * dt;
-    if (IsKeyDown(KEY_S) && !IsKeyDown(KEY_LEFT_CONTROL)) couzinParams.zooRadius = fmaxf(couzinParams.zorRadius + 10, couzinParams.zooRadius - 30.0f * dt);
-    if (IsKeyDown(KEY_E)) couzinParams.zoaRadius += 40.0f * dt;
-    if (IsKeyDown(KEY_D)) couzinParams.zoaRadius = fmaxf(couzinParams.zooRadius + 10, couzinParams.zoaRadius - 40.0f * dt);
-    if (IsKeyDown(KEY_R)) couzinParams.blindAngle = fminf(PI, couzinParams.blindAngle + 0.5f * dt);
-    if (IsKeyDown(KEY_F)) couzinParams.blindAngle = fmaxf(0, couzinParams.blindAngle - 0.5f * dt);
+    if (IsKeyDown(KEY_Q)) couzinState.params.zorRadius += 20.0f * dt;
+    if (IsKeyDown(KEY_A)) couzinState.params.zorRadius = fmaxf(10.0f, couzinState.params.zorRadius - 20.0f * dt);
+    if (IsKeyDown(KEY_W)) couzinState.params.zooRadius += 30.0f * dt;
+    if (IsKeyDown(KEY_S) && !IsKeyDown(KEY_LEFT_CONTROL)) couzinState.params.zooRadius = fmaxf(couzinState.params.zorRadius + 10, couzinState.params.zooRadius - 30.0f * dt);
+    if (IsKeyDown(KEY_E)) couzinState.params.zoaRadius += 40.0f * dt;
+    if (IsKeyDown(KEY_D)) couzinState.params.zoaRadius = fmaxf(couzinState.params.zooRadius + 10, couzinState.params.zoaRadius - 40.0f * dt);
+    if (IsKeyDown(KEY_R)) couzinState.params.blindAngle = fminf(PI, couzinState.params.blindAngle + 0.5f * dt);
+    if (IsKeyDown(KEY_F)) couzinState.params.blindAngle = fmaxf(0, couzinState.params.blindAngle - 0.5f * dt);
 
     for (int i = 0; i < agentCount; i++) {
         // Build neighbor arrays (exclude self)
@@ -4885,7 +5009,7 @@ static void UpdateCouzinZones(float dt) {
             }
         }
 
-        SteeringOutput couzin = steering_couzin(&agents[i], neighborPos, neighborVel, neighborCount, couzinParams);
+        SteeringOutput couzin = steering_couzin(&agents[i], neighborPos, neighborVel, neighborCount, couzinState.params);
         SteeringOutput contain = steering_containment(&agents[i], bounds, 100.0f);
 
         SteeringOutput outputs[2] = {couzin, contain};
@@ -4897,32 +5021,32 @@ static void UpdateCouzinZones(float dt) {
 
 static void UpdateVehiclePursuit(float dt) {
     // Adjust lookahead with keyboard (use Q/A since UP/DOWN may conflict with agent count)
-    if (IsKeyDown(KEY_Q)) vehicleLookahead = fminf(200.0f, vehicleLookahead + 50.0f * dt);
-    if (IsKeyDown(KEY_A)) vehicleLookahead = fmaxf(30.0f, vehicleLookahead - 50.0f * dt);
+    if (IsKeyDown(KEY_Q)) vehicleState.lookahead = fminf(200.0f, vehicleState.lookahead + 50.0f * dt);
+    if (IsKeyDown(KEY_A)) vehicleState.lookahead = fmaxf(30.0f, vehicleState.lookahead - 50.0f * dt);
 
-    for (int i = 0; i < vehicleCount; i++) {
-        int segment = vehiclePathSegments[i];
+    for (int i = 0; i < vehicleState.count; i++) {
+        int segment = vehicleState.pathSegments[i];
         SteeringOutput steering;
 
         // Check if on last segment or past it - need to steer toward first point to loop
-        float distToLast = steering_vec_distance(vehicles[i].pos, pathPoints[path.count - 1]);
-        float distToFirst = steering_vec_distance(vehicles[i].pos, pathPoints[0]);
+        float distToLast = steering_vec_distance(vehicleState.agents[i].pos, pathPoints[path.count - 1]);
+        float distToFirst = steering_vec_distance(vehicleState.agents[i].pos, pathPoints[0]);
 
-        if (segment >= path.count - 2 && distToLast < vehicleLookahead * 1.5f) {
+        if (segment >= path.count - 2 && distToLast < vehicleState.lookahead * 1.5f) {
             // On last segment and approaching end - steer toward first point to complete loop
-            steering = curv_seek(&vehicles[i], pathPoints[0]);
+            steering = curv_seek(&vehicleState.agents[i], pathPoints[0]);
 
             // If we're close to the first point, reset segment to continue normal path following
-            if (distToFirst < vehicleLookahead) {
+            if (distToFirst < vehicleState.lookahead) {
                 segment = 0;
             }
         } else {
             // Normal pure pursuit path following
-            steering = steering_pure_pursuit(&vehicles[i], &path, vehicleLookahead, &segment);
+            steering = steering_pure_pursuit(&vehicleState.agents[i], &path, vehicleState.lookahead, &segment);
         }
 
-        vehiclePathSegments[i] = segment;
-        curv_agent_apply(&vehicles[i], steering, dt);
+        vehicleState.pathSegments[i] = segment;
+        curv_agent_apply(&vehicleState.agents[i], steering, dt);
     }
 }
 
@@ -4932,7 +5056,7 @@ static void UpdateDWANavigation(float dt) {
         dwaState.goal = GetMousePosition();
         dwaState.mode = DWA_NORMAL;
         dwaState.stuckTimer = 0;
-        dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+        dwaState.prevDistToGoal = steering_vec_distance(vehicleState.agents[0].pos, dwaState.goal);
     }
 
     // Constants for recovery behavior
@@ -4944,7 +5068,7 @@ static void UpdateDWANavigation(float dt) {
     const float TURN_TIME_MAX = 0.6f;       // max time to turn in place
     const float NEAR_GOAL_DIST = 50.0f;     // "near goal" threshold - only recover when very close (was 80)
 
-    float distToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+    float distToGoal = steering_vec_distance(vehicleState.agents[0].pos, dwaState.goal);
     float progress = dwaState.prevDistToGoal - distToGoal;  // positive = getting closer
     bool makingProgress = (progress > PROGRESS_EPS * dt);
 
@@ -4952,7 +5076,7 @@ static void UpdateDWANavigation(float dt) {
     float currentClearance = 1e10f;
     int nearestObstacle = -1;
     for (int i = 0; i < obstacleCount; i++) {
-        float dist = steering_vec_distance(vehicles[0].pos, obstacles[i].center) - obstacles[i].radius - 18.0f;
+        float dist = steering_vec_distance(vehicleState.agents[0].pos, obstacles[i].center) - obstacles[i].radius - 18.0f;
         if (dist < currentClearance) {
             currentClearance = dist;
             nearestObstacle = i;
@@ -4971,7 +5095,7 @@ static void UpdateDWANavigation(float dt) {
     switch (dwaState.mode) {
         case DWA_NORMAL: {
             // Use DWA for normal navigation
-            steering = steering_dwa(&vehicles[0], dwaState.goal, obstacles, obstacleCount, walls, wallCount, dwaState.params);
+            steering = steering_dwa(&vehicleState.agents[0], dwaState.goal, obstacles, obstacleCount, walls, wallCount, dwaState.params);
 
             // Smoothing: blend with previous command to reduce jitter
             // This prevents the rapid flip-flopping that causes oscillation
@@ -4996,7 +5120,7 @@ static void UpdateDWANavigation(float dt) {
             // Only backup when TRULY stuck: not moving AND not making progress for a while
             bool nearGoal = distToGoal < NEAR_GOAL_DIST;
             bool stuck = dwaState.stuckTimer > STUCK_TIME;
-            bool barelyMoving = fabsf(vehicles[0].speed) < 10.0f;
+            bool barelyMoving = fabsf(vehicleState.agents[0].speed) < 10.0f;
             bool actuallyBlocked = currentClearance < CLEARANCE_OK && barelyMoving;
 
             // Only enter recovery if stuck AND (very close to goal OR actually blocked by obstacle in front)
@@ -5008,11 +5132,11 @@ static void UpdateDWANavigation(float dt) {
                 // Pick turn direction: away from nearest obstacle, and commit to it
                 if (nearestObstacle >= 0) {
                     Vector2 toObs = {
-                        obstacles[nearestObstacle].center.x - vehicles[0].pos.x,
-                        obstacles[nearestObstacle].center.y - vehicles[0].pos.y
+                        obstacles[nearestObstacle].center.x - vehicleState.agents[0].pos.x,
+                        obstacles[nearestObstacle].center.y - vehicleState.agents[0].pos.y
                     };
                     // Cross product with forward vector to determine which side obstacle is on
-                    float cross = cosf(vehicles[0].heading) * toObs.y - sinf(vehicles[0].heading) * toObs.x;
+                    float cross = cosf(vehicleState.agents[0].heading) * toObs.y - sinf(vehicleState.agents[0].heading) * toObs.x;
                     dwaState.turnDirection = (cross > 0) ? -1 : 1;  // Turn away from obstacle
                 } else {
                     dwaState.turnDirection = 1;  // Default: turn right
@@ -5026,7 +5150,7 @@ static void UpdateDWANavigation(float dt) {
 
             // Reverse with consistent turn direction (committed, no flip-flopping)
             steering.linear.x = BACKUP_SPEED;
-            steering.angular = dwaState.turnDirection * vehicles[0].maxTurnRate * 0.6f;
+            steering.angular = dwaState.turnDirection * vehicleState.agents[0].maxTurnRate * 0.6f;
 
             // Exit backup when time is up or we've gained clearance
             if (dwaState.backupTimer <= 0 || currentClearance >= CLEARANCE_OK * 1.5f) {
@@ -5040,16 +5164,16 @@ static void UpdateDWANavigation(float dt) {
             dwaState.turnTimer -= dt;
 
             // Calculate angle to goal
-            Vector2 toGoal = {dwaState.goal.x - vehicles[0].pos.x, dwaState.goal.y - vehicles[0].pos.y};
+            Vector2 toGoal = {dwaState.goal.x - vehicleState.agents[0].pos.x, dwaState.goal.y - vehicleState.agents[0].pos.y};
             float goalAngle = atan2f(toGoal.y, toGoal.x);
-            float angleDiff = goalAngle - vehicles[0].heading;
+            float angleDiff = goalAngle - vehicleState.agents[0].heading;
             // Normalize to [-PI, PI]
             while (angleDiff > PI) angleDiff -= 2 * PI;
             while (angleDiff < -PI) angleDiff += 2 * PI;
 
             // Turn toward goal (with small creep forward to help)
             steering.linear.x = 10.0f;  // Tiny creep forward
-            steering.angular = (angleDiff > 0 ? 1.0f : -1.0f) * vehicles[0].maxTurnRate * 0.8f;
+            steering.angular = (angleDiff > 0 ? 1.0f : -1.0f) * vehicleState.agents[0].maxTurnRate * 0.8f;
 
             // Exit turn when facing goal or time is up
             if (fabsf(angleDiff) < 0.2f || dwaState.turnTimer <= 0) {
@@ -5060,7 +5184,7 @@ static void UpdateDWANavigation(float dt) {
         }
     }
 
-    curv_agent_apply(&vehicles[0], steering, dt);
+    curv_agent_apply(&vehicleState.agents[0], steering, dt);
 
     // Update previous values for next frame
     dwaState.prevDistToGoal = distToGoal;
@@ -5077,20 +5201,20 @@ static void UpdateDWANavigation(float dt) {
         }
         dwaState.mode = DWA_NORMAL;
         dwaState.stuckTimer = 0;
-        dwaState.prevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaState.goal);
+        dwaState.prevDistToGoal = steering_vec_distance(vehicleState.agents[0].pos, dwaState.goal);
     }
 }
 
 // Flow field direction function - returns the flow vector at a given position
 // This is the function pointer passed to steering_flow_field
 static Vector2 GetFlowDirection(Vector2 pos) {
-    Vector2 toCenter = {flowFieldCenter.x - pos.x, flowFieldCenter.y - pos.y};
+    Vector2 toCenter = {flowFieldState.center.x - pos.x, flowFieldState.center.y - pos.y};
     float dist = steering_vec_length(toCenter);
     if (dist < 1.0f) dist = 1.0f;
 
     Vector2 dir = {0, 0};
 
-    switch (currentFlowFieldType) {
+    switch (flowFieldState.fieldType) {
         case FLOW_FIELD_VORTEX: {
             // Circular vortex - perpendicular to radial direction
             // Creates a swirling pattern around the center
@@ -5106,7 +5230,7 @@ static Vector2 GetFlowDirection(Vector2 pos) {
             // Pseudo-Perlin organic flow using sin/cos
             // Creates a wavy, organic pattern that changes over time
             float scale = 0.008f;
-            float timeScale = flowFieldTime * 0.3f;
+            float timeScale = flowFieldState.time * 0.3f;
             float angle = sinf(pos.x * scale + timeScale) * 2.0f +
                           cosf(pos.y * scale * 1.3f + timeScale * 0.7f) * 2.0f +
                           sinf((pos.x + pos.y) * scale * 0.5f + timeScale * 1.2f);
@@ -5117,7 +5241,7 @@ static Vector2 GetFlowDirection(Vector2 pos) {
         case FLOW_FIELD_UNIFORM: {
             // Uniform flow - all vectors point in the same direction
             // Direction slowly rotates over time
-            float angle = flowFieldTime * 0.2f;
+            float angle = flowFieldState.time * 0.2f;
             dir = (Vector2){cosf(angle), sinf(angle)};
             break;
         }
@@ -5144,14 +5268,14 @@ static Vector2 GetFlowDirection(Vector2 pos) {
 }
 
 static void UpdateFlowField(float dt) {
-    flowFieldTime += dt;
+    flowFieldState.time += dt;
 
     // Update flow field center to mouse position
-    flowFieldCenter = GetMousePosition();
+    flowFieldState.center = GetMousePosition();
 
     // Cycle through flow field types with SPACE
     if (IsKeyPressed(KEY_SPACE)) {
-        currentFlowFieldType = (FlowFieldType)((currentFlowFieldType + 1) % FLOW_FIELD_COUNT);
+        flowFieldState.fieldType = (FlowFieldType)((flowFieldState.fieldType + 1) % FLOW_FIELD_COUNT);
     }
 
     int screenW = GetScreenWidth();
@@ -5977,13 +6101,13 @@ static void DrawCouzinZones(void) {
     
     // Zone visualization for first agent
     if (agentCount > 0) {
-        DrawCircleLinesV(agents[0].pos, couzinParams.zorRadius, RED);
-        DrawCircleLinesV(agents[0].pos, couzinParams.zooRadius, YELLOW);
-        DrawCircleLinesV(agents[0].pos, couzinParams.zoaRadius, GREEN);
+        DrawCircleLinesV(agents[0].pos, couzinState.params.zorRadius, RED);
+        DrawCircleLinesV(agents[0].pos, couzinState.params.zooRadius, YELLOW);
+        DrawCircleLinesV(agents[0].pos, couzinState.params.zoaRadius, GREEN);
         
         // Blind angle arc
         float heading = atan2f(agents[0].vel.y, agents[0].vel.x);
-        float halfBlind = couzinParams.blindAngle / 2.0f;
+        float halfBlind = couzinState.params.blindAngle / 2.0f;
         for (int a = 0; a < 10; a++) {
             float angle1 = heading + PI - halfBlind + (halfBlind * 2 * a / 10);
             float angle2 = heading + PI - halfBlind + (halfBlind * 2 * (a + 1) / 10);
@@ -5993,10 +6117,10 @@ static void DrawCouzinZones(void) {
         }
     }
     
-    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinParams.zorRadius), 10, 90, 16, RED);
-    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinParams.zooRadius), 10, 110, 16, YELLOW);
-    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinParams.zoaRadius), 10, 130, 16, GREEN);
-    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinParams.blindAngle), 10, 150, 16, GRAY);
+    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinState.params.zorRadius), 10, 90, 16, RED);
+    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinState.params.zooRadius), 10, 110, 16, YELLOW);
+    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinState.params.zoaRadius), 10, 130, 16, GREEN);
+    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinState.params.blindAngle), 10, 150, 16, GRAY);
 }
 
 static void DrawVehiclePursuit(void) {
@@ -6010,9 +6134,9 @@ static void DrawVehiclePursuit(void) {
     }
     
     // Draw vehicles
-    for (int i = 0; i < vehicleCount; i++) {
-        Vector2 pos = vehicles[i].pos;
-        float heading = vehicles[i].heading;
+    for (int i = 0; i < vehicleState.count; i++) {
+        Vector2 pos = vehicleState.agents[i].pos;
+        float heading = vehicleState.agents[i].heading;
         Color vehColor = (i == 0) ? GOLD : SKYBLUE;
         
         Vector2 forward = {cosf(heading), sinf(heading)};
@@ -6032,7 +6156,7 @@ static void DrawVehiclePursuit(void) {
         DrawLineEx(pos, tip, 2, WHITE);
     }
     
-    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleLookahead), 10, 90, 16, YELLOW);
+    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleState.lookahead), 10, 90, 16, YELLOW);
 }
 
 static void DrawDWANavigation(void) {
@@ -6049,8 +6173,8 @@ static void DrawDWANavigation(void) {
     DrawTextShadow(modeStr, 10, 130, 20, modeColor);
     
     // Draw vehicle
-    Vector2 pos = vehicles[0].pos;
-    float heading = vehicles[0].heading;
+    Vector2 pos = vehicleState.agents[0].pos;
+    float heading = vehicleState.agents[0].heading;
     Color vehicleColor = GOLD;
     
     Vector2 forward = {cosf(heading), sinf(heading)};
@@ -6097,8 +6221,8 @@ static void DrawFlowField(void) {
         }
     }
 
-    DrawCircleLinesV(flowFieldCenter, 15, YELLOW);
-    DrawCircleV(flowFieldCenter, 5, YELLOW);
+    DrawCircleLinesV(flowFieldState.center, 15, YELLOW);
+    DrawCircleV(flowFieldState.center, 5, YELLOW);
 
     for (int i = 0; i < agentCount; i++) {
         DrawAgent(&agents[i], SKYBLUE);
@@ -6106,7 +6230,7 @@ static void DrawFlowField(void) {
     }
 
     const char* flowNames[] = {"VORTEX", "PERLIN (Organic)", "UNIFORM", "SINK", "SOURCE"};
-    DrawTextShadow(TextFormat("Flow Type: %s", flowNames[currentFlowFieldType]), 10, 100, 20, YELLOW);
+    DrawTextShadow(TextFormat("Flow Type: %s", flowNames[flowFieldState.fieldType]), 10, 100, 20, YELLOW);
     DrawTextShadow("Press SPACE to cycle flow types", 10, 125, 16, LIGHTGRAY);
     DrawTextShadow("Mouse position = flow center", 10, 145, 16, LIGHTGRAY);
 }
@@ -6387,6 +6511,96 @@ int main(void) {
             DraggableFloat(10, 175, "Sep Weight", &murmurationScenario.separationWeight, 0.1f, 0.1f, 10.0f);
             DraggableFloat(10, 200, "Align Weight", &murmurationScenario.alignmentWeight, 0.1f, 0.1f, 10.0f);
             DraggableFloat(10, 225, "Cohesion Weight", &murmurationScenario.cohesionWeight, 0.1f, 0.1f, 10.0f);
+        }
+        // SFM scenarios share params
+        else if (currentScenario == SCENARIO_SFM_CORRIDOR ||
+                 currentScenario == SCENARIO_SFM_EVACUATION ||
+                 currentScenario == SCENARIO_SFM_CROSSING) {
+            DrawTextShadow("Social Force Model:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Tau (relax)", &sfmState.params.tau, 0.05f, 0.1f, 2.0f);
+            DraggableFloat(10, 145, "Agent Strength", &sfmState.params.agentStrength, 50.0f, 500.0f, 5000.0f);
+            DraggableFloat(10, 170, "Agent Range", &sfmState.params.agentRange, 2.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 195, "Wall Strength", &sfmState.params.wallStrength, 50.0f, 500.0f, 5000.0f);
+            DraggableFloat(10, 220, "Wall Range", &sfmState.params.wallRange, 2.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 245, "Body Radius", &sfmState.params.bodyRadius, 1.0f, 5.0f, 30.0f);
+        }
+        // Context Steering scenarios share showMaps toggle
+        else if (currentScenario == SCENARIO_CTX_OBSTACLE_COURSE ||
+                 currentScenario == SCENARIO_CTX_MAZE ||
+                 currentScenario == SCENARIO_CTX_CROWD ||
+                 currentScenario == SCENARIO_CTX_PREDATOR_PREY) {
+            DrawTextShadow("Context Steering:", 10, 100, 16, WHITE);
+            ToggleBool(10, 120, "Show Interest/Danger Maps", &ctxState.showMaps);
+        }
+        else if (currentScenario == SCENARIO_DWA_NAVIGATION) {
+            DrawTextShadow("DWA Parameters:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Time Horizon", &dwaState.params.timeHorizon, 0.1f, 0.5f, 3.0f);
+            DraggableFloat(10, 145, "Goal Weight", &dwaState.params.goalWeight, 0.1f, 0.1f, 5.0f);
+            DraggableFloat(10, 170, "Clearance Wt", &dwaState.params.clearanceWeight, 0.1f, 0.1f, 3.0f);
+            DraggableFloat(10, 195, "Speed Weight", &dwaState.params.speedWeight, 0.1f, 0.0f, 2.0f);
+            DraggableFloat(10, 220, "Smooth Weight", &dwaState.params.smoothWeight, 0.05f, 0.0f, 1.0f);
+        }
+        else if (currentScenario == SCENARIO_COUZIN_ZONES) {
+            DrawTextShadow("Couzin Zones:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "ZOR (repulsion)", &couzinState.params.zorRadius, 2.0f, 10.0f, 150.0f);
+            DraggableFloat(10, 145, "ZOO (orientation)", &couzinState.params.zooRadius, 3.0f, 20.0f, 300.0f);
+            DraggableFloat(10, 170, "ZOA (attraction)", &couzinState.params.zoaRadius, 4.0f, 30.0f, 500.0f);
+            DraggableFloat(10, 195, "Blind Angle", &couzinState.params.blindAngle, 0.05f, 0.0f, PI);
+        }
+        else if (currentScenario == SCENARIO_VEHICLE_PURSUIT) {
+            DrawTextShadow("Pure Pursuit:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Lookahead", &vehicleState.lookahead, 2.0f, 20.0f, 200.0f);
+        }
+        else if (currentScenario == SCENARIO_FLOW_FIELD) {
+            DrawTextShadow("Flow Field:", 10, 100, 16, WHITE);
+            DrawTextShadow("SPACE = cycle field type", 10, 120, 14, GRAY);
+            DrawTextShadow("Mouse = set center", 10, 140, 14, GRAY);
+        }
+        else if (currentScenario == SCENARIO_TRAFFIC) {
+            DrawTextShadow("Traffic Simulation:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Car Speed", &trafficScenario.carSpeed, 1.0f, 30.0f, 200.0f);
+            DraggableFloat(10, 145, "Ped Speed", &trafficScenario.pedSpeed, 1.0f, 20.0f, 150.0f);
+        }
+        else if (currentScenario == SCENARIO_TOPOLOGICAL_FLOCK) {
+            DrawTextShadow("Topological Flocking:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Speed", &topologicalFlockScenario.speed, 1.0f, 30.0f, 300.0f);
+            DraggableFloat(10, 145, "Force", &topologicalFlockScenario.maxForce, 2.0f, 50.0f, 1000.0f);
+            DraggableFloat(10, 170, "Sep Weight", &topologicalFlockScenario.separationWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 195, "Cohesion Wt", &topologicalFlockScenario.cohesionWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 220, "Align Weight", &topologicalFlockScenario.alignmentWeight, 0.1f, 0.1f, 10.0f);
+        }
+        else if (currentScenario == SCENARIO_INTERPOSE) {
+            DrawTextShadow("Interpose (Bodyguard):", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Bodyguard Speed", &interposeScenario.bodyguardSpeed, 2.0f, 50.0f, 400.0f);
+            DraggableFloat(10, 145, "VIP Speed", &interposeScenario.vipSpeed, 1.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 170, "Threat Speed", &interposeScenario.threatSpeed, 1.0f, 30.0f, 250.0f);
+        }
+        else if (currentScenario == SCENARIO_FORMATION) {
+            DrawTextShadow("Formation:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Leader Speed", &formationScenario.leaderSpeed, 1.0f, 30.0f, 200.0f);
+            DraggableFloat(10, 145, "Follower Speed", &formationScenario.followerSpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 170, "Offset", &formationScenario.formationOffset, 2.0f, 20.0f, 150.0f);
+        }
+        else if (currentScenario == SCENARIO_QUEUING) {
+            DrawTextShadow("Queuing:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Agent Speed", &queuingScenario.agentSpeed, 1.0f, 30.0f, 200.0f);
+        }
+        else if (currentScenario == SCENARIO_EVADE_MULTIPLE) {
+            DrawTextShadow("Evade Multiple:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Prey Speed", &evadeMultipleScenario.preySpeed, 2.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 145, "Predator Speed", &evadeMultipleScenario.predatorSpeed, 1.0f, 30.0f, 250.0f);
+        }
+        else if (currentScenario == SCENARIO_PEDESTRIAN) {
+            DrawTextShadow("Pedestrian Crowd:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "Min Speed", &pedestrianScenario.minSpeed, 1.0f, 20.0f, 150.0f);
+            DraggableFloat(10, 145, "Max Speed", &pedestrianScenario.maxSpeed, 1.0f, 50.0f, 250.0f);
+            DraggableFloat(10, 170, "Max Force", &pedestrianScenario.maxForce, 5.0f, 100.0f, 1000.0f);
+        }
+        else if (currentScenario == SCENARIO_ESCORT_CONVOY) {
+            DrawTextShadow("Escort Convoy:", 10, 100, 16, WHITE);
+            DraggableFloat(10, 120, "VIP Speed", &escortConvoyScenario.vipSpeed, 1.0f, 20.0f, 150.0f);
+            DraggableFloat(10, 145, "Escort Speed", &escortConvoyScenario.escortSpeed, 1.0f, 40.0f, 200.0f);
+            DraggableFloat(10, 170, "Threat Speed", &escortConvoyScenario.threatSpeed, 1.0f, 30.0f, 200.0f);
         }
 
         // Instructions at bottom
