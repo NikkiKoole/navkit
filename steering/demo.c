@@ -1672,6 +1672,7 @@ static void SetupScenario(Scenario scenario) {
     currentScenario = scenario;
     obstacleCount = 0;
     wallCount = 0;
+    path.points = pathPoints;  // Reset to default array (Convoy changes this)
     path.count = 0;
     resourceCount = 0;
     patrolWaypointCount = 0;
@@ -4505,11 +4506,11 @@ static void DrawPath(void) {
 
     for (int i = 0; i < path.count - 1; i++) {
         Color color = (i < currentPathSegment) ? DARKGRAY : SKYBLUE;
-        DrawLineEx(pathPoints[i], pathPoints[i + 1], 3, color);
+        DrawLineEx(path.points[i], path.points[i + 1], 3, color);
     }
 
     for (int i = 0; i < path.count; i++) {
-        DrawCircleV(pathPoints[i], 8, (i == 0) ? GREEN : (i == path.count - 1) ? RED : BLUE);
+        DrawCircleV(path.points[i], 8, (i == 0) ? GREEN : (i == path.count - 1) ? RED : BLUE);
     }
 }
 
