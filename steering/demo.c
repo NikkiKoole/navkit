@@ -378,7 +378,6 @@ int preyStartIndex = 4;  // Prey start at this index
 // Evacuation state
 Vector2 fireCenter;
 float fireRadius = 50.0f;
-float fireGrowthRate = 15.0f;
 Vector2 exitPositions[3];
 int exitCount = 2;
 
@@ -1118,23 +1117,167 @@ static MurmurationScenario murmurationScenario = {
     .defaultCohesionWeight = 1.0f,
 };
 
-// Vehicle/curvature-limited state
-Vehicle vehicles[MAX_AGENTS];
-int vehicleCount = 0;
-int vehiclePathSegments[MAX_AGENTS];  // Per-vehicle path segment tracking
-float vehicleLookahead = 80.0f;
+// ============================================================================
+// Runtime State Structs - transient data that resets on scenario setup
+// ============================================================================
 
-// DWA navigation state
-DWAParams dwaParams;
-Vector2 dwaGoal;
-
-// DWA recovery state machine
+// DWA recovery state machine (moved here so DWAState can use it)
 typedef enum {
     DWA_NORMAL,
     DWA_BACKUP,
     DWA_TURN_IN_PLACE
 } DWAMode;
 
+// Patrol state
+typedef struct {
+    Vector2 waypoints[8];
+    int waypointCount;
+    int currentWaypoint;
+} PatrolState;
+
+static PatrolState patrolState;
+
+// Explore state
+typedef struct {
+    float grid[EXPLORE_GRID_WIDTH * EXPLORE_GRID_HEIGHT];
+    float time;
+} ExploreState;
+
+static ExploreState exploreState;
+
+// Forage state
+typedef struct {
+    Vector2 resources[MAX_RESOURCES];
+    int resourceCount;
+} ForageState;
+
+static ForageState forageState;
+
+// Guard state
+typedef struct {
+    Vector2 position;
+} GuardState;
+
+static GuardState guardState;
+
+// CaptureFlag state
+typedef struct {
+    Vector2 flagPos;
+    Vector2 blueBase;
+    Vector2 redBase;
+    int flagCarrier;  // -1 = no one, 0-2 = blue team, 3-5 = red team
+    int blueScore;
+    int redScore;
+} CaptureFlagState;
+
+static CaptureFlagState captureFlagState;
+
+// EscortConvoy state
+typedef struct {
+    Vector2 path[10];
+    int pathCount;
+    int currentSegment;
+} EscortConvoyState;
+
+static EscortConvoyState escortConvoyState;
+
+// FishShark state
+typedef struct {
+    int sharkIndex;
+} FishSharkState;
+
+static FishSharkState fishSharkState;
+
+// WolfPack state
+typedef struct {
+    int wolfCount;
+    int preyStartIndex;
+} WolfPackState;
+
+static WolfPackState wolfPackState;
+
+// Evacuation state
+typedef struct {
+    Vector2 fireCenter;
+    float fireRadius;
+    Vector2 exitPositions[3];
+    int exitCount;
+} EvacuationState;
+
+static EvacuationState evacuationState;
+
+// Traffic state (CarDirection defined earlier in globals section)
+typedef struct {
+    int lightState;  // 0 = NS green, 1 = NS yellow, 2 = EW green, 3 = EW yellow
+    float timer;
+    int carCount;
+    int pedCount;
+    CarDirection carDirections[MAX_AGENTS];
+    IDMParams carIDM[MAX_AGENTS];
+    float carSpeeds[MAX_AGENTS];
+    Vector2 pedTargets[MAX_AGENTS];
+} TrafficState;
+
+static TrafficState trafficState;
+
+// Murmuration state
+typedef struct {
+    float waveTime;
+    bool waveActive;
+    Vector2 waveCenter;
+    float waveRadius;
+} MurmurationState;
+
+static MurmurationState murmurationState;
+
+// SFM (Social Force Model) state
+typedef struct {
+    SocialForceParams params;
+    Vector2 goals[MAX_AGENTS];
+    int leftCount;
+    int rightCount;
+    int exitCount;
+    Vector2 exits[4];
+} SFMState;
+
+static SFMState sfmState;
+
+// Context Steering state
+typedef struct {
+    ContextSteering agents[MAX_AGENTS];
+    Vector2 targets[MAX_AGENTS];
+    Vector2 mazeGoal;
+    int predatorIndex;
+    bool showMaps;
+} ContextSteeringState;
+
+static ContextSteeringState ctxState;
+
+// DWA state
+typedef struct {
+    DWAParams params;
+    Vector2 goal;
+    DWAMode mode;
+    float stuckTimer;
+    float backupTimer;
+    float turnTimer;
+    float prevDistToGoal;
+    float prevSpeed;
+    float prevTurnRate;
+    int turnDirection;
+} DWAState;
+
+static DWAState dwaState;
+
+// Vehicle/curvature-limited state
+Vehicle vehicles[MAX_AGENTS];
+int vehicleCount = 0;
+int vehiclePathSegments[MAX_AGENTS];  // Per-vehicle path segment tracking
+float vehicleLookahead = 80.0f;
+
+// DWA navigation state (legacy globals - TODO: migrate to dwaState)
+DWAParams dwaParams;
+Vector2 dwaGoal;
 DWAMode dwaMode = DWA_NORMAL;
 float dwaStuckTimer = 0;
 float dwaBackupTimer = 0;
