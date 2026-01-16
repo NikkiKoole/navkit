@@ -411,6 +411,16 @@ void steering_resolve_agent_collision(SteeringAgent* agent,
                                       int agentCount,
                                       float agentRadius);
 
+// Resolve penetration with other agents with restitution (elastic collision)
+// Same as above but with restitution parameter for bounciness
+// restitution: 0.0 = inelastic (absorb energy), 1.0 = perfectly elastic (billiard balls)
+void steering_resolve_agent_collision_elastic(SteeringAgent* agent,
+                                              int agentIndex,
+                                              SteeringAgent* allAgents,
+                                              int agentCount,
+                                              float agentRadius,
+                                              float restitution);
+
 // ============================================================================
 // Context Steering (Interest/Danger Maps)
 // ============================================================================

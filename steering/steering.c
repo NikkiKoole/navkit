@@ -1503,6 +1503,52 @@ void steering_resolve_agent_collision(SteeringAgent* agent,
     }
 }
 
+void steering_resolve_agent_collision_elastic(SteeringAgent* agent,
+                                              int agentIndex,
+                                              SteeringAgent* allAgents,
+                                              int agentCount,
+                                              float agentRadius,
+                                              float restitution) {
+    float minDist = agentRadius * 2.0f;  // Both agents have same radius
+
+    for (int i = 0; i < agentCount; i++) {
+        if (i == agentIndex) continue;
+
+        Vector2 toAgent = vec_sub(agent->pos, allAgents[i].pos);
+        float dist = steering_vec_length(toAgent);
+
+        if (dist < minDist && dist > 0.001f) {
+            // Overlapping - push both agents apart (half each)
+            Vector2 normal = vec_mul(toAgent, 1.0f / dist);
+            float overlap = minDist - dist;
+            float pushDist = overlap * 0.5f;
+
+            agent->pos = vec_add(agent->pos, vec_mul(normal, pushDist));
+            allAgents[i].pos = vec_sub(allAgents[i].pos, vec_mul(normal, pushDist));
+
+            // Elastic collision: exchange velocity components along normal
+            // v1' = v1 - (1+e) * m2/(m1+m2) * <v1-v2, n> * n
+            // v2' = v2 + (1+e) * m1/(m1+m2) * <v1-v2, n> * n
+            // With equal masses (m1 = m2): coefficient becomes (1+e)/2
+            
+            Vector2 relVel = vec_sub(agent->vel, allAgents[i].vel);
+            float velAlongNormal = vec_dot(relVel, normal);
+            
+            // Only resolve if velocities are approaching
+            if (velAlongNormal < 0) {
+                float impulse = (1.0f + restitution) * velAlongNormal * 0.5f;
+                
+                agent->vel = vec_sub(agent->vel, vec_mul(normal, impulse));
+                allAgents[i].vel = vec_add(allAgents[i].vel, vec_mul(normal, impulse));
+            }
+        } else if (dist <= 0.001f) {
+            // Agents exactly overlapping - push in arbitrary direction
+            agent->pos.x += agentRadius;
+            allAgents[i].pos.x -= agentRadius;
+        }
+    }
+}
+
 // ============================================================================
 // Context Steering Implementation
 // ============================================================================

@@ -1,6 +1,12 @@
 // Steering Behaviors Demo
 // Press LEFT/RIGHT arrow keys to switch between scenarios
 // Each scenario demonstrates a different steering behavior
+//
+// Note on turning/steering:
+// Basic behaviors (seek, flee, arrive, etc.) use "boid-style" steering where
+// maxForce controls how quickly velocity can change - this implicitly controls
+// turning. Lower maxForce = wider turns, higher maxForce = sharper turns.
+// For explicit turn rate control, see CurvatureLimitedAgent (vehicle scenarios).
 
 #include "../vendor/raylib.h"
 #include "steering.h"
@@ -51,6 +57,7 @@ static float dragSensitivity;
 static float dragMinVal;
 static float dragMaxVal;
 static bool dragAnyHovered = false;
+static bool toggleAnyHovered = false;
 
 // Draw a draggable float value - click and drag left/right to change
 // minVal/maxVal: use NAN for no limit
@@ -89,6 +96,38 @@ static bool DraggableFloat(float x, float y, const char* label, float* value, fl
     return hovered;
 }
 
+// Draw a toggle checkbox - click to toggle on/off
+// Returns true if the value was changed this frame
+static bool ToggleBool(float x, float y, const char* label, bool* value) {
+    const char* text = TextFormat("[%c] %s", *value ? 'x' : ' ', label);
+    Vector2 textSize = {0};
+    if (g_comicFont && g_comicFont->texture.id > 0) {
+        textSize = MeasureTextEx(*g_comicFont, text, 18, 1);
+    } else {
+        textSize.x = MeasureText(text, 18);
+        textSize.y = 18;
+    }
+    Rectangle bounds = {x, y, textSize.x + 10, textSize.y + 4};
+    
+    bool hovered = CheckCollisionPointRec(GetMousePosition(), bounds);
+    if (hovered) toggleAnyHovered = true;
+    
+    bool changed = false;
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        *value = !(*value);
+        changed = true;
+    }
+    
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    if (g_comicFont && g_comicFont->texture.id > 0) {
+        DrawTextEx(*g_comicFont, text, (Vector2){x, y}, 18, 1, col);
+    } else {
+        DrawText(text, (int)x, (int)y, 18, col);
+    }
+    
+    return changed;
+}
+
 static void UpdateDraggables(void) {
     if (dragActive && dragTarget) {
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
@@ -105,12 +144,15 @@ static void UpdateDraggables(void) {
     
     if (dragActive || dragAnyHovered) {
         SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
+    } else if (toggleAnyHovered) {
+        SetMouseCursor(MOUSE_CURSOR_POINTING_HAND);
     } else {
         SetMouseCursor(MOUSE_CURSOR_DEFAULT);
     }
     
     // Reset for next frame
     dragAnyHovered = false;
+    toggleAnyHovered = false;
 }
 
 // ============================================================================
@@ -323,8 +365,237 @@ bool ctxShowMaps = true;                // Toggle to show interest/danger maps
 // Couzin zones state
 CouzinParams couzinParams;
 
-// Test tweakable value
-static float tweakTestValue = 50.0f;
+// Seek scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    // Defaults for reset/display
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+} SeekScenario;
+
+static SeekScenario seekScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+};
+
+// Flee scenario state (same params as Seek)
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+} FleeScenario;
+
+static FleeScenario fleeScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+};
+
+// Arrive scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float slowRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultSlowRadius;
+} ArriveScenario;
+
+static ArriveScenario arriveScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .slowRadius = 100.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultSlowRadius = 100.0f,
+};
+
+// Pursuit/Evasion scenario state
+typedef struct {
+    float pursuerMaxSpeed;
+    float pursuerMaxForce;
+    float pursuerMaxPrediction;
+    float evaderMaxSpeed;
+    float evaderMaxForce;
+    float evaderMaxPrediction;
+    const float defaultPursuerMaxSpeed;
+    const float defaultPursuerMaxForce;
+    const float defaultPursuerMaxPrediction;
+    const float defaultEvaderMaxSpeed;
+    const float defaultEvaderMaxForce;
+    const float defaultEvaderMaxPrediction;
+} PursuitEvasionScenario;
+
+static PursuitEvasionScenario pursuitEvasionScenario = {
+    .pursuerMaxSpeed = 180.0f,
+    .pursuerMaxForce = 300.0f,
+    .pursuerMaxPrediction = 1.0f,
+    .evaderMaxSpeed = 120.0f,
+    .evaderMaxForce = 300.0f,
+    .evaderMaxPrediction = 1.0f,
+    .defaultPursuerMaxSpeed = 180.0f,
+    .defaultPursuerMaxForce = 300.0f,
+    .defaultPursuerMaxPrediction = 1.0f,
+    .defaultEvaderMaxSpeed = 120.0f,
+    .defaultEvaderMaxForce = 300.0f,
+    .defaultEvaderMaxPrediction = 1.0f,
+};
+
+// Wander scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float wanderRadius;
+    float wanderDistance;
+    float wanderJitter;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultWanderRadius;
+    const float defaultWanderDistance;
+    const float defaultWanderJitter;
+} WanderScenario;
+
+static WanderScenario wanderScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .wanderRadius = 40.0f,
+    .wanderDistance = 80.0f,
+    .wanderJitter = 0.3f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultWanderRadius = 40.0f,
+    .defaultWanderDistance = 80.0f,
+    .defaultWanderJitter = 0.3f,
+};
+static bool wanderShowVisualization = true;
+
+// Containment scenario state
+typedef struct {
+    float margin;
+    float restitution;
+    const float defaultMargin;
+    const float defaultRestitution;
+} ContainmentScenario;
+
+static ContainmentScenario containmentScenario = {
+    .margin = 50.0f,
+    .restitution = 1.0f,
+    .defaultMargin = 50.0f,
+    .defaultRestitution = 1.0f,
+};
+
+// Flocking scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float neighborRadius;
+    float separationRadius;
+    float separationWeight;
+    float cohesionWeight;
+    float alignmentWeight;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultNeighborRadius;
+    const float defaultSeparationRadius;
+    const float defaultSeparationWeight;
+    const float defaultCohesionWeight;
+    const float defaultAlignmentWeight;
+} FlockingScenario;
+
+static FlockingScenario flockingScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 300.0f,
+    .neighborRadius = 100.0f,
+    .separationRadius = 40.0f,
+    .separationWeight = 2.0f,
+    .cohesionWeight = 1.0f,
+    .alignmentWeight = 1.5f,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultNeighborRadius = 100.0f,
+    .defaultSeparationRadius = 40.0f,
+    .defaultSeparationWeight = 2.0f,
+    .defaultCohesionWeight = 1.0f,
+    .defaultAlignmentWeight = 1.5f,
+};
+
+// Leader Follow scenario state
+typedef struct {
+    float leaderMaxSpeed;
+    float followerMaxSpeed;
+    float followOffset;
+    float leaderSightRadius;
+    float separationRadius;
+    const float defaultLeaderMaxSpeed;
+    const float defaultFollowerMaxSpeed;
+    const float defaultFollowOffset;
+    const float defaultLeaderSightRadius;
+    const float defaultSeparationRadius;
+} LeaderFollowScenario;
+
+static LeaderFollowScenario leaderFollowScenario = {
+    .leaderMaxSpeed = 80.0f,
+    .followerMaxSpeed = 120.0f,
+    .followOffset = 60.0f,
+    .leaderSightRadius = 50.0f,
+    .separationRadius = 30.0f,
+    .defaultLeaderMaxSpeed = 80.0f,
+    .defaultFollowerMaxSpeed = 120.0f,
+    .defaultFollowOffset = 60.0f,
+    .defaultLeaderSightRadius = 50.0f,
+    .defaultSeparationRadius = 30.0f,
+};
+
+// Hide scenario state
+typedef struct {
+    float pursuerMaxSpeed;
+    float hiderMaxSpeed;
+    float hiderMaxForce;
+    const float defaultPursuerMaxSpeed;
+    const float defaultHiderMaxSpeed;
+    const float defaultHiderMaxForce;
+} HideScenario;
+
+static HideScenario hideScenario = {
+    .pursuerMaxSpeed = 150.0f,
+    .hiderMaxSpeed = 150.0f,
+    .hiderMaxForce = 300.0f,
+    .defaultPursuerMaxSpeed = 150.0f,
+    .defaultHiderMaxSpeed = 150.0f,
+    .defaultHiderMaxForce = 300.0f,
+};
+
+// Obstacle Avoid scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float detectDistance;
+    float avoidWeight;
+    float seekWeight;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultDetectDistance;
+    const float defaultAvoidWeight;
+    const float defaultSeekWeight;
+} ObstacleAvoidScenario;
+
+static ObstacleAvoidScenario obstacleAvoidScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .detectDistance = 80.0f,
+    .avoidWeight = 2.0f,
+    .seekWeight = 1.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultDetectDistance = 80.0f,
+    .defaultAvoidWeight = 2.0f,
+    .defaultSeekWeight = 1.0f,
+};
 
 // Vehicle/curvature-limited state
 CurvatureLimitedAgent vehicles[MAX_AGENTS];
@@ -1731,6 +2002,10 @@ static void SetupScenario(Scenario scenario) {
 // ============================================================================
 
 static void UpdateSeek(float dt) {
+    // Apply tweakable values
+    agents[0].maxSpeed = seekScenario.maxSpeed;
+    agents[0].maxForce = seekScenario.maxForce;
+    
     Vector2 target = GetMousePosition();
     SteeringOutput steering = steering_seek(&agents[0], target);
     steering_apply(&agents[0], steering, dt);
@@ -1738,6 +2013,10 @@ static void UpdateSeek(float dt) {
 }
 
 static void UpdateFlee(float dt) {
+    // Apply tweakable values
+    agents[0].maxSpeed = fleeScenario.maxSpeed;
+    agents[0].maxForce = fleeScenario.maxForce;
+    
     Vector2 target = GetMousePosition();
     SteeringOutput steering = steering_flee(&agents[0], target);
     steering_apply(&agents[0], steering, dt);
@@ -1747,27 +2026,37 @@ static void UpdateFlee(float dt) {
 static void UpdateArrive(float dt) {
     static Vector2 target = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
 
+    // Apply tweakable values
+    agents[0].maxSpeed = arriveScenario.maxSpeed;
+    agents[0].maxForce = arriveScenario.maxForce;
+
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         target = GetMousePosition();
     }
 
-    SteeringOutput steering = steering_arrive(&agents[0], target, 100.0f);
+    SteeringOutput steering = steering_arrive(&agents[0], target, arriveScenario.slowRadius);
     steering_apply(&agents[0], steering, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Draw target
     DrawCircleV(target, 8, GREEN);
-    DrawCircleLinesV(target, 100, DARKGREEN); // Slow radius
+    DrawCircleLinesV(target, arriveScenario.slowRadius, DARKGREEN); // Slow radius
 }
 
 static void UpdatePursuitEvasion(float dt) {
+    // Apply tweakable values
+    agents[0].maxSpeed = pursuitEvasionScenario.pursuerMaxSpeed;
+    agents[0].maxForce = pursuitEvasionScenario.pursuerMaxForce;
+    targetAgent.maxSpeed = pursuitEvasionScenario.evaderMaxSpeed;
+    targetAgent.maxForce = pursuitEvasionScenario.evaderMaxForce;
+
     // Update pursuer
-    SteeringOutput pursuing = steering_pursuit(&agents[0], targetAgent.pos, targetAgent.vel, 1.0f);
+    SteeringOutput pursuing = steering_pursuit(&agents[0], targetAgent.pos, targetAgent.vel, pursuitEvasionScenario.pursuerMaxPrediction);
     steering_apply(&agents[0], pursuing, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Update evader (wander + evade)
-    SteeringOutput evading = steering_evasion(&targetAgent, agents[0].pos, agents[0].vel, 1.0f);
+    SteeringOutput evading = steering_evasion(&targetAgent, agents[0].pos, agents[0].vel, pursuitEvasionScenario.evaderMaxPrediction);
     SteeringOutput wandering = steering_wander(&targetAgent, 30, 60, 0.5f, &wanderAngles[0]);
 
     SteeringOutput outputs[2] = {evading, wandering};
@@ -1786,7 +2075,15 @@ static void UpdateWander(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     for (int i = 0; i < agentCount; i++) {
-        SteeringOutput wander = steering_wander(&agents[i], 40, 80, 0.3f, &wanderAngles[i]);
+        // Apply tweakable values
+        agents[i].maxSpeed = wanderScenario.maxSpeed;
+        agents[i].maxForce = wanderScenario.maxForce;
+
+        SteeringOutput wander = steering_wander(&agents[i], 
+            wanderScenario.wanderRadius, 
+            wanderScenario.wanderDistance, 
+            wanderScenario.wanderJitter, 
+            &wanderAngles[i]);
         SteeringOutput contain = steering_containment(&agents[i], bounds, 80);
 
         SteeringOutput outputs[2] = {wander, contain};
@@ -1794,6 +2091,39 @@ static void UpdateWander(float dt) {
         SteeringOutput combined = steering_blend(outputs, weights, 2);
         ApplySteeringWithSeparation(&agents[i], combined, i, dt);
         ResolveCollisions(&agents[i], i);
+
+        // Draw wander visualization
+        if (wanderShowVisualization) {
+            Vector2 vel = agents[i].vel;
+            float speed = steering_vec_length(vel);
+            Vector2 dir;
+            if (speed > 1.0f) {
+                dir = (Vector2){vel.x / speed, vel.y / speed};
+            } else {
+                dir = (Vector2){cosf(agents[i].orientation), sinf(agents[i].orientation)};
+            }
+            
+            // Circle center is wanderDistance ahead of agent
+            Vector2 circleCenter = {
+                agents[i].pos.x + dir.x * wanderScenario.wanderDistance,
+                agents[i].pos.y + dir.y * wanderScenario.wanderDistance
+            };
+            
+            // Target point on circle
+            Vector2 target = {
+                circleCenter.x + cosf(wanderAngles[i]) * wanderScenario.wanderRadius,
+                circleCenter.y + sinf(wanderAngles[i]) * wanderScenario.wanderRadius
+            };
+            
+            // Draw the wander circle
+            DrawCircleLinesV(circleCenter, wanderScenario.wanderRadius, DARKGRAY);
+            // Draw line from agent to circle center
+            DrawLineV(agents[i].pos, circleCenter, DARKGRAY);
+            // Draw target point on circle
+            DrawCircleV(target, 4, YELLOW);
+            // Draw line from circle center to target
+            DrawLineV(circleCenter, target, YELLOW);
+        }
     }
 }
 
@@ -1802,7 +2132,7 @@ static void UpdateContainment(float dt) {
 
     for (int i = 0; i < agentCount; i++) {
         // Keep current velocity but constrain to bounds
-        SteeringOutput contain = steering_containment(&agents[i], bounds, 50);
+        SteeringOutput contain = steering_containment(&agents[i], bounds, containmentScenario.margin);
         ApplySteeringWithSeparation(&agents[i], contain, i, dt);
 
         // Simple integration if no containment force
@@ -1810,7 +2140,11 @@ static void UpdateContainment(float dt) {
             agents[i].pos.x += agents[i].vel.x * dt;
             agents[i].pos.y += agents[i].vel.y * dt;
         }
-        ResolveCollisions(&agents[i], i);
+        
+        // Resolve collisions with elastic bouncing
+        steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
+        steering_resolve_wall_collision(&agents[i], walls, wallCount, 10.0f);
+        steering_resolve_agent_collision_elastic(&agents[i], i, agents, agentCount, 10.0f, containmentScenario.restitution);
     }
 
     // Draw bounds
@@ -1821,6 +2155,10 @@ static void UpdateFlocking(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     for (int i = 0; i < agentCount; i++) {
+        // Apply tweakable values
+        agents[i].maxSpeed = flockingScenario.maxSpeed;
+        agents[i].maxForce = flockingScenario.maxForce;
+
         // Gather neighbors
         Vector2 neighborPos[MAX_AGENTS];
         Vector2 neighborVel[MAX_AGENTS];
@@ -1829,7 +2167,7 @@ static void UpdateFlocking(float dt) {
         for (int j = 0; j < agentCount; j++) {
             if (i != j) {
                 float dist = steering_vec_distance(agents[i].pos, agents[j].pos);
-                if (dist < 100) { // Neighbor radius
+                if (dist < flockingScenario.neighborRadius) {
                     neighborPos[neighborCount] = agents[j].pos;
                     neighborVel[neighborCount] = agents[j].vel;
                     neighborCount++;
@@ -1838,8 +2176,10 @@ static void UpdateFlocking(float dt) {
         }
 
         SteeringOutput flock = steering_flocking(&agents[i], neighborPos, neighborVel, neighborCount,
-                                                 40.0f,  // separation radius
-                                                 2.0f, 1.0f, 1.5f); // weights
+                                                 flockingScenario.separationRadius,
+                                                 flockingScenario.separationWeight, 
+                                                 flockingScenario.cohesionWeight, 
+                                                 flockingScenario.alignmentWeight);
         SteeringOutput contain = steering_containment(&agents[i], bounds, 80);
 
         SteeringOutput outputs[2] = {flock, contain};
@@ -1852,6 +2192,9 @@ static void UpdateFlocking(float dt) {
 
 static void UpdateLeaderFollow(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
+
+    // Apply tweakable values to leader
+    agents[0].maxSpeed = leaderFollowScenario.leaderMaxSpeed;
 
     // Leader follows mouse if on screen, otherwise wanders
     Vector2 mousePos = GetMousePosition();
@@ -1875,6 +2218,9 @@ static void UpdateLeaderFollow(float dt) {
 
     // Followers follow
     for (int i = 1; i < agentCount; i++) {
+        // Apply tweakable values to followers
+        agents[i].maxSpeed = leaderFollowScenario.followerMaxSpeed;
+
         // Gather other followers as neighbors
         Vector2 neighborPos[MAX_AGENTS];
         int neighborCount = 0;
@@ -1885,14 +2231,21 @@ static void UpdateLeaderFollow(float dt) {
         }
 
         SteeringOutput follow = steering_leader_follow(&agents[i], agents[0].pos, agents[0].vel,
-                                                       60.0f, 50.0f,
-                                                       neighborPos, neighborCount, 30.0f);
+                                                       leaderFollowScenario.followOffset, 
+                                                       leaderFollowScenario.leaderSightRadius,
+                                                       neighborPos, neighborCount, 
+                                                       leaderFollowScenario.separationRadius);
         steering_apply(&agents[i], follow, dt);
         ResolveCollisions(&agents[i], i);
     }
 }
 
 static void UpdateHide(float dt) {
+    // Apply tweakable values
+    targetAgent.maxSpeed = hideScenario.pursuerMaxSpeed;
+    agents[0].maxSpeed = hideScenario.hiderMaxSpeed;
+    agents[0].maxForce = hideScenario.hiderMaxForce;
+
     // Move pursuer toward mouse
     Vector2 mousePos = GetMousePosition();
     SteeringOutput pursueSteering = steering_seek(&targetAgent, mousePos);
@@ -1909,11 +2262,15 @@ static void UpdateObstacleAvoid(float dt) {
     Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
 
     for (int i = 0; i < agentCount; i++) {
+        // Apply tweakable parameters
+        agents[i].maxSpeed = obstacleAvoidScenario.maxSpeed;
+        agents[i].maxForce = obstacleAvoidScenario.maxForce;
+
         SteeringOutput seek = steering_seek(&agents[i], target);
-        SteeringOutput avoid = steering_obstacle_avoid(&agents[i], obstacles, obstacleCount, 80.0f);
+        SteeringOutput avoid = steering_obstacle_avoid(&agents[i], obstacles, obstacleCount, obstacleAvoidScenario.detectDistance);
 
         SteeringOutput outputs[2] = {avoid, seek};
-        float weights[2] = {2.0f, 1.0f};
+        float weights[2] = {obstacleAvoidScenario.avoidWeight, obstacleAvoidScenario.seekWeight};
         SteeringOutput combined = steering_priority(outputs, 2, 10.0f);
         if (steering_vec_length(combined.linear) < 10) {
             combined = steering_blend(outputs, weights, 2);
@@ -4856,8 +5213,83 @@ int main(void) {
             DrawTextShadow("UP/DOWN: +/- agents", SCREEN_WIDTH - 220, 70, 16, YELLOW);
         }
 
-        // Draggable tweak test
-        DraggableFloat(10, 100, "Test Value", &tweakTestValue, 0.5f, 0.0f, 100.0f);
+        // Scenario-specific draggable parameters
+        if (currentScenario == SCENARIO_SEEK) {
+            DraggableFloat(10, 100, "Max Speed", &seekScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &seekScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f)", 
+                seekScenario.defaultMaxSpeed, seekScenario.defaultMaxForce), 
+                10, 150, 14, GRAY);
+        }
+        else if (currentScenario == SCENARIO_FLEE) {
+            DraggableFloat(10, 100, "Max Speed", &fleeScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &fleeScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f)", 
+                fleeScenario.defaultMaxSpeed, fleeScenario.defaultMaxForce), 
+                10, 150, 14, GRAY);
+        }
+        else if (currentScenario == SCENARIO_ARRIVE) {
+            DraggableFloat(10, 100, "Max Speed", &arriveScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &arriveScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Slow Radius", &arriveScenario.slowRadius, 1.0f, 10.0f, 300.0f);
+            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f, %.0f)", 
+                arriveScenario.defaultMaxSpeed, arriveScenario.defaultMaxForce, arriveScenario.defaultSlowRadius), 
+                10, 175, 14, GRAY);
+        }
+        else if (currentScenario == SCENARIO_PURSUIT_EVASION) {
+            DrawTextShadow("Pursuer (blue):", 10, 100, 16, SKYBLUE);
+            DraggableFloat(10, 120, "Speed", &pursuitEvasionScenario.pursuerMaxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 145, "Force", &pursuitEvasionScenario.pursuerMaxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 170, "Prediction", &pursuitEvasionScenario.pursuerMaxPrediction, 0.05f, 0.1f, 5.0f);
+            DrawTextShadow("Evader (red):", 10, 200, 16, RED);
+            DraggableFloat(10, 220, "Speed", &pursuitEvasionScenario.evaderMaxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 245, "Force", &pursuitEvasionScenario.evaderMaxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 270, "Prediction", &pursuitEvasionScenario.evaderMaxPrediction, 0.05f, 0.1f, 5.0f);
+        }
+        else if (currentScenario == SCENARIO_WANDER) {
+            DraggableFloat(10, 100, "Max Speed", &wanderScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &wanderScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Wander Radius", &wanderScenario.wanderRadius, 0.5f, 5.0f, 150.0f);
+            DraggableFloat(10, 175, "Wander Distance", &wanderScenario.wanderDistance, 0.5f, 10.0f, 200.0f);
+            DraggableFloat(10, 200, "Wander Jitter", &wanderScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
+            ToggleBool(10, 230, "Show Visualization", &wanderShowVisualization);
+        }
+        else if (currentScenario == SCENARIO_CONTAINMENT) {
+            DraggableFloat(10, 100, "Margin", &containmentScenario.margin, 1.0f, 10.0f, 200.0f);
+            DraggableFloat(10, 125, "Restitution", &containmentScenario.restitution, 0.01f, 0.0f, 1.0f);
+        }
+        else if (currentScenario == SCENARIO_FLOCKING) {
+            DraggableFloat(10, 100, "Max Speed", &flockingScenario.maxSpeed, 1.0f, 10.0f, 300.0f);
+            DraggableFloat(10, 125, "Max Force", &flockingScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Neighbor Radius", &flockingScenario.neighborRadius, 1.0f, 20.0f, 300.0f);
+            DraggableFloat(10, 175, "Separation Radius", &flockingScenario.separationRadius, 1.0f, 10.0f, 150.0f);
+            DraggableFloat(10, 200, "Separation Weight", &flockingScenario.separationWeight, 0.1f, 0.0f, 10.0f);
+            DraggableFloat(10, 225, "Cohesion Weight", &flockingScenario.cohesionWeight, 0.1f, 0.0f, 10.0f);
+            DraggableFloat(10, 250, "Alignment Weight", &flockingScenario.alignmentWeight, 0.1f, 0.0f, 10.0f);
+        }
+        else if (currentScenario == SCENARIO_LEADER_FOLLOW) {
+            DrawTextShadow("Leader:", 10, 100, 16, GOLD);
+            DraggableFloat(10, 120, "Speed", &leaderFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f);
+            DrawTextShadow("Followers:", 10, 150, 16, SKYBLUE);
+            DraggableFloat(10, 170, "Speed", &leaderFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 300.0f);
+            DraggableFloat(10, 195, "Follow Offset", &leaderFollowScenario.followOffset, 1.0f, 10.0f, 200.0f);
+            DraggableFloat(10, 220, "Sight Radius", &leaderFollowScenario.leaderSightRadius, 1.0f, 10.0f, 200.0f);
+            DraggableFloat(10, 245, "Separation", &leaderFollowScenario.separationRadius, 1.0f, 5.0f, 100.0f);
+        }
+        else if (currentScenario == SCENARIO_HIDE) {
+            DrawTextShadow("Pursuer (red):", 10, 100, 16, RED);
+            DraggableFloat(10, 120, "Speed", &hideScenario.pursuerMaxSpeed, 1.0f, 10.0f, 300.0f);
+            DrawTextShadow("Hider (blue):", 10, 150, 16, SKYBLUE);
+            DraggableFloat(10, 170, "Speed", &hideScenario.hiderMaxSpeed, 1.0f, 10.0f, 300.0f);
+            DraggableFloat(10, 195, "Force", &hideScenario.hiderMaxForce, 2.0f, 10.0f, 1000.0f);
+        }
+        else if (currentScenario == SCENARIO_OBSTACLE_AVOID) {
+            DraggableFloat(10, 100, "Speed", &obstacleAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &obstacleAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Detect Dist", &obstacleAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 175, "Avoid Weight", &obstacleAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 200, "Seek Weight", &obstacleAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
+        }
 
         // Instructions at bottom
         const char* instructions = "";
