@@ -366,10 +366,6 @@ int wallCount = 0;
 // Path
 Vector2 pathPoints[MAX_PATH_POINTS];
 Path path = { pathPoints, 0 };
-int currentPathSegment = 0;
-
-// Target for pursuit/evasion
-Boid targetAgent;
 
 // Current scenario
 Scenario currentScenario = SCENARIO_SEEK;
@@ -483,8 +479,6 @@ static ArriveScenario arriveScenario = {
     .defaultMaxForce = 300.0f,
     .defaultSlowRadius = 100.0f,
 };
-
-static Vector2 arriveTarget = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
 
 // Dock scenario state
 // NOTE: True docking (arrive + align to orientation) requires Vehicle
@@ -1207,6 +1201,43 @@ static EscortConvoyScenario escortConvoyScenario = {
 // ============================================================================
 // Runtime State Structs - transient data that resets on scenario setup
 // ============================================================================
+
+// Arrive state
+typedef struct {
+    Vector2 target;
+} ArriveState;
+
+static ArriveState arriveState;
+
+// Dock state
+typedef struct {
+    Vector2 stations[4];
+    float orientations[4];
+    int currentTarget;
+} DockState;
+
+static DockState dockState;
+
+// PursuitEvasion state
+typedef struct {
+    Boid evader;
+} PursuitEvasionState;
+
+static PursuitEvasionState pursuitEvasionState;
+
+// Hide state
+typedef struct {
+    Boid pursuer;
+} HideState;
+
+static HideState hideState;
+
+// PathFollow state
+typedef struct {
+    int currentSegment;
+} PathFollowState;
+
+static PathFollowState pathFollowState;
 
 // DWA recovery state machine (moved here so DWAState can use it)
 typedef enum {
@@ -1994,35 +2025,31 @@ static void SetupDeparture(void) {
 static void SetupArrive(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
+    arriveState.target = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
 }
-
-// Docking station positions and orientations for the demo
-static Vector2 dockingStations[4];
-static float dockingOrientations[4];
-static int currentDockingTarget = 0;
 
 static void SetupDock(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
 
     // Set up 4 docking stations around the screen (like a space station)
-    // dockingOrientations = direction the dock OPENS (used for drawing)
+    // orientations = direction the dock OPENS (used for drawing)
     // Agent should face OPPOSITE direction (into the dock) - we add PI in UpdateDock
     float margin = 120.0f;
     // Top - opens down
-    dockingStations[0] = (Vector2){SCREEN_WIDTH/2, margin};
-    dockingOrientations[0] = PI/2;  // opens down
+    dockState.stations[0] = (Vector2){SCREEN_WIDTH/2, margin};
+    dockState.orientations[0] = PI/2;  // opens down
     // Right - opens left
-    dockingStations[1] = (Vector2){SCREEN_WIDTH - margin, SCREEN_HEIGHT/2};
-    dockingOrientations[1] = PI;  // opens left
+    dockState.stations[1] = (Vector2){SCREEN_WIDTH - margin, SCREEN_HEIGHT/2};
+    dockState.orientations[1] = PI;  // opens left
     // Bottom - opens up
-    dockingStations[2] = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT - margin};
-    dockingOrientations[2] = -PI/2;  // opens up
+    dockState.stations[2] = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT - margin};
+    dockState.orientations[2] = -PI/2;  // opens up
     // Left - opens right
-    dockingStations[3] = (Vector2){margin, SCREEN_HEIGHT/2};
-    dockingOrientations[3] = 0;  // opens right
+    dockState.stations[3] = (Vector2){margin, SCREEN_HEIGHT/2};
+    dockState.orientations[3] = 0;  // opens right
 
-    currentDockingTarget = 0;
+    dockState.currentTarget = 0;
 }
 
 static void SetupPursuitEvasion(void) {
@@ -2030,10 +2057,10 @@ static void SetupPursuitEvasion(void) {
     InitAgent(&agents[0], (Vector2){200, SCREEN_HEIGHT/2});
     agents[0].maxSpeed = 180.0f;
 
-    // Target (evader)
-    InitAgent(&targetAgent, (Vector2){SCREEN_WIDTH - 200, SCREEN_HEIGHT/2});
-    targetAgent.maxSpeed = 120.0f;
-    targetAgent.vel = (Vector2){-50, 0};
+    // Evader
+    InitAgent(&pursuitEvasionState.evader, (Vector2){SCREEN_WIDTH - 200, SCREEN_HEIGHT/2});
+    pursuitEvasionState.evader.maxSpeed = 120.0f;
+    pursuitEvasionState.evader.vel = (Vector2){-50, 0};
 }
 
 static void SetupWander(void) {
@@ -2081,7 +2108,7 @@ static void SetupHide(void) {
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
 
     // Pursuer
-    InitAgent(&targetAgent, (Vector2){100, 100});
+    InitAgent(&hideState.pursuer, (Vector2){100, 100});
 
     // Obstacles to hide behind
     obstacleCount = 4;
@@ -2151,7 +2178,7 @@ static void SetupPathFollow(void) {
     pathPoints[6] = (Vector2){1000, 600};
     pathPoints[7] = (Vector2){800, 650};
 
-    currentPathSegment = 0;
+    pathFollowState.currentSegment = 0;
 }
 
 static void SetupInterpose(void) {
@@ -3203,10 +3230,10 @@ static void UpdateArrive(float dt) {
     agents[0].maxForce = arriveScenario.maxForce;
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        arriveTarget = GetMousePosition();
+        arriveState.target = GetMousePosition();
     }
 
-    SteeringOutput steering = steering_arrive(&agents[0], arriveTarget, arriveScenario.slowRadius);
+    SteeringOutput steering = steering_arrive(&agents[0], arriveState.target, arriveScenario.slowRadius);
     steering_apply(&agents[0], steering, dt);
     ResolveCollisions(&agents[0], 0);
 }
@@ -3216,7 +3243,7 @@ static void UpdateDock(float dt) {
     agents[0].maxSpeed = dockScenario.maxSpeed;
     agents[0].maxForce = dockScenario.maxForce;
 
-    Vector2 target = dockingStations[currentDockingTarget];
+    Vector2 target = dockState.stations[dockState.currentTarget];
 
     // NOTE: True docking with orientation alignment requires Vehicle.
     // Basic Boid uses pure Reynolds model - facing = velocity direction.
@@ -3230,36 +3257,38 @@ static void UpdateDock(float dt) {
 
     if (distToTarget < 15.0f && speed < 10.0f) {
         // Docked! Move to next station
-        currentDockingTarget = (currentDockingTarget + 1) % 4;
+        dockState.currentTarget = (dockState.currentTarget + 1) % 4;
     }
 }
 
 static void UpdatePursuitEvasion(float dt) {
+    Boid* evader = &pursuitEvasionState.evader;
+
     // Apply tweakable values
     agents[0].maxSpeed = pursuitEvasionScenario.pursuerMaxSpeed;
     agents[0].maxForce = pursuitEvasionScenario.pursuerMaxForce;
-    targetAgent.maxSpeed = pursuitEvasionScenario.evaderMaxSpeed;
-    targetAgent.maxForce = pursuitEvasionScenario.evaderMaxForce;
+    evader->maxSpeed = pursuitEvasionScenario.evaderMaxSpeed;
+    evader->maxForce = pursuitEvasionScenario.evaderMaxForce;
 
     // Update pursuer
-    SteeringOutput pursuing = steering_pursuit(&agents[0], targetAgent.pos, targetAgent.vel, pursuitEvasionScenario.pursuerMaxPrediction);
+    SteeringOutput pursuing = steering_pursuit(&agents[0], evader->pos, evader->vel, pursuitEvasionScenario.pursuerMaxPrediction);
     steering_apply(&agents[0], pursuing, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Update evader (wander + evade)
-    SteeringOutput evading = steering_evasion(&targetAgent, agents[0].pos, agents[0].vel, pursuitEvasionScenario.evaderMaxPrediction);
-    SteeringOutput wandering = steering_wander(&targetAgent, 30, 60, 0.5f, &wanderAngles[0]);
+    SteeringOutput evading = steering_evasion(evader, agents[0].pos, agents[0].vel, pursuitEvasionScenario.evaderMaxPrediction);
+    SteeringOutput wandering = steering_wander(evader, 30, 60, 0.5f, &wanderAngles[0]);
 
     SteeringOutput outputs[2] = {evading, wandering};
     float weights[2] = {1.5f, 0.5f};
     SteeringOutput combined = steering_blend(outputs, weights, 2);
-    steering_apply(&targetAgent, combined, dt);
+    steering_apply(evader, combined, dt);
 
     // Contain evader
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
-    SteeringOutput contain = steering_containment(&targetAgent, bounds, 50);
-    steering_apply(&targetAgent, contain, dt);
-    ResolveCollisions(&targetAgent, -1);
+    SteeringOutput contain = steering_containment(evader, bounds, 50);
+    steering_apply(evader, contain, dt);
+    ResolveCollisions(evader, -1);
 }
 
 static void UpdateWander(float dt) {
@@ -3396,19 +3425,21 @@ static void UpdateLeaderFollow(float dt) {
 }
 
 static void UpdateHide(float dt) {
+    Boid* pursuer = &hideState.pursuer;
+
     // Apply tweakable values
-    targetAgent.maxSpeed = hideScenario.pursuerMaxSpeed;
+    pursuer->maxSpeed = hideScenario.pursuerMaxSpeed;
     agents[0].maxSpeed = hideScenario.hiderMaxSpeed;
     agents[0].maxForce = hideScenario.hiderMaxForce;
 
     // Move pursuer toward mouse
     Vector2 mousePos = GetMousePosition();
-    SteeringOutput pursueSteering = steering_seek(&targetAgent, mousePos);
-    steering_apply(&targetAgent, pursueSteering, dt);
-    ResolveCollisions(&targetAgent, -1);
+    SteeringOutput pursueSteering = steering_seek(pursuer, mousePos);
+    steering_apply(pursuer, pursueSteering, dt);
+    ResolveCollisions(pursuer, -1);
 
     // Agent hides
-    SteeringOutput hide = steering_hide(&agents[0], targetAgent.pos, obstacles, obstacleCount);
+    SteeringOutput hide = steering_hide(&agents[0], pursuer->pos, obstacles, obstacleCount);
     steering_apply(&agents[0], hide, dt);
     ResolveCollisions(&agents[0], 0);
 }
@@ -3473,14 +3504,14 @@ static void UpdateWallFollow(float dt) {
 }
 
 static void UpdatePathFollow(float dt) {
-    SteeringOutput follow = steering_path_follow(&agents[0], &path, pathFollowScenario.pathRadius, &currentPathSegment);
+    SteeringOutput follow = steering_path_follow(&agents[0], &path, pathFollowScenario.pathRadius, &pathFollowState.currentSegment);
     steering_apply(&agents[0], follow, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Reset if reached end
     if (steering_vec_distance(agents[0].pos, pathPoints[path.count - 1]) < 20) {
         agents[0].pos = pathPoints[0];
-        currentPathSegment = 0;
+        pathFollowState.currentSegment = 0;
     }
 }
 
@@ -5708,8 +5739,10 @@ static void DrawWalls(void) {
 static void DrawPath(void) {
     if (path.count < 2) return;
 
+    // Use pathFollowState.currentSegment for coloring completed segments
+    // (only relevant for PathFollow scenario, but harmless for others)
     for (int i = 0; i < path.count - 1; i++) {
-        Color color = (i < currentPathSegment) ? DARKGRAY : SKYBLUE;
+        Color color = (i < pathFollowState.currentSegment) ? DARKGRAY : SKYBLUE;
         DrawLineEx(path.points[i], path.points[i + 1], 3, color);
     }
 
@@ -5759,8 +5792,8 @@ static void DrawArrive(void) {
     DrawVelocityVector(&agents[0], GREEN);
     
     // Draw target and slow radius
-    DrawCircleV(arriveTarget, 8, GREEN);
-    DrawCircleLinesV(arriveTarget, arriveScenario.slowRadius, DARKGREEN);
+    DrawCircleV(arriveState.target, 8, GREEN);
+    DrawCircleLinesV(arriveState.target, arriveScenario.slowRadius, DARKGREEN);
 }
 
 static void DrawDock(void) {
@@ -5770,9 +5803,9 @@ static void DrawDock(void) {
     
     // Draw all docking stations
     for (int i = 0; i < 4; i++) {
-        Color stationColor = (i == currentDockingTarget) ? GREEN : DARKGRAY;
-        Vector2 station = dockingStations[i];
-        float orient = dockingOrientations[i];
+        Color stationColor = (i == dockState.currentTarget) ? GREEN : DARKGRAY;
+        Vector2 station = dockState.stations[i];
+        float orient = dockState.orientations[i];
 
         // Draw station as a docking bay shape
         float size = 30.0f;
@@ -5795,7 +5828,7 @@ static void DrawDock(void) {
         DrawLineEx(station, arrowTip, 2, stationColor);
 
         // Draw slow radius for current target
-        if (i == currentDockingTarget) {
+        if (i == dockState.currentTarget) {
             DrawCircleLinesV(station, dockScenario.slowRadius, (Color){0, 100, 0, 100});
         }
     }
@@ -5807,8 +5840,8 @@ static void DrawPursuitEvasion(void) {
     DrawVelocityVector(&agents[0], GREEN);
     
     // Draw evader (red)
-    DrawAgent(&targetAgent, RED);
-    DrawVelocityVector(&targetAgent, ORANGE);
+    DrawAgent(&pursuitEvasionState.evader, RED);
+    DrawVelocityVector(&pursuitEvasionState.evader, ORANGE);
 }
 
 static void DrawWander(void) {
@@ -5882,8 +5915,8 @@ static void DrawHide(void) {
     DrawAgent(&agents[0], SKYBLUE);
     DrawVelocityVector(&agents[0], GREEN);
     // Pursuer (red)
-    DrawAgent(&targetAgent, RED);
-    DrawVelocityVector(&targetAgent, ORANGE);
+    DrawAgent(&hideState.pursuer, RED);
+    DrawVelocityVector(&hideState.pursuer, ORANGE);
 }
 
 static void DrawObstacleAvoid(void) {
