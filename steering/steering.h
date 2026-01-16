@@ -57,6 +57,9 @@ SteeringOutput steering_seek(const SteeringAgent* agent, Vector2 target);
 // Flee - move away from target position
 SteeringOutput steering_flee(const SteeringAgent* agent, Vector2 target);
 
+// Departure - flee with deceleration as agent gets farther (opposite of arrive)
+SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, float slowRadius);
+
 // Arrive - seek with smooth deceleration to stop at target
 // slowRadius: distance at which to start slowing down
 SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float slowRadius);

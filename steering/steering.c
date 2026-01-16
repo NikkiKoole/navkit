@@ -115,6 +115,34 @@ SteeringOutput steering_flee(const SteeringAgent* agent, Vector2 target) {
     return output;
 }
 
+// Departure: like flee but slows down as agent gets farther from target
+// (opposite of arrive - fast when close, slow when far)
+// Reference: https://slsdo.github.io/steering-behaviors/
+SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, float slowRadius) {
+    SteeringOutput output = steering_zero();
+    
+    Vector2 fromTarget = vec_sub(agent->pos, target);
+    float dist = steering_vec_length(fromTarget);
+    
+    if (dist < 1e-6f) return output;
+    
+    float targetSpeed;
+    if (dist > slowRadius) {
+        // Far from target - slow down (or stop)
+        targetSpeed = 0;
+    } else {
+        // Close to target - flee at speed proportional to proximity
+        // Closer = faster, farther = slower
+        targetSpeed = agent->maxSpeed * (1.0f - dist / slowRadius);
+    }
+    
+    Vector2 desired = steering_vec_normalize(fromTarget);
+    desired = vec_mul(desired, targetSpeed);
+    
+    output.linear = vec_sub(desired, agent->vel);
+    return output;
+}
+
 SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float slowRadius) {
     SteeringOutput output = steering_zero();
     
@@ -655,32 +683,65 @@ SteeringOutput steering_obstacle_avoid(const SteeringAgent* agent, const CircleO
                                        int obstacleCount, float lookahead) {
     SteeringOutput output = steering_zero();
     
-    Vector2 ahead = vec_add(agent->pos, vec_mul(steering_vec_normalize(agent->vel), lookahead));
-    Vector2 ahead2 = vec_add(agent->pos, vec_mul(steering_vec_normalize(agent->vel), lookahead * 0.5f));
+    float speed = steering_vec_length(agent->vel);
+    if (speed < 0.001f) return output;
     
-    // Find most threatening obstacle
+    // Agent's forward direction and perpendicular (lateral) direction
+    Vector2 forward = vec_mul(agent->vel, 1.0f / speed);
+    Vector2 lateral = (Vector2){-forward.y, forward.x};  // 90 degrees left
+    
+    // Detection box width - use a reasonable agent radius
+    float agentRadius = 15.0f;
+    
+    // Find the most threatening obstacle (closest intersection along forward axis)
     const CircleObstacle* mostThreatening = NULL;
-    float closestDist = 1e10f;
+    float closestIntersection = 1e10f;
+    float lateralOffset = 0.0f;  // How far off-center the obstacle is
     
     for (int i = 0; i < obstacleCount; i++) {
-        // Check if ahead points are inside obstacle
-        float dist1 = steering_vec_distance(ahead, obstacles[i].center);
-        float dist2 = steering_vec_distance(ahead2, obstacles[i].center);
-        float distAgent = steering_vec_distance(agent->pos, obstacles[i].center);
+        // Transform obstacle center to agent's local space
+        Vector2 toObstacle = vec_sub(obstacles[i].center, agent->pos);
         
-        bool collision = dist1 < obstacles[i].radius || dist2 < obstacles[i].radius;
+        // Project onto forward and lateral axes
+        float forwardDist = vec_dot(toObstacle, forward);  // distance ahead
+        float lateralDist = vec_dot(toObstacle, lateral);  // distance to side
         
-        if (collision && distAgent < closestDist) {
-            closestDist = distAgent;
-            mostThreatening = &obstacles[i];
+        // Skip obstacles behind us or too far ahead
+        if (forwardDist < 0 || forwardDist > lookahead) continue;
+        
+        // Combined radius (agent + obstacle) - this is the "box width" check
+        float combinedRadius = agentRadius + obstacles[i].radius;
+        
+        // Check if obstacle is within the detection corridor
+        if (fabsf(lateralDist) < combinedRadius) {
+            // This obstacle is in our path - check if it's the closest
+            if (forwardDist < closestIntersection) {
+                closestIntersection = forwardDist;
+                mostThreatening = &obstacles[i];
+                lateralOffset = lateralDist;
+            }
         }
     }
     
     if (mostThreatening) {
-        // Steer away from obstacle
-        Vector2 avoidance = vec_sub(ahead, mostThreatening->center);
-        avoidance = steering_vec_normalize(avoidance);
-        output.linear = vec_mul(avoidance, agent->maxForce);
+        // Reynolds' method: steer opposite to the lateral offset
+        // If obstacle is to the left (positive lateral), steer right (negative lateral)
+        // If obstacle is to the right (negative lateral), steer left (positive lateral)
+        Vector2 steerDir;
+        if (lateralOffset > 0) {
+            steerDir = vec_mul(lateral, -1.0f);  // steer right
+        } else {
+            steerDir = lateral;  // steer left
+        }
+        
+        // Also add a braking component if very close
+        float urgency = 1.0f - (closestIntersection / lookahead);
+        
+        // Combine lateral steering with some forward braking when close
+        Vector2 brake = vec_mul(forward, -urgency * 0.3f);
+        Vector2 lateralSteer = vec_mul(steerDir, 1.0f);
+        
+        output.linear = vec_mul(vec_add(lateralSteer, brake), agent->maxForce);
     }
     
     return output;

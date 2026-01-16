@@ -162,6 +162,7 @@ static void UpdateDraggables(void) {
 typedef enum {
     SCENARIO_SEEK = 0,
     SCENARIO_FLEE,
+    SCENARIO_DEPARTURE,
     SCENARIO_ARRIVE,
     SCENARIO_PURSUIT_EVASION,
     SCENARIO_WANDER,
@@ -210,6 +211,7 @@ typedef enum {
 const char* scenarioNames[] = {
     "Seek",
     "Flee",
+    "Departure",
     "Arrive",
     "Pursuit/Evasion",
     "Wander",
@@ -396,6 +398,25 @@ static FleeScenario fleeScenario = {
     .defaultMaxForce = 300.0f,
 };
 
+// Departure scenario state (flee with deceleration - opposite of arrive)
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float slowRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultSlowRadius;
+} DepartureScenario;
+
+static DepartureScenario departureScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .slowRadius = 200.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultSlowRadius = 200.0f,
+};
+
 // Arrive scenario state
 typedef struct {
     float maxSpeed;
@@ -571,6 +592,22 @@ static HideScenario hideScenario = {
 };
 
 // Obstacle Avoid scenario state
+//
+// NOTE: The steering_obstacle_avoid() function was rewritten to follow Craig Reynolds'
+// original algorithm from his GDC 1999 paper "Steering Behaviors For Autonomous Characters".
+//
+// The original implementation used simple point-in-circle tests which failed when agents
+// moved fast or approached obstacles at angles. The corrected algorithm:
+//
+// 1. Uses a detection CORRIDOR (box) ahead of the agent, not just a ray
+// 2. Projects obstacles into agent's local space (forward + lateral axes)
+// 3. Checks if obstacle is within combined radius (agent + obstacle) laterally
+// 4. Steers OPPOSITE to the obstacle's lateral offset (obstacle left -> steer right)
+//
+// References:
+// - https://www.red3d.com/cwr/steer/gdc99/ (Reynolds' original paper)
+// - https://slsdo.github.io/steering-behaviors/ (good visual explanations)
+//
 typedef struct {
     float maxSpeed;
     float maxForce;
@@ -594,6 +631,33 @@ static ObstacleAvoidScenario obstacleAvoidScenario = {
     .defaultMaxForce = 300.0f,
     .defaultDetectDistance = 80.0f,
     .defaultAvoidWeight = 2.0f,
+    .defaultSeekWeight = 1.0f,
+};
+
+// Wall Avoid scenario state
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float detectDistance;
+    float avoidWeight;
+    float seekWeight;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultDetectDistance;
+    const float defaultAvoidWeight;
+    const float defaultSeekWeight;
+} WallAvoidScenario;
+
+static WallAvoidScenario wallAvoidScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .detectDistance = 60.0f,
+    .avoidWeight = 3.0f,
+    .seekWeight = 1.0f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultDetectDistance = 60.0f,
+    .defaultAvoidWeight = 3.0f,
     .defaultSeekWeight = 1.0f,
 };
 
@@ -656,6 +720,7 @@ static bool ScenarioSupportsScaling(Scenario scenario) {
         // These have fixed agent counts due to specific roles
         case SCENARIO_SEEK:
         case SCENARIO_FLEE:
+        case SCENARIO_DEPARTURE:
         case SCENARIO_ARRIVE:
         case SCENARIO_PURSUIT_EVASION:
         case SCENARIO_HIDE:
@@ -853,6 +918,11 @@ static void SetupSeek(void) {
 }
 
 static void SetupFlee(void) {
+    agentCount = 1;
+    InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
+}
+
+static void SetupDeparture(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
 }
@@ -1951,6 +2021,7 @@ static void SetupScenario(Scenario scenario) {
     switch (scenario) {
         case SCENARIO_SEEK: SetupSeek(); break;
         case SCENARIO_FLEE: SetupFlee(); break;
+        case SCENARIO_DEPARTURE: SetupDeparture(); break;
         case SCENARIO_ARRIVE: SetupArrive(); break;
         case SCENARIO_PURSUIT_EVASION: SetupPursuitEvasion(); break;
         case SCENARIO_WANDER: SetupWander(); break;
@@ -2021,6 +2092,20 @@ static void UpdateFlee(float dt) {
     SteeringOutput steering = steering_flee(&agents[0], target);
     steering_apply(&agents[0], steering, dt);
     ResolveCollisions(&agents[0], 0);
+}
+
+static void UpdateDeparture(float dt) {
+    // Apply tweakable values
+    agents[0].maxSpeed = departureScenario.maxSpeed;
+    agents[0].maxForce = departureScenario.maxForce;
+    
+    Vector2 target = GetMousePosition();
+    SteeringOutput steering = steering_departure(&agents[0], target, departureScenario.slowRadius);
+    steering_apply(&agents[0], steering, dt);
+    ResolveCollisions(&agents[0], 0);
+    
+    // Draw the slow radius circle around mouse
+    DrawCircleLinesV(target, departureScenario.slowRadius, (Color){255, 100, 100, 100});
 }
 
 static void UpdateArrive(float dt) {
@@ -2292,11 +2377,15 @@ static void UpdateWallAvoid(float dt) {
     Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
 
     for (int i = 0; i < agentCount; i++) {
+        // Apply tweakable parameters
+        agents[i].maxSpeed = wallAvoidScenario.maxSpeed;
+        agents[i].maxForce = wallAvoidScenario.maxForce;
+
         SteeringOutput seek = steering_seek(&agents[i], target);
-        SteeringOutput avoid = steering_wall_avoid(&agents[i], walls, wallCount, 60.0f);
+        SteeringOutput avoid = steering_wall_avoid(&agents[i], walls, wallCount, wallAvoidScenario.detectDistance);
 
         SteeringOutput outputs[2] = {avoid, seek};
-        float weights[2] = {3.0f, 1.0f};
+        float weights[2] = {wallAvoidScenario.avoidWeight, wallAvoidScenario.seekWeight};
         SteeringOutput combined = steering_blend(outputs, weights, 2);
         ApplySteeringWithSeparation(&agents[i], combined, i, dt);
         ResolveCollisions(&agents[i], i);
@@ -4795,6 +4884,7 @@ static void UpdateScenario(float dt) {
     switch (currentScenario) {
         case SCENARIO_SEEK: UpdateSeek(dt); break;
         case SCENARIO_FLEE: UpdateFlee(dt); break;
+        case SCENARIO_DEPARTURE: UpdateDeparture(dt); break;
         case SCENARIO_ARRIVE: UpdateArrive(dt); break;
         case SCENARIO_PURSUIT_EVASION: UpdatePursuitEvasion(dt); break;
         case SCENARIO_WANDER: UpdateWander(dt); break;
@@ -5228,6 +5318,11 @@ int main(void) {
                 fleeScenario.defaultMaxSpeed, fleeScenario.defaultMaxForce), 
                 10, 150, 14, GRAY);
         }
+        else if (currentScenario == SCENARIO_DEPARTURE) {
+            DraggableFloat(10, 100, "Max Speed", &departureScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &departureScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Slow Radius", &departureScenario.slowRadius, 5.0f, 50.0f, 500.0f);
+        }
         else if (currentScenario == SCENARIO_ARRIVE) {
             DraggableFloat(10, 100, "Max Speed", &arriveScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
             DraggableFloat(10, 125, "Max Force", &arriveScenario.maxForce, 2.0f, 10.0f, 1000.0f);
@@ -5286,9 +5381,16 @@ int main(void) {
         else if (currentScenario == SCENARIO_OBSTACLE_AVOID) {
             DraggableFloat(10, 100, "Speed", &obstacleAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
             DraggableFloat(10, 125, "Force", &obstacleAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Detect Dist", &obstacleAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 150, "Detect Dist", &obstacleAvoidScenario.detectDistance, 1.0f, 20.0f, 500.0f);
             DraggableFloat(10, 175, "Avoid Weight", &obstacleAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
             DraggableFloat(10, 200, "Seek Weight", &obstacleAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
+        }
+        else if (currentScenario == SCENARIO_WALL_AVOID) {
+            DraggableFloat(10, 100, "Speed", &wallAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &wallAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Detect Dist", &wallAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 175, "Avoid Weight", &wallAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 200, "Seek Weight", &wallAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
         }
 
         // Instructions at bottom
@@ -5296,6 +5398,7 @@ int main(void) {
         switch (currentScenario) {
             case SCENARIO_SEEK: instructions = "Agent seeks mouse cursor"; break;
             case SCENARIO_FLEE: instructions = "Agent flees from mouse cursor"; break;
+            case SCENARIO_DEPARTURE: instructions = "Flee with deceleration (fast near, slow far)"; break;
             case SCENARIO_ARRIVE: instructions = "Click to set target (smooth stop)"; break;
             case SCENARIO_PURSUIT_EVASION: instructions = "Blue pursues, Red evades"; break;
             case SCENARIO_WANDER: instructions = "Agents wander randomly"; break;
