@@ -89,7 +89,7 @@ SteeringOutput steering_zero(void) {
     return (SteeringOutput){{0, 0}, 0};
 }
 
-void steering_apply(SteeringAgent* agent, SteeringOutput steering, float dt) {
+void steering_apply(Boid* agent, SteeringOutput steering, float dt) {
     // Truncate linear acceleration to max force
     steering.linear = vec_truncate(steering.linear, agent->maxForce);
     
@@ -110,7 +110,7 @@ void steering_apply(SteeringAgent* agent, SteeringOutput steering, float dt) {
 // Individual Behaviors
 // ============================================================================
 
-SteeringOutput steering_seek(const SteeringAgent* agent, Vector2 target) {
+SteeringOutput steering_seek(const Boid* agent, Vector2 target) {
     SteeringOutput output = steering_zero();
     
     Vector2 desired = vec_sub(target, agent->pos);
@@ -121,7 +121,7 @@ SteeringOutput steering_seek(const SteeringAgent* agent, Vector2 target) {
     return output;
 }
 
-SteeringOutput steering_flee(const SteeringAgent* agent, Vector2 target) {
+SteeringOutput steering_flee(const Boid* agent, Vector2 target) {
     SteeringOutput output = steering_zero();
     
     Vector2 desired = vec_sub(agent->pos, target);
@@ -135,7 +135,7 @@ SteeringOutput steering_flee(const SteeringAgent* agent, Vector2 target) {
 // Departure: like flee but slows down as agent gets farther from target
 // (opposite of arrive - fast when close, slow when far)
 // Reference: https://slsdo.github.io/steering-behaviors/
-SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, float slowRadius) {
+SteeringOutput steering_departure(const Boid* agent, Vector2 target, float slowRadius) {
     SteeringOutput output = steering_zero();
     
     Vector2 fromTarget = vec_sub(agent->pos, target);
@@ -160,7 +160,7 @@ SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, fl
     return output;
 }
 
-SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float slowRadius) {
+SteeringOutput steering_arrive(const Boid* agent, Vector2 target, float slowRadius) {
     SteeringOutput output = steering_zero();
     
     Vector2 toTarget = vec_sub(target, agent->pos);
@@ -183,11 +183,11 @@ SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float
 }
 
 // Dock: arrive at target position while aligning to a specific orientation
-// NOTE: Docking (arrive + align orientation) has been removed from the basic SteeringAgent.
+// NOTE: Docking (arrive + align orientation) has been removed from the basic Boid.
 // The pure Reynolds model has no explicit orientation - agents always face their velocity.
-// For docking behavior, use CurvatureLimitedAgent which supports independent orientation control.
+// For docking behavior, use Vehicle which supports independent orientation control.
 
-SteeringOutput steering_pursuit(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel, float maxPrediction) {
+SteeringOutput steering_pursuit(const Boid* agent, Vector2 targetPos, Vector2 targetVel, float maxPrediction) {
     Vector2 toTarget = vec_sub(targetPos, agent->pos);
     float dist = steering_vec_length(toTarget);
     
@@ -199,7 +199,7 @@ SteeringOutput steering_pursuit(const SteeringAgent* agent, Vector2 targetPos, V
     return steering_seek(agent, predictedPos);
 }
 
-SteeringOutput steering_evasion(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel, float maxPrediction) {
+SteeringOutput steering_evasion(const Boid* agent, Vector2 targetPos, Vector2 targetVel, float maxPrediction) {
     Vector2 toTarget = vec_sub(targetPos, agent->pos);
     float dist = steering_vec_length(toTarget);
     
@@ -211,7 +211,7 @@ SteeringOutput steering_evasion(const SteeringAgent* agent, Vector2 targetPos, V
     return steering_flee(agent, predictedPos);
 }
 
-SteeringOutput steering_offset_pursuit(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel,
+SteeringOutput steering_offset_pursuit(const Boid* agent, Vector2 targetPos, Vector2 targetVel,
                                        float targetOrientation, Vector2 offset, float maxPrediction) {
     // Transform offset from local to world space
     float cosA = cosf(targetOrientation);
@@ -235,7 +235,7 @@ SteeringOutput steering_offset_pursuit(const SteeringAgent* agent, Vector2 targe
     return steering_arrive(agent, predictedPos, 50.0f);
 }
 
-SteeringOutput steering_wander(const SteeringAgent* agent, float wanderRadius, float wanderDistance,
+SteeringOutput steering_wander(const Boid* agent, float wanderRadius, float wanderDistance,
                                float wanderJitter, float* wanderAngle) {
     // Add random jitter to wander angle
     *wanderAngle += randf(-wanderJitter, wanderJitter);
@@ -256,7 +256,7 @@ SteeringOutput steering_wander(const SteeringAgent* agent, float wanderRadius, f
     return steering_seek(agent, target);
 }
 
-SteeringOutput steering_containment(const SteeringAgent* agent, Rectangle bounds, float margin) {
+SteeringOutput steering_containment(const Boid* agent, Rectangle bounds, float margin) {
     SteeringOutput output = steering_zero();
     Vector2 desired = {0, 0};
     
@@ -282,9 +282,9 @@ SteeringOutput steering_containment(const SteeringAgent* agent, Rectangle bounds
 
 // NOTE: steering_face and steering_look_where_going have been removed.
 // Pure Reynolds model - agents always face their velocity direction automatically.
-// Use CurvatureLimitedAgent if you need independent orientation control.
+// Use Vehicle if you need independent orientation control.
 
-SteeringOutput steering_match_velocity(const SteeringAgent* agent, Vector2 targetVel, float timeToTarget) {
+SteeringOutput steering_match_velocity(const Boid* agent, Vector2 targetVel, float timeToTarget) {
     SteeringOutput output = steering_zero();
     
     output.linear = vec_sub(targetVel, agent->vel);
@@ -295,7 +295,7 @@ SteeringOutput steering_match_velocity(const SteeringAgent* agent, Vector2 targe
     return output;
 }
 
-SteeringOutput steering_interpose(const SteeringAgent* agent, Vector2 targetA, Vector2 velA,
+SteeringOutput steering_interpose(const Boid* agent, Vector2 targetA, Vector2 velA,
                                   Vector2 targetB, Vector2 velB) {
     // Find midpoint between the two targets
     Vector2 midpoint = vec_mul(vec_add(targetA, targetB), 0.5f);
@@ -313,7 +313,7 @@ SteeringOutput steering_interpose(const SteeringAgent* agent, Vector2 targetA, V
     return steering_arrive(agent, futureMid, 50.0f);
 }
 
-SteeringOutput steering_hide(const SteeringAgent* agent, Vector2 pursuerPos,
+SteeringOutput steering_hide(const Boid* agent, Vector2 pursuerPos,
                              const CircleObstacle* obstacles, int obstacleCount) {
     float bestDist = 1e10f;
     Vector2 bestHidingSpot = agent->pos;
@@ -344,7 +344,7 @@ SteeringOutput steering_hide(const SteeringAgent* agent, Vector2 pursuerPos,
     return steering_flee(agent, pursuerPos);
 }
 
-SteeringOutput steering_shadow(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel,
+SteeringOutput steering_shadow(const Boid* agent, Vector2 targetPos, Vector2 targetVel,
                                float approachDist) {
     float dist = steering_vec_distance(agent->pos, targetPos);
     
@@ -357,7 +357,7 @@ SteeringOutput steering_shadow(const SteeringAgent* agent, Vector2 targetPos, Ve
     }
 }
 
-SteeringOutput steering_orbit(const SteeringAgent* agent, Vector2 center,
+SteeringOutput steering_orbit(const Boid* agent, Vector2 center,
                               float radius, int clockwise) {
     SteeringOutput output = steering_zero();
     
@@ -397,7 +397,7 @@ SteeringOutput steering_orbit(const SteeringAgent* agent, Vector2 center,
     return output;
 }
 
-SteeringOutput steering_evade_multiple(const SteeringAgent* agent,
+SteeringOutput steering_evade_multiple(const Boid* agent,
                                        const Vector2* threatPositions,
                                        const Vector2* threatVelocities,
                                        int threatCount,
@@ -445,7 +445,7 @@ SteeringOutput steering_evade_multiple(const SteeringAgent* agent,
     return output;
 }
 
-SteeringOutput steering_patrol(const SteeringAgent* agent,
+SteeringOutput steering_patrol(const Boid* agent,
                                const Vector2* waypoints, int waypointCount,
                                float arriveRadius,
                                int* currentWaypoint) {
@@ -471,7 +471,7 @@ SteeringOutput steering_patrol(const SteeringAgent* agent,
     return steering_arrive(agent, target, arriveRadius * 2.0f);
 }
 
-SteeringOutput steering_explore(const SteeringAgent* agent,
+SteeringOutput steering_explore(const Boid* agent,
                                 Rectangle bounds, float cellSize,
                                 float* visitedGrid, int gridWidth, int gridHeight,
                                 float currentTime) {
@@ -519,7 +519,7 @@ SteeringOutput steering_explore(const SteeringAgent* agent,
     return steering_seek(agent, target);
 }
 
-SteeringOutput steering_forage(const SteeringAgent* agent,
+SteeringOutput steering_forage(const Boid* agent,
                                const Vector2* resources, int resourceCount,
                                float detectionRadius,
                                float* wanderAngle,
@@ -545,7 +545,7 @@ SteeringOutput steering_forage(const SteeringAgent* agent,
     }
 }
 
-SteeringOutput steering_guard(const SteeringAgent* agent,
+SteeringOutput steering_guard(const Boid* agent,
                               Vector2 guardPos, float guardRadius,
                               float* wanderAngle,
                               float wanderRadius, float wanderDistance, float wanderJitter) {
@@ -569,7 +569,7 @@ SteeringOutput steering_guard(const SteeringAgent* agent,
     }
 }
 
-SteeringOutput steering_queue_follow(const SteeringAgent* agent,
+SteeringOutput steering_queue_follow(const Boid* agent,
                                      Vector2 leaderPos, Vector2 leaderVel,
                                      float followDistance) {
     // Calculate the target position behind the leader
@@ -594,7 +594,7 @@ SteeringOutput steering_queue_follow(const SteeringAgent* agent,
     return steering_blend(outputs, weights, 2);
 }
 
-SteeringOutput steering_predictive_avoid(const SteeringAgent* agent,
+SteeringOutput steering_predictive_avoid(const Boid* agent,
                                          const Vector2* otherPositions,
                                          const Vector2* otherVelocities,
                                          int otherCount,
@@ -673,7 +673,7 @@ SteeringOutput steering_predictive_avoid(const SteeringAgent* agent,
 // Obstacle/Wall Behaviors
 // ============================================================================
 
-SteeringOutput steering_obstacle_avoid(const SteeringAgent* agent, const CircleObstacle* obstacles,
+SteeringOutput steering_obstacle_avoid(const Boid* agent, const CircleObstacle* obstacles,
                                        int obstacleCount, float lookahead) {
     SteeringOutput output = steering_zero();
     
@@ -770,7 +770,7 @@ static bool line_segment_intersect(Vector2 p1, Vector2 p2, Vector2 p3, Vector2 p
     return false;
 }
 
-SteeringOutput steering_wall_avoid(const SteeringAgent* agent, const Wall* walls, int wallCount,
+SteeringOutput steering_wall_avoid(const Boid* agent, const Wall* walls, int wallCount,
                                    float feelerLength) {
     SteeringOutput output = steering_zero();
     
@@ -828,7 +828,7 @@ SteeringOutput steering_wall_avoid(const SteeringAgent* agent, const Wall* walls
     return output;
 }
 
-SteeringOutput steering_wall_follow(const SteeringAgent* agent, const Wall* walls, int wallCount,
+SteeringOutput steering_wall_follow(const Boid* agent, const Wall* walls, int wallCount,
                                     float sideOffset, int side) {
     SteeringOutput output = steering_zero();
     
@@ -862,7 +862,7 @@ SteeringOutput steering_wall_follow(const SteeringAgent* agent, const Wall* wall
     return output;
 }
 
-SteeringOutput steering_path_follow(const SteeringAgent* agent, const Path* path, float pathOffset,
+SteeringOutput steering_path_follow(const Boid* agent, const Path* path, float pathOffset,
                                     int* currentSegment) {
     if (path->count < 2) return steering_zero();
     
@@ -906,7 +906,7 @@ SteeringOutput steering_path_follow(const SteeringAgent* agent, const Path* path
     return steering_seek(agent, target);
 }
 
-SteeringOutput steering_flow_field(const SteeringAgent* agent, Vector2 (*getFlowDirection)(Vector2 pos)) {
+SteeringOutput steering_flow_field(const Boid* agent, Vector2 (*getFlowDirection)(Vector2 pos)) {
     Vector2 desired = getFlowDirection(agent->pos);
     desired = vec_mul(steering_vec_normalize(desired), agent->maxSpeed);
     
@@ -919,7 +919,7 @@ SteeringOutput steering_flow_field(const SteeringAgent* agent, Vector2 (*getFlow
 // Group Behaviors
 // ============================================================================
 
-SteeringOutput steering_separation(const SteeringAgent* agent, const Vector2* neighbors, int neighborCount,
+SteeringOutput steering_separation(const Boid* agent, const Vector2* neighbors, int neighborCount,
                                    float separationRadius) {
     SteeringOutput output = steering_zero();
     Vector2 steering = {0, 0};
@@ -946,7 +946,7 @@ SteeringOutput steering_separation(const SteeringAgent* agent, const Vector2* ne
     return output;
 }
 
-SteeringOutput steering_cohesion(const SteeringAgent* agent, const Vector2* neighbors, int neighborCount) {
+SteeringOutput steering_cohesion(const Boid* agent, const Vector2* neighbors, int neighborCount) {
     if (neighborCount == 0) return steering_zero();
     
     Vector2 center = {0, 0};
@@ -958,7 +958,7 @@ SteeringOutput steering_cohesion(const SteeringAgent* agent, const Vector2* neig
     return steering_seek(agent, center);
 }
 
-SteeringOutput steering_alignment(const SteeringAgent* agent, const Vector2* neighborVels, int neighborCount) {
+SteeringOutput steering_alignment(const Boid* agent, const Vector2* neighborVels, int neighborCount) {
     if (neighborCount == 0) return steering_zero();
     
     Vector2 avgVel = {0, 0};
@@ -972,7 +972,7 @@ SteeringOutput steering_alignment(const SteeringAgent* agent, const Vector2* nei
     return output;
 }
 
-SteeringOutput steering_flocking(const SteeringAgent* agent,
+SteeringOutput steering_flocking(const Boid* agent,
                                  const Vector2* neighborPositions, const Vector2* neighborVelocities, int neighborCount,
                                  float separationRadius,
                                  float separationWeight, float cohesionWeight, float alignmentWeight) {
@@ -986,7 +986,7 @@ SteeringOutput steering_flocking(const SteeringAgent* agent,
     return steering_blend(outputs, weights, 3);
 }
 
-SteeringOutput steering_leader_follow(const SteeringAgent* agent, Vector2 leaderPos, Vector2 leaderVel,
+SteeringOutput steering_leader_follow(const Boid* agent, Vector2 leaderPos, Vector2 leaderVel,
                                       float followOffset, float leaderSightRadius,
                                       const Vector2* neighbors, int neighborCount, float separationRadius) {
     // Calculate point behind leader
@@ -1020,7 +1020,7 @@ SteeringOutput steering_leader_follow(const SteeringAgent* agent, Vector2 leader
     return output;
 }
 
-SteeringOutput steering_collision_avoid(const SteeringAgent* agent,
+SteeringOutput steering_collision_avoid(const Boid* agent,
                                         const Vector2* neighborPositions, const Vector2* neighborVelocities,
                                         int neighborCount, float agentRadius) {
     SteeringOutput output = steering_zero();
@@ -1078,7 +1078,7 @@ SteeringOutput steering_collision_avoid(const SteeringAgent* agent,
     return output;
 }
 
-SteeringOutput steering_queue(const SteeringAgent* agent,
+SteeringOutput steering_queue(const Boid* agent,
                               const Vector2* neighborPositions, const Vector2* neighborVelocities,
                               int neighborCount, float queueRadius, float brakeDistance) {
     SteeringOutput output = steering_zero();
@@ -1185,7 +1185,7 @@ static Vector2 sfm_closest_point_on_segment(Vector2 p, Vector2 a, Vector2 b) {
     return vec_add(a, vec_mul(ab, t));
 }
 
-SteeringOutput steering_social_force(const SteeringAgent* agent,
+SteeringOutput steering_social_force(const Boid* agent,
                                      Vector2 goal,
                                      const Vector2* otherPositions,
                                      const Vector2* otherVelocities,
@@ -1338,7 +1338,7 @@ SteeringOutput steering_social_force(const SteeringAgent* agent,
     return output;
 }
 
-SteeringOutput steering_social_force_simple(const SteeringAgent* agent,
+SteeringOutput steering_social_force_simple(const Boid* agent,
                                             Vector2 goal,
                                             const Vector2* otherPositions,
                                             const Vector2* otherVelocities,
@@ -1451,7 +1451,7 @@ SteeringOutput steering_priority(const SteeringOutput* outputs, int count, float
 // Hard Collision Resolution
 // ============================================================================
 
-void steering_resolve_obstacle_collision(SteeringAgent* agent,
+void steering_resolve_obstacle_collision(Boid* agent,
                                          const CircleObstacle* obstacles,
                                          int obstacleCount,
                                          float agentRadius) {
@@ -1477,7 +1477,7 @@ void steering_resolve_obstacle_collision(SteeringAgent* agent,
     }
 }
 
-void steering_resolve_wall_collision(SteeringAgent* agent,
+void steering_resolve_wall_collision(Boid* agent,
                                      const Wall* walls,
                                      int wallCount,
                                      float agentRadius) {
@@ -1520,9 +1520,9 @@ void steering_resolve_wall_collision(SteeringAgent* agent,
     }
 }
 
-void steering_resolve_agent_collision(SteeringAgent* agent,
+void steering_resolve_agent_collision(Boid* agent,
                                       int agentIndex,
-                                      SteeringAgent* allAgents,
+                                      Boid* allAgents,
                                       int agentCount,
                                       float agentRadius) {
     float minDist = agentRadius * 2.0f;  // Both agents have same radius
@@ -1560,9 +1560,9 @@ void steering_resolve_agent_collision(SteeringAgent* agent,
     }
 }
 
-void steering_resolve_agent_collision_elastic(SteeringAgent* agent,
+void steering_resolve_agent_collision_elastic(Boid* agent,
                                               int agentIndex,
-                                              SteeringAgent* allAgents,
+                                              Boid* allAgents,
                                               int agentCount,
                                               float agentRadius,
                                               float restitution) {
@@ -2410,7 +2410,7 @@ void ctx_danger_bounds(ContextSteering* ctx, Vector2 agentPos, Rectangle bounds,
 // Curvature-Limited Steering (Vehicle/Unicycle Model)
 // ============================================================================
 
-void curv_agent_init(CurvatureLimitedAgent* agent, Vector2 pos, float heading) {
+void curv_agent_init(Vehicle* agent, Vector2 pos, float heading) {
     agent->pos = pos;
     agent->speed = 0.0f;
     agent->heading = heading;
@@ -2421,14 +2421,14 @@ void curv_agent_init(CurvatureLimitedAgent* agent, Vector2 pos, float heading) {
     agent->maxTurnRate = 2.5f;     // ~143 degrees/second
 }
 
-Vector2 curv_agent_velocity(const CurvatureLimitedAgent* agent) {
+Vector2 curv_agent_velocity(const Vehicle* agent) {
     return (Vector2){
         agent->speed * cosf(agent->heading),
         agent->speed * sinf(agent->heading)
     };
 }
 
-SteeringOutput steering_curvature_limit(const CurvatureLimitedAgent* agent,
+SteeringOutput steering_curvature_limit(const Vehicle* agent,
                                         Vector2 desiredVelocity) {
     SteeringOutput output = steering_zero();
     
@@ -2471,7 +2471,7 @@ SteeringOutput steering_curvature_limit(const CurvatureLimitedAgent* agent,
     return output;
 }
 
-void curv_agent_apply(CurvatureLimitedAgent* agent, SteeringOutput steering, float dt) {
+void curv_agent_apply(Vehicle* agent, SteeringOutput steering, float dt) {
     // Update heading
     agent->heading += steering.angular * dt;
     while (agent->heading > PI) agent->heading -= 2.0f * PI;
@@ -2487,7 +2487,7 @@ void curv_agent_apply(CurvatureLimitedAgent* agent, SteeringOutput steering, flo
     agent->pos.y += agent->speed * sinf(agent->heading) * dt;
 }
 
-SteeringOutput curv_seek(const CurvatureLimitedAgent* agent, Vector2 target) {
+SteeringOutput curv_seek(const Vehicle* agent, Vector2 target) {
     Vector2 toTarget = vec_sub(target, agent->pos);
     float dist = steering_vec_length(toTarget);
     
@@ -2499,7 +2499,7 @@ SteeringOutput curv_seek(const CurvatureLimitedAgent* agent, Vector2 target) {
     return steering_curvature_limit(agent, desiredVel);
 }
 
-SteeringOutput curv_arrive(const CurvatureLimitedAgent* agent, Vector2 target, float slowRadius) {
+SteeringOutput curv_arrive(const Vehicle* agent, Vector2 target, float slowRadius) {
     Vector2 toTarget = vec_sub(target, agent->pos);
     float dist = steering_vec_length(toTarget);
     
@@ -2525,7 +2525,7 @@ SteeringOutput curv_arrive(const CurvatureLimitedAgent* agent, Vector2 target, f
 // ============================================================================
 
 // Helper: Find lookahead point on path
-static Vector2 find_lookahead_point(const CurvatureLimitedAgent* agent, 
+static Vector2 find_lookahead_point(const Vehicle* agent, 
                                     const Path* path, 
                                     float lookaheadDist,
                                     int* currentSegment) {
@@ -2597,7 +2597,7 @@ static Vector2 find_lookahead_point(const CurvatureLimitedAgent* agent,
     return path->points[path->count - 1];
 }
 
-SteeringOutput steering_pure_pursuit(const CurvatureLimitedAgent* agent,
+SteeringOutput steering_pure_pursuit(const Vehicle* agent,
                                      const Path* path,
                                      float lookaheadDist,
                                      int* currentSegment) {
@@ -2658,7 +2658,7 @@ SteeringOutput steering_pure_pursuit(const CurvatureLimitedAgent* agent,
 // Stanley Controller
 // ============================================================================
 
-SteeringOutput steering_stanley(const CurvatureLimitedAgent* agent,
+SteeringOutput steering_stanley(const Vehicle* agent,
                                 const Path* path,
                                 float k,
                                 int* currentSegment) {
@@ -2815,7 +2815,7 @@ static float dwa_check_clearance(Vector2 pos, float heading, float speed, float 
     return minClearance;
 }
 
-SteeringOutput steering_dwa(const CurvatureLimitedAgent* agent,
+SteeringOutput steering_dwa(const Vehicle* agent,
                             Vector2 goal,
                             const CircleObstacle* obstacles, int obstacleCount,
                             const Wall* walls, int wallCount,
@@ -2977,7 +2977,7 @@ SteeringOutput steering_dwa(const CurvatureLimitedAgent* agent,
 // Topological Flocking (k-Nearest Neighbors)
 // ============================================================================
 
-SteeringOutput steering_flocking_topological(const SteeringAgent* agent,
+SteeringOutput steering_flocking_topological(const Boid* agent,
                                              const Vector2* allPositions,
                                              const Vector2* allVelocities,
                                              int totalCount,
@@ -3095,7 +3095,7 @@ CouzinParams couzin_default_params(void) {
     };
 }
 
-SteeringOutput steering_couzin(const SteeringAgent* agent,
+SteeringOutput steering_couzin(const Boid* agent,
                                const Vector2* neighborPositions,
                                const Vector2* neighborVelocities,
                                int neighborCount,
@@ -3324,7 +3324,7 @@ void hungarian_build_cost_matrix(const Vector2* agentPositions, int agentCount,
     }
 }
 
-SteeringOutput steering_formation_hungarian(const SteeringAgent* agent,
+SteeringOutput steering_formation_hungarian(const Boid* agent,
                                             int agentIndex,
                                             const Vector2* allAgentPositions,
                                             int agentCount,
@@ -3398,7 +3398,7 @@ SteeringOutput steering_formation_hungarian(const SteeringAgent* agent,
 // ClearPath Multi-Agent Avoidance
 // ============================================================================
 
-SteeringOutput steering_clearpath(const SteeringAgent* agent,
+SteeringOutput steering_clearpath(const Boid* agent,
                                   Vector2 desiredVelocity,
                                   const Vector2* otherPositions,
                                   const Vector2* otherVelocities,

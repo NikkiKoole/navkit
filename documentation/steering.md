@@ -213,6 +213,7 @@ Beyond collision avoidance - cooperative, rule-based movement.
 
 ### Core
 - [Craig Reynolds - Steering Behaviors (1999)](https://www.red3d.com/cwr/steer/)
+- [Craig Reynolds - GDC 1999 Paper](https://www.red3d.com/cwr/steer/gdc99/) - Full paper with algorithms and formulas
 - [Craig Reynolds - Boids (1986)](https://www.red3d.com/cwr/boids/)
 - [OpenSteer Library](https://opensteer.sourceforge.net/doc.html)
 

@@ -8,7 +8,7 @@
 
 describe(steering_seek_behavior) {
     it("should accelerate toward target") {
-        SteeringAgent agent = {
+        Boid agent = {
             .pos = {100, 100},
             .vel = {0, 0},
             .maxSpeed = 150.0f,
@@ -24,7 +24,7 @@ describe(steering_seek_behavior) {
     }
     
     it("should reach target over time") {
-        SteeringAgent agent = {
+        Boid agent = {
             .pos = {100, 100},
             .vel = {0, 0},
             .maxSpeed = 150.0f,
@@ -48,7 +48,7 @@ describe(steering_seek_behavior) {
 
 describe(steering_arrive_behavior) {
     it("should slow down when approaching target") {
-        SteeringAgent agent = {
+        Boid agent = {
             .pos = {100, 100},
             .vel = {0, 0},
             .maxSpeed = 150.0f,
@@ -75,7 +75,7 @@ describe(steering_arrive_behavior) {
 
 describe(steering_flee_behavior) {
     it("should accelerate away from threat") {
-        SteeringAgent agent = {
+        Boid agent = {
             .pos = {100, 100},
             .vel = {0, 0},
             .maxSpeed = 150.0f,
@@ -93,7 +93,7 @@ describe(steering_flee_behavior) {
 
 describe(steering_wander_behavior) {
     it("should produce non-zero output") {
-        SteeringAgent agent = {
+        Boid agent = {
             .pos = {400, 300},
             .vel = {50, 0},
             .maxSpeed = 150.0f,
@@ -112,8 +112,8 @@ describe(steering_wander_behavior) {
 
 // ============================================================================
 // NOTE: Docking tests removed - steering_dock requires explicit orientation
-// control which is not part of the basic SteeringAgent (pure Reynolds model).
-// Use CurvatureLimitedAgent for behaviors that need independent orientation.
+// control which is not part of the basic Boid (pure Reynolds model).
+// Use Vehicle for behaviors that need independent orientation.
 // ============================================================================
 
 // ============================================================================
