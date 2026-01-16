@@ -12,7 +12,8 @@ typedef struct {
     Vector2 vel;
     float maxSpeed;
     float maxForce;
-    float orientation;  // radians, for Face/LookWhereYoureGoing
+    float orientation;       // radians, for Face/LookWhereYoureGoing
+    float angularVelocity;   // radians per second
 } SteeringAgent;
 
 typedef struct {
@@ -63,6 +64,13 @@ SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, fl
 // Arrive - seek with smooth deceleration to stop at target
 // slowRadius: distance at which to start slowing down
 SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float slowRadius);
+
+// Dock - arrive at target while aligning to a specific orientation
+// Combines arrive (position + speed) with face (orientation)
+// targetOrientation: desired final orientation in radians
+// slowAngle: angle at which to start slowing rotation
+SteeringOutput steering_dock(const SteeringAgent* agent, Vector2 target, float targetOrientation,
+                             float slowRadius, float maxAngularAccel, float slowAngle);
 
 // Pursuit - seek predicted position of moving target
 // targetVel: current velocity of the target
@@ -381,6 +389,12 @@ SteeringOutput steering_zero(void);
 float steering_vec_length(Vector2 v);
 Vector2 steering_vec_normalize(Vector2 v);
 float steering_vec_distance(Vector2 a, Vector2 b);
+Vector2 steering_vec_add(Vector2 a, Vector2 b);
+Vector2 steering_vec_sub(Vector2 a, Vector2 b);
+Vector2 steering_vec_mul(Vector2 v, float s);
+
+// Angle helper - wraps angle to [-PI, PI]
+float steering_wrap_angle(float angle);
 
 // ============================================================================
 // Hard Collision Resolution

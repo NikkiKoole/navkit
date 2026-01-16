@@ -7,6 +7,13 @@
 // maxForce controls how quickly velocity can change - this implicitly controls
 // turning. Lower maxForce = wider turns, higher maxForce = sharper turns.
 // For explicit turn rate control, see CurvatureLimitedAgent (vehicle scenarios).
+//
+// Note on angular steering (Jan 2026):
+// SteeringAgent now has angularVelocity field. SteeringOutput.angular is angular
+// ACCELERATION, not velocity. steering_apply() integrates: angularVelocity += angular * dt,
+// then orientation += angularVelocity * dt. This follows gdx-ai's ReachOrientation pattern
+// for smooth angular deceleration. Behaviors like steering_face, steering_dock now output
+// proper angular acceleration accounting for current angularVelocity.
 
 #include "../vendor/raylib.h"
 #include "steering.h"
@@ -164,6 +171,7 @@ typedef enum {
     SCENARIO_FLEE,
     SCENARIO_DEPARTURE,
     SCENARIO_ARRIVE,
+    SCENARIO_DOCK,
     SCENARIO_PURSUIT_EVASION,
     SCENARIO_WANDER,
     SCENARIO_CONTAINMENT,
@@ -213,6 +221,7 @@ const char* scenarioNames[] = {
     "Flee",
     "Departure",
     "Arrive",
+    "Dock",
     "Pursuit/Evasion",
     "Wander",
     "Containment",
@@ -434,6 +443,33 @@ static ArriveScenario arriveScenario = {
     .defaultMaxSpeed = 150.0f,
     .defaultMaxForce = 300.0f,
     .defaultSlowRadius = 100.0f,
+};
+
+// Dock scenario state (arrive + align to orientation)
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float slowRadius;
+    float maxAngularAccel;
+    float slowAngle;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultSlowRadius;
+    const float defaultMaxAngularAccel;
+    const float defaultSlowAngle;
+} DockScenario;
+
+static DockScenario dockScenario = {
+    .maxSpeed = 150.0f,
+    .maxForce = 300.0f,
+    .slowRadius = 200.0f,  // Larger radius to start braking earlier
+    .maxAngularAccel = 5.0f,
+    .slowAngle = 0.5f,
+    .defaultMaxSpeed = 150.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultSlowRadius = 200.0f,
+    .defaultMaxAngularAccel = 5.0f,
+    .defaultSlowAngle = 0.5f,
 };
 
 // Pursuit/Evasion scenario state
@@ -722,6 +758,7 @@ static bool ScenarioSupportsScaling(Scenario scenario) {
         case SCENARIO_FLEE:
         case SCENARIO_DEPARTURE:
         case SCENARIO_ARRIVE:
+        case SCENARIO_DOCK:
         case SCENARIO_PURSUIT_EVASION:
         case SCENARIO_HIDE:
         case SCENARIO_WALL_FOLLOW:
@@ -835,21 +872,24 @@ static void InitAgent(SteeringAgent* agent, Vector2 pos) {
     agent->maxSpeed = 150.0f;
     agent->maxForce = 300.0f;
     agent->orientation = 0;
+    agent->angularVelocity = 0;
 }
 
 static void DrawAgent(const SteeringAgent* agent, Color color) {
     // Draw body
     DrawCircleV(agent->pos, 10, color);
 
-    // Draw direction indicator
-    Vector2 dir;
+    // Draw velocity indicator (green)
     if (steering_vec_length(agent->vel) > 1) {
-        dir = steering_vec_normalize(agent->vel);
-    } else {
-        dir = (Vector2){cosf(agent->orientation), sinf(agent->orientation)};
+        Vector2 velDir = steering_vec_normalize(agent->vel);
+        Vector2 velTip = {agent->pos.x + velDir.x * 15, agent->pos.y + velDir.y * 15};
+        DrawLineEx(agent->pos, velTip, 3, LIME);
     }
-    Vector2 tip = {agent->pos.x + dir.x * 15, agent->pos.y + dir.y * 15};
-    DrawLineEx(agent->pos, tip, 3, WHITE);
+    
+    // Draw orientation indicator (white) - always shows actual orientation
+    Vector2 orientDir = (Vector2){cosf(agent->orientation), sinf(agent->orientation)};
+    Vector2 orientTip = {agent->pos.x + orientDir.x * 12, agent->pos.y + orientDir.y * 12};
+    DrawLineEx(agent->pos, orientTip, 2, WHITE);
 }
 
 static void DrawVelocityVector(const SteeringAgent* agent, Color color) {
@@ -930,6 +970,35 @@ static void SetupDeparture(void) {
 static void SetupArrive(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
+}
+
+// Docking station positions and orientations for the demo
+static Vector2 dockingStations[4];
+static float dockingOrientations[4];
+static int currentDockingTarget = 0;
+
+static void SetupDock(void) {
+    agentCount = 1;
+    InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
+    
+    // Set up 4 docking stations around the screen (like a space station)
+    // dockingOrientations = direction the dock OPENS (used for drawing)
+    // Agent should face OPPOSITE direction (into the dock) - we add PI in UpdateDock
+    float margin = 120.0f;
+    // Top - opens down
+    dockingStations[0] = (Vector2){SCREEN_WIDTH/2, margin};
+    dockingOrientations[0] = PI/2;  // opens down
+    // Right - opens left
+    dockingStations[1] = (Vector2){SCREEN_WIDTH - margin, SCREEN_HEIGHT/2};
+    dockingOrientations[1] = PI;  // opens left
+    // Bottom - opens up
+    dockingStations[2] = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT - margin};
+    dockingOrientations[2] = -PI/2;  // opens up
+    // Left - opens right
+    dockingStations[3] = (Vector2){margin, SCREEN_HEIGHT/2};
+    dockingOrientations[3] = 0;  // opens right
+    
+    currentDockingTarget = 0;
 }
 
 static void SetupPursuitEvasion(void) {
@@ -2023,6 +2092,7 @@ static void SetupScenario(Scenario scenario) {
         case SCENARIO_FLEE: SetupFlee(); break;
         case SCENARIO_DEPARTURE: SetupDeparture(); break;
         case SCENARIO_ARRIVE: SetupArrive(); break;
+        case SCENARIO_DOCK: SetupDock(); break;
         case SCENARIO_PURSUIT_EVASION: SetupPursuitEvasion(); break;
         case SCENARIO_WANDER: SetupWander(); break;
         case SCENARIO_CONTAINMENT: SetupContainment(); break;
@@ -2126,6 +2196,83 @@ static void UpdateArrive(float dt) {
     // Draw target
     DrawCircleV(target, 8, GREEN);
     DrawCircleLinesV(target, arriveScenario.slowRadius, DARKGREEN); // Slow radius
+}
+
+static void UpdateDock(float dt) {
+    // Apply tweakable values
+    agents[0].maxSpeed = dockScenario.maxSpeed;
+    agents[0].maxForce = dockScenario.maxForce;
+    
+    Vector2 target = dockingStations[currentDockingTarget];
+    // The dock "opens" in direction dockingOrientations[i].
+    // Agent approaches FROM that direction, so it faces INTO the dock.
+    // Agent's velocity will point toward the dock (opposite of dock opening).
+    // Since steering_dock uses "look where going", the agent will naturally
+    // face toward the dock while approaching.
+    // The targetOrientation is what the agent should face when stopped at dock.
+    // This should be the direction TOWARD the dock center = opposite of opening.
+    float targetOrientation = steering_wrap_angle(dockingOrientations[currentDockingTarget] + PI);
+    
+    SteeringOutput steering = steering_dock(&agents[0], target, targetOrientation,
+                                            dockScenario.slowRadius, 
+                                            dockScenario.maxAngularAccel,
+                                            dockScenario.slowAngle);
+    steering_apply(&agents[0], steering, dt);
+    
+    // Debug: show current and target orientation
+    DrawTextShadow(TextFormat("Agent orient: %.2f", agents[0].orientation), 10, 240, 14, WHITE);
+    DrawTextShadow(TextFormat("Target orient: %.2f", targetOrientation), 10, 260, 14, WHITE);
+    DrawTextShadow(TextFormat("Angular vel: %.2f", agents[0].angularVelocity), 10, 280, 14, WHITE);
+    DrawTextShadow(TextFormat("Angular acc: %.2f", steering.angular), 10, 300, 14, WHITE);
+    
+    // Check if docked (close to position AND orientation AND nearly stopped)
+    float distToTarget = steering_vec_distance(agents[0].pos, target);
+    float angleDiff = fabsf(steering_wrap_angle(agents[0].orientation - targetOrientation));
+    float speed = steering_vec_length(agents[0].vel);
+    
+    // Log when near dock
+    if (distToTarget < 150.0f) {
+        printf("dist=%.1f speed=%.1f orient=%.2f target=%.2f diff=%.2f angVel=%.2f angAcc=%.2f\n",
+               distToTarget, speed, agents[0].orientation, targetOrientation, angleDiff,
+               agents[0].angularVelocity, steering.angular);
+    }
+    
+    if (distToTarget < 15.0f && angleDiff < 0.15f && speed < 10.0f) {
+        // Docked! Move to next station
+        currentDockingTarget = (currentDockingTarget + 1) % 4;
+    }
+    
+    // Draw all docking stations
+    for (int i = 0; i < 4; i++) {
+        Color stationColor = (i == currentDockingTarget) ? GREEN : DARKGRAY;
+        Vector2 station = dockingStations[i];
+        float orient = dockingOrientations[i];
+        
+        // Draw station as a docking bay shape
+        float size = 30.0f;
+        Vector2 dir = {cosf(orient), sinf(orient)};
+        Vector2 perp = {-dir.y, dir.x};
+        
+        // Draw U-shaped dock opening
+        Vector2 left = steering_vec_add(station, steering_vec_mul(perp, size));
+        Vector2 right = steering_vec_sub(station, steering_vec_mul(perp, size));
+        Vector2 backLeft = steering_vec_sub(left, steering_vec_mul(dir, size * 0.8f));
+        Vector2 backRight = steering_vec_sub(right, steering_vec_mul(dir, size * 0.8f));
+        
+        DrawLineEx(left, backLeft, 4, stationColor);
+        DrawLineEx(right, backRight, 4, stationColor);
+        DrawLineEx(backLeft, backRight, 4, stationColor);
+        
+        // Draw direction indicator (where ship should face - opposite of dock opening)
+        Vector2 inwardDir = {-dir.x, -dir.y};
+        Vector2 arrowTip = steering_vec_add(station, steering_vec_mul(inwardDir, size * 0.5f));
+        DrawLineEx(station, arrowTip, 2, stationColor);
+        
+        // Draw slow radius for current target
+        if (i == currentDockingTarget) {
+            DrawCircleLinesV(station, dockScenario.slowRadius, (Color){0, 100, 0, 100});
+        }
+    }
 }
 
 static void UpdatePursuitEvasion(float dt) {
@@ -2584,10 +2731,10 @@ static void UpdateFace(float dt) {
 
     // Agent 0: stationary, faces mouse cursor
     SteeringOutput face = steering_face(&agents[0], mousePos, 5.0f, 0.3f);
-    agents[0].orientation += face.angular * dt;
-    // Keep orientation wrapped
-    while (agents[0].orientation > PI) agents[0].orientation -= 2 * PI;
-    while (agents[0].orientation < -PI) agents[0].orientation += 2 * PI;
+    // Apply angular acceleration properly
+    agents[0].angularVelocity += face.angular * dt;
+    agents[0].orientation += agents[0].angularVelocity * dt;
+    agents[0].orientation = steering_wrap_angle(agents[0].orientation);
     ResolveCollisions(&agents[0], 0);
 
     // Agents 1 and 2: wander with look-where-going
@@ -2599,13 +2746,10 @@ static void UpdateFace(float dt) {
         SteeringOutput outputs[2] = {wander, contain};
         float weights[2] = {1.0f, 2.0f};
         SteeringOutput combined = steering_blend(outputs, weights, 2);
+        // Add look angular to combined
+        combined.angular = look.angular;
         steering_apply(&agents[i], combined, dt);
         ResolveCollisions(&agents[i], i);
-
-        // Apply look-where-going angular
-        agents[i].orientation += look.angular * dt;
-        while (agents[i].orientation > PI) agents[i].orientation -= 2 * PI;
-        while (agents[i].orientation < -PI) agents[i].orientation += 2 * PI;
     }
 }
 
@@ -4886,6 +5030,7 @@ static void UpdateScenario(float dt) {
         case SCENARIO_FLEE: UpdateFlee(dt); break;
         case SCENARIO_DEPARTURE: UpdateDeparture(dt); break;
         case SCENARIO_ARRIVE: UpdateArrive(dt); break;
+        case SCENARIO_DOCK: UpdateDock(dt); break;
         case SCENARIO_PURSUIT_EVASION: UpdatePursuitEvasion(dt); break;
         case SCENARIO_WANDER: UpdateWander(dt); break;
         case SCENARIO_CONTAINMENT: UpdateContainment(dt); break;
@@ -5331,6 +5476,13 @@ int main(void) {
                 arriveScenario.defaultMaxSpeed, arriveScenario.defaultMaxForce, arriveScenario.defaultSlowRadius), 
                 10, 175, 14, GRAY);
         }
+        else if (currentScenario == SCENARIO_DOCK) {
+            DraggableFloat(10, 100, "Max Speed", &dockScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
+            DraggableFloat(10, 125, "Max Force", &dockScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Slow Radius", &dockScenario.slowRadius, 1.0f, 10.0f, 300.0f);
+            DraggableFloat(10, 175, "Angular Accel", &dockScenario.maxAngularAccel, 0.1f, 0.5f, 15.0f);
+            DraggableFloat(10, 200, "Slow Angle", &dockScenario.slowAngle, 0.05f, 0.1f, 2.0f);
+        }
         else if (currentScenario == SCENARIO_PURSUIT_EVASION) {
             DrawTextShadow("Pursuer (blue):", 10, 100, 16, SKYBLUE);
             DraggableFloat(10, 120, "Speed", &pursuitEvasionScenario.pursuerMaxSpeed, 1.0f, 10.0f, 500.0f);
@@ -5400,6 +5552,7 @@ int main(void) {
             case SCENARIO_FLEE: instructions = "Agent flees from mouse cursor"; break;
             case SCENARIO_DEPARTURE: instructions = "Flee with deceleration (fast near, slow far)"; break;
             case SCENARIO_ARRIVE: instructions = "Click to set target (smooth stop)"; break;
+            case SCENARIO_DOCK: instructions = "Arrive + align orientation (spaceship docking)"; break;
             case SCENARIO_PURSUIT_EVASION: instructions = "Blue pursues, Red evades"; break;
             case SCENARIO_WANDER: instructions = "Agents wander randomly"; break;
             case SCENARIO_CONTAINMENT: instructions = "Agents stay within yellow bounds"; break;

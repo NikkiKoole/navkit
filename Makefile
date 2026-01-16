@@ -13,8 +13,9 @@ steer_SRC       := steering/demo.c steering/steering.c
 crowd_SRC       := crowd-experiment/demo.c
 path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
 
-# Test target (no raylib needed for tests)
-test_SRC      := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
+# Test targets
+test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
+test_steering_SRC := tests/test_steering.c steering/steering.c
 
 all: $(TARGETS)
 
@@ -22,12 +23,20 @@ all: $(TARGETS)
 $(TARGETS):
 	$(CC) $(CFLAGS) -o $@ $($@_SRC) $(LDFLAGS)
 
-# Test target - links raylib for GetTime() etc used in pathfinding.c
-test: $(test_SRC)
-	$(CC) $(CFLAGS) -o $@ $(test_SRC) $(LDFLAGS)
-	./test
+# Pathing test - links raylib for GetTime() etc used in pathfinding.c
+test_pathing: $(test_pathing_SRC)
+	$(CC) $(CFLAGS) -o $@ $(test_pathing_SRC) $(LDFLAGS)
+	./test_pathing
+
+# Steering test
+test_steering: $(test_steering_SRC)
+	$(CC) $(CFLAGS) -o $@ $(test_steering_SRC) $(LDFLAGS)
+	./test_steering
+
+# Run all tests
+test: test_pathing test_steering
 
 clean:
-	rm -f $(TARGETS) test crowd
+	rm -f $(TARGETS) test_pathing test_steering crowd
 
-.PHONY: all clean $(TARGETS) test
+.PHONY: all clean $(TARGETS) test test_pathing test_steering

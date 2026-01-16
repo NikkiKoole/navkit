@@ -22,6 +22,24 @@ float steering_vec_distance(Vector2 a, Vector2 b) {
     return sqrtf(dx * dx + dy * dy);
 }
 
+Vector2 steering_vec_add(Vector2 a, Vector2 b) {
+    return (Vector2){a.x + b.x, a.y + b.y};
+}
+
+Vector2 steering_vec_sub(Vector2 a, Vector2 b) {
+    return (Vector2){a.x - b.x, a.y - b.y};
+}
+
+Vector2 steering_vec_mul(Vector2 v, float s) {
+    return (Vector2){v.x * s, v.y * s};
+}
+
+float steering_wrap_angle(float angle) {
+    while (angle > PI) angle -= 2 * PI;
+    while (angle < -PI) angle += 2 * PI;
+    return angle;
+}
+
 static inline Vector2 vec_add(Vector2 a, Vector2 b) {
     return (Vector2){a.x + b.x, a.y + b.y};
 }
@@ -84,8 +102,11 @@ void steering_apply(SteeringAgent* agent, SteeringOutput steering, float dt) {
     // Update position
     agent->pos = vec_add(agent->pos, vec_mul(agent->vel, dt));
     
-    // Update orientation
-    agent->orientation += steering.angular * dt;
+    // Update angular velocity from angular acceleration
+    agent->angularVelocity += steering.angular * dt;
+    
+    // Update orientation from angular velocity
+    agent->orientation += agent->angularVelocity * dt;
     agent->orientation = wrap_angle(agent->orientation);
 }
 
@@ -162,6 +183,90 @@ SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float
     desired = vec_mul(desired, targetSpeed);
     
     output.linear = vec_sub(desired, agent->vel);
+    return output;
+}
+
+// Dock: arrive at target position while aligning to a specific orientation
+// Combines arrive (position + speed) with reach orientation
+// targetOrientation is in radians
+// Reference: Reynolds GDC 1999 - extends arrival to constrain orientation
+// Reference: gdx-ai ReachOrientation for proper angular acceleration
+SteeringOutput steering_dock(const SteeringAgent* agent, Vector2 target, float targetOrientation,
+                             float slowRadius, float maxAngularAccel, float slowAngle) {
+    SteeringOutput output = steering_zero();
+    
+    // Linear component: arrive at target
+    Vector2 toTarget = vec_sub(target, agent->pos);
+    float dist = steering_vec_length(toTarget);
+    
+    if (dist > 1e-6f) {
+        float targetSpeed;
+        if (dist < slowRadius) {
+            targetSpeed = agent->maxSpeed * (dist / slowRadius);
+        } else {
+            targetSpeed = agent->maxSpeed;
+        }
+        
+        Vector2 desired = steering_vec_normalize(toTarget);
+        desired = vec_mul(desired, targetSpeed);
+        output.linear = vec_sub(desired, agent->vel);
+    }
+    
+    // Angular component: face the direction we're moving (look where you're going)
+    // This makes the agent approach nose-first, arriving already aligned with velocity
+    // 
+    // The target orientation parameter defines which way the dock "faces" - the agent
+    // should approach from that direction, meaning it faces INTO the dock (opposite).
+    // Since we use "look where going", the agent will naturally face toward the dock
+    // as it approaches - which is exactly what we want for docking.
+    
+    float maxRotation = maxAngularAccel;  // Max angular speed (rad/s)
+    
+    // Determine what orientation we should be facing:
+    // - While moving: face velocity direction (look where going)
+    // - When nearly stopped at dock: face the final target orientation
+    float speed = steering_vec_length(agent->vel);
+    float desiredOrientation;
+    
+    if (speed > 5.0f && dist > 20.0f) {
+        // Still moving toward dock - face velocity direction
+        desiredOrientation = atan2f(agent->vel.y, agent->vel.x);
+    } else {
+        // Nearly stopped or very close - align to final dock orientation
+        desiredOrientation = targetOrientation;
+    }
+    
+    float rotation = wrap_angle(desiredOrientation - agent->orientation);
+    float rotationSize = fabsf(rotation);
+    
+    // Align tolerance
+    float alignTolerance = 0.01f;
+    if (rotationSize < alignTolerance) {
+        // Arrived at target orientation - damp angular velocity
+        output.angular = -agent->angularVelocity * 10.0f;
+        return output;
+    }
+    
+    // Calculate target angular velocity
+    float targetAngularVelocity;
+    if (rotationSize < slowAngle) {
+        targetAngularVelocity = maxRotation * (rotationSize / slowAngle);
+    } else {
+        targetAngularVelocity = maxRotation;
+    }
+    
+    targetAngularVelocity *= (rotation > 0) ? 1.0f : -1.0f;
+    
+    // Calculate acceleration to reach target angular velocity
+    float timeToTarget = 0.1f;
+    output.angular = (targetAngularVelocity - agent->angularVelocity) / timeToTarget;
+    
+    // Clamp to max angular acceleration
+    float maxAngularAcceleration = maxAngularAccel * 10.0f;
+    if (fabsf(output.angular) > maxAngularAcceleration) {
+        output.angular = (output.angular > 0) ? maxAngularAcceleration : -maxAngularAcceleration;
+    }
+    
     return output;
 }
 
@@ -268,17 +373,35 @@ SteeringOutput steering_face(const SteeringAgent* agent, Vector2 target, float m
     float rotation = wrap_angle(targetOrientation - agent->orientation);
     float rotationSize = fabsf(rotation);
     
-    if (rotationSize < 0.01f) return output;
+    // Max angular speed (using maxAngularAccel parameter as the speed limit)
+    float maxRotation = maxAngularAccel;
     
-    float targetRotation;
-    if (rotationSize < slowAngle) {
-        targetRotation = maxAngularAccel * (rotationSize / slowAngle);
-    } else {
-        targetRotation = maxAngularAccel;
+    float alignTolerance = 0.01f;
+    if (rotationSize < alignTolerance) {
+        // Arrived at target - damp angular velocity
+        output.angular = -agent->angularVelocity * 10.0f;
+        return output;
     }
     
-    targetRotation *= (rotation > 0) ? 1 : -1;
-    output.angular = targetRotation;
+    // Calculate target angular velocity
+    float targetAngularVelocity;
+    if (rotationSize < slowAngle) {
+        targetAngularVelocity = maxRotation * (rotationSize / slowAngle);
+    } else {
+        targetAngularVelocity = maxRotation;
+    }
+    
+    targetAngularVelocity *= (rotation > 0) ? 1.0f : -1.0f;
+    
+    // Calculate acceleration to reach target angular velocity
+    float timeToTarget = 0.1f;
+    output.angular = (targetAngularVelocity - agent->angularVelocity) / timeToTarget;
+    
+    // Clamp to max angular acceleration
+    float maxAngularAcceleration = maxAngularAccel * 10.0f;
+    if (fabsf(output.angular) > maxAngularAcceleration) {
+        output.angular = (output.angular > 0) ? maxAngularAcceleration : -maxAngularAcceleration;
+    }
     
     return output;
 }
