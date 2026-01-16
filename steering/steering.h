@@ -4,21 +4,45 @@
 #include "../vendor/raylib.h"
 
 // ============================================================================
+// Two Agent Models
+// ============================================================================
+//
+// This library provides two distinct agent types for different use cases:
+//
+// 1. SteeringAgent (Classic Reynolds Boids)
+//    - Velocity-based: facing direction = atan2(vel.y, vel.x)
+//    - No explicit orientation - agents always face where they're moving
+//    - Turn sharpness emerges naturally from maxForce and maxSpeed
+//    - Use for: flocking, crowds, simple AI, anything that doesn't need
+//      independent heading control
+//
+// 2. CurvatureLimitedAgent (Vehicle Steering)
+//    - Explicit heading independent of motion direction
+//    - Turn rate and acceleration constraints for realistic vehicles
+//    - Can face a direction while stationary or moving differently
+//    - Use for: cars, spaceships, docking, tanks, any agent that needs
+//      to control orientation separately from movement
+//
+// Behaviors like Face, LookWhereYoureGoing, and Dock require explicit
+// orientation control and are only available for CurvatureLimitedAgent.
+//
+// ============================================================================
+
+// ============================================================================
 // Core Types
 // ============================================================================
 
+// Classic Reynolds boid - facing is always velocity direction
 typedef struct {
     Vector2 pos;
     Vector2 vel;
     float maxSpeed;
     float maxForce;
-    float orientation;       // radians, for Face/LookWhereYoureGoing
-    float angularVelocity;   // radians per second
 } SteeringAgent;
 
 typedef struct {
     Vector2 linear;     // linear acceleration
-    float angular;      // angular acceleration (for orientation behaviors)
+    float angular;      // angular acceleration/turn rate (used by CurvatureLimitedAgent, ignored by basic SteeringAgent)
 } SteeringOutput;
 
 // ============================================================================
@@ -65,12 +89,10 @@ SteeringOutput steering_departure(const SteeringAgent* agent, Vector2 target, fl
 // slowRadius: distance at which to start slowing down
 SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float slowRadius);
 
-// Dock - arrive at target while aligning to a specific orientation
-// Combines arrive (position + speed) with face (orientation)
-// targetOrientation: desired final orientation in radians
-// slowAngle: angle at which to start slowing rotation
-SteeringOutput steering_dock(const SteeringAgent* agent, Vector2 target, float targetOrientation,
-                             float slowRadius, float maxAngularAccel, float slowAngle);
+// NOTE: Docking (arrive + align orientation) requires an agent type with explicit
+// orientation control. Use CurvatureLimitedAgent for vehicles that need to face
+// a specific direction independent of velocity. The basic SteeringAgent always
+// faces its velocity direction (pure Reynolds model).
 
 // Pursuit - seek predicted position of moving target
 // targetVel: current velocity of the target
@@ -96,13 +118,9 @@ SteeringOutput steering_wander(const SteeringAgent* agent, float wanderRadius, f
 // Containment - stay within rectangular boundaries
 SteeringOutput steering_containment(const SteeringAgent* agent, Rectangle bounds, float margin);
 
-// Face - rotate to look at target (orientation only, no linear movement)
-// maxAngularAccel: maximum angular acceleration
-// slowAngle: angle at which to start slowing rotation
-SteeringOutput steering_face(const SteeringAgent* agent, Vector2 target, float maxAngularAccel, float slowAngle);
-
-// Look Where You're Going - face movement direction
-SteeringOutput steering_look_where_going(const SteeringAgent* agent, float maxAngularAccel, float slowAngle);
+// NOTE: Face and LookWhereYoureGoing behaviors require explicit orientation control.
+// In the pure Reynolds model, agents always face their velocity direction automatically.
+// Use CurvatureLimitedAgent if you need independent orientation control.
 
 // Match Velocity - match another agent's velocity
 SteeringOutput steering_match_velocity(const SteeringAgent* agent, Vector2 targetVel, float timeToTarget);

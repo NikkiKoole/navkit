@@ -102,12 +102,8 @@ void steering_apply(SteeringAgent* agent, SteeringOutput steering, float dt) {
     // Update position
     agent->pos = vec_add(agent->pos, vec_mul(agent->vel, dt));
     
-    // Update angular velocity from angular acceleration
-    agent->angularVelocity += steering.angular * dt;
-    
-    // Update orientation from angular velocity
-    agent->orientation += agent->angularVelocity * dt;
-    agent->orientation = wrap_angle(agent->orientation);
+    // NOTE: Pure Reynolds model - agent "facing" is always atan2(vel.y, vel.x)
+    // No explicit orientation tracking needed.
 }
 
 // ============================================================================
@@ -187,88 +183,9 @@ SteeringOutput steering_arrive(const SteeringAgent* agent, Vector2 target, float
 }
 
 // Dock: arrive at target position while aligning to a specific orientation
-// Combines arrive (position + speed) with reach orientation
-// targetOrientation is in radians
-// Reference: Reynolds GDC 1999 - extends arrival to constrain orientation
-// Reference: gdx-ai ReachOrientation for proper angular acceleration
-SteeringOutput steering_dock(const SteeringAgent* agent, Vector2 target, float targetOrientation,
-                             float slowRadius, float maxAngularAccel, float slowAngle) {
-    SteeringOutput output = steering_zero();
-    
-    // Linear component: arrive at target
-    Vector2 toTarget = vec_sub(target, agent->pos);
-    float dist = steering_vec_length(toTarget);
-    
-    if (dist > 1e-6f) {
-        float targetSpeed;
-        if (dist < slowRadius) {
-            targetSpeed = agent->maxSpeed * (dist / slowRadius);
-        } else {
-            targetSpeed = agent->maxSpeed;
-        }
-        
-        Vector2 desired = steering_vec_normalize(toTarget);
-        desired = vec_mul(desired, targetSpeed);
-        output.linear = vec_sub(desired, agent->vel);
-    }
-    
-    // Angular component: face the direction we're moving (look where you're going)
-    // This makes the agent approach nose-first, arriving already aligned with velocity
-    // 
-    // The target orientation parameter defines which way the dock "faces" - the agent
-    // should approach from that direction, meaning it faces INTO the dock (opposite).
-    // Since we use "look where going", the agent will naturally face toward the dock
-    // as it approaches - which is exactly what we want for docking.
-    
-    float maxRotation = maxAngularAccel;  // Max angular speed (rad/s)
-    
-    // Determine what orientation we should be facing:
-    // - While moving: face velocity direction (look where going)
-    // - When nearly stopped at dock: face the final target orientation
-    float speed = steering_vec_length(agent->vel);
-    float desiredOrientation;
-    
-    if (speed > 5.0f && dist > 20.0f) {
-        // Still moving toward dock - face velocity direction
-        desiredOrientation = atan2f(agent->vel.y, agent->vel.x);
-    } else {
-        // Nearly stopped or very close - align to final dock orientation
-        desiredOrientation = targetOrientation;
-    }
-    
-    float rotation = wrap_angle(desiredOrientation - agent->orientation);
-    float rotationSize = fabsf(rotation);
-    
-    // Align tolerance
-    float alignTolerance = 0.01f;
-    if (rotationSize < alignTolerance) {
-        // Arrived at target orientation - damp angular velocity
-        output.angular = -agent->angularVelocity * 10.0f;
-        return output;
-    }
-    
-    // Calculate target angular velocity
-    float targetAngularVelocity;
-    if (rotationSize < slowAngle) {
-        targetAngularVelocity = maxRotation * (rotationSize / slowAngle);
-    } else {
-        targetAngularVelocity = maxRotation;
-    }
-    
-    targetAngularVelocity *= (rotation > 0) ? 1.0f : -1.0f;
-    
-    // Calculate acceleration to reach target angular velocity
-    float timeToTarget = 0.1f;
-    output.angular = (targetAngularVelocity - agent->angularVelocity) / timeToTarget;
-    
-    // Clamp to max angular acceleration
-    float maxAngularAcceleration = maxAngularAccel * 10.0f;
-    if (fabsf(output.angular) > maxAngularAcceleration) {
-        output.angular = (output.angular > 0) ? maxAngularAcceleration : -maxAngularAcceleration;
-    }
-    
-    return output;
-}
+// NOTE: Docking (arrive + align orientation) has been removed from the basic SteeringAgent.
+// The pure Reynolds model has no explicit orientation - agents always face their velocity.
+// For docking behavior, use CurvatureLimitedAgent which supports independent orientation control.
 
 SteeringOutput steering_pursuit(const SteeringAgent* agent, Vector2 targetPos, Vector2 targetVel, float maxPrediction) {
     Vector2 toTarget = vec_sub(targetPos, agent->pos);
@@ -326,9 +243,9 @@ SteeringOutput steering_wander(const SteeringAgent* agent, float wanderRadius, f
     // Calculate target on wander circle
     Vector2 circleCenter = vec_add(agent->pos, vec_mul(steering_vec_normalize(agent->vel), wanderDistance));
     if (vec_len_sq(agent->vel) < 1e-6f) {
-        // If not moving, use orientation
-        circleCenter = vec_add(agent->pos, (Vector2){cosf(agent->orientation) * wanderDistance, 
-                                                      sinf(agent->orientation) * wanderDistance});
+        // If not moving, use wander angle as direction
+        circleCenter = vec_add(agent->pos, (Vector2){cosf(*wanderAngle) * wanderDistance, 
+                                                      sinf(*wanderAngle) * wanderDistance});
     }
     
     Vector2 target = {
@@ -363,55 +280,9 @@ SteeringOutput steering_containment(const SteeringAgent* agent, Rectangle bounds
     return output;
 }
 
-SteeringOutput steering_face(const SteeringAgent* agent, Vector2 target, float maxAngularAccel, float slowAngle) {
-    SteeringOutput output = steering_zero();
-    
-    Vector2 direction = vec_sub(target, agent->pos);
-    if (vec_len_sq(direction) < 1e-6f) return output;
-    
-    float targetOrientation = atan2f(direction.y, direction.x);
-    float rotation = wrap_angle(targetOrientation - agent->orientation);
-    float rotationSize = fabsf(rotation);
-    
-    // Max angular speed (using maxAngularAccel parameter as the speed limit)
-    float maxRotation = maxAngularAccel;
-    
-    float alignTolerance = 0.01f;
-    if (rotationSize < alignTolerance) {
-        // Arrived at target - damp angular velocity
-        output.angular = -agent->angularVelocity * 10.0f;
-        return output;
-    }
-    
-    // Calculate target angular velocity
-    float targetAngularVelocity;
-    if (rotationSize < slowAngle) {
-        targetAngularVelocity = maxRotation * (rotationSize / slowAngle);
-    } else {
-        targetAngularVelocity = maxRotation;
-    }
-    
-    targetAngularVelocity *= (rotation > 0) ? 1.0f : -1.0f;
-    
-    // Calculate acceleration to reach target angular velocity
-    float timeToTarget = 0.1f;
-    output.angular = (targetAngularVelocity - agent->angularVelocity) / timeToTarget;
-    
-    // Clamp to max angular acceleration
-    float maxAngularAcceleration = maxAngularAccel * 10.0f;
-    if (fabsf(output.angular) > maxAngularAcceleration) {
-        output.angular = (output.angular > 0) ? maxAngularAcceleration : -maxAngularAcceleration;
-    }
-    
-    return output;
-}
-
-SteeringOutput steering_look_where_going(const SteeringAgent* agent, float maxAngularAccel, float slowAngle) {
-    if (vec_len_sq(agent->vel) < 1e-6f) return steering_zero();
-    
-    Vector2 target = vec_add(agent->pos, agent->vel);
-    return steering_face(agent, target, maxAngularAccel, slowAngle);
-}
+// NOTE: steering_face and steering_look_where_going have been removed.
+// Pure Reynolds model - agents always face their velocity direction automatically.
+// Use CurvatureLimitedAgent if you need independent orientation control.
 
 SteeringOutput steering_match_velocity(const SteeringAgent* agent, Vector2 targetVel, float timeToTarget) {
     SteeringOutput output = steering_zero();
@@ -905,7 +776,8 @@ SteeringOutput steering_wall_avoid(const SteeringAgent* agent, const Wall* walls
     
     Vector2 vel = agent->vel;
     if (vec_len_sq(vel) < 1e-6f) {
-        vel = (Vector2){cosf(agent->orientation), sinf(agent->orientation)};
+        // No velocity - use default forward direction
+        vel = (Vector2){1, 0};
     }
     Vector2 dir = steering_vec_normalize(vel);
     
@@ -1214,7 +1086,8 @@ SteeringOutput steering_queue(const SteeringAgent* agent,
     // Get agent's forward direction
     Vector2 forward = steering_vec_normalize(agent->vel);
     if (vec_len_sq(agent->vel) < 1e-6f) {
-        forward = (Vector2){cosf(agent->orientation), sinf(agent->orientation)};
+        // No velocity - use default forward direction
+        forward = (Vector2){1, 0};
     }
     
     float brakeForce = 0.0f;
@@ -3229,10 +3102,11 @@ SteeringOutput steering_couzin(const SteeringAgent* agent,
                                CouzinParams params) {
     if (neighborCount == 0) return steering_zero();
     
-    // Agent's current heading
+    // Agent's current heading (derived from velocity)
     float agentHeading = atan2f(agent->vel.y, agent->vel.x);
+    // If not moving, heading is undefined - use 0 as default
     if (steering_vec_length(agent->vel) < 1.0f) {
-        agentHeading = agent->orientation;
+        agentHeading = 0;
     }
     
     Vector2 zorDir = {0, 0};  // Repulsion direction
