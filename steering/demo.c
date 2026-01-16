@@ -1228,16 +1228,52 @@ static PursuitEvasionState pursuitEvasionState;
 // Hide state
 typedef struct {
     Boid pursuer;
+    CircleObstacle obstacles[4];
+    int obstacleCount;
 } HideState;
 
 static HideState hideState;
 
 // PathFollow state
 typedef struct {
+    Vector2 points[8];
+    Path path;
     int currentSegment;
 } PathFollowState;
 
 static PathFollowState pathFollowState;
+
+// ObstacleAvoid state
+typedef struct {
+    CircleObstacle obstacles[5];
+    int obstacleCount;
+} ObstacleAvoidState;
+
+static ObstacleAvoidState obstacleAvoidState;
+
+// WallAvoid state
+typedef struct {
+    Wall walls[4];
+    int wallCount;
+} WallAvoidState;
+
+static WallAvoidState wallAvoidState;
+
+// WallFollow state
+typedef struct {
+    Wall walls[4];
+    int wallCount;
+} WallFollowState;
+
+static WallFollowState wallFollowState;
+
+// Queuing state
+typedef struct {
+    Wall walls[4];
+    int wallCount;
+} QueuingState;
+
+static QueuingState queuingState;
 
 // DWA recovery state machine (moved here so DWAState can use it)
 typedef enum {
@@ -1367,6 +1403,10 @@ typedef struct {
     Vector2 mazeGoal;
     int predatorIndex;
     bool showMaps;
+    CircleObstacle obstacles[10];
+    int obstacleCount;
+    Wall walls[10];
+    int wallCount;
 } ContextSteeringState;
 
 static ContextSteeringState ctxState;
@@ -1383,6 +1423,8 @@ typedef struct {
     float prevSpeed;
     float prevTurnRate;
     int turnDirection;
+    CircleObstacle obstacles[8];
+    int obstacleCount;
 } DWAState;
 
 static DWAState dwaState;
@@ -1403,6 +1445,8 @@ typedef struct {
     int count;
     int pathSegments[MAX_AGENTS];
     float lookahead;
+    Vector2 pathPoints[12];
+    Path path;
 } VehicleState;
 
 static VehicleState vehicleState = {
@@ -2111,11 +2155,11 @@ static void SetupHide(void) {
     InitAgent(&hideState.pursuer, (Vector2){100, 100});
 
     // Obstacles to hide behind
-    obstacleCount = 4;
-    obstacles[0] = (CircleObstacle){{400, 300}, 40};
-    obstacles[1] = (CircleObstacle){{800, 400}, 50};
-    obstacles[2] = (CircleObstacle){{600, 500}, 35};
-    obstacles[3] = (CircleObstacle){{300, 500}, 45};
+    hideState.obstacleCount = 4;
+    hideState.obstacles[0] = (CircleObstacle){{400, 300}, 40};
+    hideState.obstacles[1] = (CircleObstacle){{800, 400}, 50};
+    hideState.obstacles[2] = (CircleObstacle){{600, 500}, 35};
+    hideState.obstacles[3] = (CircleObstacle){{300, 500}, 45};
 }
 
 static void SetupObstacleAvoid(void) {
@@ -2125,12 +2169,12 @@ static void SetupObstacleAvoid(void) {
         agents[i].vel = (Vector2){100, 0};
     }
 
-    obstacleCount = 5;
-    obstacles[0] = (CircleObstacle){{400, 200}, 50};
-    obstacles[1] = (CircleObstacle){{600, 350}, 60};
-    obstacles[2] = (CircleObstacle){{500, 500}, 45};
-    obstacles[3] = (CircleObstacle){{800, 250}, 55};
-    obstacles[4] = (CircleObstacle){{900, 450}, 40};
+    obstacleAvoidState.obstacleCount = 5;
+    obstacleAvoidState.obstacles[0] = (CircleObstacle){{400, 200}, 50};
+    obstacleAvoidState.obstacles[1] = (CircleObstacle){{600, 350}, 60};
+    obstacleAvoidState.obstacles[2] = (CircleObstacle){{500, 500}, 45};
+    obstacleAvoidState.obstacles[3] = (CircleObstacle){{800, 250}, 55};
+    obstacleAvoidState.obstacles[4] = (CircleObstacle){{900, 450}, 40};
 }
 
 static void SetupWallAvoid(void) {
@@ -2140,11 +2184,11 @@ static void SetupWallAvoid(void) {
         agents[i].vel = (Vector2){80, randf(-20, 20)};
     }
 
-    wallCount = 4;
-    walls[0] = (Wall){{300, 150}, {500, 250}};
-    walls[1] = (Wall){{600, 300}, {700, 500}};
-    walls[2] = (Wall){{800, 200}, {900, 400}};
-    walls[3] = (Wall){{400, 450}, {600, 550}};
+    wallAvoidState.wallCount = 4;
+    wallAvoidState.walls[0] = (Wall){{300, 150}, {500, 250}};
+    wallAvoidState.walls[1] = (Wall){{600, 300}, {700, 500}};
+    wallAvoidState.walls[2] = (Wall){{800, 200}, {900, 400}};
+    wallAvoidState.walls[3] = (Wall){{400, 450}, {600, 550}};
 }
 
 static void SetupWallFollow(void) {
@@ -2154,11 +2198,11 @@ static void SetupWallFollow(void) {
     agents[0].maxForce = wallFollowScenario.maxForce;
 
     // Create a rectangular wall path
-    wallCount = 4;
-    walls[0] = (Wall){{200, 200}, {1000, 200}};  // Top
-    walls[1] = (Wall){{1000, 200}, {1000, 550}}; // Right
-    walls[2] = (Wall){{1000, 550}, {200, 550}};  // Bottom
-    walls[3] = (Wall){{200, 550}, {200, 200}};   // Left
+    wallFollowState.wallCount = 4;
+    wallFollowState.walls[0] = (Wall){{200, 200}, {1000, 200}};  // Top
+    wallFollowState.walls[1] = (Wall){{1000, 200}, {1000, 550}}; // Right
+    wallFollowState.walls[2] = (Wall){{1000, 550}, {200, 550}};  // Bottom
+    wallFollowState.walls[3] = (Wall){{200, 550}, {200, 200}};   // Left
 }
 
 static void SetupPathFollow(void) {
@@ -2168,16 +2212,16 @@ static void SetupPathFollow(void) {
     agents[0].maxForce = pathFollowScenario.maxForce;
 
     // Create a winding path
-    path.count = 8;
-    pathPoints[0] = (Vector2){100, 600};
-    pathPoints[1] = (Vector2){300, 400};
-    pathPoints[2] = (Vector2){500, 500};
-    pathPoints[3] = (Vector2){700, 300};
-    pathPoints[4] = (Vector2){900, 400};
-    pathPoints[5] = (Vector2){1100, 200};
-    pathPoints[6] = (Vector2){1000, 600};
-    pathPoints[7] = (Vector2){800, 650};
-
+    pathFollowState.points[0] = (Vector2){100, 600};
+    pathFollowState.points[1] = (Vector2){300, 400};
+    pathFollowState.points[2] = (Vector2){500, 500};
+    pathFollowState.points[3] = (Vector2){700, 300};
+    pathFollowState.points[4] = (Vector2){900, 400};
+    pathFollowState.points[5] = (Vector2){1100, 200};
+    pathFollowState.points[6] = (Vector2){1000, 600};
+    pathFollowState.points[7] = (Vector2){800, 650};
+    pathFollowState.path.points = pathFollowState.points;
+    pathFollowState.path.count = 8;
     pathFollowState.currentSegment = 0;
 }
 
@@ -2241,13 +2285,13 @@ static void SetupQueuing(void) {
     }
 
     // Create walls forming a doorway/bottleneck
-    wallCount = 4;
+    queuingState.wallCount = 4;
     // Top wall with gap
-    walls[0] = (Wall){{700, 100}, {700, 300}};
-    walls[1] = (Wall){{700, 420}, {700, 620}};
+    queuingState.walls[0] = (Wall){{700, 100}, {700, 300}};
+    queuingState.walls[1] = (Wall){{700, 420}, {700, 620}};
     // Funnel walls
-    walls[2] = (Wall){{500, 100}, {700, 300}};
-    walls[3] = (Wall){{500, 620}, {700, 420}};
+    queuingState.walls[2] = (Wall){{500, 100}, {700, 300}};
+    queuingState.walls[3] = (Wall){{500, 620}, {700, 420}};
 }
 
 static void SetupCollisionAvoid(void) {
@@ -2916,17 +2960,17 @@ static void SetupCtxObstacleCourse(void) {
     }
 
     // Dense obstacle field
-    obstacleCount = 10;
-    obstacles[0] = (CircleObstacle){{350, 200}, 50};
-    obstacles[1] = (CircleObstacle){{500, 400}, 60};
-    obstacles[2] = (CircleObstacle){{650, 250}, 45};
-    obstacles[3] = (CircleObstacle){{400, 500}, 55};
-    obstacles[4] = (CircleObstacle){{750, 450}, 40};
-    obstacles[5] = (CircleObstacle){{550, 150}, 35};
-    obstacles[6] = (CircleObstacle){{850, 300}, 50};
-    obstacles[7] = (CircleObstacle){{300, 350}, 40};
-    obstacles[8] = (CircleObstacle){{950, 500}, 45};
-    obstacles[9] = (CircleObstacle){{700, 550}, 35};
+    ctxState.obstacleCount = 10;
+    ctxState.obstacles[0] = (CircleObstacle){{350, 200}, 50};
+    ctxState.obstacles[1] = (CircleObstacle){{500, 400}, 60};
+    ctxState.obstacles[2] = (CircleObstacle){{650, 250}, 45};
+    ctxState.obstacles[3] = (CircleObstacle){{400, 500}, 55};
+    ctxState.obstacles[4] = (CircleObstacle){{750, 450}, 40};
+    ctxState.obstacles[5] = (CircleObstacle){{550, 150}, 35};
+    ctxState.obstacles[6] = (CircleObstacle){{850, 300}, 50};
+    ctxState.obstacles[7] = (CircleObstacle){{300, 350}, 40};
+    ctxState.obstacles[8] = (CircleObstacle){{950, 500}, 45};
+    ctxState.obstacles[9] = (CircleObstacle){{700, 550}, 35};
 }
 
 static void SetupCtxMaze(void) {
@@ -2949,25 +2993,25 @@ static void SetupCtxMaze(void) {
 
     // Create maze walls - designed to be solvable!
     // Path: start left -> go up through gap -> right -> down through gap -> right -> up -> goal
-    wallCount = 10;
+    ctxState.wallCount = 10;
     // Outer boundary
-    walls[0] = (Wall){{50, 100}, {SCREEN_WIDTH - 50, 100}};   // Top
-    walls[1] = (Wall){{50, 620}, {SCREEN_WIDTH - 50, 620}};   // Bottom
-    walls[2] = (Wall){{50, 100}, {50, 620}};                  // Left
-    walls[3] = (Wall){{SCREEN_WIDTH - 50, 100}, {SCREEN_WIDTH - 50, 620}};  // Right
+    ctxState.walls[0] = (Wall){{50, 100}, {SCREEN_WIDTH - 50, 100}};   // Top
+    ctxState.walls[1] = (Wall){{50, 620}, {SCREEN_WIDTH - 50, 620}};   // Bottom
+    ctxState.walls[2] = (Wall){{50, 100}, {50, 620}};                  // Left
+    ctxState.walls[3] = (Wall){{SCREEN_WIDTH - 50, 100}, {SCREEN_WIDTH - 50, 620}};  // Right
 
     // Internal maze walls with gaps for passage
     // Wall 1: vertical from top, gap at bottom
-    walls[4] = (Wall){{280, 100}, {280, 450}};
+    ctxState.walls[4] = (Wall){{280, 100}, {280, 450}};
     // Wall 2: vertical from bottom, gap at top
-    walls[5] = (Wall){{500, 170}, {500, 620}};
+    ctxState.walls[5] = (Wall){{500, 170}, {500, 620}};
     // Wall 3: vertical from top, gap at bottom
-    walls[6] = (Wall){{720, 100}, {720, 480}};
+    ctxState.walls[6] = (Wall){{720, 100}, {720, 480}};
     // Wall 4: vertical from bottom, gap at top
-    walls[7] = (Wall){{940, 140}, {940, 620}};
+    ctxState.walls[7] = (Wall){{940, 140}, {940, 620}};
     // Horizontal walls to create more interesting paths
-    walls[8] = (Wall){{280, 450}, {500, 450}};   // Connects wall 1 to wall 2
-    walls[9] = (Wall){{720, 480}, {940, 480}};   // Connects wall 3 to wall 4
+    ctxState.walls[8] = (Wall){{280, 450}, {500, 450}};   // Connects wall 1 to wall 2
+    ctxState.walls[9] = (Wall){{720, 480}, {940, 480}};   // Connects wall 3 to wall 4
 }
 
 static void SetupCtxCrowd(void) {
@@ -3005,9 +3049,9 @@ static void SetupCtxCrowd(void) {
     }
 
     // Corridor walls
-    wallCount = 2;
-    walls[0] = (Wall){{50, 120}, {SCREEN_WIDTH - 50, 120}};
-    walls[1] = (Wall){{50, 600}, {SCREEN_WIDTH - 50, 600}};
+    ctxState.wallCount = 2;
+    ctxState.walls[0] = (Wall){{50, 120}, {SCREEN_WIDTH - 50, 120}};
+    ctxState.walls[1] = (Wall){{50, 600}, {SCREEN_WIDTH - 50, 600}};
 }
 
 static void SetupCtxPredatorPrey(void) {
@@ -3037,12 +3081,12 @@ static void SetupCtxPredatorPrey(void) {
     wanderAngles[ctxState.predatorIndex] = 0;
 
     // Some obstacles for prey to use for escape
-    obstacleCount = 5;
-    obstacles[0] = (CircleObstacle){{400, 300}, 50};
-    obstacles[1] = (CircleObstacle){{800, 400}, 55};
-    obstacles[2] = (CircleObstacle){{600, 550}, 45};
-    obstacles[3] = (CircleObstacle){{300, 500}, 40};
-    obstacles[4] = (CircleObstacle){{900, 200}, 50};
+    ctxState.obstacleCount = 5;
+    ctxState.obstacles[0] = (CircleObstacle){{400, 300}, 50};
+    ctxState.obstacles[1] = (CircleObstacle){{800, 400}, 55};
+    ctxState.obstacles[2] = (CircleObstacle){{600, 550}, 45};
+    ctxState.obstacles[3] = (CircleObstacle){{300, 500}, 40};
+    ctxState.obstacles[4] = (CircleObstacle){{900, 200}, 50};
 }
 
 // ============================================================================
