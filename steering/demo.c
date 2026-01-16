@@ -2207,23 +2207,17 @@ static void UpdateDeparture(float dt) {
 }
 
 static void UpdateArrive(float dt) {
-    static Vector2 target = {SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
-
     // Apply tweakable values
     agents[0].maxSpeed = arriveScenario.maxSpeed;
     agents[0].maxForce = arriveScenario.maxForce;
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        target = GetMousePosition();
+        arriveTarget = GetMousePosition();
     }
 
-    SteeringOutput steering = steering_arrive(&agents[0], target, arriveScenario.slowRadius);
+    SteeringOutput steering = steering_arrive(&agents[0], arriveTarget, arriveScenario.slowRadius);
     steering_apply(&agents[0], steering, dt);
     ResolveCollisions(&agents[0], 0);
-
-    // Draw target
-    DrawCircleV(target, 8, GREEN);
-    DrawCircleLinesV(target, arriveScenario.slowRadius, DARKGREEN); // Slow radius
 }
 
 static void UpdateDock(float dt) {
@@ -2246,38 +2240,6 @@ static void UpdateDock(float dt) {
     if (distToTarget < 15.0f && speed < 10.0f) {
         // Docked! Move to next station
         currentDockingTarget = (currentDockingTarget + 1) % 4;
-    }
-
-    // Draw all docking stations
-    for (int i = 0; i < 4; i++) {
-        Color stationColor = (i == currentDockingTarget) ? GREEN : DARKGRAY;
-        Vector2 station = dockingStations[i];
-        float orient = dockingOrientations[i];
-
-        // Draw station as a docking bay shape
-        float size = 30.0f;
-        Vector2 dir = {cosf(orient), sinf(orient)};
-        Vector2 perp = {-dir.y, dir.x};
-
-        // Draw U-shaped dock opening
-        Vector2 left = steering_vec_add(station, steering_vec_mul(perp, size));
-        Vector2 right = steering_vec_sub(station, steering_vec_mul(perp, size));
-        Vector2 backLeft = steering_vec_sub(left, steering_vec_mul(dir, size * 0.8f));
-        Vector2 backRight = steering_vec_sub(right, steering_vec_mul(dir, size * 0.8f));
-
-        DrawLineEx(left, backLeft, 4, stationColor);
-        DrawLineEx(right, backRight, 4, stationColor);
-        DrawLineEx(backLeft, backRight, 4, stationColor);
-
-        // Draw direction indicator (where ship should face - opposite of dock opening)
-        Vector2 inwardDir = {-dir.x, -dir.y};
-        Vector2 arrowTip = steering_vec_add(station, steering_vec_mul(inwardDir, size * 0.5f));
-        DrawLineEx(station, arrowTip, 2, stationColor);
-
-        // Draw slow radius for current target
-        if (i == currentDockingTarget) {
-            DrawCircleLinesV(station, dockScenario.slowRadius, (Color){0, 100, 0, 100});
-        }
     }
 }
 
@@ -2329,40 +2291,6 @@ static void UpdateWander(float dt) {
         SteeringOutput combined = steering_blend(outputs, weights, 2);
         ApplySteeringWithSeparation(&agents[i], combined, i, dt);
         ResolveCollisions(&agents[i], i);
-
-        // Draw wander visualization
-        if (wanderShowVisualization) {
-            Vector2 vel = agents[i].vel;
-            float speed = steering_vec_length(vel);
-            Vector2 dir;
-            if (speed > 1.0f) {
-                dir = (Vector2){vel.x / speed, vel.y / speed};
-            } else {
-                // No velocity - use wander angle as fallback direction
-                dir = (Vector2){cosf(wanderAngles[i]), sinf(wanderAngles[i])};
-            }
-
-            // Circle center is wanderDistance ahead of agent
-            Vector2 circleCenter = {
-                agents[i].pos.x + dir.x * wanderScenario.wanderDistance,
-                agents[i].pos.y + dir.y * wanderScenario.wanderDistance
-            };
-
-            // Target point on circle
-            Vector2 target = {
-                circleCenter.x + cosf(wanderAngles[i]) * wanderScenario.wanderRadius,
-                circleCenter.y + sinf(wanderAngles[i]) * wanderScenario.wanderRadius
-            };
-
-            // Draw the wander circle
-            DrawCircleLinesV(circleCenter, wanderScenario.wanderRadius, DARKGRAY);
-            // Draw line from agent to circle center
-            DrawLineV(agents[i].pos, circleCenter, DARKGRAY);
-            // Draw target point on circle
-            DrawCircleV(target, 4, YELLOW);
-            // Draw line from circle center to target
-            DrawLineV(circleCenter, target, YELLOW);
-        }
     }
 }
 
@@ -2385,9 +2313,6 @@ static void UpdateContainment(float dt) {
         steering_resolve_wall_collision(&agents[i], walls, wallCount, 10.0f);
         steering_resolve_agent_collision_elastic(&agents[i], i, agents, agentCount, 10.0f, containmentScenario.restitution);
     }
-
-    // Draw bounds
-    DrawRectangleLinesEx(bounds, 3, YELLOW);
 }
 
 static void UpdateFlocking(float dt) {
@@ -2522,9 +2447,6 @@ static void UpdateObstacleAvoid(float dt) {
             agents[i].pos = (Vector2){100, 200 + i * 150};
         }
     }
-
-    // Draw target
-    DrawCircleV(target, 15, GREEN);
 }
 
 static void UpdateWallAvoid(float dt) {
@@ -2549,9 +2471,6 @@ static void UpdateWallAvoid(float dt) {
             agents[i].pos = (Vector2){100, 250 + i * 100};
         }
     }
-
-    // Draw target
-    DrawCircleV(target, 15, GREEN);
 }
 
 static void UpdateWallFollow(float dt) {
@@ -2684,10 +2603,6 @@ static void UpdateQueuing(float dt) {
             agents[i].vel = (Vector2){0, 0};
         }
     }
-
-    // Draw exit line
-    DrawLineEx((Vector2){exitLineX, 100}, (Vector2){exitLineX, SCREEN_HEIGHT - 100}, 3, GREEN);
-    DrawTextShadow("EXIT", (int)exitLineX + 10, SCREEN_HEIGHT/2 - 10, 20, GREEN);
 }
 
 static void UpdateCollisionAvoid(float dt) {
@@ -2747,10 +2662,6 @@ static void UpdateFace(float dt) {
         steering_apply(&agents[i], combined, dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw note
-    DrawTextShadow("Face/LookWhereGoing removed - pure Reynolds model", 10, 100, 14, YELLOW);
-    DrawTextShadow("Agents always face velocity direction (green line)", 10, 120, 14, YELLOW);
 }
 
 static void UpdateOrbit(float dt) {
@@ -2774,14 +2685,6 @@ static void UpdateOrbit(float dt) {
     SteeringOutput orbit3 = steering_orbit(&agents[3], center, 260.0f, 1);
     steering_apply(&agents[3], orbit3, dt);
     ResolveCollisions(&agents[3], 3);
-
-    // Draw orbit circles
-    DrawCircleLinesV(center, 100, (Color){100, 100, 100, 100});
-    DrawCircleLinesV(center, 180, (Color){100, 100, 100, 100});
-    DrawCircleLinesV(center, 260, (Color){100, 100, 100, 100});
-
-    // Draw center
-    DrawCircleV(center, 8, YELLOW);
 }
 
 static void UpdateEvadeMultiple(float dt) {
@@ -2820,12 +2723,6 @@ static void UpdateEvadeMultiple(float dt) {
         steering_apply(&agents[i], steering_blend(predOutputs, predWeights, 2), dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw bounds
-    DrawRectangleLinesEx(bounds, 2, YELLOW);
-
-    // Draw panic radius around prey
-    DrawCircleLinesV(agents[0].pos, 250, (Color){255, 0, 0, 80});
 }
 
 static void UpdatePatrol(float dt) {
@@ -2833,17 +2730,6 @@ static void UpdatePatrol(float dt) {
                                             30.0f, &currentPatrolWaypoint);
     steering_apply(&agents[0], patrol, dt);
     ResolveCollisions(&agents[0], 0);
-
-    // Draw patrol waypoints and path
-    for (int i = 0; i < patrolWaypointCount; i++) {
-        Color waypointColor = (i == currentPatrolWaypoint) ? GREEN : BLUE;
-        DrawCircleV(patrolWaypoints[i], 12, waypointColor);
-        DrawText(TextFormat("%d", i + 1), (int)patrolWaypoints[i].x - 4, (int)patrolWaypoints[i].y - 6, 14, WHITE);
-
-        // Draw line to next waypoint
-        int next = (i + 1) % patrolWaypointCount;
-        DrawLineEx(patrolWaypoints[i], patrolWaypoints[next], 2, (Color){100, 100, 100, 150});
-    }
 }
 
 static void UpdateExplore(float dt) {
@@ -2855,34 +2741,6 @@ static void UpdateExplore(float dt) {
                                                exploreTime);
     steering_apply(&agents[0], explore, dt);
     ResolveCollisions(&agents[0], 0);
-
-    // Draw explore grid with staleness visualization
-    for (int y = 0; y < EXPLORE_GRID_HEIGHT; y++) {
-        for (int x = 0; x < EXPLORE_GRID_WIDTH; x++) {
-            float lastVisit = exploreGrid[y * EXPLORE_GRID_WIDTH + x];
-            float staleness = exploreTime - lastVisit;
-
-            // Color based on staleness (green = recent, red = stale)
-            int alpha = (int)(fminf(staleness * 10, 150));
-            Color cellColor;
-            if (staleness < 2.0f) {
-                cellColor = (Color){0, 255, 0, (unsigned char)alpha}; // Green - recently visited
-            } else if (staleness < 5.0f) {
-                cellColor = (Color){255, 255, 0, (unsigned char)alpha}; // Yellow
-            } else {
-                cellColor = (Color){255, 0, 0, (unsigned char)alpha}; // Red - stale
-            }
-
-            Rectangle cellRect = {
-                (float)(x * EXPLORE_CELL_SIZE),
-                (float)(y * EXPLORE_CELL_SIZE),
-                EXPLORE_CELL_SIZE - 1,
-                EXPLORE_CELL_SIZE - 1
-            };
-            DrawRectangleRec(cellRect, cellColor);
-            DrawRectangleLinesEx(cellRect, 1, (Color){50, 50, 50, 100});
-        }
-    }
 }
 
 static void UpdateForage(float dt) {
@@ -2907,15 +2765,6 @@ static void UpdateForage(float dt) {
             }
         }
     }
-
-    // Draw resources
-    for (int r = 0; r < resourceCount; r++) {
-        DrawCircleV(resources[r], 8, GREEN);
-        DrawCircleLinesV(resources[r], 8, DARKGREEN);
-    }
-
-    // Draw detection radius for first agent
-    DrawCircleLinesV(agents[0].pos, 120, (Color){0, 255, 0, 50});
 }
 
 static void UpdateGuard(float dt) {
@@ -2928,10 +2777,6 @@ static void UpdateGuard(float dt) {
         ApplySteeringWithSeparation(&agents[i], guard, i, dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw guard zone
-    DrawCircleLinesV(guardPosition, 150, (Color){255, 255, 0, 100});
-    DrawCircleV(guardPosition, 10, YELLOW);
 }
 
 static void UpdateQueueFollow(float dt) {
@@ -2964,11 +2809,6 @@ static void UpdateQueueFollow(float dt) {
                                                        50.0f);
         steering_apply(&agents[i], follow, dt);
         ResolveCollisions(&agents[i], i);
-    }
-
-    // Draw follow lines
-    for (int i = 1; i < agentCount; i++) {
-        DrawLineEx(agents[i].pos, agents[i-1].pos, 1, (Color){100, 100, 100, 100});
     }
 }
 
@@ -3113,22 +2953,6 @@ static void UpdateCaptureFlag(float dt) {
             }
         }
     }
-
-    // Draw bases
-    DrawCircleV(blueBase, 30, (Color){0, 100, 255, 100});
-    DrawCircleLinesV(blueBase, 30, BLUE);
-    DrawCircleV(redBase, 30, (Color){255, 100, 100, 100});
-    DrawCircleLinesV(redBase, 30, RED);
-
-    // Draw flag
-    if (flagCarrier < 0) {
-        DrawCircleV(flagPos, 12, YELLOW);
-        DrawCircleLinesV(flagPos, 12, ORANGE);
-    }
-
-    // Draw score
-    DrawTextShadow(TextFormat("Blue: %d  Red: %d", blueScore, redScore),
-                   SCREEN_WIDTH/2 - 60, 80, 24, WHITE);
 }
 
 static void UpdateEscortConvoy(float dt) {
@@ -3205,14 +3029,6 @@ static void UpdateEscortConvoy(float dt) {
         float weights[3] = {1.0f, 1.5f, 2.0f};
         steering_apply(&agents[i], steering_blend(outputs, weights, 3), dt);
         ResolveCollisions(&agents[i], i);
-    }
-
-    // Draw convoy path
-    for (int i = 0; i < convoyPathCount - 1; i++) {
-        DrawLineEx(convoyPath[i], convoyPath[i+1], 2, (Color){100, 100, 100, 150});
-    }
-    for (int i = 0; i < convoyPathCount; i++) {
-        DrawCircleV(convoyPath[i], 6, (Color){100, 100, 100, 200});
     }
 }
 
@@ -3307,10 +3123,6 @@ static void UpdateFishShark(float dt) {
 
     // Resolve shark collisions too
     ResolveCollisions(&agents[sharkIndex], sharkIndex);
-
-    // Draw shark's detection radius
-    DrawCircleLinesV(agents[sharkIndex].pos, 250, (Color){255, 0, 0, 50});
-    DrawCircleLinesV(agents[sharkIndex].pos, panicRadius, (Color){255, 100, 0, 80});
 }
 
 static void UpdatePedestrian(float dt) {
@@ -3373,12 +3185,6 @@ static void UpdatePedestrian(float dt) {
             }
         }
     }
-
-    // Draw destination zones
-    DrawRectangle(0, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 200, 100, 40});
-    DrawRectangleLines(0, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 200, 100, 100});
-    DrawRectangle(SCREEN_WIDTH - 80, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 100, 200, 40});
-    DrawRectangleLines(SCREEN_WIDTH - 80, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 100, 200, 100});
 }
 
 static void UpdateWolfPack(float dt) {
@@ -3506,11 +3312,6 @@ static void UpdateWolfPack(float dt) {
         steering_apply(&agents[i], steering_blend(outputs, weights, 3), dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw threat radius around wolves
-    for (int i = 0; i < wolfCount; i++) {
-        DrawCircleLinesV(agents[i].pos, 100, (Color){255, 0, 0, 50});
-    }
 }
 
 static void UpdateEvacuation(float dt) {
@@ -3588,22 +3389,6 @@ static void UpdateEvacuation(float dt) {
             agents[i].pos = pos;
             agents[i].vel = (Vector2){0, 0};
         }
-    }
-
-    // Draw fire (expanding circle)
-    DrawCircleV(fireCenter, fireRadius, (Color){255, 100, 0, 150});
-    DrawCircleLinesV(fireCenter, fireRadius, RED);
-    DrawCircleLinesV(fireCenter, fireRadius + 50, (Color){255, 200, 0, 100});
-
-    // Draw exit markers at the door openings
-    DrawRectangle(40, SCREEN_HEIGHT/2 - 60, 20, 120, (Color){0, 255, 0, 100});
-    DrawTextShadow("EXIT", 42, SCREEN_HEIGHT/2 - 8, 16, WHITE);
-    DrawRectangle(SCREEN_WIDTH - 60, SCREEN_HEIGHT/2 - 60, 20, 120, (Color){0, 255, 0, 100});
-    DrawTextShadow("EXIT", SCREEN_WIDTH - 58, SCREEN_HEIGHT/2 - 8, 16, WHITE);
-
-    // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
     }
 }
 
@@ -3882,35 +3667,6 @@ static void UpdateTraffic(float dt) {
         }
     }
 
-    // Draw roads
-    DrawRectangle((int)intersectionLeft, 0, (int)(roadHalfWidth * 2), SCREEN_HEIGHT, (Color){60, 60, 60, 255});
-    DrawRectangle(0, (int)intersectionTop, SCREEN_WIDTH, (int)(roadHalfWidth * 2), (Color){60, 60, 60, 255});
-
-    // Draw lane dividers (dashed center lines)
-    DrawLine((int)roadCenterX, 0, (int)roadCenterX, (int)intersectionTop, YELLOW);
-    DrawLine((int)roadCenterX, (int)intersectionBottom, (int)roadCenterX, SCREEN_HEIGHT, YELLOW);
-    DrawLine(0, (int)roadCenterY, (int)intersectionLeft, (int)roadCenterY, YELLOW);
-    DrawLine((int)intersectionRight, (int)roadCenterY, SCREEN_WIDTH, (int)roadCenterY, YELLOW);
-
-    // Draw stop lines
-    DrawLineEx((Vector2){intersectionLeft, stopLineSouth}, (Vector2){roadCenterX - 5, stopLineSouth}, 3, WHITE);
-    DrawLineEx((Vector2){roadCenterX + 5, stopLineNorth}, (Vector2){intersectionRight, stopLineNorth}, 3, WHITE);
-    DrawLineEx((Vector2){stopLineEast, intersectionTop}, (Vector2){stopLineEast, roadCenterY - 5}, 3, WHITE);
-    DrawLineEx((Vector2){stopLineWest, roadCenterY + 5}, (Vector2){stopLineWest, intersectionBottom}, 3, WHITE);
-
-    // Draw traffic lights
-    Color nsColor = nsGreen ? GREEN : (trafficLightState == 1 ? YELLOW : RED);
-    Color ewColor = ewGreen ? GREEN : (trafficLightState == 3 ? YELLOW : RED);
-
-    DrawCircleV((Vector2){intersectionLeft - 20, intersectionTop - 20}, 12, nsColor);
-    DrawCircleV((Vector2){intersectionRight + 20, intersectionBottom + 20}, 12, nsColor);
-    DrawCircleV((Vector2){intersectionLeft - 20, intersectionBottom + 20}, 12, ewColor);
-    DrawCircleV((Vector2){intersectionRight + 20, intersectionTop - 20}, 12, ewColor);
-
-    // Draw boundary walls (sidewalk area)
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 2, (Color){100, 100, 100, 150});
-    }
 }
 
 static void UpdateMurmuration(float dt) {
@@ -3996,19 +3752,6 @@ static void UpdateMurmuration(float dt) {
         steering_apply(&agents[i], steering_blend(outputs, weights, 3), dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw wave ring if active - more visible
-    if (waveActive) {
-        float alpha = 200.0f * (1.0f - waveRadius / 600.0f);
-        DrawCircleLinesV(waveCenter, waveRadius, (Color){255, 255, 100, (unsigned char)fmaxf(alpha, 30)});
-        DrawCircleLinesV(waveCenter, waveRadius - 10, (Color){255, 200, 50, (unsigned char)fmaxf(alpha * 0.5f, 20)});
-    }
-
-    // Draw bounds
-    DrawRectangleLinesEx(bounds, 1, (Color){100, 100, 100, 50});
-
-    // Instructions
-    DrawTextShadow("Click to trigger wave", 10, SCREEN_HEIGHT - 30, 16, (Color){150, 150, 150, 255});
 }
 
 // ============================================================================
@@ -4118,15 +3861,6 @@ static void UpdateSFMCorridor(float dt) {
             }
         }
     }
-
-    // Draw corridor walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
-    }
-
-    // Draw direction indicators
-    DrawTextShadow("<<<", SCREEN_WIDTH - 100, 340, 24, (Color){200, 100, 100, 150});
-    DrawTextShadow(">>>", 60, 380, 24, (Color){100, 100, 200, 150});
 }
 
 static void UpdateSFMEvacuation(float dt) {
@@ -4174,21 +3908,6 @@ static void UpdateSFMEvacuation(float dt) {
             sfmGoals[i] = (dist0 < dist1) ? sfmExits[0] : sfmExits[1];
         }
     }
-
-    // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
-    }
-
-    // Draw exits with glow
-    for (int e = 0; e < sfmExitCount; e++) {
-        DrawCircleV(sfmExits[e], 35, (Color){0, 255, 0, 50});
-        DrawCircleV(sfmExits[e], 25, (Color){0, 255, 0, 100});
-        DrawTextShadow("EXIT", (int)sfmExits[e].x - 15, (int)sfmExits[e].y - 8, 16, WHITE);
-    }
-
-    // Show evacuation count
-    DrawTextShadow(TextFormat("Evacuated: %d", evacuatedCount), SCREEN_WIDTH - 150, 80, 18, GREEN);
 }
 
 static void UpdateSFMCrossing(float dt) {
@@ -4253,15 +3972,6 @@ static void UpdateSFMCrossing(float dt) {
             }
         }
     }
-
-    // Draw crossing zone (central plaza)
-    DrawRectangleLinesEx((Rectangle){350, 200, 580, 320}, 2, (Color){100, 100, 100, 100});
-
-    // Draw flow direction indicators
-    DrawTextShadow(">>>", 80, 360, 20, (Color){100, 200, 100, 150});
-    DrawTextShadow("<<<", SCREEN_WIDTH - 120, 360, 20, (Color){200, 100, 100, 150});
-    DrawTextShadow("v", 640, 80, 24, (Color){100, 100, 200, 150});
-    DrawTextShadow("^", 640, SCREEN_HEIGHT - 100, 24, (Color){200, 200, 100, 150});
 }
 
 // ============================================================================
@@ -4354,17 +4064,7 @@ static void UpdateCtxObstacleCourse(float dt) {
             agents[i].pos = (Vector2){100, 150 + i * 100};
             agents[i].vel = (Vector2){0, 0};
         }
-
-        // Draw context map for first agent
-        if (i == 0) {
-            DrawContextMap(ctx, agents[i].pos, 50.0f);
-        }
     }
-
-    // Draw goal
-    DrawCircleV(ctxTargets[0], 20, (Color){0, 255, 0, 100});
-    DrawCircleLinesV(ctxTargets[0], 20, GREEN);
-    DrawTextShadow("GOAL", (int)ctxTargets[0].x - 18, (int)ctxTargets[0].y - 8, 16, WHITE);
 }
 
 static void UpdateCtxMaze(float dt) {
@@ -4416,18 +4116,6 @@ static void UpdateCtxMaze(float dt) {
 
     // Hard collision resolution
     steering_resolve_wall_collision(&agents[0], walls, wallCount, 10.0f);
-
-    // Draw context map
-    DrawContextMap(ctx, agents[0].pos, 60.0f);
-
-    // Draw goal
-    DrawCircleV(ctxMazeGoal, 15, (Color){0, 255, 0, 150});
-    DrawCircleLinesV(ctxMazeGoal, 15, GREEN);
-
-    // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
-    }
 }
 
 static void UpdateCtxCrowd(float dt) {
@@ -4518,15 +4206,6 @@ static void UpdateCtxCrowd(float dt) {
             }
         }
     }
-
-    // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
-    }
-
-    // Draw flow direction indicators
-    DrawTextShadow(">>>", 80, 350, 24, (Color){100, 200, 100, 150});
-    DrawTextShadow("<<<", SCREEN_WIDTH - 120, 370, 24, (Color){200, 100, 100, 150});
 }
 
 static void UpdateCtxPredatorPrey(float dt) {
@@ -4624,11 +4303,6 @@ static void UpdateCtxPredatorPrey(float dt) {
 
         // Hard collision resolution
         steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
-
-        // Draw context map for nearest prey (being hunted)
-        if (i == nearestPrey) {
-            DrawContextMap(ctx, agents[i].pos, 50.0f);
-        }
     }
 
     // Update predator (regular steering - pursuit)
@@ -4657,13 +4331,6 @@ static void UpdateCtxPredatorPrey(float dt) {
     }
 
     steering_resolve_obstacle_collision(predator, obstacles, obstacleCount, 12.0f);
-
-    // Draw predator detection/hunt radius
-    DrawCircleLinesV(predatorPos, 300, (Color){255, 0, 0, 50});
-    DrawCircleLinesV(predatorPos, 150, (Color){255, 100, 0, 80});
-
-    // Draw bounds
-    DrawRectangleLinesEx(bounds, 2, (Color){100, 100, 100, 100});
 }
 
 // ============================================================================
@@ -4740,31 +4407,6 @@ static void UpdateCouzinZones(float dt) {
         steering_apply(&agents[i], steering_blend(outputs, weights, 2), dt);
         ResolveCollisions(&agents[i], i);
     }
-
-    // Draw zone radii visualization for first agent
-    if (agentCount > 0) {
-        DrawCircleLinesV(agents[0].pos, couzinParams.zorRadius, RED);
-        DrawCircleLinesV(agents[0].pos, couzinParams.zooRadius, YELLOW);
-        DrawCircleLinesV(agents[0].pos, couzinParams.zoaRadius, GREEN);
-
-        // Draw blind angle arc
-        if (couzinParams.blindAngle > 0.01f) {
-            float heading = atan2f(agents[0].vel.y, agents[0].vel.x);
-            float blindStart = heading + PI - couzinParams.blindAngle / 2;
-            float blindEnd = heading + PI + couzinParams.blindAngle / 2;
-            for (float a = blindStart; a < blindEnd; a += 0.1f) {
-                Vector2 p1 = {agents[0].pos.x + cosf(a) * 40, agents[0].pos.y + sinf(a) * 40};
-                Vector2 p2 = {agents[0].pos.x + cosf(a + 0.1f) * 40, agents[0].pos.y + sinf(a + 0.1f) * 40};
-                DrawLineV(p1, p2, DARKGRAY);
-            }
-        }
-    }
-
-    // Draw parameter info
-    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinParams.zorRadius), 10, 90, 16, RED);
-    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinParams.zooRadius), 10, 110, 16, YELLOW);
-    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinParams.zoaRadius), 10, 130, 16, GREEN);
-    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinParams.blindAngle), 10, 150, 16, GRAY);
 }
 
 static void UpdateVehiclePursuit(float dt) {
@@ -4796,44 +4438,6 @@ static void UpdateVehiclePursuit(float dt) {
         vehiclePathSegments[i] = segment;
         curv_agent_apply(&vehicles[i], steering, dt);
     }
-
-    // Draw closed loop path
-    for (int i = 0; i < path.count; i++) {
-        int next = (i + 1) % path.count;  // Wrap around to create loop
-        DrawLineEx(pathPoints[i], pathPoints[next], 3, SKYBLUE);
-    }
-    // Mark waypoints
-    for (int i = 0; i < path.count; i++) {
-        DrawCircleV(pathPoints[i], 6, BLUE);
-    }
-
-    // Draw vehicles as oriented rectangles
-    for (int i = 0; i < vehicleCount; i++) {
-        float heading = vehicles[i].heading;
-        Vector2 pos = vehicles[i].pos;
-
-        // Vehicle body (rotated rectangle)
-        Vector2 forward = {cosf(heading), sinf(heading)};
-        Vector2 right = {-sinf(heading), cosf(heading)};
-
-        Vector2 corners[4] = {
-            {pos.x + forward.x * 15 + right.x * 8, pos.y + forward.y * 15 + right.y * 8},
-            {pos.x + forward.x * 15 - right.x * 8, pos.y + forward.y * 15 - right.y * 8},
-            {pos.x - forward.x * 10 - right.x * 8, pos.y - forward.y * 10 - right.y * 8},
-            {pos.x - forward.x * 10 + right.x * 8, pos.y - forward.y * 10 + right.y * 8}
-        };
-
-        Color vehColor = (i == 0) ? GOLD : (i == 1) ? SKYBLUE : GREEN;
-        DrawTriangle(corners[0], corners[1], corners[2], vehColor);
-        DrawTriangle(corners[0], corners[2], corners[3], vehColor);
-
-        // Draw direction indicator
-        Vector2 tip = {pos.x + forward.x * 20, pos.y + forward.y * 20};
-        DrawLineEx(pos, tip, 2, WHITE);
-    }
-
-    // Draw lookahead info
-    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleLookahead), 10, 90, 16, YELLOW);
 }
 
 static void UpdateDWANavigation(float dt) {
@@ -4989,39 +4593,6 @@ static void UpdateDWANavigation(float dt) {
         dwaStuckTimer = 0;
         dwaPrevDistToGoal = steering_vec_distance(vehicles[0].pos, dwaGoal);
     }
-
-    // Draw goal
-    DrawCircleV(dwaGoal, 20, (Color){0, 255, 0, 100});
-    DrawCircleLinesV(dwaGoal, 20, GREEN);
-    DrawTextShadow("GOAL", (int)dwaGoal.x - 18, (int)dwaGoal.y - 8, 16, WHITE);
-
-    // Draw mode indicator
-    const char* modeStr = (dwaMode == DWA_NORMAL) ? "NORMAL" :
-                          (dwaMode == DWA_BACKUP) ? "BACKUP" : "TURNING";
-    Color modeColor = (dwaMode == DWA_NORMAL) ? GREEN :
-                      (dwaMode == DWA_BACKUP) ? RED : YELLOW;
-    DrawTextShadow(modeStr, 10, 130, 20, modeColor);
-
-    // Draw vehicle
-    float heading = vehicles[0].heading;
-    Vector2 pos = vehicles[0].pos;
-
-    Vector2 forward = {cosf(heading), sinf(heading)};
-    Vector2 right = {-sinf(heading), cosf(heading)};
-
-    Vector2 corners[4] = {
-        {pos.x + forward.x * 15 + right.x * 10, pos.y + forward.y * 15 + right.y * 10},
-        {pos.x + forward.x * 15 - right.x * 10, pos.y + forward.y * 15 - right.y * 10},
-        {pos.x - forward.x * 12 - right.x * 10, pos.y - forward.y * 12 - right.y * 10},
-        {pos.x - forward.x * 12 + right.x * 10, pos.y - forward.y * 12 + right.y * 10}
-    };
-
-    // Color vehicle by mode
-    Color vehicleColor = (dwaMode == DWA_NORMAL) ? GOLD :
-                         (dwaMode == DWA_BACKUP) ? ORANGE : YELLOW;
-    DrawTriangle(corners[0], corners[1], corners[2], vehicleColor);
-    DrawTriangle(corners[0], corners[2], corners[3], vehicleColor);
-    DrawLineEx(pos, (Vector2){pos.x + forward.x * 25, pos.y + forward.y * 25}, 3, WHITE);
 }
 
 // Flow field direction function - returns the flow vector at a given position
@@ -5203,318 +4774,966 @@ static void DrawPath(void) {
     }
 }
 
+// ============================================================================
+// Scenario Draw Functions
+// ============================================================================
+
+typedef void (*ScenarioDrawFunc)(void);
+
+static void DrawSeek(void) {
+    // Draw agent
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw target (mouse position)
+    Vector2 target = GetMousePosition();
+    DrawCircleV(target, 8, GREEN);
+}
+
+static void DrawFlee(void) {
+    // Draw agent
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw threat (mouse position)
+    Vector2 threat = GetMousePosition();
+    DrawCircleV(threat, 8, RED);
+    DrawCircleLinesV(threat, 50, (Color){255, 0, 0, 100}); // Danger zone
+}
+
+static void DrawDeparture(void) {
+    // Draw agent
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+
+    // Draw slow radius around mouse (target)
+    Vector2 target = GetMousePosition();
+    DrawCircleLinesV(target, departureScenario.slowRadius, (Color){255, 100, 100, 100});
+}
+
+static void DrawArrive(void) {
+    // Draw agent
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw target and slow radius
+    DrawCircleV(arriveTarget, 8, GREEN);
+    DrawCircleLinesV(arriveTarget, arriveScenario.slowRadius, DARKGREEN);
+}
+
+static void DrawDock(void) {
+    // Draw agent
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw all docking stations
+    for (int i = 0; i < 4; i++) {
+        Color stationColor = (i == currentDockingTarget) ? GREEN : DARKGRAY;
+        Vector2 station = dockingStations[i];
+        float orient = dockingOrientations[i];
+
+        // Draw station as a docking bay shape
+        float size = 30.0f;
+        Vector2 dir = {cosf(orient), sinf(orient)};
+        Vector2 perp = {-dir.y, dir.x};
+
+        // Draw U-shaped dock opening
+        Vector2 left = steering_vec_add(station, steering_vec_mul(perp, size));
+        Vector2 right = steering_vec_sub(station, steering_vec_mul(perp, size));
+        Vector2 backLeft = steering_vec_sub(left, steering_vec_mul(dir, size * 0.8f));
+        Vector2 backRight = steering_vec_sub(right, steering_vec_mul(dir, size * 0.8f));
+
+        DrawLineEx(left, backLeft, 4, stationColor);
+        DrawLineEx(right, backRight, 4, stationColor);
+        DrawLineEx(backLeft, backRight, 4, stationColor);
+
+        // Draw direction indicator (where ship should face - opposite of dock opening)
+        Vector2 inwardDir = {-dir.x, -dir.y};
+        Vector2 arrowTip = steering_vec_add(station, steering_vec_mul(inwardDir, size * 0.5f));
+        DrawLineEx(station, arrowTip, 2, stationColor);
+
+        // Draw slow radius for current target
+        if (i == currentDockingTarget) {
+            DrawCircleLinesV(station, dockScenario.slowRadius, (Color){0, 100, 0, 100});
+        }
+    }
+}
+
+static void DrawPursuitEvasion(void) {
+    // Draw pursuer (blue)
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw evader (red)
+    DrawAgent(&targetAgent, RED);
+    DrawVelocityVector(&targetAgent, ORANGE);
+}
+
+static void DrawWander(void) {
+    // Draw agents
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+        
+        // Draw wander visualization
+        if (wanderShowVisualization) {
+            Vector2 vel = agents[i].vel;
+            float speed = steering_vec_length(vel);
+            Vector2 dir;
+            if (speed > 1.0f) {
+                dir = (Vector2){vel.x / speed, vel.y / speed};
+            } else {
+                dir = (Vector2){cosf(wanderAngles[i]), sinf(wanderAngles[i])};
+            }
+
+            Vector2 circleCenter = {
+                agents[i].pos.x + dir.x * wanderScenario.wanderDistance,
+                agents[i].pos.y + dir.y * wanderScenario.wanderDistance
+            };
+
+            Vector2 target = {
+                circleCenter.x + cosf(wanderAngles[i]) * wanderScenario.wanderRadius,
+                circleCenter.y + sinf(wanderAngles[i]) * wanderScenario.wanderRadius
+            };
+
+            DrawCircleLinesV(circleCenter, wanderScenario.wanderRadius, DARKGRAY);
+            DrawLineV(agents[i].pos, circleCenter, DARKGRAY);
+            DrawCircleV(target, 4, YELLOW);
+            DrawLineV(circleCenter, target, YELLOW);
+        }
+    }
+}
+
+static void DrawContainment(void) {
+    Rectangle bounds = {200, 150, 880, 420};
+    
+    // Draw bounds
+    DrawRectangleLinesEx(bounds, 3, YELLOW);
+    
+    // Draw agents
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+}
+
+static void DrawFlocking(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+}
+
+static void DrawLeaderFollow(void) {
+    // Leader (gold)
+    DrawAgent(&agents[0], GOLD);
+    DrawVelocityVector(&agents[0], ORANGE);
+    // Followers
+    for (int i = 1; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+}
+
+static void DrawHide(void) {
+    // Hider (blue)
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    // Pursuer (red)
+    DrawAgent(&targetAgent, RED);
+    DrawVelocityVector(&targetAgent, ORANGE);
+}
+
+static void DrawObstacleAvoid(void) {
+    Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
+    
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    DrawCircleV(target, 15, GREEN);
+}
+
+static void DrawWallAvoid(void) {
+    Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
+    
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    DrawCircleV(target, 15, GREEN);
+}
+
+static void DrawWallFollow(void) {
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+}
+
+static void DrawPathFollow(void) {
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+}
+
+static void DrawInterpose(void) {
+    // Bodyguard (blue), VIP (green), Threat (red)
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawAgent(&agents[1], GREEN);
+    DrawAgent(&agents[2], RED);
+    DrawTextShadow("VIP", (int)agents[1].pos.x - 10, (int)agents[1].pos.y - 25, 14, GREEN);
+    DrawTextShadow("THREAT", (int)agents[2].pos.x - 20, (int)agents[2].pos.y - 25, 14, RED);
+    DrawTextShadow("GUARD", (int)agents[0].pos.x - 18, (int)agents[0].pos.y - 25, 14, SKYBLUE);
+}
+
+static void DrawFormation(void) {
+    // Leader (gold)
+    DrawAgent(&agents[0], GOLD);
+    DrawVelocityVector(&agents[0], ORANGE);
+    // Followers
+    for (int i = 1; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+        // Formation lines
+        DrawLineEx(agents[0].pos, agents[i].pos, 1, (Color){100, 100, 100, 100});
+    }
+}
+
+static void DrawQueuing(void) {
+    float exitLineX = 900;
+    
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    
+    // Draw exit line
+    DrawLineEx((Vector2){exitLineX, 100}, (Vector2){exitLineX, SCREEN_HEIGHT - 100}, 3, GREEN);
+    DrawTextShadow("EXIT", (int)exitLineX + 10, SCREEN_HEIGHT/2 - 10, 20, GREEN);
+}
+
+static void DrawCollisionAvoid(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+}
+
+static void DrawFace(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    // Draw note
+    DrawTextShadow("Face/LookWhereGoing removed - pure Reynolds model", 10, 100, 14, YELLOW);
+    DrawTextShadow("Agents always face velocity direction (green line)", 10, 120, 14, YELLOW);
+}
+
+static void DrawOrbit(void) {
+    Vector2 center = GetMousePosition();
+    
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    
+    // Draw orbit circles
+    DrawCircleLinesV(center, 100, (Color){100, 100, 100, 100});
+    DrawCircleLinesV(center, 180, (Color){100, 100, 100, 100});
+    DrawCircleLinesV(center, 260, (Color){100, 100, 100, 100});
+    DrawCircleV(center, 8, YELLOW);
+}
+
+static void DrawEvadeMultiple(void) {
+    Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
+    
+    // Draw prey (green)
+    DrawAgent(&agents[0], GREEN);
+    DrawVelocityVector(&agents[0], LIME);
+    // Draw predators (red)
+    for (int i = 1; i < agentCount; i++) {
+        DrawAgent(&agents[i], RED);
+        DrawVelocityVector(&agents[i], ORANGE);
+    }
+    
+    // Draw bounds and panic radius
+    DrawRectangleLinesEx(bounds, 2, YELLOW);
+    DrawCircleLinesV(agents[0].pos, 250, (Color){255, 0, 0, 80});
+}
+
+static void DrawPatrol(void) {
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw patrol waypoints and path
+    for (int i = 0; i < patrolWaypointCount; i++) {
+        Color waypointColor = (i == currentPatrolWaypoint) ? GREEN : GRAY;
+        DrawCircleV(patrolWaypoints[i], 12, waypointColor);
+        DrawText(TextFormat("%d", i + 1), (int)patrolWaypoints[i].x - 4, (int)patrolWaypoints[i].y - 6, 14, WHITE);
+        // Draw line to next waypoint
+        int next = (i + 1) % patrolWaypointCount;
+        DrawLineEx(patrolWaypoints[i], patrolWaypoints[next], 2, (Color){100, 100, 100, 150});
+    }
+}
+
+static void DrawExplore(void) {
+    DrawAgent(&agents[0], SKYBLUE);
+    DrawVelocityVector(&agents[0], GREEN);
+    
+    // Draw explore grid with staleness visualization
+    for (int gx = 0; gx < EXPLORE_GRID_WIDTH; gx++) {
+        for (int gy = 0; gy < EXPLORE_GRID_HEIGHT; gy++) {
+            int idx = gy * EXPLORE_GRID_WIDTH + gx;
+            float staleness = exploreTime - exploreGrid[idx];
+            
+            float intensity = fminf(staleness / 10.0f, 1.0f);
+            unsigned char r = (unsigned char)(50 + intensity * 150);
+            unsigned char g = (unsigned char)(150 - intensity * 100);
+            unsigned char b = 50;
+            
+            Rectangle cellRect = {
+                (float)(gx * EXPLORE_CELL_SIZE),
+                (float)(gy * EXPLORE_CELL_SIZE),
+                (float)EXPLORE_CELL_SIZE,
+                (float)EXPLORE_CELL_SIZE
+            };
+            Color cellColor = {r, g, b, 100};
+            DrawRectangleRec(cellRect, cellColor);
+            DrawRectangleLinesEx(cellRect, 1, (Color){50, 50, 50, 100});
+        }
+    }
+}
+
+static void DrawForage(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    
+    // Draw resources
+    for (int r = 0; r < resourceCount; r++) {
+        DrawCircleV(resources[r], 8, GREEN);
+        DrawCircleLinesV(resources[r], 8, DARKGREEN);
+    }
+    // Draw detection radius for first agent
+    DrawCircleLinesV(agents[0].pos, 120, (Color){0, 255, 0, 50});
+}
+
+static void DrawGuard(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+    
+    // Draw guard zone
+    DrawCircleLinesV(guardPosition, 150, (Color){255, 255, 0, 100});
+    DrawCircleV(guardPosition, 10, YELLOW);
+}
+
+static void DrawQueueFollow(void) {
+    // Leader (gold)
+    DrawAgent(&agents[0], GOLD);
+    DrawVelocityVector(&agents[0], ORANGE);
+    // Followers (blue gradient)
+    for (int i = 1; i < agentCount; i++) {
+        int shade = 255 - (i * 20);
+        if (shade < 100) shade = 100;
+        DrawAgent(&agents[i], (Color){100, 150, (unsigned char)shade, 255});
+        DrawVelocityVector(&agents[i], GREEN);
+        // Draw follow lines
+        DrawLineEx(agents[i].pos, agents[i-1].pos, 1, (Color){100, 100, 100, 100});
+    }
+}
+
+static void DrawCaptureFlag(void) {
+    // Blue team
+    for (int i = 0; i < 3; i++) {
+        Color c = (flagCarrier == i) ? YELLOW : BLUE;
+        DrawAgent(&agents[i], c);
+        DrawVelocityVector(&agents[i], SKYBLUE);
+    }
+    // Red team
+    for (int i = 3; i < 6; i++) {
+        Color c = (flagCarrier == i) ? YELLOW : RED;
+        DrawAgent(&agents[i], c);
+        DrawVelocityVector(&agents[i], ORANGE);
+    }
+    
+    // Draw bases
+    DrawCircleV(blueBase, 30, (Color){0, 100, 255, 100});
+    DrawCircleLinesV(blueBase, 30, BLUE);
+    DrawCircleV(redBase, 30, (Color){255, 100, 100, 100});
+    DrawCircleLinesV(redBase, 30, RED);
+    
+    // Draw flag
+    if (flagCarrier < 0) {
+        DrawCircleV(flagPos, 12, YELLOW);
+        DrawCircleLinesV(flagPos, 12, ORANGE);
+    }
+    
+    // Draw score
+    DrawTextShadow(TextFormat("Blue: %d  Red: %d", blueScore, redScore),
+                   SCREEN_WIDTH/2 - 60, 20, 24, WHITE);
+}
+
+static void DrawEscortConvoy(void) {
+    // VIP (green)
+    DrawAgent(&agents[0], GREEN);
+    DrawVelocityVector(&agents[0], LIME);
+    DrawTextShadow("VIP", (int)agents[0].pos.x - 10, (int)agents[0].pos.y - 25, 14, GREEN);
+    // Escorts (blue)
+    for (int i = 1; i <= 3; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], BLUE);
+    }
+    // Threats (red)
+    for (int i = 4; i < 6; i++) {
+        DrawAgent(&agents[i], RED);
+        DrawVelocityVector(&agents[i], ORANGE);
+        DrawTextShadow("THREAT", (int)agents[i].pos.x - 20, (int)agents[i].pos.y - 25, 12, RED);
+    }
+    
+    // Draw convoy path
+    for (int i = 0; i < convoyPathCount - 1; i++) {
+        DrawLineEx(convoyPath[i], convoyPath[i+1], 2, (Color){100, 100, 100, 150});
+    }
+    for (int i = 0; i < convoyPathCount; i++) {
+        DrawCircleV(convoyPath[i], 6, (Color){100, 100, 100, 200});
+    }
+}
+
+static void DrawFishShark(void) {
+    float panicRadius = 180.0f;
+    
+    // Fish (blue shades)
+    for (int i = 0; i < agentCount - 1; i++) {
+        float distToShark = steering_vec_distance(agents[i].pos, agents[sharkIndex].pos);
+        Color fishColor = (distToShark < 180.0f) ? (Color){255, 200, 100, 255} : SKYBLUE;
+        DrawAgent(&agents[i], fishColor);
+    }
+    // Shark (dark gray/red)
+    float nearestDist = 1e10f;
+    for (int i = 0; i < agentCount - 1; i++) {
+        float dist = steering_vec_distance(agents[sharkIndex].pos, agents[i].pos);
+        if (dist < nearestDist) nearestDist = dist;
+    }
+    Color sharkColor = (nearestDist < 250.0f) ? RED : DARKGRAY;
+    DrawAgent(&agents[sharkIndex], sharkColor);
+    DrawVelocityVector(&agents[sharkIndex], MAROON);
+    
+    // Draw shark's detection radius
+    DrawCircleLinesV(agents[sharkIndex].pos, 250, (Color){255, 0, 0, 50});
+    DrawCircleLinesV(agents[sharkIndex].pos, panicRadius, (Color){255, 100, 0, 80});
+}
+
+static void DrawPedestrian(void) {
+    // Pedestrians: green going right, blue going left
+    for (int i = 0; i < agentCount; i++) {
+        Color color = (i < agentCount / 2) ? (Color){100, 200, 100, 255} : (Color){100, 150, 220, 255};
+        DrawAgent(&agents[i], color);
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+    
+    // Draw destination zones
+    DrawRectangle(0, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 200, 100, 40});
+    DrawRectangleLines(0, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 200, 100, 100});
+    DrawRectangle(SCREEN_WIDTH - 80, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 100, 200, 40});
+    DrawRectangleLines(SCREEN_WIDTH - 80, 100, 80, SCREEN_HEIGHT - 200, (Color){100, 100, 200, 100});
+}
+
+static void DrawWolfPack(void) {
+    // Wolves: red (alpha is darker)
+    DrawAgent(&agents[0], MAROON);
+    DrawVelocityVector(&agents[0], RED);
+    DrawTextShadow("ALPHA", (int)agents[0].pos.x - 18, (int)agents[0].pos.y - 25, 12, RED);
+    for (int i = 1; i < wolfCount; i++) {
+        DrawAgent(&agents[i], RED);
+        DrawVelocityVector(&agents[i], ORANGE);
+        DrawCircleLinesV(agents[i].pos, 100, (Color){255, 0, 0, 50});
+    }
+    // Prey: green
+    for (int i = preyStartIndex; i < agentCount; i++) {
+        DrawAgent(&agents[i], GREEN);
+        DrawVelocityVector(&agents[i], LIME);
+    }
+}
+
+static void DrawEvacuation(void) {
+    // Color agents by panic level
+    for (int i = 0; i < agentCount; i++) {
+        float distToFire = steering_vec_distance(agents[i].pos, fireCenter);
+        float panic = 0;
+        if (distToFire < fireRadius + 150.0f) {
+            panic = 1.0f - (distToFire - fireRadius) / 150.0f;
+            panic = fmaxf(0, fminf(panic, 1.0f));
+        }
+        Color color = {
+            (unsigned char)(100 + panic * 155),
+            (unsigned char)(200 - panic * 150),
+            (unsigned char)(100 - panic * 100),
+            255
+        };
+        DrawAgent(&agents[i], color);
+    }
+    
+    // Draw fire
+    DrawCircleV(fireCenter, fireRadius, (Color){255, 100, 0, 150});
+    DrawCircleLinesV(fireCenter, fireRadius, RED);
+    DrawCircleLinesV(fireCenter, fireRadius + 50, (Color){255, 200, 0, 100});
+    
+    // Draw exit markers
+    DrawRectangle(40, SCREEN_HEIGHT/2 - 60, 20, 120, (Color){0, 255, 0, 100});
+    DrawTextShadow("EXIT", 42, SCREEN_HEIGHT/2 - 8, 16, WHITE);
+    DrawRectangle(SCREEN_WIDTH - 60, SCREEN_HEIGHT/2 - 60, 20, 120, (Color){0, 255, 0, 100});
+    DrawTextShadow("EXIT", SCREEN_WIDTH - 58, SCREEN_HEIGHT/2 - 8, 16, WHITE);
+    
+    // Draw walls
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    }
+}
+
+static void DrawTraffic(void) {
+    float roadCenterX = SCREEN_WIDTH / 2.0f;
+    float roadCenterY = SCREEN_HEIGHT / 2.0f;
+    float roadHalfWidth = 60.0f;
+    float intersectionLeft = roadCenterX - roadHalfWidth;
+    float intersectionRight = roadCenterX + roadHalfWidth;
+    float intersectionTop = roadCenterY - roadHalfWidth;
+    float intersectionBottom = roadCenterY + roadHalfWidth;
+    float stopLineSouth = intersectionBottom + 30;
+    float stopLineNorth = intersectionTop - 30;
+    float stopLineEast = intersectionRight + 30;
+    float stopLineWest = intersectionLeft - 30;
+    
+    // Draw roads
+    DrawRectangle((int)intersectionLeft, 0, (int)(roadHalfWidth * 2), SCREEN_HEIGHT, (Color){60, 60, 60, 255});
+    DrawRectangle(0, (int)intersectionTop, SCREEN_WIDTH, (int)(roadHalfWidth * 2), (Color){60, 60, 60, 255});
+    
+    // Draw lane dividers
+    DrawLine((int)roadCenterX, 0, (int)roadCenterX, (int)intersectionTop, YELLOW);
+    DrawLine((int)roadCenterX, (int)intersectionBottom, (int)roadCenterX, SCREEN_HEIGHT, YELLOW);
+    DrawLine(0, (int)roadCenterY, (int)intersectionLeft, (int)roadCenterY, YELLOW);
+    DrawLine((int)intersectionRight, (int)roadCenterY, SCREEN_WIDTH, (int)roadCenterY, YELLOW);
+    
+    // Draw stop lines
+    DrawLineEx((Vector2){intersectionLeft, stopLineSouth}, (Vector2){roadCenterX - 5, stopLineSouth}, 3, WHITE);
+    DrawLineEx((Vector2){roadCenterX + 5, stopLineNorth}, (Vector2){intersectionRight, stopLineNorth}, 3, WHITE);
+    DrawLineEx((Vector2){stopLineEast, intersectionTop}, (Vector2){stopLineEast, roadCenterY - 5}, 3, WHITE);
+    DrawLineEx((Vector2){stopLineWest, roadCenterY + 5}, (Vector2){stopLineWest, intersectionBottom}, 3, WHITE);
+    
+    // Draw traffic lights
+    bool nsGreen = (trafficLightState == 0);
+    bool ewGreen = (trafficLightState == 2);
+    Color nsColor = nsGreen ? GREEN : (trafficLightState == 1 ? YELLOW : RED);
+    Color ewColor = ewGreen ? GREEN : (trafficLightState == 3 ? YELLOW : RED);
+    DrawCircleV((Vector2){intersectionLeft - 20, intersectionTop - 20}, 12, nsColor);
+    DrawCircleV((Vector2){intersectionRight + 20, intersectionBottom + 20}, 12, nsColor);
+    DrawCircleV((Vector2){intersectionLeft - 20, intersectionBottom + 20}, 12, ewColor);
+    DrawCircleV((Vector2){intersectionRight + 20, intersectionTop - 20}, 12, ewColor);
+    
+    // Draw boundary walls
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 2, (Color){100, 100, 100, 150});
+    }
+    
+    // Cars
+    for (int i = 0; i < carCount; i++) {
+        CarDirection dir = carDirections[i];
+        bool isNS = (dir == CAR_DIR_NORTH || dir == CAR_DIR_SOUTH);
+        Color carColor = isNS ? BLUE : ORANGE;
+        if (isNS) {
+            DrawRectangle((int)agents[i].pos.x - 8, (int)agents[i].pos.y - 15, 16, 30, carColor);
+        } else {
+            DrawRectangle((int)agents[i].pos.x - 15, (int)agents[i].pos.y - 8, 30, 16, carColor);
+        }
+    }
+    // Pedestrians
+    for (int i = carCount; i < agentCount; i++) {
+        DrawCircleV(agents[i].pos, 6, WHITE);
+    }
+}
+
+static void DrawMurmuration(void) {
+    Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
+    
+    // Birds as triangles
+    for (int i = 0; i < agentCount; i++) {
+        Vector2 dir;
+        if (steering_vec_length(agents[i].vel) > 1) {
+            dir = steering_vec_normalize(agents[i].vel);
+        } else {
+            dir = (Vector2){1, 0};
+        }
+        Vector2 tip = {agents[i].pos.x + dir.x * 8, agents[i].pos.y + dir.y * 8};
+        Vector2 left = {agents[i].pos.x - dir.x * 4 - dir.y * 4, agents[i].pos.y - dir.y * 4 + dir.x * 4};
+        Vector2 right = {agents[i].pos.x - dir.x * 4 + dir.y * 4, agents[i].pos.y - dir.y * 4 - dir.x * 4};
+        DrawTriangle(tip, right, left, (Color){50, 50, 50, 255});
+    }
+    
+    // Draw wave if active
+    if (waveActive && waveRadius > 0) {
+        float alpha = 200.0f * (1.0f - waveRadius / 800.0f);
+        DrawCircleLinesV(waveCenter, waveRadius, (Color){255, 255, 100, (unsigned char)fmaxf(alpha, 30)});
+        DrawCircleLinesV(waveCenter, waveRadius - 10, (Color){255, 200, 50, (unsigned char)fmaxf(alpha * 0.5f, 20)});
+    }
+    
+    DrawRectangleLinesEx(bounds, 1, (Color){100, 100, 100, 50});
+    DrawTextShadow("Click to trigger wave", 10, SCREEN_HEIGHT - 30, 16, (Color){150, 150, 150, 255});
+}
+
+static void DrawSFMCorridor(void) {
+    // Color by direction
+    for (int i = 0; i < agentCount; i++) {
+        Color color = (i < sfmLeftCount) ? (Color){100, 150, 220, 255} : (Color){220, 120, 100, 255};
+        DrawAgent(&agents[i], color);
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+    
+    // Draw walls
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    }
+    
+    DrawTextShadow("<<<", SCREEN_WIDTH - 100, 340, 24, (Color){200, 100, 100, 150});
+    DrawTextShadow(">>>", 60, 380, 24, (Color){100, 100, 200, 150});
+}
+
+static void DrawSFMEvacuation(void) {
+    // Color by distance to exit
+    for (int i = 0; i < agentCount; i++) {
+        float distToExit = steering_vec_distance(agents[i].pos, sfmGoals[i]);
+        float urgency = fminf(distToExit / 300.0f, 1.0f);
+        Color color = {
+            (unsigned char)(100 + urgency * 120),
+            (unsigned char)(220 - urgency * 120),
+            (unsigned char)(100),
+            255
+        };
+        DrawAgent(&agents[i], color);
+    }
+    
+    // Draw walls
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    }
+    
+    // Draw exits
+    for (int e = 0; e < sfmExitCount; e++) {
+        DrawCircleV(sfmExits[e], 35, (Color){0, 255, 0, 50});
+        DrawCircleV(sfmExits[e], 25, (Color){0, 255, 0, 100});
+        DrawTextShadow("EXIT", (int)sfmExits[e].x - 15, (int)sfmExits[e].y - 8, 16, WHITE);
+    }
+    
+    int evacuatedCount = 0;
+    for (int i = 0; i < agentCount; i++) {
+        if (agents[i].pos.x < 0 || agents[i].pos.x > SCREEN_WIDTH) evacuatedCount++;
+    }
+    DrawTextShadow(TextFormat("Evacuated: %d", evacuatedCount), SCREEN_WIDTH - 150, 80, 18, GREEN);
+}
+
+static void DrawSFMCrossing(void) {
+    // Color by direction
+    int perDirection = agentCount / 4;
+    for (int i = 0; i < agentCount; i++) {
+        int dir = i / perDirection;
+        Color colors[4] = {
+            {100, 200, 100, 255},
+            {200, 100, 100, 255},
+            {100, 100, 200, 255},
+            {200, 200, 100, 255}
+        };
+        DrawAgent(&agents[i], colors[dir % 4]);
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+    
+    DrawRectangleLinesEx((Rectangle){350, 200, 580, 320}, 2, (Color){100, 100, 100, 100});
+    DrawTextShadow(">>>", 80, 360, 20, (Color){100, 200, 100, 150});
+    DrawTextShadow("<<<", SCREEN_WIDTH - 120, 360, 20, (Color){200, 100, 100, 150});
+    DrawTextShadow("v", 640, 80, 24, (Color){100, 100, 200, 150});
+    DrawTextShadow("^", 640, SCREEN_HEIGHT - 100, 24, (Color){200, 200, 100, 150});
+}
+
+static void DrawCtxObstacleCourse(void) {
+    for (int i = 0; i < agentCount; i++) {
+        Color agentColor = (i == 0) ? GOLD : SKYBLUE;
+        DrawAgent(&agents[i], agentColor);
+        DrawVelocityVector(&agents[i], WHITE);
+        
+        if (ctxShowMaps && i == 0) {
+            ContextSteering* ctx = &ctxAgents[i];
+            DrawContextMap(ctx, agents[i].pos, 50.0f);
+        }
+    }
+    
+    DrawCircleV(ctxTargets[0], 20, (Color){0, 255, 0, 100});
+    DrawCircleLinesV(ctxTargets[0], 20, GREEN);
+    DrawTextShadow("GOAL", (int)ctxTargets[0].x - 18, (int)ctxTargets[0].y - 8, 16, WHITE);
+}
+
+static void DrawCtxMaze(void) {
+    DrawAgent(&agents[0], GOLD);
+    DrawVelocityVector(&agents[0], WHITE);
+    
+    ContextSteering* ctx = &ctxAgents[0];
+    DrawContextMap(ctx, agents[0].pos, 60.0f);
+    
+    DrawCircleV(ctxMazeGoal, 15, (Color){0, 255, 0, 150});
+    DrawCircleLinesV(ctxMazeGoal, 15, GREEN);
+    
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    }
+}
+
+static void DrawCtxCrowd(void) {
+    int halfCount = agentCount / 2;
+    for (int i = 0; i < agentCount; i++) {
+        Color color = (i < halfCount) ? (Color){100, 200, 100, 255} : (Color){200, 100, 100, 255};
+        DrawAgent(&agents[i], color);
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+    
+    for (int w = 0; w < wallCount; w++) {
+        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    }
+    
+    DrawTextShadow(">>>", 80, 350, 24, (Color){100, 200, 100, 150});
+    DrawTextShadow("<<<", SCREEN_WIDTH - 120, 370, 24, (Color){200, 100, 100, 150});
+}
+
+static void DrawCtxPredatorPrey(void) {
+    Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
+    Vector2 predatorPos = agents[ctxPredatorIndex].pos;
+    
+    // Prey
+    for (int i = 0; i < ctxPredatorIndex; i++) {
+        float dist = steering_vec_distance(agents[i].pos, predatorPos);
+        Color preyColor = (dist < 150.0f) ? (Color){255, 220, 100, 255} : GREEN;
+        DrawAgent(&agents[i], preyColor);
+        DrawVelocityVector(&agents[i], LIME);
+        
+        if (ctxShowMaps && dist < 150.0f) {
+            ContextSteering* ctx = &ctxAgents[i];
+            DrawContextMap(ctx, agents[i].pos, 50.0f);
+        }
+    }
+    
+    // Predator
+    DrawAgent(&agents[ctxPredatorIndex], RED);
+    DrawVelocityVector(&agents[ctxPredatorIndex], MAROON);
+    DrawTextShadow("PREDATOR", (int)predatorPos.x - 30, (int)predatorPos.y - 25, 14, RED);
+    
+    DrawCircleLinesV(predatorPos, 300, (Color){255, 0, 0, 50});
+    DrawCircleLinesV(predatorPos, 150, (Color){255, 100, 0, 80});
+    DrawRectangleLinesEx(bounds, 2, (Color){100, 100, 100, 100});
+}
+
+static void DrawTopologicalFlock(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], (Color){100, 180, 220, 255});
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+}
+
+static void DrawCouzinZones(void) {
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], (Color){150, 200, 150, 255});
+        DrawVelocityVector(&agents[i], WHITE);
+    }
+    
+    // Zone visualization for first agent
+    if (agentCount > 0) {
+        DrawCircleLinesV(agents[0].pos, couzinParams.zorRadius, RED);
+        DrawCircleLinesV(agents[0].pos, couzinParams.zooRadius, YELLOW);
+        DrawCircleLinesV(agents[0].pos, couzinParams.zoaRadius, GREEN);
+        
+        // Blind angle arc
+        float heading = atan2f(agents[0].vel.y, agents[0].vel.x);
+        float halfBlind = couzinParams.blindAngle / 2.0f;
+        for (int a = 0; a < 10; a++) {
+            float angle1 = heading + PI - halfBlind + (halfBlind * 2 * a / 10);
+            float angle2 = heading + PI - halfBlind + (halfBlind * 2 * (a + 1) / 10);
+            Vector2 p1 = {agents[0].pos.x + cosf(angle1) * 30, agents[0].pos.y + sinf(angle1) * 30};
+            Vector2 p2 = {agents[0].pos.x + cosf(angle2) * 30, agents[0].pos.y + sinf(angle2) * 30};
+            DrawLineV(p1, p2, DARKGRAY);
+        }
+    }
+    
+    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinParams.zorRadius), 10, 90, 16, RED);
+    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinParams.zooRadius), 10, 110, 16, YELLOW);
+    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinParams.zoaRadius), 10, 130, 16, GREEN);
+    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinParams.blindAngle), 10, 150, 16, GRAY);
+}
+
+static void DrawVehiclePursuit(void) {
+    // Draw path
+    for (int i = 0; i < path.count; i++) {
+        int next = (i + 1) % path.count;
+        DrawLineEx(pathPoints[i], pathPoints[next], 3, SKYBLUE);
+    }
+    for (int i = 0; i < path.count; i++) {
+        DrawCircleV(pathPoints[i], 6, BLUE);
+    }
+    
+    // Draw vehicles
+    for (int i = 0; i < vehicleCount; i++) {
+        Vector2 pos = vehicles[i].pos;
+        float heading = vehicles[i].heading;
+        Color vehColor = (i == 0) ? GOLD : SKYBLUE;
+        
+        Vector2 forward = {cosf(heading), sinf(heading)};
+        Vector2 right = {-sinf(heading), cosf(heading)};
+        
+        Vector2 corners[4] = {
+            {pos.x + forward.x * 15 + right.x * 8, pos.y + forward.y * 15 + right.y * 8},
+            {pos.x + forward.x * 15 - right.x * 8, pos.y + forward.y * 15 - right.y * 8},
+            {pos.x - forward.x * 10 - right.x * 8, pos.y - forward.y * 10 - right.y * 8},
+            {pos.x - forward.x * 10 + right.x * 8, pos.y - forward.y * 10 + right.y * 8}
+        };
+        
+        DrawTriangle(corners[0], corners[1], corners[2], vehColor);
+        DrawTriangle(corners[0], corners[2], corners[3], vehColor);
+        
+        Vector2 tip = {pos.x + forward.x * 20, pos.y + forward.y * 20};
+        DrawLineEx(pos, tip, 2, WHITE);
+    }
+    
+    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleLookahead), 10, 90, 16, YELLOW);
+}
+
+static void DrawDWANavigation(void) {
+    // Draw goal
+    DrawCircleV(dwaGoal, 20, (Color){0, 255, 0, 100});
+    DrawCircleLinesV(dwaGoal, 20, GREEN);
+    DrawTextShadow("GOAL", (int)dwaGoal.x - 18, (int)dwaGoal.y - 8, 16, WHITE);
+    
+    // Mode indicator
+    const char* modeStr = (dwaMode == DWA_NORMAL) ? "NORMAL" : 
+                          (dwaMode == DWA_BACKUP) ? "BACKUP" : "TURN";
+    Color modeColor = (dwaMode == DWA_NORMAL) ? GREEN : 
+                      (dwaMode == DWA_BACKUP) ? ORANGE : YELLOW;
+    DrawTextShadow(modeStr, 10, 130, 20, modeColor);
+    
+    // Draw vehicle
+    Vector2 pos = vehicles[0].pos;
+    float heading = vehicles[0].heading;
+    Color vehicleColor = GOLD;
+    
+    Vector2 forward = {cosf(heading), sinf(heading)};
+    Vector2 right = {-sinf(heading), cosf(heading)};
+    
+    Vector2 corners[4] = {
+        {pos.x + forward.x * 15 + right.x * 10, pos.y + forward.y * 15 + right.y * 10},
+        {pos.x + forward.x * 15 - right.x * 10, pos.y + forward.y * 15 - right.y * 10},
+        {pos.x - forward.x * 12 - right.x * 10, pos.y - forward.y * 12 - right.y * 10},
+        {pos.x - forward.x * 12 + right.x * 10, pos.y - forward.y * 12 + right.y * 10}
+    };
+    
+    DrawTriangle(corners[0], corners[1], corners[2], vehicleColor);
+    DrawTriangle(corners[0], corners[2], corners[3], vehicleColor);
+    DrawLineEx(pos, (Vector2){pos.x + forward.x * 25, pos.y + forward.y * 25}, 3, WHITE);
+}
+
+static void DrawFlowField(void) {
+    const int gridSpacing = 50;
+    const float arrowLen = 18.0f;
+
+    for (int gx = 0; gx < SCREEN_WIDTH / gridSpacing + 1; gx++) {
+        for (int gy = 0; gy < SCREEN_HEIGHT / gridSpacing + 1; gy++) {
+            float x = gx * gridSpacing + gridSpacing / 2;
+            float y = gy * gridSpacing + gridSpacing / 2;
+            Vector2 pos = {x, y};
+            Vector2 dir = GetFlowDirection(pos);
+            dir = steering_vec_normalize(dir);
+
+            Vector2 end = {pos.x + dir.x * arrowLen, pos.y + dir.y * arrowLen};
+
+            float hue = atan2f(dir.y, dir.x) / (2 * PI) + 0.5f;
+            Color arrowColor = ColorFromHSV(hue * 360.0f, 0.6f, 0.8f);
+            arrowColor.a = 150;
+
+            DrawLineEx(pos, end, 2, arrowColor);
+
+            Vector2 perp = {-dir.y * 5, dir.x * 5};
+            Vector2 back = {end.x - dir.x * 8, end.y - dir.y * 8};
+            DrawTriangle(end,
+                        (Vector2){back.x + perp.x, back.y + perp.y},
+                        (Vector2){back.x - perp.x, back.y - perp.y},
+                        arrowColor);
+        }
+    }
+
+    DrawCircleLinesV(flowFieldCenter, 15, YELLOW);
+    DrawCircleV(flowFieldCenter, 5, YELLOW);
+
+    for (int i = 0; i < agentCount; i++) {
+        DrawAgent(&agents[i], SKYBLUE);
+        DrawVelocityVector(&agents[i], GREEN);
+    }
+
+    const char* flowNames[] = {"VORTEX", "PERLIN (Organic)", "UNIFORM", "SINK", "SOURCE"};
+    DrawTextShadow(TextFormat("Flow Type: %s", flowNames[currentFlowFieldType]), 10, 100, 20, YELLOW);
+    DrawTextShadow("Press SPACE to cycle flow types", 10, 125, 16, LIGHTGRAY);
+    DrawTextShadow("Mouse position = flow center", 10, 145, 16, LIGHTGRAY);
+}
+
+// Function pointer array - NULL entries use fallback in DrawScenario
+static ScenarioDrawFunc scenarioDrawFuncs[SCENARIO_COUNT] = {
+    [SCENARIO_SEEK] = DrawSeek,
+    [SCENARIO_FLEE] = DrawFlee,
+    [SCENARIO_DEPARTURE] = DrawDeparture,
+    [SCENARIO_ARRIVE] = DrawArrive,
+    [SCENARIO_DOCK] = DrawDock,
+    [SCENARIO_PURSUIT_EVASION] = DrawPursuitEvasion,
+    [SCENARIO_WANDER] = DrawWander,
+    [SCENARIO_CONTAINMENT] = DrawContainment,
+    [SCENARIO_FLOCKING] = DrawFlocking,
+    [SCENARIO_LEADER_FOLLOW] = DrawLeaderFollow,
+    [SCENARIO_HIDE] = DrawHide,
+    [SCENARIO_OBSTACLE_AVOID] = DrawObstacleAvoid,
+    [SCENARIO_WALL_AVOID] = DrawWallAvoid,
+    [SCENARIO_WALL_FOLLOW] = DrawWallFollow,
+    [SCENARIO_PATH_FOLLOW] = DrawPathFollow,
+    [SCENARIO_INTERPOSE] = DrawInterpose,
+    [SCENARIO_FORMATION] = DrawFormation,
+    [SCENARIO_QUEUING] = DrawQueuing,
+    [SCENARIO_COLLISION_AVOID] = DrawCollisionAvoid,
+    [SCENARIO_FACE] = DrawFace,
+    [SCENARIO_ORBIT] = DrawOrbit,
+    [SCENARIO_EVADE_MULTIPLE] = DrawEvadeMultiple,
+    [SCENARIO_PATROL] = DrawPatrol,
+    [SCENARIO_EXPLORE] = DrawExplore,
+    [SCENARIO_FORAGE] = DrawForage,
+    [SCENARIO_GUARD] = DrawGuard,
+    [SCENARIO_QUEUE_FOLLOW] = DrawQueueFollow,
+    [SCENARIO_CAPTURE_FLAG] = DrawCaptureFlag,
+    [SCENARIO_ESCORT_CONVOY] = DrawEscortConvoy,
+    [SCENARIO_FISH_SHARK] = DrawFishShark,
+    [SCENARIO_PEDESTRIAN] = DrawPedestrian,
+    [SCENARIO_WOLF_PACK] = DrawWolfPack,
+    [SCENARIO_EVACUATION] = DrawEvacuation,
+    [SCENARIO_TRAFFIC] = DrawTraffic,
+    [SCENARIO_MURMURATION] = DrawMurmuration,
+    [SCENARIO_SFM_CORRIDOR] = DrawSFMCorridor,
+    [SCENARIO_SFM_EVACUATION] = DrawSFMEvacuation,
+    [SCENARIO_SFM_CROSSING] = DrawSFMCrossing,
+    [SCENARIO_CTX_OBSTACLE_COURSE] = DrawCtxObstacleCourse,
+    [SCENARIO_CTX_MAZE] = DrawCtxMaze,
+    [SCENARIO_CTX_CROWD] = DrawCtxCrowd,
+    [SCENARIO_CTX_PREDATOR_PREY] = DrawCtxPredatorPrey,
+    [SCENARIO_TOPOLOGICAL_FLOCK] = DrawTopologicalFlock,
+    [SCENARIO_COUZIN_ZONES] = DrawCouzinZones,
+    [SCENARIO_VEHICLE_PURSUIT] = DrawVehiclePursuit,
+    [SCENARIO_DWA_NAVIGATION] = DrawDWANavigation,
+    [SCENARIO_FLOW_FIELD] = DrawFlowField,
+};
+
 static void DrawScenario(void) {
     DrawObstacles();
     DrawWalls();
     DrawPath();
 
-    // Draw agents based on scenario
-    if (currentScenario == SCENARIO_EVADE_MULTIPLE) {
-        // Draw prey (green) and predators (red)
-        DrawAgent(&agents[0], GREEN);
-        DrawVelocityVector(&agents[0], LIME);
-        for (int i = 1; i < agentCount; i++) {
-            DrawAgent(&agents[i], RED);
-            DrawVelocityVector(&agents[i], ORANGE);
-        }
-    } else if (currentScenario == SCENARIO_INTERPOSE) {
-        // Draw bodyguard (blue), VIP (green), and Threat (red)
-        DrawAgent(&agents[0], SKYBLUE);  // Bodyguard
-        DrawAgent(&agents[1], GREEN);     // VIP
-        DrawAgent(&agents[2], RED);       // Threat
-        DrawTextShadow("VIP", (int)agents[1].pos.x - 10, (int)agents[1].pos.y - 25, 14, GREEN);
-        DrawTextShadow("THREAT", (int)agents[2].pos.x - 20, (int)agents[2].pos.y - 25, 14, RED);
-        DrawTextShadow("GUARD", (int)agents[0].pos.x - 18, (int)agents[0].pos.y - 25, 14, SKYBLUE);
-    } else if (currentScenario == SCENARIO_CAPTURE_FLAG) {
-        // Blue team
-        for (int i = 0; i < 3; i++) {
-            Color c = (flagCarrier == i) ? YELLOW : BLUE;
-            DrawAgent(&agents[i], c);
-            DrawVelocityVector(&agents[i], SKYBLUE);
-        }
-        // Red team
-        for (int i = 3; i < 6; i++) {
-            Color c = (flagCarrier == i) ? YELLOW : RED;
-            DrawAgent(&agents[i], c);
-            DrawVelocityVector(&agents[i], ORANGE);
-        }
-    } else if (currentScenario == SCENARIO_ESCORT_CONVOY) {
-        // VIP (green)
-        DrawAgent(&agents[0], GREEN);
-        DrawVelocityVector(&agents[0], LIME);
-        DrawTextShadow("VIP", (int)agents[0].pos.x - 10, (int)agents[0].pos.y - 25, 14, GREEN);
-        // Escorts (blue)
-        for (int i = 1; i <= 3; i++) {
-            DrawAgent(&agents[i], SKYBLUE);
-            DrawVelocityVector(&agents[i], BLUE);
-        }
-        // Threats (red)
-        for (int i = 4; i < 6; i++) {
-            DrawAgent(&agents[i], RED);
-            DrawVelocityVector(&agents[i], ORANGE);
-            DrawTextShadow("THREAT", (int)agents[i].pos.x - 20, (int)agents[i].pos.y - 25, 12, RED);
-        }
-    } else if (currentScenario == SCENARIO_FISH_SHARK) {
-        // Fish (blue shades)
-        for (int i = 0; i < agentCount - 1; i++) {
-            float distToShark = steering_vec_distance(agents[i].pos, agents[sharkIndex].pos);
-            Color fishColor = (distToShark < 180.0f) ? (Color){255, 200, 100, 255} : SKYBLUE;  // Yellow if scared
-            DrawAgent(&agents[i], fishColor);
-        }
-        // Shark (dark gray/red)
-        float nearestDist = 1e10f;
-        for (int i = 0; i < agentCount - 1; i++) {
-            float dist = steering_vec_distance(agents[sharkIndex].pos, agents[i].pos);
-            if (dist < nearestDist) nearestDist = dist;
-        }
-        Color sharkColor = (nearestDist < 250.0f) ? RED : DARKGRAY;  // Red when hunting
-        DrawAgent(&agents[sharkIndex], sharkColor);
-        DrawVelocityVector(&agents[sharkIndex], MAROON);
-    } else if (currentScenario == SCENARIO_QUEUE_FOLLOW) {
-        // Leader (gold)
-        DrawAgent(&agents[0], GOLD);
-        DrawVelocityVector(&agents[0], ORANGE);
-        // Followers (blue gradient)
-        for (int i = 1; i < agentCount; i++) {
-            int shade = 255 - (i * 20);
-            if (shade < 100) shade = 100;
-            DrawAgent(&agents[i], (Color){100, 150, (unsigned char)shade, 255});
-            DrawVelocityVector(&agents[i], GREEN);
-        }
-    } else if (currentScenario == SCENARIO_PEDESTRIAN) {
-        // Pedestrians: green going right, blue going left
-        for (int i = 0; i < agentCount; i++) {
-            Color color = (i < agentCount / 2) ? (Color){100, 200, 100, 255} : (Color){100, 150, 220, 255};
-            DrawAgent(&agents[i], color);
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_WOLF_PACK) {
-        // Wolves: red (alpha is darker)
-        DrawAgent(&agents[0], MAROON);  // Alpha
-        DrawVelocityVector(&agents[0], RED);
-        DrawTextShadow("ALPHA", (int)agents[0].pos.x - 18, (int)agents[0].pos.y - 25, 12, RED);
-        for (int i = 1; i < wolfCount; i++) {
-            DrawAgent(&agents[i], RED);
-            DrawVelocityVector(&agents[i], ORANGE);
-        }
-        // Prey: green
-        for (int i = preyStartIndex; i < agentCount; i++) {
-            DrawAgent(&agents[i], GREEN);
-            DrawVelocityVector(&agents[i], LIME);
-        }
-    } else if (currentScenario == SCENARIO_EVACUATION) {
-        // Color by panic level (green = calm, red = panicked)
-        for (int i = 0; i < agentCount; i++) {
-            float distToFire = steering_vec_distance(agents[i].pos, fireCenter);
-            float panic = 0;
-            if (distToFire < fireRadius + 150.0f) {
-                panic = 1.0f - (distToFire - fireRadius) / 150.0f;
-                panic = fmaxf(0, fminf(panic, 1.0f));
-            }
-            Color color = {
-                (unsigned char)(100 + panic * 155),
-                (unsigned char)(200 - panic * 150),
-                (unsigned char)(100 - panic * 100),
-                255
-            };
-            DrawAgent(&agents[i], color);
-        }
-    } else if (currentScenario == SCENARIO_TRAFFIC) {
-        // Cars: rectangles oriented by direction
-        for (int i = 0; i < carCount; i++) {
-            CarDirection dir = carDirections[i];
-            bool isNS = (dir == CAR_DIR_NORTH || dir == CAR_DIR_SOUTH);
-            Color carColor = isNS ? BLUE : ORANGE;
-            if (isNS) {
-                DrawRectangle((int)agents[i].pos.x - 8, (int)agents[i].pos.y - 15, 16, 30, carColor);
-            } else {
-                DrawRectangle((int)agents[i].pos.x - 15, (int)agents[i].pos.y - 8, 30, 16, carColor);
-            }
-        }
-        // Pedestrians: small circles
-        for (int i = carCount; i < agentCount; i++) {
-            DrawCircleV(agents[i].pos, 6, WHITE);
-        }
-    } else if (currentScenario == SCENARIO_MURMURATION) {
-        // Birds: small triangles pointing in velocity direction
-        for (int i = 0; i < agentCount; i++) {
-            Vector2 dir;
-            if (steering_vec_length(agents[i].vel) > 1) {
-                dir = steering_vec_normalize(agents[i].vel);
-            } else {
-                dir = (Vector2){1, 0};
-            }
-            // Triangle points
-            Vector2 tip = {agents[i].pos.x + dir.x * 8, agents[i].pos.y + dir.y * 8};
-            Vector2 left = {agents[i].pos.x - dir.x * 4 - dir.y * 4, agents[i].pos.y - dir.y * 4 + dir.x * 4};
-            Vector2 right = {agents[i].pos.x - dir.x * 4 + dir.y * 4, agents[i].pos.y - dir.y * 4 - dir.x * 4};
-            DrawTriangle(tip, right, left, (Color){50, 50, 50, 255});
-        }
-    } else if (currentScenario == SCENARIO_SFM_CORRIDOR) {
-        // SFM Corridor: color by direction (blue going right, red going left)
-        for (int i = 0; i < agentCount; i++) {
-            Color color = (i < sfmLeftCount) ? (Color){100, 150, 220, 255} : (Color){220, 120, 100, 255};
-            DrawAgent(&agents[i], color);
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_SFM_EVACUATION) {
-        // SFM Evacuation: color by distance to exit (green near exit, red far)
-        for (int i = 0; i < agentCount; i++) {
-            float distToExit = steering_vec_distance(agents[i].pos, sfmGoals[i]);
-            float urgency = fminf(distToExit / 300.0f, 1.0f);
-            Color color = {
-                (unsigned char)(100 + urgency * 120),
-                (unsigned char)(220 - urgency * 120),
-                (unsigned char)(100),
-                255
-            };
-            DrawAgent(&agents[i], color);
-        }
-    } else if (currentScenario == SCENARIO_SFM_CROSSING) {
-        // SFM Crossing: color by direction (4 colors for 4 directions)
-        int perDirection = agentCount / 4;
-        for (int i = 0; i < agentCount; i++) {
-            int dir = i / perDirection;
-            Color colors[4] = {
-                {100, 200, 100, 255},  // From left - green
-                {200, 100, 100, 255},  // From right - red
-                {100, 100, 200, 255},  // From top - blue
-                {200, 200, 100, 255}   // From bottom - yellow
-            };
-            DrawAgent(&agents[i], colors[dir % 4]);
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_CTX_OBSTACLE_COURSE) {
-        // Context steering obstacle course
-        for (int i = 0; i < agentCount; i++) {
-            Color agentColor = (i == 0) ? GOLD : SKYBLUE;  // First agent highlighted
-            DrawAgent(&agents[i], agentColor);
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_CTX_MAZE) {
-        // Context steering maze - single agent
-        DrawAgent(&agents[0], GOLD);
-        DrawVelocityVector(&agents[0], WHITE);
-    } else if (currentScenario == SCENARIO_CTX_CROWD) {
-        // Context steering crowd - color by direction
-        int halfCount = agentCount / 2;
-        for (int i = 0; i < agentCount; i++) {
-            Color color = (i < halfCount) ? (Color){100, 200, 100, 255} : (Color){200, 100, 100, 255};
-            DrawAgent(&agents[i], color);
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_CTX_PREDATOR_PREY) {
-        // Context steering predator/prey
-        // Prey: green (yellow if being hunted)
-        Vector2 predPos = agents[ctxPredatorIndex].pos;
-        for (int i = 0; i < ctxPredatorIndex; i++) {
-            float dist = steering_vec_distance(agents[i].pos, predPos);
-            Color preyColor = (dist < 150.0f) ? (Color){255, 220, 100, 255} : GREEN;
-            DrawAgent(&agents[i], preyColor);
-            DrawVelocityVector(&agents[i], LIME);
-        }
-        // Predator: red
-        DrawAgent(&agents[ctxPredatorIndex], RED);
-        DrawVelocityVector(&agents[ctxPredatorIndex], MAROON);
-        DrawTextShadow("PREDATOR", (int)predPos.x - 30, (int)predPos.y - 25, 14, RED);
-    } else if (currentScenario == SCENARIO_TOPOLOGICAL_FLOCK) {
-        // Topological flock - all same color with velocity vectors
-        for (int i = 0; i < agentCount; i++) {
-            DrawAgent(&agents[i], (Color){100, 180, 220, 255});
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_COUZIN_ZONES) {
-        // Couzin zones - agents colored by zone behavior
-        for (int i = 0; i < agentCount; i++) {
-            DrawAgent(&agents[i], (Color){150, 200, 150, 255});
-            DrawVelocityVector(&agents[i], WHITE);
-        }
-    } else if (currentScenario == SCENARIO_VEHICLE_PURSUIT ||
-               currentScenario == SCENARIO_DWA_NAVIGATION) {
-        // Vehicles are drawn in their update functions
-        // Just draw obstacles here
-    } else if (currentScenario == SCENARIO_DEPARTURE) {
-        // Draw agent
-        DrawAgent(&agents[0], SKYBLUE);
-        DrawVelocityVector(&agents[0], GREEN);
-
-        // Draw slow radius around mouse (target)
-        Vector2 target = GetMousePosition();
-        DrawCircleLinesV(target, departureScenario.slowRadius, (Color){255, 100, 100, 100});
-    } else if (currentScenario == SCENARIO_FLOW_FIELD) {
-        // Draw flow field visualization (grid of arrows)
-        const int gridSpacing = 50;
-        const float arrowLen = 18.0f;
-
-        for (int gx = 0; gx < SCREEN_WIDTH / gridSpacing + 1; gx++) {
-            for (int gy = 0; gy < SCREEN_HEIGHT / gridSpacing + 1; gy++) {
-                float x = gx * gridSpacing + gridSpacing / 2;
-                float y = gy * gridSpacing + gridSpacing / 2;
-                Vector2 pos = {x, y};
-                Vector2 dir = GetFlowDirection(pos);
-                dir = steering_vec_normalize(dir);
-
-                Vector2 end = {pos.x + dir.x * arrowLen, pos.y + dir.y * arrowLen};
-
-                // Color based on direction
-                float hue = atan2f(dir.y, dir.x) / (2 * PI) + 0.5f;
-                Color arrowColor = ColorFromHSV(hue * 360.0f, 0.6f, 0.8f);
-                arrowColor.a = 150;
-
-                DrawLineEx(pos, end, 2, arrowColor);
-
-                // Draw arrowhead
-                Vector2 perp = {-dir.y * 5, dir.x * 5};
-                Vector2 back = {end.x - dir.x * 8, end.y - dir.y * 8};
-                DrawTriangle(end,
-                            (Vector2){back.x + perp.x, back.y + perp.y},
-                            (Vector2){back.x - perp.x, back.y - perp.y},
-                            arrowColor);
-            }
-        }
-
-        // Draw center marker
-        DrawCircleLinesV(flowFieldCenter, 15, YELLOW);
-        DrawCircleV(flowFieldCenter, 5, YELLOW);
-
-        // Draw agents
-        for (int i = 0; i < agentCount; i++) {
-            DrawAgent(&agents[i], SKYBLUE);
-            DrawVelocityVector(&agents[i], GREEN);
-        }
-
-        // Draw flow type name
-        const char* flowNames[] = {"VORTEX", "PERLIN (Organic)", "UNIFORM", "SINK", "SOURCE"};
-        DrawTextShadow(TextFormat("Flow Type: %s", flowNames[currentFlowFieldType]), 10, 100, 20, YELLOW);
-        DrawTextShadow("Press SPACE to cycle flow types", 10, 125, 16, LIGHTGRAY);
-        DrawTextShadow("Mouse position = flow center", 10, 145, 16, LIGHTGRAY);
-    } else {
-        // Standard drawing
-        for (int i = 0; i < agentCount; i++) {
-            Color color = SKYBLUE;
-            if (currentScenario == SCENARIO_LEADER_FOLLOW && i == 0) color = GOLD;
-            if (currentScenario == SCENARIO_FORMATION && i == 0) color = GOLD;
-            DrawAgent(&agents[i], color);
-            DrawVelocityVector(&agents[i], GREEN);
-        }
-    }
-
-    // Draw target agent for pursuit/evasion and hide scenarios
-    if (currentScenario == SCENARIO_PURSUIT_EVASION) {
-        DrawAgent(&targetAgent, RED);
-        DrawVelocityVector(&targetAgent, ORANGE);
-    } else if (currentScenario == SCENARIO_HIDE) {
-        DrawAgent(&targetAgent, RED);
-    } else if (currentScenario == SCENARIO_FORMATION) {
-        // Draw formation lines from leader to followers
-        for (int i = 1; i < agentCount; i++) {
-            DrawLineEx(agents[0].pos, agents[i].pos, 1, (Color){100, 100, 100, 100});
-        }
-    } else if (currentScenario == SCENARIO_QUEUING) {
-        // Draw target
-        DrawCircleV((Vector2){1000, SCREEN_HEIGHT/2}, 15, GREEN);
-        DrawTextShadow("EXIT", 980, SCREEN_HEIGHT/2 + 20, 14, GREEN);
-    }
+    // All scenarios have dedicated Draw functions in the pointer array
+    scenarioDrawFuncs[currentScenario]();
 }
 
 // ============================================================================
