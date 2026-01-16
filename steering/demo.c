@@ -40,6 +40,80 @@ static void DrawTextShadow(const char *text, int x, int y, int size, Color col) 
 }
 
 // ============================================================================
+// Draggable Value System (Blender-style click+drag)
+// ============================================================================
+
+static bool dragActive = false;
+static float* dragTarget = NULL;
+static float dragStartValue;
+static float dragStartX;
+static float dragSensitivity;
+static float dragMinVal;
+static float dragMaxVal;
+static bool dragAnyHovered = false;
+
+// Draw a draggable float value - click and drag left/right to change
+// minVal/maxVal: use NAN for no limit
+static bool DraggableFloat(float x, float y, const char* label, float* value, float sensitivity, float minVal, float maxVal) {
+    const char* text = TextFormat("%s: %.1f", label, *value);
+    Vector2 textSize = {0};
+    if (g_comicFont && g_comicFont->texture.id > 0) {
+        textSize = MeasureTextEx(*g_comicFont, text, 18, 1);
+    } else {
+        textSize.x = MeasureText(text, 18);
+        textSize.y = 18;
+    }
+    int width = (int)textSize.x + 10;
+    Rectangle bounds = {x, y, width, textSize.y + 4};
+    
+    bool hovered = CheckCollisionPointRec(GetMousePosition(), bounds);
+    if (hovered) dragAnyHovered = true;
+    
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragActive = true;
+        dragTarget = value;
+        dragStartValue = *value;
+        dragStartX = GetMouseX();
+        dragSensitivity = sensitivity;
+        dragMinVal = minVal;
+        dragMaxVal = maxVal;
+    }
+    
+    Color col = (hovered || dragTarget == value) ? YELLOW : LIGHTGRAY;
+    if (g_comicFont && g_comicFont->texture.id > 0) {
+        DrawTextEx(*g_comicFont, text, (Vector2){x, y}, 18, 1, col);
+    } else {
+        DrawText(text, (int)x, (int)y, 18, col);
+    }
+    
+    return hovered;
+}
+
+static void UpdateDraggables(void) {
+    if (dragActive && dragTarget) {
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+            float delta = GetMouseX() - dragStartX;
+            float newVal = dragStartValue + delta * dragSensitivity;
+            if (dragMinVal == dragMinVal) newVal = fmaxf(newVal, dragMinVal);  // NAN != NAN
+            if (dragMaxVal == dragMaxVal) newVal = fminf(newVal, dragMaxVal);
+            *dragTarget = newVal;
+        } else {
+            dragActive = false;
+            dragTarget = NULL;
+        }
+    }
+    
+    if (dragActive || dragAnyHovered) {
+        SetMouseCursor(MOUSE_CURSOR_RESIZE_EW);
+    } else {
+        SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+    }
+    
+    // Reset for next frame
+    dragAnyHovered = false;
+}
+
+// ============================================================================
 // Scenario State
 // ============================================================================
 
@@ -248,6 +322,9 @@ bool ctxShowMaps = true;                // Toggle to show interest/danger maps
 
 // Couzin zones state
 CouzinParams couzinParams;
+
+// Test tweakable value
+static float tweakTestValue = 50.0f;
 
 // Vehicle/curvature-limited state
 CurvatureLimitedAgent vehicles[MAX_AGENTS];
@@ -4751,6 +4828,7 @@ int main(void) {
         }
 
         // Update
+        UpdateDraggables();
         UpdateScenario(dt);
 
         // Draw
@@ -4776,6 +4854,9 @@ int main(void) {
         if (ScenarioSupportsScaling(currentScenario)) {
             DrawTextShadow("UP/DOWN: +/- agents", SCREEN_WIDTH - 220, 70, 16, YELLOW);
         }
+
+        // Draggable tweak test
+        DraggableFloat(10, 100, "Test Value", &tweakTestValue, 0.5f, 0.0f, 100.0f);
 
         // Instructions at bottom
         const char* instructions = "";
