@@ -217,6 +217,41 @@ typedef enum {
     SCENARIO_COUNT
 } Scenario;
 
+// ============================================================================
+// Data-Driven UI System
+// ============================================================================
+
+typedef enum {
+    PARAM_FLOAT,
+    PARAM_BOOL,
+    PARAM_LABEL
+} ParamType;
+
+typedef struct {
+    ParamType type;
+    const char* label;
+    union {
+        struct { float* value; float sensitivity; float min; float max; } f;
+        struct { bool* value; } b;
+        struct { Color color; } l;
+    };
+} ScenarioParam;
+
+#define MAX_SCENARIO_PARAMS 12
+
+typedef struct {
+    ScenarioParam params[MAX_SCENARIO_PARAMS];
+    int count;
+} ScenarioUI;
+
+// Helper macros for defining UI parameters
+#define UI_FLOAT(lbl, ptr, sens, mn, mx) \
+    { .type = PARAM_FLOAT, .label = lbl, .f = { ptr, sens, mn, mx } }
+#define UI_BOOL(lbl, ptr) \
+    { .type = PARAM_BOOL, .label = lbl, .b = { ptr } }
+#define UI_LABEL(lbl, col) \
+    { .type = PARAM_LABEL, .label = lbl, .l = { col } }
+
 // Forward declarations for Setup/Update/Draw functions
 static void SetupSeek(void), SetupFlee(void), SetupDeparture(void), SetupArrive(void), SetupDock(void);
 static void SetupPursuitEvasion(void), SetupWander(void), SetupContainment(void), SetupFlocking(void);
@@ -1356,6 +1391,368 @@ static FlowFieldState flowFieldState = {
     .center = {0, 0},
     .time = 0,
 };
+
+// ============================================================================
+// Scenario UI Tables (Data-Driven)
+// ============================================================================
+
+static ScenarioUI scenarioUI[SCENARIO_COUNT] = {
+    [SCENARIO_SEEK] = { .params = {
+        UI_FLOAT("Max Speed", &seekScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &seekScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+    }, .count = 2 },
+
+    [SCENARIO_FLEE] = { .params = {
+        UI_FLOAT("Max Speed", &fleeScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &fleeScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+    }, .count = 2 },
+
+    [SCENARIO_DEPARTURE] = { .params = {
+        UI_FLOAT("Max Speed", &departureScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &departureScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Slow Radius", &departureScenario.slowRadius, 5.0f, 50.0f, 500.0f),
+    }, .count = 3 },
+
+    [SCENARIO_ARRIVE] = { .params = {
+        UI_FLOAT("Max Speed", &arriveScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &arriveScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Slow Radius", &arriveScenario.slowRadius, 1.0f, 10.0f, 300.0f),
+    }, .count = 3 },
+
+    [SCENARIO_DOCK] = { .params = {
+        UI_FLOAT("Max Speed", &dockScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &dockScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Slow Radius", &dockScenario.slowRadius, 1.0f, 10.0f, 300.0f),
+    }, .count = 3 },
+
+    [SCENARIO_PURSUIT_EVASION] = { .params = {
+        UI_LABEL("Pursuer (blue):", SKYBLUE),
+        UI_FLOAT("Speed", &pursuitEvasionScenario.pursuerMaxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Force", &pursuitEvasionScenario.pursuerMaxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Prediction", &pursuitEvasionScenario.pursuerMaxPrediction, 0.05f, 0.1f, 5.0f),
+        UI_LABEL("Evader (red):", RED),
+        UI_FLOAT("Speed", &pursuitEvasionScenario.evaderMaxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Force", &pursuitEvasionScenario.evaderMaxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Prediction", &pursuitEvasionScenario.evaderMaxPrediction, 0.05f, 0.1f, 5.0f),
+    }, .count = 8 },
+
+    [SCENARIO_WANDER] = { .params = {
+        UI_FLOAT("Max Speed", &wanderScenario.maxSpeed, 1.0f, 10.0f, 500.0f),
+        UI_FLOAT("Max Force", &wanderScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Wander Radius", &wanderScenario.wanderRadius, 0.5f, 5.0f, 150.0f),
+        UI_FLOAT("Wander Distance", &wanderScenario.wanderDistance, 0.5f, 10.0f, 200.0f),
+        UI_FLOAT("Wander Jitter", &wanderScenario.wanderJitter, 0.01f, 0.01f, 2.0f),
+        UI_BOOL("Show Visualization", &wanderShowVisualization),
+    }, .count = 6 },
+
+    [SCENARIO_CONTAINMENT] = { .params = {
+        UI_FLOAT("Margin", &containmentScenario.margin, 1.0f, 10.0f, 200.0f),
+        UI_FLOAT("Restitution", &containmentScenario.restitution, 0.01f, 0.0f, 1.0f),
+    }, .count = 2 },
+
+    [SCENARIO_FLOCKING] = { .params = {
+        UI_FLOAT("Max Speed", &flockingScenario.maxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_FLOAT("Max Force", &flockingScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Neighbor Radius", &flockingScenario.neighborRadius, 1.0f, 20.0f, 300.0f),
+        UI_FLOAT("Separation Radius", &flockingScenario.separationRadius, 1.0f, 10.0f, 150.0f),
+        UI_FLOAT("Separation Weight", &flockingScenario.separationWeight, 0.1f, 0.0f, 10.0f),
+        UI_FLOAT("Cohesion Weight", &flockingScenario.cohesionWeight, 0.1f, 0.0f, 10.0f),
+        UI_FLOAT("Alignment Weight", &flockingScenario.alignmentWeight, 0.1f, 0.0f, 10.0f),
+    }, .count = 7 },
+
+    [SCENARIO_LEADER_FOLLOW] = { .params = {
+        UI_LABEL("Leader:", GOLD),
+        UI_FLOAT("Speed", &leaderFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_LABEL("Followers:", SKYBLUE),
+        UI_FLOAT("Speed", &leaderFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_FLOAT("Follow Offset", &leaderFollowScenario.followOffset, 1.0f, 10.0f, 200.0f),
+        UI_FLOAT("Sight Radius", &leaderFollowScenario.leaderSightRadius, 1.0f, 10.0f, 200.0f),
+        UI_FLOAT("Separation", &leaderFollowScenario.separationRadius, 1.0f, 5.0f, 100.0f),
+    }, .count = 7 },
+
+    [SCENARIO_HIDE] = { .params = {
+        UI_LABEL("Pursuer (red):", RED),
+        UI_FLOAT("Speed", &hideScenario.pursuerMaxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_LABEL("Hider (blue):", SKYBLUE),
+        UI_FLOAT("Speed", &hideScenario.hiderMaxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_FLOAT("Force", &hideScenario.hiderMaxForce, 2.0f, 10.0f, 1000.0f),
+    }, .count = 5 },
+
+    [SCENARIO_OBSTACLE_AVOID] = { .params = {
+        UI_FLOAT("Speed", &obstacleAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &obstacleAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Detect Dist", &obstacleAvoidScenario.detectDistance, 1.0f, 20.0f, 500.0f),
+        UI_FLOAT("Avoid Weight", &obstacleAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Seek Weight", &obstacleAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f),
+    }, .count = 5 },
+
+    [SCENARIO_WALL_AVOID] = { .params = {
+        UI_FLOAT("Speed", &wallAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &wallAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Detect Dist", &wallAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f),
+        UI_FLOAT("Avoid Weight", &wallAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Seek Weight", &wallAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f),
+    }, .count = 5 },
+
+    [SCENARIO_WALL_FOLLOW] = { .params = {
+        UI_FLOAT("Speed", &wallFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &wallFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Follow Dist", &wallFollowScenario.followDistance, 1.0f, 10.0f, 150.0f),
+    }, .count = 3 },
+
+    [SCENARIO_PATH_FOLLOW] = { .params = {
+        UI_FLOAT("Speed", &pathFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &pathFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Path Radius", &pathFollowScenario.pathRadius, 1.0f, 10.0f, 200.0f),
+    }, .count = 3 },
+
+    [SCENARIO_INTERPOSE] = { .params = {
+        UI_LABEL("Interpose (Bodyguard):", WHITE),
+        UI_FLOAT("Bodyguard Speed", &interposeScenario.bodyguardSpeed, 2.0f, 50.0f, 400.0f),
+        UI_FLOAT("VIP Speed", &interposeScenario.vipSpeed, 1.0f, 20.0f, 200.0f),
+        UI_FLOAT("Threat Speed", &interposeScenario.threatSpeed, 1.0f, 30.0f, 250.0f),
+    }, .count = 4 },
+
+    [SCENARIO_FORMATION] = { .params = {
+        UI_LABEL("Formation:", WHITE),
+        UI_FLOAT("Leader Speed", &formationScenario.leaderSpeed, 1.0f, 30.0f, 200.0f),
+        UI_FLOAT("Follower Speed", &formationScenario.followerSpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Offset", &formationScenario.formationOffset, 2.0f, 20.0f, 150.0f),
+    }, .count = 4 },
+
+    [SCENARIO_QUEUING] = { .params = {
+        UI_LABEL("Queuing:", WHITE),
+        UI_FLOAT("Agent Speed", &queuingScenario.agentSpeed, 1.0f, 30.0f, 200.0f),
+    }, .count = 2 },
+
+    [SCENARIO_COLLISION_AVOID] = { .params = {
+        UI_FLOAT("Speed", &collisionAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &collisionAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Neighbor Rad", &collisionAvoidScenario.neighborRadius, 2.0f, 20.0f, 400.0f),
+        UI_FLOAT("Agent Rad", &collisionAvoidScenario.agentRadius, 0.5f, 5.0f, 50.0f),
+        UI_FLOAT("Avoid Weight", &collisionAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Wander Weight", &collisionAvoidScenario.wanderWeight, 0.1f, 0.1f, 5.0f),
+    }, .count = 6 },
+
+    [SCENARIO_FACE] = { .params = {
+        UI_FLOAT("Speed", &faceScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &faceScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Wander Rad", &faceScenario.wanderRadius, 1.0f, 5.0f, 150.0f),
+        UI_FLOAT("Wander Dist", &faceScenario.wanderDistance, 1.0f, 10.0f, 200.0f),
+        UI_FLOAT("Wander Jitter", &faceScenario.wanderJitter, 0.01f, 0.01f, 2.0f),
+    }, .count = 5 },
+
+    [SCENARIO_ORBIT] = { .params = {
+        UI_FLOAT("Speed", &orbitScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &orbitScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Inner Radius", &orbitScenario.innerRadius, 2.0f, 30.0f, 300.0f),
+        UI_FLOAT("Middle Radius", &orbitScenario.middleRadius, 2.0f, 50.0f, 400.0f),
+        UI_FLOAT("Outer Radius", &orbitScenario.outerRadius, 2.0f, 80.0f, 500.0f),
+    }, .count = 5 },
+
+    [SCENARIO_EVADE_MULTIPLE] = { .params = {
+        UI_LABEL("Evade Multiple:", WHITE),
+        UI_FLOAT("Prey Speed", &evadeMultipleScenario.preySpeed, 2.0f, 50.0f, 300.0f),
+        UI_FLOAT("Predator Speed", &evadeMultipleScenario.predatorSpeed, 1.0f, 30.0f, 250.0f),
+    }, .count = 3 },
+
+    [SCENARIO_PATROL] = { .params = {
+        UI_FLOAT("Speed", &patrolScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &patrolScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Waypoint Rad", &patrolScenario.waypointRadius, 1.0f, 10.0f, 100.0f),
+    }, .count = 3 },
+
+    [SCENARIO_EXPLORE] = { .params = {
+        UI_FLOAT("Speed", &exploreScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &exploreScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+    }, .count = 2 },
+
+    [SCENARIO_FORAGE] = { .params = {
+        UI_FLOAT("Speed", &forageScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &forageScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Detect Range", &forageScenario.detectRange, 2.0f, 20.0f, 400.0f),
+        UI_FLOAT("Collect Rad", &forageScenario.collectRadius, 0.5f, 5.0f, 50.0f),
+        UI_FLOAT("Wander Jitter", &forageScenario.wanderJitter, 0.01f, 0.01f, 2.0f),
+    }, .count = 5 },
+
+    [SCENARIO_GUARD] = { .params = {
+        UI_FLOAT("Speed", &guardScenario.maxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Force", &guardScenario.maxForce, 2.0f, 10.0f, 1000.0f),
+        UI_FLOAT("Guard Radius", &guardScenario.guardRadius, 2.0f, 30.0f, 400.0f),
+        UI_FLOAT("Wander Jitter", &guardScenario.wanderJitter, 0.01f, 0.01f, 2.0f),
+    }, .count = 4 },
+
+    [SCENARIO_QUEUE_FOLLOW] = { .params = {
+        UI_FLOAT("Leader Speed", &queueFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f),
+        UI_FLOAT("Follower Speed", &queueFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 400.0f),
+        UI_FLOAT("Follow Dist", &queueFollowScenario.followDistance, 1.0f, 20.0f, 150.0f),
+        UI_FLOAT("Arrive Radius", &queueFollowScenario.arriveRadius, 2.0f, 20.0f, 300.0f),
+    }, .count = 4 },
+
+    [SCENARIO_CAPTURE_FLAG] = { .params = {
+        UI_FLOAT("Team Speed", &captureFlagScenario.teamSpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Carry Penalty", &captureFlagScenario.carryingSpeedPenalty, 0.01f, 0.3f, 1.0f),
+        UI_FLOAT("Evade Dist", &captureFlagScenario.evadeDistance, 2.0f, 50.0f, 400.0f),
+    }, .count = 3 },
+
+    [SCENARIO_ESCORT_CONVOY] = { .params = {
+        UI_LABEL("Escort Convoy:", WHITE),
+        UI_FLOAT("VIP Speed", &escortConvoyScenario.vipSpeed, 1.0f, 20.0f, 150.0f),
+        UI_FLOAT("Escort Speed", &escortConvoyScenario.escortSpeed, 1.0f, 40.0f, 200.0f),
+        UI_FLOAT("Threat Speed", &escortConvoyScenario.threatSpeed, 1.0f, 30.0f, 200.0f),
+    }, .count = 4 },
+
+    [SCENARIO_FISH_SHARK] = { .params = {
+        UI_FLOAT("Fish Speed", &fishSharkScenario.fishSpeed, 1.0f, 30.0f, 300.0f),
+        UI_FLOAT("Shark Cruise", &fishSharkScenario.sharkCruiseSpeed, 1.0f, 20.0f, 200.0f),
+        UI_FLOAT("Shark Chase", &fishSharkScenario.sharkChaseSpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Panic Dist", &fishSharkScenario.panicDistance, 2.0f, 50.0f, 400.0f),
+    }, .count = 4 },
+
+    [SCENARIO_PEDESTRIAN] = { .params = {
+        UI_LABEL("Pedestrian Crowd:", WHITE),
+        UI_FLOAT("Min Speed", &pedestrianScenario.minSpeed, 1.0f, 20.0f, 150.0f),
+        UI_FLOAT("Max Speed", &pedestrianScenario.maxSpeed, 1.0f, 50.0f, 250.0f),
+        UI_FLOAT("Max Force", &pedestrianScenario.maxForce, 5.0f, 100.0f, 1000.0f),
+    }, .count = 4 },
+
+    [SCENARIO_WOLF_PACK] = { .params = {
+        UI_FLOAT("Alpha Speed", &wolfPackScenario.alphaSpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Pack Speed", &wolfPackScenario.packSpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Prey Speed", &wolfPackScenario.preySpeed, 1.0f, 50.0f, 300.0f),
+        UI_FLOAT("Pack Follow", &wolfPackScenario.packFollowDistance, 2.0f, 20.0f, 200.0f),
+    }, .count = 4 },
+
+    [SCENARIO_EVACUATION] = { .params = {
+        UI_FLOAT("Agent Speed", &evacuationScenario.agentSpeed, 1.0f, 30.0f, 300.0f),
+        UI_FLOAT("Speed Var", &evacuationScenario.agentSpeedVariation, 0.5f, 0.0f, 50.0f),
+        UI_FLOAT("Fire Growth", &evacuationScenario.fireGrowthRate, 0.5f, 0.0f, 50.0f),
+    }, .count = 3 },
+
+    [SCENARIO_TRAFFIC] = { .params = {
+        UI_LABEL("Traffic Simulation:", WHITE),
+        UI_FLOAT("Car Speed", &trafficScenario.carSpeed, 1.0f, 30.0f, 200.0f),
+        UI_FLOAT("Ped Speed", &trafficScenario.pedSpeed, 1.0f, 20.0f, 150.0f),
+    }, .count = 3 },
+
+    [SCENARIO_MURMURATION] = { .params = {
+        UI_FLOAT("Bird Speed", &murmurationScenario.birdSpeed, 1.0f, 50.0f, 400.0f),
+        UI_FLOAT("Max Force", &murmurationScenario.maxForce, 5.0f, 50.0f, 1000.0f),
+        UI_FLOAT("Neighbor Rad", &murmurationScenario.neighborRadius, 2.0f, 30.0f, 300.0f),
+        UI_FLOAT("Sep Weight", &murmurationScenario.separationWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Align Weight", &murmurationScenario.alignmentWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Cohesion Weight", &murmurationScenario.cohesionWeight, 0.1f, 0.1f, 10.0f),
+    }, .count = 6 },
+
+    [SCENARIO_SFM_CORRIDOR] = { .params = {
+        UI_LABEL("Social Force Model:", WHITE),
+        UI_FLOAT("Tau (relax)", &sfmState.params.tau, 0.05f, 0.1f, 2.0f),
+        UI_FLOAT("Agent Strength", &sfmState.params.agentStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Agent Range", &sfmState.params.agentRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Wall Strength", &sfmState.params.wallStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Wall Range", &sfmState.params.wallRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Body Radius", &sfmState.params.bodyRadius, 1.0f, 5.0f, 30.0f),
+    }, .count = 7 },
+
+    [SCENARIO_SFM_EVACUATION] = { .params = {
+        UI_LABEL("Social Force Model:", WHITE),
+        UI_FLOAT("Tau (relax)", &sfmState.params.tau, 0.05f, 0.1f, 2.0f),
+        UI_FLOAT("Agent Strength", &sfmState.params.agentStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Agent Range", &sfmState.params.agentRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Wall Strength", &sfmState.params.wallStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Wall Range", &sfmState.params.wallRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Body Radius", &sfmState.params.bodyRadius, 1.0f, 5.0f, 30.0f),
+    }, .count = 7 },
+
+    [SCENARIO_SFM_CROSSING] = { .params = {
+        UI_LABEL("Social Force Model:", WHITE),
+        UI_FLOAT("Tau (relax)", &sfmState.params.tau, 0.05f, 0.1f, 2.0f),
+        UI_FLOAT("Agent Strength", &sfmState.params.agentStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Agent Range", &sfmState.params.agentRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Wall Strength", &sfmState.params.wallStrength, 50.0f, 500.0f, 5000.0f),
+        UI_FLOAT("Wall Range", &sfmState.params.wallRange, 2.0f, 20.0f, 200.0f),
+        UI_FLOAT("Body Radius", &sfmState.params.bodyRadius, 1.0f, 5.0f, 30.0f),
+    }, .count = 7 },
+
+    [SCENARIO_CTX_OBSTACLE_COURSE] = { .params = {
+        UI_LABEL("Context Steering:", WHITE),
+        UI_BOOL("Show Interest/Danger Maps", &ctxState.showMaps),
+    }, .count = 2 },
+
+    [SCENARIO_CTX_MAZE] = { .params = {
+        UI_LABEL("Context Steering:", WHITE),
+        UI_BOOL("Show Interest/Danger Maps", &ctxState.showMaps),
+    }, .count = 2 },
+
+    [SCENARIO_CTX_CROWD] = { .params = {
+        UI_LABEL("Context Steering:", WHITE),
+        UI_BOOL("Show Interest/Danger Maps", &ctxState.showMaps),
+    }, .count = 2 },
+
+    [SCENARIO_CTX_PREDATOR_PREY] = { .params = {
+        UI_LABEL("Context Steering:", WHITE),
+        UI_BOOL("Show Interest/Danger Maps", &ctxState.showMaps),
+    }, .count = 2 },
+
+    [SCENARIO_TOPOLOGICAL_FLOCK] = { .params = {
+        UI_LABEL("Topological Flocking:", WHITE),
+        UI_FLOAT("Speed", &topologicalFlockScenario.speed, 1.0f, 30.0f, 300.0f),
+        UI_FLOAT("Force", &topologicalFlockScenario.maxForce, 2.0f, 50.0f, 1000.0f),
+        UI_FLOAT("Sep Weight", &topologicalFlockScenario.separationWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Cohesion Wt", &topologicalFlockScenario.cohesionWeight, 0.1f, 0.1f, 10.0f),
+        UI_FLOAT("Align Weight", &topologicalFlockScenario.alignmentWeight, 0.1f, 0.1f, 10.0f),
+    }, .count = 6 },
+
+    [SCENARIO_COUZIN_ZONES] = { .params = {
+        UI_LABEL("Couzin Zones:", WHITE),
+        UI_FLOAT("ZOR (repulsion)", &couzinState.params.zorRadius, 2.0f, 10.0f, 150.0f),
+        UI_FLOAT("ZOO (orientation)", &couzinState.params.zooRadius, 3.0f, 20.0f, 300.0f),
+        UI_FLOAT("ZOA (attraction)", &couzinState.params.zoaRadius, 4.0f, 30.0f, 500.0f),
+        UI_FLOAT("Blind Angle", &couzinState.params.blindAngle, 0.05f, 0.0f, PI),
+    }, .count = 5 },
+
+    [SCENARIO_VEHICLE_PURSUIT] = { .params = {
+        UI_LABEL("Pure Pursuit:", WHITE),
+        UI_FLOAT("Lookahead", &vehicleState.lookahead, 2.0f, 20.0f, 200.0f),
+    }, .count = 2 },
+
+    [SCENARIO_DWA_NAVIGATION] = { .params = {
+        UI_LABEL("DWA Parameters:", WHITE),
+        UI_FLOAT("Time Horizon", &dwaState.params.timeHorizon, 0.1f, 0.5f, 3.0f),
+        UI_FLOAT("Goal Weight", &dwaState.params.goalWeight, 0.1f, 0.1f, 5.0f),
+        UI_FLOAT("Clearance Wt", &dwaState.params.clearanceWeight, 0.1f, 0.1f, 3.0f),
+        UI_FLOAT("Speed Weight", &dwaState.params.speedWeight, 0.1f, 0.0f, 2.0f),
+        UI_FLOAT("Smooth Weight", &dwaState.params.smoothWeight, 0.05f, 0.0f, 1.0f),
+    }, .count = 6 },
+
+    [SCENARIO_FLOW_FIELD] = { .params = {
+        // Flow field has no draggable params, just keyboard controls
+    }, .count = 0 },
+};
+
+// Renders UI for the current scenario using the data-driven table
+static void DrawScenarioUI(Scenario scenario) {
+    ScenarioUI* ui = &scenarioUI[scenario];
+    int y = 100;
+
+    for (int i = 0; i < ui->count; i++) {
+        ScenarioParam* p = &ui->params[i];
+        switch (p->type) {
+            case PARAM_FLOAT:
+                DraggableFloat(10, y, p->label, p->f.value, p->f.sensitivity, p->f.min, p->f.max);
+                y += 25;
+                break;
+            case PARAM_BOOL:
+                ToggleBool(10, y, p->label, p->b.value);
+                y += 25;
+                break;
+            case PARAM_LABEL:
+                DrawTextShadow(p->label, 10, y, 16, p->l.color);
+                y += 20;
+                break;
+        }
+    }
+}
 
 // ============================================================================
 // Helper Functions
@@ -6301,266 +6698,8 @@ int main(void) {
             DrawTextShadow("UP/DOWN: +/- agents", SCREEN_WIDTH - 220, 70, 16, YELLOW);
         }
 
-        // Scenario-specific draggable parameters
-        if (currentScenario == SCENARIO_SEEK) {
-            DraggableFloat(10, 100, "Max Speed", &seekScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &seekScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-        }
-        else if (currentScenario == SCENARIO_FLEE) {
-            DraggableFloat(10, 100, "Max Speed", &fleeScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &fleeScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-        }
-        else if (currentScenario == SCENARIO_DEPARTURE) {
-            DraggableFloat(10, 100, "Max Speed", &departureScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &departureScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Slow Radius", &departureScenario.slowRadius, 5.0f, 50.0f, 500.0f);
-        }
-        else if (currentScenario == SCENARIO_ARRIVE) {
-            DraggableFloat(10, 100, "Max Speed", &arriveScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &arriveScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Slow Radius", &arriveScenario.slowRadius, 1.0f, 10.0f, 300.0f);
-        }
-        else if (currentScenario == SCENARIO_DOCK) {
-            DraggableFloat(10, 100, "Max Speed", &dockScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &dockScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Slow Radius", &dockScenario.slowRadius, 1.0f, 10.0f, 300.0f);
-        }
-        else if (currentScenario == SCENARIO_PURSUIT_EVASION) {
-            DrawTextShadow("Pursuer (blue):", 10, 100, 16, SKYBLUE);
-            DraggableFloat(10, 120, "Speed", &pursuitEvasionScenario.pursuerMaxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 145, "Force", &pursuitEvasionScenario.pursuerMaxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 170, "Prediction", &pursuitEvasionScenario.pursuerMaxPrediction, 0.05f, 0.1f, 5.0f);
-            DrawTextShadow("Evader (red):", 10, 200, 16, RED);
-            DraggableFloat(10, 220, "Speed", &pursuitEvasionScenario.evaderMaxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 245, "Force", &pursuitEvasionScenario.evaderMaxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 270, "Prediction", &pursuitEvasionScenario.evaderMaxPrediction, 0.05f, 0.1f, 5.0f);
-        }
-        else if (currentScenario == SCENARIO_WANDER) {
-            DraggableFloat(10, 100, "Max Speed", &wanderScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
-            DraggableFloat(10, 125, "Max Force", &wanderScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Wander Radius", &wanderScenario.wanderRadius, 0.5f, 5.0f, 150.0f);
-            DraggableFloat(10, 175, "Wander Distance", &wanderScenario.wanderDistance, 0.5f, 10.0f, 200.0f);
-            DraggableFloat(10, 200, "Wander Jitter", &wanderScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
-            ToggleBool(10, 230, "Show Visualization", &wanderShowVisualization);
-        }
-        else if (currentScenario == SCENARIO_CONTAINMENT) {
-            DraggableFloat(10, 100, "Margin", &containmentScenario.margin, 1.0f, 10.0f, 200.0f);
-            DraggableFloat(10, 125, "Restitution", &containmentScenario.restitution, 0.01f, 0.0f, 1.0f);
-        }
-        else if (currentScenario == SCENARIO_FLOCKING) {
-            DraggableFloat(10, 100, "Max Speed", &flockingScenario.maxSpeed, 1.0f, 10.0f, 300.0f);
-            DraggableFloat(10, 125, "Max Force", &flockingScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Neighbor Radius", &flockingScenario.neighborRadius, 1.0f, 20.0f, 300.0f);
-            DraggableFloat(10, 175, "Separation Radius", &flockingScenario.separationRadius, 1.0f, 10.0f, 150.0f);
-            DraggableFloat(10, 200, "Separation Weight", &flockingScenario.separationWeight, 0.1f, 0.0f, 10.0f);
-            DraggableFloat(10, 225, "Cohesion Weight", &flockingScenario.cohesionWeight, 0.1f, 0.0f, 10.0f);
-            DraggableFloat(10, 250, "Alignment Weight", &flockingScenario.alignmentWeight, 0.1f, 0.0f, 10.0f);
-        }
-        else if (currentScenario == SCENARIO_LEADER_FOLLOW) {
-            DrawTextShadow("Leader:", 10, 100, 16, GOLD);
-            DraggableFloat(10, 120, "Speed", &leaderFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f);
-            DrawTextShadow("Followers:", 10, 150, 16, SKYBLUE);
-            DraggableFloat(10, 170, "Speed", &leaderFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 300.0f);
-            DraggableFloat(10, 195, "Follow Offset", &leaderFollowScenario.followOffset, 1.0f, 10.0f, 200.0f);
-            DraggableFloat(10, 220, "Sight Radius", &leaderFollowScenario.leaderSightRadius, 1.0f, 10.0f, 200.0f);
-            DraggableFloat(10, 245, "Separation", &leaderFollowScenario.separationRadius, 1.0f, 5.0f, 100.0f);
-        }
-        else if (currentScenario == SCENARIO_HIDE) {
-            DrawTextShadow("Pursuer (red):", 10, 100, 16, RED);
-            DraggableFloat(10, 120, "Speed", &hideScenario.pursuerMaxSpeed, 1.0f, 10.0f, 300.0f);
-            DrawTextShadow("Hider (blue):", 10, 150, 16, SKYBLUE);
-            DraggableFloat(10, 170, "Speed", &hideScenario.hiderMaxSpeed, 1.0f, 10.0f, 300.0f);
-            DraggableFloat(10, 195, "Force", &hideScenario.hiderMaxForce, 2.0f, 10.0f, 1000.0f);
-        }
-        else if (currentScenario == SCENARIO_OBSTACLE_AVOID) {
-            DraggableFloat(10, 100, "Speed", &obstacleAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &obstacleAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Detect Dist", &obstacleAvoidScenario.detectDistance, 1.0f, 20.0f, 500.0f);
-            DraggableFloat(10, 175, "Avoid Weight", &obstacleAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 200, "Seek Weight", &obstacleAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
-        }
-        else if (currentScenario == SCENARIO_WALL_AVOID) {
-            DraggableFloat(10, 100, "Speed", &wallAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &wallAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Detect Dist", &wallAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f);
-            DraggableFloat(10, 175, "Avoid Weight", &wallAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 200, "Seek Weight", &wallAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
-        }
-        else if (currentScenario == SCENARIO_WALL_FOLLOW) {
-            DraggableFloat(10, 100, "Speed", &wallFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &wallFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Follow Dist", &wallFollowScenario.followDistance, 1.0f, 10.0f, 150.0f);
-        }
-        else if (currentScenario == SCENARIO_PATH_FOLLOW) {
-            DraggableFloat(10, 100, "Speed", &pathFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &pathFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Path Radius", &pathFollowScenario.pathRadius, 1.0f, 10.0f, 200.0f);
-        }
-        else if (currentScenario == SCENARIO_COLLISION_AVOID) {
-            DraggableFloat(10, 100, "Speed", &collisionAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &collisionAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Neighbor Rad", &collisionAvoidScenario.neighborRadius, 2.0f, 20.0f, 400.0f);
-            DraggableFloat(10, 175, "Agent Rad", &collisionAvoidScenario.agentRadius, 0.5f, 5.0f, 50.0f);
-            DraggableFloat(10, 200, "Avoid Weight", &collisionAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 225, "Wander Weight", &collisionAvoidScenario.wanderWeight, 0.1f, 0.1f, 5.0f);
-        }
-        else if (currentScenario == SCENARIO_FACE) {
-            DraggableFloat(10, 100, "Speed", &faceScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &faceScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Wander Rad", &faceScenario.wanderRadius, 1.0f, 5.0f, 150.0f);
-            DraggableFloat(10, 175, "Wander Dist", &faceScenario.wanderDistance, 1.0f, 10.0f, 200.0f);
-            DraggableFloat(10, 200, "Wander Jitter", &faceScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
-        }
-        else if (currentScenario == SCENARIO_ORBIT) {
-            DraggableFloat(10, 100, "Speed", &orbitScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &orbitScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Inner Radius", &orbitScenario.innerRadius, 2.0f, 30.0f, 300.0f);
-            DraggableFloat(10, 175, "Middle Radius", &orbitScenario.middleRadius, 2.0f, 50.0f, 400.0f);
-            DraggableFloat(10, 200, "Outer Radius", &orbitScenario.outerRadius, 2.0f, 80.0f, 500.0f);
-        }
-        else if (currentScenario == SCENARIO_PATROL) {
-            DraggableFloat(10, 100, "Speed", &patrolScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &patrolScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Waypoint Rad", &patrolScenario.waypointRadius, 1.0f, 10.0f, 100.0f);
-        }
-        else if (currentScenario == SCENARIO_EXPLORE) {
-            DraggableFloat(10, 100, "Speed", &exploreScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &exploreScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-        }
-        else if (currentScenario == SCENARIO_FORAGE) {
-            DraggableFloat(10, 100, "Speed", &forageScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &forageScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Detect Range", &forageScenario.detectRange, 2.0f, 20.0f, 400.0f);
-            DraggableFloat(10, 175, "Collect Rad", &forageScenario.collectRadius, 0.5f, 5.0f, 50.0f);
-            DraggableFloat(10, 200, "Wander Jitter", &forageScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
-        }
-        else if (currentScenario == SCENARIO_GUARD) {
-            DraggableFloat(10, 100, "Speed", &guardScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 125, "Force", &guardScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DraggableFloat(10, 150, "Guard Radius", &guardScenario.guardRadius, 2.0f, 30.0f, 400.0f);
-            DraggableFloat(10, 175, "Wander Jitter", &guardScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
-        }
-        else if (currentScenario == SCENARIO_QUEUE_FOLLOW) {
-            DraggableFloat(10, 100, "Leader Speed", &queueFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f);
-            DraggableFloat(10, 125, "Follower Speed", &queueFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 400.0f);
-            DraggableFloat(10, 150, "Follow Dist", &queueFollowScenario.followDistance, 1.0f, 20.0f, 150.0f);
-            DraggableFloat(10, 175, "Arrive Radius", &queueFollowScenario.arriveRadius, 2.0f, 20.0f, 300.0f);
-        }
-        else if (currentScenario == SCENARIO_CAPTURE_FLAG) {
-            DraggableFloat(10, 100, "Team Speed", &captureFlagScenario.teamSpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 125, "Carry Penalty", &captureFlagScenario.carryingSpeedPenalty, 0.01f, 0.3f, 1.0f);
-            DraggableFloat(10, 150, "Evade Dist", &captureFlagScenario.evadeDistance, 2.0f, 50.0f, 400.0f);
-        }
-        else if (currentScenario == SCENARIO_FISH_SHARK) {
-            DraggableFloat(10, 100, "Fish Speed", &fishSharkScenario.fishSpeed, 1.0f, 30.0f, 300.0f);
-            DraggableFloat(10, 125, "Shark Cruise", &fishSharkScenario.sharkCruiseSpeed, 1.0f, 20.0f, 200.0f);
-            DraggableFloat(10, 150, "Shark Chase", &fishSharkScenario.sharkChaseSpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 175, "Panic Dist", &fishSharkScenario.panicDistance, 2.0f, 50.0f, 400.0f);
-        }
-        else if (currentScenario == SCENARIO_WOLF_PACK) {
-            DraggableFloat(10, 100, "Alpha Speed", &wolfPackScenario.alphaSpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 125, "Pack Speed", &wolfPackScenario.packSpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 150, "Prey Speed", &wolfPackScenario.preySpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 175, "Pack Follow", &wolfPackScenario.packFollowDistance, 2.0f, 20.0f, 200.0f);
-        }
-        else if (currentScenario == SCENARIO_EVACUATION) {
-            DraggableFloat(10, 100, "Agent Speed", &evacuationScenario.agentSpeed, 1.0f, 30.0f, 300.0f);
-            DraggableFloat(10, 125, "Speed Var", &evacuationScenario.agentSpeedVariation, 0.5f, 0.0f, 50.0f);
-            DraggableFloat(10, 150, "Fire Growth", &evacuationScenario.fireGrowthRate, 0.5f, 0.0f, 50.0f);
-        }
-        else if (currentScenario == SCENARIO_MURMURATION) {
-            DraggableFloat(10, 100, "Bird Speed", &murmurationScenario.birdSpeed, 1.0f, 50.0f, 400.0f);
-            DraggableFloat(10, 125, "Max Force", &murmurationScenario.maxForce, 5.0f, 50.0f, 1000.0f);
-            DraggableFloat(10, 150, "Neighbor Rad", &murmurationScenario.neighborRadius, 2.0f, 30.0f, 300.0f);
-            DraggableFloat(10, 175, "Sep Weight", &murmurationScenario.separationWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 200, "Align Weight", &murmurationScenario.alignmentWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 225, "Cohesion Weight", &murmurationScenario.cohesionWeight, 0.1f, 0.1f, 10.0f);
-        }
-        // SFM scenarios share params
-        else if (currentScenario == SCENARIO_SFM_CORRIDOR ||
-                 currentScenario == SCENARIO_SFM_EVACUATION ||
-                 currentScenario == SCENARIO_SFM_CROSSING) {
-            DrawTextShadow("Social Force Model:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Tau (relax)", &sfmState.params.tau, 0.05f, 0.1f, 2.0f);
-            DraggableFloat(10, 145, "Agent Strength", &sfmState.params.agentStrength, 50.0f, 500.0f, 5000.0f);
-            DraggableFloat(10, 170, "Agent Range", &sfmState.params.agentRange, 2.0f, 20.0f, 200.0f);
-            DraggableFloat(10, 195, "Wall Strength", &sfmState.params.wallStrength, 50.0f, 500.0f, 5000.0f);
-            DraggableFloat(10, 220, "Wall Range", &sfmState.params.wallRange, 2.0f, 20.0f, 200.0f);
-            DraggableFloat(10, 245, "Body Radius", &sfmState.params.bodyRadius, 1.0f, 5.0f, 30.0f);
-        }
-        // Context Steering scenarios share showMaps toggle
-        else if (currentScenario == SCENARIO_CTX_OBSTACLE_COURSE ||
-                 currentScenario == SCENARIO_CTX_MAZE ||
-                 currentScenario == SCENARIO_CTX_CROWD ||
-                 currentScenario == SCENARIO_CTX_PREDATOR_PREY) {
-            DrawTextShadow("Context Steering:", 10, 100, 16, WHITE);
-            ToggleBool(10, 120, "Show Interest/Danger Maps", &ctxState.showMaps);
-        }
-        else if (currentScenario == SCENARIO_DWA_NAVIGATION) {
-            DrawTextShadow("DWA Parameters:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Time Horizon", &dwaState.params.timeHorizon, 0.1f, 0.5f, 3.0f);
-            DraggableFloat(10, 145, "Goal Weight", &dwaState.params.goalWeight, 0.1f, 0.1f, 5.0f);
-            DraggableFloat(10, 170, "Clearance Wt", &dwaState.params.clearanceWeight, 0.1f, 0.1f, 3.0f);
-            DraggableFloat(10, 195, "Speed Weight", &dwaState.params.speedWeight, 0.1f, 0.0f, 2.0f);
-            DraggableFloat(10, 220, "Smooth Weight", &dwaState.params.smoothWeight, 0.05f, 0.0f, 1.0f);
-        }
-        else if (currentScenario == SCENARIO_COUZIN_ZONES) {
-            DrawTextShadow("Couzin Zones:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "ZOR (repulsion)", &couzinState.params.zorRadius, 2.0f, 10.0f, 150.0f);
-            DraggableFloat(10, 145, "ZOO (orientation)", &couzinState.params.zooRadius, 3.0f, 20.0f, 300.0f);
-            DraggableFloat(10, 170, "ZOA (attraction)", &couzinState.params.zoaRadius, 4.0f, 30.0f, 500.0f);
-            DraggableFloat(10, 195, "Blind Angle", &couzinState.params.blindAngle, 0.05f, 0.0f, PI);
-        }
-        else if (currentScenario == SCENARIO_VEHICLE_PURSUIT) {
-            DrawTextShadow("Pure Pursuit:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Lookahead", &vehicleState.lookahead, 2.0f, 20.0f, 200.0f);
-        }
-        else if (currentScenario == SCENARIO_TRAFFIC) {
-            DrawTextShadow("Traffic Simulation:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Car Speed", &trafficScenario.carSpeed, 1.0f, 30.0f, 200.0f);
-            DraggableFloat(10, 145, "Ped Speed", &trafficScenario.pedSpeed, 1.0f, 20.0f, 150.0f);
-        }
-        else if (currentScenario == SCENARIO_TOPOLOGICAL_FLOCK) {
-            DrawTextShadow("Topological Flocking:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Speed", &topologicalFlockScenario.speed, 1.0f, 30.0f, 300.0f);
-            DraggableFloat(10, 145, "Force", &topologicalFlockScenario.maxForce, 2.0f, 50.0f, 1000.0f);
-            DraggableFloat(10, 170, "Sep Weight", &topologicalFlockScenario.separationWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 195, "Cohesion Wt", &topologicalFlockScenario.cohesionWeight, 0.1f, 0.1f, 10.0f);
-            DraggableFloat(10, 220, "Align Weight", &topologicalFlockScenario.alignmentWeight, 0.1f, 0.1f, 10.0f);
-        }
-        else if (currentScenario == SCENARIO_INTERPOSE) {
-            DrawTextShadow("Interpose (Bodyguard):", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Bodyguard Speed", &interposeScenario.bodyguardSpeed, 2.0f, 50.0f, 400.0f);
-            DraggableFloat(10, 145, "VIP Speed", &interposeScenario.vipSpeed, 1.0f, 20.0f, 200.0f);
-            DraggableFloat(10, 170, "Threat Speed", &interposeScenario.threatSpeed, 1.0f, 30.0f, 250.0f);
-        }
-        else if (currentScenario == SCENARIO_FORMATION) {
-            DrawTextShadow("Formation:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Leader Speed", &formationScenario.leaderSpeed, 1.0f, 30.0f, 200.0f);
-            DraggableFloat(10, 145, "Follower Speed", &formationScenario.followerSpeed, 1.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 170, "Offset", &formationScenario.formationOffset, 2.0f, 20.0f, 150.0f);
-        }
-        else if (currentScenario == SCENARIO_QUEUING) {
-            DrawTextShadow("Queuing:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Agent Speed", &queuingScenario.agentSpeed, 1.0f, 30.0f, 200.0f);
-        }
-        else if (currentScenario == SCENARIO_EVADE_MULTIPLE) {
-            DrawTextShadow("Evade Multiple:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Prey Speed", &evadeMultipleScenario.preySpeed, 2.0f, 50.0f, 300.0f);
-            DraggableFloat(10, 145, "Predator Speed", &evadeMultipleScenario.predatorSpeed, 1.0f, 30.0f, 250.0f);
-        }
-        else if (currentScenario == SCENARIO_PEDESTRIAN) {
-            DrawTextShadow("Pedestrian Crowd:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "Min Speed", &pedestrianScenario.minSpeed, 1.0f, 20.0f, 150.0f);
-            DraggableFloat(10, 145, "Max Speed", &pedestrianScenario.maxSpeed, 1.0f, 50.0f, 250.0f);
-            DraggableFloat(10, 170, "Max Force", &pedestrianScenario.maxForce, 5.0f, 100.0f, 1000.0f);
-        }
-        else if (currentScenario == SCENARIO_ESCORT_CONVOY) {
-            DrawTextShadow("Escort Convoy:", 10, 100, 16, WHITE);
-            DraggableFloat(10, 120, "VIP Speed", &escortConvoyScenario.vipSpeed, 1.0f, 20.0f, 150.0f);
-            DraggableFloat(10, 145, "Escort Speed", &escortConvoyScenario.escortSpeed, 1.0f, 40.0f, 200.0f);
-            DraggableFloat(10, 170, "Threat Speed", &escortConvoyScenario.threatSpeed, 1.0f, 30.0f, 200.0f);
-        }
+        // Scenario-specific draggable parameters (data-driven)
+        DrawScenarioUI(currentScenario);
 
         // Instructions at bottom
         const char* instructions = "";
