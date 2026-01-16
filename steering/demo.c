@@ -4986,16 +4986,6 @@ static void UpdateCouzinZones(float dt) {
         allVel[i] = agents[i].vel;
     }
 
-    // Adjust parameters with keyboard
-    if (IsKeyDown(KEY_Q)) couzinState.params.zorRadius += 20.0f * dt;
-    if (IsKeyDown(KEY_A)) couzinState.params.zorRadius = fmaxf(10.0f, couzinState.params.zorRadius - 20.0f * dt);
-    if (IsKeyDown(KEY_W)) couzinState.params.zooRadius += 30.0f * dt;
-    if (IsKeyDown(KEY_S) && !IsKeyDown(KEY_LEFT_CONTROL)) couzinState.params.zooRadius = fmaxf(couzinState.params.zorRadius + 10, couzinState.params.zooRadius - 30.0f * dt);
-    if (IsKeyDown(KEY_E)) couzinState.params.zoaRadius += 40.0f * dt;
-    if (IsKeyDown(KEY_D)) couzinState.params.zoaRadius = fmaxf(couzinState.params.zooRadius + 10, couzinState.params.zoaRadius - 40.0f * dt);
-    if (IsKeyDown(KEY_R)) couzinState.params.blindAngle = fminf(PI, couzinState.params.blindAngle + 0.5f * dt);
-    if (IsKeyDown(KEY_F)) couzinState.params.blindAngle = fmaxf(0, couzinState.params.blindAngle - 0.5f * dt);
-
     for (int i = 0; i < agentCount; i++) {
         // Build neighbor arrays (exclude self)
         Vector2 neighborPos[MAX_AGENTS];
@@ -5020,10 +5010,6 @@ static void UpdateCouzinZones(float dt) {
 }
 
 static void UpdateVehiclePursuit(float dt) {
-    // Adjust lookahead with keyboard (use Q/A since UP/DOWN may conflict with agent count)
-    if (IsKeyDown(KEY_Q)) vehicleState.lookahead = fminf(200.0f, vehicleState.lookahead + 50.0f * dt);
-    if (IsKeyDown(KEY_A)) vehicleState.lookahead = fmaxf(30.0f, vehicleState.lookahead - 50.0f * dt);
-
     for (int i = 0; i < vehicleState.count; i++) {
         int segment = vehicleState.pathSegments[i];
         SteeringOutput steering;
@@ -5581,9 +5567,6 @@ static void DrawFace(void) {
         DrawAgent(&agents[i], SKYBLUE);
         DrawVelocityVector(&agents[i], GREEN);
     }
-    // Draw note
-    DrawTextShadow("Face/LookWhereGoing removed - pure Reynolds model", 10, 100, 14, YELLOW);
-    DrawTextShadow("Agents always face velocity direction (green line)", 10, 120, 14, YELLOW);
 }
 
 static void DrawOrbit(void) {
@@ -6117,10 +6100,6 @@ static void DrawCouzinZones(void) {
         }
     }
     
-    DrawTextShadow(TextFormat("ZOR: %.0f (Q/A)", couzinState.params.zorRadius), 10, 90, 16, RED);
-    DrawTextShadow(TextFormat("ZOO: %.0f (W/S)", couzinState.params.zooRadius), 10, 110, 16, YELLOW);
-    DrawTextShadow(TextFormat("ZOA: %.0f (E/D)", couzinState.params.zoaRadius), 10, 130, 16, GREEN);
-    DrawTextShadow(TextFormat("Blind: %.1f rad (R/F)", couzinState.params.blindAngle), 10, 150, 16, GRAY);
 }
 
 static void DrawVehiclePursuit(void) {
@@ -6155,8 +6134,6 @@ static void DrawVehiclePursuit(void) {
         Vector2 tip = {pos.x + forward.x * 20, pos.y + forward.y * 20};
         DrawLineEx(pos, tip, 2, WHITE);
     }
-    
-    DrawTextShadow(TextFormat("Lookahead: %.0f (Q/A)", vehicleState.lookahead), 10, 90, 16, YELLOW);
 }
 
 static void DrawDWANavigation(void) {
@@ -6165,12 +6142,12 @@ static void DrawDWANavigation(void) {
     DrawCircleLinesV(dwaState.goal, 20, GREEN);
     DrawTextShadow("GOAL", (int)dwaState.goal.x - 18, (int)dwaState.goal.y - 8, 16, WHITE);
     
-    // Mode indicator
-    const char* modeStr = (dwaState.mode == DWA_NORMAL) ? "NORMAL" : 
-                          (dwaState.mode == DWA_BACKUP) ? "BACKUP" : "TURN";
+    // Mode indicator at bottom
+    const char* modeStr = (dwaState.mode == DWA_NORMAL) ? "Mode: NORMAL" : 
+                          (dwaState.mode == DWA_BACKUP) ? "Mode: BACKUP" : "Mode: TURN";
     Color modeColor = (dwaState.mode == DWA_NORMAL) ? GREEN : 
                       (dwaState.mode == DWA_BACKUP) ? ORANGE : YELLOW;
-    DrawTextShadow(modeStr, 10, 130, 20, modeColor);
+    DrawTextShadow(modeStr, 10, SCREEN_HEIGHT - 55, 18, modeColor);
     
     // Draw vehicle
     Vector2 pos = vehicleState.agents[0].pos;
@@ -6230,9 +6207,7 @@ static void DrawFlowField(void) {
     }
 
     const char* flowNames[] = {"VORTEX", "PERLIN (Organic)", "UNIFORM", "SINK", "SOURCE"};
-    DrawTextShadow(TextFormat("Flow Type: %s", flowNames[flowFieldState.fieldType]), 10, 100, 20, YELLOW);
-    DrawTextShadow("Press SPACE to cycle flow types", 10, 125, 16, LIGHTGRAY);
-    DrawTextShadow("Mouse position = flow center", 10, 145, 16, LIGHTGRAY);
+    DrawTextShadow(TextFormat("Flow Type: %s", flowNames[flowFieldState.fieldType]), 10, SCREEN_HEIGHT - 55, 18, YELLOW);
 }
 
 static void DrawScenario(void) {
@@ -6330,16 +6305,10 @@ int main(void) {
         if (currentScenario == SCENARIO_SEEK) {
             DraggableFloat(10, 100, "Max Speed", &seekScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
             DraggableFloat(10, 125, "Max Force", &seekScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f)",
-                seekScenario.defaultMaxSpeed, seekScenario.defaultMaxForce),
-                10, 150, 14, GRAY);
         }
         else if (currentScenario == SCENARIO_FLEE) {
             DraggableFloat(10, 100, "Max Speed", &fleeScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
             DraggableFloat(10, 125, "Max Force", &fleeScenario.maxForce, 2.0f, 10.0f, 1000.0f);
-            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f)",
-                fleeScenario.defaultMaxSpeed, fleeScenario.defaultMaxForce),
-                10, 150, 14, GRAY);
         }
         else if (currentScenario == SCENARIO_DEPARTURE) {
             DraggableFloat(10, 100, "Max Speed", &departureScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
@@ -6350,16 +6319,11 @@ int main(void) {
             DraggableFloat(10, 100, "Max Speed", &arriveScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
             DraggableFloat(10, 125, "Max Force", &arriveScenario.maxForce, 2.0f, 10.0f, 1000.0f);
             DraggableFloat(10, 150, "Slow Radius", &arriveScenario.slowRadius, 1.0f, 10.0f, 300.0f);
-            DrawTextShadow(TextFormat("(defaults: %.0f, %.0f, %.0f)",
-                arriveScenario.defaultMaxSpeed, arriveScenario.defaultMaxForce, arriveScenario.defaultSlowRadius),
-                10, 175, 14, GRAY);
         }
         else if (currentScenario == SCENARIO_DOCK) {
             DraggableFloat(10, 100, "Max Speed", &dockScenario.maxSpeed, 1.0f, 10.0f, 500.0f);
             DraggableFloat(10, 125, "Max Force", &dockScenario.maxForce, 2.0f, 10.0f, 1000.0f);
             DraggableFloat(10, 150, "Slow Radius", &dockScenario.slowRadius, 1.0f, 10.0f, 300.0f);
-            // NOTE: Orientation alignment removed - pure Reynolds model
-            DrawTextShadow("(Orientation control requires Vehicle)", 10, 175, 12, GRAY);
         }
         else if (currentScenario == SCENARIO_PURSUIT_EVASION) {
             DrawTextShadow("Pursuer (blue):", 10, 100, 16, SKYBLUE);
@@ -6551,11 +6515,6 @@ int main(void) {
             DrawTextShadow("Pure Pursuit:", 10, 100, 16, WHITE);
             DraggableFloat(10, 120, "Lookahead", &vehicleState.lookahead, 2.0f, 20.0f, 200.0f);
         }
-        else if (currentScenario == SCENARIO_FLOW_FIELD) {
-            DrawTextShadow("Flow Field:", 10, 100, 16, WHITE);
-            DrawTextShadow("SPACE = cycle field type", 10, 120, 14, GRAY);
-            DrawTextShadow("Mouse = set center", 10, 140, 14, GRAY);
-        }
         else if (currentScenario == SCENARIO_TRAFFIC) {
             DrawTextShadow("Traffic Simulation:", 10, 100, 16, WHITE);
             DraggableFloat(10, 120, "Car Speed", &trafficScenario.carSpeed, 1.0f, 30.0f, 200.0f);
@@ -6649,8 +6608,8 @@ int main(void) {
             case SCENARIO_CTX_CROWD: instructions = "Context Steering: Bidirectional flow with predictive collision avoidance"; break;
             case SCENARIO_CTX_PREDATOR_PREY: instructions = "Context Steering: Prey use danger maps to escape predator intelligently"; break;
             case SCENARIO_TOPOLOGICAL_FLOCK: instructions = "Topological Flocking: Uses k=6 nearest neighbors (like real starlings!)"; break;
-            case SCENARIO_COUZIN_ZONES: instructions = "Couzin Zones: Q/A=ZOR, W/S=ZOO, E/D=ZOA, R/F=blind angle"; break;
-            case SCENARIO_VEHICLE_PURSUIT: instructions = "Pure Pursuit: Vehicles with turn-rate limits follow looping path. Q/A=lookahead"; break;
+            case SCENARIO_COUZIN_ZONES: instructions = "Couzin Zones: Biologically grounded flocking (3 zones + blind angle)"; break;
+            case SCENARIO_VEHICLE_PURSUIT: instructions = "Pure Pursuit: Vehicles with turn-rate limits follow looping path"; break;
             case SCENARIO_DWA_NAVIGATION: instructions = "Dynamic Window Approach: Click to set goal. Vehicle samples trajectories."; break;
             case SCENARIO_FLOW_FIELD: instructions = "Flow Field Following: Agents align with vector field. SPACE=cycle types. Mouse=center"; break;
             default: break;
