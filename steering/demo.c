@@ -217,54 +217,103 @@ typedef enum {
     SCENARIO_COUNT
 } Scenario;
 
-const char* scenarioNames[] = {
-    "Seek",
-    "Flee",
-    "Departure",
-    "Arrive",
-    "Dock",
-    "Pursuit/Evasion",
-    "Wander",
-    "Containment",
-    "Flocking",
-    "Leader Follow",
-    "Hide",
-    "Obstacle Avoidance",
-    "Wall Avoidance",
-    "Wall Following",
-    "Path Following",
-    "Interpose (Bodyguard)",
-    "Formation (Offset Pursuit)",
-    "Queuing (Doorway)",
-    "Collision Avoidance",
-    "Face / Look Where Going",
-    "Orbit",
-    "Evade Multiple",
-    "Patrol",
-    "Explore",
-    "Forage",
-    "Guard",
-    "Queue Follow",
-    "Capture the Flag",
-    "Escort Convoy",
-    "Fish School + Shark",
-    "Pedestrian Crowd",
-    "Wolf Pack Hunt",
-    "Crowd Evacuation",
-    "Traffic Intersection",
-    "Murmuration",
-    "SFM: Corridor (Lanes)",
-    "SFM: Evacuation (Arching)",
-    "SFM: Crossing Flows",
-    "CTX: Obstacle Course",
-    "CTX: Maze Navigation",
-    "CTX: Crowd Flow",
-    "CTX: Predator Escape",
-    "Topological Flocking (k-NN)",
-    "Couzin Zones Model",
-    "Vehicle Pure Pursuit",
-    "DWA Navigation",
-    "Flow Field"
+// Forward declarations for Setup/Update/Draw functions
+static void SetupSeek(void), SetupFlee(void), SetupDeparture(void), SetupArrive(void), SetupDock(void);
+static void SetupPursuitEvasion(void), SetupWander(void), SetupContainment(void), SetupFlocking(void);
+static void SetupLeaderFollow(void), SetupHide(void), SetupObstacleAvoid(void), SetupWallAvoid(void);
+static void SetupWallFollow(void), SetupPathFollow(void), SetupInterpose(void), SetupFormation(void);
+static void SetupQueuing(void), SetupCollisionAvoid(void), SetupFace(void), SetupOrbit(void);
+static void SetupEvadeMultiple(void), SetupPatrol(void), SetupExplore(void), SetupForage(void);
+static void SetupGuard(void), SetupQueueFollow(void), SetupCaptureFlag(void), SetupEscortConvoy(void);
+static void SetupFishShark(void), SetupPedestrian(void), SetupWolfPack(void), SetupEvacuation(void);
+static void SetupTraffic(void), SetupMurmuration(void), SetupSFMCorridor(void), SetupSFMEvacuation(void);
+static void SetupSFMCrossing(void), SetupCtxObstacleCourse(void), SetupCtxMaze(void), SetupCtxCrowd(void);
+static void SetupCtxPredatorPrey(void), SetupTopologicalFlock(void), SetupCouzinZones(void);
+static void SetupVehiclePursuit(void), SetupDWANavigation(void), SetupFlowField(void);
+
+static void UpdateSeek(float dt), UpdateFlee(float dt), UpdateDeparture(float dt), UpdateArrive(float dt);
+static void UpdateDock(float dt), UpdatePursuitEvasion(float dt), UpdateWander(float dt), UpdateContainment(float dt);
+static void UpdateFlocking(float dt), UpdateLeaderFollow(float dt), UpdateHide(float dt), UpdateObstacleAvoid(float dt);
+static void UpdateWallAvoid(float dt), UpdateWallFollow(float dt), UpdatePathFollow(float dt), UpdateInterpose(float dt);
+static void UpdateFormation(float dt), UpdateQueuing(float dt), UpdateCollisionAvoid(float dt), UpdateFace(float dt);
+static void UpdateOrbit(float dt), UpdateEvadeMultiple(float dt), UpdatePatrol(float dt), UpdateExplore(float dt);
+static void UpdateForage(float dt), UpdateGuard(float dt), UpdateQueueFollow(float dt), UpdateCaptureFlag(float dt);
+static void UpdateEscortConvoy(float dt), UpdateFishShark(float dt), UpdatePedestrian(float dt), UpdateWolfPack(float dt);
+static void UpdateEvacuation(float dt), UpdateTraffic(float dt), UpdateMurmuration(float dt), UpdateSFMCorridor(float dt);
+static void UpdateSFMEvacuation(float dt), UpdateSFMCrossing(float dt), UpdateCtxObstacleCourse(float dt);
+static void UpdateCtxMaze(float dt), UpdateCtxCrowd(float dt), UpdateCtxPredatorPrey(float dt);
+static void UpdateTopologicalFlock(float dt), UpdateCouzinZones(float dt), UpdateVehiclePursuit(float dt);
+static void UpdateDWANavigation(float dt), UpdateFlowField(float dt);
+
+static void DrawSeek(void), DrawFlee(void), DrawDeparture(void), DrawArrive(void), DrawDock(void);
+static void DrawPursuitEvasion(void), DrawWander(void), DrawContainment(void), DrawFlocking(void);
+static void DrawLeaderFollow(void), DrawHide(void), DrawObstacleAvoid(void), DrawWallAvoid(void);
+static void DrawWallFollow(void), DrawPathFollow(void), DrawInterpose(void), DrawFormation(void);
+static void DrawQueuing(void), DrawCollisionAvoid(void), DrawFace(void), DrawOrbit(void);
+static void DrawEvadeMultiple(void), DrawPatrol(void), DrawExplore(void), DrawForage(void);
+static void DrawGuard(void), DrawQueueFollow(void), DrawCaptureFlag(void), DrawEscortConvoy(void);
+static void DrawFishShark(void), DrawPedestrian(void), DrawWolfPack(void), DrawEvacuation(void);
+static void DrawTraffic(void), DrawMurmuration(void), DrawSFMCorridor(void), DrawSFMEvacuation(void);
+static void DrawSFMCrossing(void), DrawCtxObstacleCourse(void), DrawCtxMaze(void), DrawCtxCrowd(void);
+static void DrawCtxPredatorPrey(void), DrawTopologicalFlock(void), DrawCouzinZones(void);
+static void DrawVehiclePursuit(void), DrawDWANavigation(void), DrawFlowField(void);
+
+// Scenario configuration - unified table with name, setup, update, and draw functions
+typedef struct {
+    const char* name;
+    void (*setup)(void);
+    void (*update)(float dt);
+    void (*draw)(void);
+} ScenarioConfig;
+
+static const ScenarioConfig scenarios[SCENARIO_COUNT] = {
+    [SCENARIO_SEEK]              = {"Seek",                      SetupSeek,              UpdateSeek,              DrawSeek},
+    [SCENARIO_FLEE]              = {"Flee",                      SetupFlee,              UpdateFlee,              DrawFlee},
+    [SCENARIO_DEPARTURE]         = {"Departure",                 SetupDeparture,         UpdateDeparture,         DrawDeparture},
+    [SCENARIO_ARRIVE]            = {"Arrive",                    SetupArrive,            UpdateArrive,            DrawArrive},
+    [SCENARIO_DOCK]              = {"Dock",                      SetupDock,              UpdateDock,              DrawDock},
+    [SCENARIO_PURSUIT_EVASION]   = {"Pursuit/Evasion",           SetupPursuitEvasion,    UpdatePursuitEvasion,    DrawPursuitEvasion},
+    [SCENARIO_WANDER]            = {"Wander",                    SetupWander,            UpdateWander,            DrawWander},
+    [SCENARIO_CONTAINMENT]       = {"Containment",               SetupContainment,       UpdateContainment,       DrawContainment},
+    [SCENARIO_FLOCKING]          = {"Flocking",                  SetupFlocking,          UpdateFlocking,          DrawFlocking},
+    [SCENARIO_LEADER_FOLLOW]     = {"Leader Follow",             SetupLeaderFollow,      UpdateLeaderFollow,      DrawLeaderFollow},
+    [SCENARIO_HIDE]              = {"Hide",                      SetupHide,              UpdateHide,              DrawHide},
+    [SCENARIO_OBSTACLE_AVOID]    = {"Obstacle Avoidance",        SetupObstacleAvoid,     UpdateObstacleAvoid,     DrawObstacleAvoid},
+    [SCENARIO_WALL_AVOID]        = {"Wall Avoidance",            SetupWallAvoid,         UpdateWallAvoid,         DrawWallAvoid},
+    [SCENARIO_WALL_FOLLOW]       = {"Wall Following",            SetupWallFollow,        UpdateWallFollow,        DrawWallFollow},
+    [SCENARIO_PATH_FOLLOW]       = {"Path Following",            SetupPathFollow,        UpdatePathFollow,        DrawPathFollow},
+    [SCENARIO_INTERPOSE]         = {"Interpose (Bodyguard)",     SetupInterpose,         UpdateInterpose,         DrawInterpose},
+    [SCENARIO_FORMATION]         = {"Formation (Offset Pursuit)", SetupFormation,        UpdateFormation,         DrawFormation},
+    [SCENARIO_QUEUING]           = {"Queuing (Doorway)",         SetupQueuing,           UpdateQueuing,           DrawQueuing},
+    [SCENARIO_COLLISION_AVOID]   = {"Collision Avoidance",       SetupCollisionAvoid,    UpdateCollisionAvoid,    DrawCollisionAvoid},
+    [SCENARIO_FACE]              = {"Face / Look Where Going",   SetupFace,              UpdateFace,              DrawFace},
+    [SCENARIO_ORBIT]             = {"Orbit",                     SetupOrbit,             UpdateOrbit,             DrawOrbit},
+    [SCENARIO_EVADE_MULTIPLE]    = {"Evade Multiple",            SetupEvadeMultiple,     UpdateEvadeMultiple,     DrawEvadeMultiple},
+    [SCENARIO_PATROL]            = {"Patrol",                    SetupPatrol,            UpdatePatrol,            DrawPatrol},
+    [SCENARIO_EXPLORE]           = {"Explore",                   SetupExplore,           UpdateExplore,           DrawExplore},
+    [SCENARIO_FORAGE]            = {"Forage",                    SetupForage,            UpdateForage,            DrawForage},
+    [SCENARIO_GUARD]             = {"Guard",                     SetupGuard,             UpdateGuard,             DrawGuard},
+    [SCENARIO_QUEUE_FOLLOW]      = {"Queue Follow",              SetupQueueFollow,       UpdateQueueFollow,       DrawQueueFollow},
+    [SCENARIO_CAPTURE_FLAG]      = {"Capture the Flag",          SetupCaptureFlag,       UpdateCaptureFlag,       DrawCaptureFlag},
+    [SCENARIO_ESCORT_CONVOY]     = {"Escort Convoy",             SetupEscortConvoy,      UpdateEscortConvoy,      DrawEscortConvoy},
+    [SCENARIO_FISH_SHARK]        = {"Fish School + Shark",       SetupFishShark,         UpdateFishShark,         DrawFishShark},
+    [SCENARIO_PEDESTRIAN]        = {"Pedestrian Crowd",          SetupPedestrian,        UpdatePedestrian,        DrawPedestrian},
+    [SCENARIO_WOLF_PACK]         = {"Wolf Pack Hunt",            SetupWolfPack,          UpdateWolfPack,          DrawWolfPack},
+    [SCENARIO_EVACUATION]        = {"Crowd Evacuation",          SetupEvacuation,        UpdateEvacuation,        DrawEvacuation},
+    [SCENARIO_TRAFFIC]           = {"Traffic Intersection",      SetupTraffic,           UpdateTraffic,           DrawTraffic},
+    [SCENARIO_MURMURATION]       = {"Murmuration",               SetupMurmuration,       UpdateMurmuration,       DrawMurmuration},
+    [SCENARIO_SFM_CORRIDOR]      = {"SFM: Corridor (Lanes)",     SetupSFMCorridor,       UpdateSFMCorridor,       DrawSFMCorridor},
+    [SCENARIO_SFM_EVACUATION]    = {"SFM: Evacuation (Arching)", SetupSFMEvacuation,     UpdateSFMEvacuation,     DrawSFMEvacuation},
+    [SCENARIO_SFM_CROSSING]      = {"SFM: Crossing Flows",       SetupSFMCrossing,       UpdateSFMCrossing,       DrawSFMCrossing},
+    [SCENARIO_CTX_OBSTACLE_COURSE] = {"CTX: Obstacle Course",    SetupCtxObstacleCourse, UpdateCtxObstacleCourse, DrawCtxObstacleCourse},
+    [SCENARIO_CTX_MAZE]          = {"CTX: Maze Navigation",      SetupCtxMaze,           UpdateCtxMaze,           DrawCtxMaze},
+    [SCENARIO_CTX_CROWD]         = {"CTX: Crowd Flow",           SetupCtxCrowd,          UpdateCtxCrowd,          DrawCtxCrowd},
+    [SCENARIO_CTX_PREDATOR_PREY] = {"CTX: Predator Escape",      SetupCtxPredatorPrey,   UpdateCtxPredatorPrey,   DrawCtxPredatorPrey},
+    [SCENARIO_TOPOLOGICAL_FLOCK] = {"Topological Flocking (k-NN)", SetupTopologicalFlock, UpdateTopologicalFlock, DrawTopologicalFlock},
+    [SCENARIO_COUZIN_ZONES]      = {"Couzin Zones Model",        SetupCouzinZones,       UpdateCouzinZones,       DrawCouzinZones},
+    [SCENARIO_VEHICLE_PURSUIT]   = {"Vehicle Pure Pursuit",      SetupVehiclePursuit,    UpdateVehiclePursuit,    DrawVehiclePursuit},
+    [SCENARIO_DWA_NAVIGATION]    = {"DWA Navigation",            SetupDWANavigation,     UpdateDWANavigation,     DrawDWANavigation},
+    [SCENARIO_FLOW_FIELD]        = {"Flow Field",                SetupFlowField,         UpdateFlowField,         DrawFlowField},
 };
 
 // Agent data
@@ -2117,56 +2166,7 @@ static void SetupScenario(Scenario scenario) {
     resourceCount = 0;
     patrolWaypointCount = 0;
 
-    switch (scenario) {
-        case SCENARIO_SEEK: SetupSeek(); break;
-        case SCENARIO_FLEE: SetupFlee(); break;
-        case SCENARIO_DEPARTURE: SetupDeparture(); break;
-        case SCENARIO_ARRIVE: SetupArrive(); break;
-        case SCENARIO_DOCK: SetupDock(); break;
-        case SCENARIO_PURSUIT_EVASION: SetupPursuitEvasion(); break;
-        case SCENARIO_WANDER: SetupWander(); break;
-        case SCENARIO_CONTAINMENT: SetupContainment(); break;
-        case SCENARIO_FLOCKING: SetupFlocking(); break;
-        case SCENARIO_LEADER_FOLLOW: SetupLeaderFollow(); break;
-        case SCENARIO_HIDE: SetupHide(); break;
-        case SCENARIO_OBSTACLE_AVOID: SetupObstacleAvoid(); break;
-        case SCENARIO_WALL_AVOID: SetupWallAvoid(); break;
-        case SCENARIO_WALL_FOLLOW: SetupWallFollow(); break;
-        case SCENARIO_PATH_FOLLOW: SetupPathFollow(); break;
-        case SCENARIO_INTERPOSE: SetupInterpose(); break;
-        case SCENARIO_FORMATION: SetupFormation(); break;
-        case SCENARIO_QUEUING: SetupQueuing(); break;
-        case SCENARIO_COLLISION_AVOID: SetupCollisionAvoid(); break;
-        case SCENARIO_FACE: SetupFace(); break;
-        case SCENARIO_ORBIT: SetupOrbit(); break;
-        case SCENARIO_EVADE_MULTIPLE: SetupEvadeMultiple(); break;
-        case SCENARIO_PATROL: SetupPatrol(); break;
-        case SCENARIO_EXPLORE: SetupExplore(); break;
-        case SCENARIO_FORAGE: SetupForage(); break;
-        case SCENARIO_GUARD: SetupGuard(); break;
-        case SCENARIO_QUEUE_FOLLOW: SetupQueueFollow(); break;
-        case SCENARIO_CAPTURE_FLAG: SetupCaptureFlag(); break;
-        case SCENARIO_ESCORT_CONVOY: SetupEscortConvoy(); break;
-        case SCENARIO_FISH_SHARK: SetupFishShark(); break;
-        case SCENARIO_PEDESTRIAN: SetupPedestrian(); break;
-        case SCENARIO_WOLF_PACK: SetupWolfPack(); break;
-        case SCENARIO_EVACUATION: SetupEvacuation(); break;
-        case SCENARIO_TRAFFIC: SetupTraffic(); break;
-        case SCENARIO_MURMURATION: SetupMurmuration(); break;
-        case SCENARIO_SFM_CORRIDOR: SetupSFMCorridor(); break;
-        case SCENARIO_SFM_EVACUATION: SetupSFMEvacuation(); break;
-        case SCENARIO_SFM_CROSSING: SetupSFMCrossing(); break;
-        case SCENARIO_CTX_OBSTACLE_COURSE: SetupCtxObstacleCourse(); break;
-        case SCENARIO_CTX_MAZE: SetupCtxMaze(); break;
-        case SCENARIO_CTX_CROWD: SetupCtxCrowd(); break;
-        case SCENARIO_CTX_PREDATOR_PREY: SetupCtxPredatorPrey(); break;
-        case SCENARIO_TOPOLOGICAL_FLOCK: SetupTopologicalFlock(); break;
-        case SCENARIO_COUZIN_ZONES: SetupCouzinZones(); break;
-        case SCENARIO_VEHICLE_PURSUIT: SetupVehiclePursuit(); break;
-        case SCENARIO_DWA_NAVIGATION: SetupDWANavigation(); break;
-        case SCENARIO_FLOW_FIELD: SetupFlowField(); break;
-        default: break;
-    }
+    scenarios[scenario].setup();
 }
 
 // ============================================================================
@@ -4692,56 +4692,7 @@ static void UpdateFlowField(float dt) {
 }
 
 static void UpdateScenario(float dt) {
-    switch (currentScenario) {
-        case SCENARIO_SEEK: UpdateSeek(dt); break;
-        case SCENARIO_FLEE: UpdateFlee(dt); break;
-        case SCENARIO_DEPARTURE: UpdateDeparture(dt); break;
-        case SCENARIO_ARRIVE: UpdateArrive(dt); break;
-        case SCENARIO_DOCK: UpdateDock(dt); break;
-        case SCENARIO_PURSUIT_EVASION: UpdatePursuitEvasion(dt); break;
-        case SCENARIO_WANDER: UpdateWander(dt); break;
-        case SCENARIO_CONTAINMENT: UpdateContainment(dt); break;
-        case SCENARIO_FLOCKING: UpdateFlocking(dt); break;
-        case SCENARIO_LEADER_FOLLOW: UpdateLeaderFollow(dt); break;
-        case SCENARIO_HIDE: UpdateHide(dt); break;
-        case SCENARIO_OBSTACLE_AVOID: UpdateObstacleAvoid(dt); break;
-        case SCENARIO_WALL_AVOID: UpdateWallAvoid(dt); break;
-        case SCENARIO_WALL_FOLLOW: UpdateWallFollow(dt); break;
-        case SCENARIO_PATH_FOLLOW: UpdatePathFollow(dt); break;
-        case SCENARIO_INTERPOSE: UpdateInterpose(dt); break;
-        case SCENARIO_FORMATION: UpdateFormation(dt); break;
-        case SCENARIO_QUEUING: UpdateQueuing(dt); break;
-        case SCENARIO_COLLISION_AVOID: UpdateCollisionAvoid(dt); break;
-        case SCENARIO_FACE: UpdateFace(dt); break;
-        case SCENARIO_ORBIT: UpdateOrbit(dt); break;
-        case SCENARIO_EVADE_MULTIPLE: UpdateEvadeMultiple(dt); break;
-        case SCENARIO_PATROL: UpdatePatrol(dt); break;
-        case SCENARIO_EXPLORE: UpdateExplore(dt); break;
-        case SCENARIO_FORAGE: UpdateForage(dt); break;
-        case SCENARIO_GUARD: UpdateGuard(dt); break;
-        case SCENARIO_QUEUE_FOLLOW: UpdateQueueFollow(dt); break;
-        case SCENARIO_CAPTURE_FLAG: UpdateCaptureFlag(dt); break;
-        case SCENARIO_ESCORT_CONVOY: UpdateEscortConvoy(dt); break;
-        case SCENARIO_FISH_SHARK: UpdateFishShark(dt); break;
-        case SCENARIO_PEDESTRIAN: UpdatePedestrian(dt); break;
-        case SCENARIO_WOLF_PACK: UpdateWolfPack(dt); break;
-        case SCENARIO_EVACUATION: UpdateEvacuation(dt); break;
-        case SCENARIO_TRAFFIC: UpdateTraffic(dt); break;
-        case SCENARIO_MURMURATION: UpdateMurmuration(dt); break;
-        case SCENARIO_SFM_CORRIDOR: UpdateSFMCorridor(dt); break;
-        case SCENARIO_SFM_EVACUATION: UpdateSFMEvacuation(dt); break;
-        case SCENARIO_SFM_CROSSING: UpdateSFMCrossing(dt); break;
-        case SCENARIO_CTX_OBSTACLE_COURSE: UpdateCtxObstacleCourse(dt); break;
-        case SCENARIO_CTX_MAZE: UpdateCtxMaze(dt); break;
-        case SCENARIO_CTX_CROWD: UpdateCtxCrowd(dt); break;
-        case SCENARIO_CTX_PREDATOR_PREY: UpdateCtxPredatorPrey(dt); break;
-        case SCENARIO_TOPOLOGICAL_FLOCK: UpdateTopologicalFlock(dt); break;
-        case SCENARIO_COUZIN_ZONES: UpdateCouzinZones(dt); break;
-        case SCENARIO_VEHICLE_PURSUIT: UpdateVehiclePursuit(dt); break;
-        case SCENARIO_DWA_NAVIGATION: UpdateDWANavigation(dt); break;
-        case SCENARIO_FLOW_FIELD: UpdateFlowField(dt); break;
-        default: break;
-    }
+    scenarios[currentScenario].update(dt);
 }
 
 // ============================================================================
@@ -4777,8 +4728,6 @@ static void DrawPath(void) {
 // ============================================================================
 // Scenario Draw Functions
 // ============================================================================
-
-typedef void (*ScenarioDrawFunc)(void);
 
 static void DrawSeek(void) {
     // Draw agent
@@ -5676,64 +5625,12 @@ static void DrawFlowField(void) {
     DrawTextShadow("Mouse position = flow center", 10, 145, 16, LIGHTGRAY);
 }
 
-// Function pointer array - NULL entries use fallback in DrawScenario
-static ScenarioDrawFunc scenarioDrawFuncs[SCENARIO_COUNT] = {
-    [SCENARIO_SEEK] = DrawSeek,
-    [SCENARIO_FLEE] = DrawFlee,
-    [SCENARIO_DEPARTURE] = DrawDeparture,
-    [SCENARIO_ARRIVE] = DrawArrive,
-    [SCENARIO_DOCK] = DrawDock,
-    [SCENARIO_PURSUIT_EVASION] = DrawPursuitEvasion,
-    [SCENARIO_WANDER] = DrawWander,
-    [SCENARIO_CONTAINMENT] = DrawContainment,
-    [SCENARIO_FLOCKING] = DrawFlocking,
-    [SCENARIO_LEADER_FOLLOW] = DrawLeaderFollow,
-    [SCENARIO_HIDE] = DrawHide,
-    [SCENARIO_OBSTACLE_AVOID] = DrawObstacleAvoid,
-    [SCENARIO_WALL_AVOID] = DrawWallAvoid,
-    [SCENARIO_WALL_FOLLOW] = DrawWallFollow,
-    [SCENARIO_PATH_FOLLOW] = DrawPathFollow,
-    [SCENARIO_INTERPOSE] = DrawInterpose,
-    [SCENARIO_FORMATION] = DrawFormation,
-    [SCENARIO_QUEUING] = DrawQueuing,
-    [SCENARIO_COLLISION_AVOID] = DrawCollisionAvoid,
-    [SCENARIO_FACE] = DrawFace,
-    [SCENARIO_ORBIT] = DrawOrbit,
-    [SCENARIO_EVADE_MULTIPLE] = DrawEvadeMultiple,
-    [SCENARIO_PATROL] = DrawPatrol,
-    [SCENARIO_EXPLORE] = DrawExplore,
-    [SCENARIO_FORAGE] = DrawForage,
-    [SCENARIO_GUARD] = DrawGuard,
-    [SCENARIO_QUEUE_FOLLOW] = DrawQueueFollow,
-    [SCENARIO_CAPTURE_FLAG] = DrawCaptureFlag,
-    [SCENARIO_ESCORT_CONVOY] = DrawEscortConvoy,
-    [SCENARIO_FISH_SHARK] = DrawFishShark,
-    [SCENARIO_PEDESTRIAN] = DrawPedestrian,
-    [SCENARIO_WOLF_PACK] = DrawWolfPack,
-    [SCENARIO_EVACUATION] = DrawEvacuation,
-    [SCENARIO_TRAFFIC] = DrawTraffic,
-    [SCENARIO_MURMURATION] = DrawMurmuration,
-    [SCENARIO_SFM_CORRIDOR] = DrawSFMCorridor,
-    [SCENARIO_SFM_EVACUATION] = DrawSFMEvacuation,
-    [SCENARIO_SFM_CROSSING] = DrawSFMCrossing,
-    [SCENARIO_CTX_OBSTACLE_COURSE] = DrawCtxObstacleCourse,
-    [SCENARIO_CTX_MAZE] = DrawCtxMaze,
-    [SCENARIO_CTX_CROWD] = DrawCtxCrowd,
-    [SCENARIO_CTX_PREDATOR_PREY] = DrawCtxPredatorPrey,
-    [SCENARIO_TOPOLOGICAL_FLOCK] = DrawTopologicalFlock,
-    [SCENARIO_COUZIN_ZONES] = DrawCouzinZones,
-    [SCENARIO_VEHICLE_PURSUIT] = DrawVehiclePursuit,
-    [SCENARIO_DWA_NAVIGATION] = DrawDWANavigation,
-    [SCENARIO_FLOW_FIELD] = DrawFlowField,
-};
-
 static void DrawScenario(void) {
     DrawObstacles();
     DrawWalls();
     DrawPath();
 
-    // All scenarios have dedicated Draw functions in the pointer array
-    scenarioDrawFuncs[currentScenario]();
+    scenarios[currentScenario].draw();
 }
 
 // ============================================================================
@@ -5803,7 +5700,7 @@ int main(void) {
 
         // UI - Top bar
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 10, 10, 18, LIME);
-        DrawTextShadow(TextFormat("[%d/%d] %s", currentScenario + 1, SCENARIO_COUNT, scenarioNames[currentScenario]),
+        DrawTextShadow(TextFormat("[%d/%d] %s", currentScenario + 1, SCENARIO_COUNT, scenarios[currentScenario].name),
                        10, 35, 24, WHITE);
         DrawTextShadow(TextFormat("Agents: %d", agentCount), 10, 65, 18, LIGHTGRAY);
 
