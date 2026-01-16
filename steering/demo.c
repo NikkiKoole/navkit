@@ -745,6 +745,379 @@ static WallAvoidScenario wallAvoidScenario = {
     .defaultSeekWeight = 1.0f,
 };
 
+// Wall Follow scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float followDistance;
+    int followSide;  // 1 = left, -1 = right
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultFollowDistance;
+    const int defaultFollowSide;
+} WallFollowScenario;
+
+static WallFollowScenario wallFollowScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .followDistance = 40.0f,
+    .followSide = 1,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultFollowDistance = 40.0f,
+    .defaultFollowSide = 1,
+};
+
+// Path Follow scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float pathRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultPathRadius;
+} PathFollowScenario;
+
+static PathFollowScenario pathFollowScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .pathRadius = 50.0f,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultPathRadius = 50.0f,
+};
+
+// Collision Avoidance scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float neighborRadius;
+    float agentRadius;
+    float avoidWeight;
+    float wanderWeight;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultNeighborRadius;
+    const float defaultAgentRadius;
+    const float defaultAvoidWeight;
+    const float defaultWanderWeight;
+} CollisionAvoidScenario;
+
+static CollisionAvoidScenario collisionAvoidScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .neighborRadius = 150.0f,
+    .agentRadius = 15.0f,
+    .avoidWeight = 3.0f,
+    .wanderWeight = 0.5f,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultNeighborRadius = 150.0f,
+    .defaultAgentRadius = 15.0f,
+    .defaultAvoidWeight = 3.0f,
+    .defaultWanderWeight = 0.5f,
+};
+
+// Face scenario params (uses wander since Face was removed from pure Boid)
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float wanderRadius;
+    float wanderDistance;
+    float wanderJitter;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultWanderRadius;
+    const float defaultWanderDistance;
+    const float defaultWanderJitter;
+} FaceScenario;
+
+static FaceScenario faceScenario = {
+    .maxSpeed = 80.0f,
+    .maxForce = 200.0f,
+    .wanderRadius = 40.0f,
+    .wanderDistance = 80.0f,
+    .wanderJitter = 0.3f,
+    .defaultMaxSpeed = 80.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultWanderRadius = 40.0f,
+    .defaultWanderDistance = 80.0f,
+    .defaultWanderJitter = 0.3f,
+};
+
+// Orbit scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float innerRadius;
+    float middleRadius;
+    float outerRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultInnerRadius;
+    const float defaultMiddleRadius;
+    const float defaultOuterRadius;
+} OrbitScenario;
+
+static OrbitScenario orbitScenario = {
+    .maxSpeed = 120.0f,
+    .maxForce = 300.0f,
+    .innerRadius = 100.0f,
+    .middleRadius = 180.0f,
+    .outerRadius = 260.0f,
+    .defaultMaxSpeed = 120.0f,
+    .defaultMaxForce = 300.0f,
+    .defaultInnerRadius = 100.0f,
+    .defaultMiddleRadius = 180.0f,
+    .defaultOuterRadius = 260.0f,
+};
+
+// Patrol scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float waypointRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultWaypointRadius;
+} PatrolScenario;
+
+static PatrolScenario patrolScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .waypointRadius = 30.0f,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultWaypointRadius = 30.0f,
+};
+
+// Explore scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+} ExploreScenario;
+
+static ExploreScenario exploreScenario = {
+    .maxSpeed = 120.0f,
+    .maxForce = 200.0f,
+    .defaultMaxSpeed = 120.0f,
+    .defaultMaxForce = 200.0f,
+};
+
+// Forage scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float detectRange;
+    float wanderRadius;
+    float wanderDistance;
+    float wanderJitter;
+    float collectRadius;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultDetectRange;
+    const float defaultWanderRadius;
+    const float defaultWanderDistance;
+    const float defaultWanderJitter;
+    const float defaultCollectRadius;
+} ForageScenario;
+
+static ForageScenario forageScenario = {
+    .maxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .detectRange = 120.0f,
+    .wanderRadius = 40.0f,
+    .wanderDistance = 80.0f,
+    .wanderJitter = 0.3f,
+    .collectRadius = 15.0f,
+    .defaultMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultDetectRange = 120.0f,
+    .defaultWanderRadius = 40.0f,
+    .defaultWanderDistance = 80.0f,
+    .defaultWanderJitter = 0.3f,
+    .defaultCollectRadius = 15.0f,
+};
+
+// Guard scenario params
+typedef struct {
+    float maxSpeed;
+    float maxForce;
+    float guardRadius;
+    float wanderRadius;
+    float wanderDistance;
+    float wanderJitter;
+    const float defaultMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultGuardRadius;
+    const float defaultWanderRadius;
+    const float defaultWanderDistance;
+    const float defaultWanderJitter;
+} GuardScenario;
+
+static GuardScenario guardScenario = {
+    .maxSpeed = 80.0f,
+    .maxForce = 200.0f,
+    .guardRadius = 150.0f,
+    .wanderRadius = 30.0f,
+    .wanderDistance = 60.0f,
+    .wanderJitter = 0.3f,
+    .defaultMaxSpeed = 80.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultGuardRadius = 150.0f,
+    .defaultWanderRadius = 30.0f,
+    .defaultWanderDistance = 60.0f,
+    .defaultWanderJitter = 0.3f,
+};
+
+// QueueFollow scenario params
+typedef struct {
+    float leaderMaxSpeed;
+    float followerMaxSpeed;
+    float maxForce;
+    float followDistance;
+    float arriveRadius;
+    const float defaultLeaderMaxSpeed;
+    const float defaultFollowerMaxSpeed;
+    const float defaultMaxForce;
+    const float defaultFollowDistance;
+    const float defaultArriveRadius;
+} QueueFollowScenario;
+
+static QueueFollowScenario queueFollowScenario = {
+    .leaderMaxSpeed = 60.0f,
+    .followerMaxSpeed = 100.0f,
+    .maxForce = 200.0f,
+    .followDistance = 50.0f,
+    .arriveRadius = 100.0f,
+    .defaultLeaderMaxSpeed = 60.0f,
+    .defaultFollowerMaxSpeed = 100.0f,
+    .defaultMaxForce = 200.0f,
+    .defaultFollowDistance = 50.0f,
+    .defaultArriveRadius = 100.0f,
+};
+
+// CaptureFlag scenario params
+typedef struct {
+    float teamSpeed;
+    float carryingSpeedPenalty;  // Speed reduction when carrying flag
+    float evadeDistance;
+    const float defaultTeamSpeed;
+    const float defaultCarryingSpeedPenalty;
+    const float defaultEvadeDistance;
+} CaptureFlagScenario;
+
+static CaptureFlagScenario captureFlagScenario = {
+    .teamSpeed = 120.0f,
+    .carryingSpeedPenalty = 0.83f,  // 100/120 = ~0.83
+    .evadeDistance = 150.0f,
+    .defaultTeamSpeed = 120.0f,
+    .defaultCarryingSpeedPenalty = 0.83f,
+    .defaultEvadeDistance = 150.0f,
+};
+
+// FishShark scenario params
+typedef struct {
+    float fishSpeed;
+    float sharkCruiseSpeed;
+    float sharkChaseSpeed;
+    float panicDistance;
+    const float defaultFishSpeed;
+    const float defaultSharkCruiseSpeed;
+    const float defaultSharkChaseSpeed;
+    const float defaultPanicDistance;
+} FishSharkScenario;
+
+static FishSharkScenario fishSharkScenario = {
+    .fishSpeed = 100.0f,
+    .sharkCruiseSpeed = 70.0f,
+    .sharkChaseSpeed = 130.0f,
+    .panicDistance = 150.0f,
+    .defaultFishSpeed = 100.0f,
+    .defaultSharkCruiseSpeed = 70.0f,
+    .defaultSharkChaseSpeed = 130.0f,
+    .defaultPanicDistance = 150.0f,
+};
+
+// WolfPack scenario params
+typedef struct {
+    float alphaSpeed;
+    float packSpeed;
+    float preySpeed;
+    float packFollowDistance;
+    const float defaultAlphaSpeed;
+    const float defaultPackSpeed;
+    const float defaultPreySpeed;
+    const float defaultPackFollowDistance;
+} WolfPackScenario;
+
+static WolfPackScenario wolfPackScenario = {
+    .alphaSpeed = 140.0f,
+    .packSpeed = 130.0f,
+    .preySpeed = 120.0f,
+    .packFollowDistance = 80.0f,
+    .defaultAlphaSpeed = 140.0f,
+    .defaultPackSpeed = 130.0f,
+    .defaultPreySpeed = 120.0f,
+    .defaultPackFollowDistance = 80.0f,
+};
+
+// Evacuation scenario params
+typedef struct {
+    float agentSpeed;
+    float agentSpeedVariation;
+    float initialFireRadius;
+    float fireGrowthRate;
+    const float defaultAgentSpeed;
+    const float defaultAgentSpeedVariation;
+    const float defaultInitialFireRadius;
+    const float defaultFireGrowthRate;
+} EvacuationScenario;
+
+static EvacuationScenario evacuationScenario = {
+    .agentSpeed = 100.0f,
+    .agentSpeedVariation = 20.0f,
+    .initialFireRadius = 60.0f,
+    .fireGrowthRate = 15.0f,
+    .defaultAgentSpeed = 100.0f,
+    .defaultAgentSpeedVariation = 20.0f,
+    .defaultInitialFireRadius = 60.0f,
+    .defaultFireGrowthRate = 15.0f,
+};
+
+// Murmuration scenario params
+typedef struct {
+    float birdSpeed;
+    float maxForce;
+    float neighborRadius;
+    float separationWeight;
+    float alignmentWeight;
+    float cohesionWeight;
+    const float defaultBirdSpeed;
+    const float defaultMaxForce;
+    const float defaultNeighborRadius;
+    const float defaultSeparationWeight;
+    const float defaultAlignmentWeight;
+    const float defaultCohesionWeight;
+} MurmurationScenario;
+
+static MurmurationScenario murmurationScenario = {
+    .birdSpeed = 150.0f,
+    .maxForce = 400.0f,
+    .neighborRadius = 100.0f,
+    .separationWeight = 2.0f,
+    .alignmentWeight = 1.0f,
+    .cohesionWeight = 1.0f,
+    .defaultBirdSpeed = 150.0f,
+    .defaultMaxForce = 400.0f,
+    .defaultNeighborRadius = 100.0f,
+    .defaultSeparationWeight = 2.0f,
+    .defaultAlignmentWeight = 1.0f,
+    .defaultCohesionWeight = 1.0f,
+};
+
 // Vehicle/curvature-limited state
 Vehicle vehicles[MAX_AGENTS];
 int vehicleCount = 0;
@@ -1154,6 +1527,8 @@ static void SetupWallAvoid(void) {
 static void SetupWallFollow(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){200, 300});
+    agents[0].maxSpeed = wallFollowScenario.maxSpeed;
+    agents[0].maxForce = wallFollowScenario.maxForce;
 
     // Create a rectangular wall path
     wallCount = 4;
@@ -1166,6 +1541,8 @@ static void SetupWallFollow(void) {
 static void SetupPathFollow(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){100, 600});
+    agents[0].maxSpeed = pathFollowScenario.maxSpeed;
+    agents[0].maxForce = pathFollowScenario.maxForce;
 
     // Create a winding path
     path.count = 8;
@@ -1261,26 +1638,31 @@ static void SetupCollisionAvoid(void) {
         // Random initial velocities
         float angle = randf(0, 2 * PI);
         agents[i].vel = (Vector2){cosf(angle) * 60, sinf(angle) * 60};
-        agents[i].maxSpeed = 100.0f;
+        agents[i].maxSpeed = collisionAvoidScenario.maxSpeed;
+        agents[i].maxForce = collisionAvoidScenario.maxForce;
     }
 }
 
 static void SetupFace(void) {
     // Face/Look where you're going demo
+    // Note: Face was removed from pure Boid - this now shows wander behavior
     agentCount = 3;
 
     // Agent that faces mouse
     InitAgent(&agents[0], (Vector2){300, SCREEN_HEIGHT/2});
     agents[0].maxSpeed = 0; // Stationary, just rotates
+    agents[0].maxForce = faceScenario.maxForce;
 
     // Agent that looks where it's going (wanders)
     InitAgent(&agents[1], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
-    agents[1].maxSpeed = 80.0f;
+    agents[1].maxSpeed = faceScenario.maxSpeed;
+    agents[1].maxForce = faceScenario.maxForce;
     wanderAngles[1] = 0;
 
     // Another wandering agent with look-where-going
     InitAgent(&agents[2], (Vector2){900, SCREEN_HEIGHT/2});
-    agents[2].maxSpeed = 80.0f;
+    agents[2].maxSpeed = faceScenario.maxSpeed;
+    agents[2].maxForce = faceScenario.maxForce;
     wanderAngles[2] = PI;
 }
 
@@ -1289,20 +1671,24 @@ static void SetupOrbit(void) {
     agentCount = 4;
 
     // Inner orbit (clockwise)
-    InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2 + 100, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 120.0f;
+    InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2 + (int)orbitScenario.innerRadius, SCREEN_HEIGHT/2});
+    agents[0].maxSpeed = orbitScenario.maxSpeed;
+    agents[0].maxForce = orbitScenario.maxForce;
 
     // Middle orbit (counter-clockwise)
-    InitAgent(&agents[1], (Vector2){SCREEN_WIDTH/2 + 180, SCREEN_HEIGHT/2});
-    agents[1].maxSpeed = 100.0f;
+    InitAgent(&agents[1], (Vector2){SCREEN_WIDTH/2 + (int)orbitScenario.middleRadius, SCREEN_HEIGHT/2});
+    agents[1].maxSpeed = orbitScenario.maxSpeed * 0.8f;
+    agents[1].maxForce = orbitScenario.maxForce;
 
     // Outer orbit (clockwise)
-    InitAgent(&agents[2], (Vector2){SCREEN_WIDTH/2 + 260, SCREEN_HEIGHT/2});
-    agents[2].maxSpeed = 80.0f;
+    InitAgent(&agents[2], (Vector2){SCREEN_WIDTH/2 + (int)orbitScenario.outerRadius, SCREEN_HEIGHT/2});
+    agents[2].maxSpeed = orbitScenario.maxSpeed * 0.67f;
+    agents[2].maxForce = orbitScenario.maxForce;
 
     // Another outer orbit agent
-    InitAgent(&agents[3], (Vector2){SCREEN_WIDTH/2 - 260, SCREEN_HEIGHT/2});
-    agents[3].maxSpeed = 80.0f;
+    InitAgent(&agents[3], (Vector2){SCREEN_WIDTH/2 - (int)orbitScenario.outerRadius, SCREEN_HEIGHT/2});
+    agents[3].maxSpeed = orbitScenario.maxSpeed * 0.67f;
+    agents[3].maxForce = orbitScenario.maxForce;
 }
 
 static void SetupEvadeMultiple(void) {
@@ -1331,7 +1717,8 @@ static void SetupEvadeMultiple(void) {
 static void SetupPatrol(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){200, 200});
-    agents[0].maxSpeed = 100.0f;
+    agents[0].maxSpeed = patrolScenario.maxSpeed;
+    agents[0].maxForce = patrolScenario.maxForce;
 
     // Set up patrol waypoints in a pattern
     patrolWaypointCount = 6;
@@ -1348,7 +1735,8 @@ static void SetupPatrol(void) {
 static void SetupExplore(void) {
     agentCount = 1;
     InitAgent(&agents[0], (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 120.0f;
+    agents[0].maxSpeed = exploreScenario.maxSpeed;
+    agents[0].maxForce = exploreScenario.maxForce;
 
     // Initialize explore grid (all cells start as "never visited")
     exploreTime = 0;
@@ -1363,7 +1751,8 @@ static void SetupForage(void) {
     // Create foraging agents
     for (int i = 0; i < agentCount; i++) {
         InitAgent(&agents[i], (Vector2){randf(100, 400), randf(100, SCREEN_HEIGHT-100)});
-        agents[i].maxSpeed = 100.0f;
+        agents[i].maxSpeed = forageScenario.maxSpeed;
+        agents[i].maxForce = forageScenario.maxForce;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 
@@ -1387,7 +1776,8 @@ static void SetupGuard(void) {
             guardPosition.y + sinf(angle) * 100
         };
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 80.0f;
+        agents[i].maxSpeed = guardScenario.maxSpeed;
+        agents[i].maxForce = guardScenario.maxForce;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 }
@@ -1397,13 +1787,15 @@ static void SetupQueueFollow(void) {
 
     // Leader at front
     InitAgent(&agents[0], (Vector2){200, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 60.0f;
+    agents[0].maxSpeed = queueFollowScenario.leaderMaxSpeed;
+    agents[0].maxForce = queueFollowScenario.maxForce;
     wanderAngles[0] = 0;
 
     // Followers in a line behind
     for (int i = 1; i < agentCount; i++) {
-        InitAgent(&agents[i], (Vector2){200 - i * 50, SCREEN_HEIGHT/2});
-        agents[i].maxSpeed = 100.0f;
+        InitAgent(&agents[i], (Vector2){200 - i * (int)queueFollowScenario.followDistance, SCREEN_HEIGHT/2});
+        agents[i].maxSpeed = queueFollowScenario.followerMaxSpeed;
+        agents[i].maxForce = queueFollowScenario.maxForce;
     }
 }
 
@@ -1414,7 +1806,7 @@ static void SetupCaptureFlag(void) {
     blueBase = (Vector2){100, SCREEN_HEIGHT/2};
     for (int i = 0; i < 3; i++) {
         InitAgent(&agents[i], (Vector2){150, SCREEN_HEIGHT/2 - 50 + i * 50});
-        agents[i].maxSpeed = 120.0f;
+        agents[i].maxSpeed = captureFlagScenario.teamSpeed;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 
@@ -1422,7 +1814,7 @@ static void SetupCaptureFlag(void) {
     redBase = (Vector2){SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
     for (int i = 3; i < 6; i++) {
         InitAgent(&agents[i], (Vector2){SCREEN_WIDTH - 150, SCREEN_HEIGHT/2 - 50 + (i-3) * 50});
-        agents[i].maxSpeed = 120.0f;
+        agents[i].maxSpeed = captureFlagScenario.teamSpeed;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 
@@ -1476,14 +1868,14 @@ static void SetupFishShark(void) {
             randf(300, SCREEN_WIDTH - 300),
             randf(200, SCREEN_HEIGHT - 200)
         });
-        agents[i].maxSpeed = 100.0f;
+        agents[i].maxSpeed = fishSharkScenario.fishSpeed;
         agents[i].vel = (Vector2){randf(-30, 30), randf(-30, 30)};
     }
 
     // Shark (last agent)
     sharkIndex = agentCount - 1;
     InitAgent(&agents[sharkIndex], (Vector2){100, SCREEN_HEIGHT/2});
-    agents[sharkIndex].maxSpeed = 70.0f;  // Slower than fish when cruising
+    agents[sharkIndex].maxSpeed = fishSharkScenario.sharkCruiseSpeed;
     wanderAngles[sharkIndex] = 0;
 
     // Add some rocks for fish to hide behind
@@ -1526,18 +1918,18 @@ static void SetupWolfPack(void) {
 
     // Alpha wolf at center-left
     InitAgent(&agents[0], (Vector2){200, SCREEN_HEIGHT/2});
-    agents[0].maxSpeed = 140.0f;
+    agents[0].maxSpeed = wolfPackScenario.alphaSpeed;
     wanderAngles[0] = 0;
 
     // Pack wolves spread around alpha
     for (int i = 1; i < wolfCount; i++) {
         float angle = (2 * PI * i) / (wolfCount - 1);
         Vector2 pos = {
-            200 + cosf(angle) * 80,
-            SCREEN_HEIGHT/2 + sinf(angle) * 80
+            200 + cosf(angle) * wolfPackScenario.packFollowDistance,
+            SCREEN_HEIGHT/2 + sinf(angle) * wolfPackScenario.packFollowDistance
         };
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 130.0f;
+        agents[i].maxSpeed = wolfPackScenario.packSpeed;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 
@@ -1548,7 +1940,7 @@ static void SetupWolfPack(void) {
             randf(150, SCREEN_HEIGHT - 150)
         };
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 120.0f;
+        agents[i].maxSpeed = wolfPackScenario.preySpeed;
         wanderAngles[i] = randf(0, 2 * PI);
     }
 }
@@ -1558,7 +1950,7 @@ static void SetupEvacuation(void) {
 
     // Fire starts in center
     fireCenter = (Vector2){SCREEN_WIDTH/2, SCREEN_HEIGHT/2};
-    fireRadius = 60.0f;
+    fireRadius = evacuationScenario.initialFireRadius;
 
     // Two exits on sides - positioned far OUTSIDE the room so agents run through and pour out
     exitCount = 2;
@@ -1586,7 +1978,7 @@ static void SetupEvacuation(void) {
         } while (steering_vec_distance(pos, fireCenter) < fireRadius + 50);
 
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 100.0f + randf(-20, 20);
+        agents[i].maxSpeed = evacuationScenario.agentSpeed + randf(-evacuationScenario.agentSpeedVariation, evacuationScenario.agentSpeedVariation);
         agents[i].maxForce = 400.0f;
     }
 }
@@ -1705,8 +2097,8 @@ static void SetupMurmuration(void) {
             center.y + sinf(angle) * dist
         };
         InitAgent(&agents[i], pos);
-        agents[i].maxSpeed = 150.0f;
-        agents[i].maxForce = 400.0f;
+        agents[i].maxSpeed = murmurationScenario.birdSpeed;
+        agents[i].maxForce = murmurationScenario.maxForce;
         // Give initial velocity in similar direction
         float velAngle = randf(-0.5f, 0.5f);  // Slight variation
         agents[i].vel = (Vector2){cosf(velAngle) * 80, sinf(velAngle) * 80};
@@ -2474,13 +2866,15 @@ static void UpdateWallAvoid(float dt) {
 }
 
 static void UpdateWallFollow(float dt) {
-    SteeringOutput follow = steering_wall_follow(&agents[0], walls, wallCount, 40.0f, 1);
+    SteeringOutput follow = steering_wall_follow(&agents[0], walls, wallCount,
+                                                  wallFollowScenario.followDistance,
+                                                  wallFollowScenario.followSide);
     steering_apply(&agents[0], follow, dt);
     ResolveCollisions(&agents[0], 0);
 }
 
 static void UpdatePathFollow(float dt) {
-    SteeringOutput follow = steering_path_follow(&agents[0], &path, 50.0f, &currentPathSegment);
+    SteeringOutput follow = steering_path_follow(&agents[0], &path, pathFollowScenario.pathRadius, &currentPathSegment);
     steering_apply(&agents[0], follow, dt);
     ResolveCollisions(&agents[0], 0);
 
@@ -2617,7 +3011,7 @@ static void UpdateCollisionAvoid(float dt) {
         for (int j = 0; j < agentCount; j++) {
             if (i != j) {
                 float dist = steering_vec_distance(agents[i].pos, agents[j].pos);
-                if (dist < 150) {
+                if (dist < collisionAvoidScenario.neighborRadius) {
                     neighborPos[neighborCount] = agents[j].pos;
                     neighborVel[neighborCount] = agents[j].vel;
                     neighborCount++;
@@ -2627,7 +3021,7 @@ static void UpdateCollisionAvoid(float dt) {
 
         // Collision avoidance
         SteeringOutput avoid = steering_collision_avoid(&agents[i], neighborPos, neighborVel,
-                                                        neighborCount, 15.0f);
+                                                        neighborCount, collisionAvoidScenario.agentRadius);
 
         // Keep moving in general direction + wander slightly
         SteeringOutput wander = steering_wander(&agents[i], 20, 40, 0.1f, &wanderAngles[i]);
@@ -2636,7 +3030,7 @@ static void UpdateCollisionAvoid(float dt) {
         SteeringOutput contain = steering_containment(&agents[i], bounds, 80);
 
         SteeringOutput outputs[3] = {avoid, wander, contain};
-        float weights[3] = {3.0f, 0.5f, 2.0f};
+        float weights[3] = {collisionAvoidScenario.avoidWeight, collisionAvoidScenario.wanderWeight, 2.0f};
         SteeringOutput combined = steering_blend(outputs, weights, 3);
         steering_apply(&agents[i], combined, dt);
         ResolveCollisions(&agents[i], i);
@@ -2653,7 +3047,11 @@ static void UpdateFace(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     for (int i = 0; i < agentCount; i++) {
-        SteeringOutput wander = steering_wander(&agents[i], 40, 80, 0.3f, &wanderAngles[i]);
+        SteeringOutput wander = steering_wander(&agents[i],
+                                                 faceScenario.wanderRadius,
+                                                 faceScenario.wanderDistance,
+                                                 faceScenario.wanderJitter,
+                                                 &wanderAngles[i]);
         SteeringOutput contain = steering_containment(&agents[i], bounds, 80);
 
         SteeringOutput outputs[2] = {wander, contain};
@@ -2668,21 +3066,21 @@ static void UpdateOrbit(float dt) {
     Vector2 center = GetMousePosition();
 
     // Agent 0: inner orbit, clockwise
-    SteeringOutput orbit0 = steering_orbit(&agents[0], center, 100.0f, 1);
+    SteeringOutput orbit0 = steering_orbit(&agents[0], center, orbitScenario.innerRadius, 1);
     steering_apply(&agents[0], orbit0, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Agent 1: middle orbit, counter-clockwise
-    SteeringOutput orbit1 = steering_orbit(&agents[1], center, 180.0f, -1);
+    SteeringOutput orbit1 = steering_orbit(&agents[1], center, orbitScenario.middleRadius, -1);
     steering_apply(&agents[1], orbit1, dt);
     ResolveCollisions(&agents[1], 1);
 
     // Agent 2 & 3: outer orbit, clockwise
-    SteeringOutput orbit2 = steering_orbit(&agents[2], center, 260.0f, 1);
+    SteeringOutput orbit2 = steering_orbit(&agents[2], center, orbitScenario.outerRadius, 1);
     steering_apply(&agents[2], orbit2, dt);
     ResolveCollisions(&agents[2], 2);
 
-    SteeringOutput orbit3 = steering_orbit(&agents[3], center, 260.0f, 1);
+    SteeringOutput orbit3 = steering_orbit(&agents[3], center, orbitScenario.outerRadius, 1);
     steering_apply(&agents[3], orbit3, dt);
     ResolveCollisions(&agents[3], 3);
 }
@@ -2727,7 +3125,7 @@ static void UpdateEvadeMultiple(float dt) {
 
 static void UpdatePatrol(float dt) {
     SteeringOutput patrol = steering_patrol(&agents[0], patrolWaypoints, patrolWaypointCount,
-                                            30.0f, &currentPatrolWaypoint);
+                                            patrolScenario.waypointRadius, &currentPatrolWaypoint);
     steering_apply(&agents[0], patrol, dt);
     ResolveCollisions(&agents[0], 0);
 }
@@ -2748,8 +3146,10 @@ static void UpdateForage(float dt) {
 
     for (int i = 0; i < agentCount; i++) {
         SteeringOutput forage = steering_forage(&agents[i], resources, resourceCount,
-                                                 120.0f, &wanderAngles[i],
-                                                 40.0f, 80.0f, 0.3f);
+                                                 forageScenario.detectRange, &wanderAngles[i],
+                                                 forageScenario.wanderRadius,
+                                                 forageScenario.wanderDistance,
+                                                 forageScenario.wanderJitter);
         SteeringOutput contain = steering_containment(&agents[i], bounds, 80);
 
         SteeringOutput outputs[2] = {forage, contain};
@@ -2759,7 +3159,7 @@ static void UpdateForage(float dt) {
 
         // Check if agent collected a resource
         for (int r = 0; r < resourceCount; r++) {
-            if (steering_vec_distance(agents[i].pos, resources[r]) < 15.0f) {
+            if (steering_vec_distance(agents[i].pos, resources[r]) < forageScenario.collectRadius) {
                 // Respawn resource at random location
                 resources[r] = (Vector2){randf(200, SCREEN_WIDTH-100), randf(100, SCREEN_HEIGHT-100)};
             }
@@ -2772,8 +3172,11 @@ static void UpdateGuard(float dt) {
     guardPosition = GetMousePosition();
 
     for (int i = 0; i < agentCount; i++) {
-        SteeringOutput guard = steering_guard(&agents[i], guardPosition, 150.0f,
-                                               &wanderAngles[i], 30.0f, 60.0f, 0.3f);
+        SteeringOutput guard = steering_guard(&agents[i], guardPosition, guardScenario.guardRadius,
+                                               &wanderAngles[i],
+                                               guardScenario.wanderRadius,
+                                               guardScenario.wanderDistance,
+                                               guardScenario.wanderJitter);
         ApplySteeringWithSeparation(&agents[i], guard, i, dt);
         ResolveCollisions(&agents[i], i);
     }
@@ -2790,7 +3193,7 @@ static void UpdateQueueFollow(float dt) {
     SteeringOutput leaderSteering;
     if (mouseOnScreen) {
         // Arrive at mouse cursor (smooth stop)
-        leaderSteering = steering_arrive(&agents[0], mousePos, 100.0f);
+        leaderSteering = steering_arrive(&agents[0], mousePos, queueFollowScenario.arriveRadius);
     } else {
         // Wander when mouse is off screen
         SteeringOutput leaderWander = steering_wander(&agents[0], 30, 60, 0.2f, &wanderAngles[0]);
@@ -2806,7 +3209,7 @@ static void UpdateQueueFollow(float dt) {
     for (int i = 1; i < agentCount; i++) {
         SteeringOutput follow = steering_queue_follow(&agents[i],
                                                        agents[i-1].pos, agents[i-1].vel,
-                                                       50.0f);
+                                                       queueFollowScenario.followDistance);
         steering_apply(&agents[i], follow, dt);
         ResolveCollisions(&agents[i], i);
     }
@@ -2831,11 +3234,11 @@ static void UpdateCaptureFlag(float dt) {
         if (flagCarrier == i) {
             // Has flag - return to base!
             SteeringOutput seekBase = steering_seek(&agents[i], blueBase);
-            SteeringOutput evade = steering_evade_multiple(&agents[i], redPos, redVel, 3, 1.0f, 150.0f);
+            SteeringOutput evade = steering_evade_multiple(&agents[i], redPos, redVel, 3, 1.0f, captureFlagScenario.evadeDistance);
             SteeringOutput outputs[2] = {seekBase, evade};
             float weights[2] = {1.5f, 2.0f};
             steering = steering_blend(outputs, weights, 2);
-            agents[i].maxSpeed = 100.0f;  // Slower with flag
+            agents[i].maxSpeed = captureFlagScenario.teamSpeed * captureFlagScenario.carryingSpeedPenalty;
         } else if (flagCarrier < 0) {
             // No one has flag - go get it
             SteeringOutput seekFlag = steering_seek(&agents[i], flagPos);
@@ -2873,11 +3276,11 @@ static void UpdateCaptureFlag(float dt) {
         if (flagCarrier == i) {
             // Has flag - return to base!
             SteeringOutput seekBase = steering_seek(&agents[i], redBase);
-            SteeringOutput evade = steering_evade_multiple(&agents[i], bluePos, blueVel, 3, 1.0f, 150.0f);
+            SteeringOutput evade = steering_evade_multiple(&agents[i], bluePos, blueVel, 3, 1.0f, captureFlagScenario.evadeDistance);
             SteeringOutput outputs[2] = {seekBase, evade};
             float weights[2] = {1.5f, 2.0f};
             steering = steering_blend(outputs, weights, 2);
-            agents[i].maxSpeed = 100.0f;  // Slower with flag
+            agents[i].maxSpeed = captureFlagScenario.teamSpeed * captureFlagScenario.carryingSpeedPenalty;
         } else if (flagCarrier < 0) {
             // No one has flag - go get it
             SteeringOutput seekFlag = steering_seek(&agents[i], flagPos);
@@ -3316,7 +3719,7 @@ static void UpdateWolfPack(float dt) {
 
 static void UpdateEvacuation(float dt) {
     // Grow fire over time
-    fireRadius += fireGrowthRate * dt;
+    fireRadius += evacuationScenario.fireGrowthRate * dt;
     if (fireRadius > 350.0f) fireRadius = 350.0f;  // Cap fire size
 
     for (int i = 0; i < agentCount; i++) {
@@ -5811,6 +6214,96 @@ int main(void) {
             DraggableFloat(10, 150, "Detect Dist", &wallAvoidScenario.detectDistance, 1.0f, 20.0f, 200.0f);
             DraggableFloat(10, 175, "Avoid Weight", &wallAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
             DraggableFloat(10, 200, "Seek Weight", &wallAvoidScenario.seekWeight, 0.1f, 0.1f, 10.0f);
+        }
+        else if (currentScenario == SCENARIO_WALL_FOLLOW) {
+            DraggableFloat(10, 100, "Speed", &wallFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &wallFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Follow Dist", &wallFollowScenario.followDistance, 1.0f, 10.0f, 150.0f);
+        }
+        else if (currentScenario == SCENARIO_PATH_FOLLOW) {
+            DraggableFloat(10, 100, "Speed", &pathFollowScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &pathFollowScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Path Radius", &pathFollowScenario.pathRadius, 1.0f, 10.0f, 200.0f);
+        }
+        else if (currentScenario == SCENARIO_COLLISION_AVOID) {
+            DraggableFloat(10, 100, "Speed", &collisionAvoidScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &collisionAvoidScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Neighbor Rad", &collisionAvoidScenario.neighborRadius, 2.0f, 20.0f, 400.0f);
+            DraggableFloat(10, 175, "Agent Rad", &collisionAvoidScenario.agentRadius, 0.5f, 5.0f, 50.0f);
+            DraggableFloat(10, 200, "Avoid Weight", &collisionAvoidScenario.avoidWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 225, "Wander Weight", &collisionAvoidScenario.wanderWeight, 0.1f, 0.1f, 5.0f);
+        }
+        else if (currentScenario == SCENARIO_FACE) {
+            DraggableFloat(10, 100, "Speed", &faceScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &faceScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Wander Rad", &faceScenario.wanderRadius, 1.0f, 5.0f, 150.0f);
+            DraggableFloat(10, 175, "Wander Dist", &faceScenario.wanderDistance, 1.0f, 10.0f, 200.0f);
+            DraggableFloat(10, 200, "Wander Jitter", &faceScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
+        }
+        else if (currentScenario == SCENARIO_ORBIT) {
+            DraggableFloat(10, 100, "Speed", &orbitScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &orbitScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Inner Radius", &orbitScenario.innerRadius, 2.0f, 30.0f, 300.0f);
+            DraggableFloat(10, 175, "Middle Radius", &orbitScenario.middleRadius, 2.0f, 50.0f, 400.0f);
+            DraggableFloat(10, 200, "Outer Radius", &orbitScenario.outerRadius, 2.0f, 80.0f, 500.0f);
+        }
+        else if (currentScenario == SCENARIO_PATROL) {
+            DraggableFloat(10, 100, "Speed", &patrolScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &patrolScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Waypoint Rad", &patrolScenario.waypointRadius, 1.0f, 10.0f, 100.0f);
+        }
+        else if (currentScenario == SCENARIO_EXPLORE) {
+            DraggableFloat(10, 100, "Speed", &exploreScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &exploreScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+        }
+        else if (currentScenario == SCENARIO_FORAGE) {
+            DraggableFloat(10, 100, "Speed", &forageScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &forageScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Detect Range", &forageScenario.detectRange, 2.0f, 20.0f, 400.0f);
+            DraggableFloat(10, 175, "Collect Rad", &forageScenario.collectRadius, 0.5f, 5.0f, 50.0f);
+            DraggableFloat(10, 200, "Wander Jitter", &forageScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
+        }
+        else if (currentScenario == SCENARIO_GUARD) {
+            DraggableFloat(10, 100, "Speed", &guardScenario.maxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 125, "Force", &guardScenario.maxForce, 2.0f, 10.0f, 1000.0f);
+            DraggableFloat(10, 150, "Guard Radius", &guardScenario.guardRadius, 2.0f, 30.0f, 400.0f);
+            DraggableFloat(10, 175, "Wander Jitter", &guardScenario.wanderJitter, 0.01f, 0.01f, 2.0f);
+        }
+        else if (currentScenario == SCENARIO_QUEUE_FOLLOW) {
+            DraggableFloat(10, 100, "Leader Speed", &queueFollowScenario.leaderMaxSpeed, 1.0f, 10.0f, 300.0f);
+            DraggableFloat(10, 125, "Follower Speed", &queueFollowScenario.followerMaxSpeed, 1.0f, 10.0f, 400.0f);
+            DraggableFloat(10, 150, "Follow Dist", &queueFollowScenario.followDistance, 1.0f, 20.0f, 150.0f);
+            DraggableFloat(10, 175, "Arrive Radius", &queueFollowScenario.arriveRadius, 2.0f, 20.0f, 300.0f);
+        }
+        else if (currentScenario == SCENARIO_CAPTURE_FLAG) {
+            DraggableFloat(10, 100, "Team Speed", &captureFlagScenario.teamSpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 125, "Carry Penalty", &captureFlagScenario.carryingSpeedPenalty, 0.01f, 0.3f, 1.0f);
+            DraggableFloat(10, 150, "Evade Dist", &captureFlagScenario.evadeDistance, 2.0f, 50.0f, 400.0f);
+        }
+        else if (currentScenario == SCENARIO_FISH_SHARK) {
+            DraggableFloat(10, 100, "Fish Speed", &fishSharkScenario.fishSpeed, 1.0f, 30.0f, 300.0f);
+            DraggableFloat(10, 125, "Shark Cruise", &fishSharkScenario.sharkCruiseSpeed, 1.0f, 20.0f, 200.0f);
+            DraggableFloat(10, 150, "Shark Chase", &fishSharkScenario.sharkChaseSpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 175, "Panic Dist", &fishSharkScenario.panicDistance, 2.0f, 50.0f, 400.0f);
+        }
+        else if (currentScenario == SCENARIO_WOLF_PACK) {
+            DraggableFloat(10, 100, "Alpha Speed", &wolfPackScenario.alphaSpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 125, "Pack Speed", &wolfPackScenario.packSpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 150, "Prey Speed", &wolfPackScenario.preySpeed, 1.0f, 50.0f, 300.0f);
+            DraggableFloat(10, 175, "Pack Follow", &wolfPackScenario.packFollowDistance, 2.0f, 20.0f, 200.0f);
+        }
+        else if (currentScenario == SCENARIO_EVACUATION) {
+            DraggableFloat(10, 100, "Agent Speed", &evacuationScenario.agentSpeed, 1.0f, 30.0f, 300.0f);
+            DraggableFloat(10, 125, "Speed Var", &evacuationScenario.agentSpeedVariation, 0.5f, 0.0f, 50.0f);
+            DraggableFloat(10, 150, "Fire Growth", &evacuationScenario.fireGrowthRate, 0.5f, 0.0f, 50.0f);
+        }
+        else if (currentScenario == SCENARIO_MURMURATION) {
+            DraggableFloat(10, 100, "Bird Speed", &murmurationScenario.birdSpeed, 1.0f, 50.0f, 400.0f);
+            DraggableFloat(10, 125, "Max Force", &murmurationScenario.maxForce, 5.0f, 50.0f, 1000.0f);
+            DraggableFloat(10, 150, "Neighbor Rad", &murmurationScenario.neighborRadius, 2.0f, 30.0f, 300.0f);
+            DraggableFloat(10, 175, "Sep Weight", &murmurationScenario.separationWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 200, "Align Weight", &murmurationScenario.alignmentWeight, 0.1f, 0.1f, 10.0f);
+            DraggableFloat(10, 225, "Cohesion Weight", &murmurationScenario.cohesionWeight, 0.1f, 0.1f, 10.0f);
         }
 
         // Instructions at bottom
