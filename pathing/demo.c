@@ -6,18 +6,8 @@
 #include <stdlib.h>
 #include <math.h>
 
-static Font* g_comicFont = NULL;
-
-static void DrawTextShadow(const char *text, int x, int y, int size, Color col) {
-    if (g_comicFont && g_comicFont->texture.id > 0) {
-        Vector2 pos = { (float)x, (float)y };
-        DrawTextEx(*g_comicFont, text, (Vector2){ pos.x + 1, pos.y + 1 }, (float)size, 1, BLACK);
-        DrawTextEx(*g_comicFont, text, pos, (float)size, 1, col);
-    } else {
-        DrawText(text, x + 1, y + 1, size, BLACK);
-        DrawText(text, x, y, size, col);
-    }
-}
+#define UI_IMPLEMENTATION
+#include "../common/ui.h"
 
 #define CELL_SIZE   32
 #define MAX_AGENTS  50
@@ -28,9 +18,22 @@ Texture2D texGrass;
 Texture2D texWall;
 bool showGraph = false;
 
-// Pathfinding algorithm selection: 0=A*, 1=HPA*, 2=JPS
-int pathAlgorithm = 0;
-const char* pathAlgorithmNames[] = {"A*", "HPA*", "JPS"};
+// Pathfinding settings
+int pathAlgorithm = 1;  // Default to HPA*
+const char* algorithmNames[] = {"A*", "HPA*", "JPS"};
+int currentDirection = 0;  // 0 = 4-dir, 1 = 8-dir
+const char* directionNames[] = {"4-dir", "8-dir"};
+
+// Tool selection: 0=Draw Walls, 1=Erase Walls, 2=Set Start, 3=Set Goal
+int currentTool = 0;
+const char* toolNames[] = {"Draw Walls", "Erase Walls", "Set Start", "Set Goal"};
+
+// Terrain selection
+int currentTerrain = 0;
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard"};
+
+// Agents
+int agentCountSetting = 10;
 
 // Multi-agent paths
 typedef struct {
@@ -194,7 +197,22 @@ Vector2 ScreenToGrid(Vector2 screen) {
     return (Vector2){(screen.x - offset.x) / size, (screen.y - offset.y) / size};
 }
 
+void GenerateCurrentTerrain(void) {
+    switch (currentTerrain) {
+        case 0: InitGrid(); break;
+        case 1: GenerateSparse(0.15f); break;
+        case 2: GenerateCity(); break;
+        case 3: GenerateMixed(); break;
+        case 4: GeneratePerlin(); break;
+        case 5: GenerateConcentricMaze(); break;
+        case 6: GenerateDungeonRooms(); break;
+        case 7: GenerateCaves(); break;
+        case 8: GenerateDrunkard(); break;
+    }
+}
+
 void HandleInput(void) {
+    // Zoom with mouse wheel
     float wheel = GetMouseWheelMove();
     if (wheel != 0) {
         Vector2 mw = ScreenToGrid(GetMousePosition());
@@ -205,22 +223,53 @@ void HandleInput(void) {
         offset.x = GetMousePosition().x - mw.x * size;
         offset.y = GetMousePosition().y - mw.y * size;
     }
+    
+    // Pan with middle mouse
     if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
         Vector2 d = GetMouseDelta();
         offset.x += d.x;
         offset.y += d.y;
     }
-    bool setStart = IsKeyDown(KEY_S);
-    bool setGoal = IsKeyDown(KEY_G);
-    if (!setStart && !setGoal && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+    
+    // Skip grid interactions if UI wants mouse
+    if (ui_wants_mouse()) return;
+    
+    // Tool-based interactions
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] != CELL_WALL) {
-            grid[y][x] = CELL_WALL;
-            MarkChunkDirty(x, y);
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+            switch (currentTool) {
+                case 0:  // Draw Walls
+                    if (grid[y][x] != CELL_WALL) {
+                        grid[y][x] = CELL_WALL;
+                        MarkChunkDirty(x, y);
+                    }
+                    break;
+                case 1:  // Erase Walls
+                    if (grid[y][x] != CELL_WALKABLE) {
+                        grid[y][x] = CELL_WALKABLE;
+                        MarkChunkDirty(x, y);
+                    }
+                    break;
+                case 2:  // Set Start
+                    if (grid[y][x] == CELL_WALKABLE) {
+                        startPos = (Point){x, y};
+                        pathLength = 0;
+                    }
+                    break;
+                case 3:  // Set Goal
+                    if (grid[y][x] == CELL_WALKABLE) {
+                        goalPos = (Point){x, y};
+                        pathLength = 0;
+                    }
+                    break;
+            }
         }
     }
-    if (!setStart && !setGoal && IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+    
+    // Right-click erases (convenience shortcut)
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] != CELL_WALKABLE) {
@@ -228,33 +277,40 @@ void HandleInput(void) {
             MarkChunkDirty(x, y);
         }
     }
-    if (setStart && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        Vector2 gp = ScreenToGrid(GetMousePosition());
-        int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] == CELL_WALKABLE) {
-            startPos = (Point){x, y};
-            pathLength = 0;
-        }
+    
+    // Reset view
+    if (IsKeyPressed(KEY_R)) {
+        zoom = 1.0f;
+        offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+        offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     }
-    if (setGoal && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        Vector2 gp = ScreenToGrid(GetMousePosition());
-        int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] == CELL_WALKABLE) {
-            goalPos = (Point){x, y};
-            pathLength = 0;
-        }
+}
+
+void DrawUI(void) {
+    float y = 70.0f;
+    float x = 10.0f;
+    
+    // === VIEW ===
+    DrawTextShadow("View", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    ToggleBool(x, y, "Show Graph", &showGraph);
+    y += 22;
+    
+    // === PATHFINDING ===
+    y += 8;
+    DrawTextShadow("Pathfinding", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    CycleOption(x, y, "Algo", algorithmNames, 3, &pathAlgorithm);
+    y += 22;
+    CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
+    use8Dir = (currentDirection == 1);  // Sync with pathfinding
+    y += 22;
+    if (PushButton(x, y, "Build HPA Graph")) {
+        BuildEntrances();
+        BuildGraph();
     }
-    if (IsKeyPressed(KEY_C)) InitGrid();
-    if (IsKeyPressed(KEY_ONE)) GenerateSparse(0.15f);
-    if (IsKeyPressed(KEY_TWO)) GenerateCity();
-    if (IsKeyPressed(KEY_THREE)) GenerateMixed();
-    if (IsKeyPressed(KEY_FOUR)) GeneratePerlin();
-    if (IsKeyPressed(KEY_FIVE)) GenerateConcentricMaze();
-    if (IsKeyPressed(KEY_E)) BuildEntrances();
-    if (IsKeyPressed(KEY_B)) BuildGraph();
-    if (IsKeyPressed(KEY_U)) UpdateDirtyChunks();  // Incremental update
-    if (IsKeyPressed(KEY_P)) {
-        // Auto-update dirty chunks before HPA* pathfinding
+    y += 22;
+    if (PushButton(x, y, "Find Path")) {
         if (pathAlgorithm == 1 && needsRebuild) {
             UpdateDirtyChunks();
         }
@@ -264,14 +320,56 @@ void HandleInput(void) {
             case 2: RunJPS(); break;
         }
     }
-    if (IsKeyPressed(KEY_T)) pathAlgorithm = (pathAlgorithm + 1) % 3;  // Cycle through algorithms
-    if (IsKeyPressed(KEY_D)) use8Dir = !use8Dir;  // Toggle 4-dir/8-dir
-    if (IsKeyPressed(KEY_V)) showGraph = !showGraph;
-    if (IsKeyPressed(KEY_A)) SpawnAgents(MAX_AGENTS);  // Spawn 10 random agents
-    if (IsKeyPressed(KEY_R)) {
-        zoom = 1.0f;
+    y += 22;
+    
+    // === MAP EDITING ===
+    y += 8;
+    DrawTextShadow("Map Editing", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
+    y += 22;
+    CycleOption(x, y, "Terrain", terrainNames, 9, &currentTerrain);
+    y += 22;
+    if (PushButton(x, y, "Generate Terrain")) {
+        GenerateCurrentTerrain();
+    }
+    y += 22;
+    if (PushButton(x, y, "Small Grid (32x32)")) {
+        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
         offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    }
+    y += 22;
+    
+    // === AGENTS ===
+    y += 8;
+    DrawTextShadow("Agents", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
+    y += 22;
+    if (PushButton(x, y, "Spawn Agents")) {
+        SpawnAgents(agentCountSetting);
+    }
+    y += 22;
+    
+    // === DEBUG ===
+    y += 8;
+    DrawTextShadow("Debug", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    if (PushButton(x, y, "Copy Map ASCII")) {
+        // Copy map to clipboard as ASCII
+        char* buffer = malloc(gridWidth * gridHeight + gridHeight + 1);
+        int idx = 0;
+        for (int row = 0; row < gridHeight; row++) {
+            for (int col = 0; col < gridWidth; col++) {
+                buffer[idx++] = (grid[row][col] == CELL_WALL) ? '#' : '.';
+            }
+            buffer[idx++] = '\n';
+        }
+        buffer[idx] = '\0';
+        SetClipboardText(buffer);
+        free(buffer);
+        TraceLog(LOG_INFO, "Map copied to clipboard");
     }
 }
 
@@ -281,14 +379,14 @@ int main(void) {
     texGrass = LoadTexture("assets/grass.png");
     texWall = LoadTexture("assets/wall.png");
     Font comicFont = LoadFont("assets/comic.fnt");
-     g_comicFont = &comicFont;  // Comment out to use default font
+    ui_init(&comicFont);
     SetTargetFPS(60);
     InitGrid();
-    //InitGridWithSizeAndChunkSize(128, 128, 32, 16);
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
     while (!WindowShouldClose()) {
+        ui_update();
         HandleInput();
         BeginDrawing();
         ClearBackground(BLACK);
@@ -298,16 +396,20 @@ int main(void) {
         DrawEntrances();
         DrawPath();
         DrawAgents();
+        
+        // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Algo: %s | Dir: %s | Entrances: %d | Edges: %d | Agents: %d",
-                 pathAlgorithmNames[pathAlgorithm], use8Dir ? "8-dir" : "4-dir", entranceCount, graphEdgeCount, agentCount), 5, 25, 16, WHITE);
+        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d", entranceCount, graphEdgeCount, agentCount), 5, 25, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
         } else {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
-        DrawTextShadow("S/G+Click | P: Path | T: Algo | D: Dir | 1-5: Gen | E: Entrances | B: Graph | U: Update | A: Agents", 5, screenHeight - 20, 14, GRAY);
+        
+        // Draw UI
+        DrawUI();
+        
         EndDrawing();
     }
     UnloadTexture(texGrass);

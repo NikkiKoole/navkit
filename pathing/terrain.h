@@ -10,6 +10,9 @@ void GeneratePerlin(void);
 void GenerateCity(void);
 void GenerateMixed(void);
 void GenerateConcentricMaze(void);
+void GenerateDungeonRooms(void);  // Feature-based roguelike dungeon
+void GenerateCaves(void);         // Cellular automata caves
+void GenerateDrunkard(void);      // Drunkard's walk tunnels
 
 // Perlin noise utilities
 void InitPerlin(int seed);

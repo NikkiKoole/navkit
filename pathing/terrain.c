@@ -1,9 +1,16 @@
 #include "terrain.h"
 #include "../vendor/raylib.h"
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
 
 // Simple Perlin-like noise
 static int permutation[512];
+
+// Room structure for dungeon generators
+typedef struct {
+    int x, y, w, h;
+} Room;
 
 void InitGrid(void) {
     for (int y = 0; y < gridHeight; y++)
@@ -17,6 +24,249 @@ void GenerateSparse(float density) {
         for (int x = 0; x < gridWidth; x++)
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
                 grid[y][x] = CELL_WALL;
+    needsRebuild = true;
+}
+
+// ============================================================================
+// Feature-based Dungeon Generator (Rooms & Corridors)
+// ============================================================================
+
+#define MAX_ROOMS 256
+#define MIN_ROOM_SIZE 4
+#define MAX_ROOM_SIZE 12
+#define CORRIDOR_WIDTH 2
+
+static Room dungeonRooms[MAX_ROOMS];
+static int dungeonRoomCount = 0;
+
+static void CarveRoom(int x, int y, int w, int h) {
+    for (int py = y; py < y + h && py < gridHeight; py++) {
+        for (int px = x; px < x + w && px < gridWidth; px++) {
+            if (px >= 0 && py >= 0) {
+                grid[py][px] = CELL_WALKABLE;
+            }
+        }
+    }
+}
+
+static void CarveCorridor(int x1, int y1, int x2, int y2) {
+    int x = x1, y = y1;
+    
+    // Randomly choose horizontal or vertical first
+    if (GetRandomValue(0, 1) == 0) {
+        // Horizontal then vertical
+        while (x != x2) {
+            for (int w = 0; w < CORRIDOR_WIDTH; w++) {
+                if (y + w >= 0 && y + w < gridHeight && x >= 0 && x < gridWidth)
+                    grid[y + w][x] = CELL_WALKABLE;
+            }
+            x += (x2 > x) ? 1 : -1;
+        }
+        while (y != y2) {
+            for (int w = 0; w < CORRIDOR_WIDTH; w++) {
+                if (y >= 0 && y < gridHeight && x + w >= 0 && x + w < gridWidth)
+                    grid[y][x + w] = CELL_WALKABLE;
+            }
+            y += (y2 > y) ? 1 : -1;
+        }
+    } else {
+        // Vertical then horizontal
+        while (y != y2) {
+            for (int w = 0; w < CORRIDOR_WIDTH; w++) {
+                if (y >= 0 && y < gridHeight && x + w >= 0 && x + w < gridWidth)
+                    grid[y][x + w] = CELL_WALKABLE;
+            }
+            y += (y2 > y) ? 1 : -1;
+        }
+        while (x != x2) {
+            for (int w = 0; w < CORRIDOR_WIDTH; w++) {
+                if (y + w >= 0 && y + w < gridHeight && x >= 0 && x < gridWidth)
+                    grid[y + w][x] = CELL_WALKABLE;
+            }
+            x += (x2 > x) ? 1 : -1;
+        }
+    }
+}
+
+static bool RoomOverlaps(int x, int y, int w, int h, int margin) {
+    if (x - margin < 0 || y - margin < 0 || 
+        x + w + margin >= gridWidth || y + h + margin >= gridHeight) {
+        return true;
+    }
+    for (int i = 0; i < dungeonRoomCount; i++) {
+        Room* r = &dungeonRooms[i];
+        if (x < r->x + r->w + margin && x + w + margin > r->x &&
+            y < r->y + r->h + margin && y + h + margin > r->y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GenerateDungeonRooms(void) {
+    // Fill with walls
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            grid[y][x] = CELL_WALL;
+    
+    dungeonRoomCount = 0;
+    
+    // Place first room in center
+    int firstW = GetRandomValue(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
+    int firstH = GetRandomValue(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
+    int firstX = (gridWidth - firstW) / 2;
+    int firstY = (gridHeight - firstH) / 2;
+    
+    CarveRoom(firstX, firstY, firstW, firstH);
+    dungeonRooms[dungeonRoomCount++] = (Room){firstX, firstY, firstW, firstH};
+    
+    // Try to add more rooms
+    int attempts = 500;
+    int maxRooms = 30 + (gridWidth * gridHeight) / 500;
+    if (maxRooms > MAX_ROOMS) maxRooms = MAX_ROOMS;
+    
+    for (int i = 0; i < attempts && dungeonRoomCount < maxRooms; i++) {
+        Room* source = &dungeonRooms[GetRandomValue(0, dungeonRoomCount - 1)];
+        
+        int newW = GetRandomValue(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
+        int newH = GetRandomValue(MIN_ROOM_SIZE, MAX_ROOM_SIZE);
+        int side = GetRandomValue(0, 3);
+        int newX, newY;
+        int corridorLen = GetRandomValue(2, 8);
+        
+        switch (side) {
+            case 0: // North
+                newX = source->x + GetRandomValue(0, source->w - 1) - newW / 2;
+                newY = source->y - corridorLen - newH;
+                break;
+            case 1: // East
+                newX = source->x + source->w + corridorLen;
+                newY = source->y + GetRandomValue(0, source->h - 1) - newH / 2;
+                break;
+            case 2: // South
+                newX = source->x + GetRandomValue(0, source->w - 1) - newW / 2;
+                newY = source->y + source->h + corridorLen;
+                break;
+            default: // West
+                newX = source->x - corridorLen - newW;
+                newY = source->y + GetRandomValue(0, source->h - 1) - newH / 2;
+                break;
+        }
+        
+        if (!RoomOverlaps(newX, newY, newW, newH, 2)) {
+            CarveRoom(newX, newY, newW, newH);
+            dungeonRooms[dungeonRoomCount++] = (Room){newX, newY, newW, newH};
+            
+            int srcCenterX = source->x + source->w / 2;
+            int srcCenterY = source->y + source->h / 2;
+            int newCenterX = newX + newW / 2;
+            int newCenterY = newY + newH / 2;
+            CarveCorridor(srcCenterX, srcCenterY, newCenterX, newCenterY);
+        }
+    }
+    
+    needsRebuild = true;
+}
+
+// ============================================================================
+// Cellular Automata Cave Generator
+// ============================================================================
+
+void GenerateCaves(void) {
+    // Start with random noise
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            // Border is always wall
+            if (x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1) {
+                grid[y][x] = CELL_WALL;
+            } else {
+                grid[y][x] = (GetRandomValue(0, 100) < 45) ? CELL_WALL : CELL_WALKABLE;
+            }
+        }
+    }
+    
+    // Temporary buffer for cellular automata
+    CellType* temp = (CellType*)malloc(gridWidth * gridHeight * sizeof(CellType));
+    
+    // Run cellular automata iterations
+    for (int iter = 0; iter < 5; iter++) {
+        for (int y = 1; y < gridHeight - 1; y++) {
+            for (int x = 1; x < gridWidth - 1; x++) {
+                // Count neighboring walls
+                int walls = 0;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (grid[y + dy][x + dx] == CELL_WALL) walls++;
+                    }
+                }
+                // 4-5 rule: become wall if >= 5 neighbors are walls
+                temp[y * gridWidth + x] = (walls >= 5) ? CELL_WALL : CELL_WALKABLE;
+            }
+        }
+        // Copy back
+        for (int y = 1; y < gridHeight - 1; y++) {
+            for (int x = 1; x < gridWidth - 1; x++) {
+                grid[y][x] = temp[y * gridWidth + x];
+            }
+        }
+    }
+    
+    free(temp);
+    
+    // Ensure connectivity by flood-filling from center and connecting islands
+    // (Simple approach: just carve a path from center to ensure some walkable area)
+    int cx = gridWidth / 2, cy = gridHeight / 2;
+    for (int r = 0; r < 5; r++) {
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                int nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+                    grid[ny][nx] = CELL_WALKABLE;
+                }
+            }
+        }
+    }
+    
+    needsRebuild = true;
+}
+
+// ============================================================================
+// Drunkard's Walk Generator
+// ============================================================================
+
+void GenerateDrunkard(void) {
+    // Fill with walls
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            grid[y][x] = CELL_WALL;
+    
+    // Start from center
+    int x = gridWidth / 2;
+    int y = gridHeight / 2;
+    
+    // Target: carve out ~40% of the map
+    int targetFloor = (gridWidth * gridHeight * 40) / 100;
+    int floorCount = 0;
+    
+    int maxSteps = gridWidth * gridHeight * 10;  // Prevent infinite loop
+    
+    for (int step = 0; step < maxSteps && floorCount < targetFloor; step++) {
+        // Carve current position
+        if (grid[y][x] == CELL_WALL) {
+            grid[y][x] = CELL_WALKABLE;
+            floorCount++;
+        }
+        
+        // Random walk
+        int dir = GetRandomValue(0, 3);
+        switch (dir) {
+            case 0: if (y > 1) y--; break;              // North
+            case 1: if (x < gridWidth - 2) x++; break;  // East
+            case 2: if (y < gridHeight - 2) y++; break; // South
+            case 3: if (x > 1) x--; break;              // West
+        }
+    }
+    
     needsRebuild = true;
 }
 
