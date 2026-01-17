@@ -3,6 +3,13 @@
 #include <stdlib.h>
 
 // ============================================================================
+// Default Constants
+// ============================================================================
+
+#define DEFAULT_SLOW_RADIUS 50.0f
+#define DEFAULT_AGENT_RADIUS 10.0f
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
@@ -73,12 +80,6 @@ static inline float clamp(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
-}
-
-static float wrap_angle(float angle) {
-    while (angle > PI) angle -= 2 * PI;
-    while (angle < -PI) angle += 2 * PI;
-    return angle;
 }
 
 static float randf(float min, float max) {
@@ -232,7 +233,7 @@ SteeringOutput steering_offset_pursuit(const Boid* agent, Vector2 targetPos, Vec
     if (prediction > maxPrediction) prediction = maxPrediction;
     
     Vector2 predictedPos = vec_add(offsetTarget, vec_mul(targetVel, prediction));
-    return steering_arrive(agent, predictedPos, 50.0f);
+    return steering_arrive(agent, predictedPos, DEFAULT_SLOW_RADIUS);
 }
 
 SteeringOutput steering_wander(const Boid* agent, float wanderRadius, float wanderDistance,
@@ -310,7 +311,7 @@ SteeringOutput steering_interpose(const Boid* agent, Vector2 targetA, Vector2 ve
     Vector2 futureB = vec_add(targetB, vec_mul(velB, timeToMid));
     Vector2 futureMid = vec_mul(vec_add(futureA, futureB), 0.5f);
     
-    return steering_arrive(agent, futureMid, 50.0f);
+    return steering_arrive(agent, futureMid, DEFAULT_SLOW_RADIUS);
 }
 
 SteeringOutput steering_hide(const Boid* agent, Vector2 pursuerPos,
@@ -337,7 +338,7 @@ SteeringOutput steering_hide(const Boid* agent, Vector2 pursuerPos,
     }
     
     if (foundSpot) {
-        return steering_arrive(agent, bestHidingSpot, 50.0f);
+        return steering_arrive(agent, bestHidingSpot, DEFAULT_SLOW_RADIUS);
     }
     
     // No hiding spot found, flee from pursuer
@@ -684,8 +685,8 @@ SteeringOutput steering_obstacle_avoid(const Boid* agent, const CircleObstacle* 
     Vector2 forward = vec_mul(agent->vel, 1.0f / speed);
     Vector2 lateral = (Vector2){-forward.y, forward.x};  // 90 degrees left
     
-    // Detection box width - use a reasonable agent radius
-    float agentRadius = 15.0f;
+    // Detection box width - use default agent radius
+    float agentRadius = DEFAULT_AGENT_RADIUS;
     
     // Find the most threatening obstacle (closest intersection along forward axis)
     const CircleObstacle* mostThreatening = NULL;
@@ -1174,17 +1175,6 @@ SocialForceParams sfm_default_params(void) {
     return params;
 }
 
-// Helper: closest point on line segment (same as existing but needed here)
-static Vector2 sfm_closest_point_on_segment(Vector2 p, Vector2 a, Vector2 b) {
-    Vector2 ab = vec_sub(b, a);
-    Vector2 ap = vec_sub(p, a);
-    
-    float t = vec_dot(ap, ab) / vec_dot(ab, ab);
-    t = fmaxf(0.0f, fminf(1.0f, t));
-    
-    return vec_add(a, vec_mul(ab, t));
-}
-
 SteeringOutput steering_social_force(const Boid* agent,
                                      Vector2 goal,
                                      const Vector2* otherPositions,
@@ -1268,7 +1258,7 @@ SteeringOutput steering_social_force(const Boid* agent,
     Vector2 wallRepulsion = {0, 0};
     
     for (int i = 0; i < wallCount; i++) {
-        Vector2 closest = sfm_closest_point_on_segment(agent->pos, walls[i].start, walls[i].end);
+        Vector2 closest = closest_point_on_segment(agent->pos, walls[i].start, walls[i].end);
         Vector2 diff = vec_sub(agent->pos, closest);
         float dist = steering_vec_length(diff);
         

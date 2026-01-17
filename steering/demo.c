@@ -4803,8 +4803,6 @@ static void UpdateSFMEvacuation(float dt) {
         allVel[i] = agents[i].vel;
     }
 
-    int evacuatedCount = 0;
-
     for (int i = 0; i < agentCount; i++) {
         // Build arrays excluding self
         Vector2 otherPos[MAX_AGENTS];
@@ -4829,7 +4827,6 @@ static void UpdateSFMEvacuation(float dt) {
         // Check if agent reached exit - respawn inside room
         float distToGoal = steering_vec_distance(agents[i].pos, sfmState.goals[i]);
         if (distToGoal < 40.0f) {
-            evacuatedCount++;
             // Respawn at random location inside room
             agents[i].pos = (Vector2){randf(150, SCREEN_WIDTH - 150), randf(150, 570)};
             agents[i].vel = (Vector2){0, 0};
