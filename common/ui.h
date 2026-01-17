@@ -5,6 +5,8 @@
 
 #include "../vendor/raylib.h"
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
 
 // Initialize UI (call once at startup)
 void ui_init(Font* font);

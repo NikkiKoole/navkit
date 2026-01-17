@@ -17,7 +17,8 @@
 
 #include "../vendor/raylib.h"
 #include "steering.h"
-#include "ui.h"
+#define UI_IMPLEMENTATION
+#include "../common/ui.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
