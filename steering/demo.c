@@ -356,17 +356,6 @@ Boid agents[MAX_AGENTS];
 float wanderAngles[MAX_AGENTS];
 int agentCount = 0;
 
-// Obstacles and walls
-CircleObstacle obstacles[MAX_OBSTACLES];
-int obstacleCount = 0;
-
-Wall walls[MAX_WALLS];
-int wallCount = 0;
-
-// Path
-Vector2 pathPoints[MAX_PATH_POINTS];
-Path path = { pathPoints, 0 };
-
 // Current scenario
 Scenario currentScenario = SCENARIO_SEEK;
 
@@ -1328,8 +1317,8 @@ static CaptureFlagState captureFlagState;
 
 // EscortConvoy state
 typedef struct {
-    Vector2 path[10];
-    int pathCount;
+    Vector2 pathPoints[10];
+    Path path;
     int currentSegment;
 } EscortConvoyState;
 
@@ -1338,6 +1327,8 @@ static EscortConvoyState escortConvoyState;
 // FishShark state
 typedef struct {
     int sharkIdx;
+    CircleObstacle obstacles[4];
+    int obstacleCount;
 } FishSharkState;
 
 static FishSharkState fishSharkState;
@@ -1356,6 +1347,8 @@ typedef struct {
     float radius;
     Vector2 exits[3];
     int exitCount;
+    Wall walls[6];
+    int wallCount;
 } EvacuationState;
 
 static EvacuationState evacuationState;
@@ -1370,6 +1363,8 @@ typedef struct {
     IDMParams idm[MAX_AGENTS];
     float speeds[MAX_AGENTS];
     Vector2 targets[MAX_AGENTS];
+    Wall walls[4];
+    int wallCount;
 } TrafficState;
 
 static TrafficState trafficState;
@@ -1392,6 +1387,8 @@ typedef struct {
     int rightCount;
     int exitCount;
     Vector2 exits[4];
+    Wall walls[10];
+    int wallCount;
 } SFMState;
 
 static SFMState sfmState;
@@ -2031,16 +2028,6 @@ static void ApplySteeringWithSeparation(Boid* agent, SteeringOutput steering,
 static void ResolveCollisions(Boid* agent, int agentIndex) {
     const float agentRadius = 10.0f;
 
-    // Resolve obstacle collisions
-    if (obstacleCount > 0) {
-        steering_resolve_obstacle_collision(agent, obstacles, obstacleCount, agentRadius);
-    }
-
-    // Resolve wall collisions
-    if (wallCount > 0) {
-        steering_resolve_wall_collision(agent, walls, wallCount, agentRadius);
-    }
-
     // Resolve agent-agent collisions (respects toggle)
     if (collisionResolutionEnabled && agentCount > 1 && agentIndex >= 0) {
         steering_resolve_agent_collision(agent, agentIndex, agents, agentCount, agentRadius);
@@ -2515,16 +2502,15 @@ static void SetupEscortConvoy(void) {
     agents[5].maxSpeed = escortConvoyScenario.threatSpeed;
 
     // Convoy path
-    escortConvoyState.pathCount = 6;
-    escortConvoyState.path[0] = (Vector2){100, SCREEN_HEIGHT/2};
-    escortConvoyState.path[1] = (Vector2){400, 200};
-    escortConvoyState.path[2] = (Vector2){700, 400};
-    escortConvoyState.path[3] = (Vector2){900, 200};
-    escortConvoyState.path[4] = (Vector2){1100, 400};
-    escortConvoyState.path[5] = (Vector2){1150, SCREEN_HEIGHT/2};
+    escortConvoyState.pathPoints[0] = (Vector2){100, SCREEN_HEIGHT/2};
+    escortConvoyState.pathPoints[1] = (Vector2){400, 200};
+    escortConvoyState.pathPoints[2] = (Vector2){700, 400};
+    escortConvoyState.pathPoints[3] = (Vector2){900, 200};
+    escortConvoyState.pathPoints[4] = (Vector2){1100, 400};
+    escortConvoyState.pathPoints[5] = (Vector2){1150, SCREEN_HEIGHT/2};
 
-    path.points = escortConvoyState.path;
-    path.count = escortConvoyState.pathCount;
+    escortConvoyState.path.points = escortConvoyState.pathPoints;
+    escortConvoyState.path.count = 6;
     escortConvoyState.currentSegment = 0;
 }
 
@@ -2548,11 +2534,11 @@ static void SetupFishShark(void) {
     wanderAngles[fishSharkState.sharkIdx] = 0;
 
     // Add some rocks for fish to hide behind
-    obstacleCount = 4;
-    obstacles[0] = (CircleObstacle){{400, 250}, 50};
-    obstacles[1] = (CircleObstacle){{800, 450}, 60};
-    obstacles[2] = (CircleObstacle){{600, 550}, 45};
-    obstacles[3] = (CircleObstacle){{950, 200}, 40};
+    fishSharkState.obstacleCount = 4;
+    fishSharkState.obstacles[0] = (CircleObstacle){{400, 250}, 50};
+    fishSharkState.obstacles[1] = (CircleObstacle){{800, 450}, 60};
+    fishSharkState.obstacles[2] = (CircleObstacle){{600, 550}, 45};
+    fishSharkState.obstacles[3] = (CircleObstacle){{950, 200}, 40};
 }
 
 static void SetupPedestrian(void) {
@@ -2627,17 +2613,17 @@ static void SetupEvacuation(void) {
     evacuationState.exits[1] = (Vector2){SCREEN_WIDTH + 100, SCREEN_HEIGHT/2};  // Right exit (far outside)
 
     // Walls forming room with exit gaps
-    wallCount = 6;
+    evacuationState.wallCount = 6;
     // Top wall
-    walls[0] = (Wall){{50, 100}, {SCREEN_WIDTH - 50, 100}};
+    evacuationState.walls[0] = (Wall){{50, 100}, {SCREEN_WIDTH - 50, 100}};
     // Bottom wall
-    walls[1] = (Wall){{50, SCREEN_HEIGHT - 100}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT - 100}};
+    evacuationState.walls[1] = (Wall){{50, SCREEN_HEIGHT - 100}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT - 100}};
     // Left wall with gap
-    walls[2] = (Wall){{50, 100}, {50, SCREEN_HEIGHT/2 - 60}};
-    walls[3] = (Wall){{50, SCREEN_HEIGHT/2 + 60}, {50, SCREEN_HEIGHT - 100}};
+    evacuationState.walls[2] = (Wall){{50, 100}, {50, SCREEN_HEIGHT/2 - 60}};
+    evacuationState.walls[3] = (Wall){{50, SCREEN_HEIGHT/2 + 60}, {50, SCREEN_HEIGHT - 100}};
     // Right wall with gap
-    walls[4] = (Wall){{SCREEN_WIDTH - 50, 100}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT/2 - 60}};
-    walls[5] = (Wall){{SCREEN_WIDTH - 50, SCREEN_HEIGHT/2 + 60}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT - 100}};
+    evacuationState.walls[4] = (Wall){{SCREEN_WIDTH - 50, 100}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT/2 - 60}};
+    evacuationState.walls[5] = (Wall){{SCREEN_WIDTH - 50, SCREEN_HEIGHT/2 + 60}, {SCREEN_WIDTH - 50, SCREEN_HEIGHT - 100}};
 
     // Spread agents throughout room (avoiding fire center)
     for (int i = 0; i < agentCount; i++) {
@@ -2673,16 +2659,16 @@ static void SetupTraffic(void) {
     float sidewalkOuter = roadHalfWidth + 80.0f;  // Outer edge of sidewalk
 
     // Create walls around the pedestrian area (rectangular boundary)
-    wallCount = 4;
+    trafficState.wallCount = 4;
     float boundLeft = roadCenterX - sidewalkOuter;
     float boundRight = roadCenterX + sidewalkOuter;
     float boundTop = roadCenterY - sidewalkOuter;
     float boundBottom = roadCenterY + sidewalkOuter;
 
-    walls[0] = (Wall){{boundLeft, boundTop}, {boundRight, boundTop}};      // Top
-    walls[1] = (Wall){{boundRight, boundTop}, {boundRight, boundBottom}};  // Right
-    walls[2] = (Wall){{boundRight, boundBottom}, {boundLeft, boundBottom}}; // Bottom
-    walls[3] = (Wall){{boundLeft, boundBottom}, {boundLeft, boundTop}};    // Left
+    trafficState.walls[0] = (Wall){{boundLeft, boundTop}, {boundRight, boundTop}};      // Top
+    trafficState.walls[1] = (Wall){{boundRight, boundTop}, {boundRight, boundBottom}};  // Right
+    trafficState.walls[2] = (Wall){{boundRight, boundBottom}, {boundLeft, boundBottom}}; // Bottom
+    trafficState.walls[3] = (Wall){{boundLeft, boundBottom}, {boundLeft, boundTop}};    // Left
 
     // Spawn cars with IDM parameters
     for (int i = 0; i < trafficState.numCars; i++) {
@@ -2790,9 +2776,9 @@ static void SetupSFMCorridor(void) {
     agentCount = sfmState.leftCount + sfmState.rightCount;
 
     // Corridor walls
-    wallCount = 2;
-    walls[0] = (Wall){{50, 200}, {SCREEN_WIDTH - 50, 200}};   // Top wall
-    walls[1] = (Wall){{50, 520}, {SCREEN_WIDTH - 50, 520}};   // Bottom wall
+    sfmState.wallCount = 2;
+    sfmState.walls[0] = (Wall){{50, 200}, {SCREEN_WIDTH - 50, 200}};   // Top wall
+    sfmState.walls[1] = (Wall){{50, 520}, {SCREEN_WIDTH - 50, 520}};   // Bottom wall
 
     // Spawn left-to-right agents on left side
     for (int i = 0; i < sfmState.leftCount; i++) {
@@ -2836,20 +2822,20 @@ static void SetupSFMEvacuation(void) {
     agentCount = 60;
 
     // Room walls with two exits
-    wallCount = 8;
+    sfmState.wallCount = 8;
     // Top wall
-    walls[0] = (Wall){{100, 100}, {SCREEN_WIDTH - 100, 100}};
+    sfmState.walls[0] = (Wall){{100, 100}, {SCREEN_WIDTH - 100, 100}};
     // Bottom wall with gap (exit 1)
-    walls[1] = (Wall){{100, 620}, {500, 620}};
-    walls[2] = (Wall){{580, 620}, {SCREEN_WIDTH - 100, 620}};
+    sfmState.walls[1] = (Wall){{100, 620}, {500, 620}};
+    sfmState.walls[2] = (Wall){{580, 620}, {SCREEN_WIDTH - 100, 620}};
     // Left wall
-    walls[3] = (Wall){{100, 100}, {100, 620}};
+    sfmState.walls[3] = (Wall){{100, 100}, {100, 620}};
     // Right wall with gap (exit 2)
-    walls[4] = (Wall){{SCREEN_WIDTH - 100, 100}, {SCREEN_WIDTH - 100, 280}};
-    walls[5] = (Wall){{SCREEN_WIDTH - 100, 360}, {SCREEN_WIDTH - 100, 620}};
+    sfmState.walls[4] = (Wall){{SCREEN_WIDTH - 100, 100}, {SCREEN_WIDTH - 100, 280}};
+    sfmState.walls[5] = (Wall){{SCREEN_WIDTH - 100, 360}, {SCREEN_WIDTH - 100, 620}};
     // Exit funnels (guide toward exits)
-    walls[6] = (Wall){{450, 620}, {480, 580}};
-    walls[7] = (Wall){{630, 620}, {600, 580}};
+    sfmState.walls[6] = (Wall){{450, 620}, {480, 580}};
+    sfmState.walls[7] = (Wall){{630, 620}, {600, 580}};
 
     // Exit positions
     sfmState.exitCount = 2;
@@ -2884,7 +2870,7 @@ static void SetupSFMCrossing(void) {
     int perDirection = agentCount / 4;
 
     // No walls - open plaza crossing
-    wallCount = 0;
+    sfmState.wallCount = 0;
 
     // Spawn agents from 4 directions, each heading to opposite side
     int idx = 0;
@@ -3148,19 +3134,20 @@ static void SetupVehiclePursuit(void) {
     vehicleState.lookahead = 80.0f;
 
     // Create a closed-loop racetrack path (loops back to start)
-    path.count = 12;
-    pathPoints[0] = (Vector2){150, 550};
-    pathPoints[1] = (Vector2){300, 350};
-    pathPoints[2] = (Vector2){450, 250};
-    pathPoints[3] = (Vector2){650, 200};
-    pathPoints[4] = (Vector2){850, 250};
-    pathPoints[5] = (Vector2){1050, 200};
-    pathPoints[6] = (Vector2){1150, 350};
-    pathPoints[7] = (Vector2){1100, 500};
-    pathPoints[8] = (Vector2){900, 600};
-    pathPoints[9] = (Vector2){650, 580};
-    pathPoints[10] = (Vector2){400, 620};
-    pathPoints[11] = (Vector2){200, 600};  // Connects back toward pathPoints[0]
+    vehicleState.path.count = 12;
+    vehicleState.path.points = vehicleState.pathPoints;
+    vehicleState.pathPoints[0] = (Vector2){150, 550};
+    vehicleState.pathPoints[1] = (Vector2){300, 350};
+    vehicleState.pathPoints[2] = (Vector2){450, 250};
+    vehicleState.pathPoints[3] = (Vector2){650, 200};
+    vehicleState.pathPoints[4] = (Vector2){850, 250};
+    vehicleState.pathPoints[5] = (Vector2){1050, 200};
+    vehicleState.pathPoints[6] = (Vector2){1150, 350};
+    vehicleState.pathPoints[7] = (Vector2){1100, 500};
+    vehicleState.pathPoints[8] = (Vector2){900, 600};
+    vehicleState.pathPoints[9] = (Vector2){650, 580};
+    vehicleState.pathPoints[10] = (Vector2){400, 620};
+    vehicleState.pathPoints[11] = (Vector2){200, 600};  // Connects back toward pathPoints[0]
 }
 
 static void SetupDWANavigation(void) {
@@ -3184,15 +3171,15 @@ static void SetupDWANavigation(void) {
     dwaState.turnDirection = 0;
 
     // Dense obstacle field
-    obstacleCount = 8;
-    obstacles[0] = (CircleObstacle){{350, 300}, 50};
-    obstacles[1] = (CircleObstacle){{500, 450}, 60};
-    obstacles[2] = (CircleObstacle){{650, 280}, 45};
-    obstacles[3] = (CircleObstacle){{400, 550}, 55};
-    obstacles[4] = (CircleObstacle){{750, 500}, 40};
-    obstacles[5] = (CircleObstacle){{550, 200}, 35};
-    obstacles[6] = (CircleObstacle){{850, 350}, 50};
-    obstacles[7] = (CircleObstacle){{950, 500}, 45};
+    dwaState.obstacleCount = 8;
+    dwaState.obstacles[0] = (CircleObstacle){{350, 300}, 50};
+    dwaState.obstacles[1] = (CircleObstacle){{500, 450}, 60};
+    dwaState.obstacles[2] = (CircleObstacle){{650, 280}, 45};
+    dwaState.obstacles[3] = (CircleObstacle){{400, 550}, 55};
+    dwaState.obstacles[4] = (CircleObstacle){{750, 500}, 40};
+    dwaState.obstacles[5] = (CircleObstacle){{550, 200}, 35};
+    dwaState.obstacles[6] = (CircleObstacle){{850, 350}, 50};
+    dwaState.obstacles[7] = (CircleObstacle){{950, 500}, 45};
 }
 
 static void SetupFlowField(void) {
@@ -3221,13 +3208,6 @@ static void SetupFlowField(void) {
 
 static void SetupScenario(Scenario scenario) {
     currentScenario = scenario;
-    obstacleCount = 0;
-    wallCount = 0;
-    path.points = pathPoints;  // Reset to default array (Convoy changes this)
-    path.count = 0;
-    forageState.resourceCount = 0;
-    patrolState.waypointCount = 0;
-
     scenarios[scenario].setup();
 }
 
@@ -3373,8 +3353,6 @@ static void UpdateContainment(float dt) {
         }
 
         // Resolve collisions with elastic bouncing
-        steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
-        steering_resolve_wall_collision(&agents[i], walls, wallCount, 10.0f);
         steering_resolve_agent_collision_elastic(&agents[i], i, agents, agentCount, 10.0f, containmentScenario.restitution);
     }
 }
@@ -3483,7 +3461,7 @@ static void UpdateHide(float dt) {
     ResolveCollisions(pursuer, -1);
 
     // Agent hides
-    SteeringOutput hide = steering_hide(&agents[0], pursuer->pos, obstacles, obstacleCount);
+    SteeringOutput hide = steering_hide(&agents[0], pursuer->pos, hideState.obstacles, hideState.obstacleCount);
     steering_apply(&agents[0], hide, dt);
     ResolveCollisions(&agents[0], 0);
 }
@@ -3497,7 +3475,7 @@ static void UpdateObstacleAvoid(float dt) {
         agents[i].maxForce = obstacleAvoidScenario.maxForce;
 
         SteeringOutput seek = steering_seek(&agents[i], target);
-        SteeringOutput avoid = steering_obstacle_avoid(&agents[i], obstacles, obstacleCount, obstacleAvoidScenario.detectDistance);
+        SteeringOutput avoid = steering_obstacle_avoid(&agents[i], obstacleAvoidState.obstacles, obstacleAvoidState.obstacleCount, obstacleAvoidScenario.detectDistance);
 
         SteeringOutput outputs[2] = {avoid, seek};
         float weights[2] = {obstacleAvoidScenario.avoidWeight, obstacleAvoidScenario.seekWeight};
@@ -3524,7 +3502,7 @@ static void UpdateWallAvoid(float dt) {
         agents[i].maxForce = wallAvoidScenario.maxForce;
 
         SteeringOutput seek = steering_seek(&agents[i], target);
-        SteeringOutput avoid = steering_wall_avoid(&agents[i], walls, wallCount, wallAvoidScenario.detectDistance);
+        SteeringOutput avoid = steering_wall_avoid(&agents[i], wallAvoidState.walls, wallAvoidState.wallCount, wallAvoidScenario.detectDistance);
 
         SteeringOutput outputs[2] = {avoid, seek};
         float weights[2] = {wallAvoidScenario.avoidWeight, wallAvoidScenario.seekWeight};
@@ -3540,7 +3518,7 @@ static void UpdateWallAvoid(float dt) {
 }
 
 static void UpdateWallFollow(float dt) {
-    SteeringOutput follow = steering_wall_follow(&agents[0], walls, wallCount,
+    SteeringOutput follow = steering_wall_follow(&agents[0], wallFollowState.walls, wallFollowState.wallCount,
                                                   wallFollowScenario.followDistance,
                                                   wallFollowScenario.followSide);
     steering_apply(&agents[0], follow, dt);
@@ -3548,13 +3526,13 @@ static void UpdateWallFollow(float dt) {
 }
 
 static void UpdatePathFollow(float dt) {
-    SteeringOutput follow = steering_path_follow(&agents[0], &path, pathFollowScenario.pathRadius, &pathFollowState.currentSegment);
+    SteeringOutput follow = steering_path_follow(&agents[0], &pathFollowState.path, pathFollowScenario.pathRadius, &pathFollowState.currentSegment);
     steering_apply(&agents[0], follow, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Reset if reached end
-    if (steering_vec_distance(agents[0].pos, pathPoints[path.count - 1]) < 20) {
-        agents[0].pos = pathPoints[0];
+    if (steering_vec_distance(agents[0].pos, pathFollowState.points[pathFollowState.path.count - 1]) < 20) {
+        agents[0].pos = pathFollowState.points[0];
         pathFollowState.currentSegment = 0;
     }
 }
@@ -3654,7 +3632,7 @@ static void UpdateQueuing(float dt) {
                                               neighborCount, 80.0f, 60.0f);
 
         // Avoid walls
-        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 50.0f);
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], queuingState.walls, queuingState.wallCount, 50.0f);
 
         // Separation to prevent overlap
         SteeringOutput sep = steering_separation(&agents[i], neighborPos, neighborCount, 25.0f);
@@ -4036,13 +4014,13 @@ static void UpdateEscortConvoy(float dt) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
 
     // VIP follows path
-    SteeringOutput vipPath = steering_path_follow(&agents[0], &path, 40.0f, &escortConvoyState.currentSegment);
+    SteeringOutput vipPath = steering_path_follow(&agents[0], &escortConvoyState.path, 40.0f, &escortConvoyState.currentSegment);
     steering_apply(&agents[0], vipPath, dt);
     ResolveCollisions(&agents[0], 0);
 
     // Reset VIP if reached end
-    if (steering_vec_distance(agents[0].pos, escortConvoyState.path[escortConvoyState.pathCount-1]) < 30) {
-        agents[0].pos = escortConvoyState.path[0];
+    if (steering_vec_distance(agents[0].pos, escortConvoyState.pathPoints[escortConvoyState.path.count-1]) < 30) {
+        agents[0].pos = escortConvoyState.pathPoints[0];
         escortConvoyState.currentSegment = 0;
     }
 
@@ -4166,7 +4144,7 @@ static void UpdateFishShark(float dt) {
         SteeringOutput steering;
         if (distToShark < panicRadius) {
             // PANIC! Try to hide or evade
-            SteeringOutput hide = steering_hide(&agents[i], agents[fishSharkState.sharkIdx].pos, obstacles, obstacleCount);
+            SteeringOutput hide = steering_hide(&agents[i], agents[fishSharkState.sharkIdx].pos, fishSharkState.obstacles, fishSharkState.obstacleCount);
             SteeringOutput evade = steering_evasion(&agents[i], agents[fishSharkState.sharkIdx].pos, agents[fishSharkState.sharkIdx].vel, 1.0f);
             SteeringOutput sep = steering_separation(&agents[i], neighborPos, neighborCount, 25.0f);
 
@@ -4195,10 +4173,12 @@ static void UpdateFishShark(float dt) {
         SteeringOutput outputs[2] = {steering, contain};
         float weights[2] = {1.0f, 2.0f};
         steering_apply(&agents[i], steering_blend(outputs, weights, 2), dt);
+        steering_resolve_obstacle_collision(&agents[i], fishSharkState.obstacles, fishSharkState.obstacleCount, 10.0f);
         ResolveCollisions(&agents[i], i);
     }
 
     // Resolve shark collisions too
+    steering_resolve_obstacle_collision(&agents[fishSharkState.sharkIdx], fishSharkState.obstacles, fishSharkState.obstacleCount, 10.0f);
     ResolveCollisions(&agents[fishSharkState.sharkIdx], fishSharkState.sharkIdx);
 }
 
@@ -4433,7 +4413,7 @@ static void UpdateEvacuation(float dt) {
 
         // Behaviors
         SteeringOutput seekExit = steering_seek(&agents[i], nearestExit);
-        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 40.0f);
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], evacuationState.walls, evacuationState.wallCount, 40.0f);
         SteeringOutput queue = steering_queue(&agents[i], neighborPos, neighborVel, neighborCount, 60.0f, 50.0f);
         SteeringOutput separate = steering_separation(&agents[i], neighborPos, neighborCount, 20.0f);
 
@@ -4684,7 +4664,7 @@ static void UpdateTraffic(float dt) {
         SteeringOutput immediateSep = steering_separation(&agents[i], carPositions, trafficState.numCars, 40.0f);
 
         // Wall avoidance to stay in bounds
-        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 40.0f);
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], trafficState.walls, trafficState.wallCount, 40.0f);
 
         // Separate from other pedestrians
         Vector2 pedPositions[MAX_AGENTS];
@@ -4911,7 +4891,7 @@ static void UpdateSFMCorridor(float dt) {
         }
 
         // Wall avoidance
-        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 50.0f);
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], sfmState.walls, sfmState.wallCount, 50.0f);
 
         // Blend: alignment and cohesion help form lanes, moderate avoid for oncoming
         SteeringOutput outputs[6] = {seek, align, cohSame, sepSame, avoidOpp, wallAvoid};
@@ -4967,8 +4947,8 @@ static void UpdateSFMEvacuation(float dt) {
         // Apply Social Force Model
         SteeringOutput sfm = steering_social_force(&agents[i], sfmState.goals[i],
                                                     otherPos, otherVel, otherCount,
-                                                    walls, wallCount,
-                                                    obstacles, obstacleCount,
+                                                    sfmState.walls, sfmState.wallCount,
+                                                    NULL, 0,
                                                     sfmState.params);
         steering_apply(&agents[i], sfm, dt);
 
@@ -5092,7 +5072,7 @@ static void UpdateCtxObstacleCourse(float dt) {
         ctx_interest_velocity(ctx, agents[i].vel, 0.3f);
 
         // Danger: obstacles
-        ctx_danger_obstacles(ctx, agents[i].pos, 10.0f, obstacles, obstacleCount, 80.0f);
+        ctx_danger_obstacles(ctx, agents[i].pos, 10.0f, ctxState.obstacles, ctxState.obstacleCount, 80.0f);
 
         // Danger: other agents
         Vector2 otherPos[MAX_AGENTS];
@@ -5134,7 +5114,7 @@ static void UpdateCtxObstacleCourse(float dt) {
         agents[i].pos.y += agents[i].vel.y * dt;
 
         // Hard collision resolution
-        steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
+        steering_resolve_obstacle_collision(&agents[i], ctxState.obstacles, ctxState.obstacleCount, 10.0f);
 
         // Reset if reached goal
         if (steering_vec_distance(agents[i].pos, ctxState.targets[i]) < 30.0f) {
@@ -5157,13 +5137,13 @@ static void UpdateCtxMaze(float dt) {
     ctx_interest_seek(ctx, agents[0].pos, ctxState.mazeGoal, 1.0f);
 
     // Interest: openness (prefer open directions)
-    ctx_interest_openness(ctx, agents[0].pos, obstacles, obstacleCount, walls, wallCount, 0.4f);
+    ctx_interest_openness(ctx, agents[0].pos, ctxState.obstacles, ctxState.obstacleCount, ctxState.walls, ctxState.wallCount, 0.4f);
 
     // Interest: momentum
     ctx_interest_velocity(ctx, agents[0].vel, 0.35f);
 
     // Danger: walls (critical for maze navigation)
-    ctx_danger_walls(ctx, agents[0].pos, 10.0f, walls, wallCount, 100.0f);
+    ctx_danger_walls(ctx, agents[0].pos, 10.0f, ctxState.walls, ctxState.wallCount, 100.0f);
 
     // Get smooth direction
     float speed;
@@ -5192,7 +5172,7 @@ static void UpdateCtxMaze(float dt) {
     agents[0].pos.y += agents[0].vel.y * dt;
 
     // Hard collision resolution
-    steering_resolve_wall_collision(&agents[0], walls, wallCount, 10.0f);
+    steering_resolve_wall_collision(&agents[0], ctxState.walls, ctxState.wallCount, 10.0f);
 }
 
 static void UpdateCtxCrowd(float dt) {
@@ -5254,7 +5234,7 @@ static void UpdateCtxCrowd(float dt) {
         }
 
         // Wall avoidance
-        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], walls, wallCount, 40.0f);
+        SteeringOutput wallAvoid = steering_wall_avoid(&agents[i], ctxState.walls, ctxState.wallCount, 40.0f);
 
         // Blend: seek is primary, alignment helps form lanes, mild same-sep, moderate opp-avoid
         SteeringOutput outputs[5] = {seek, align, sepSame, avoidOpp, wallAvoid};
@@ -5322,7 +5302,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         // Interest: openness (move toward open space when threatened)
         float threatDist = steering_vec_distance(agents[i].pos, predatorPos);
         if (threatDist < 200.0f) {
-            ctx_interest_openness(ctx, agents[i].pos, obstacles, obstacleCount, NULL, 0, 0.8f);
+            ctx_interest_openness(ctx, agents[i].pos, ctxState.obstacles, ctxState.obstacleCount, NULL, 0, 0.8f);
         }
 
         // Interest: momentum
@@ -5332,7 +5312,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         ctx_danger_threats(ctx, agents[i].pos, &predatorPos, 1, 100.0f, 250.0f);
 
         // Danger: obstacles
-        ctx_danger_obstacles(ctx, agents[i].pos, 10.0f, obstacles, obstacleCount, 50.0f);
+        ctx_danger_obstacles(ctx, agents[i].pos, 10.0f, ctxState.obstacles, ctxState.obstacleCount, 50.0f);
 
         // Danger: boundaries
         ctx_danger_bounds(ctx, agents[i].pos, bounds, 80.0f);
@@ -5379,7 +5359,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         agents[i].pos.y += agents[i].vel.y * dt;
 
         // Hard collision resolution
-        steering_resolve_obstacle_collision(&agents[i], obstacles, obstacleCount, 10.0f);
+        steering_resolve_obstacle_collision(&agents[i], ctxState.obstacles, ctxState.obstacleCount, 10.0f);
     }
 
     // Update predator (regular steering - pursuit)
@@ -5391,7 +5371,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         SteeringOutput pursuit = steering_pursuit(predator, agents[nearestPrey].pos,
                                                    agents[nearestPrey].vel, 1.5f);
         SteeringOutput contain = steering_containment(predator, bounds, 80.0f);
-        SteeringOutput obsAvoid = steering_obstacle_avoid(predator, obstacles, obstacleCount, 60.0f);
+        SteeringOutput obsAvoid = steering_obstacle_avoid(predator, ctxState.obstacles, ctxState.obstacleCount, 60.0f);
 
         SteeringOutput outputs[3] = {pursuit, obsAvoid, contain};
         float weights[3] = {1.0f, 2.0f, 1.5f};
@@ -5407,7 +5387,7 @@ static void UpdateCtxPredatorPrey(float dt) {
         steering_apply(predator, steering_blend(outputs, weights, 2), dt);
     }
 
-    steering_resolve_obstacle_collision(predator, obstacles, obstacleCount, 12.0f);
+    steering_resolve_obstacle_collision(predator, ctxState.obstacles, ctxState.obstacleCount, 12.0f);
 }
 
 // ============================================================================
@@ -5487,12 +5467,12 @@ static void UpdateVehiclePursuit(float dt) {
         SteeringOutput steering;
 
         // Check if on last segment or past it - need to steer toward first point to loop
-        float distToLast = steering_vec_distance(vehicleState.agents[i].pos, pathPoints[path.count - 1]);
-        float distToFirst = steering_vec_distance(vehicleState.agents[i].pos, pathPoints[0]);
+        float distToLast = steering_vec_distance(vehicleState.agents[i].pos, vehicleState.pathPoints[vehicleState.path.count - 1]);
+        float distToFirst = steering_vec_distance(vehicleState.agents[i].pos, vehicleState.pathPoints[0]);
 
-        if (segment >= path.count - 2 && distToLast < vehicleState.lookahead * 1.5f) {
+        if (segment >= vehicleState.path.count - 2 && distToLast < vehicleState.lookahead * 1.5f) {
             // On last segment and approaching end - steer toward first point to complete loop
-            steering = curv_seek(&vehicleState.agents[i], pathPoints[0]);
+            steering = curv_seek(&vehicleState.agents[i], vehicleState.pathPoints[0]);
 
             // If we're close to the first point, reset segment to continue normal path following
             if (distToFirst < vehicleState.lookahead) {
@@ -5500,7 +5480,7 @@ static void UpdateVehiclePursuit(float dt) {
             }
         } else {
             // Normal pure pursuit path following
-            steering = steering_pure_pursuit(&vehicleState.agents[i], &path, vehicleState.lookahead, &segment);
+            steering = steering_pure_pursuit(&vehicleState.agents[i], &vehicleState.path, vehicleState.lookahead, &segment);
         }
 
         vehicleState.pathSegments[i] = segment;
@@ -5533,8 +5513,8 @@ static void UpdateDWANavigation(float dt) {
     // Calculate current clearance
     float currentClearance = 1e10f;
     int nearestObstacle = -1;
-    for (int i = 0; i < obstacleCount; i++) {
-        float dist = steering_vec_distance(vehicleState.agents[0].pos, obstacles[i].center) - obstacles[i].radius - 18.0f;
+    for (int i = 0; i < dwaState.obstacleCount; i++) {
+        float dist = steering_vec_distance(vehicleState.agents[0].pos, dwaState.obstacles[i].center) - dwaState.obstacles[i].radius - 18.0f;
         if (dist < currentClearance) {
             currentClearance = dist;
             nearestObstacle = i;
@@ -5553,7 +5533,7 @@ static void UpdateDWANavigation(float dt) {
     switch (dwaState.mode) {
         case DWA_NORMAL: {
             // Use DWA for normal navigation
-            steering = steering_dwa(&vehicleState.agents[0], dwaState.goal, obstacles, obstacleCount, walls, wallCount, dwaState.params);
+            steering = steering_dwa(&vehicleState.agents[0], dwaState.goal, dwaState.obstacles, dwaState.obstacleCount, NULL, 0, dwaState.params);
 
             // Smoothing: blend with previous command to reduce jitter
             // This prevents the rapid flip-flopping that causes oscillation
@@ -5590,8 +5570,8 @@ static void UpdateDWANavigation(float dt) {
                 // Pick turn direction: away from nearest obstacle, and commit to it
                 if (nearestObstacle >= 0) {
                     Vector2 toObs = {
-                        obstacles[nearestObstacle].center.x - vehicleState.agents[0].pos.x,
-                        obstacles[nearestObstacle].center.y - vehicleState.agents[0].pos.y
+                        dwaState.obstacles[nearestObstacle].center.x - vehicleState.agents[0].pos.x,
+                        dwaState.obstacles[nearestObstacle].center.y - vehicleState.agents[0].pos.y
                     };
                     // Cross product with forward vector to determine which side obstacle is on
                     float cross = cosf(vehicleState.agents[0].heading) * toObs.y - sinf(vehicleState.agents[0].heading) * toObs.x;
@@ -5767,34 +5747,6 @@ static void UpdateScenario(float dt) {
 // Draw Functions
 // ============================================================================
 
-static void DrawObstacles(void) {
-    for (int i = 0; i < obstacleCount; i++) {
-        DrawCircleV(obstacles[i].center, obstacles[i].radius, (Color){80, 80, 80, 255});
-        DrawCircleLinesV(obstacles[i].center, obstacles[i].radius, GRAY);
-    }
-}
-
-static void DrawWalls(void) {
-    for (int i = 0; i < wallCount; i++) {
-        DrawLineEx(walls[i].start, walls[i].end, 4, ORANGE);
-    }
-}
-
-static void DrawPath(void) {
-    if (path.count < 2) return;
-
-    // Use pathFollowState.currentSegment for coloring completed segments
-    // (only relevant for PathFollow scenario, but harmless for others)
-    for (int i = 0; i < path.count - 1; i++) {
-        Color color = (i < pathFollowState.currentSegment) ? DARKGRAY : SKYBLUE;
-        DrawLineEx(path.points[i], path.points[i + 1], 3, color);
-    }
-
-    for (int i = 0; i < path.count; i++) {
-        DrawCircleV(path.points[i], 8, (i == 0) ? GREEN : (i == path.count - 1) ? RED : BLUE);
-    }
-}
-
 // ============================================================================
 // Scenario Draw Functions
 // ============================================================================
@@ -5955,6 +5907,12 @@ static void DrawLeaderFollow(void) {
 }
 
 static void DrawHide(void) {
+    // Draw obstacles
+    for (int i = 0; i < hideState.obstacleCount; i++) {
+        DrawCircleV(hideState.obstacles[i].center, hideState.obstacles[i].radius, (Color){139, 69, 19, 200});
+        DrawCircleLinesV(hideState.obstacles[i].center, hideState.obstacles[i].radius, BROWN);
+    }
+    
     // Hider (blue)
     DrawAgent(&agents[0], SKYBLUE);
     DrawVelocityVector(&agents[0], GREEN);
@@ -5966,6 +5924,12 @@ static void DrawHide(void) {
 static void DrawObstacleAvoid(void) {
     Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
     
+    // Draw obstacles
+    for (int i = 0; i < obstacleAvoidState.obstacleCount; i++) {
+        DrawCircleV(obstacleAvoidState.obstacles[i].center, obstacleAvoidState.obstacles[i].radius, (Color){139, 69, 19, 200});
+        DrawCircleLinesV(obstacleAvoidState.obstacles[i].center, obstacleAvoidState.obstacles[i].radius, BROWN);
+    }
+    
     for (int i = 0; i < agentCount; i++) {
         DrawAgent(&agents[i], SKYBLUE);
         DrawVelocityVector(&agents[i], GREEN);
@@ -5976,6 +5940,11 @@ static void DrawObstacleAvoid(void) {
 static void DrawWallAvoid(void) {
     Vector2 target = {SCREEN_WIDTH - 100, SCREEN_HEIGHT/2};
     
+    // Draw walls
+    for (int w = 0; w < wallAvoidState.wallCount; w++) {
+        DrawLineEx(wallAvoidState.walls[w].start, wallAvoidState.walls[w].end, 4, DARKGRAY);
+    }
+    
     for (int i = 0; i < agentCount; i++) {
         DrawAgent(&agents[i], SKYBLUE);
         DrawVelocityVector(&agents[i], GREEN);
@@ -5984,11 +5953,24 @@ static void DrawWallAvoid(void) {
 }
 
 static void DrawWallFollow(void) {
+    // Draw walls
+    for (int w = 0; w < wallFollowState.wallCount; w++) {
+        DrawLineEx(wallFollowState.walls[w].start, wallFollowState.walls[w].end, 4, DARKGRAY);
+    }
+    
     DrawAgent(&agents[0], SKYBLUE);
     DrawVelocityVector(&agents[0], GREEN);
 }
 
 static void DrawPathFollow(void) {
+    // Draw path
+    for (int i = 0; i < pathFollowState.path.count - 1; i++) {
+        DrawLineEx(pathFollowState.points[i], pathFollowState.points[i+1], 3, (Color){100, 100, 255, 200});
+    }
+    for (int i = 0; i < pathFollowState.path.count; i++) {
+        DrawCircleV(pathFollowState.points[i], 8, (i == 0) ? GREEN : (i == pathFollowState.path.count - 1) ? RED : BLUE);
+    }
+    
     DrawAgent(&agents[0], SKYBLUE);
     DrawVelocityVector(&agents[0], GREEN);
 }
@@ -6018,6 +6000,11 @@ static void DrawFormation(void) {
 
 static void DrawQueuing(void) {
     float exitLineX = 900;
+    
+    // Draw walls
+    for (int w = 0; w < queuingState.wallCount; w++) {
+        DrawLineEx(queuingState.walls[w].start, queuingState.walls[w].end, 4, DARKGRAY);
+    }
     
     for (int i = 0; i < agentCount; i++) {
         DrawAgent(&agents[i], SKYBLUE);
@@ -6208,16 +6195,22 @@ static void DrawEscortConvoy(void) {
     }
     
     // Draw convoy path
-    for (int i = 0; i < escortConvoyState.pathCount - 1; i++) {
-        DrawLineEx(escortConvoyState.path[i], escortConvoyState.path[i+1], 2, (Color){100, 100, 100, 150});
+    for (int i = 0; i < escortConvoyState.path.count - 1; i++) {
+        DrawLineEx(escortConvoyState.pathPoints[i], escortConvoyState.pathPoints[i+1], 2, (Color){100, 100, 100, 150});
     }
-    for (int i = 0; i < escortConvoyState.pathCount; i++) {
-        DrawCircleV(escortConvoyState.path[i], 6, (Color){100, 100, 100, 200});
+    for (int i = 0; i < escortConvoyState.path.count; i++) {
+        DrawCircleV(escortConvoyState.pathPoints[i], 6, (Color){100, 100, 100, 200});
     }
 }
 
 static void DrawFishShark(void) {
     float panicRadius = 180.0f;
+
+    // Draw rocks (obstacles)
+    for (int i = 0; i < fishSharkState.obstacleCount; i++) {
+        DrawCircleV(fishSharkState.obstacles[i].center, fishSharkState.obstacles[i].radius, (Color){80, 80, 80, 255});
+        DrawCircleLinesV(fishSharkState.obstacles[i].center, fishSharkState.obstacles[i].radius, GRAY);
+    }
     
     // Fish (blue shades)
     for (int i = 0; i < agentCount - 1; i++) {
@@ -6302,8 +6295,8 @@ static void DrawEvacuation(void) {
     DrawTextShadow("EXIT", SCREEN_WIDTH - 58, SCREEN_HEIGHT/2 - 8, 16, WHITE);
     
     // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    for (int w = 0; w < evacuationState.wallCount; w++) {
+        DrawLineEx(evacuationState.walls[w].start, evacuationState.walls[w].end, 4, GRAY);
     }
 }
 
@@ -6347,8 +6340,8 @@ static void DrawTraffic(void) {
     DrawCircleV((Vector2){intersectionRight + 20, intersectionTop - 20}, 12, ewColor);
     
     // Draw boundary walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 2, (Color){100, 100, 100, 150});
+    for (int w = 0; w < trafficState.wallCount; w++) {
+        DrawLineEx(trafficState.walls[w].start, trafficState.walls[w].end, 2, (Color){100, 100, 100, 150});
     }
     
     // Cars
@@ -6405,8 +6398,8 @@ static void DrawSFMCorridor(void) {
     }
     
     // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    for (int w = 0; w < sfmState.wallCount; w++) {
+        DrawLineEx(sfmState.walls[w].start, sfmState.walls[w].end, 4, GRAY);
     }
     
     DrawTextShadow("<<<", SCREEN_WIDTH - 100, 340, 24, (Color){200, 100, 100, 150});
@@ -6428,8 +6421,8 @@ static void DrawSFMEvacuation(void) {
     }
     
     // Draw walls
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
+    for (int w = 0; w < sfmState.wallCount; w++) {
+        DrawLineEx(sfmState.walls[w].start, sfmState.walls[w].end, 4, GRAY);
     }
     
     // Draw exits
@@ -6469,6 +6462,12 @@ static void DrawSFMCrossing(void) {
 }
 
 static void DrawCtxObstacleCourse(void) {
+    // Draw obstacles
+    for (int i = 0; i < ctxState.obstacleCount; i++) {
+        DrawCircleV(ctxState.obstacles[i].center, ctxState.obstacles[i].radius, (Color){139, 69, 19, 200});
+        DrawCircleLinesV(ctxState.obstacles[i].center, ctxState.obstacles[i].radius, BROWN);
+    }
+    
     for (int i = 0; i < agentCount; i++) {
         Color agentColor = (i == 0) ? GOLD : SKYBLUE;
         DrawAgent(&agents[i], agentColor);
@@ -6486,6 +6485,11 @@ static void DrawCtxObstacleCourse(void) {
 }
 
 static void DrawCtxMaze(void) {
+    // Draw walls
+    for (int w = 0; w < ctxState.wallCount; w++) {
+        DrawLineEx(ctxState.walls[w].start, ctxState.walls[w].end, 4, GRAY);
+    }
+    
     DrawAgent(&agents[0], GOLD);
     DrawVelocityVector(&agents[0], WHITE);
     
@@ -6494,22 +6498,19 @@ static void DrawCtxMaze(void) {
     
     DrawCircleV(ctxState.mazeGoal, 15, (Color){0, 255, 0, 150});
     DrawCircleLinesV(ctxState.mazeGoal, 15, GREEN);
-    
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
-    }
 }
 
 static void DrawCtxCrowd(void) {
+    // Draw walls
+    for (int w = 0; w < ctxState.wallCount; w++) {
+        DrawLineEx(ctxState.walls[w].start, ctxState.walls[w].end, 4, GRAY);
+    }
+    
     int halfCount = agentCount / 2;
     for (int i = 0; i < agentCount; i++) {
         Color color = (i < halfCount) ? (Color){100, 200, 100, 255} : (Color){200, 100, 100, 255};
         DrawAgent(&agents[i], color);
         DrawVelocityVector(&agents[i], WHITE);
-    }
-    
-    for (int w = 0; w < wallCount; w++) {
-        DrawLineEx(walls[w].start, walls[w].end, 4, GRAY);
     }
     
     DrawTextShadow(">>>", 80, 350, 24, (Color){100, 200, 100, 150});
@@ -6519,6 +6520,12 @@ static void DrawCtxCrowd(void) {
 static void DrawCtxPredatorPrey(void) {
     Rectangle bounds = {50, 50, SCREEN_WIDTH-100, SCREEN_HEIGHT-100};
     Vector2 predatorPos = agents[ctxState.predatorIndex].pos;
+    
+    // Draw obstacles
+    for (int i = 0; i < ctxState.obstacleCount; i++) {
+        DrawCircleV(ctxState.obstacles[i].center, ctxState.obstacles[i].radius, (Color){139, 69, 19, 200});
+        DrawCircleLinesV(ctxState.obstacles[i].center, ctxState.obstacles[i].radius, BROWN);
+    }
     
     // Prey
     for (int i = 0; i < ctxState.predatorIndex; i++) {
@@ -6578,12 +6585,12 @@ static void DrawCouzinZones(void) {
 
 static void DrawVehiclePursuit(void) {
     // Draw path
-    for (int i = 0; i < path.count; i++) {
-        int next = (i + 1) % path.count;
-        DrawLineEx(pathPoints[i], pathPoints[next], 3, SKYBLUE);
+    for (int i = 0; i < vehicleState.path.count; i++) {
+        int next = (i + 1) % vehicleState.path.count;
+        DrawLineEx(vehicleState.pathPoints[i], vehicleState.pathPoints[next], 3, SKYBLUE);
     }
-    for (int i = 0; i < path.count; i++) {
-        DrawCircleV(pathPoints[i], 6, BLUE);
+    for (int i = 0; i < vehicleState.path.count; i++) {
+        DrawCircleV(vehicleState.pathPoints[i], 6, BLUE);
     }
     
     // Draw vehicles
@@ -6611,6 +6618,12 @@ static void DrawVehiclePursuit(void) {
 }
 
 static void DrawDWANavigation(void) {
+    // Draw obstacles
+    for (int i = 0; i < dwaState.obstacleCount; i++) {
+        DrawCircleV(dwaState.obstacles[i].center, dwaState.obstacles[i].radius, (Color){139, 69, 19, 200});
+        DrawCircleLinesV(dwaState.obstacles[i].center, dwaState.obstacles[i].radius, BROWN);
+    }
+    
     // Draw goal
     DrawCircleV(dwaState.goal, 20, (Color){0, 255, 0, 100});
     DrawCircleLinesV(dwaState.goal, 20, GREEN);
@@ -6685,10 +6698,6 @@ static void DrawFlowField(void) {
 }
 
 static void DrawScenario(void) {
-    DrawObstacles();
-    DrawWalls();
-    DrawPath();
-
     scenarios[currentScenario].draw();
 }
 
