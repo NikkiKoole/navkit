@@ -3332,11 +3332,13 @@ static void UpdateHide(float dt) {
     Vector2 mousePos = GetMousePosition();
     SteeringOutput pursueSteering = steering_seek(pursuer, mousePos);
     steering_apply(pursuer, pursueSteering, dt);
+    steering_resolve_obstacle_collision(pursuer, hideState.obstacles, hideState.obstacleCount, 10.0f);
     ResolveCollisions(pursuer, -1);
 
     // Agent hides
     SteeringOutput hide = steering_hide(&agents[0], pursuer->pos, hideState.obstacles, hideState.obstacleCount);
     steering_apply(&agents[0], hide, dt);
+    steering_resolve_obstacle_collision(&agents[0], hideState.obstacles, hideState.obstacleCount, 10.0f);
     ResolveCollisions(&agents[0], 0);
 }
 
@@ -3358,6 +3360,7 @@ static void UpdateObstacleAvoid(float dt) {
             combined = steering_blend(outputs, weights, 2);
         }
         ApplySteeringWithSeparation(&agents[i], combined, i, dt);
+        steering_resolve_obstacle_collision(&agents[i], obstacleAvoidState.obstacles, obstacleAvoidState.obstacleCount, 10.0f);
         ResolveCollisions(&agents[i], i);
 
         // Reset if reached target
@@ -3382,6 +3385,7 @@ static void UpdateWallAvoid(float dt) {
         float weights[2] = {wallAvoidScenario.avoidWeight, wallAvoidScenario.seekWeight};
         SteeringOutput combined = steering_blend(outputs, weights, 2);
         ApplySteeringWithSeparation(&agents[i], combined, i, dt);
+        steering_resolve_wall_collision(&agents[i], wallAvoidState.walls, wallAvoidState.wallCount, 10.0f);
         ResolveCollisions(&agents[i], i);
 
         // Reset if reached target
@@ -3396,6 +3400,7 @@ static void UpdateWallFollow(float dt) {
                                                   wallFollowScenario.followDistance,
                                                   wallFollowScenario.followSide);
     steering_apply(&agents[0], follow, dt);
+    steering_resolve_wall_collision(&agents[0], wallFollowState.walls, wallFollowState.wallCount, 10.0f);
     ResolveCollisions(&agents[0], 0);
 }
 
@@ -3515,6 +3520,7 @@ static void UpdateQueuing(float dt) {
         float weights[4] = {3.0f, 2.0f, 1.5f, 1.0f};
         SteeringOutput combined = steering_blend(outputs, weights, 4);
         steering_apply(&agents[i], combined, dt);
+        steering_resolve_wall_collision(&agents[i], queuingState.walls, queuingState.wallCount, 10.0f);
         ResolveCollisions(&agents[i], i);
 
         // Reset if past exit line
@@ -4307,6 +4313,7 @@ static void UpdateEvacuation(float dt) {
             1.5f / panicFactor         // separate - less careful when panicked
         };
         steering_apply(&agents[i], steering_blend(outputs, weights, 5), dt);
+        steering_resolve_wall_collision(&agents[i], evacuationState.walls, evacuationState.wallCount, 10.0f);
         ResolveCollisions(&agents[i], i);
 
         // Respawn if escaped through exit (far outside) or caught by fire
@@ -4553,6 +4560,7 @@ static void UpdateTraffic(float dt) {
         SteeringOutput outputs[5] = {seek, predictAvoid, immediateSep, wallAvoid, pedSep};
         float weights[5] = {1.0f, 4.0f, 3.0f, 2.0f, 0.5f};
         steering_apply(&agents[i], steering_blend(outputs, weights, 5), dt);
+        steering_resolve_wall_collision(&agents[i], trafficState.walls, trafficState.wallCount, 10.0f);
 
         // Check if reached target - swap start/target positions
         float distToTarget = steering_vec_distance(agents[i].pos, trafficState.targets[i]);
@@ -5115,6 +5123,7 @@ static void UpdateCtxCrowd(float dt) {
         steering_apply(&agents[i], combined, dt);
 
         // Hard collision resolution
+        steering_resolve_wall_collision(&agents[i], ctxState.walls, ctxState.wallCount, 10.0f);
         ResolveCollisions(&agents[i], i);
 
         // Respawn if reached target - keep Y position to maintain lane
