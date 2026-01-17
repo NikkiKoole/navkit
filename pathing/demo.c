@@ -21,7 +21,7 @@ bool showGraph = false;
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS"};
-int currentDirection = 0;  // 0 = 4-dir, 1 = 8-dir
+int currentDirection = 1;  // 0 = 4-dir, 1 = 8-dir
 const char* directionNames[] = {"4-dir", "8-dir"};
 
 // Tool selection: 0=Draw Walls, 1=Erase Walls, 2=Set Start, 3=Set Goal
@@ -30,7 +30,7 @@ const char* toolNames[] = {"Draw Walls", "Erase Walls", "Set Start", "Set Goal"}
 
 // Terrain selection
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax"};
 
 // Agents
 int agentCountSetting = 10;
@@ -208,6 +208,8 @@ void GenerateCurrentTerrain(void) {
         case 6: GenerateDungeonRooms(); break;
         case 7: GenerateCaves(); break;
         case 8: GenerateDrunkard(); break;
+        case 9: GenerateTunneler(); break;
+        case 10: GenerateMixMax(); break;
     }
 }
 
@@ -312,8 +314,13 @@ void DrawUI(void) {
     }
     y += 22;
     if (PushButton(x, y, "Find Path")) {
-        if (pathAlgorithm == 1 && needsRebuild) {
-            UpdateDirtyChunks();
+        if (pathAlgorithm == 1) {
+            if (graphEdgeCount == 0) {
+                BuildEntrances();
+                BuildGraph();
+            } else if (needsRebuild) {
+                UpdateDirtyChunks();
+            }
         }
         switch (pathAlgorithm) {
             case 0: RunAStar(); break;
@@ -329,10 +336,12 @@ void DrawUI(void) {
     y += 18;
     CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
     y += 22;
-    CycleOption(x, y, "Terrain", terrainNames, 9, &currentTerrain);
+    CycleOption(x, y, "Terrain", terrainNames, 11, &currentTerrain);
     y += 22;
     if (PushButton(x, y, "Generate Terrain")) {
         GenerateCurrentTerrain();
+        BuildEntrances();
+        BuildGraph();
     }
     y += 22;
     if (PushButton(x, y, "Small Grid (32x32)")) {
@@ -349,6 +358,10 @@ void DrawUI(void) {
     DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
     y += 22;
     if (PushButton(x, y, "Spawn Agents")) {
+        if (graphEdgeCount == 0) {
+            BuildEntrances();
+            BuildGraph();
+        }
         SpawnAgents(agentCountSetting);
     }
     y += 22;
@@ -382,6 +395,7 @@ int main(void) {
     Font comicFont = LoadFont("assets/comic.fnt");
     ui_init(&comicFont);
     SetTargetFPS(60);
+    use8Dir = true;  // Default to 8-dir
     InitGrid();
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;

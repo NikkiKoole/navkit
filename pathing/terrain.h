@@ -13,6 +13,8 @@ void GenerateConcentricMaze(void);
 void GenerateDungeonRooms(void);  // Feature-based roguelike dungeon
 void GenerateCaves(void);         // Cellular automata caves
 void GenerateDrunkard(void);      // Drunkard's walk tunnels
+void GenerateTunneler(void);      // Tunneler algorithm (rooms + corridors)
+void GenerateMixMax(void);        // Tunneler + extra rooms
 
 // Perlin noise utilities
 void InitPerlin(int seed);

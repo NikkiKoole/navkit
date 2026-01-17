@@ -270,6 +270,148 @@ void GenerateDrunkard(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Tunneler Algorithm (Rooms and Corridors)
+// Based on classic roguelike approach: place rooms, connect with corridors
+// ============================================================================
+
+typedef struct {
+    int x, y, w, h;
+} TunnelRoom;
+
+static bool TunnelRoomsIntersect(TunnelRoom* a, TunnelRoom* b) {
+    // Add 1 tile padding between rooms
+    return (a->x <= b->x + b->w + 1 && a->x + a->w + 1 >= b->x &&
+            a->y <= b->y + b->h + 1 && a->y + a->h + 1 >= b->y);
+}
+
+static void CarveTunnelRoom(TunnelRoom* room) {
+    for (int y = room->y; y < room->y + room->h; y++) {
+        for (int x = room->x; x < room->x + room->w; x++) {
+            if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
+                grid[y][x] = CELL_WALKABLE;
+            }
+        }
+    }
+}
+
+static void CarveHorizontalTunnel(int x1, int x2, int y) {
+    int minX = x1 < x2 ? x1 : x2;
+    int maxX = x1 > x2 ? x1 : x2;
+    for (int x = minX; x <= maxX; x++) {
+        if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
+            grid[y][x] = CELL_WALKABLE;
+        }
+    }
+}
+
+static void CarveVerticalTunnel(int y1, int y2, int x) {
+    int minY = y1 < y2 ? y1 : y2;
+    int maxY = y1 > y2 ? y1 : y2;
+    for (int y = minY; y <= maxY; y++) {
+        if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
+            grid[y][x] = CELL_WALKABLE;
+        }
+    }
+}
+
+void GenerateTunneler(void) {
+    // Fill with walls
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            grid[y][x] = CELL_WALL;
+    
+    // Scale room count based on world size
+    // Roughly 1 room per 150 tiles, with min 5 and max 100
+    int maxRooms = (gridWidth * gridHeight) / 150;
+    if (maxRooms < 5) maxRooms = 5;
+    if (maxRooms > 100) maxRooms = 100;
+    
+    TunnelRoom rooms[100];
+    int roomCount = 0;
+    
+    // Try to place rooms
+    for (int i = 0; i < maxRooms * 3; i++) {  // More attempts than max rooms
+        if (roomCount >= maxRooms) break;
+        
+        // Random room size
+        int w = 4 + GetRandomValue(0, 6);
+        int h = 4 + GetRandomValue(0, 6);
+        
+        // Random position (with margin from edges)
+        int rx = 2 + GetRandomValue(0, gridWidth - w - 4);
+        int ry = 2 + GetRandomValue(0, gridHeight - h - 4);
+        
+        TunnelRoom newRoom = {rx, ry, w, h};
+        
+        // Check for overlaps with existing rooms
+        bool overlaps = false;
+        for (int r = 0; r < roomCount; r++) {
+            if (TunnelRoomsIntersect(&newRoom, &rooms[r])) {
+                overlaps = true;
+                break;
+            }
+        }
+        
+        if (!overlaps) {
+            // Carve the room
+            CarveTunnelRoom(&newRoom);
+            
+            // Connect to previous room with corridors
+            if (roomCount > 0) {
+                int newCenterX = newRoom.x + newRoom.w / 2;
+                int newCenterY = newRoom.y + newRoom.h / 2;
+                int prevCenterX = rooms[roomCount - 1].x + rooms[roomCount - 1].w / 2;
+                int prevCenterY = rooms[roomCount - 1].y + rooms[roomCount - 1].h / 2;
+                
+                // Randomly choose horizontal-first or vertical-first
+                if (GetRandomValue(0, 1) == 0) {
+                    CarveHorizontalTunnel(prevCenterX, newCenterX, prevCenterY);
+                    CarveVerticalTunnel(prevCenterY, newCenterY, newCenterX);
+                } else {
+                    CarveVerticalTunnel(prevCenterY, newCenterY, prevCenterX);
+                    CarveHorizontalTunnel(prevCenterX, newCenterX, newCenterY);
+                }
+            }
+            
+            rooms[roomCount++] = newRoom;
+        }
+    }
+    
+    needsRebuild = true;
+}
+
+void GenerateMixMax(void) {
+    // First run tunneler (rooms + corridors)
+    GenerateTunneler();
+    
+    // Then add more rooms on top using dungeon style
+    // (Don't fill with walls - just carve more rooms)
+    int extraRooms = (gridWidth * gridHeight) / 300;  // Half as many extra rooms
+    if (extraRooms < 3) extraRooms = 3;
+    if (extraRooms > 50) extraRooms = 50;
+    
+    int added = 0;
+    for (int i = 0; i < extraRooms * 5 && added < extraRooms; i++) {
+        int w = 4 + GetRandomValue(0, 8);
+        int h = 4 + GetRandomValue(0, 8);
+        int rx = 2 + GetRandomValue(0, gridWidth - w - 4);
+        int ry = 2 + GetRandomValue(0, gridHeight - h - 4);
+        
+        // Just carve it - overlaps are fine, creates more interesting shapes
+        for (int y = ry; y < ry + h && y < gridHeight - 1; y++) {
+            for (int x = rx; x < rx + w && x < gridWidth - 1; x++) {
+                if (x > 0 && y > 0) {
+                    grid[y][x] = CELL_WALKABLE;
+                }
+            }
+        }
+        added++;
+    }
+    
+    needsRebuild = true;
+}
+
 void GenerateConcentricMaze(void) {
     InitGrid();
     
