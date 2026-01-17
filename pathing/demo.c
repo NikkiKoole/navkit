@@ -287,6 +287,7 @@ void HandleInput(void) {
 }
 
 void DrawUI(void) {
+    ui_begin_frame();
     float y = 70.0f;
     float x = 10.0f;
     

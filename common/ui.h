@@ -17,6 +17,9 @@ void ui_update(void);
 // Returns true if mouse is over any UI element (use to block clicks)
 bool ui_wants_mouse(void);
 
+// Call at start of UI drawing to reset flags
+void ui_begin_frame(void);
+
 // Draw text with shadow
 void DrawTextShadow(const char* text, int x, int y, int size, Color col);
 
@@ -47,6 +50,7 @@ static bool g_ui_draggableAnyHovered = false;
 static bool g_ui_toggleAnyHovered = false;
 static bool g_ui_buttonAnyHovered = false;
 static bool g_ui_cycleAnyHovered = false;
+static bool g_ui_clickConsumed = false;  // Set when UI consumes a click
 
 void ui_init(Font* font) {
     g_ui_font = font;
@@ -60,15 +64,20 @@ void ui_update(void) {
     } else {
         SetMouseCursor(MOUSE_CURSOR_DEFAULT);
     }
+    // Don't reset hover/click flags here - they persist until next frame's drawing
+}
+
+bool ui_wants_mouse(void) {
+    return g_ui_clickConsumed || g_ui_draggableAnyHovered || g_ui_toggleAnyHovered || 
+           g_ui_buttonAnyHovered || g_ui_cycleAnyHovered;
+}
+
+void ui_begin_frame(void) {
     g_ui_draggableAnyHovered = false;
     g_ui_toggleAnyHovered = false;
     g_ui_buttonAnyHovered = false;
     g_ui_cycleAnyHovered = false;
-}
-
-bool ui_wants_mouse(void) {
-    return g_ui_draggableAnyHovered || g_ui_toggleAnyHovered || 
-           g_ui_buttonAnyHovered || g_ui_cycleAnyHovered;
+    g_ui_clickConsumed = false;
 }
 
 void DrawTextShadow(const char* text, int x, int y, int size, Color col) {
@@ -102,6 +111,7 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         dragging = true;
         dragTarget = value;
+        g_ui_clickConsumed = true;
     }
     
     if (dragging && dragTarget == value) {
@@ -141,6 +151,7 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
         dragging = true;
         dragTarget = value;
         accumulator = 0;
+        g_ui_clickConsumed = true;
     }
     
     if (dragging && dragTarget == value) {
@@ -178,6 +189,7 @@ void ToggleBool(float x, float y, const char* label, bool* value) {
     
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = !*value;
+        g_ui_clickConsumed = true;
     }
 }
 
@@ -195,7 +207,11 @@ bool PushButton(float x, float y, const char* label) {
     Color col = hovered ? YELLOW : LIGHTGRAY;
     DrawTextShadow(buf, (int)x, (int)y, 18, col);
     
-    return hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        g_ui_clickConsumed = true;
+        return true;
+    }
+    return false;
 }
 
 void CycleOption(float x, float y, const char* label, const char** options, int count, int* value) {
@@ -214,6 +230,7 @@ void CycleOption(float x, float y, const char* label, const char** options, int 
     
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         *value = (*value + 1) % count;
+        g_ui_clickConsumed = true;
     }
 }
 
