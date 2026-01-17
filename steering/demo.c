@@ -5944,7 +5944,7 @@ static void DrawPatrol(void) {
     for (int i = 0; i < patrolState.waypointCount; i++) {
         Color waypointColor = (i == patrolState.currentWaypoint) ? GREEN : GRAY;
         DrawCircleV(patrolState.waypoints[i], 12, waypointColor);
-        DrawText(TextFormat("%d", i + 1), (int)patrolState.waypoints[i].x - 4, (int)patrolState.waypoints[i].y - 6, 14, WHITE);
+        DrawTextShadow(TextFormat("%d", i + 1), (int)patrolState.waypoints[i].x - 4, (int)patrolState.waypoints[i].y - 6, 14, WHITE);
         // Draw line to next waypoint
         int next = (i + 1) % patrolState.waypointCount;
         DrawLineEx(patrolState.waypoints[i], patrolState.waypoints[next], 2, (Color){100, 100, 100, 150});
