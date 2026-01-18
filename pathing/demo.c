@@ -20,7 +20,7 @@ bool showGraph = false;
 
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
-const char* algorithmNames[] = {"A*", "HPA*", "JPS"};
+const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
 int currentDirection = 1;  // 0 = 4-dir, 1 = 8-dir
 const char* directionNames[] = {"4-dir", "8-dir"};
 
@@ -144,10 +144,15 @@ void SpawnAgents(int count) {
         a->goal = GetRandomWalkableCell();
         a->color = GetRandomColor();
 
-        // Run pathfinding
+        // Run pathfinding with selected algorithm
         startPos = a->start;
         goalPos = a->goal;
-        RunHPAStar();
+        switch (pathAlgorithm) {
+            case 0: RunAStar(); break;
+            case 1: RunHPAStar(); break;
+            case 2: RunJPS(); break;
+            case 3: RunJpsPlus(); break;
+        }
 
         // Copy path to agent
         a->pathLength = pathLength;
@@ -165,6 +170,40 @@ void SpawnAgents(int count) {
 
     double totalTime = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnAgents: %d agents in %.2fms (avg %.2fms per agent)", count, totalTime, totalTime / count);
+}
+
+void RepathAgents(void) {
+    if (agentCount == 0) return;
+    
+    double startTime = GetTime();
+    for (int i = 0; i < agentCount; i++) {
+        Agent* a = &agents[i];
+        
+        // Run pathfinding with selected algorithm (keep same start/goal)
+        startPos = a->start;
+        goalPos = a->goal;
+        switch (pathAlgorithm) {
+            case 0: RunAStar(); break;
+            case 1: RunHPAStar(); break;
+            case 2: RunJPS(); break;
+            case 3: RunJpsPlus(); break;
+        }
+
+        // Copy path to agent
+        a->pathLength = pathLength;
+        for (int j = 0; j < pathLength; j++) {
+            a->path[j] = path[j];
+        }
+        a->active = (pathLength > 0);
+    }
+
+    // Clear global path
+    startPos = (Point){-1, -1};
+    goalPos = (Point){-1, -1};
+    pathLength = 0;
+
+    double totalTime = (GetTime() - startTime) * 1000.0;
+    TraceLog(LOG_INFO, "RepathAgents: %d agents in %.2fms (avg %.2fms per agent)", agentCount, totalTime, totalTime / agentCount);
 }
 
 void DrawAgents(void) {
@@ -304,7 +343,7 @@ void DrawUI(void) {
     y += 8;
     DrawTextShadow("Pathfinding", (int)x, (int)y, 14, GRAY);
     y += 18;
-    CycleOption(x, y, "Algo", algorithmNames, 3, &pathAlgorithm);
+    CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
     y += 22;
     CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
     use8Dir = (currentDirection == 1);  // Sync with pathfinding
@@ -327,6 +366,7 @@ void DrawUI(void) {
             case 0: RunAStar(); break;
             case 1: RunHPAStar(); break;
             case 2: RunJPS(); break;
+            case 3: RunJpsPlus(); break;
         }
     }
     y += 22;
@@ -366,6 +406,14 @@ void DrawUI(void) {
         SpawnAgents(agentCountSetting);
     }
     y += 22;
+    if (PushButton(x, y, "Repath Agents")) {
+        if (pathAlgorithm == 1 && graphEdgeCount == 0) {
+            BuildEntrances();
+            BuildGraph();
+        }
+        RepathAgents();
+    }
+    y += 22;
     
     // === DEBUG ===
     y += 8;
@@ -397,7 +445,7 @@ int main(void) {
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGridWithSizeAndChunkSize(192, 192, 32, 32);  // 6x6 chunks
+    InitGridWithSizeAndChunkSize(512, 512, 32, 32);  // 16x16 chunks
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 

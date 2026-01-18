@@ -266,6 +266,8 @@ void MarkChunkDirty(int cellX, int cellY) {
     if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY) {
         chunkDirty[cy][cx] = true;
         needsRebuild = true;
+        hpaNeedsRebuild = true;
+        jpsNeedsRebuild = true;
     }
 }
 
@@ -335,6 +337,7 @@ void BuildEntrances(void) {
         for (int cx = 0; cx < chunksX; cx++)
             chunkDirty[cy][cx] = false;
     needsRebuild = false;
+    hpaNeedsRebuild = false;
 }
 
 int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
@@ -852,6 +855,7 @@ void UpdateDirtyChunks(void) {
         for (int cx = 0; cx < chunksX; cx++)
             chunkDirty[cy][cx] = false;
     needsRebuild = false;
+    hpaNeedsRebuild = false;
     
     double elapsed = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "Incremental update: %d dirty, %d affected chunks in %.2fms", 
@@ -1209,48 +1213,7 @@ void RunHPAStar(void) {
     }
     double dijkstraTime = (GetTime() - dijkstraStartTime) * 1000.0;
     
-    // ========== APPROACH 2: N x A* with heuristic ==========
-    double astarStartTime = GetTime();
-    int astarStartCosts[128], astarGoalCosts[128];
-    
-    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
-    if (maxX < gridWidth) maxX++;
-    if (maxY < gridHeight) maxY++;
-    for (int i = 0; i < startTargetCount; i++) {
-        astarStartCosts[i] = AStarChunk(startPos.x, startPos.y, 
-                                        startTargetX[i], startTargetY[i],
-                                        minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-    }
-    
-    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
-    if (maxX < gridWidth) maxX++;
-    if (maxY < gridHeight) maxY++;
-    for (int i = 0; i < goalTargetCount; i++) {
-        astarGoalCosts[i] = AStarChunk(goalPos.x, goalPos.y,
-                                       goalTargetX[i], goalTargetY[i],
-                                       minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-    }
-    double astarTime = (GetTime() - astarStartTime) * 1000.0;
-    
-    // ========== Verify costs match ==========
-    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
-    for (int i = 0; i < startTargetCount; i++) {
-        if (dijkstraStartCosts[i] != astarStartCosts[i]) {
-            TraceLog(LOG_WARNING, "COST MISMATCH start entrance %d at (%d,%d): dijkstra=%d, astar=%d, start=(%d,%d), bounds=[%d,%d]-[%d,%d]",
-                     i, startTargetX[i], startTargetY[i], dijkstraStartCosts[i], astarStartCosts[i], startPos.x, startPos.y,
-                     minX, minY, maxX, maxY);
-        }
-    }
-    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
-    for (int i = 0; i < goalTargetCount; i++) {
-        if (dijkstraGoalCosts[i] != astarGoalCosts[i]) {
-            TraceLog(LOG_WARNING, "COST MISMATCH goal entrance %d at (%d,%d): dijkstra=%d, astar=%d, goal=(%d,%d), bounds=[%d,%d]-[%d,%d]",
-                     i, goalTargetX[i], goalTargetY[i], dijkstraGoalCosts[i], astarGoalCosts[i], goalPos.x, goalPos.y,
-                     minX, minY, maxX, maxY);
-        }
-    }
-    
-    // Use Dijkstra results for actual pathfinding (they should be identical)
+    // Use Dijkstra results for connect phase
     for (int i = 0; i < startTargetCount; i++) {
         if (dijkstraStartCosts[i] >= 0) {
             startEdgeTargets[startEdgeCount] = startTargetIdx[i];
@@ -1419,8 +1382,8 @@ void RunHPAStar(void) {
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
     
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect: dijk=%.2fms, astar=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
-             lastPathTime, dijkstraTime, astarTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
+             lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
     
     if (pathLength == 0) {
         TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d", 
@@ -1614,4 +1577,413 @@ void RunJPS(void) {
     lastPathTime = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "JPS (%s): time=%.2fms, nodes=%d, path=%d", 
              use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
+}
+
+// ============== JPS+ (Jump Point Search Plus - with preprocessing) ==============
+
+// JPS+ precomputed jump distances for each cell in each of 8 directions
+// Positive value: distance to wall (no jump point found)
+// Negative value: distance to jump point (negate to get actual distance)
+// 0: cell is a wall or immediately blocked
+static int16_t jpsDist[MAX_GRID_HEIGHT][MAX_GRID_WIDTH][8];
+static bool jpsPrecomputed = false;  // Set to false when needsRebuild triggers
+
+// Direction indices: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+static const int jpsDx[8] = {0, 1, 1, 1, 0, -1, -1, -1};
+static const int jpsDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
+
+// Check if a cell is walkable (bounds-checked)
+static bool JpsIsWalkable(int x, int y) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+    return grid[y][x] == CELL_WALKABLE;
+}
+
+// Check if diagonal move is allowed (no corner cutting)
+static bool JpsDiagonalAllowed(int x, int y, int dx, int dy) {
+    // Both adjacent cardinal cells must be walkable
+    return JpsIsWalkable(x + dx, y) && JpsIsWalkable(x, y + dy);
+}
+
+// Compute jump distance for a diagonal direction
+// Returns positive distance to wall, or negative distance to jump point
+static int16_t ComputeDiagonalJumpDist(int x, int y, int dir) {
+    int dx = jpsDx[dir];
+    int dy = jpsDy[dir];
+    int dist = 0;
+    int nx = x + dx;
+    int ny = y + dy;
+    
+    // Cardinal direction indices for this diagonal's components
+    int cardinalH = (dx > 0) ? 2 : 6;  // E or W
+    int cardinalV = (dy > 0) ? 4 : 0;  // S or N
+    
+    while (JpsIsWalkable(nx, ny) && JpsDiagonalAllowed(x + dist * dx, y + dist * dy, dx, dy)) {
+        dist++;
+        
+        // Check for forced neighbors (diagonal)
+        if ((!JpsIsWalkable(nx - dx, ny) && JpsIsWalkable(nx - dx, ny + dy)) ||
+            (!JpsIsWalkable(nx, ny - dy) && JpsIsWalkable(nx + dx, ny - dy))) {
+            return -dist;  // Jump point found
+        }
+        
+        // Check if cardinal directions from here have jump points
+        // If so, this is a jump point
+        int16_t hDist = jpsDist[ny][nx][cardinalH];
+        int16_t vDist = jpsDist[ny][nx][cardinalV];
+        if (hDist < 0 || vDist < 0) {
+            return -dist;  // Jump point found (cardinal component leads to one)
+        }
+        
+        nx += dx;
+        ny += dy;
+    }
+    
+    return dist;  // Hit wall or corner-cut blocked
+}
+
+// Check if cell has a forced neighbor for cardinal movement
+static bool HasForcedNeighborCardinal(int x, int y, int dir) {
+    int dx = jpsDx[dir];
+    int dy = jpsDy[dir];
+    if (dir == 0 || dir == 4) {  // N or S (vertical)
+        return (!JpsIsWalkable(x - 1, y) && JpsIsWalkable(x - 1, y + dy)) ||
+               (!JpsIsWalkable(x + 1, y) && JpsIsWalkable(x + 1, y + dy));
+    } else {  // E or W (horizontal)
+        return (!JpsIsWalkable(x, y - 1) && JpsIsWalkable(x + dx, y - 1)) ||
+               (!JpsIsWalkable(x, y + 1) && JpsIsWalkable(x + dx, y + 1));
+    }
+}
+
+// Precompute JPS+ data using efficient row/column sweeps
+// This is O(n²) instead of O(n² × avg_jump_dist)
+static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
+    // Clamp to grid bounds
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > gridWidth) maxX = gridWidth;
+    if (maxY > gridHeight) maxY = gridHeight;
+    
+    // Initialize all to 0 (walls)
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            for (int d = 0; d < 8; d++) jpsDist[y][x][d] = 0;
+        }
+    }
+    
+    // === CARDINAL DIRECTIONS (sweep-based) ===
+    
+    // East (dir=2): sweep left-to-right per row
+    for (int y = 0; y < gridHeight; y++) {
+        int distToJP = 0;  // positive = dist to wall, negative = dist to jump point
+        bool countingFromWall = true;
+        
+        for (int x = gridWidth - 1; x >= 0; x--) {
+            if (!JpsIsWalkable(x, y)) {
+                distToJP = 0;
+                countingFromWall = true;
+                continue;
+            }
+            
+            distToJP++;
+            
+            if (HasForcedNeighborCardinal(x, y, 2)) {
+                // This cell is a jump point for westward travelers
+                jpsDist[y][x][2] = countingFromWall ? distToJP : -distToJP;
+                distToJP = 0;
+                countingFromWall = false;  // Next cells count toward this jump point
+            } else {
+                jpsDist[y][x][2] = countingFromWall ? distToJP : -distToJP;
+            }
+        }
+    }
+    
+    // West (dir=6): sweep right-to-left per row
+    for (int y = 0; y < gridHeight; y++) {
+        int distToJP = 0;
+        bool countingFromWall = true;
+        
+        for (int x = 0; x < gridWidth; x++) {
+            if (!JpsIsWalkable(x, y)) {
+                distToJP = 0;
+                countingFromWall = true;
+                continue;
+            }
+            
+            distToJP++;
+            
+            if (HasForcedNeighborCardinal(x, y, 6)) {
+                jpsDist[y][x][6] = countingFromWall ? distToJP : -distToJP;
+                distToJP = 0;
+                countingFromWall = false;
+            } else {
+                jpsDist[y][x][6] = countingFromWall ? distToJP : -distToJP;
+            }
+        }
+    }
+    
+    // South (dir=4): sweep top-to-bottom per column
+    for (int x = 0; x < gridWidth; x++) {
+        int distToJP = 0;
+        bool countingFromWall = true;
+        
+        for (int y = gridHeight - 1; y >= 0; y--) {
+            if (!JpsIsWalkable(x, y)) {
+                distToJP = 0;
+                countingFromWall = true;
+                continue;
+            }
+            
+            distToJP++;
+            
+            if (HasForcedNeighborCardinal(x, y, 4)) {
+                jpsDist[y][x][4] = countingFromWall ? distToJP : -distToJP;
+                distToJP = 0;
+                countingFromWall = false;
+            } else {
+                jpsDist[y][x][4] = countingFromWall ? distToJP : -distToJP;
+            }
+        }
+    }
+    
+    // North (dir=0): sweep bottom-to-top per column
+    for (int x = 0; x < gridWidth; x++) {
+        int distToJP = 0;
+        bool countingFromWall = true;
+        
+        for (int y = 0; y < gridHeight; y++) {
+            if (!JpsIsWalkable(x, y)) {
+                distToJP = 0;
+                countingFromWall = true;
+                continue;
+            }
+            
+            distToJP++;
+            
+            if (HasForcedNeighborCardinal(x, y, 0)) {
+                jpsDist[y][x][0] = countingFromWall ? distToJP : -distToJP;
+                distToJP = 0;
+                countingFromWall = false;
+            } else {
+                jpsDist[y][x][0] = countingFromWall ? distToJP : -distToJP;
+            }
+        }
+    }
+    
+    // === DIAGONAL DIRECTIONS (still need per-cell, but use precomputed cardinals) ===
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            if (!JpsIsWalkable(x, y)) continue;
+            jpsDist[y][x][1] = ComputeDiagonalJumpDist(x, y, 1);
+            jpsDist[y][x][3] = ComputeDiagonalJumpDist(x, y, 3);
+            jpsDist[y][x][5] = ComputeDiagonalJumpDist(x, y, 5);
+            jpsDist[y][x][7] = ComputeDiagonalJumpDist(x, y, 7);
+        }
+    }
+}
+
+// Precompute JPS+ data for the entire grid
+// NOTE: JPS+ is optimized for STATIC maps. Preprocessing takes ~500ms on 512x512.
+// For dynamic terrain (colony sims, etc.), use HPA* instead which supports incremental updates.
+void PrecomputeJpsPlus(void) {
+    double startTime = GetTime();
+    PrecomputeJpsPlusRegion(0, 0, gridWidth, gridHeight);
+    jpsPrecomputed = true;
+    jpsNeedsRebuild = false;
+    TraceLog(LOG_INFO, "JPS+ precomputed in %.2fms", (GetTime() - startTime) * 1000.0);
+}
+
+// JPS+ search with bounded region (can be used for full grid or chunk)
+int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+    if (!jpsPrecomputed || jpsNeedsRebuild) {
+        // Full recompute needed - jumps can span entire grid, so incremental updates are unsafe
+        PrecomputeJpsPlus();
+    }
+    
+    if (!JpsIsWalkable(sx, sy) || !JpsIsWalkable(gx, gy)) return -1;
+    
+    // Initialize node data for bounded region
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            heapPos[y][x] = -1;
+        }
+    }
+    
+    ChunkHeapInit();
+    
+    nodeData[sy][sx].g = 0;
+    nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+    nodeData[sy][sx].open = true;
+    ChunkHeapPush(sx, sy);
+    
+    while (chunkHeap.size > 0) {
+        int bestX, bestY;
+        ChunkHeapPop(&bestX, &bestY);
+        
+        if (bestX == gx && bestY == gy) {
+            return nodeData[gy][gx].g;  // Found goal
+        }
+        
+        nodeData[bestY][bestX].open = false;
+        nodeData[bestY][bestX].closed = true;
+        
+        // Explore all 8 directions using precomputed jump distances
+        for (int dir = 0; dir < 8; dir++) {
+            int16_t dist = jpsDist[bestY][bestX][dir];
+            if (dist == 0) continue;  // Blocked
+            
+            int actualDist = (dist < 0) ? -dist : dist;
+            int dx = jpsDx[dir];
+            int dy = jpsDy[dir];
+            
+            // Check if goal is along this direction (within jump distance)
+            int toGoalX = gx - bestX;
+            int toGoalY = gy - bestY;
+            bool goalInDir = false;
+            int goalDist = 0;
+            
+            if (dx == 0 && toGoalX == 0 && dy != 0) {
+                // Vertical direction, goal is on this line
+                if ((dy > 0 && toGoalY > 0) || (dy < 0 && toGoalY < 0)) {
+                    goalDist = abs(toGoalY);
+                    goalInDir = goalDist <= actualDist;
+                }
+            } else if (dy == 0 && toGoalY == 0 && dx != 0) {
+                // Horizontal direction, goal is on this line
+                if ((dx > 0 && toGoalX > 0) || (dx < 0 && toGoalX < 0)) {
+                    goalDist = abs(toGoalX);
+                    goalInDir = goalDist <= actualDist;
+                }
+            } else if (dx != 0 && dy != 0) {
+                // Diagonal direction
+                if (abs(toGoalX) == abs(toGoalY) && 
+                    ((dx > 0) == (toGoalX > 0)) && ((dy > 0) == (toGoalY > 0))) {
+                    goalDist = abs(toGoalX);
+                    goalInDir = goalDist <= actualDist;
+                }
+            }
+            
+            // Determine target position
+            int targetX, targetY;
+            int moveDist;
+            
+            if (goalInDir) {
+                targetX = gx;
+                targetY = gy;
+                moveDist = goalDist;
+            } else if (dist < 0) {
+                // Jump point
+                targetX = bestX + dx * actualDist;
+                targetY = bestY + dy * actualDist;
+                moveDist = actualDist;
+            } else if (dx != 0 && dy != 0) {
+                // Diagonal direction with no jump point - check if goal requires a turn
+                // If goal is in the "cone" of this diagonal, we may need to turn cardinal
+                bool goalInCone = ((dx > 0) == (toGoalX > 0) || toGoalX == 0) && 
+                                  ((dy > 0) == (toGoalY > 0) || toGoalY == 0) &&
+                                  (toGoalX != 0 || toGoalY != 0);
+                if (goalInCone) {
+                    // Calculate where we'd turn to go cardinal toward goal
+                    int diagDist = (abs(toGoalX) < abs(toGoalY)) ? abs(toGoalX) : abs(toGoalY);
+                    if (diagDist > 0 && diagDist <= actualDist) {
+                        // Turn point is reachable
+                        targetX = bestX + dx * diagDist;
+                        targetY = bestY + dy * diagDist;
+                        moveDist = diagDist;
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            } else {
+                // Cardinal direction with no jump point and goal not in line
+                continue;
+            }
+            
+            // Check bounds
+            if (targetX < minX || targetX >= maxX || targetY < minY || targetY >= maxY) {
+                // Clamp to bounds - find last valid cell
+                int clampDist = actualDist;
+                if (dx > 0 && bestX + dx * clampDist >= maxX) clampDist = (maxX - 1 - bestX) / dx;
+                if (dx < 0 && bestX + dx * clampDist < minX) clampDist = (bestX - minX) / (-dx);
+                if (dy > 0 && bestY + dy * clampDist >= maxY) clampDist = (maxY - 1 - bestY) / dy;
+                if (dy < 0 && bestY + dy * clampDist < minY) clampDist = (bestY - minY) / (-dy);
+                
+                if (clampDist <= 0) continue;
+                targetX = bestX + dx * clampDist;
+                targetY = bestY + dy * clampDist;
+                moveDist = clampDist;
+            }
+            
+            if (nodeData[targetY][targetX].closed) continue;
+            
+            // Calculate movement cost
+            int cost;
+            if (dx != 0 && dy != 0) {
+                cost = moveDist * 14;  // Diagonal
+            } else {
+                cost = moveDist * 10;  // Cardinal
+            }
+            
+            int ng = nodeData[bestY][bestX].g + cost;
+            
+            if (ng < nodeData[targetY][targetX].g) {
+                nodeData[targetY][targetX].g = ng;
+                nodeData[targetY][targetX].f = ng + Heuristic8Dir(targetX, targetY, gx, gy);
+                nodeData[targetY][targetX].parentX = bestX;
+                nodeData[targetY][targetX].parentY = bestY;
+                
+                if (nodeData[targetY][targetX].open) {
+                    ChunkHeapDecreaseKey(targetX, targetY);
+                } else {
+                    nodeData[targetY][targetX].open = true;
+                    ChunkHeapPush(targetX, targetY);
+                }
+            }
+        }
+    }
+    
+    return -1;  // No path found
+}
+
+// Standalone JPS+ runner (full grid)
+void RunJpsPlus(void) {
+    if (startPos.x < 0 || goalPos.x < 0) return;
+    
+    pathLength = 0;
+    nodesExplored = 0;
+    double startTime = GetTime();
+    
+    int cost = JpsPlusChunk(startPos.x, startPos.y, goalPos.x, goalPos.y, 
+                            0, 0, gridWidth, gridHeight);
+    
+    if (cost >= 0) {
+        // Reconstruct path
+        int cx = goalPos.x, cy = goalPos.y;
+        while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
+            path[pathLength++] = (Point){cx, cy};
+            int px = nodeData[cy][cx].parentX;
+            int py = nodeData[cy][cx].parentY;
+            
+            // Fill in intermediate points between jump points
+            if (px >= 0 && py >= 0) {
+                int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
+                int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
+                int ix = cx + stepX;
+                int iy = cy + stepY;
+                while ((ix != px || iy != py) && pathLength < MAX_PATH) {
+                    path[pathLength++] = (Point){ix, iy};
+                    ix += stepX;
+                    iy += stepY;
+                }
+            }
+            cx = px;
+            cy = py;
+        }
+        nodesExplored = pathLength;  // Approximate
+    }
+    
+    lastPathTime = (GetTime() - startTime) * 1000.0;
+    TraceLog(LOG_INFO, "JPS+: time=%.2fms, cost=%d, path=%d", lastPathTime, cost, pathLength);
 }

@@ -3,6 +3,8 @@
 
 CellType grid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
+bool hpaNeedsRebuild = false;
+bool jpsNeedsRebuild = false;
 
 // Runtime dimensions - default to max
 int gridWidth = MAX_GRID_WIDTH;

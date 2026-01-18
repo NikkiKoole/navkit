@@ -23,7 +23,9 @@ extern int chunksY;
 typedef enum { CELL_WALKABLE, CELL_WALL } CellType;
 
 extern CellType grid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-extern bool needsRebuild;
+extern bool needsRebuild;      // Generic flag (legacy)
+extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
+extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag
 
 // Initialize grid with specific dimensions and default chunk size (32x32)
 void InitGridWithSize(int width, int height);
