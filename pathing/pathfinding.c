@@ -1327,6 +1327,11 @@ void RunHPAStar(void) {
     lastPathTime = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
              lastPathTime, connectTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    
+    if (pathLength == 0) {
+        TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d", 
+                 startPos.x, startPos.y, goalPos.x, goalPos.y, startEdgeCount, goalEdgeCount, startChunk, goalChunk);
+    }
 }
 
 // ============== JPS Implementation ==============

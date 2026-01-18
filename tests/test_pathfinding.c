@@ -760,6 +760,158 @@ describe(incremental_updates) {
     }
 }
 
+describe(diagonal_corner_cutting) {
+    it("should allow diagonal when both adjacent cells are walkable") {
+        // 8x8 single chunk
+        //   01234567
+        // 0 ........
+        // 1 .S......
+        // 2 ........
+        // 3 ......G.
+        // Diagonal from S(1,1) to (2,2) allowed: (2,1)=. and (1,2)=.
+        const char* map[] = {
+            "........",
+            ".S......",
+            "........",
+            "......G.",
+            "........",
+            "........",
+            "........",
+            "........",
+        };
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x++)
+                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+        
+        startPos = (Point){1, 1};
+        goalPos = (Point){6, 3};
+        RunAStar();
+        
+        // Path exists - diagonal movement allowed
+        expect(pathLength > 0);
+    }
+    
+    it("should block diagonal when one adjacent cell is wall") {
+        // 8x8 single chunk
+        //   01234567
+        // 0 ........
+        // 1 .S......
+        // 2 .#......  <- wall at (1,2) blocks diagonal to (2,2)
+        // 3 ......G.
+        // Diagonal from S(1,1) to (2,2) blocked: (1,2)=# 
+        const char* map[] = {
+            "........",
+            ".S......",
+            ".#......",
+            "......G.",
+            "........",
+            "........",
+            "........",
+            "........",
+        };
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x++)
+                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+        
+        startPos = (Point){1, 1};
+        goalPos = (Point){6, 3};
+        RunAStar();
+        
+        // Path still exists but must go around
+        expect(pathLength > 0);
+    }
+    
+    it("should trap cell when all escape routes have corner-cut blocking walls") {
+        // 8x8 single chunk - the pocket from the forest map
+        //   01234567
+        // 0 ........
+        // 1 ..##....  <- walls at (2,1) and (3,1)
+        // 2 .#.#....  <- walls at (1,2) and (3,2)
+        // 3 .#S#....  <- walls at (1,3) and (3,3), S at (2,3)
+        // 4 .##.....  <- walls at (1,4) and (2,4)
+        // 5 ........
+        // 6 ......G.
+        // 7 ........
+        //
+        // From S(2,3): only move is up to (2,2)
+        // From (2,2): diagonal to (1,1) blocked by (1,2)=# and (2,1)=#
+        //             diagonal to (3,1) blocked by (3,2)=# and (2,1)=#
+        //             all other moves are walls
+        // S is trapped!
+        const char* map[] = {
+            "........",
+            "..##....",
+            ".#.#....",
+            ".#S#....",
+            ".##.....",
+            "........",
+            "......G.",
+            "........",
+        };
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x++)
+                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+        
+        startPos = (Point){2, 3};
+        goalPos = (Point){6, 6};
+        
+        // Both cells are walkable
+        expect(grid[3][2] == CELL_WALKABLE);
+        expect(grid[6][6] == CELL_WALKABLE);
+        
+        RunAStar();
+        
+        // No path - S is trapped by corner-cutting rules
+        expect(pathLength == 0);
+    }
+    
+    it("should escape when one corner-cut path is open") {
+        // Same as above but remove wall at (2,1) to open diagonal escape
+        //   01234567
+        // 0 ........
+        // 1 ...#....  <- only wall at (3,1), (2,1) is now open
+        // 2 .#.#....
+        // 3 .#S#....
+        // 4 .##.....
+        // 5 ........
+        // 6 ......G.
+        // 7 ........
+        //
+        // From S(2,3): up to (2,2)
+        // From (2,2): diagonal to (1,1) now allowed! (1,2)=# but (2,1)=.
+        // Wait no - corner cut needs BOTH to be walkable
+        // Let me open (1,2) instead
+        const char* map[] = {
+            "........",
+            "..##....",
+            "...#....",  // removed wall at (1,2)
+            ".#S#....",
+            ".##.....",
+            "........",
+            "......G.",
+            "........",
+        };
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        for (int y = 0; y < 8; y++)
+            for (int x = 0; x < 8; x++)
+                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+        
+        startPos = (Point){2, 3};
+        goalPos = (Point){6, 6};
+        RunAStar();
+        
+        // Path exists - can escape via (1,2) then diagonal to (0,1)
+        expect(pathLength > 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -777,5 +929,6 @@ int main(int argc, char* argv[]) {
     test(astar_pathfinding);
     test(hpa_star_pathfinding);
     test(incremental_updates);
+    test(diagonal_corner_cutting);
     return summary();
 }
