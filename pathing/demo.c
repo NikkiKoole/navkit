@@ -2,6 +2,7 @@
 #include "grid.h"
 #include "terrain.h"
 #include "pathfinding.h"
+#include "mover.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -9,7 +10,6 @@
 #define UI_IMPLEMENTATION
 #include "../common/ui.h"
 
-#define CELL_SIZE   32
 #define MAX_AGENTS  50
 
 float zoom = 1.0f;
@@ -49,31 +49,15 @@ typedef struct {
 Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
-// Movers - agents that actually move along paths with dynamic replanning
-#define MAX_MOVERS 10000
-#define MAX_MOVER_PATH 1024  // Much smaller than MAX_PATH - paths are string-pulled
-#define MOVER_SPEED 100.0f  // pixels per second
-#define MAX_REPATHS_PER_FRAME 10
-#define REPATH_COOLDOWN_FRAMES 30
-
-typedef struct {
-    float x, y;              // Current position (sub-cell precision)
-    Point goal;              // Final destination
-    Point path[MAX_MOVER_PATH];  // Cached path (smaller than global MAX_PATH)
-    int pathLength;
-    int pathIndex;           // Current waypoint (counts down to 0)
-    bool active;
-    bool needsRepath;
-    int repathCooldown;
-    Color color;
-    float speed;
-} Mover;
-
-Mover movers[MAX_MOVERS];
-int moverCount = 0;
+// Mover UI settings (movers themselves are in mover.c)
 int moverCountSetting = 1000;
 bool showMoverPaths = false;
-bool endlessMoverMode = false;
+
+// Extended mover struct for rendering (adds Color)
+typedef struct {
+    Color color;
+} MoverRenderData;
+MoverRenderData moverRenderData[MAX_MOVERS];
 
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
@@ -260,78 +244,7 @@ void DrawAgents(void) {
 
 // ============== MOVERS ==============
 
-bool useStringPulling = true;
-
-// Check if there's line-of-sight between two points (Bresenham)
-static bool HasLineOfSight(int x0, int y0, int x1, int y1) {
-    int dx = abs(x1 - x0);
-    int dy = abs(y1 - y0);
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
-    int err = dx - dy;
-
-    int x = x0, y = y0;
-    while (1) {
-        if (grid[y][x] == CELL_WALL) return false;
-        if (x == x1 && y == y1) return true;
-
-        int e2 = 2 * err;
-
-        // For diagonal movement, check corner cutting
-        if (e2 > -dy && e2 < dx) {
-            // Moving diagonally - check both adjacent cells
-            int nx = x + sx;
-            int ny = y + sy;
-            if (grid[y][nx] == CELL_WALL || grid[ny][x] == CELL_WALL) {
-                return false;  // Would cut corner
-            }
-        }
-
-        if (e2 > -dy) {
-            err -= dy;
-            x += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y += sy;
-        }
-    }
-}
-
-// String pulling: remove unnecessary waypoints from path
-// Path is stored goal-to-start, so we iterate from end (start) toward beginning (goal)
-static void StringPullPath(Point* pathArr, int* pathLen) {
-    if (*pathLen <= 2) return;  // Nothing to smooth
-
-    Point result[MAX_PATH];
-    int resultLen = 0;
-
-    // Start from the beginning of movement (last index = start position)
-    result[resultLen++] = pathArr[*pathLen - 1];
-    int current = *pathLen - 1;
-
-    while (current > 0) {
-        // Find furthest visible point from current (search from goal toward current)
-        int furthest = current - 1;  // Default to next point
-        for (int i = 0; i < current; i++) {
-            if (HasLineOfSight(pathArr[current].x, pathArr[current].y,
-                               pathArr[i].x, pathArr[i].y)) {
-                furthest = i;  // Found visible point closer to goal
-                break;  // This is the furthest since we search from goal
-            }
-        }
-        result[resultLen++] = pathArr[furthest];
-        current = furthest;
-    }
-
-    // Reverse result back to goal-to-start order
-    for (int i = 0; i < resultLen; i++) {
-        pathArr[i] = result[resultLen - 1 - i];
-    }
-    *pathLen = resultLen;
-}
-
-void SpawnMovers(int count) {
+void SpawnMoversDemo(int count) {
     double startTime = GetTime();
 
     // Ensure HPA* graph is built
@@ -340,7 +253,7 @@ void SpawnMovers(int count) {
         BuildGraph();
     }
 
-    moverCount = 0;
+    ClearMovers();
     for (int i = 0; i < count && i < MAX_MOVERS; i++) {
         Mover* m = &movers[moverCount];
 
@@ -348,33 +261,26 @@ void SpawnMovers(int count) {
         Point goal = GetRandomWalkableCell();
 
         // Initial position (center of start cell)
-        m->x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
-        m->y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
-        m->goal = goal;
-        m->speed = MOVER_SPEED + GetRandomValue(-30, 30);
-        m->color = GetRandomColor();
-        m->active = true;
-        m->needsRepath = false;
-        m->repathCooldown = 0;
+        float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float speed = MOVER_SPEED + GetRandomValue(-30, 30);
 
         // Compute initial path using HPA*
         startPos = start;
         goalPos = goal;
         RunHPAStar();
 
-        m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
-        for (int j = 0; j < m->pathLength; j++) {
-            m->path[j] = path[j];
-        }
-
-        // Apply string pulling to smooth path
-        if (useStringPulling && m->pathLength > 2) {
-            StringPullPath(m->path, &m->pathLength);
-        }
-
-        m->pathIndex = m->pathLength - 1;
-
-        if (m->pathLength > 0) {
+        if (pathLength > 0) {
+            InitMoverWithPath(m, x, y, goal, speed, path, pathLength);
+            
+            // Apply string pulling to smooth path
+            if (useStringPulling && m->pathLength > 2) {
+                StringPullPath(m->path, &m->pathLength);
+                m->pathIndex = m->pathLength - 1;
+            }
+            
+            // Store render data (color)
+            moverRenderData[moverCount].color = GetRandomColor();
             moverCount++;
         }
     }
@@ -386,168 +292,6 @@ void SpawnMovers(int count) {
 
     double elapsed = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnMovers: %d movers in %.2fms", moverCount, elapsed);
-}
-
-// Assign a new random goal to a mover and compute path
-static void AssignNewMoverGoal(Mover* m) {
-    Point newGoal = GetRandomWalkableCell();
-    m->goal = newGoal;
-
-    // Get current grid position
-    int currentX = (int)(m->x / CELL_SIZE);
-    int currentY = (int)(m->y / CELL_SIZE);
-
-    // Compute path using HPA*
-    startPos = (Point){currentX, currentY};
-    goalPos = newGoal;
-    RunHPAStar();
-
-    m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
-    for (int j = 0; j < m->pathLength; j++) {
-        m->path[j] = path[j];
-    }
-
-    // Apply string pulling
-    if (useStringPulling && m->pathLength > 2) {
-        StringPullPath(m->path, &m->pathLength);
-    }
-
-    m->pathIndex = m->pathLength - 1;
-    m->needsRepath = false;
-
-    // Clear global state
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
-    pathLength = 0;
-}
-
-void UpdateMovers(float dt) {
-    for (int i = 0; i < moverCount; i++) {
-        Mover* m = &movers[i];
-        if (!m->active || m->pathLength == 0) continue;
-
-        // Reached goal?
-        if (m->pathIndex < 0) {
-            if (endlessMoverMode) {
-                AssignNewMoverGoal(m);
-                if (m->pathLength == 0) {
-                    m->active = false;  // No path found, deactivate
-                }
-            } else {
-                m->active = false;
-            }
-            continue;
-        }
-
-        // Get current grid position
-        int currentX = (int)(m->x / CELL_SIZE);
-        int currentY = (int)(m->y / CELL_SIZE);
-
-        // Option C: Check if mover is standing on a wall (terrain changed under them)
-        // Push mover to nearest walkable cell
-        if (grid[currentY][currentX] == CELL_WALL) {
-            // Check 4 neighbors for a walkable cell
-            int dx[] = {0, 0, -1, 1};
-            int dy[] = {-1, 1, 0, 0};
-            bool pushed = false;
-            for (int d = 0; d < 4; d++) {
-                int nx = currentX + dx[d];
-                int ny = currentY + dy[d];
-                if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-                    grid[ny][nx] == CELL_WALKABLE) {
-                    m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
-                    pushed = true;
-                    break;
-                }
-            }
-            if (!pushed) {
-                // Fully walled in, deactivate
-                m->active = false;
-            }
-            m->needsRepath = true;
-            continue;
-        }
-
-        // Get target waypoint (center of cell)
-        Point target = m->path[m->pathIndex];
-
-        // Option A: Check line-of-sight to next waypoint (wall placed in between)
-        if (!HasLineOfSight(currentX, currentY, target.x, target.y)) {
-            m->needsRepath = true;
-            continue;
-        }
-
-        float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
-        float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
-
-        // Move toward target
-        float dx = tx - m->x;
-        float dy = ty - m->y;
-        float dist = sqrtf(dx*dx + dy*dy);
-
-        if (dist < m->speed * dt) {
-            // Reached waypoint
-            m->x = tx;
-            m->y = ty;
-            m->pathIndex--;
-        } else {
-            // Move toward waypoint
-            float invDist = 1.0f / dist;
-            m->x += dx * invDist * m->speed * dt;
-            m->y += dy * invDist * m->speed * dt;
-        }
-    }
-}
-
-void ProcessMoverRepaths(void) {
-    int repathsThisFrame = 0;
-
-    for (int i = 0; i < moverCount && repathsThisFrame < MAX_REPATHS_PER_FRAME; i++) {
-        Mover* m = &movers[i];
-        if (!m->active || !m->needsRepath) continue;
-
-        if (m->repathCooldown > 0) {
-            m->repathCooldown--;
-            continue;
-        }
-
-        // Get current grid position
-        int currentX = (int)(m->x / CELL_SIZE);
-        int currentY = (int)(m->y / CELL_SIZE);
-
-        // Ensure graph is up to date
-        if (hpaNeedsRebuild) {
-            UpdateDirtyChunks();
-        }
-
-        // Run pathfinding from current position to goal
-        startPos = (Point){currentX, currentY};
-        goalPos = m->goal;
-        RunHPAStar();
-
-        // Copy new path
-        m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
-        for (int j = 0; j < m->pathLength; j++) {
-            m->path[j] = path[j];
-        }
-
-        // Apply string pulling to smooth path
-        if (useStringPulling && m->pathLength > 2) {
-            StringPullPath(m->path, &m->pathLength);
-        }
-
-        m->pathIndex = m->pathLength - 1;
-        m->needsRepath = false;
-        m->repathCooldown = REPATH_COOLDOWN_FRAMES;
-
-        repathsThisFrame++;
-    }
-
-    // Clear global state
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
-    pathLength = 0;
 }
 
 void DrawMovers(void) {
@@ -567,11 +311,12 @@ void DrawMovers(void) {
 
         // Optionally draw remaining path
         if (showMoverPaths && m->pathIndex >= 0) {
+            Color color = moverRenderData[i].color;
             // Line to next waypoint
             Point next = m->path[m->pathIndex];
             float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
             float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-            DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, m->color);
+            DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, color);
 
             // Rest of path
             for (int j = m->pathIndex; j > 0; j--) {
@@ -579,18 +324,10 @@ void DrawMovers(void) {
                 float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
                 float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
                 float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 1.0f, Fade(m->color, 0.4f));
+                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 1.0f, Fade(color, 0.4f));
             }
         }
     }
-}
-
-int CountActiveMovers(void) {
-    int count = 0;
-    for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active) count++;
-    }
-    return count;
 }
 
 Vector2 ScreenToGrid(Vector2 screen) {
@@ -797,11 +534,11 @@ void DrawUI(void) {
     DraggableInt(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
     y += 22;
     if (PushButton(x, y, "Spawn Movers")) {
-        SpawnMovers(moverCountSetting);
+        SpawnMoversDemo(moverCountSetting);
     }
     y += 22;
     if (PushButton(x, y, "Clear Movers")) {
-        moverCount = 0;
+        ClearMovers();
     }
     y += 22;
     ToggleBool(x, y, "Show Paths", &showMoverPaths);
@@ -845,15 +582,25 @@ int main(void) {
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
+    float accumulator = 0.0f;
+
     while (!WindowShouldClose()) {
-        float dt = GetFrameTime();
+        float frameTime = GetFrameTime();
+        accumulator += frameTime;
 
         ui_update();
         HandleInput();
 
-        // Update movers
-        ProcessMoverRepaths();
-        UpdateMovers(dt);
+        // Fixed timestep update (Factorio-style: max 1 tick per frame, slowdown if behind)
+        if (accumulator >= TICK_DT) {
+            Tick();
+            accumulator -= TICK_DT;
+            
+            // Drain excess - don't try to catch up, just slow down
+            if (accumulator > TICK_DT) {
+                accumulator = TICK_DT;
+            }
+        }
 
         BeginDrawing();
         ClearBackground(BLACK);
