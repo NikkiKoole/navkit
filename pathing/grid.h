@@ -27,7 +27,7 @@ extern bool needsRebuild;      // Generic flag (legacy)
 extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
 extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag
 
-// Initialize grid with specific dimensions and default chunk size (32x32)
+// Initialize grid with specific dimensions and default chunk size (16x16)
 void InitGridWithSize(int width, int height);
 
 // Initialize grid with specific dimensions and chunk size
