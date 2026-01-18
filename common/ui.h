@@ -38,6 +38,9 @@ bool PushButton(float x, float y, const char* label);
 // Cycle through options - click to advance
 void CycleOption(float x, float y, const char* label, const char** options, int count, int* value);
 
+// Collapsible section header - returns true if section is open
+bool SectionHeader(float x, float y, const char* label, bool* open);
+
 #endif // UI_H
 
 // ============================================================================
@@ -232,6 +235,32 @@ void CycleOption(float x, float y, const char* label, const char** options, int 
         *value = (*value + 1) % count;
         g_ui_clickConsumed = true;
     }
+    if (hovered && IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+        *value = (*value - 1 + count) % count;
+        g_ui_clickConsumed = true;
+    }
+}
+
+bool SectionHeader(float x, float y, const char* label, bool* open) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "[%c] %s", *open ? '-' : '+', label);
+
+    int textWidth = MeasureText(buf, 14);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 18};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) g_ui_toggleAnyHovered = true;
+
+    Color col = hovered ? YELLOW : GRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 14, col);
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        *open = !*open;
+        g_ui_clickConsumed = true;
+    }
+
+    return *open;
 }
 
 #endif // UI_IMPLEMENTATION

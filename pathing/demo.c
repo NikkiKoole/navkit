@@ -33,6 +33,14 @@ const char* toolNames[] = {"Draw Walls", "Erase Walls", "Set Start", "Set Goal"}
 int currentTerrain = 0;
 const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps"};
 
+// UI section collapse state
+bool sectionView = false;
+bool sectionPathfinding = false;
+bool sectionMapEditing = true;
+bool sectionAgents = false;
+bool sectionMovers = true;
+bool sectionDebug = false;
+
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
     "........#.......#.......#.......\n"
@@ -485,128 +493,134 @@ void DrawUI(void) {
     float x = 10.0f;
 
     // === VIEW ===
-    DrawTextShadow("View", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    ToggleBool(x, y, "Show Graph", &showGraph);
-    y += 22;
-    ToggleBool(x, y, "Show Entrances", &showEntrances);
+    if (SectionHeader(x, y, "View", &sectionView)) {
+        y += 18;
+        ToggleBool(x, y, "Show Graph", &showGraph);
+        y += 22;
+        ToggleBool(x, y, "Show Entrances", &showEntrances);
+    }
     y += 22;
 
     // === PATHFINDING ===
     y += 8;
-    DrawTextShadow("Pathfinding", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
-    y += 22;
-    CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
-    use8Dir = (currentDirection == 1);  // Sync with pathfinding
-    y += 22;
-    if (PushButton(x, y, "Build HPA Graph")) {
-        BuildEntrances();
-        BuildGraph();
-    }
-    y += 22;
-    if (PushButton(x, y, "Find Path")) {
-        if (pathAlgorithm == 1) {
-            if (graphEdgeCount == 0) {
-                BuildEntrances();
-                BuildGraph();
-            } else if (needsRebuild) {
-                UpdateDirtyChunks();
-            }
+    if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
+        y += 18;
+        CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
+        y += 22;
+        CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
+        use8Dir = (currentDirection == 1);  // Sync with pathfinding
+        y += 22;
+        if (PushButton(x, y, "Build HPA Graph")) {
+            BuildEntrances();
+            BuildGraph();
         }
-        switch (pathAlgorithm) {
-            case 0: RunAStar(); break;
-            case 1: RunHPAStar(); break;
-            case 2: RunJPS(); break;
-            case 3: RunJpsPlus(); break;
+        y += 22;
+        if (PushButton(x, y, "Find Path")) {
+            if (pathAlgorithm == 1) {
+                if (graphEdgeCount == 0) {
+                    BuildEntrances();
+                    BuildGraph();
+                } else if (needsRebuild) {
+                    UpdateDirtyChunks();
+                }
+            }
+            switch (pathAlgorithm) {
+                case 0: RunAStar(); break;
+                case 1: RunHPAStar(); break;
+                case 2: RunJPS(); break;
+                case 3: RunJpsPlus(); break;
+            }
         }
     }
     y += 22;
 
     // === MAP EDITING ===
     y += 8;
-    DrawTextShadow("Map Editing", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
-    y += 22;
-    CycleOption(x, y, "Terrain", terrainNames, 12, &currentTerrain);
-    y += 22;
-    if (PushButton(x, y, "Generate Terrain")) {
-        GenerateCurrentTerrain();
-        BuildEntrances();
-        BuildGraph();
-    }
-    y += 22;
-    if (PushButton(x, y, "Small Grid (32x32)")) {
-        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-        offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-        offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    if (SectionHeader(x, y, "Map Editing", &sectionMapEditing)) {
+        y += 18;
+        CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
+        y += 22;
+        CycleOption(x, y, "Terrain", terrainNames, 12, &currentTerrain);
+        y += 22;
+        if (PushButton(x, y, "Generate Terrain")) {
+            GenerateCurrentTerrain();
+            BuildEntrances();
+            BuildGraph();
+        }
+        y += 22;
+        if (PushButton(x, y, "Small Grid (32x32)")) {
+            InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
     }
     y += 22;
 
     // === AGENTS ===
     y += 8;
-    DrawTextShadow("Agents", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
-    y += 22;
-    if (PushButton(x, y, "Spawn Agents")) {
-        if (graphEdgeCount == 0) {
-            BuildEntrances();
-            BuildGraph();
+    if (SectionHeader(x, y, "Agents", &sectionAgents)) {
+        y += 18;
+        DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Agents")) {
+            if (graphEdgeCount == 0) {
+                BuildEntrances();
+                BuildGraph();
+            }
+            SpawnAgents(agentCountSetting);
         }
-        SpawnAgents(agentCountSetting);
-    }
-    y += 22;
-    if (PushButton(x, y, "Repath Agents")) {
-        if (pathAlgorithm == 1 && graphEdgeCount == 0) {
-            BuildEntrances();
-            BuildGraph();
+        y += 22;
+        if (PushButton(x, y, "Repath Agents")) {
+            if (pathAlgorithm == 1 && graphEdgeCount == 0) {
+                BuildEntrances();
+                BuildGraph();
+            }
+            RepathAgents();
         }
-        RepathAgents();
     }
     y += 22;
 
     // === MOVERS ===
     y += 8;
-    DrawTextShadow("Movers", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    DraggableInt(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
-    y += 22;
-    if (PushButton(x, y, "Spawn Movers")) {
-        SpawnMoversDemo(moverCountSetting);
+    if (SectionHeader(x, y, "Movers", &sectionMovers)) {
+        y += 18;
+        DraggableInt(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Movers")) {
+            SpawnMoversDemo(moverCountSetting);
+        }
+        y += 22;
+        if (PushButton(x, y, "Clear Movers")) {
+            ClearMovers();
+        }
+        y += 22;
+        ToggleBool(x, y, "Show Paths", &showMoverPaths);
+        y += 22;
+        ToggleBool(x, y, "String Pulling", &useStringPulling);
+        y += 22;
+        ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
     }
-    y += 22;
-    if (PushButton(x, y, "Clear Movers")) {
-        ClearMovers();
-    }
-    y += 22;
-    ToggleBool(x, y, "Show Paths", &showMoverPaths);
-    y += 22;
-    ToggleBool(x, y, "String Pulling", &useStringPulling);
-    y += 22;
-    ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
     y += 22;
 
     // === DEBUG ===
     y += 8;
-    DrawTextShadow("Debug", (int)x, (int)y, 14, GRAY);
-    y += 18;
-    if (PushButton(x, y, "Copy Map ASCII")) {
-        // Copy map to clipboard as ASCII
-        char* buffer = malloc(gridWidth * gridHeight + gridHeight + 1);
-        int idx = 0;
-        for (int row = 0; row < gridHeight; row++) {
-            for (int col = 0; col < gridWidth; col++) {
-                buffer[idx++] = (grid[row][col] == CELL_WALL) ? '#' : '.';
+    if (SectionHeader(x, y, "Debug", &sectionDebug)) {
+        y += 18;
+        if (PushButton(x, y, "Copy Map ASCII")) {
+            // Copy map to clipboard as ASCII
+            char* buffer = malloc(gridWidth * gridHeight + gridHeight + 1);
+            int idx = 0;
+            for (int row = 0; row < gridHeight; row++) {
+                for (int col = 0; col < gridWidth; col++) {
+                    buffer[idx++] = (grid[row][col] == CELL_WALL) ? '#' : '.';
+                }
+                buffer[idx++] = '\n';
             }
-            buffer[idx++] = '\n';
+            buffer[idx] = '\0';
+            SetClipboardText(buffer);
+            free(buffer);
+            TraceLog(LOG_INFO, "Map copied to clipboard");
         }
-        buffer[idx] = '\0';
-        SetClipboardText(buffer);
-        free(buffer);
-        TraceLog(LOG_INFO, "Map copied to clipboard");
     }
 }
 
