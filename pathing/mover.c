@@ -143,13 +143,14 @@ void UpdateMovers(void) {
     float dt = TICK_DT;
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
-        if (!m->active || m->pathLength == 0) continue;
+        if (!m->active) continue;
 
-        if (m->pathIndex < 0) {
+        // Handle movers that need a new goal (reached destination or have no path)
+        if (m->pathIndex < 0 || m->pathLength == 0) {
             if (endlessMoverMode) {
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
-                    m->active = false;
+                    m->active = false;  // Failed to find any path, deactivate
                 }
             } else {
                 m->active = false;

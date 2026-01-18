@@ -412,6 +412,120 @@ describe(endless_mode) {
     }
 }
 
+describe(refinement_after_wall_changes) {
+    it("should handle walls drawn while movers are active") {
+        // Match demo: 32x32 grid with 8x8 chunks (4x4 chunks total)
+        const char* initialMap =
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n";
+        
+        InitGridFromAsciiWithChunkSize(initialMap, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+        
+        SeedRandom(12345);
+        endlessMoverMode = true;
+        
+        // Spawn 1000 movers like in demo
+        ClearMovers();
+        for (int i = 0; i < 1000 && moverCount < MAX_MOVERS; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+            
+            if (pathLength > 0) {
+                Mover* m = &movers[moverCount];
+                float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+                moverCount++;
+            }
+        }
+        
+        // Run for a bit
+        RunTicks(60);
+        int activeBeforeWalls = CountActiveMovers();
+        
+        // Wall positions from the failing scenario
+        int wallPositions[][2] = {
+            {15,8}, {16,8}, {17,8}, {18,8},  // ####
+            {14,9},                            // #
+            {11,10},                           // #
+            {6,12}, {8,12},                    // #.#
+            {5,13}, {5,14}, {5,15}, {5,16},   // vertical line
+            {6,17}, {6,18},                    // ##
+            {19,19},                           // #
+            {8,20}, {19,20}, {20,20},         // #..##
+            {9,21}, {10,21}, {17,21}, {18,21}, {19,21},  // ##...###
+            {10,22}, {11,22}, {12,22}, {13,22}, {14,22}, // #####
+            {-1,-1}  // sentinel
+        };
+        
+        // Draw walls ONE AT A TIME with ticks in between (like real-time drawing)
+        for (int i = 0; wallPositions[i][0] >= 0; i++) {
+            int wx = wallPositions[i][0];
+            int wy = wallPositions[i][1];
+            if (wx < gridWidth && wy < gridHeight) {
+                grid[wy][wx] = CELL_WALL;
+                MarkChunkDirty(wx, wy);
+            }
+            // Run a few ticks between each wall (simulates drawing at ~60fps)
+            RunTicks(2);
+        }
+        
+        // Run more ticks - this triggers repaths
+        RunTicks(300);
+        
+        int activeAfterWalls = CountActiveMovers();
+        
+        // Count stuck movers (active but no path)
+        int stuckMovers = 0;
+        for (int i = 0; i < moverCount; i++) {
+            if (movers[i].active && movers[i].pathLength == 0) {
+                stuckMovers++;
+            }
+        }
+        
+        // All movers should still be active (endless mode) and NOT stuck
+        expect(activeAfterWalls == activeBeforeWalls && stuckMovers == 0);
+        
+        endlessMoverMode = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -429,5 +543,6 @@ int main(int argc, char* argv[]) {
     test(tick_counter);
     test(count_active_movers);
     test(endless_mode);
+    test(refinement_after_wall_changes);
     return summary();
 }
