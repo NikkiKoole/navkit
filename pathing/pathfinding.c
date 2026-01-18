@@ -384,6 +384,88 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
     return -1;  // No path found
 }
 
+// Multi-target A* within chunk bounds - finds costs to all targets in a single search
+// Returns number of targets found. Costs are written to outCosts array (-1 if unreachable)
+int AStarChunkMultiTarget(int sx, int sy, 
+                          int* targetX, int* targetY, int* outCosts, int numTargets,
+                          int minX, int minY, int maxX, int maxY) {
+    // Initialize node data and heap positions
+    for (int y = minY; y < maxY; y++)
+        for (int x = minX; x < maxX; x++) {
+            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            heapPos[y][x] = -1;
+        }
+    
+    // Initialize output costs to -1 (unreachable)
+    for (int i = 0; i < numTargets; i++) {
+        outCosts[i] = -1;
+    }
+    
+    ChunkHeapInit();
+    
+    // Use Dijkstra (no heuristic) since we have multiple targets
+    nodeData[sy][sx].g = 0;
+    nodeData[sy][sx].f = 0;
+    nodeData[sy][sx].open = true;
+    ChunkHeapPush(sx, sy);
+    
+    int dx4[] = {0, 1, 0, -1};
+    int dy4[] = {-1, 0, 1, 0};
+    int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
+    int dy8[] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    
+    int* dx = use8Dir ? dx8 : dx4;
+    int* dy = use8Dir ? dy8 : dy4;
+    int numDirs = use8Dir ? 8 : 4;
+    
+    int targetsFound = 0;
+    
+    int bestX, bestY;
+    while (ChunkHeapPop(&bestX, &bestY)) {
+        // Check if this is one of our targets
+        for (int t = 0; t < numTargets; t++) {
+            if (outCosts[t] < 0 && bestX == targetX[t] && bestY == targetY[t]) {
+                outCosts[t] = nodeData[bestY][bestX].g;
+                targetsFound++;
+                if (targetsFound == numTargets) {
+                    return targetsFound;  // All targets found
+                }
+                break;
+            }
+        }
+        
+        nodeData[bestY][bestX].open = false;
+        nodeData[bestY][bestX].closed = true;
+        
+        for (int i = 0; i < numDirs; i++) {
+            int nx = bestX + dx[i], ny = bestY + dy[i];
+            if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
+            if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
+            
+            // Prevent corner cutting for diagonal movement
+            if (use8Dir && dx[i] != 0 && dy[i] != 0) {
+                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                    continue;
+            }
+            
+            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int ng = nodeData[bestY][bestX].g + moveCost;
+            if (ng < nodeData[ny][nx].g) {
+                bool wasOpen = nodeData[ny][nx].open;
+                nodeData[ny][nx].g = ng;
+                nodeData[ny][nx].f = ng;  // Dijkstra: f = g (no heuristic)
+                nodeData[ny][nx].open = true;
+                if (wasOpen) {
+                    ChunkHeapDecreaseKey(nx, ny);
+                } else {
+                    ChunkHeapPush(nx, ny);
+                }
+            }
+        }
+    }
+    return targetsFound;
+}
+
 void BuildGraph(void) {
     graphEdgeCount = 0;
     
@@ -1005,40 +1087,70 @@ void RunHPAStar(void) {
     
     double connectStartTime = GetTime();
     
-    // Connect start to entrances in start chunk
-    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
-    if (maxX < gridWidth) maxX++;
-    if (maxY < gridHeight) maxY++;
-    
-    for (int i = 0; i < entranceCount && startEdgeCount < 128; i++) {
+    // Gather entrances for start chunk
+    int startTargetX[128], startTargetY[128], startTargetIdx[128];
+    int startTargetCount = 0;
+    for (int i = 0; i < entranceCount && startTargetCount < 128; i++) {
         if (entrances[i].chunk1 == startChunk || entrances[i].chunk2 == startChunk) {
-            int cost = AStarChunk(startPos.x, startPos.y, entrances[i].x, entrances[i].y, 
-                                  minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-            if (cost >= 0) {
-                startEdgeTargets[startEdgeCount] = i;
-                startEdgeCosts[startEdgeCount] = cost;
-                startEdgeCount++;
-                nodesExplored++;
-            }
+            startTargetX[startTargetCount] = entrances[i].x;
+            startTargetY[startTargetCount] = entrances[i].y;
+            startTargetIdx[startTargetCount] = i;
+            startTargetCount++;
         }
     }
     
-    // Connect goal to entrances in goal chunk
-    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
-    if (maxX < gridWidth) maxX++;
-    if (maxY < gridHeight) maxY++;
-    
-    for (int i = 0; i < entranceCount && goalEdgeCount < 128; i++) {
-        if (entrances[i].chunk1 == goalChunk || entrances[i].chunk2 == goalChunk) {
-            int cost = AStarChunk(goalPos.x, goalPos.y, entrances[i].x, entrances[i].y,
-                                  minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-            if (cost >= 0) {
-                goalEdgeTargets[goalEdgeCount] = i;
-                goalEdgeCosts[goalEdgeCount] = cost;
-                goalEdgeCount++;
-                nodesExplored++;
+    // Single multi-target search from start to all chunk entrances
+    if (startTargetCount > 0) {
+        int costs[128];
+        GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
+        if (maxX < gridWidth) maxX++;
+        if (maxY < gridHeight) maxY++;
+        
+        AStarChunkMultiTarget(startPos.x, startPos.y,
+                              startTargetX, startTargetY, costs, startTargetCount,
+                              minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+        
+        for (int i = 0; i < startTargetCount; i++) {
+            if (costs[i] >= 0) {
+                startEdgeTargets[startEdgeCount] = startTargetIdx[i];
+                startEdgeCosts[startEdgeCount] = costs[i];
+                startEdgeCount++;
             }
         }
+        nodesExplored++;
+    }
+    
+    // Gather entrances for goal chunk
+    int goalTargetX[128], goalTargetY[128], goalTargetIdx[128];
+    int goalTargetCount = 0;
+    for (int i = 0; i < entranceCount && goalTargetCount < 128; i++) {
+        if (entrances[i].chunk1 == goalChunk || entrances[i].chunk2 == goalChunk) {
+            goalTargetX[goalTargetCount] = entrances[i].x;
+            goalTargetY[goalTargetCount] = entrances[i].y;
+            goalTargetIdx[goalTargetCount] = i;
+            goalTargetCount++;
+        }
+    }
+    
+    // Single multi-target search from goal to all chunk entrances
+    if (goalTargetCount > 0) {
+        int costs[128];
+        GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
+        if (maxX < gridWidth) maxX++;
+        if (maxY < gridHeight) maxY++;
+        
+        AStarChunkMultiTarget(goalPos.x, goalPos.y,
+                              goalTargetX, goalTargetY, costs, goalTargetCount,
+                              minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+        
+        for (int i = 0; i < goalTargetCount; i++) {
+            if (costs[i] >= 0) {
+                goalEdgeTargets[goalEdgeCount] = goalTargetIdx[i];
+                goalEdgeCosts[goalEdgeCount] = costs[i];
+                goalEdgeCount++;
+            }
+        }
+        nodesExplored++;
     }
     
     double connectTime = (GetTime() - connectStartTime) * 1000.0;
