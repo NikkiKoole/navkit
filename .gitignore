@@ -3,6 +3,7 @@ path
 steer
 test
 tests/test_pathfinding
-
+test_pathing
+test_steering
 # macOS
 .DS_Store
