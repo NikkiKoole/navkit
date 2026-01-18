@@ -89,6 +89,36 @@ static int HashLookupEntrance(int x, int y) {
 // Mapping from old entrance indices to new indices (built during incremental update)
 static int oldToNewEntranceIndex[MAX_ENTRANCES];
 
+// ============================================================================
+// Chunk → Entrances index for O(1) lookup of entrances per chunk
+// ============================================================================
+#define MAX_ENTRANCES_PER_CHUNK 64
+
+static int chunkEntrances[MAX_CHUNKS_Y * MAX_CHUNKS_X][MAX_ENTRANCES_PER_CHUNK];
+static int chunkEntranceCount[MAX_CHUNKS_Y * MAX_CHUNKS_X];
+
+// Build the chunk→entrances index from current entrances array
+static void BuildChunkEntranceIndex(void) {
+    int totalChunks = chunksX * chunksY;
+    for (int c = 0; c < totalChunks; c++) {
+        chunkEntranceCount[c] = 0;
+    }
+    
+    for (int i = 0; i < entranceCount; i++) {
+        int c1 = entrances[i].chunk1;
+        int c2 = entrances[i].chunk2;
+        
+        // Add to chunk1's list
+        if (chunkEntranceCount[c1] < MAX_ENTRANCES_PER_CHUNK) {
+            chunkEntrances[c1][chunkEntranceCount[c1]++] = i;
+        }
+        // Add to chunk2's list (entrance belongs to both chunks)
+        if (c2 != c1 && chunkEntranceCount[c2] < MAX_ENTRANCES_PER_CHUNK) {
+            chunkEntrances[c2][chunkEntranceCount[c2]++] = i;
+        }
+    }
+}
+
 // Binary heap for priority queue (used in abstract graph search)
 typedef struct {
     int* nodes;      // Array of node indices
@@ -782,9 +812,11 @@ static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y
 
 // Rebuild graph edges - keep edges in unaffected chunks, rebuild affected
 static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
-    // Step 0: Build hash table of NEW entrances and create old→new index mapping
-    // This converts the O(n) FindEntranceByPosition lookups to O(1)
+    // Step 0: Build indexes for fast lookup
+    // - Hash table: entrance position → index (for old→new mapping)
+    // - Chunk index: chunk → list of entrance indices (for Step 3)
     BuildEntranceHash();
+    BuildChunkEntranceIndex();
     
     for (int i = 0; i < oldEntranceCount; i++) {
         oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y);
@@ -826,12 +858,29 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
         }
     }
     
-    // Step 3: Rebuild edges for all chunks
-    // For unaffected chunks, edges were already kept in step 1
-    // For affected chunks, we need to run A* to compute new edges
+    // Step 3: Rebuild edges using multi-target Dijkstra (one search per affected entrance)
+    // Instead of O(n²) A* calls per chunk, we do O(n) Dijkstra calls
+    int dijkstraCalls = 0;
+    
     for (int cy = 0; cy < chunksY; cy++) {
         for (int cx = 0; cx < chunksX; cx++) {
             int chunk = cy * chunksX + cx;
+            int numEnts = chunkEntranceCount[chunk];
+            if (numEnts == 0) continue;
+            
+            // Skip chunks that don't need processing
+            if (!affectedChunks[cy][cx]) {
+                // Check if any entrance in this chunk touches an affected chunk
+                bool needsProcessing = false;
+                for (int i = 0; i < numEnts && !needsProcessing; i++) {
+                    int entIdx = chunkEntrances[chunk][i];
+                    if (NewEntranceTouchesAffected(entIdx, affectedChunks)) {
+                        needsProcessing = true;
+                    }
+                }
+                if (!needsProcessing) continue;
+            }
+            
             int minX = cx * chunkWidth;
             int minY = cy * chunkHeight;
             int maxX = (cx + 1) * chunkWidth + 1;
@@ -839,20 +888,37 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
             if (maxX > gridWidth) maxX = gridWidth;
             if (maxY > gridHeight) maxY = gridHeight;
             
-            // Find entrances for this chunk
-            int chunkEnts[128];
-            int numEnts = 0;
-            for (int i = 0; i < entranceCount && numEnts < 128; i++) {
-                if (entrances[i].chunk1 == chunk || entrances[i].chunk2 == chunk)
-                    chunkEnts[numEnts++] = i;
+            // Collect which entrances in this chunk are affected
+            // and which need edges rebuilt
+            bool entAffected[MAX_ENTRANCES_PER_CHUNK];
+            for (int i = 0; i < numEnts; i++) {
+                int entIdx = chunkEntrances[chunk][i];
+                entAffected[i] = NewEntranceTouchesAffected(entIdx, affectedChunks);
             }
             
-            // Build edges between all pairs
+            // For each AFFECTED entrance, run ONE multi-target Dijkstra to find
+            // costs to ALL other entrances in the chunk (not just affected ones)
+            // This is more efficient because:
+            // - We only run Dijkstra from affected entrances (fewer calls)
+            // - Each call finds edges to both affected and unaffected entrances
+            int targetX[MAX_ENTRANCES_PER_CHUNK];
+            int targetY[MAX_ENTRANCES_PER_CHUNK];
+            int targetIdx[MAX_ENTRANCES_PER_CHUNK];
+            int outCosts[MAX_ENTRANCES_PER_CHUNK];
+            
             for (int i = 0; i < numEnts; i++) {
-                for (int j = i + 1; j < numEnts; j++) {
-                    int e1 = chunkEnts[i], e2 = chunkEnts[j];
+                if (!entAffected[i]) continue;  // Only run from affected entrances
+                
+                int e1 = chunkEntrances[chunk][i];
+                
+                // Build target list: all OTHER entrances that don't have edges yet
+                int numTargets = 0;
+                for (int j = 0; j < numEnts; j++) {
+                    if (j == i) continue;  // Skip self
                     
-                    // Check if edge already exists (from kept edges)
+                    int e2 = chunkEntrances[chunk][j];
+                    
+                    // Check if edge already exists (from kept edges or earlier in this loop)
                     bool exists = false;
                     for (int k = 0; k < adjListCount[e1] && !exists; k++) {
                         int edgeIdx = adjList[e1][k];
@@ -860,28 +926,47 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
                     }
                     if (exists) continue;
                     
-                    int cost = AStarChunk(entrances[e1].x, entrances[e1].y, 
-                                         entrances[e2].x, entrances[e2].y, 
-                                         minX, minY, maxX, maxY);
-                    if (cost >= 0 && graphEdgeCount < MAX_EDGES - 1) {
-                        int edgeIdx1 = graphEdgeCount;
-                        int edgeIdx2 = graphEdgeCount + 1;
-                        graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
-                        graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
-                        
-                        if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
-                            adjList[e1][adjListCount[e1]++] = edgeIdx1;
-                        }
-                        if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
-                            adjList[e2][adjListCount[e2]++] = edgeIdx2;
-                        }
+                    targetX[numTargets] = entrances[e2].x;
+                    targetY[numTargets] = entrances[e2].y;
+                    targetIdx[numTargets] = j;  // Store chunk-local index
+                    numTargets++;
+                }
+                
+                if (numTargets == 0) continue;
+                
+                // Run ONE multi-target Dijkstra from e1 to all targets
+                dijkstraCalls++;
+                AStarChunkMultiTarget(entrances[e1].x, entrances[e1].y,
+                                      targetX, targetY, outCosts, numTargets,
+                                      minX, minY, maxX, maxY);
+                
+                // Add edges for all reachable targets
+                for (int t = 0; t < numTargets; t++) {
+                    int cost = outCosts[t];
+                    if (cost < 0) continue;  // Unreachable
+                    
+                    int e2 = chunkEntrances[chunk][targetIdx[t]];
+                    
+                    if (graphEdgeCount >= MAX_EDGES - 1) continue;
+                    
+                    int edgeIdx1 = graphEdgeCount;
+                    int edgeIdx2 = graphEdgeCount + 1;
+                    graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+                    graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+                    
+                    if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                        adjList[e1][adjListCount[e1]++] = edgeIdx1;
+                    }
+                    if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                        adjList[e2][adjListCount[e2]++] = edgeIdx2;
                     }
                 }
             }
         }
     }
     
-    TraceLog(LOG_INFO, "Incremental edges: kept %d, total now %d", keptEdges, graphEdgeCount);
+    TraceLog(LOG_INFO, "Incremental edges: kept %d, total now %d, dijkstra calls=%d", 
+             keptEdges, graphEdgeCount, dijkstraCalls);
 }
 
 void UpdateDirtyChunks(void) {

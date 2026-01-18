@@ -633,7 +633,7 @@ int main(void) {
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGridWithSizeAndChunkSize(512, 512, 32, 32);  // 16x16 chunks
+    InitGridWithSizeAndChunkSize(512, 512, 16, 16);  // 32x32 chunks
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 

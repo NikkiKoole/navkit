@@ -5,8 +5,9 @@
 #include "../pathing/terrain.h"
 #include "../pathing/pathfinding.h"
 
-// Test grid size - 4x4 chunks = 128x128 cells
-#define TEST_GRID_SIZE (DEFAULT_CHUNK_SIZE * 3)
+// Test grid size - fixed at 96x96 (works with various chunk sizes)
+#define TEST_GRID_SIZE 96
+#define TEST_CHUNK_SIZE 32
 
 describe(grid_initialization) {
     it("should initialize grid to all walkable cells") {
@@ -79,7 +80,7 @@ describe(entrance_building) {
 
     it("should create correct entrances for full open border") {
         // A fully open border of chunkWidth cells should create ceil(chunkWidth / MAX_ENTRANCE_WIDTH) entrances
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);  // 2x2 chunks
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
         BuildEntrances();
 
         // Count entrances on the horizontal border at y=chunkHeight, x in [0, chunkWidth)
@@ -96,7 +97,7 @@ describe(entrance_building) {
     }
 
     it("should create one entrance for narrow opening") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);  // 2x2 chunks
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
 
         // Block the horizontal border except for a 3-cell gap
         int borderY = chunkHeight;
@@ -127,7 +128,7 @@ describe(entrance_building) {
     }
 
     it("should create multiple entrances for wide opening") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);  // 2x2 chunks
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
 
         // Block the horizontal border except for a wide gap
         int borderY = chunkHeight;
@@ -224,7 +225,7 @@ describe(graph_building) {
     }
 
     it("edges should be symmetric - cost A to B equals cost B to A") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -248,7 +249,7 @@ describe(graph_building) {
     }
 
     it("should not create edges between entrances in different non-adjacent chunks") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 3, DEFAULT_CHUNK_SIZE * 3);  // 3x3 chunks
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 3, TEST_CHUNK_SIZE * 3, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 3x3 chunks
         BuildEntrances();
         BuildGraph();
 
@@ -270,7 +271,7 @@ describe(graph_building) {
     }
 
     it("should not create edge when wall completely blocks path between entrances") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
 
         // Put a wall that divides chunk 0 into two unreachable halves
         // Vertical wall from top to bottom of chunk 0
@@ -316,7 +317,7 @@ describe(graph_building) {
     }
 
     it("should create edge when path exists between entrances") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         // Completely open grid - all entrances in a chunk should connect
         BuildEntrances();
         BuildGraph();
@@ -367,7 +368,7 @@ describe(graph_building) {
     }
 
     it("should not create duplicate edges for entrances sharing two chunks") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -385,7 +386,7 @@ describe(graph_building) {
     }
 
     it("edge cost should equal walking distance") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -426,7 +427,7 @@ describe(graph_building) {
 
 describe(incremental_graph_updates) {
     it("incremental update should produce same result as full rebuild") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -459,7 +460,7 @@ describe(incremental_graph_updates) {
     }
 
     it("path should still work after wall added via incremental update") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -482,7 +483,7 @@ describe(incremental_graph_updates) {
     }
 
     it("removing an entrance should update all edges correctly") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 2, DEFAULT_CHUNK_SIZE * 2);
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);
         BuildEntrances();
         BuildGraph();
 
@@ -507,7 +508,7 @@ describe(incremental_graph_updates) {
     }
 
     it("changes in one corner should not affect opposite corner") {
-        InitGridWithSize(DEFAULT_CHUNK_SIZE * 4, DEFAULT_CHUNK_SIZE * 4);  // 4x4 chunks
+        InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 4, TEST_CHUNK_SIZE * 4, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 4x4 chunks
         BuildEntrances();
         BuildGraph();
 

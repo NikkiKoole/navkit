@@ -6,7 +6,7 @@
 // Maximum grid dimensions (for static array allocation)
 #define MAX_GRID_WIDTH  (128*4)
 #define MAX_GRID_HEIGHT (128*4)
-#define DEFAULT_CHUNK_SIZE  32
+#define DEFAULT_CHUNK_SIZE  16
 
 // Runtime grid and chunk dimensions
 extern int gridWidth;
