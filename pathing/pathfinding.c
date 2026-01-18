@@ -986,14 +986,40 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
     int maxX = maxX1 > maxX2 ? maxX1 : maxX2;
     int maxY = maxY1 > maxY2 ? maxY1 : maxY2;
     
-    // Expand bounds generously to allow paths that may need to go around obstacles
-    // Entrances on chunk borders may need to path through adjacent chunks
-    int expandX = chunkWidth / 2;
-    int expandY = chunkHeight / 2;
-    minX -= expandX; if (minX < 0) minX = 0;
-    minY -= expandY; if (minY < 0) minY = 0;
-    maxX += expandX; if (maxX > gridWidth) maxX = gridWidth;
-    maxY += expandY; if (maxY > gridHeight) maxY = gridHeight;
+    // Entrances sit ON chunk boundaries. When a coordinate is exactly on a boundary,
+    // it belongs to TWO chunks. GetChunk() only returns one of them. We need to include
+    // the adjacent chunk too, because BuildGraph may have found the path from that
+    // chunk's perspective.
+    // Check if start or goal x is on a vertical boundary (belongs to chunk to the left too)
+    if (sx % chunkWidth == 0 && sx > 0) {
+        int adjMinX = sx - chunkWidth;
+        if (adjMinX < minX) minX = adjMinX;
+    }
+    if (gx % chunkWidth == 0 && gx > 0) {
+        int adjMinX = gx - chunkWidth;
+        if (adjMinX < minX) minX = adjMinX;
+    }
+    // Check if start or goal y is on a horizontal boundary (belongs to chunk above too)
+    if (sy % chunkHeight == 0 && sy > 0) {
+        int adjMinY = sy - chunkHeight;
+        if (adjMinY < minY) minY = adjMinY;
+    }
+    if (gy % chunkHeight == 0 && gy > 0) {
+        int adjMinY = gy - chunkHeight;
+        if (adjMinY < minY) minY = adjMinY;
+    }
+    
+    // Ensure maxX/maxY include the boundary cells (exclusive bounds need +1)
+    if (sx >= maxX) maxX = sx + 1;
+    if (sy >= maxY) maxY = sy + 1;
+    if (gx >= maxX) maxX = gx + 1;
+    if (gy >= maxY) maxY = gy + 1;
+    
+    // Clamp to grid
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > gridWidth) maxX = gridWidth;
+    if (maxY > gridHeight) maxY = gridHeight;
     
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
