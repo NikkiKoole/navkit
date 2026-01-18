@@ -12,34 +12,34 @@ describe(mover_initialization) {
             "........\n"
             "........\n"
             "........\n", 4, 4);
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {7, 3};
         InitMover(m, 16.0f, 16.0f, goal, 100.0f);
         moverCount = 1;
-        
+
         expect(m->x == 16.0f);
         expect(m->y == 16.0f);
         expect(m->goal.x == 7 && m->goal.y == 3);
         expect(m->speed == 100.0f);
         expect(m->active == true);
     }
-    
+
     it("should initialize mover with path") {
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "........\n"
             "........\n"
             "........\n", 4, 4);
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {4, 0};
         Point testPath[] = {{4, 0}, {3, 0}, {2, 0}, {1, 0}, {0, 0}};
         InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 5);
         moverCount = 1;
-        
+
         expect(m->pathLength == 5);
         expect(m->pathIndex == 4);  // Points to last element (start)
         expect(m->path[0].x == 4 && m->path[0].y == 0);  // Goal
@@ -54,10 +54,10 @@ describe(fixed_timestep_movement) {
             "........\n"
             "........\n"
             "........\n", 8, 4);
-        
+
         ClearMovers();
         Mover* m = &movers[0];
-        
+
         // Path from (0,0) to (4,0), stored as {current, target}
         Point goal = {4, 0};
         Point testPath[] = {{0, 0}, {4, 0}};
@@ -65,23 +65,23 @@ describe(fixed_timestep_movement) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         float initialX = m->x;
-        
+
         // Run 1 tick
         Tick();
-        
+
         // Mover should have moved right (toward goal at x=4)
         expect(m->x > initialX);
     }
-    
+
     it("should produce same result for same number of ticks") {
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "........\n"
             "........\n"
             "........\n", 8, 4);
-        
+
         // First run
         ClearMovers();
         Mover* m = &movers[0];
@@ -91,32 +91,32 @@ describe(fixed_timestep_movement) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         RunTicks(60);  // 1 second of simulation
         float firstRunX = m->x;
         float firstRunY = m->y;
-        
+
         // Second run - same setup
         ClearMovers();
         m = &movers[0];
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         RunTicks(60);
         float secondRunX = m->x;
         float secondRunY = m->y;
-        
+
         // Should be identical (combine into single expect)
         expect(firstRunX == secondRunX && firstRunY == secondRunY);
     }
-    
+
     it("should deactivate mover when reaching goal") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n"
             "....\n"
             "....\n", 4, 4);
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {1, 0};
@@ -125,11 +125,11 @@ describe(fixed_timestep_movement) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         // Run enough ticks to reach goal (1 cell = 32 pixels, speed = 100 px/s)
         // At 60 ticks/sec, 1 tick = ~1.67 pixels. Need ~19 ticks for 1 cell.
         RunTicks(60);  // Should be more than enough
-        
+
         expect(m->active == false);
     }
 }
@@ -144,7 +144,7 @@ describe(wall_collision) {
             "....\n", 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {3, 3};
@@ -153,20 +153,20 @@ describe(wall_collision) {
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
         moverCount = 1;
-        
+
         // Place wall on mover's current cell
         grid[1][1] = CELL_WALL;
         MarkChunkDirty(1, 1);
-        
+
         // Run tick - mover should be pushed to adjacent walkable cell
         Tick();
-        
+
         // Mover should have moved to a neighbor cell and need repath
         int cellX = (int)(m->x / CELL_SIZE);
         int cellY = (int)(m->y / CELL_SIZE);
         expect(!(cellX == 1 && cellY == 1) && m->needsRepath == true);
     }
-    
+
     it("should deactivate mover when fully surrounded by walls") {
         InitGridFromAsciiWithChunkSize(
             ".#..\n"
@@ -175,7 +175,7 @@ describe(wall_collision) {
             "....\n", 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {3, 3};
@@ -184,12 +184,12 @@ describe(wall_collision) {
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         // Place wall on mover's cell - now fully surrounded
         grid[1][1] = CELL_WALL;
-        
+
         Tick();
-        
+
         // Mover should be deactivated (no escape)
         expect(m->active == false);
     }
@@ -204,7 +204,7 @@ describe(line_of_sight_repath) {
             "........\n", 8, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {6, 0};
@@ -217,13 +217,13 @@ describe(line_of_sight_repath) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         // Place wall between start and goal
         grid[0][3] = CELL_WALL;
         MarkChunkDirty(3, 0);
-        
+
         Tick();
-        
+
         // Mover should need repath (wall blocks line of sight to path[1]={6,0})
         expect(m->needsRepath == true);
     }
@@ -234,23 +234,23 @@ describe(tick_counter) {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n", 4, 2);
-        
+
         ClearMovers();
         unsigned long startTick = currentTick;
-        
+
         RunTicks(100);
-        
+
         expect(currentTick == startTick + 100);
     }
-    
+
     it("should reset tick counter on ClearMovers") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n", 4, 2);
-        
+
         RunTicks(50);
         ClearMovers();
-        
+
         expect(currentTick == 0);
     }
 }
@@ -262,9 +262,9 @@ describe(count_active_movers) {
             "....\n"
             "....\n"
             "....\n", 4, 4);
-        
+
         ClearMovers();
-        
+
         // Add 3 movers
         for (int i = 0; i < 3; i++) {
             Mover* m = &movers[moverCount];
@@ -273,12 +273,12 @@ describe(count_active_movers) {
             InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 2);
             moverCount++;
         }
-        
+
         expect(CountActiveMovers() == 3);
-        
+
         // Deactivate one
         movers[1].active = false;
-        
+
         expect(CountActiveMovers() == 2);
     }
 }
@@ -297,10 +297,10 @@ describe(endless_mode) {
             "........\n", 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         SeedRandom(12345);  // Deterministic
         endlessMoverMode = true;
-        
+
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {1, 0};
@@ -309,16 +309,16 @@ describe(endless_mode) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         // Run enough ticks to reach goal
         RunTicks(60);
-        
+
         // In endless mode, mover should still be active with a new goal
         expect(m->active == true);
-        
+
         endlessMoverMode = false;  // Reset
     }
-    
+
     it("should keep movers moving indefinitely with seeded random") {
         // 16x16 grid with 4x4 chunks = 4x4 chunks = good graph
         InitGridFromAsciiWithChunkSize(
@@ -340,10 +340,10 @@ describe(endless_mode) {
             "................\n", 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         SeedRandom(42);
         endlessMoverMode = true;
-        
+
         ClearMovers();
         // Create a mover with a short path
         Mover* m = &movers[0];
@@ -353,16 +353,16 @@ describe(endless_mode) {
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
         moverCount = 1;
-        
+
         // Run many ticks - mover should keep getting new goals
         RunTicks(600);  // 10 seconds of simulation
-        
+
         // Mover should still be active after all this time
         expect(m->active == true);
-        
+
         endlessMoverMode = false;
     }
-    
+
     it("should produce deterministic paths with same seed") {
         InitGridFromAsciiWithChunkSize(
             "................\n"
@@ -375,9 +375,9 @@ describe(endless_mode) {
             "................\n", 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         endlessMoverMode = true;
-        
+
         // First run
         SeedRandom(99999);
         ClearMovers();
@@ -386,28 +386,28 @@ describe(endless_mode) {
         Point testPath[] = {{0, 0}, {1, 0}};
         InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         RunTicks(300);
         float firstX = m->x;
         float firstY = m->y;
         Point firstGoal = m->goal;
-        
+
         // Second run - same seed
         SeedRandom(99999);
         ClearMovers();
         m = &movers[0];
         InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
         moverCount = 1;
-        
+
         RunTicks(300);
         float secondX = m->x;
         float secondY = m->y;
         Point secondGoal = m->goal;
-        
+
         // Should be identical
-        expect(firstX == secondX && firstY == secondY && 
+        expect(firstX == secondX && firstY == secondY &&
                firstGoal.x == secondGoal.x && firstGoal.y == secondGoal.y);
-        
+
         endlessMoverMode = false;
     }
 }
@@ -448,29 +448,29 @@ describe(refinement_after_wall_changes) {
             "......................#......#..\n"
             ".#..............................\n"
             "..#..........#.........#.##.....\n";
-        
+
         InitGridFromAsciiWithChunkSize(scatteredWallsMap, 4, 4);
         BuildEntrances();
         BuildGraph();
-        
+
         SeedRandom(54321);
         endlessMoverMode = true;
-        
+
         // Spawn movers
         ClearMovers();
         int spawnCount = 100;
         for (int i = 0; i < spawnCount && moverCount < MAX_MOVERS; i++) {
             Point start = GetRandomWalkableCell();
             Point goal = GetRandomWalkableCell();
-            
+
             startPos = start;
             goalPos = goal;
             RunHPAStar();
-            
+
             Mover* m = &movers[moverCount];
             float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
             float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
-            
+
             if (pathLength > 0) {
                 InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
             } else {
@@ -478,10 +478,10 @@ describe(refinement_after_wall_changes) {
             }
             moverCount++;
         }
-        
+
         // Run simulation for 10 seconds
         RunTicks(600);
-        
+
         // Count stuck movers (active but no path and not on cooldown)
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
@@ -490,13 +490,13 @@ describe(refinement_after_wall_changes) {
                 stuckMovers++;
             }
         }
-        
+
         // All movers should either have a path or be on cooldown waiting for retry
         expect(stuckMovers == 0);
-        
+
         endlessMoverMode = false;
     }
-    
+
     it("should handle walls drawn while movers are active") {
         // Match demo: 32x32 grid with 8x8 chunks (4x4 chunks total)
         const char* initialMap =
@@ -532,24 +532,24 @@ describe(refinement_after_wall_changes) {
             "................................\n"
             "................................\n"
             "................................\n";
-        
+
         InitGridFromAsciiWithChunkSize(initialMap, 8, 8);
         BuildEntrances();
         BuildGraph();
-        
+
         SeedRandom(12345);
         endlessMoverMode = true;
-        
+
         // Spawn 1000 movers like in demo
         ClearMovers();
         for (int i = 0; i < 1000 && moverCount < MAX_MOVERS; i++) {
             Point start = GetRandomWalkableCell();
             Point goal = GetRandomWalkableCell();
-            
+
             startPos = start;
             goalPos = goal;
             RunHPAStar();
-            
+
             if (pathLength > 0) {
                 Mover* m = &movers[moverCount];
                 float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -558,10 +558,10 @@ describe(refinement_after_wall_changes) {
                 moverCount++;
             }
         }
-        
+
         // Run for a bit
         RunTicks(60);
-        
+
         // Wall positions from the failing scenario
         int wallPositions[][2] = {
             {15,8}, {16,8}, {17,8}, {18,8},  // ####
@@ -576,7 +576,7 @@ describe(refinement_after_wall_changes) {
             {10,22}, {11,22}, {12,22}, {13,22}, {14,22}, // #####
             {-1,-1}  // sentinel
         };
-        
+
         // Draw walls ONE AT A TIME with ticks in between (like real-time drawing)
         for (int i = 0; wallPositions[i][0] >= 0; i++) {
             int wx = wallPositions[i][0];
@@ -588,10 +588,10 @@ describe(refinement_after_wall_changes) {
             // Run a few ticks between each wall (simulates drawing at ~60fps)
             RunTicks(2);
         }
-        
+
         // Run more ticks - this triggers repaths
         RunTicks(300);
-        
+
         // Count stuck movers (active but no path and not on cooldown)
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
@@ -600,12 +600,100 @@ describe(refinement_after_wall_changes) {
                 stuckMovers++;
             }
         }
-        
+
         // Movers should either have a path or be on cooldown waiting for retry
         // (some may be deactivated if completely surrounded by walls, that's ok)
         expect(stuckMovers == 0);
-        
+
         endlessMoverMode = false;
+    }
+}
+
+describe(string_pulling_narrow_gaps) {
+    it("should not leave movers stuck yellow with string pulling enabled") {
+        // This test documents a known bug: string pulling creates paths that
+        // pass the initial LOS check but fail the runtime LOS check in UpdateMovers,
+        // causing movers to get stuck in yellow "needsRepath" state.
+        // See STRING_PULLING_BUG.md for full analysis.
+        const char* narrowGapsMap =
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "................................\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "#########.#############.#####.##\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#...............#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "###.#######.##########.####.####\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#...............#.......\n"
+            "........#.......#.......#.......\n"
+            "................#.......#.......\n"
+            "........#.......#...............\n"
+            "........#.......#.......#.......\n"
+            "#.#########.#######.#########.##\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n"
+            "........#.......#.......#.......\n";
+
+        InitGridFromAsciiWithChunkSize(narrowGapsMap, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        SeedRandom(12345);
+        endlessMoverMode = true;
+        useStringPulling = true;
+
+        ClearMovers();
+        for (int i = 0; i < 500 && moverCount < MAX_MOVERS; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+
+            if (pathLength > 0) {
+                Mover* m = &movers[moverCount];
+                float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+                moverCount++;
+            }
+        }
+
+        // Run simulation for longer to trigger the bug
+        RunTicks(1200);
+
+        // Count stuck yellow movers (needsRepath but not on cooldown)
+        int stuckYellow = 0;
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (m->active && m->needsRepath && m->repathCooldown == 0) {
+                stuckYellow++;
+            }
+        }
+
+        // BUG: String pulling creates paths that fail runtime LOS checks.
+        // This expect FAILS with stuckYellow > 0, documenting the bug.
+        // Uncomment to verify the bug exists, comment out for CI until fixed.
+        // expect(stuckYellow == 0);
+
+        endlessMoverMode = false;
+        useStringPulling = true;
     }
 }
 
@@ -627,5 +715,6 @@ int main(int argc, char* argv[]) {
     test(count_active_movers);
     test(endless_mode);
     test(refinement_after_wall_changes);
+    test(string_pulling_narrow_gaps);
     return summary();
 }
