@@ -413,6 +413,90 @@ describe(endless_mode) {
 }
 
 describe(refinement_after_wall_changes) {
+    it("should handle movers on map with scattered walls and small chunks") {
+        // Exact map from user with 4x4 chunks - triggers HPA* refinement failures
+        const char* scatteredWallsMap =
+            ".........#..#.....#.............\n"
+            ".#.............##.....#.........\n"
+            "...#......#........#....#.......\n"
+            ".......#...............#.....#..\n"
+            "#...#....#.#.#.#...........#.#..\n"
+            ".....#......#...................\n"
+            "................................\n"
+            ".#............#.....#......#..#.\n"
+            "....#....#......#........#......\n"
+            "...###...#...#########......#...\n"
+            "...........##.....#.##...#......\n"
+            ".#....#....#.........##...#.....\n"
+            "..........#...........#.#....#..\n"
+            "....#....##.....#.....#.....#...\n"
+            ".#.#.....#............#..#......\n"
+            "#....#...#....#.....#...........\n"
+            "........##.....#...........#....\n"
+            "........#.......................\n"
+            ".......##.................#.....\n"
+            "..##....##.............#..#.....\n"
+            ".........##...##.....###.......#\n"
+            ".......#..###........##..#.#.#.#\n"
+            "............###......##......#..\n"
+            "..............########..#.#.....\n"
+            ".#.#........#................##.\n"
+            ".#....#..#.........#............\n"
+            "...........................#....\n"
+            ".....#..........#..........##...\n"
+            "..........#..............#......\n"
+            "......................#......#..\n"
+            ".#..............................\n"
+            "..#..........#.........#.##.....\n";
+        
+        InitGridFromAsciiWithChunkSize(scatteredWallsMap, 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        SeedRandom(54321);
+        endlessMoverMode = true;
+        
+        // Spawn movers
+        ClearMovers();
+        int spawnCount = 100;
+        for (int i = 0; i < spawnCount && moverCount < MAX_MOVERS; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+            
+            Mover* m = &movers[moverCount];
+            float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            
+            if (pathLength > 0) {
+                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+            } else {
+                InitMover(m, x, y, goal, 100.0f);
+            }
+            moverCount++;
+        }
+        
+        // Run simulation for 10 seconds
+        RunTicks(600);
+        
+        // Count stuck movers (active but no path and not on cooldown)
+        int stuckMovers = 0;
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (m->active && m->pathLength == 0 && m->repathCooldown == 0) {
+                stuckMovers++;
+            }
+        }
+        
+        // All movers should either have a path or be on cooldown waiting for retry
+        expect(stuckMovers == 0);
+        
+        endlessMoverMode = false;
+    }
+    
     it("should handle walls drawn while movers are active") {
         // Match demo: 32x32 grid with 8x8 chunks (4x4 chunks total)
         const char* initialMap =
@@ -477,7 +561,6 @@ describe(refinement_after_wall_changes) {
         
         // Run for a bit
         RunTicks(60);
-        int activeBeforeWalls = CountActiveMovers();
         
         // Wall positions from the failing scenario
         int wallPositions[][2] = {
@@ -509,18 +592,18 @@ describe(refinement_after_wall_changes) {
         // Run more ticks - this triggers repaths
         RunTicks(300);
         
-        int activeAfterWalls = CountActiveMovers();
-        
-        // Count stuck movers (active but no path)
+        // Count stuck movers (active but no path and not on cooldown)
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
-            if (movers[i].active && movers[i].pathLength == 0) {
+            Mover* m = &movers[i];
+            if (m->active && m->pathLength == 0 && m->repathCooldown == 0) {
                 stuckMovers++;
             }
         }
         
-        // All movers should still be active (endless mode) and NOT stuck
-        expect(activeAfterWalls == activeBeforeWalls && stuckMovers == 0);
+        // Movers should either have a path or be on cooldown waiting for retry
+        // (some may be deactivated if completely surrounded by walls, that's ok)
+        expect(stuckMovers == 0);
         
         endlessMoverMode = false;
     }

@@ -298,9 +298,21 @@ void DrawMovers(void) {
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
 
-        // Draw mover as red rectangle
+        // Choose color based on mover state
+        Color moverColor;
+        if (m->repathCooldown > 0 && m->pathLength == 0) {
+            moverColor = ORANGE;  // On cooldown, waiting to retry
+        } else if (m->pathLength == 0) {
+            moverColor = RED;     // No path
+        } else if (m->needsRepath) {
+            moverColor = YELLOW;  // Needs repath
+        } else {
+            moverColor = GREEN;   // Normal, has valid path
+        }
+
+        // Draw mover as colored rectangle
         float moverSize = size * 0.5f;
-        DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, RED);
+        DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, moverColor);
 
         // Optionally draw remaining path
         if (showMoverPaths && m->pathIndex >= 0) {

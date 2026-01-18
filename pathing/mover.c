@@ -247,6 +247,15 @@ void ProcessMoverRepaths(void) {
             m->path[j] = path[j];
         }
 
+        if (m->pathLength == 0) {
+            // Repath failed - goal may be unreachable, clear path and let UpdateMovers assign new goal
+            m->pathIndex = -1;
+            m->needsRepath = false;
+            m->repathCooldown = TICK_RATE;  // Wait 1 second before trying new goal
+            repathsThisFrame++;
+            continue;
+        }
+
         if (useStringPulling && m->pathLength > 2) {
             StringPullPath(m->path, &m->pathLength);
         }
