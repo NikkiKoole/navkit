@@ -93,7 +93,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10000;
+int moverCountSetting = 1000;
 bool showMoverPaths = false;
 
 // Extended mover struct for rendering (adds Color)
