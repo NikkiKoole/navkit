@@ -37,17 +37,26 @@ typedef struct {
 
 static BinaryHeap heap;
 static int heapStorage[MAX_ABSTRACT_NODES];
+static int abstractHeapPos[MAX_ABSTRACT_NODES];  // Track position in heap for decrease-key
 
-static void HeapInit(void) {
+static void HeapInit(int numNodes) {
     heap.nodes = heapStorage;
     heap.size = 0;
     heap.capacity = MAX_ABSTRACT_NODES;
+    // Initialize all positions to -1 (not in heap)
+    for (int i = 0; i < numNodes; i++) {
+        abstractHeapPos[i] = -1;
+    }
 }
 
 static void HeapSwap(int i, int j) {
-    int temp = heap.nodes[i];
-    heap.nodes[i] = heap.nodes[j];
-    heap.nodes[j] = temp;
+    int nodeI = heap.nodes[i];
+    int nodeJ = heap.nodes[j];
+    heap.nodes[i] = nodeJ;
+    heap.nodes[j] = nodeI;
+    // Update position tracking
+    abstractHeapPos[nodeI] = j;
+    abstractHeapPos[nodeJ] = i;
 }
 
 static void HeapBubbleUp(int idx) {
@@ -86,20 +95,31 @@ static void HeapBubbleDown(int idx) {
 
 static void HeapPush(int node) {
     if (heap.size >= heap.capacity) return;
-    heap.nodes[heap.size] = node;
-    HeapBubbleUp(heap.size);
+    int idx = heap.size;
+    heap.nodes[idx] = node;
+    abstractHeapPos[node] = idx;
     heap.size++;
+    HeapBubbleUp(idx);
 }
 
 static int HeapPop(void) {
     if (heap.size == 0) return -1;
     int result = heap.nodes[0];
+    abstractHeapPos[result] = -1;  // No longer in heap
     heap.size--;
     if (heap.size > 0) {
         heap.nodes[0] = heap.nodes[heap.size];
+        abstractHeapPos[heap.nodes[0]] = 0;
         HeapBubbleDown(0);
     }
     return result;
+}
+
+static void HeapDecreaseKey(int node) {
+    int idx = abstractHeapPos[node];
+    if (idx >= 0 && idx < heap.size) {
+        HeapBubbleUp(idx);
+    }
 }
 
 // ============================================================================
@@ -1157,7 +1177,7 @@ void RunHPAStar(void) {
     
     // A* on abstract graph using binary heap
     double abstractStartTime = GetTime();
-    HeapInit();
+    HeapInit(totalNodes);
     
     abstractNodes[startNode].g = 0;
     abstractNodes[startNode].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y);
@@ -1167,9 +1187,6 @@ void RunHPAStar(void) {
     while (heap.size > 0) {
         // Pop best node from heap
         int best = HeapPop();
-        
-        // Skip if already closed (duplicate entry in heap)
-        if (abstractNodes[best].closed) continue;
         
         if (best == goalNode) {
             // Reconstruct abstract path
@@ -1193,11 +1210,16 @@ void RunHPAStar(void) {
                 if (abstractNodes[neighbor].closed) continue;
                 int ng = abstractNodes[best].g + startEdgeCosts[i];
                 if (ng < abstractNodes[neighbor].g) {
+                    bool wasOpen = abstractNodes[neighbor].open;
                     abstractNodes[neighbor].g = ng;
                     abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goalPos.x, goalPos.y);
                     abstractNodes[neighbor].parent = best;
                     abstractNodes[neighbor].open = true;
-                    HeapPush(neighbor);
+                    if (wasOpen) {
+                        HeapDecreaseKey(neighbor);
+                    } else {
+                        HeapPush(neighbor);
+                    }
                 }
             }
         } else if (best < entranceCount) {
@@ -1208,11 +1230,16 @@ void RunHPAStar(void) {
                 if (abstractNodes[neighbor].closed) continue;
                 int ng = abstractNodes[best].g + graphEdges[edgeIdx].cost;
                 if (ng < abstractNodes[neighbor].g) {
+                    bool wasOpen = abstractNodes[neighbor].open;
                     abstractNodes[neighbor].g = ng;
                     abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goalPos.x, goalPos.y);
                     abstractNodes[neighbor].parent = best;
                     abstractNodes[neighbor].open = true;
-                    HeapPush(neighbor);
+                    if (wasOpen) {
+                        HeapDecreaseKey(neighbor);
+                    } else {
+                        HeapPush(neighbor);
+                    }
                 }
             }
             // Also check if this entrance can reach goal
@@ -1222,11 +1249,16 @@ void RunHPAStar(void) {
                     if (abstractNodes[neighbor].closed) continue;
                     int ng = abstractNodes[best].g + goalEdgeCosts[i];
                     if (ng < abstractNodes[neighbor].g) {
+                        bool wasOpen = abstractNodes[neighbor].open;
                         abstractNodes[neighbor].g = ng;
                         abstractNodes[neighbor].f = ng;  // h=0 at goal
                         abstractNodes[neighbor].parent = best;
                         abstractNodes[neighbor].open = true;
-                        HeapPush(neighbor);
+                        if (wasOpen) {
+                            HeapDecreaseKey(neighbor);
+                        } else {
+                            HeapPush(neighbor);
+                        }
                     }
                 }
             }
