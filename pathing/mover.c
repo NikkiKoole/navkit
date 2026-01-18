@@ -48,7 +48,64 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
     }
 }
 
+// Check if there's a clear corridor between two points (for string pulling).
+// Instead of just checking center-to-center LOS (which can graze corners),
+// we verify LOS from all 4 cardinal neighbors of the start point.
+// This ensures the path is safe regardless of sub-cell mover position.
+// The runtime check (HasLineOfSightLenient) is the inverse: it passes if
+// ANY neighbor has LOS, preventing movers from getting stuck on valid paths.
+static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
+    // First check the center line
+    if (!HasLineOfSight(x0, y0, x1, y1)) return false;
+    
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    
+    // Skip extra checks for short cardinal moves (1 cell orthogonal)
+    if ((dx == 0 && abs(dy) <= 1) || (dy == 0 && abs(dx) <= 1)) {
+        return true;
+    }
+    
+    // Check LOS from all 4 cardinal neighbors of start point
+    int ndx[] = {0, 0, -1, 1};
+    int ndy[] = {-1, 1, 0, 0};
+    
+    for (int i = 0; i < 4; i++) {
+        int nx = x0 + ndx[i];
+        int ny = y0 + ndy[i];
+        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+            grid[ny][nx] == CELL_WALKABLE) {
+            if (!HasLineOfSight(nx, ny, x1, y1)) return false;
+        }
+    }
+    
+    return true;
+}
+
+// Lenient LOS check for runtime - returns true if LOS exists from current cell
+// OR any cardinal neighbor. Matches the corridor check used in string pulling.
+static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1) {
+    // First try from current position
+    if (HasLineOfSight(x0, y0, x1, y1)) return true;
+    
+    // Try from all 4 cardinal neighbors - if ANY has LOS, we're okay
+    int ndx[] = {0, 0, -1, 1};
+    int ndy[] = {-1, 1, 0, 0};
+    
+    for (int i = 0; i < 4; i++) {
+        int nx = x0 + ndx[i];
+        int ny = y0 + ndy[i];
+        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+            grid[ny][nx] == CELL_WALKABLE) {
+            if (HasLineOfSight(nx, ny, x1, y1)) return true;
+        }
+    }
+    
+    return false;
+}
+
 // String pulling: remove unnecessary waypoints from path
+// Uses HasClearCorridor instead of HasLineOfSight to avoid corner-grazing paths
 void StringPullPath(Point* pathArr, int* pathLen) {
     if (*pathLen <= 2) return;
 
@@ -61,8 +118,8 @@ void StringPullPath(Point* pathArr, int* pathLen) {
     while (current > 0) {
         int furthest = current - 1;
         for (int i = 0; i < current; i++) {
-            if (HasLineOfSight(pathArr[current].x, pathArr[current].y,
-                               pathArr[i].x, pathArr[i].y)) {
+            if (HasClearCorridor(pathArr[current].x, pathArr[current].y,
+                                 pathArr[i].x, pathArr[i].y)) {
                 furthest = i;
                 break;
             }
@@ -194,8 +251,8 @@ void UpdateMovers(void) {
 
         Point target = m->path[m->pathIndex];
 
-        // Check line-of-sight to next waypoint
-        if (!HasLineOfSight(currentX, currentY, target.x, target.y)) {
+        // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
+        if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y)) {
             m->needsRepath = true;
             continue;
         }
