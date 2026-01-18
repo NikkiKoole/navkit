@@ -1313,6 +1313,149 @@ describe(diagonal_corner_cutting) {
     }
 }
 
+// ============== STRING PULLING TESTS ==============
+// Recreate string pulling logic for testing (same as in demo.c)
+
+static bool TestHasLineOfSight(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+    
+    int x = x0, y = y0;
+    while (1) {
+        if (grid[y][x] == CELL_WALL) return false;
+        if (x == x1 && y == y1) return true;
+        
+        int e2 = 2 * err;
+        
+        if (e2 > -dy && e2 < dx) {
+            int nx = x + sx;
+            int ny = y + sy;
+            if (grid[y][nx] == CELL_WALL || grid[ny][x] == CELL_WALL) {
+                return false;
+            }
+        }
+        
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+}
+
+static void TestStringPullPath(Point* pathArr, int* pathLen) {
+    if (*pathLen <= 2) return;
+    
+    Point result[MAX_PATH];
+    int resultLen = 0;
+    
+    result[resultLen++] = pathArr[*pathLen - 1];
+    int current = *pathLen - 1;
+    
+    while (current > 0) {
+        int furthest = current - 1;
+        for (int i = 0; i < current; i++) {
+            if (TestHasLineOfSight(pathArr[current].x, pathArr[current].y,
+                                   pathArr[i].x, pathArr[i].y)) {
+                furthest = i;
+                break;
+            }
+        }
+        result[resultLen++] = pathArr[furthest];
+        current = furthest;
+    }
+    
+    for (int i = 0; i < resultLen; i++) {
+        pathArr[i] = result[resultLen - 1 - i];
+    }
+    *pathLen = resultLen;
+}
+
+describe(string_pulling) {
+    it("should reduce path to 2 points on open grid") {
+        // Open 16x16 grid, path from corner to corner
+        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        
+        startPos = (Point){0, 0};
+        goalPos = (Point){15, 15};
+        RunAStar();
+        
+        // Should have a long stair-step path
+        int originalLength = pathLength;
+        expect(originalLength > 2);
+        
+        // String pull it
+        TestStringPullPath(path, &pathLength);
+        
+        // Should now be just 2 points (start and goal) since it's open
+        expect(pathLength == 2);
+        expect(path[0].x == 15 && path[0].y == 15);  // goal
+        expect(path[1].x == 0 && path[1].y == 0);    // start
+    }
+    
+    it("should keep corner waypoints when obstacles present") {
+        // Grid with obstacle requiring detour
+        //   0123456789
+        // 0 S.........
+        // 1 .###......
+        // 2 ...#......
+        // 3 ...#......
+        // 4 ..........
+        // 5 .........G
+        InitGridWithSizeAndChunkSize(10, 6, 10, 6);
+        
+        grid[1][1] = CELL_WALL;
+        grid[1][2] = CELL_WALL;
+        grid[1][3] = CELL_WALL;
+        grid[2][3] = CELL_WALL;
+        grid[3][3] = CELL_WALL;
+        
+        startPos = (Point){0, 0};
+        goalPos = (Point){9, 5};
+        RunAStar();
+        
+        expect(pathLength > 0);
+        int originalLength = pathLength;
+        
+        TestStringPullPath(path, &pathLength);
+        
+        // Should be shorter than original but more than 2 (needs to go around wall)
+        expect(pathLength < originalLength);
+        expect(pathLength > 2);
+    }
+    
+    it("should not cut corners through walls") {
+        // Grid where direct diagonal would cut corner
+        //   0123
+        // 0 S...
+        // 1 .#..
+        // 2 ..#.
+        // 3 ...G
+        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        
+        grid[1][1] = CELL_WALL;
+        grid[2][2] = CELL_WALL;
+        
+        startPos = (Point){0, 0};
+        goalPos = (Point){3, 3};
+        RunAStar();
+        
+        expect(pathLength > 0);
+        
+        TestStringPullPath(path, &pathLength);
+        
+        // Should NOT be able to go directly (would cut corners)
+        // Path should have waypoints to avoid corner cutting
+        expect(pathLength > 2);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1333,5 +1476,6 @@ int main(int argc, char* argv[]) {
     test(dijkstra_vs_astar_consistency);
     test(maze_refinement_failure);
     test(diagonal_corner_cutting);
+    test(string_pulling);
     return summary();
 }

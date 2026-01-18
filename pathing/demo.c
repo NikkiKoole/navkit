@@ -258,6 +258,77 @@ void DrawAgents(void) {
 
 // ============== MOVERS ==============
 
+bool useStringPulling = true;
+
+// Check if there's line-of-sight between two points (Bresenham)
+static bool HasLineOfSight(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+    
+    int x = x0, y = y0;
+    while (1) {
+        if (grid[y][x] == CELL_WALL) return false;
+        if (x == x1 && y == y1) return true;
+        
+        int e2 = 2 * err;
+        
+        // For diagonal movement, check corner cutting
+        if (e2 > -dy && e2 < dx) {
+            // Moving diagonally - check both adjacent cells
+            int nx = x + sx;
+            int ny = y + sy;
+            if (grid[y][nx] == CELL_WALL || grid[ny][x] == CELL_WALL) {
+                return false;  // Would cut corner
+            }
+        }
+        
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+}
+
+// String pulling: remove unnecessary waypoints from path
+// Path is stored goal-to-start, so we iterate from end (start) toward beginning (goal)
+static void StringPullPath(Point* pathArr, int* pathLen) {
+    if (*pathLen <= 2) return;  // Nothing to smooth
+    
+    Point result[MAX_PATH];
+    int resultLen = 0;
+    
+    // Start from the beginning of movement (last index = start position)
+    result[resultLen++] = pathArr[*pathLen - 1];
+    int current = *pathLen - 1;
+    
+    while (current > 0) {
+        // Find furthest visible point from current (search from goal toward current)
+        int furthest = current - 1;  // Default to next point
+        for (int i = 0; i < current; i++) {
+            if (HasLineOfSight(pathArr[current].x, pathArr[current].y,
+                               pathArr[i].x, pathArr[i].y)) {
+                furthest = i;  // Found visible point closer to goal
+                break;  // This is the furthest since we search from goal
+            }
+        }
+        result[resultLen++] = pathArr[furthest];
+        current = furthest;
+    }
+    
+    // Reverse result back to goal-to-start order
+    for (int i = 0; i < resultLen; i++) {
+        pathArr[i] = result[resultLen - 1 - i];
+    }
+    *pathLen = resultLen;
+}
+
 void SpawnMovers(int count) {
     double startTime = GetTime();
     
@@ -293,9 +364,15 @@ void SpawnMovers(int count) {
         for (int j = 0; j < pathLength; j++) {
             m->path[j] = path[j];
         }
-        m->pathIndex = pathLength - 1;
         
-        if (pathLength > 0) {
+        // Apply string pulling to smooth path
+        if (useStringPulling && m->pathLength > 2) {
+            StringPullPath(m->path, &m->pathLength);
+        }
+        
+        m->pathIndex = m->pathLength - 1;
+        
+        if (m->pathLength > 0) {
             moverCount++;
         }
     }
@@ -375,7 +452,13 @@ void ProcessMoverRepaths(void) {
         for (int j = 0; j < pathLength; j++) {
             m->path[j] = path[j];
         }
-        m->pathIndex = pathLength - 1;
+        
+        // Apply string pulling to smooth path
+        if (useStringPulling && m->pathLength > 2) {
+            StringPullPath(m->path, &m->pathLength);
+        }
+        
+        m->pathIndex = m->pathLength - 1;
         m->needsRepath = false;
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
         
@@ -643,6 +726,8 @@ void DrawUI(void) {
     }
     y += 22;
     ToggleBool(x, y, "Show Paths", &showMoverPaths);
+    y += 22;
+    ToggleBool(x, y, "String Pulling", &useStringPulling);
     y += 22;
     
     // === DEBUG ===
