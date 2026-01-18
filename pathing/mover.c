@@ -2,6 +2,7 @@
 #include "grid.h"
 #include "pathfinding.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 // Globals
@@ -148,9 +149,15 @@ void UpdateMovers(void) {
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
             if (endlessMoverMode) {
+                // Wait for cooldown before trying a new goal
+                if (m->repathCooldown > 0) {
+                    m->repathCooldown--;
+                    continue;
+                }
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
-                    m->active = false;  // Failed to find any path, deactivate
+                    // No path found, wait 1 second before trying again
+                    m->repathCooldown = TICK_RATE;
                 }
             } else {
                 m->active = false;
@@ -179,6 +186,7 @@ void UpdateMovers(void) {
             }
             if (!pushed) {
                 m->active = false;
+                printf("WARNING: Mover %d deactivated: stuck in wall with no escape\n", i);
             }
             m->needsRepath = true;
             continue;

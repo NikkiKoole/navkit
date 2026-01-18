@@ -267,11 +267,15 @@ void SpawnMoversDemo(int count) {
                 StringPullPath(m->path, &m->pathLength);
                 m->pathIndex = m->pathLength - 1;
             }
-            
-            // Store render data (color)
-            moverRenderData[moverCount].color = GetRandomColor();
-            moverCount++;
+        } else {
+            // No path found, spawn anyway - endless mode will assign a new goal
+            InitMover(m, x, y, goal, speed);
+            TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d) to (%d,%d)", moverCount, start.x, start.y, goal.x, goal.y);
         }
+        
+        // Store render data (color)
+        moverRenderData[moverCount].color = GetRandomColor();
+        moverCount++;
     }
 
     // Clear global state
