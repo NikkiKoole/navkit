@@ -31,7 +31,42 @@ const char* toolNames[] = {"Draw Walls", "Erase Walls", "Set Start", "Set Goal"}
 
 // Terrain selection
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps"};
+
+// Test map: Narrow gaps (from test_mover.c)
+const char* narrowGapsMap =
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "................................\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "#########.#############.#####.##\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#...............#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "###.#######.##########.####.####\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#...............#.......\n"
+    "........#.......#.......#.......\n"
+    "................#.......#.......\n"
+    "........#.......#...............\n"
+    "........#.......#.......#.......\n"
+    "#.#########.#######.#########.##\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n"
+    "........#.......#.......#.......\n";
 
 // Agents
 int agentCountSetting = 10;
@@ -50,7 +85,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 1000;
+int moverCountSetting = 10000;
 bool showMoverPaths = false;
 
 // Extended mover struct for rendering (adds Color)
@@ -261,7 +296,7 @@ void SpawnMoversDemo(int count) {
 
         if (pathLength > 0) {
             InitMoverWithPath(m, x, y, goal, speed, path, pathLength);
-            
+
             // Apply string pulling to smooth path
             if (useStringPulling && m->pathLength > 2) {
                 StringPullPath(m->path, &m->pathLength);
@@ -272,7 +307,7 @@ void SpawnMoversDemo(int count) {
             InitMover(m, x, y, goal, speed);
             TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d) to (%d,%d)", moverCount, start.x, start.y, goal.x, goal.y);
         }
-        
+
         // Store render data (color)
         moverRenderData[moverCount].color = GetRandomColor();
         moverCount++;
@@ -354,6 +389,7 @@ void GenerateCurrentTerrain(void) {
         case 8: GenerateDrunkard(); break;
         case 9: GenerateTunneler(); break;
         case 10: GenerateMixMax(); break;
+        case 11: InitGridFromAsciiWithChunkSize(narrowGapsMap, 8, 8); break;
     }
 }
 
@@ -494,7 +530,7 @@ void DrawUI(void) {
     y += 18;
     CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
     y += 22;
-    CycleOption(x, y, "Terrain", terrainNames, 11, &currentTerrain);
+    CycleOption(x, y, "Terrain", terrainNames, 12, &currentTerrain);
     y += 22;
     if (PushButton(x, y, "Generate Terrain")) {
         GenerateCurrentTerrain();
@@ -600,7 +636,7 @@ int main(void) {
         if (accumulator >= TICK_DT) {
             Tick();
             accumulator -= TICK_DT;
-            
+
             // Drain excess - don't try to catch up, just slow down
             if (accumulator > TICK_DT) {
                 accumulator = TICK_DT;
