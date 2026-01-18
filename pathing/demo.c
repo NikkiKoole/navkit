@@ -17,6 +17,7 @@ Vector2 offset = {0, 0};
 Texture2D texGrass;
 Texture2D texWall;
 bool showGraph = false;
+bool showEntrances = false;
 
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
@@ -47,6 +48,30 @@ typedef struct {
 
 Agent agents[MAX_AGENTS];
 int agentCount = 0;
+
+// Movers - agents that actually move along paths with dynamic replanning
+#define MAX_MOVERS 500
+#define MOVER_SPEED 100.0f  // pixels per second
+#define MAX_REPATHS_PER_FRAME 10
+#define REPATH_COOLDOWN_FRAMES 30
+
+typedef struct {
+    float x, y;              // Current position (sub-cell precision)
+    Point goal;              // Final destination
+    Point path[MAX_PATH];    // Cached path
+    int pathLength;
+    int pathIndex;           // Current waypoint (counts down to 0)
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    Color color;
+    float speed;
+} Mover;
+
+Mover movers[MAX_MOVERS];
+int moverCount = 0;
+int moverCountSetting = 100;
+bool showMoverPaths = false;
 
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
@@ -231,6 +256,181 @@ void DrawAgents(void) {
     }
 }
 
+// ============== MOVERS ==============
+
+void SpawnMovers(int count) {
+    double startTime = GetTime();
+    
+    // Ensure HPA* graph is built
+    if (graphEdgeCount == 0) {
+        BuildEntrances();
+        BuildGraph();
+    }
+    
+    moverCount = 0;
+    for (int i = 0; i < count && i < MAX_MOVERS; i++) {
+        Mover* m = &movers[moverCount];
+        
+        Point start = GetRandomWalkableCell();
+        Point goal = GetRandomWalkableCell();
+        
+        // Initial position (center of start cell)
+        m->x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+        m->y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        m->goal = goal;
+        m->speed = MOVER_SPEED + GetRandomValue(-30, 30);
+        m->color = GetRandomColor();
+        m->active = true;
+        m->needsRepath = false;
+        m->repathCooldown = 0;
+        
+        // Compute initial path using HPA*
+        startPos = start;
+        goalPos = goal;
+        RunHPAStar();
+        
+        m->pathLength = pathLength;
+        for (int j = 0; j < pathLength; j++) {
+            m->path[j] = path[j];
+        }
+        m->pathIndex = pathLength - 1;
+        
+        if (pathLength > 0) {
+            moverCount++;
+        }
+    }
+    
+    // Clear global state
+    startPos = (Point){-1, -1};
+    goalPos = (Point){-1, -1};
+    pathLength = 0;
+    
+    double elapsed = (GetTime() - startTime) * 1000.0;
+    TraceLog(LOG_INFO, "SpawnMovers: %d movers in %.2fms", moverCount, elapsed);
+}
+
+void UpdateMovers(float dt) {
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active || m->pathLength == 0) continue;
+        
+        // Reached goal?
+        if (m->pathIndex < 0) {
+            m->active = false;
+            continue;
+        }
+        
+        // Get target waypoint (center of cell)
+        Point target = m->path[m->pathIndex];
+        float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        // Move toward target
+        float dx = tx - m->x;
+        float dy = ty - m->y;
+        float dist = sqrtf(dx*dx + dy*dy);
+        
+        if (dist < m->speed * dt) {
+            // Reached waypoint
+            m->x = tx;
+            m->y = ty;
+            m->pathIndex--;
+        } else {
+            // Move toward waypoint
+            float invDist = 1.0f / dist;
+            m->x += dx * invDist * m->speed * dt;
+            m->y += dy * invDist * m->speed * dt;
+        }
+    }
+}
+
+void ProcessMoverRepaths(void) {
+    int repathsThisFrame = 0;
+    
+    for (int i = 0; i < moverCount && repathsThisFrame < MAX_REPATHS_PER_FRAME; i++) {
+        Mover* m = &movers[i];
+        if (!m->active || !m->needsRepath) continue;
+        
+        if (m->repathCooldown > 0) {
+            m->repathCooldown--;
+            continue;
+        }
+        
+        // Get current grid position
+        int currentX = (int)(m->x / CELL_SIZE);
+        int currentY = (int)(m->y / CELL_SIZE);
+        
+        // Ensure graph is up to date
+        if (hpaNeedsRebuild) {
+            UpdateDirtyChunks();
+        }
+        
+        // Run pathfinding from current position to goal
+        startPos = (Point){currentX, currentY};
+        goalPos = m->goal;
+        RunHPAStar();
+        
+        // Copy new path
+        m->pathLength = pathLength;
+        for (int j = 0; j < pathLength; j++) {
+            m->path[j] = path[j];
+        }
+        m->pathIndex = pathLength - 1;
+        m->needsRepath = false;
+        m->repathCooldown = REPATH_COOLDOWN_FRAMES;
+        
+        repathsThisFrame++;
+    }
+    
+    // Clear global state
+    startPos = (Point){-1, -1};
+    goalPos = (Point){-1, -1};
+    pathLength = 0;
+}
+
+void DrawMovers(void) {
+    float size = CELL_SIZE * zoom;
+    
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        
+        // Screen position
+        float sx = offset.x + m->x * zoom;
+        float sy = offset.y + m->y * zoom;
+        
+        // Draw mover as red rectangle
+        float moverSize = size * 0.5f;
+        DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, RED);
+        
+        // Optionally draw remaining path
+        if (showMoverPaths && m->pathIndex >= 0) {
+            // Line to next waypoint
+            Point next = m->path[m->pathIndex];
+            float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+            float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+            DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, m->color);
+            
+            // Rest of path
+            for (int j = m->pathIndex; j > 0; j--) {
+                float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 1.0f, Fade(m->color, 0.4f));
+            }
+        }
+    }
+}
+
+int CountActiveMovers(void) {
+    int count = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) count++;
+    }
+    return count;
+}
+
 Vector2 ScreenToGrid(Vector2 screen) {
     float size = CELL_SIZE * zoom;
     return (Vector2){(screen.x - offset.x) / size, (screen.y - offset.y) / size};
@@ -286,6 +486,17 @@ void HandleInput(void) {
                     if (grid[y][x] != CELL_WALL) {
                         grid[y][x] = CELL_WALL;
                         MarkChunkDirty(x, y);
+                        // Mark movers whose path crosses this cell for replanning
+                        for (int i = 0; i < moverCount; i++) {
+                            Mover* m = &movers[i];
+                            if (!m->active) continue;
+                            for (int j = m->pathIndex; j >= 0; j--) {
+                                if (m->path[j].x == x && m->path[j].y == y) {
+                                    m->needsRepath = true;
+                                    break;
+                                }
+                            }
+                        }
                     }
                     break;
                 case 1:  // Erase Walls
@@ -337,6 +548,8 @@ void DrawUI(void) {
     DrawTextShadow("View", (int)x, (int)y, 14, GRAY);
     y += 18;
     ToggleBool(x, y, "Show Graph", &showGraph);
+    y += 22;
+    ToggleBool(x, y, "Show Entrances", &showEntrances);
     y += 22;
     
     // === PATHFINDING ===
@@ -415,6 +628,23 @@ void DrawUI(void) {
     }
     y += 22;
     
+    // === MOVERS ===
+    y += 8;
+    DrawTextShadow("Movers", (int)x, (int)y, 14, GRAY);
+    y += 18;
+    DraggableInt(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
+    y += 22;
+    if (PushButton(x, y, "Spawn Movers")) {
+        SpawnMovers(moverCountSetting);
+    }
+    y += 22;
+    if (PushButton(x, y, "Clear Movers")) {
+        moverCount = 0;
+    }
+    y += 22;
+    ToggleBool(x, y, "Show Paths", &showMoverPaths);
+    y += 22;
+    
     // === DEBUG ===
     y += 8;
     DrawTextShadow("Debug", (int)x, (int)y, 14, GRAY);
@@ -450,20 +680,29 @@ int main(void) {
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
     while (!WindowShouldClose()) {
+        float dt = GetFrameTime();
+        
         ui_update();
         HandleInput();
+        
+        // Update movers
+        ProcessMoverRepaths();
+        UpdateMovers(dt);
+        
         BeginDrawing();
         ClearBackground(BLACK);
         DrawCellGrid();
         DrawChunkBoundaries();
         DrawGraph();
-        DrawEntrances();
+        if (showEntrances) DrawEntrances();
         DrawPath();
         DrawAgents();
+        DrawMovers();
         
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d", entranceCount, graphEdgeCount, agentCount), 5, 25, 16, WHITE);
+        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d", 
+                       entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
