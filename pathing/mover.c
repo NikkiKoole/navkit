@@ -4,9 +4,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-// External function for getting random walkable cell (defined in demo.c or test harness)
-extern Point GetRandomWalkableCell(void);
-
 // Globals
 Mover movers[MAX_MOVERS];
 int moverCount = 0;

@@ -126,17 +126,6 @@ void DrawPath(void) {
     }
 }
 
-Point GetRandomWalkableCell(void) {
-    Point p;
-    int attempts = 0;
-    do {
-        p.x = GetRandomValue(0, gridWidth - 1);
-        p.y = GetRandomValue(0, gridHeight - 1);
-        attempts++;
-    } while (grid[p.y][p.x] != CELL_WALKABLE && attempts < 1000);
-    return p;
-}
-
 Color GetRandomColor(void) {
     return (Color){
         GetRandomValue(100, 255),

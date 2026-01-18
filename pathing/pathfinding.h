@@ -78,4 +78,8 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
 // Incremental update functions
 void UpdateDirtyChunks(void);
 
+// Random utilities
+void SeedRandom(unsigned int seed);
+Point GetRandomWalkableCell(void);
+
 #endif // PATHFINDING_H

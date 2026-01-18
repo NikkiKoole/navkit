@@ -5,11 +5,6 @@
 #include "../pathing/mover.h"
 #include <stdlib.h>
 
-// Stub for GetRandomWalkableCell (not used in deterministic tests)
-Point GetRandomWalkableCell(void) {
-    return (Point){0, 0};
-}
-
 describe(mover_initialization) {
     it("should initialize mover with correct position and goal") {
         InitGridFromAsciiWithChunkSize(
@@ -288,6 +283,135 @@ describe(count_active_movers) {
     }
 }
 
+describe(endless_mode) {
+    it("should assign new goal when mover reaches destination") {
+        // Use 4x4 chunks so we get multiple chunks and entrances
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        SeedRandom(12345);  // Deterministic
+        endlessMoverMode = true;
+        
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {1, 0};
+        Point testPath[] = {{0, 0}, {1, 0}};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        
+        // Run enough ticks to reach goal
+        RunTicks(60);
+        
+        // In endless mode, mover should still be active with a new goal
+        expect(m->active == true);
+        
+        endlessMoverMode = false;  // Reset
+    }
+    
+    it("should keep movers moving indefinitely with seeded random") {
+        // 16x16 grid with 4x4 chunks = 4x4 chunks = good graph
+        InitGridFromAsciiWithChunkSize(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        SeedRandom(42);
+        endlessMoverMode = true;
+        
+        ClearMovers();
+        // Create a mover with a short path
+        Mover* m = &movers[0];
+        Point goal = {2, 0};
+        Point testPath[] = {{0, 0}, {1, 0}, {2, 0}};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
+        moverCount = 1;
+        
+        // Run many ticks - mover should keep getting new goals
+        RunTicks(600);  // 10 seconds of simulation
+        
+        // Mover should still be active after all this time
+        expect(m->active == true);
+        
+        endlessMoverMode = false;
+    }
+    
+    it("should produce deterministic paths with same seed") {
+        InitGridFromAsciiWithChunkSize(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        endlessMoverMode = true;
+        
+        // First run
+        SeedRandom(99999);
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {1, 0};
+        Point testPath[] = {{0, 0}, {1, 0}};
+        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        
+        RunTicks(300);
+        float firstX = m->x;
+        float firstY = m->y;
+        Point firstGoal = m->goal;
+        
+        // Second run - same seed
+        SeedRandom(99999);
+        ClearMovers();
+        m = &movers[0];
+        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        
+        RunTicks(300);
+        float secondX = m->x;
+        float secondY = m->y;
+        Point secondGoal = m->goal;
+        
+        // Should be identical
+        expect(firstX == secondX && firstY == secondY && 
+               firstGoal.x == secondGoal.x && firstGoal.y == secondGoal.y);
+        
+        endlessMoverMode = false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -304,5 +428,6 @@ int main(int argc, char* argv[]) {
     test(line_of_sight_repath);
     test(tick_counter);
     test(count_active_movers);
+    test(endless_mode);
     return summary();
 }

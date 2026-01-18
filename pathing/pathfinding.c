@@ -1198,7 +1198,7 @@ void RunHPAStar(void) {
     // ==========================================================================
     
     // ========== APPROACH 1: Multi-target Dijkstra ==========
-    double dijkstraStartTime = GetTime();
+    // double dijkstraStartTime = GetTime();
     int dijkstraStartCosts[128], dijkstraGoalCosts[128];
     
     GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
@@ -1218,7 +1218,7 @@ void RunHPAStar(void) {
                               goalTargetX, goalTargetY, dijkstraGoalCosts, goalTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
-    double dijkstraTime = (GetTime() - dijkstraStartTime) * 1000.0;
+    // double dijkstraTime = (GetTime() - dijkstraStartTime) * 1000.0;
     
     // Use Dijkstra results for connect phase
     for (int i = 0; i < startTargetCount; i++) {
@@ -2022,4 +2022,38 @@ void RunJpsPlus(void) {
     
     lastPathTime = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "JPS+: time=%.2fms, cost=%d, path=%d", lastPathTime, cost, pathLength);
+}
+
+// Random utilities using stdlib for portability
+static unsigned int randomSeed = 1;
+static bool seedInitialized = false;
+
+void SeedRandom(unsigned int seed) {
+    srand(seed);
+    randomSeed = seed;
+    seedInitialized = true;
+}
+
+static int GetRandomInt(int min, int max) {
+    if (!seedInitialized) {
+        // Auto-seed with time on first use if not explicitly seeded
+        srand((unsigned int)GetTime() * 1000);
+        seedInitialized = true;
+    }
+    if (min > max) { int t = min; min = max; max = t; }
+    return min + rand() % (max - min + 1);
+}
+
+Point GetRandomWalkableCell(void) {
+    Point p;
+    int attempts = 0;
+    do {
+        p.x = GetRandomInt(0, gridWidth - 1);
+        p.y = GetRandomInt(0, gridHeight - 1);
+        attempts++;
+    } while (grid[p.y][p.x] != CELL_WALKABLE && attempts < 1000);
+    if (attempts >= 1000) {
+        return (Point){-1, -1};
+    }
+    return p;
 }
