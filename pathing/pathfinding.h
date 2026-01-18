@@ -67,6 +67,8 @@ void RunAStar(void);
 void RunHPAStar(void);
 void RunJPS(void);
 int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY);
+int AStarChunkMultiTarget(int sx, int sy, int* targetX, int* targetY, int* outCosts, int numTargets,
+                          int minX, int minY, int maxX, int maxY);
 
 // Incremental update functions
 void UpdateDirtyChunks(void);

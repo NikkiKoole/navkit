@@ -367,7 +367,9 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
 
     int bestX, bestY;
     while (ChunkHeapPop(&bestX, &bestY)) {
-        if (bestX == gx && bestY == gy) return nodeData[gy][gx].g;
+        if (bestX == gx && bestY == gy) {
+            return nodeData[gy][gx].g;
+        }
         nodeData[bestY][bestX].open = false;
         nodeData[bestY][bestX].closed = true;
         
@@ -378,7 +380,11 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
             
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                int adjX = bestX + dx[i], adjY = bestY + dy[i];
+                // Check bounds before accessing grid for corner-cut check
+                if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
+                    continue;
+                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
                     continue;
             }
             
@@ -404,7 +410,7 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
     return -1;  // No path found
 }
 
-// Multi-target A* within chunk bounds - finds costs to all targets in a single search
+// Multi-target Dijkstra within chunk bounds - finds costs to all targets in a single search
 // Returns number of targets found. Costs are written to outCosts array (-1 if unreachable)
 int AStarChunkMultiTarget(int sx, int sy, 
                           int* targetX, int* targetY, int* outCosts, int numTargets,
@@ -442,15 +448,17 @@ int AStarChunkMultiTarget(int sx, int sy,
     
     int bestX, bestY;
     while (ChunkHeapPop(&bestX, &bestY)) {
-        // Check if this is one of our targets
+        // Check if this is one of our targets (check ALL - there may be duplicates)
         for (int t = 0; t < numTargets; t++) {
-            if (outCosts[t] < 0 && bestX == targetX[t] && bestY == targetY[t]) {
-                outCosts[t] = nodeData[bestY][bestX].g;
-                targetsFound++;
-                if (targetsFound == numTargets) {
-                    return targetsFound;  // All targets found
+            if (bestX == targetX[t] && bestY == targetY[t]) {
+                if (outCosts[t] < 0) {
+                    outCosts[t] = nodeData[bestY][bestX].g;
+                    targetsFound++;
+                    if (targetsFound == numTargets) {
+                        return targetsFound;  // All targets found
+                    }
                 }
-                break;
+                // Don't break - there may be duplicate targets at same coords
             }
         }
         
@@ -464,7 +472,11 @@ int AStarChunkMultiTarget(int sx, int sy,
             
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                int adjX = bestX + dx[i], adjY = bestY + dy[i];
+                // Check bounds before accessing grid for corner-cut check
+                if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
+                    continue;
+                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
                     continue;
             }
             
@@ -483,6 +495,7 @@ int AStarChunkMultiTarget(int sx, int sy,
             }
         }
     }
+    
     return targetsFound;
 }
 
@@ -904,7 +917,10 @@ void RunAStar(void) {
             // For diagonal movement, check that we can actually move diagonally
             // (not cutting corners through walls)
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                int adjX = bestX + dx[i], adjY = bestY + dy[i];
+                if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
+                    continue;
+                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
                     continue;
             }
             
@@ -1031,7 +1047,10 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
             
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (grid[bestY][bestX + dx[i]] == CELL_WALL || grid[bestY + dy[i]][bestX] == CELL_WALL)
+                int adjX = bestX + dx[i], adjY = bestY + dy[i];
+                if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
+                    continue;
+                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
                     continue;
             }
             
@@ -1105,8 +1124,6 @@ void RunHPAStar(void) {
     
     int minX, minY, maxX, maxY;
     
-    double connectStartTime = GetTime();
-    
     // Gather entrances for start chunk
     int startTargetX[128], startTargetY[128], startTargetIdx[128];
     int startTargetCount = 0;
@@ -1117,27 +1134,6 @@ void RunHPAStar(void) {
             startTargetIdx[startTargetCount] = i;
             startTargetCount++;
         }
-    }
-    
-    // Single multi-target search from start to all chunk entrances
-    if (startTargetCount > 0) {
-        int costs[128];
-        GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
-        if (maxX < gridWidth) maxX++;
-        if (maxY < gridHeight) maxY++;
-        
-        AStarChunkMultiTarget(startPos.x, startPos.y,
-                              startTargetX, startTargetY, costs, startTargetCount,
-                              minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-        
-        for (int i = 0; i < startTargetCount; i++) {
-            if (costs[i] >= 0) {
-                startEdgeTargets[startEdgeCount] = startTargetIdx[i];
-                startEdgeCosts[startEdgeCount] = costs[i];
-                startEdgeCount++;
-            }
-        }
-        nodesExplored++;
     }
     
     // Gather entrances for goal chunk
@@ -1152,28 +1148,100 @@ void RunHPAStar(void) {
         }
     }
     
-    // Single multi-target search from goal to all chunk entrances
-    if (goalTargetCount > 0) {
-        int costs[128];
-        GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
-        if (maxX < gridWidth) maxX++;
-        if (maxY < gridHeight) maxY++;
-        
-        AStarChunkMultiTarget(goalPos.x, goalPos.y,
-                              goalTargetX, goalTargetY, costs, goalTargetCount,
+    // ==========================================================================
+    // CONNECT PHASE: Find costs from start/goal to all entrances in their chunks
+    // 
+    // Currently comparing three approaches (TODO: pick one for production):
+    //   1. Multi-target Dijkstra - single search, no heuristic, finds all targets
+    //   2. N x A* - separate search per target with heuristic guidance  
+    //   3. (TODO) Add third approach here
+    //
+    // Results so far: Dijkstra is faster and simpler. A* heuristic doesn't help
+    // much when targets are scattered around chunk borders.
+    // ==========================================================================
+    
+    // ========== APPROACH 1: Multi-target Dijkstra ==========
+    double dijkstraStartTime = GetTime();
+    int dijkstraStartCosts[128], dijkstraGoalCosts[128];
+    
+    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
+    if (maxX < gridWidth) maxX++;
+    if (maxY < gridHeight) maxY++;
+    if (startTargetCount > 0) {
+        AStarChunkMultiTarget(startPos.x, startPos.y,
+                              startTargetX, startTargetY, dijkstraStartCosts, startTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
-        
-        for (int i = 0; i < goalTargetCount; i++) {
-            if (costs[i] >= 0) {
-                goalEdgeTargets[goalEdgeCount] = goalTargetIdx[i];
-                goalEdgeCosts[goalEdgeCount] = costs[i];
-                goalEdgeCount++;
-            }
-        }
-        nodesExplored++;
     }
     
-    double connectTime = (GetTime() - connectStartTime) * 1000.0;
+    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
+    if (maxX < gridWidth) maxX++;
+    if (maxY < gridHeight) maxY++;
+    if (goalTargetCount > 0) {
+        AStarChunkMultiTarget(goalPos.x, goalPos.y,
+                              goalTargetX, goalTargetY, dijkstraGoalCosts, goalTargetCount,
+                              minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+    }
+    double dijkstraTime = (GetTime() - dijkstraStartTime) * 1000.0;
+    
+    // ========== APPROACH 2: N x A* with heuristic ==========
+    double astarStartTime = GetTime();
+    int astarStartCosts[128], astarGoalCosts[128];
+    
+    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
+    if (maxX < gridWidth) maxX++;
+    if (maxY < gridHeight) maxY++;
+    for (int i = 0; i < startTargetCount; i++) {
+        astarStartCosts[i] = AStarChunk(startPos.x, startPos.y, 
+                                        startTargetX[i], startTargetY[i],
+                                        minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+    }
+    
+    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
+    if (maxX < gridWidth) maxX++;
+    if (maxY < gridHeight) maxY++;
+    for (int i = 0; i < goalTargetCount; i++) {
+        astarGoalCosts[i] = AStarChunk(goalPos.x, goalPos.y,
+                                       goalTargetX[i], goalTargetY[i],
+                                       minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
+    }
+    double astarTime = (GetTime() - astarStartTime) * 1000.0;
+    
+    // ========== Verify costs match ==========
+    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
+    for (int i = 0; i < startTargetCount; i++) {
+        if (dijkstraStartCosts[i] != astarStartCosts[i]) {
+            TraceLog(LOG_WARNING, "COST MISMATCH start entrance %d at (%d,%d): dijkstra=%d, astar=%d, start=(%d,%d), bounds=[%d,%d]-[%d,%d]",
+                     i, startTargetX[i], startTargetY[i], dijkstraStartCosts[i], astarStartCosts[i], startPos.x, startPos.y,
+                     minX, minY, maxX, maxY);
+        }
+    }
+    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
+    for (int i = 0; i < goalTargetCount; i++) {
+        if (dijkstraGoalCosts[i] != astarGoalCosts[i]) {
+            TraceLog(LOG_WARNING, "COST MISMATCH goal entrance %d at (%d,%d): dijkstra=%d, astar=%d, goal=(%d,%d), bounds=[%d,%d]-[%d,%d]",
+                     i, goalTargetX[i], goalTargetY[i], dijkstraGoalCosts[i], astarGoalCosts[i], goalPos.x, goalPos.y,
+                     minX, minY, maxX, maxY);
+        }
+    }
+    
+    // Use Dijkstra results for actual pathfinding (they should be identical)
+    for (int i = 0; i < startTargetCount; i++) {
+        if (dijkstraStartCosts[i] >= 0) {
+            startEdgeTargets[startEdgeCount] = startTargetIdx[i];
+            startEdgeCosts[startEdgeCount] = dijkstraStartCosts[i];
+            startEdgeCount++;
+        }
+    }
+    nodesExplored++;
+    
+    for (int i = 0; i < goalTargetCount; i++) {
+        if (dijkstraGoalCosts[i] >= 0) {
+            goalEdgeTargets[goalEdgeCount] = goalTargetIdx[i];
+            goalEdgeCosts[goalEdgeCount] = dijkstraGoalCosts[i];
+            goalEdgeCount++;
+        }
+    }
+    nodesExplored++;
     
     // A* on abstract graph using binary heap
     double abstractStartTime = GetTime();
@@ -1325,8 +1393,8 @@ void RunHPAStar(void) {
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
     
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
-             lastPathTime, connectTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect: dijk=%.2fms, astar=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
+             lastPathTime, dijkstraTime, astarTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
     
     if (pathLength == 0) {
         TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d", 

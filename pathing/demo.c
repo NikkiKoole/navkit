@@ -198,9 +198,10 @@ Vector2 ScreenToGrid(Vector2 screen) {
 }
 
 void GenerateCurrentTerrain(void) {
+    TraceLog(LOG_INFO, "Generating terrain: %s", terrainNames[currentTerrain]);
     switch (currentTerrain) {
         case 0: InitGrid(); break;
-        case 1: GenerateSparse(0.15f); break;
+        case 1: GenerateSparse(0.10f); break;
         case 2: GenerateCity(); break;
         case 3: GenerateMixed(); break;
         case 4: GeneratePerlin(); break;
@@ -396,7 +397,7 @@ int main(void) {
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGrid();
+    InitGridWithSizeAndChunkSize(192, 192, 32, 32);  // 6x6 chunks
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
