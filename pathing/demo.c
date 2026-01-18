@@ -550,6 +550,8 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
             InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            BuildEntrances();
+            BuildGraph();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
             offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
         }
