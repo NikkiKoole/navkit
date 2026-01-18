@@ -6,7 +6,7 @@
 #define MAX_ENTRANCE_WIDTH 6
 #define MAX_ENTRANCES (4096*4)
 #define MAX_PATH 65536*2
-#define MAX_EDGES 65536*2
+#define MAX_EDGES 65536*4
 #define MAX_EDGES_PER_NODE 64  // Max edges per entrance for adjacency list
 
 typedef struct { int x, y; } Point;

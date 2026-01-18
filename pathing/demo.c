@@ -50,7 +50,8 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Movers - agents that actually move along paths with dynamic replanning
-#define MAX_MOVERS 500
+#define MAX_MOVERS 10000
+#define MAX_MOVER_PATH 1024  // Much smaller than MAX_PATH - paths are string-pulled
 #define MOVER_SPEED 100.0f  // pixels per second
 #define MAX_REPATHS_PER_FRAME 10
 #define REPATH_COOLDOWN_FRAMES 30
@@ -58,7 +59,7 @@ int agentCount = 0;
 typedef struct {
     float x, y;              // Current position (sub-cell precision)
     Point goal;              // Final destination
-    Point path[MAX_PATH];    // Cached path
+    Point path[MAX_MOVER_PATH];  // Cached path (smaller than global MAX_PATH)
     int pathLength;
     int pathIndex;           // Current waypoint (counts down to 0)
     bool active;
@@ -70,8 +71,9 @@ typedef struct {
 
 Mover movers[MAX_MOVERS];
 int moverCount = 0;
-int moverCountSetting = 100;
+int moverCountSetting = 5000;
 bool showMoverPaths = false;
+bool endlessMoverMode = false;
 
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
@@ -199,11 +201,11 @@ void SpawnAgents(int count) {
 
 void RepathAgents(void) {
     if (agentCount == 0) return;
-    
+
     double startTime = GetTime();
     for (int i = 0; i < agentCount; i++) {
         Agent* a = &agents[i];
-        
+
         // Run pathfinding with selected algorithm (keep same start/goal)
         startPos = a->start;
         goalPos = a->goal;
@@ -267,14 +269,14 @@ static bool HasLineOfSight(int x0, int y0, int x1, int y1) {
     int sx = (x0 < x1) ? 1 : -1;
     int sy = (y0 < y1) ? 1 : -1;
     int err = dx - dy;
-    
+
     int x = x0, y = y0;
     while (1) {
         if (grid[y][x] == CELL_WALL) return false;
         if (x == x1 && y == y1) return true;
-        
+
         int e2 = 2 * err;
-        
+
         // For diagonal movement, check corner cutting
         if (e2 > -dy && e2 < dx) {
             // Moving diagonally - check both adjacent cells
@@ -284,7 +286,7 @@ static bool HasLineOfSight(int x0, int y0, int x1, int y1) {
                 return false;  // Would cut corner
             }
         }
-        
+
         if (e2 > -dy) {
             err -= dy;
             x += sx;
@@ -300,14 +302,14 @@ static bool HasLineOfSight(int x0, int y0, int x1, int y1) {
 // Path is stored goal-to-start, so we iterate from end (start) toward beginning (goal)
 static void StringPullPath(Point* pathArr, int* pathLen) {
     if (*pathLen <= 2) return;  // Nothing to smooth
-    
+
     Point result[MAX_PATH];
     int resultLen = 0;
-    
+
     // Start from the beginning of movement (last index = start position)
     result[resultLen++] = pathArr[*pathLen - 1];
     int current = *pathLen - 1;
-    
+
     while (current > 0) {
         // Find furthest visible point from current (search from goal toward current)
         int furthest = current - 1;  // Default to next point
@@ -321,7 +323,7 @@ static void StringPullPath(Point* pathArr, int* pathLen) {
         result[resultLen++] = pathArr[furthest];
         current = furthest;
     }
-    
+
     // Reverse result back to goal-to-start order
     for (int i = 0; i < resultLen; i++) {
         pathArr[i] = result[resultLen - 1 - i];
@@ -331,20 +333,20 @@ static void StringPullPath(Point* pathArr, int* pathLen) {
 
 void SpawnMovers(int count) {
     double startTime = GetTime();
-    
+
     // Ensure HPA* graph is built
     if (graphEdgeCount == 0) {
         BuildEntrances();
         BuildGraph();
     }
-    
+
     moverCount = 0;
     for (int i = 0; i < count && i < MAX_MOVERS; i++) {
         Mover* m = &movers[moverCount];
-        
+
         Point start = GetRandomWalkableCell();
         Point goal = GetRandomWalkableCell();
-        
+
         // Initial position (center of start cell)
         m->x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         m->y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -354,59 +356,99 @@ void SpawnMovers(int count) {
         m->active = true;
         m->needsRepath = false;
         m->repathCooldown = 0;
-        
+
         // Compute initial path using HPA*
         startPos = start;
         goalPos = goal;
         RunHPAStar();
-        
-        m->pathLength = pathLength;
-        for (int j = 0; j < pathLength; j++) {
+
+        m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+        for (int j = 0; j < m->pathLength; j++) {
             m->path[j] = path[j];
         }
-        
+
         // Apply string pulling to smooth path
         if (useStringPulling && m->pathLength > 2) {
             StringPullPath(m->path, &m->pathLength);
         }
-        
+
         m->pathIndex = m->pathLength - 1;
-        
+
         if (m->pathLength > 0) {
             moverCount++;
         }
     }
-    
+
     // Clear global state
     startPos = (Point){-1, -1};
     goalPos = (Point){-1, -1};
     pathLength = 0;
-    
+
     double elapsed = (GetTime() - startTime) * 1000.0;
     TraceLog(LOG_INFO, "SpawnMovers: %d movers in %.2fms", moverCount, elapsed);
+}
+
+// Assign a new random goal to a mover and compute path
+static void AssignNewMoverGoal(Mover* m) {
+    Point newGoal = GetRandomWalkableCell();
+    m->goal = newGoal;
+
+    // Get current grid position
+    int currentX = (int)(m->x / CELL_SIZE);
+    int currentY = (int)(m->y / CELL_SIZE);
+
+    // Compute path using HPA*
+    startPos = (Point){currentX, currentY};
+    goalPos = newGoal;
+    RunHPAStar();
+
+    m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+    for (int j = 0; j < m->pathLength; j++) {
+        m->path[j] = path[j];
+    }
+
+    // Apply string pulling
+    if (useStringPulling && m->pathLength > 2) {
+        StringPullPath(m->path, &m->pathLength);
+    }
+
+    m->pathIndex = m->pathLength - 1;
+    m->needsRepath = false;
+
+    // Clear global state
+    startPos = (Point){-1, -1};
+    goalPos = (Point){-1, -1};
+    pathLength = 0;
 }
 
 void UpdateMovers(float dt) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active || m->pathLength == 0) continue;
-        
+
         // Reached goal?
         if (m->pathIndex < 0) {
-            m->active = false;
+            if (endlessMoverMode) {
+                AssignNewMoverGoal(m);
+                if (m->pathLength == 0) {
+                    m->active = false;  // No path found, deactivate
+                }
+            } else {
+                m->active = false;
+            }
             continue;
         }
-        
+
         // Get target waypoint (center of cell)
         Point target = m->path[m->pathIndex];
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
-        
+
         // Move toward target
         float dx = tx - m->x;
         float dy = ty - m->y;
         float dist = sqrtf(dx*dx + dy*dy);
-        
+
         if (dist < m->speed * dt) {
             // Reached waypoint
             m->x = tx;
@@ -423,48 +465,48 @@ void UpdateMovers(float dt) {
 
 void ProcessMoverRepaths(void) {
     int repathsThisFrame = 0;
-    
+
     for (int i = 0; i < moverCount && repathsThisFrame < MAX_REPATHS_PER_FRAME; i++) {
         Mover* m = &movers[i];
         if (!m->active || !m->needsRepath) continue;
-        
+
         if (m->repathCooldown > 0) {
             m->repathCooldown--;
             continue;
         }
-        
+
         // Get current grid position
         int currentX = (int)(m->x / CELL_SIZE);
         int currentY = (int)(m->y / CELL_SIZE);
-        
+
         // Ensure graph is up to date
         if (hpaNeedsRebuild) {
             UpdateDirtyChunks();
         }
-        
+
         // Run pathfinding from current position to goal
         startPos = (Point){currentX, currentY};
         goalPos = m->goal;
         RunHPAStar();
-        
+
         // Copy new path
-        m->pathLength = pathLength;
-        for (int j = 0; j < pathLength; j++) {
+        m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+        for (int j = 0; j < m->pathLength; j++) {
             m->path[j] = path[j];
         }
-        
+
         // Apply string pulling to smooth path
         if (useStringPulling && m->pathLength > 2) {
             StringPullPath(m->path, &m->pathLength);
         }
-        
+
         m->pathIndex = m->pathLength - 1;
         m->needsRepath = false;
         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
-        
+
         repathsThisFrame++;
     }
-    
+
     // Clear global state
     startPos = (Point){-1, -1};
     goalPos = (Point){-1, -1};
@@ -473,19 +515,19 @@ void ProcessMoverRepaths(void) {
 
 void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
-    
+
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
-        
+
         // Screen position
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
-        
+
         // Draw mover as red rectangle
         float moverSize = size * 0.5f;
         DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, RED);
-        
+
         // Optionally draw remaining path
         if (showMoverPaths && m->pathIndex >= 0) {
             // Line to next waypoint
@@ -493,7 +535,7 @@ void DrawMovers(void) {
             float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
             float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
             DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, m->color);
-            
+
             // Rest of path
             for (int j = m->pathIndex; j > 0; j--) {
                 float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
@@ -548,17 +590,17 @@ void HandleInput(void) {
         offset.x = GetMousePosition().x - mw.x * size;
         offset.y = GetMousePosition().y - mw.y * size;
     }
-    
+
     // Pan with middle mouse
     if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
         Vector2 d = GetMouseDelta();
         offset.x += d.x;
         offset.y += d.y;
     }
-    
+
     // Skip grid interactions if UI wants mouse
     if (ui_wants_mouse()) return;
-    
+
     // Tool-based interactions
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -603,7 +645,7 @@ void HandleInput(void) {
             }
         }
     }
-    
+
     // Right-click erases (convenience shortcut)
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -613,7 +655,7 @@ void HandleInput(void) {
             MarkChunkDirty(x, y);
         }
     }
-    
+
     // Reset view
     if (IsKeyPressed(KEY_R)) {
         zoom = 1.0f;
@@ -626,7 +668,7 @@ void DrawUI(void) {
     ui_begin_frame();
     float y = 70.0f;
     float x = 10.0f;
-    
+
     // === VIEW ===
     DrawTextShadow("View", (int)x, (int)y, 14, GRAY);
     y += 18;
@@ -634,7 +676,7 @@ void DrawUI(void) {
     y += 22;
     ToggleBool(x, y, "Show Entrances", &showEntrances);
     y += 22;
-    
+
     // === PATHFINDING ===
     y += 8;
     DrawTextShadow("Pathfinding", (int)x, (int)y, 14, GRAY);
@@ -666,7 +708,7 @@ void DrawUI(void) {
         }
     }
     y += 22;
-    
+
     // === MAP EDITING ===
     y += 8;
     DrawTextShadow("Map Editing", (int)x, (int)y, 14, GRAY);
@@ -687,7 +729,7 @@ void DrawUI(void) {
         offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     }
     y += 22;
-    
+
     // === AGENTS ===
     y += 8;
     DrawTextShadow("Agents", (int)x, (int)y, 14, GRAY);
@@ -710,7 +752,7 @@ void DrawUI(void) {
         RepathAgents();
     }
     y += 22;
-    
+
     // === MOVERS ===
     y += 8;
     DrawTextShadow("Movers", (int)x, (int)y, 14, GRAY);
@@ -729,7 +771,9 @@ void DrawUI(void) {
     y += 22;
     ToggleBool(x, y, "String Pulling", &useStringPulling);
     y += 22;
-    
+    ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
+    y += 22;
+
     // === DEBUG ===
     y += 8;
     DrawTextShadow("Debug", (int)x, (int)y, 14, GRAY);
@@ -766,14 +810,14 @@ int main(void) {
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
-        
+
         ui_update();
         HandleInput();
-        
+
         // Update movers
         ProcessMoverRepaths();
         UpdateMovers(dt);
-        
+
         BeginDrawing();
         ClearBackground(BLACK);
         DrawCellGrid();
@@ -783,10 +827,10 @@ int main(void) {
         DrawPath();
         DrawAgents();
         DrawMovers();
-        
+
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d", 
+        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d",
                        entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
@@ -794,10 +838,10 @@ int main(void) {
         } else {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
-        
+
         // Draw UI
         DrawUI();
-        
+
         EndDrawing();
     }
     UnloadTexture(texGrass);

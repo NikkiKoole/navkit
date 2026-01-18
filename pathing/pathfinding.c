@@ -540,6 +540,13 @@ void BuildGraph(void) {
                 if (exists) continue;
                 
                 int cost = AStarChunk(entrances[e1].x, entrances[e1].y, entrances[e2].x, entrances[e2].y, minX, minY, maxX, maxY);
+                if (cost >= 0 && graphEdgeCount >= MAX_EDGES - 1) {
+                    static bool warned = false;
+                    if (!warned) {
+                        TraceLog(LOG_WARNING, "MAX_EDGES limit (%d) reached at chunk %d! Graph will be incomplete.", MAX_EDGES, chunk);
+                        warned = true;
+                    }
+                }
                 if (cost >= 0 && graphEdgeCount < MAX_EDGES - 1) {
                     int edgeIdx1 = graphEdgeCount;
                     int edgeIdx2 = graphEdgeCount + 1;
@@ -1388,6 +1395,35 @@ void RunHPAStar(void) {
     if (pathLength == 0) {
         TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d", 
                  startPos.x, startPos.y, goalPos.x, goalPos.y, startEdgeCount, goalEdgeCount, startChunk, goalChunk);
+        
+        // Diagnostic: try raw A* to see if it's a real disconnection or graph bug
+        RunAStar();
+        if (pathLength > 0) {
+            TraceLog(LOG_ERROR, "BUG: A* found path (%d steps) but HPA* didn't!", pathLength);
+            TraceLog(LOG_ERROR, "  Start chunk %d has %d entrances, goal chunk %d has %d entrances",
+                     startChunk, startEdgeCount, goalChunk, goalEdgeCount);
+            // Check if chunks share any entrances (adjacent chunks)
+            int sharedEntrances = 0;
+            for (int i = 0; i < entranceCount; i++) {
+                bool touchesStart = (entrances[i].chunk1 == startChunk || entrances[i].chunk2 == startChunk);
+                bool touchesGoal = (entrances[i].chunk1 == goalChunk || entrances[i].chunk2 == goalChunk);
+                if (touchesStart && touchesGoal) sharedEntrances++;
+            }
+            TraceLog(LOG_ERROR, "  Shared entrances between chunks: %d", sharedEntrances);
+            // Check connectivity: can we reach any goal entrance from any start entrance?
+            for (int si = 0; si < startEdgeCount && si < 3; si++) {
+                int startEnt = startEdgeTargets[si];
+                TraceLog(LOG_ERROR, "  Start entrance %d at (%d,%d), adjCount=%d", 
+                         startEnt, entrances[startEnt].x, entrances[startEnt].y, adjListCount[startEnt]);
+            }
+            for (int gi = 0; gi < goalEdgeCount && gi < 3; gi++) {
+                int goalEnt = goalEdgeTargets[gi];
+                TraceLog(LOG_ERROR, "  Goal entrance %d at (%d,%d), adjCount=%d",
+                         goalEnt, entrances[goalEnt].x, entrances[goalEnt].y, adjListCount[goalEnt]);
+            }
+        } else {
+            TraceLog(LOG_INFO, "Confirmed: no path exists (A* also failed)");
+        }
     }
 }
 
