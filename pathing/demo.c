@@ -71,7 +71,7 @@ typedef struct {
 
 Mover movers[MAX_MOVERS];
 int moverCount = 0;
-int moverCountSetting = 5000;
+int moverCountSetting = 1000;
 bool showMoverPaths = false;
 bool endlessMoverMode = false;
 
@@ -439,8 +439,45 @@ void UpdateMovers(float dt) {
             continue;
         }
 
+        // Get current grid position
+        int currentX = (int)(m->x / CELL_SIZE);
+        int currentY = (int)(m->y / CELL_SIZE);
+
+        // Option C: Check if mover is standing on a wall (terrain changed under them)
+        // Push mover to nearest walkable cell
+        if (grid[currentY][currentX] == CELL_WALL) {
+            // Check 4 neighbors for a walkable cell
+            int dx[] = {0, 0, -1, 1};
+            int dy[] = {-1, 1, 0, 0};
+            bool pushed = false;
+            for (int d = 0; d < 4; d++) {
+                int nx = currentX + dx[d];
+                int ny = currentY + dy[d];
+                if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
+                    grid[ny][nx] == CELL_WALKABLE) {
+                    m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
+                    pushed = true;
+                    break;
+                }
+            }
+            if (!pushed) {
+                // Fully walled in, deactivate
+                m->active = false;
+            }
+            m->needsRepath = true;
+            continue;
+        }
+
         // Get target waypoint (center of cell)
         Point target = m->path[m->pathIndex];
+
+        // Option A: Check line-of-sight to next waypoint (wall placed in between)
+        if (!HasLineOfSight(currentX, currentY, target.x, target.y)) {
+            m->needsRepath = true;
+            continue;
+        }
+
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
 

@@ -1389,8 +1389,8 @@ void RunHPAStar(void) {
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
     
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
-             lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    // TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d", 
+    //          lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
     
     if (pathLength == 0) {
         TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d", 
