@@ -28,6 +28,67 @@ AbstractNode abstractNodes[MAX_ABSTRACT_NODES];
 int abstractPath[MAX_ENTRANCES + 2];
 int abstractPathLength = 0;
 
+// ============================================================================
+// Hash table for O(1) entrance position lookup (used in incremental updates)
+// ============================================================================
+#define ENTRANCE_HASH_SIZE 8192  // Power of 2, should be > 2x max entrances
+
+typedef struct {
+    int x, y;       // Position (key)
+    int index;      // Entrance index (value), -1 if empty
+} EntranceHashEntry;
+
+static EntranceHashEntry entranceHash[ENTRANCE_HASH_SIZE];
+static bool entranceHashBuilt = false;
+
+// Simple hash function for (x, y) coordinates
+static inline int HashPosition(int x, int y) {
+    // Combine x and y with prime multipliers, mask to table size
+    unsigned int h = (unsigned int)(x * 73856093) ^ (unsigned int)(y * 19349663);
+    return (int)(h & (ENTRANCE_HASH_SIZE - 1));
+}
+
+// Clear the hash table
+static void ClearEntranceHash(void) {
+    for (int i = 0; i < ENTRANCE_HASH_SIZE; i++) {
+        entranceHash[i].index = -1;
+    }
+    entranceHashBuilt = false;
+}
+
+// Build hash table from current entrances array
+static void BuildEntranceHash(void) {
+    ClearEntranceHash();
+    for (int i = 0; i < entranceCount; i++) {
+        int h = HashPosition(entrances[i].x, entrances[i].y);
+        // Linear probing for collision resolution
+        while (entranceHash[h].index >= 0) {
+            h = (h + 1) & (ENTRANCE_HASH_SIZE - 1);
+        }
+        entranceHash[h].x = entrances[i].x;
+        entranceHash[h].y = entrances[i].y;
+        entranceHash[h].index = i;
+    }
+    entranceHashBuilt = true;
+}
+
+// Look up entrance index by position, returns -1 if not found
+static int HashLookupEntrance(int x, int y) {
+    int h = HashPosition(x, y);
+    int start = h;
+    while (entranceHash[h].index >= 0) {
+        if (entranceHash[h].x == x && entranceHash[h].y == y) {
+            return entranceHash[h].index;
+        }
+        h = (h + 1) & (ENTRANCE_HASH_SIZE - 1);
+        if (h == start) break;  // Full loop, not found
+    }
+    return -1;
+}
+
+// Mapping from old entrance indices to new indices (built during incremental update)
+static int oldToNewEntranceIndex[MAX_ENTRANCES];
+
 // Binary heap for priority queue (used in abstract graph search)
 typedef struct {
     int* nodes;      // Array of node indices
@@ -710,16 +771,6 @@ static void SaveOldEntrances(void) {
     }
 }
 
-// Find new index for an entrance by matching position
-static int FindEntranceByPosition(int x, int y) {
-    for (int i = 0; i < entranceCount; i++) {
-        if (entrances[i].x == x && entrances[i].y == y) {
-            return i;
-        }
-    }
-    return -1;  // Not found (entrance was removed)
-}
-
 // Check if an entrance (by new index) touches any affected chunk
 static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     int c1 = entrances[idx].chunk1;
@@ -731,6 +782,14 @@ static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y
 
 // Rebuild graph edges - keep edges in unaffected chunks, rebuild affected
 static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    // Step 0: Build hash table of NEW entrances and create old→new index mapping
+    // This converts the O(n) FindEntranceByPosition lookups to O(1)
+    BuildEntranceHash();
+    
+    for (int i = 0; i < oldEntranceCount; i++) {
+        oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y);
+    }
+    
     // Step 1: Keep edges where both entrances don't touch any affected chunk
     int newEdgeCount = 0;
     
@@ -738,9 +797,9 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
         int oldE1 = graphEdges[i].from;
         int oldE2 = graphEdges[i].to;
         
-        // Find new indices by position lookup
-        int newE1 = FindEntranceByPosition(oldEntrances[oldE1].x, oldEntrances[oldE1].y);
-        int newE2 = FindEntranceByPosition(oldEntrances[oldE2].x, oldEntrances[oldE2].y);
+        // Find new indices using precomputed mapping (O(1) instead of O(n))
+        int newE1 = oldToNewEntranceIndex[oldE1];
+        int newE2 = oldToNewEntranceIndex[oldE2];
         
         // Skip if either entrance no longer exists
         if (newE1 < 0 || newE2 < 0) continue;
