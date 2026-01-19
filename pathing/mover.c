@@ -214,6 +214,9 @@ void UpdateMovers(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
+        
+        // Don't move movers that are waiting for a repath - they'd walk on stale paths
+        if (m->needsRepath) continue;
 
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
@@ -265,8 +268,6 @@ void UpdateMovers(void) {
 
         // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
         // TODO: This check uses Bresenham LOS which doesn't match pathfinder's corner-cutting rules
-        // Temporarily disabled to test if this is the cause of stuck movers
-#if 0
         if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y)) {
             // Only print once per mover (when first getting stuck)
             if (!m->needsRepath) {
@@ -277,7 +278,6 @@ void UpdateMovers(void) {
             m->needsRepath = true;
             continue;
         }
-#endif
 
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;

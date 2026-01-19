@@ -1124,58 +1124,28 @@ static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY
     if (*maxY > gridHeight) *maxY = gridHeight;
 }
 
-// Reconstruct cell-level path between two points within a chunk
-static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, int maxLen) {
-    // Get bounds that cover both start and goal chunks
-    int startChunk = GetChunk(sx, sy);
-    int goalChunk = GetChunk(gx, gy);
+// ============================================================================
+// ReconstructLocalPath - Find cell-level path between two points
+//
+// PROBLEM SOLVED: When movers spawn near chunk boundaries (especially in
+// dungeon rooms that span multiple chunks), the path from the mover's position
+// to the first entrance may require going through an adjacent chunk. If we
+// only search within the immediate chunk bounds, we fail to find valid paths,
+// causing:
+//   1. Paths that start at the wrong position (INIT MISMATCH bug)
+//   2. The LOS check rejecting valid paths (oscillating yellow movers)
+//
+// SOLUTION: Try narrow bounds first (fast common case), then expand bounds
+// by one chunk in all directions if no path is found. This handles cases where:
+//   - Entrances sit ON chunk boundaries and belong to two chunks
+//   - The path between points near a boundary goes through an adjacent chunk
+//   - Dungeon rooms span chunk boundaries with corridors in other chunks
+// ============================================================================
 
-    int minX1, minY1, maxX1, maxY1;
-    int minX2, minY2, maxX2, maxY2;
-    GetChunkBounds(startChunk, &minX1, &minY1, &maxX1, &maxY1);
-    GetChunkBounds(goalChunk, &minX2, &minY2, &maxX2, &maxY2);
-
-    // Union of both chunk bounds
-    int minX = minX1 < minX2 ? minX1 : minX2;
-    int minY = minY1 < minY2 ? minY1 : minY2;
-    int maxX = maxX1 > maxX2 ? maxX1 : maxX2;
-    int maxY = maxY1 > maxY2 ? maxY1 : maxY2;
-
-    // Entrances sit ON chunk boundaries. When a coordinate is exactly on a boundary,
-    // it belongs to TWO chunks. GetChunk() only returns one of them. We need to include
-    // the adjacent chunk too, because BuildGraph may have found the path from that
-    // chunk's perspective.
-    // Check if start or goal x is on a vertical boundary (belongs to chunk to the left too)
-    if (sx % chunkWidth == 0 && sx > 0) {
-        int adjMinX = sx - chunkWidth;
-        if (adjMinX < minX) minX = adjMinX;
-    }
-    if (gx % chunkWidth == 0 && gx > 0) {
-        int adjMinX = gx - chunkWidth;
-        if (adjMinX < minX) minX = adjMinX;
-    }
-    // Check if start or goal y is on a horizontal boundary (belongs to chunk above too)
-    if (sy % chunkHeight == 0 && sy > 0) {
-        int adjMinY = sy - chunkHeight;
-        if (adjMinY < minY) minY = adjMinY;
-    }
-    if (gy % chunkHeight == 0 && gy > 0) {
-        int adjMinY = gy - chunkHeight;
-        if (adjMinY < minY) minY = adjMinY;
-    }
-
-    // Ensure maxX/maxY include the boundary cells (exclusive bounds need +1)
-    if (sx >= maxX) maxX = sx + 1;
-    if (sy >= maxY) maxY = sy + 1;
-    if (gx >= maxX) maxX = gx + 1;
-    if (gy >= maxY) maxY = gy + 1;
-
-    // Clamp to grid
-    if (minX < 0) minX = 0;
-    if (minY < 0) minY = 0;
-    if (maxX > gridWidth) maxX = gridWidth;
-    if (maxY > gridHeight) maxY = gridHeight;
-
+// Helper: Run A* within given bounds
+static int ReconstructLocalPathWithBounds(int sx, int sy, int gx, int gy, 
+                                          int minX, int minY, int maxX, int maxY,
+                                          Point* outPath, int maxLen) {
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
@@ -1257,6 +1227,49 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
         }
     }
     return 0;  // No path found
+}
+
+// Main entry point: tries narrow bounds first, expands if needed
+static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, int maxLen) {
+    // Get bounds that cover both start and goal chunks
+    int startChunk = GetChunk(sx, sy);
+    int goalChunk = GetChunk(gx, gy);
+
+    int minX1, minY1, maxX1, maxY1;
+    int minX2, minY2, maxX2, maxY2;
+    GetChunkBounds(startChunk, &minX1, &minY1, &maxX1, &maxY1);
+    GetChunkBounds(goalChunk, &minX2, &minY2, &maxX2, &maxY2);
+
+    // Union of both chunk bounds (narrow search area)
+    int minX = minX1 < minX2 ? minX1 : minX2;
+    int minY = minY1 < minY2 ? minY1 : minY2;
+    int maxX = maxX1 > maxX2 ? maxX1 : maxX2;
+    int maxY = maxY1 > maxY2 ? maxY1 : maxY2;
+
+    // Clamp to grid
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX > gridWidth) maxX = gridWidth;
+    if (maxY > gridHeight) maxY = gridHeight;
+
+    // Try narrow bounds first (fast path for most cases)
+    int len = ReconstructLocalPathWithBounds(sx, sy, gx, gy, minX, minY, maxX, maxY, outPath, maxLen);
+    if (len > 0) return len;
+
+    // Narrow search failed - expand bounds by one chunk in all directions
+    // This handles paths that need to go through adjacent chunks
+    int expandedMinX = minX - chunkWidth;
+    int expandedMinY = minY - chunkHeight;
+    int expandedMaxX = maxX + chunkWidth;
+    int expandedMaxY = maxY + chunkHeight;
+
+    // Clamp expanded bounds to grid
+    if (expandedMinX < 0) expandedMinX = 0;
+    if (expandedMinY < 0) expandedMinY = 0;
+    if (expandedMaxX > gridWidth) expandedMaxX = gridWidth;
+    if (expandedMaxY > gridHeight) expandedMaxY = gridHeight;
+
+    return ReconstructLocalPathWithBounds(sx, sy, gx, gy, expandedMinX, expandedMinY, expandedMaxX, expandedMaxY, outPath, maxLen);
 }
 
 void RunHPAStar(void) {
@@ -1510,7 +1523,7 @@ void RunHPAStar(void) {
 
             if (localLen == 0) {
                 // No path found for this segment - shouldn't happen with valid abstract path
-                // TraceLog(LOG_WARNING, "HPA* refinement failed: no path from (%d,%d) to (%d,%d)", fx, fy, tx, ty);
+                // (If this triggers, the expanded bounds in ReconstructLocalPath may need adjustment)
                 continue;
             }
 
