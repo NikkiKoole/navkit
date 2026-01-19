@@ -267,14 +267,8 @@ void UpdateMovers(void) {
         Point target = m->path[m->pathIndex];
 
         // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
-        // TODO: This check uses Bresenham LOS which doesn't match pathfinder's corner-cutting rules
+        // This detects when a wall is placed across the mover's path
         if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y)) {
-            // Only print once per mover (when first getting stuck)
-            if (!m->needsRepath) {
-                bool centerLOS = HasLineOfSight(currentX, currentY, target.x, target.y);
-                printf("Mover %d stuck: pos=(%d,%d) target=(%d,%d) pathIdx=%d centerLOS=%d\n",
-                       i, currentX, currentY, target.x, target.y, m->pathIndex, centerLOS);
-            }
             m->needsRepath = true;
             continue;
         }
