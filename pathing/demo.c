@@ -93,9 +93,10 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 1000;
+int moverCountSetting = 10000;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
+bool showOpenArea = false;
 
 // Extended mover struct for rendering (adds Color)
 typedef struct {
@@ -343,9 +344,13 @@ void DrawMovers(void) {
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
 
-        // Choose color based on mover state or neighbor count
+        // Choose color based on mover state or debug mode
         Color moverColor;
-        if (showNeighborCounts) {
+        if (showOpenArea) {
+            // Color by whether mover is in open area (can avoid freely)
+            bool open = IsMoverInOpenArea(m->x, m->y);
+            moverColor = open ? SKYBLUE : MAGENTA;
+        } else if (showNeighborCounts) {
             // Color by neighbor count (green=0, yellow=few, red=many)
             int neighbors = QueryMoverNeighbors(m->x, m->y, MOVER_AVOID_RADIUS, i, NULL, NULL);
             if (neighbors == 0) {
@@ -619,6 +624,14 @@ void DrawUI(void) {
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
         y += 22;
         ToggleBool(x, y, "Show Neighbors", &showNeighborCounts);
+        y += 22;
+        ToggleBool(x, y, "Show Open Area", &showOpenArea);
+        y += 22;
+        ToggleBool(x, y, "Avoidance", &useMoverAvoidance);
+        y += 22;
+        DraggableFloat(x, y, "Avoid Open", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
+        y += 22;
+        DraggableFloat(x, y, "Avoid Closed", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
     }
     y += 22;
 

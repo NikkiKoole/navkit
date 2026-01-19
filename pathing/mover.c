@@ -13,6 +13,9 @@ int moverCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = false;
+bool useMoverAvoidance = false;
+float avoidStrengthOpen = 0.5f;
+float avoidStrengthClosed = 0.0f;
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
@@ -90,6 +93,99 @@ void BuildMoverSpatialGrid(void) {
     
     clock_t end = clock();
     moverGridBuildTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+}
+
+Vec2 ComputeMoverAvoidance(int moverIndex) {
+    Vec2 avoidance = {0.0f, 0.0f};
+    
+    Mover* m = &movers[moverIndex];
+    if (!m->active) return avoidance;
+    
+    float radius = MOVER_AVOID_RADIUS;
+    float radiusSq = radius * radius;
+    float invRadius = 1.0f / radius;
+    
+    int found = 0;
+    int scanned = 0;
+    
+    // Compute cell range to search
+    int radCells = (int)ceilf(radius * moverGrid.invCellSize);
+    int cx = (int)(m->x * moverGrid.invCellSize);
+    int cy = (int)(m->y * moverGrid.invCellSize);
+    
+    int minCx = clampi(cx - radCells, 0, moverGrid.gridW - 1);
+    int maxCx = clampi(cx + radCells, 0, moverGrid.gridW - 1);
+    int minCy = clampi(cy - radCells, 0, moverGrid.gridH - 1);
+    int maxCy = clampi(cy + radCells, 0, moverGrid.gridH - 1);
+    
+    for (int gy = minCy; gy <= maxCy; gy++) {
+        for (int gx = minCx; gx <= maxCx; gx++) {
+            int cellIdx = gy * moverGrid.gridW + gx;
+            int start = moverGrid.cellStarts[cellIdx];
+            int end = moverGrid.cellStarts[cellIdx + 1];
+            
+            for (int t = start; t < end; t++) {
+                int j = moverGrid.moverIndices[t];
+                if (j == moverIndex) continue;
+                
+                scanned++;
+                if (scanned >= AVOID_MAX_SCAN) {
+                    return avoidance;
+                }
+                
+                float dx = m->x - movers[j].x;
+                float dy = m->y - movers[j].y;
+                float distSq = dx * dx + dy * dy;
+                
+                if (distSq < 1e-10f || distSq >= radiusSq) continue;
+                
+                float invDist = 1.0f / sqrtf(distSq);
+                float dist = distSq * invDist;
+                
+                // Strength increases quadratically as distance decreases
+                float u = 1.0f - dist * invRadius;
+                float strength = u * u;
+                
+                // Add repulsion (direction * strength / distance)
+                float k = strength * invDist;
+                avoidance.x += dx * k;
+                avoidance.y += dy * k;
+                
+                found++;
+                if (found >= AVOID_MAX_NEIGHBORS) {
+                    return avoidance;
+                }
+            }
+        }
+    }
+    
+    return avoidance;
+}
+
+bool IsMoverInOpenArea(float x, float y) {
+    // Convert pixel position to grid cell
+    int cellX = (int)(x / CELL_SIZE);
+    int cellY = (int)(y / CELL_SIZE);
+    
+    // Check 3x3 area around the mover's cell
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            int cx = cellX + dx;
+            int cy = cellY + dy;
+            
+            // Out of bounds = not open
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
+                return false;
+            }
+            
+            // Wall = not open
+            if (grid[cy][cx] == CELL_WALL) {
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }
 
 int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
@@ -410,8 +506,26 @@ void UpdateMovers(void) {
             m->pathIndex--;
         } else {
             float invDist = 1.0f / dist;
-            m->x += dxf * invDist * m->speed * dt;
-            m->y += dyf * invDist * m->speed * dt;
+            
+            // Base velocity toward waypoint
+            float vx = dxf * invDist * m->speed;
+            float vy = dyf * invDist * m->speed;
+            
+            // Add avoidance if enabled
+            if (useMoverAvoidance) {
+                bool inOpen = IsMoverInOpenArea(m->x, m->y);
+                float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
+                float avoidScale = m->speed * strength;
+                
+                if (avoidScale > 0.0f) {
+                    Vec2 avoid = ComputeMoverAvoidance(i);
+                    vx += avoid.x * avoidScale;
+                    vy += avoid.y * avoidScale;
+                }
+            }
+            
+            m->x += vx * dt;
+            m->y += vy * dt;
         }
     }
 }

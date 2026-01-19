@@ -43,6 +43,7 @@ extern int moverCount;
 extern unsigned long currentTick;
 extern bool useStringPulling;
 extern bool endlessMoverMode;
+extern bool useMoverAvoidance;
 
 // Core functions
 void InitMover(Mover* m, float x, float y, Point goal, float speed);
@@ -80,5 +81,24 @@ void BuildMoverSpatialGrid(void);
 typedef void (*MoverNeighborCallback)(int moverIndex, float distSq, void* userData);
 int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
                         MoverNeighborCallback callback, void* userData);
+
+// Check if mover is in open area (3x3 grid cells around it are all walkable)
+// Returns true if full avoidance is safe, false if near walls
+bool IsMoverInOpenArea(float x, float y);
+
+// Avoidance settings
+#define AVOID_MAX_NEIGHBORS  10
+#define AVOID_MAX_SCAN       48
+
+extern float avoidStrengthOpen;    // Avoidance strength in open areas
+extern float avoidStrengthClosed;  // Avoidance strength near walls
+
+// Compute avoidance vector for a mover (boids-style separation)
+// Returns a vector pointing away from nearby movers, strength based on proximity
+typedef struct {
+    float x, y;
+} Vec2;
+
+Vec2 ComputeMoverAvoidance(int moverIndex);
 
 #endif
