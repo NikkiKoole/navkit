@@ -697,6 +697,84 @@ describe(string_pulling_narrow_gaps) {
     }
 }
 
+describe(chunk_boundary_paths) {
+    it("should find paths when room entrance is in adjacent chunk") {
+        // Regression test for chunk boundary pathfinding bug.
+        //
+        // The bug: ReconstructLocalPath() only searched within chunk bounds.
+        // When a mover in a room needed to reach an entrance on the chunk
+        // boundary, but the path required going through cells in the adjacent
+        // chunk first (e.g., around a corner), path refinement failed.
+        //
+        // This map recreates that scenario:
+        // - Room in chunk 1 (rows 8-14) with entrance at row 8 (boundary)
+        // - The room has a wall that forces paths to go "up" into chunk 0
+        //   before reaching the entrance
+        const char* dungeonMap =
+            "################\n"   // row 0  - chunk 0
+            "#......##......#\n"   // row 1  - two rooms separated by wall
+            "#......##......#\n"   // row 2
+            "#......##......#\n"   // row 3
+            "#......##......#\n"   // row 4
+            "#......##......#\n"   // row 5
+            "#......##......#\n"   // row 6
+            "#...........#..#\n"   // row 7  - corridor connecting rooms (chunk boundary)
+            "#...........#..#\n"   // row 8  - chunk 1 starts here
+            "#......##......#\n"   // row 9  - rooms continue in chunk 1
+            "#......##......#\n"   // row 10
+            "#......##......#\n"   // row 11
+            "#......##......#\n"   // row 12
+            "#......##......#\n"   // row 13
+            "#......##......#\n"   // row 14
+            "################\n";  // row 15
+        
+        InitGridFromAsciiWithChunkSize(dungeonMap, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearMovers();
+        
+        // Spawn a mover in the bottom-left room (chunk 1)
+        // Goal is in the right side (also chunk 1, but different area)
+        // Path must go through the corridor at the chunk boundary
+        int startX = 2;
+        int startY = 12;
+        int goalX = 12;
+        int goalY = 12;
+        
+        expect(grid[startY][startX] == CELL_WALKABLE);
+        expect(grid[goalY][goalX] == CELL_WALKABLE);
+        
+        startPos = (Point){startX, startY};
+        goalPos = (Point){goalX, goalY};
+        RunHPAStar();
+        
+        // Path should be found
+        expect(pathLength > 0);
+        
+        // Path should start at the mover's position
+        Point pathStart = path[pathLength - 1];
+        expect(pathStart.x == startX);
+        expect(pathStart.y == startY);
+        
+        // Create mover and run simulation
+        Mover* m = &movers[0];
+        float x = startX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float y = startY * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, x, y, (Point){goalX, goalY}, 100.0f, path, pathLength);
+        moverCount = 1;
+        
+        // Run until mover reaches goal or times out
+        for (int tick = 0; tick < 600; tick++) {
+            Tick();
+            if (!m->active) break;  // Reached goal
+        }
+        
+        // Mover should have reached the goal (inactive)
+        expect(m->active == false);
+    }
+}
+
 describe(path_truncation) {
     it("should keep start end of path when truncating long paths") {
         // Simulate a path longer than MAX_MOVER_PATH
@@ -754,6 +832,7 @@ int main(int argc, char* argv[]) {
     test(endless_mode);
     test(refinement_after_wall_changes);
     test(string_pulling_narrow_gaps);
+    test(chunk_boundary_paths);
     test(path_truncation);
     return summary();
 }
