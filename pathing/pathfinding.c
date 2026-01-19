@@ -1550,8 +1550,9 @@ void RunHPAStar(void) {
     //          lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
 
     if (pathLength == 0) {
-        TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d",
-                 startPos.x, startPos.y, goalPos.x, goalPos.y, startEdgeCount, goalEdgeCount, startChunk, goalChunk);
+        // No path found - this can happen legitimately when start/goal are disconnected
+        // TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d",
+        //          startPos.x, startPos.y, goalPos.x, goalPos.y, startEdgeCount, goalEdgeCount, startChunk, goalChunk);
 
 #if 0  // Temporarily disabled A* diagnostic
         // Diagnostic: try raw A* to see if it's a real disconnection or graph bug
