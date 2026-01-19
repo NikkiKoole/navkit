@@ -697,6 +697,44 @@ describe(string_pulling_narrow_gaps) {
     }
 }
 
+describe(path_truncation) {
+    it("should keep start end of path when truncating long paths") {
+        // Simulate a path longer than MAX_MOVER_PATH
+        // Path is goal-to-start: path[0]=goal, path[pathLen-1]=start
+        Point longPath[2000];
+        int longPathLen = 2000;
+        
+        // Create a path from (0,0) to (1999,0)
+        // path[0] = goal = (1999,0), path[1999] = start = (0,0)
+        for (int i = 0; i < longPathLen; i++) {
+            longPath[i].x = longPathLen - 1 - i;
+            longPath[i].y = 0;
+        }
+        
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {1999, 0};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        InitMoverWithPath(m, startX, startY, goal, 100.0f, longPath, longPathLen);
+        moverCount = 1;
+        
+        // Path should be truncated to MAX_MOVER_PATH
+        expect(m->pathLength == MAX_MOVER_PATH);
+        
+        // First waypoint (path[pathLength-1]) should be at or near the start position (0,0)
+        // not somewhere in the middle of the path
+        Point firstWaypoint = m->path[m->pathIndex];
+        expect(firstWaypoint.x == 0);
+        expect(firstWaypoint.y == 0);
+        
+        // The truncated path should contain the start portion, not the goal portion
+        // So path[0] should be around x=1023 (1024 steps from start), not x=1999 (goal)
+        expect(m->path[0].x < 1500);  // Should be ~1023, definitely not 1999
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -716,5 +754,6 @@ int main(int argc, char* argv[]) {
     test(endless_mode);
     test(refinement_after_wall_changes);
     test(string_pulling_narrow_gaps);
+    test(path_truncation);
     return summary();
 }

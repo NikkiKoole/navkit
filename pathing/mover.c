@@ -14,6 +14,11 @@ bool endlessMoverMode = false;
 
 // Check if there's line-of-sight between two points (Bresenham)
 bool HasLineOfSight(int x0, int y0, int x1, int y1) {
+    // Bounds check
+    if (x0 < 0 || x0 >= gridWidth || y0 < 0 || y0 >= gridHeight ||
+        x1 < 0 || x1 >= gridWidth || y1 < 0 || y1 >= gridHeight) {
+        return false;
+    }
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
     int sx = (x0 < x1) ? 1 : -1;
@@ -149,8 +154,12 @@ void InitMover(Mover* m, float x, float y, Point goal, float speed) {
 void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Point* pathArr, int pathLen) {
     InitMover(m, x, y, goal, speed);
     m->pathLength = (pathLen > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLen;
+    
+    // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
+    // If truncating, keep the START end (high indices), not the goal end
+    int srcOffset = pathLen - m->pathLength;
     for (int i = 0; i < m->pathLength; i++) {
-        m->path[i] = pathArr[i];
+        m->path[i] = pathArr[srcOffset + i];
     }
     m->pathIndex = m->pathLength - 1;
 }
