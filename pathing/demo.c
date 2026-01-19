@@ -93,8 +93,9 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10000;
+int moverCountSetting = 1000;
 bool showMoverPaths = false;
+bool showNeighborCounts = false;
 
 // Extended mover struct for rendering (adds Color)
 typedef struct {
@@ -342,9 +343,21 @@ void DrawMovers(void) {
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
 
-        // Choose color based on mover state
+        // Choose color based on mover state or neighbor count
         Color moverColor;
-        if (m->repathCooldown > 0 && m->pathLength == 0) {
+        if (showNeighborCounts) {
+            // Color by neighbor count (green=0, yellow=few, red=many)
+            int neighbors = QueryMoverNeighbors(m->x, m->y, MOVER_AVOID_RADIUS, i, NULL, NULL);
+            if (neighbors == 0) {
+                moverColor = GREEN;
+            } else if (neighbors <= 3) {
+                moverColor = YELLOW;
+            } else if (neighbors <= 6) {
+                moverColor = ORANGE;
+            } else {
+                moverColor = RED;
+            }
+        } else if (m->repathCooldown > 0 && m->pathLength == 0) {
             moverColor = ORANGE;  // On cooldown, waiting to retry
         } else if (m->pathLength == 0) {
             moverColor = RED;     // No path
@@ -545,12 +558,14 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             BuildEntrances();
             BuildGraph();
         }
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
             InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             BuildEntrances();
             BuildGraph();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -602,6 +617,8 @@ void DrawUI(void) {
         ToggleBool(x, y, "String Pulling", &useStringPulling);
         y += 22;
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
+        y += 22;
+        ToggleBool(x, y, "Show Neighbors", &showNeighborCounts);
     }
     y += 22;
 
@@ -637,6 +654,7 @@ int main(void) {
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
     InitGridWithSizeAndChunkSize(512, 512, 16, 16);  // 16x16 chunks
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
@@ -672,8 +690,8 @@ int main(void) {
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d",
-                       entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
+        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Grid: %.3fms",
+                       entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);

@@ -4,6 +4,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <string.h>
 
 // Globals
 Mover movers[MAX_MOVERS];
@@ -11,6 +13,128 @@ int moverCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = false;
+
+// Spatial grid
+MoverSpatialGrid moverGrid = {0};
+double moverGridBuildTimeMs = 0.0;
+
+static inline int clampi(int v, int lo, int hi) {
+    return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
+void InitMoverSpatialGrid(int worldPixelWidth, int worldPixelHeight) {
+    FreeMoverSpatialGrid();
+    
+    moverGrid.invCellSize = 1.0f / MOVER_GRID_CELL_SIZE;
+    moverGrid.gridW = (int)ceilf(worldPixelWidth * moverGrid.invCellSize);
+    moverGrid.gridH = (int)ceilf(worldPixelHeight * moverGrid.invCellSize);
+    moverGrid.cellCount = moverGrid.gridW * moverGrid.gridH;
+    
+    moverGrid.cellCounts = (int*)calloc(moverGrid.cellCount, sizeof(int));
+    moverGrid.cellStarts = (int*)calloc(moverGrid.cellCount + 1, sizeof(int));
+    moverGrid.moverIndices = (int*)malloc(MAX_MOVERS * sizeof(int));
+}
+
+void FreeMoverSpatialGrid(void) {
+    free(moverGrid.cellCounts);
+    free(moverGrid.cellStarts);
+    free(moverGrid.moverIndices);
+    moverGrid.cellCounts = NULL;
+    moverGrid.cellStarts = NULL;
+    moverGrid.moverIndices = NULL;
+}
+
+void BuildMoverSpatialGrid(void) {
+    if (!moverGrid.cellCounts) return;
+    
+    clock_t start = clock();
+    
+    // Clear counts
+    memset(moverGrid.cellCounts, 0, moverGrid.cellCount * sizeof(int));
+    
+    // Count movers per cell
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        
+        int cx = (int)(movers[i].x * moverGrid.invCellSize);
+        int cy = (int)(movers[i].y * moverGrid.invCellSize);
+        cx = clampi(cx, 0, moverGrid.gridW - 1);
+        cy = clampi(cy, 0, moverGrid.gridH - 1);
+        
+        moverGrid.cellCounts[cy * moverGrid.gridW + cx]++;
+    }
+    
+    // Build prefix sum
+    moverGrid.cellStarts[0] = 0;
+    for (int c = 0; c < moverGrid.cellCount; c++) {
+        moverGrid.cellStarts[c + 1] = moverGrid.cellStarts[c] + moverGrid.cellCounts[c];
+    }
+    
+    // Reset counts to use as write cursors
+    for (int c = 0; c < moverGrid.cellCount; c++) {
+        moverGrid.cellCounts[c] = moverGrid.cellStarts[c];
+    }
+    
+    // Scatter mover indices into cells
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        
+        int cx = (int)(movers[i].x * moverGrid.invCellSize);
+        int cy = (int)(movers[i].y * moverGrid.invCellSize);
+        cx = clampi(cx, 0, moverGrid.gridW - 1);
+        cy = clampi(cy, 0, moverGrid.gridH - 1);
+        
+        int cellIdx = cy * moverGrid.gridW + cx;
+        moverGrid.moverIndices[moverGrid.cellCounts[cellIdx]++] = i;
+    }
+    
+    clock_t end = clock();
+    moverGridBuildTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+}
+
+int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
+                        MoverNeighborCallback callback, void* userData) {
+    if (!moverGrid.cellCounts) return 0;
+    
+    float radiusSq = radius * radius;
+    int found = 0;
+    
+    // Compute cell range to search
+    int radCells = (int)ceilf(radius * moverGrid.invCellSize);
+    int cx = (int)(x * moverGrid.invCellSize);
+    int cy = (int)(y * moverGrid.invCellSize);
+    
+    int minCx = clampi(cx - radCells, 0, moverGrid.gridW - 1);
+    int maxCx = clampi(cx + radCells, 0, moverGrid.gridW - 1);
+    int minCy = clampi(cy - radCells, 0, moverGrid.gridH - 1);
+    int maxCy = clampi(cy + radCells, 0, moverGrid.gridH - 1);
+    
+    for (int gy = minCy; gy <= maxCy; gy++) {
+        for (int gx = minCx; gx <= maxCx; gx++) {
+            int cellIdx = gy * moverGrid.gridW + gx;
+            int start = moverGrid.cellStarts[cellIdx];
+            int end = moverGrid.cellStarts[cellIdx + 1];
+            
+            for (int t = start; t < end; t++) {
+                int moverIdx = moverGrid.moverIndices[t];
+                if (moverIdx == excludeIndex) continue;
+                
+                float dx = movers[moverIdx].x - x;
+                float dy = movers[moverIdx].y - y;
+                float distSq = dx * dx + dy * dy;
+                
+                if (distSq < radiusSq) {
+                    if (callback) {
+                        callback(moverIdx, distSq, userData);
+                    }
+                    found++;
+                }
+            }
+        }
+    }
+    
+    return found;
+}
 
 // Check if there's line-of-sight between two points (Bresenham)
 bool HasLineOfSight(int x0, int y0, int x1, int y1) {
@@ -349,6 +473,7 @@ void ProcessMoverRepaths(void) {
 }
 
 void Tick(void) {
+    BuildMoverSpatialGrid();
     ProcessMoverRepaths();
     UpdateMovers();
     currentTick++;

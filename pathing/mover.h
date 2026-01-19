@@ -15,6 +15,11 @@
 #define MAX_REPATHS_PER_FRAME 10
 #define REPATH_COOLDOWN_FRAMES 30
 
+// Spatial grid for neighbor queries (used by avoidance)
+// Cell size ~2x AVOID_RADIUS keeps cell count manageable for large worlds
+#define MOVER_AVOID_RADIUS 40.0f
+#define MOVER_GRID_CELL_SIZE (MOVER_AVOID_RADIUS * 2.0f)  // 80
+
 // Fixed timestep
 #define TICK_RATE 60
 #define TICK_DT (1.0f / TICK_RATE)
@@ -52,5 +57,28 @@ void ClearMovers(void);
 int CountActiveMovers(void);
 bool HasLineOfSight(int x0, int y0, int x1, int y1);
 void StringPullPath(Point* pathArr, int* pathLen);
+
+// Spatial grid for neighbor queries
+typedef struct {
+    int* cellCounts;    // Number of movers per cell
+    int* cellStarts;    // Prefix sum: start index for each cell in moverIndices
+    int* moverIndices;  // Mover indices sorted by cell
+    int gridW, gridH;   // Grid dimensions in cells
+    int cellCount;      // Total cells (gridW * gridH)
+    float invCellSize;  // 1.0 / MOVER_GRID_CELL_SIZE for fast division
+} MoverSpatialGrid;
+
+extern MoverSpatialGrid moverGrid;
+extern double moverGridBuildTimeMs;  // Last build time in milliseconds
+
+void InitMoverSpatialGrid(int worldPixelWidth, int worldPixelHeight);
+void FreeMoverSpatialGrid(void);
+void BuildMoverSpatialGrid(void);
+
+// Query: calls callback for each mover within radius of (x, y), excluding excludeIndex
+// Returns number of neighbors found
+typedef void (*MoverNeighborCallback)(int moverIndex, float distSq, void* userData);
+int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
+                        MoverNeighborCallback callback, void* userData);
 
 #endif
