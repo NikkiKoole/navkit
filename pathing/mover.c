@@ -16,6 +16,7 @@ bool endlessMoverMode = false;
 bool useMoverAvoidance = false;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
+bool useDirectionalAvoidance = false;
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
@@ -186,6 +187,75 @@ bool IsMoverInOpenArea(float x, float y) {
     }
     
     return true;
+}
+
+// Check if there's clearance in a direction
+// Checks a 3x2 strip: current cell + neighbor in that direction, for 3 rows
+// dir: 0=up (-y), 1=right (+x), 2=down (+y), 3=left (-x)
+bool HasClearanceInDirection(float x, float y, int dir) {
+    int cellX = (int)(x / CELL_SIZE);
+    int cellY = (int)(y / CELL_SIZE);
+    
+    // Direction offsets for the "forward" cell
+    int fdx[] = {0, 1, 0, -1};  // up, right, down, left
+    int fdy[] = {-1, 0, 1, 0};
+    
+    // Perpendicular offsets (to check 3 cells along the edge)
+    int pdx[] = {1, 0, 1, 0};   // perpendicular x
+    int pdy[] = {0, 1, 0, 1};   // perpendicular y
+    
+    int fx = fdx[dir];
+    int fy = fdy[dir];
+    int px = pdx[dir];
+    int py = pdy[dir];
+    
+    // Check 3 cells in the forward direction (at -1, 0, +1 perpendicular)
+    for (int p = -1; p <= 1; p++) {
+        int cx = cellX + fx + p * px;
+        int cy = cellY + fy + p * py;
+        
+        if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
+            return false;
+        }
+        if (grid[cy][cx] == CELL_WALL) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance) {
+    Vec2 result = avoidance;
+    
+    // Check if avoidance pushes in a direction without clearance
+    // and zero that component if so
+    
+    if (avoidance.x > 0.01f) {
+        // Pushing right
+        if (!HasClearanceInDirection(x, y, 1)) {
+            result.x = 0.0f;
+        }
+    } else if (avoidance.x < -0.01f) {
+        // Pushing left
+        if (!HasClearanceInDirection(x, y, 3)) {
+            result.x = 0.0f;
+        }
+    }
+    
+    if (avoidance.y > 0.01f) {
+        // Pushing down
+        if (!HasClearanceInDirection(x, y, 2)) {
+            result.y = 0.0f;
+        }
+    } else if (avoidance.y < -0.01f) {
+        // Pushing up
+        if (!HasClearanceInDirection(x, y, 0)) {
+            result.y = 0.0f;
+        }
+    }
+    
+    return result;
 }
 
 int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
@@ -513,14 +583,24 @@ void UpdateMovers(void) {
             
             // Add avoidance if enabled
             if (useMoverAvoidance) {
-                bool inOpen = IsMoverInOpenArea(m->x, m->y);
-                float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
-                float avoidScale = m->speed * strength;
+                Vec2 avoid = ComputeMoverAvoidance(i);
                 
-                if (avoidScale > 0.0f) {
-                    Vec2 avoid = ComputeMoverAvoidance(i);
+                if (useDirectionalAvoidance) {
+                    // Filter avoidance by directional wall clearance
+                    avoid = FilterAvoidanceByWalls(m->x, m->y, avoid);
+                    float avoidScale = m->speed * avoidStrengthOpen;
                     vx += avoid.x * avoidScale;
                     vy += avoid.y * avoidScale;
+                } else {
+                    // Original open/closed area check
+                    bool inOpen = IsMoverInOpenArea(m->x, m->y);
+                    float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
+                    float avoidScale = m->speed * strength;
+                    
+                    if (avoidScale > 0.0f) {
+                        vx += avoid.x * avoidScale;
+                        vy += avoid.y * avoidScale;
+                    }
                 }
             }
             

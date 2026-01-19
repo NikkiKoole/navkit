@@ -86,19 +86,30 @@ int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
 // Returns true if full avoidance is safe, false if near walls
 bool IsMoverInOpenArea(float x, float y);
 
+// Vec2 for avoidance calculations
+typedef struct {
+    float x, y;
+} Vec2;
+
+// Check clearance in a specific direction (for directional avoidance)
+// Returns true if the cells in that direction are walkable
+// dir: 0=up, 1=right, 2=down, 3=left
+bool HasClearanceInDirection(float x, float y, int dir);
+
+// Filter avoidance vector based on directional clearance
+// Reduces or zeroes components that would push toward walls
+Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance);
+
 // Avoidance settings
 #define AVOID_MAX_NEIGHBORS  10
 #define AVOID_MAX_SCAN       48
 
 extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
+extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
 
 // Compute avoidance vector for a mover (boids-style separation)
 // Returns a vector pointing away from nearby movers, strength based on proximity
-typedef struct {
-    float x, y;
-} Vec2;
-
 Vec2 ComputeMoverAvoidance(int moverIndex);
 
 #endif

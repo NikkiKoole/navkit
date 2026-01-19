@@ -629,6 +629,8 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Avoidance", &useMoverAvoidance);
         y += 22;
+        ToggleBool(x, y, "Directional", &useDirectionalAvoidance);
+        y += 22;
         DraggableFloat(x, y, "Avoid Open", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
         y += 22;
         DraggableFloat(x, y, "Avoid Closed", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
