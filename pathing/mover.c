@@ -190,8 +190,11 @@ static void AssignNewMoverGoal(Mover* m) {
     RunHPAStar();
 
     m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+    // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
+    // If truncating, keep the START end (high indices), not the goal end
+    int srcOffset = pathLength - m->pathLength;
     for (int j = 0; j < m->pathLength; j++) {
-        m->path[j] = path[j];
+        m->path[j] = path[srcOffset + j];
     }
 
     if (useStringPulling && m->pathLength > 2) {
@@ -261,10 +264,20 @@ void UpdateMovers(void) {
         Point target = m->path[m->pathIndex];
 
         // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
+        // TODO: This check uses Bresenham LOS which doesn't match pathfinder's corner-cutting rules
+        // Temporarily disabled to test if this is the cause of stuck movers
+#if 0
         if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y)) {
+            // Only print once per mover (when first getting stuck)
+            if (!m->needsRepath) {
+                bool centerLOS = HasLineOfSight(currentX, currentY, target.x, target.y);
+                printf("Mover %d stuck: pos=(%d,%d) target=(%d,%d) pathIdx=%d centerLOS=%d\n",
+                       i, currentX, currentY, target.x, target.y, m->pathIndex, centerLOS);
+            }
             m->needsRepath = true;
             continue;
         }
+#endif
 
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -309,8 +322,11 @@ void ProcessMoverRepaths(void) {
         RunHPAStar();
 
         m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+        // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
+        // If truncating, keep the START end (high indices), not the goal end
+        int srcOffset = pathLength - m->pathLength;
         for (int j = 0; j < m->pathLength; j++) {
-            m->path[j] = path[j];
+            m->path[j] = path[srcOffset + j];
         }
 
         if (m->pathLength == 0) {

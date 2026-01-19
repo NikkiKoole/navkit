@@ -1510,7 +1510,7 @@ void RunHPAStar(void) {
 
             if (localLen == 0) {
                 // No path found for this segment - shouldn't happen with valid abstract path
-                TraceLog(LOG_WARNING, "HPA* refinement failed: no path from (%d,%d) to (%d,%d)", fx, fy, tx, ty);
+                // TraceLog(LOG_WARNING, "HPA* refinement failed: no path from (%d,%d) to (%d,%d)", fx, fy, tx, ty);
                 continue;
             }
 

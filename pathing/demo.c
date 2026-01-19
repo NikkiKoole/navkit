@@ -93,7 +93,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10;
+int moverCountSetting = 10000;
 bool showMoverPaths = false;
 
 // Extended mover struct for rendering (adds Color)
@@ -310,7 +310,7 @@ void SpawnMoversDemo(int count) {
                 StringPullPath(m->path, &m->pathLength);
                 m->pathIndex = m->pathLength - 1;
             }
-            
+
         } else {
             // No path found, spawn anyway - endless mode will assign a new goal
             InitMover(m, x, y, goal, speed);
