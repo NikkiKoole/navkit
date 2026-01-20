@@ -37,7 +37,15 @@ typedef struct {
     float speed;
     // Knot detection: time spent near current waypoint without reaching it
     float timeNearWaypoint;
+    // Stuck detection: track if mover is making progress
+    float lastX, lastY;         // Position at last progress check
+    float timeWithoutProgress;  // Time since significant movement
 } Mover;
+
+// Stuck detection thresholds
+#define STUCK_CHECK_INTERVAL 0.5f    // How often to check for progress (seconds)
+#define STUCK_MIN_DISTANCE 1.0f      // Minimum distance to count as "progress"
+#define STUCK_REPATH_TIME 2.0f       // Repath after this many seconds without progress
 
 // Threshold for detecting "stuck" movers (knot issue)
 #define KNOT_NEAR_RADIUS 30.0f      // Distance to be considered "near" waypoint
@@ -46,6 +54,14 @@ typedef struct {
 // Knot fix: larger waypoint arrival radius (Option 2 from knot-issue.md)
 #define KNOT_FIX_ARRIVAL_RADIUS 16.0f  // Advance to next waypoint when within this distance
 extern bool useKnotFix;                 // Toggle for knot fix
+
+// Wall repulsion: push movers away from walls to prevent wall clipping
+#define WALL_REPULSION_RADIUS 24.0f    // Distance at which wall repulsion starts
+extern bool useWallRepulsion;           // Toggle for wall repulsion
+extern float wallRepulsionStrength;     // Strength of wall repulsion force
+
+// Wall sliding: slide along walls instead of penetrating them
+extern bool useWallSliding;             // Toggle for wall sliding
 
 // Globals
 extern Mover movers[MAX_MOVERS];

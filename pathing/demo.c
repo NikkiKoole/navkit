@@ -98,6 +98,7 @@ bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
 bool showKnotDetection = false;  // Highlight movers stuck near waypoints
+bool showStuckDetection = false; // Highlight movers not making progress
 
 // Extended mover struct for rendering (adds Color)
 typedef struct {
@@ -347,7 +348,18 @@ void DrawMovers(void) {
 
         // Choose color based on mover state or debug mode
         Color moverColor;
-        if (showKnotDetection) {
+        if (showStuckDetection) {
+            // Color by how long mover hasn't made progress
+            if (m->timeWithoutProgress > STUCK_REPATH_TIME) {
+                moverColor = MAGENTA;    // Completely stuck, needs intervention
+            } else if (m->timeWithoutProgress > STUCK_REPATH_TIME * 0.5f) {
+                moverColor = RED;        // Very stuck
+            } else if (m->timeWithoutProgress > STUCK_CHECK_INTERVAL) {
+                moverColor = ORANGE;     // Getting stuck
+            } else {
+                moverColor = GREEN;      // Moving normally
+            }
+        } else if (showKnotDetection) {
             // Color by how long mover has been stuck near waypoint
             if (m->timeNearWaypoint > KNOT_STUCK_TIME) {
                 moverColor = RED;        // Stuck! Likely in a knot
@@ -641,6 +653,8 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Knots", &showKnotDetection);
         y += 22;
+        ToggleBool(x, y, "Show Stuck", &showStuckDetection);
+        y += 22;
         ToggleBool(x, y, "Knot Fix", &useKnotFix);
         y += 22;
         ToggleBool(x, y, "Avoidance", &useMoverAvoidance);
@@ -650,6 +664,12 @@ void DrawUI(void) {
         DraggableFloat(x, y, "Avoid Open", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
         y += 22;
         DraggableFloat(x, y, "Avoid Closed", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
+        y += 22;
+        ToggleBool(x, y, "Wall Repulsion", &useWallRepulsion);
+        y += 22;
+        DraggableFloat(x, y, "Wall Repel Str", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
+        y += 22;
+        ToggleBool(x, y, "Wall Sliding", &useWallSliding);
     }
     y += 22;
 

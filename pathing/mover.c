@@ -15,6 +15,9 @@ bool useStringPulling = true;
 bool endlessMoverMode = false;
 bool useMoverAvoidance = false;
 bool useKnotFix = false;
+bool useWallRepulsion = false;
+float wallRepulsionStrength = 0.5f;
+bool useWallSliding = false;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = false;
@@ -224,6 +227,55 @@ bool HasClearanceInDirection(float x, float y, int dir) {
     }
     
     return true;
+}
+
+// Compute wall repulsion force - pushes mover away from nearby walls
+Vec2 ComputeWallRepulsion(float x, float y) {
+    Vec2 repulsion = {0.0f, 0.0f};
+    
+    int cellX = (int)(x / CELL_SIZE);
+    int cellY = (int)(y / CELL_SIZE);
+    
+    // Check 3x3 area around mover for walls
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            int cx = cellX + dx;
+            int cy = cellY + dy;
+            
+            // Skip out of bounds
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
+            
+            // Only care about walls
+            if (grid[cy][cx] != CELL_WALL) continue;
+            
+            // Wall cell center
+            float wallX = cx * CELL_SIZE + CELL_SIZE * 0.5f;
+            float wallY = cy * CELL_SIZE + CELL_SIZE * 0.5f;
+            
+            // Vector from wall to mover
+            float dirX = x - wallX;
+            float dirY = y - wallY;
+            float distSq = dirX * dirX + dirY * dirY;
+            
+            if (distSq < 1e-10f) continue;
+            
+            float dist = sqrtf(distSq);
+            
+            // Only repel within radius
+            if (dist >= WALL_REPULSION_RADIUS) continue;
+            
+            // Strength increases as mover gets closer (quadratic falloff)
+            float t = 1.0f - dist / WALL_REPULSION_RADIUS;
+            float strength = t * t;
+            
+            // Add repulsion (normalized direction * strength)
+            float invDist = 1.0f / dist;
+            repulsion.x += dirX * invDist * strength;
+            repulsion.y += dirY * invDist * strength;
+        }
+    }
+    
+    return repulsion;
 }
 
 Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance) {
@@ -441,6 +493,9 @@ void InitMover(Mover* m, float x, float y, Point goal, float speed) {
     m->pathLength = 0;
     m->pathIndex = -1;
     m->timeNearWaypoint = 0.0f;
+    m->lastX = x;
+    m->lastY = y;
+    m->timeWithoutProgress = 0.0f;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Point* pathArr, int pathLen) {
@@ -640,8 +695,86 @@ void UpdateMovers(void) {
                 }
             }
             
-            m->x += vx * dt;
-            m->y += vy * dt;
+            // Add wall repulsion if enabled
+            if (useWallRepulsion) {
+                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y);
+                float repelScale = m->speed * wallRepulsionStrength;
+                vx += wallRepel.x * repelScale;
+                vy += wallRepel.y * repelScale;
+            }
+            
+            // Apply movement with optional wall sliding
+            float newX = m->x + vx * dt;
+            float newY = m->y + vy * dt;
+            
+            if (useWallSliding) {
+                int newCellX = (int)(newX / CELL_SIZE);
+                int newCellY = (int)(newY / CELL_SIZE);
+                
+                // Check if new position would be in a wall
+                bool newPosInWall = (newCellX < 0 || newCellX >= gridWidth ||
+                                     newCellY < 0 || newCellY >= gridHeight ||
+                                     grid[newCellY][newCellX] == CELL_WALL);
+                
+                if (newPosInWall) {
+                    // Try sliding: move only in X
+                    int xOnlyCellX = (int)(newX / CELL_SIZE);
+                    int xOnlyCellY = (int)(m->y / CELL_SIZE);
+                    bool xOnlyOk = (xOnlyCellX >= 0 && xOnlyCellX < gridWidth &&
+                                    xOnlyCellY >= 0 && xOnlyCellY < gridHeight &&
+                                    grid[xOnlyCellY][xOnlyCellX] != CELL_WALL);
+                    
+                    // Try sliding: move only in Y
+                    int yOnlyCellX = (int)(m->x / CELL_SIZE);
+                    int yOnlyCellY = (int)(newY / CELL_SIZE);
+                    bool yOnlyOk = (yOnlyCellX >= 0 && yOnlyCellX < gridWidth &&
+                                    yOnlyCellY >= 0 && yOnlyCellY < gridHeight &&
+                                    grid[yOnlyCellY][yOnlyCellX] != CELL_WALL);
+                    
+                    if (xOnlyOk && yOnlyOk) {
+                        // Both work - pick the one more aligned with velocity
+                        if (fabsf(vx) > fabsf(vy)) {
+                            m->x = newX;
+                        } else {
+                            m->y = newY;
+                        }
+                    } else if (xOnlyOk) {
+                        m->x = newX;  // Slide horizontally
+                    } else if (yOnlyOk) {
+                        m->y = newY;  // Slide vertically
+                    }
+                    // else: both blocked, don't move
+                } else {
+                    m->x = newX;
+                    m->y = newY;
+                }
+            } else {
+                m->x = newX;
+                m->y = newY;
+            }
+            
+            // Track progress for stuck detection
+            float dx = m->x - m->lastX;
+            float dy = m->y - m->lastY;
+            float movedDistSq = dx * dx + dy * dy;
+            
+            if (movedDistSq >= STUCK_MIN_DISTANCE * STUCK_MIN_DISTANCE) {
+                // Made progress, reset timer and update last position
+                m->timeWithoutProgress = 0.0f;
+                m->lastX = m->x;
+                m->lastY = m->y;
+            } else {
+                // No significant movement, accumulate stuck time
+                m->timeWithoutProgress += dt;
+                
+                // If stuck too long, trigger repath
+                if (m->timeWithoutProgress > STUCK_REPATH_TIME) {
+                    m->needsRepath = true;
+                    m->timeWithoutProgress = 0.0f;
+                    m->lastX = m->x;
+                    m->lastY = m->y;
+                }
+            }
         }
     }
 }
