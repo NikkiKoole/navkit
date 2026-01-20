@@ -1132,15 +1132,6 @@ void UpdateDirtyChunks(void) {
              dirtyCount, affectedCount, elapsed);
 }
 
-// Helper to check if a cell is walkable (includes ladders) - 3D version
-static bool IsWalkable3D(int z, int y, int x) {
-    if (z < 0 || z >= gridDepth) return false;
-    if (y < 0 || y >= gridHeight) return false;
-    if (x < 0 || x >= gridWidth) return false;
-    CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
-}
-
 // 3D heuristic - includes z-level difference
 static int Heuristic3D(int x0, int y0, int z0, int x1, int y1, int z1) {
     int dx = abs(x1 - x0);
@@ -1218,14 +1209,14 @@ void RunAStar(void) {
         // Expand XY neighbors on same z-level
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i], nz = bestZ;
-            if (!IsWalkable3D(nz, ny, nx)) continue;
+            if (!IsCellWalkable(nz, ny, nx)) continue;
             if (nodeData[nz][ny][nx].closed) continue;
 
             // For diagonal movement, check that we can actually move diagonally
             // (not cutting corners through walls)
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (!IsWalkable3D(bestZ, bestY, bestX + dx[i]) || 
-                    !IsWalkable3D(bestZ, bestY + dy[i], bestX))
+                if (!IsCellWalkable(bestZ, bestY, bestX + dx[i]) || 
+                    !IsCellWalkable(bestZ, bestY + dy[i], bestX))
                     continue;
             }
 

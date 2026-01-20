@@ -119,6 +119,17 @@ typedef struct {
 } MoverRenderData;
 MoverRenderData moverRenderData[MAX_MOVERS];
 
+static Texture2D* GetCellTexture(CellType cell) {
+    switch (cell) {
+        case CELL_WALKABLE: return &texGrass;
+        case CELL_WALL:     return &texWall;
+        case CELL_LADDER:   return &texLadder;
+        case CELL_FLOOR:    return &texFloor;
+        case CELL_AIR:      return &texAir;
+    }
+    return &texGrass;
+}
+
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
     float size = CELL_SIZE * zoom;
@@ -126,28 +137,14 @@ void DrawCellGrid(void) {
     
     // Draw layer below with transparency (if viewing z > 0)
     if (z > 0) {
-        Color tint = (Color){255, 255, 255, 128};  // 50% transparent
+        Color tint = (Color){255, 255, 255, 128};
         int zBelow = z - 1;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
+                CellType cell = grid[zBelow][y][x];
+                if (cell == CELL_AIR) continue;  // Don't draw air from below
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                switch (grid[zBelow][y][x]) {
-                    case CELL_WALKABLE:
-                        DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, tint);
-                        break;
-                    case CELL_WALL:
-                        DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, tint);
-                        break;
-                    case CELL_LADDER:
-                        DrawTexturePro(texLadder, src, dest, (Vector2){0,0}, 0, tint);
-                        break;
-                    case CELL_FLOOR:
-                        DrawTexturePro(texFloor, src, dest, (Vector2){0,0}, 0, tint);
-                        break;
-                    case CELL_AIR:
-                        // Don't draw air from below
-                        break;
-                }
+                DrawTexturePro(*GetCellTexture(cell), src, dest, (Vector2){0,0}, 0, tint);
             }
         }
     }
@@ -156,23 +153,7 @@ void DrawCellGrid(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            switch (grid[z][y][x]) {
-                case CELL_WALKABLE:
-                    DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, WHITE);
-                    break;
-                case CELL_WALL:
-                    DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, WHITE);
-                    break;
-                case CELL_LADDER:
-                    DrawTexturePro(texLadder, src, dest, (Vector2){0,0}, 0, WHITE);
-                    break;
-                case CELL_FLOOR:
-                    DrawTexturePro(texFloor, src, dest, (Vector2){0,0}, 0, WHITE);
-                    break;
-                case CELL_AIR:
-                    DrawTexturePro(texAir, src, dest, (Vector2){0,0}, 0, WHITE);
-                    break;
-            }
+            DrawTexturePro(*GetCellTexture(grid[z][y][x]), src, dest, (Vector2){0,0}, 0, WHITE);
         }
     }
 }

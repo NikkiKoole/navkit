@@ -4,15 +4,15 @@ Findings from analyzing the z-level implementation changes. These are potential 
 
 ---
 
-## 1. Duplicate Walkability Functions
+## 1. Duplicate Walkability Functions - FIXED
 
 **Location:** `pathfinding.c`
 
-There are two functions doing the same thing:
-- `IsCellWalkable(z, y, x)` around line 400
-- `IsWalkable3D(z, y, x)` around line 1135
+~~There are two functions doing the same thing:~~
+- ~~`IsCellWalkable(z, y, x)` around line 400~~
+- ~~`IsWalkable3D(z, y, x)` around line 1135~~
 
-**Suggestion:** Remove one and use the other consistently.
+**FIXED:** Removed `IsWalkable3D` and replaced all uses with `IsCellWalkable`.
 
 ---
 
@@ -165,12 +165,22 @@ There's `#if 0` blocks and commented-out debug logging:
 
 ---
 
+## 11. Duplicate Switch Statements in DrawCellGrid - FIXED
+
+**Location:** `demo.c`
+
+~~`DrawCellGrid()` had two nearly identical switch statements mapping CellType to texture - one for the transparent layer below, one for the current layer.~~
+
+**FIXED:** Extracted `GetCellTexture(CellType)` helper function, reducing ~40 lines to ~15.
+
+---
+
 ## Priority
 
 If tackling these, suggested order:
 
 1. **High:** #3 (inconsistent walkability) - potential bugs
-2. **Medium:** #1 (duplicate functions) - confusion
+2. ~~**Medium:** #1 (duplicate functions) - confusion~~ FIXED
 3. **Medium:** #5 (magic numbers) - readability
 4. **Low:** Rest - optimizations or style preferences
 
