@@ -811,10 +811,10 @@ void ProcessMoverRepaths(void) {
         }
 
         if (m->pathLength == 0) {
-            // Repath failed - goal may be unreachable, clear path and let UpdateMovers assign new goal
+            // Repath failed - goal may be unreachable, retry after cooldown
             m->pathIndex = -1;
-            m->needsRepath = false;
-            m->repathCooldown = TICK_RATE;  // Wait 1 second before trying new goal
+            m->needsRepath = true;  // Keep trying
+            m->repathCooldown = TICK_RATE;  // Wait 1 second before retry
             repathsThisFrame++;
             continue;
         }
