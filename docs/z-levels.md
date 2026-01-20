@@ -201,6 +201,34 @@ The demo can't show multi-floor maps:
 - **One-way transitions**: Drop-down holes, up-only jumps (add direction to LadderLink)
 - **Multi-level ladders**: Elevators going z=0 to z=5 directly
 - **Incremental updates for ladders**: Currently ladder changes require full rebuild
+- **JPS/JPS+ 3D support**: See below
+
+### JPS and JPS+ Z-Level Support
+
+Currently `RunJPS()` and `RunJpsPlus()` only work on z=0. To support multi-floor:
+
+1. **Ladders as forced jump points**
+   - In JPS, a "jump point" is where the optimal path might change direction
+   - Ladders are natural jump points: you MUST stop there to decide whether to climb
+   - Treat `CELL_LADDER` as a forced neighbor in the jump scan
+   - When jumping in a direction and hitting a ladder, stop and return it as a jump point
+
+2. **Per-level jump point preprocessing (JPS+)**
+   - JPS+ precomputes jump distances for each cell in 8 directions
+   - With z-levels: precompute per z-level (like we did with HPA* chunks)
+   - Ladder cells get special handling: jump distance = 0 (forced stop)
+   - Cross-level jumps not needed - ladders handle transitions
+
+3. **Implementation approach**
+   - Update `PrecomputeJpsPlus()` to iterate all z-levels
+   - Update jump scanning to treat ladders as walls (stop points)
+   - After finding path, post-process to insert ladder transitions
+   - Or: let A* handle ladder expansion, JPS just finds same-level segments
+
+4. **Alternative: Hybrid approach**
+   - Use JPS/JPS+ for fast same-level pathfinding
+   - Use HPA* for cross-level routing decisions
+   - Best of both: JPS speed + HPA* hierarchical z-level handling
 
 ---
 
