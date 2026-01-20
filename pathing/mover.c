@@ -30,6 +30,13 @@ static inline int clampi(int v, int lo, int hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
 }
 
+// Helper to check if a cell is walkable
+static inline bool IsCellWalkableAt(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    CellType cell = grid[z][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+}
+
 void InitMoverSpatialGrid(int worldPixelWidth, int worldPixelHeight) {
     FreeMoverSpatialGrid();
     
@@ -424,8 +431,7 @@ static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
     for (int i = 0; i < 4; i++) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
-        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-            grid[0][ny][nx] == CELL_WALKABLE) {
+        if (IsCellWalkableAt(0, ny, nx)) {
             if (!HasLineOfSight(nx, ny, x1, y1)) return false;
         }
     }
@@ -446,8 +452,7 @@ static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1) {
     for (int i = 0; i < 4; i++) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
-        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-            grid[0][ny][nx] == CELL_WALKABLE) {
+        if (IsCellWalkableAt(0, ny, nx)) {
             if (HasLineOfSight(nx, ny, x1, y1)) return true;
         }
     }
@@ -602,8 +607,7 @@ void UpdateMovers(void) {
             for (int d = 0; d < 4; d++) {
                 int nx = currentX + dx[d];
                 int ny = currentY + dy[d];
-                if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-                    grid[0][ny][nx] == CELL_WALKABLE) {
+                if (IsCellWalkableAt(0, ny, nx)) {
                     m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
                     pushed = true;

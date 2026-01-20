@@ -16,8 +16,18 @@ float zoom = 1.0f;
 Vector2 offset = {0, 0};
 Texture2D texGrass;
 Texture2D texWall;
+Texture2D texAir;
+Texture2D texLadder;
+Texture2D texFloor;
 bool showGraph = false;
 bool showEntrances = false;
+int currentViewZ = 0;  // Which z-level we're viewing
+
+// Demo-specific start/goal/path (separate from pathfinding globals which get reset by mover system)
+Point demoStartPos = {-1, -1, 0};
+Point demoGoalPos = {-1, -1, 0};
+Point demoPath[MAX_PATH];
+int demoPathLength = 0;
 
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
@@ -27,7 +37,7 @@ const char* directionNames[] = {"4-dir", "8-dir"};
 
 // Tool selection: 0=Draw Walls, 1=Erase Walls, 2=Set Start, 3=Set Goal
 int currentTool = 0;
-const char* toolNames[] = {"Draw Walls", "Erase Walls", "Set Start", "Set Goal"};
+const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "Set Start", "Set Goal"};
 
 // Terrain selection
 int currentTerrain = 0;
@@ -112,18 +122,59 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
     float size = CELL_SIZE * zoom;
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            if (grid[0][y][x] == CELL_WALKABLE) {
+    int z = currentViewZ;
+    
+    // Draw layer below with transparency (if viewing z > 0)
+    if (z > 0) {
+        Color tint = (Color){255, 255, 255, 128};  // 50% transparent
+        int zBelow = z - 1;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, WHITE);
+                switch (grid[zBelow][y][x]) {
+                    case CELL_WALKABLE:
+                        DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, tint);
+                        break;
+                    case CELL_WALL:
+                        DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, tint);
+                        break;
+                    case CELL_LADDER:
+                        DrawTexturePro(texLadder, src, dest, (Vector2){0,0}, 0, tint);
+                        break;
+                    case CELL_FLOOR:
+                        DrawTexturePro(texFloor, src, dest, (Vector2){0,0}, 0, tint);
+                        break;
+                    case CELL_AIR:
+                        // Don't draw air from below
+                        break;
+                }
             }
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            if (grid[0][y][x] == CELL_WALL) {
-                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, WHITE);
+        }
+    }
+    
+    // Draw current layer
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            switch (grid[z][y][x]) {
+                case CELL_WALKABLE:
+                    DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, WHITE);
+                    break;
+                case CELL_WALL:
+                    DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, WHITE);
+                    break;
+                case CELL_LADDER:
+                    DrawTexturePro(texLadder, src, dest, (Vector2){0,0}, 0, WHITE);
+                    break;
+                case CELL_FLOOR:
+                    DrawTexturePro(texFloor, src, dest, (Vector2){0,0}, 0, WHITE);
+                    break;
+                case CELL_AIR:
+                    DrawTexturePro(texAir, src, dest, (Vector2){0,0}, 0, WHITE);
+                    break;
             }
+        }
+    }
 }
 
 void DrawChunkBoundaries(void) {
@@ -165,14 +216,26 @@ void DrawGraph(void) {
 
 void DrawPath(void) {
     float size = CELL_SIZE * zoom;
-    if (startPos.x >= 0)
-        DrawRectangle((int)(offset.x + startPos.x * size), (int)(offset.y + startPos.y * size), (int)size, (int)size, GREEN);
-    if (goalPos.x >= 0)
-        DrawRectangle((int)(offset.x + goalPos.x * size), (int)(offset.y + goalPos.y * size), (int)size, (int)size, RED);
-    for (int i = 0; i < pathLength; i++) {
-        float px = offset.x + path[i].x * size + size * 0.25f;
-        float py = offset.y + path[i].y * size + size * 0.25f;
-        DrawRectangle((int)px, (int)py, (int)(size * 0.5f), (int)(size * 0.5f), BLUE);
+    int z = currentViewZ;
+    
+    // Draw start (green) - full opacity on same z, faded on different z
+    if (demoStartPos.x >= 0) {
+        Color col = (demoStartPos.z == z) ? GREEN : (Color){0, 228, 48, 80};
+        DrawRectangle((int)(offset.x + demoStartPos.x * size), (int)(offset.y + demoStartPos.y * size), (int)size, (int)size, col);
+    }
+    
+    // Draw goal (red) - full opacity on same z, faded on different z
+    if (demoGoalPos.x >= 0) {
+        Color col = (demoGoalPos.z == z) ? RED : (Color){230, 41, 55, 80};
+        DrawRectangle((int)(offset.x + demoGoalPos.x * size), (int)(offset.y + demoGoalPos.y * size), (int)size, (int)size, col);
+    }
+    
+    // Draw path - full opacity on same z, faded on different z
+    for (int i = 0; i < demoPathLength; i++) {
+        float px = offset.x + demoPath[i].x * size + size * 0.25f;
+        float py = offset.y + demoPath[i].y * size + size * 0.25f;
+        Color col = (demoPath[i].z == z) ? BLUE : (Color){0, 121, 241, 80};
+        DrawRectangle((int)px, (int)py, (int)(size * 0.5f), (int)(size * 0.5f), col);
     }
 }
 
@@ -474,18 +537,19 @@ void HandleInput(void) {
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
             switch (currentTool) {
-                case 0:  // Draw Walls
-                    if (grid[0][y][x] != CELL_WALL) {
-                        grid[0][y][x] = CELL_WALL;
+                case 0:  // Draw Wall
+                    if (grid[z][y][x] != CELL_WALL) {
+                        grid[z][y][x] = CELL_WALL;
                         MarkChunkDirty(x, y);
                         // Mark movers whose path crosses this cell for replanning
                         for (int i = 0; i < moverCount; i++) {
                             Mover* m = &movers[i];
                             if (!m->active) continue;
                             for (int j = m->pathIndex; j >= 0; j--) {
-                                if (m->path[j].x == x && m->path[j].y == y) {
+                                if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
                                     m->needsRepath = true;
                                     break;
                                 }
@@ -493,21 +557,36 @@ void HandleInput(void) {
                         }
                     }
                     break;
-                case 1:  // Erase Walls
-                    if (grid[0][y][x] != CELL_WALKABLE) {
-                        grid[0][y][x] = CELL_WALKABLE;
+                case 1:  // Draw Floor
+                    if (grid[z][y][x] != CELL_FLOOR) {
+                        grid[z][y][x] = CELL_FLOOR;
                         MarkChunkDirty(x, y);
                     }
                     break;
-                case 2:  // Set Start
-                    if (grid[0][y][x] == CELL_WALKABLE) {
-                        startPos = (Point){x, y, 0};
+                case 2:  // Draw Ladder
+                    if (grid[z][y][x] != CELL_LADDER) {
+                        grid[z][y][x] = CELL_LADDER;
+                        MarkChunkDirty(x, y);
+                    }
+                    break;
+                case 3:  // Erase (air on z>0, grass on z=0)
+                    {
+                        CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                        if (grid[z][y][x] != eraseType) {
+                            grid[z][y][x] = eraseType;
+                            MarkChunkDirty(x, y);
+                        }
+                    }
+                    break;
+                case 4:  // Set Start
+                    if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
+                        demoStartPos = (Point){x, y, z};
                         pathLength = 0;
                     }
                     break;
-                case 3:  // Set Goal
-                    if (grid[0][y][x] == CELL_WALKABLE) {
-                        goalPos = (Point){x, y, 0};
+                case 5:  // Set Goal
+                    if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
+                        demoGoalPos = (Point){x, y, z};
                         pathLength = 0;
                     }
                     break;
@@ -519,8 +598,10 @@ void HandleInput(void) {
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[0][y][x] != CELL_WALKABLE) {
-            grid[0][y][x] = CELL_WALKABLE;
+        int z = currentViewZ;
+        CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[z][y][x] != eraseType) {
+            grid[z][y][x] = eraseType;
             MarkChunkDirty(x, y);
         }
     }
@@ -530,6 +611,21 @@ void HandleInput(void) {
         zoom = 1.0f;
         offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    }
+
+    // Z-level switching (< > like Dwarf Fortress, or [ ])
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (IsKeyPressed(KEY_PERIOD) && shift) {  // >
+        if (currentViewZ < gridDepth - 1) currentViewZ++;
+    }
+    if (IsKeyPressed(KEY_COMMA) && shift) {  // <
+        if (currentViewZ > 0) currentViewZ--;
+    }
+    if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+        if (currentViewZ < gridDepth - 1) currentViewZ++;
+    }
+    if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+        if (currentViewZ > 0) currentViewZ--;
     }
 }
 
@@ -562,6 +658,9 @@ void DrawUI(void) {
         }
         y += 22;
         if (PushButton(x, y, "Find Path")) {
+            // Copy demo positions to global pathfinding vars
+            startPos = demoStartPos;
+            goalPos = demoGoalPos;
             if (pathAlgorithm == 1) {
                 if (graphEdgeCount == 0) {
                     BuildEntrances();
@@ -576,6 +675,11 @@ void DrawUI(void) {
                 case 2: RunJPS(); break;
                 case 3: RunJpsPlus(); break;
             }
+            // Copy result to demo path
+            demoPathLength = pathLength;
+            for (int i = 0; i < pathLength; i++) {
+                demoPath[i] = path[i];
+            }
         }
     }
     y += 22;
@@ -584,7 +688,7 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Map Editing", &sectionMapEditing)) {
         y += 18;
-        CycleOption(x, y, "Tool", toolNames, 4, &currentTool);
+        CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
         CycleOption(x, y, "Terrain", terrainNames, 12, &currentTerrain);
         y += 22;
@@ -718,11 +822,23 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     texGrass = LoadTexture("assets/img/grass.png");
     texWall = LoadTexture("assets/img/wall.png");
+    texAir = LoadTexture("assets/img/air.png");
+    texLadder = LoadTexture("assets/img/ladder.png");
+    texFloor = LoadTexture("assets/img/floor.png");
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGridWithSizeAndChunkSize(512, 512, 16, 16);  // 16x16 chunks
+    InitGridWithSizeAndChunkSize(64, 64, 8, 8);  // Smaller grid, 3 z-levels
+    gridDepth = 3;  // Use 3 z-levels
+    // Initialize z=0 as walkable (ground), z>0 as air
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++)
+            grid[0][y][x] = CELL_WALKABLE;
+    for (int z = 1; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
@@ -759,6 +875,7 @@ int main(void) {
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), screenWidth - 120, 5, 18, SKYBLUE);
         
         // Count stuck movers if knot detection is enabled
         int stuckCount = 0;

@@ -394,13 +394,13 @@ static int AddLadderEntrance(int x, int y, int z) {
     return entranceCount++;
 }
 
-// Helper to check if a cell is walkable (CELL_WALKABLE or CELL_LADDER)
+// Helper to check if a cell is walkable (CELL_WALKABLE, CELL_FLOOR, or CELL_LADDER)
 static bool IsCellWalkable(int z, int y, int x) {
     if (z < 0 || z >= gridDepth) return false;
     if (y < 0 || y >= gridHeight) return false;
     if (x < 0 || x >= gridWidth) return false;
     CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_LADDER;
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
 }
 
 void BuildEntrances(void) {
@@ -1138,7 +1138,7 @@ static bool IsWalkable3D(int z, int y, int x) {
     if (y < 0 || y >= gridHeight) return false;
     if (x < 0 || x >= gridWidth) return false;
     CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_LADDER;
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
 }
 
 // 3D heuristic - includes z-level difference
@@ -1384,14 +1384,14 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (grid[sz][ny][nx] == CELL_WALL || nodeData[sz][ny][nx].closed) continue;
+            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
                 int adjX = bestX + dx[i], adjY = bestY + dy[i];
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (grid[sz][bestY][adjX] == CELL_WALL || grid[sz][adjY][bestX] == CELL_WALL)
+                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
                     continue;
             }
 
@@ -1803,7 +1803,8 @@ void RunHPAStar(void) {
 
 static bool IsWalkable(int x, int y) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    return grid[0][y][x] == CELL_WALKABLE;
+    CellType cell = grid[0][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
 }
 
 // Jump in a cardinal direction (4-dir or 8-dir)
@@ -2003,7 +2004,8 @@ static const int jpsDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 // Check if a cell is walkable (bounds-checked)
 static bool JpsIsWalkable(int x, int y) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    return grid[0][y][x] == CELL_WALKABLE;
+    CellType cell = grid[0][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
 }
 
 // Check if diagonal move is allowed (no corner cutting)

@@ -6,7 +6,7 @@
 // Maximum grid dimensions (for static array allocation)
 #define MAX_GRID_WIDTH  (128*4)
 #define MAX_GRID_HEIGHT (128*4)
-#define MAX_GRID_DEPTH  2           // Z-levels (2 for ladder testing)
+#define MAX_GRID_DEPTH  16          // Z-levels
 #define DEFAULT_CHUNK_SIZE  16
 
 // Runtime grid and chunk dimensions
@@ -22,7 +22,7 @@ extern int chunksY;
 #define MAX_CHUNKS_X (MAX_GRID_WIDTH / 8)   // minimum chunk size of 8
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
-typedef enum { CELL_WALKABLE, CELL_WALL, CELL_LADDER } CellType;
+typedef enum { CELL_WALKABLE, CELL_WALL, CELL_LADDER, CELL_AIR, CELL_FLOOR } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern bool needsRebuild;      // Generic flag (legacy)
