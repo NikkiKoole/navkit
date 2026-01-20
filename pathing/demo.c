@@ -97,6 +97,7 @@ int moverCountSetting = 10000;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
+bool showKnotDetection = false;  // Highlight movers stuck near waypoints
 
 // Extended mover struct for rendering (adds Color)
 typedef struct {
@@ -346,7 +347,18 @@ void DrawMovers(void) {
 
         // Choose color based on mover state or debug mode
         Color moverColor;
-        if (showOpenArea) {
+        if (showKnotDetection) {
+            // Color by how long mover has been stuck near waypoint
+            if (m->timeNearWaypoint > KNOT_STUCK_TIME) {
+                moverColor = RED;        // Stuck! Likely in a knot
+            } else if (m->timeNearWaypoint > KNOT_STUCK_TIME * 0.5f) {
+                moverColor = ORANGE;     // Getting stuck
+            } else if (m->timeNearWaypoint > 0.0f) {
+                moverColor = YELLOW;     // Near waypoint, still progressing
+            } else {
+                moverColor = GREEN;      // Moving normally
+            }
+        } else if (showOpenArea) {
             // Color by whether mover is in open area (can avoid freely)
             bool open = IsMoverInOpenArea(m->x, m->y);
             moverColor = open ? SKYBLUE : MAGENTA;
@@ -627,6 +639,10 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Open Area", &showOpenArea);
         y += 22;
+        ToggleBool(x, y, "Show Knots", &showKnotDetection);
+        y += 22;
+        ToggleBool(x, y, "Knot Fix", &useKnotFix);
+        y += 22;
         ToggleBool(x, y, "Avoidance", &useMoverAvoidance);
         y += 22;
         ToggleBool(x, y, "Directional", &useDirectionalAvoidance);
@@ -705,8 +721,21 @@ int main(void) {
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Grid: %.3fms",
-                       entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
+        
+        // Count stuck movers if knot detection is enabled
+        int stuckCount = 0;
+        if (showKnotDetection) {
+            for (int i = 0; i < moverCount; i++) {
+                if (movers[i].active && movers[i].timeNearWaypoint > KNOT_STUCK_TIME) {
+                    stuckCount++;
+                }
+            }
+            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Stuck: %d | Grid: %.3fms",
+                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, stuckCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
+        } else {
+            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Grid: %.3fms",
+                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
+        }
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);

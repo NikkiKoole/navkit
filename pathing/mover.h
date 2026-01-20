@@ -35,7 +35,17 @@ typedef struct {
     bool needsRepath;
     int repathCooldown;
     float speed;
+    // Knot detection: time spent near current waypoint without reaching it
+    float timeNearWaypoint;
 } Mover;
+
+// Threshold for detecting "stuck" movers (knot issue)
+#define KNOT_NEAR_RADIUS 30.0f      // Distance to be considered "near" waypoint
+#define KNOT_STUCK_TIME 1.5f        // Seconds near waypoint before flagged as stuck
+
+// Knot fix: larger waypoint arrival radius (Option 2 from knot-issue.md)
+#define KNOT_FIX_ARRIVAL_RADIUS 16.0f  // Advance to next waypoint when within this distance
+extern bool useKnotFix;                 // Toggle for knot fix
 
 // Globals
 extern Mover movers[MAX_MOVERS];

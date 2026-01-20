@@ -14,6 +14,7 @@ unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = false;
 bool useMoverAvoidance = false;
+bool useKnotFix = false;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = false;
@@ -439,6 +440,7 @@ void InitMover(Mover* m, float x, float y, Point goal, float speed) {
     m->repathCooldown = 0;
     m->pathLength = 0;
     m->pathIndex = -1;
+    m->timeNearWaypoint = 0.0f;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Point* pathArr, int pathLen) {
@@ -570,11 +572,32 @@ void UpdateMovers(void) {
         float dyf = ty - m->y;
         float dist = sqrtf(dxf*dxf + dyf*dyf);
 
-        if (dist < m->speed * dt) {
-            m->x = tx;
-            m->y = ty;
+        // Waypoint arrival check
+        // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)
+        // Knot fix: advance to next waypoint at larger radius without snapping position
+        float arrivalRadius = m->speed * dt;
+        bool shouldSnap = true;
+        
+        if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
+            // Knot fix: advance waypoint at larger radius, no position snap
+            arrivalRadius = KNOT_FIX_ARRIVAL_RADIUS;
+            shouldSnap = false;
+        }
+        
+        if (dist < arrivalRadius) {
+            if (shouldSnap) {
+                m->x = tx;
+                m->y = ty;
+            }
             m->pathIndex--;
+            m->timeNearWaypoint = 0.0f;  // Reset on waypoint arrival
         } else {
+            // Track time near waypoint (for knot detection)
+            if (dist < KNOT_NEAR_RADIUS) {
+                m->timeNearWaypoint += dt;
+            } else {
+                m->timeNearWaypoint = 0.0f;  // Reset when far from waypoint
+            }
             float invDist = 1.0f / dist;
             
             // Base velocity toward waypoint
@@ -589,6 +612,13 @@ void UpdateMovers(void) {
                     // Filter avoidance by directional wall clearance
                     avoid = FilterAvoidanceByWalls(m->x, m->y, avoid);
                     float avoidScale = m->speed * avoidStrengthOpen;
+                    
+                    // Knot fix: reduce avoidance near waypoint so mover can reach it
+                    if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
+                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);  // 0 at waypoint, 1 at edge
+                        avoidScale *= t * t;  // Quadratic falloff
+                    }
+                    
                     vx += avoid.x * avoidScale;
                     vy += avoid.y * avoidScale;
                 } else {
@@ -596,6 +626,12 @@ void UpdateMovers(void) {
                     bool inOpen = IsMoverInOpenArea(m->x, m->y);
                     float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
                     float avoidScale = m->speed * strength;
+                    
+                    // Knot fix: reduce avoidance near waypoint so mover can reach it
+                    if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
+                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);  // 0 at waypoint, 1 at edge
+                        avoidScale *= t * t;  // Quadratic falloff
+                    }
                     
                     if (avoidScale > 0.0f) {
                         vx += avoid.x * avoidScale;
