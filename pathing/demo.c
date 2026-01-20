@@ -39,6 +39,9 @@ bool sectionPathfinding = false;
 bool sectionMapEditing = true;
 bool sectionAgents = false;
 bool sectionMovers = true;
+bool sectionMoverAvoidance = false;
+bool sectionMoverWalls = false;
+bool sectionMoverDebug = false;
 bool sectionDebug = false;
 
 // Test map: Narrow gaps (from test_mover.c)
@@ -646,30 +649,45 @@ void DrawUI(void) {
         ToggleBool(x, y, "String Pulling", &useStringPulling);
         y += 22;
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
+        
+        // Avoidance subsection
         y += 22;
-        ToggleBool(x, y, "Show Neighbors", &showNeighborCounts);
+        if (SectionHeader(x + 10, y, "Avoidance", &sectionMoverAvoidance)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Enabled", &useMoverAvoidance);
+            y += 22;
+            ToggleBool(x + 10, y, "Directional", &useDirectionalAvoidance);
+            y += 22;
+            DraggableFloat(x + 10, y, "Open Strength", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
+            y += 22;
+            DraggableFloat(x + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
+        }
+        
+        // Walls subsection
         y += 22;
-        ToggleBool(x, y, "Show Open Area", &showOpenArea);
+        if (SectionHeader(x + 10, y, "Walls", &sectionMoverWalls)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Repulsion", &useWallRepulsion);
+            y += 22;
+            DraggableFloat(x + 10, y, "Repel Strength", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
+            y += 22;
+            ToggleBool(x + 10, y, "Sliding", &useWallSliding);
+            y += 22;
+            ToggleBool(x + 10, y, "Knot Fix", &useKnotFix);
+        }
+        
+        // Debug views subsection
         y += 22;
-        ToggleBool(x, y, "Show Knots", &showKnotDetection);
-        y += 22;
-        ToggleBool(x, y, "Show Stuck", &showStuckDetection);
-        y += 22;
-        ToggleBool(x, y, "Knot Fix", &useKnotFix);
-        y += 22;
-        ToggleBool(x, y, "Avoidance", &useMoverAvoidance);
-        y += 22;
-        ToggleBool(x, y, "Directional", &useDirectionalAvoidance);
-        y += 22;
-        DraggableFloat(x, y, "Avoid Open", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
-        y += 22;
-        DraggableFloat(x, y, "Avoid Closed", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
-        y += 22;
-        ToggleBool(x, y, "Wall Repulsion", &useWallRepulsion);
-        y += 22;
-        DraggableFloat(x, y, "Wall Repel Str", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
-        y += 22;
-        ToggleBool(x, y, "Wall Sliding", &useWallSliding);
+        if (SectionHeader(x + 10, y, "Debug Views", &sectionMoverDebug)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Show Neighbors", &showNeighborCounts);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Open Area", &showOpenArea);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Knots", &showKnotDetection);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Stuck", &showStuckDetection);
+        }
     }
     y += 22;
 

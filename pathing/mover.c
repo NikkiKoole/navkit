@@ -13,14 +13,14 @@ int moverCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = false;
-bool useMoverAvoidance = false;
-bool useKnotFix = false;
-bool useWallRepulsion = false;
+bool useMoverAvoidance = true;
+bool useKnotFix = true;
+bool useWallRepulsion = true;
 float wallRepulsionStrength = 0.5f;
-bool useWallSliding = false;
+bool useWallSliding = true;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
-bool useDirectionalAvoidance = false;
+bool useDirectionalAvoidance = true;
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
