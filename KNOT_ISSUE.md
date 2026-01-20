@@ -16,3 +16,7 @@ Current waypoint arrival check requires movers to get within `m->speed * dt` (~1
 
 ## Status
 To be addressed later. The directional avoidance system is working well otherwise.
+
+
+so we tried the larger waypoint treshold, the fis  visible clue what happend , agents no jump a few pixels, whn reachin the waypoint. oesnt look attractive, might be easy to fix.
+we dont know yet
