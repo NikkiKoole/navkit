@@ -18,7 +18,7 @@
 #include "../vendor/raylib.h"
 #include "steering.h"
 #define UI_IMPLEMENTATION
-#include "../common/ui.h"
+#include "../shared/ui.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -6589,7 +6589,7 @@ static void DrawScenario(void) {
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Steering Behaviors Demo");
 
-    Font comicFont = LoadFont("assets/comic.fnt");
+    Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
 
     SetTargetFPS(60);

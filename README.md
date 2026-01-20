@@ -48,6 +48,16 @@ make
 
 Requires [raylib](https://www.raylib.com/).
 
+## Run
+
+Run demos from the project root:
+
+```bash
+./bin/path
+./bin/steer
+./bin/crowd
+```
+
 ## License
 
 MIT

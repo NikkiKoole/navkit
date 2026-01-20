@@ -390,8 +390,8 @@ int main(void) {
              AGENT_COUNT);
 
     InitWindow(screenW, screenH, title);
-    Texture2D agentTex = LoadTexture("assets/agent.png");
-    Font comicFont = LoadFont("assets/comic.fnt");
+    Texture2D agentTex = LoadTexture("assets/img/agent.png");
+    Font comicFont = LoadFont("assets/fonts/comic.fnt");
      g_comicFont = &comicFont;  // Comment out to use default font
     SetTargetFPS(60);
 

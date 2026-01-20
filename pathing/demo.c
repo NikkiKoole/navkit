@@ -8,7 +8,7 @@
 #include <math.h>
 
 #define UI_IMPLEMENTATION
-#include "../common/ui.h"
+#include "../shared/ui.h"
 
 #define MAX_AGENTS  50
 
@@ -662,9 +662,9 @@ void DrawUI(void) {
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
-    texGrass = LoadTexture("assets/grass.png");
-    texWall = LoadTexture("assets/wall.png");
-    Font comicFont = LoadFont("assets/comic.fnt");
+    texGrass = LoadTexture("assets/img/grass.png");
+    texWall = LoadTexture("assets/img/wall.png");
+    Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
