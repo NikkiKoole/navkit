@@ -45,7 +45,3 @@ See `/documentation` for detailed design docs:
 - `overview.md` - system architecture
 - `steering.md` - all 28+ steering behaviors
 - `roadmap.md` - what's done, what's planned
-
-## License
-
-MIT
