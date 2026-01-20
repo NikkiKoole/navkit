@@ -103,6 +103,9 @@ void BuildMoverSpatialGrid(void) {
 Vec2 ComputeMoverAvoidance(int moverIndex) {
     Vec2 avoidance = {0.0f, 0.0f};
     
+    // Guard: return early if spatial grid not initialized
+    if (!moverGrid.cellCounts) return avoidance;
+    
     Mover* m = &movers[moverIndex];
     if (!m->active) return avoidance;
     
@@ -514,6 +517,10 @@ void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Poin
 void ClearMovers(void) {
     moverCount = 0;
     currentTick = 0;
+    // Initialize spatial grid if grid dimensions are set
+    if (gridWidth > 0 && gridHeight > 0) {
+        InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    }
 }
 
 int CountActiveMovers(void) {
