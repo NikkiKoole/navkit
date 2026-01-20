@@ -7,6 +7,8 @@ Entrance entrances[MAX_ENTRANCES];
 int entranceCount = 0;
 GraphEdge graphEdges[MAX_EDGES];
 int graphEdgeCount = 0;
+LadderLink ladderLinks[MAX_LADDERS];
+int ladderLinkCount = 0;
 
 // Adjacency list for fast edge lookup: adjList[node][i] gives edge index
 // adjListCount[node] gives number of edges for that node
@@ -18,10 +20,10 @@ int nodesExplored = 0;
 double lastPathTime = 0.0;
 double hpaAbstractTime = 0.0;
 double hpaRefinementTime = 0.0;
-Point startPos = {-1, -1};
-Point goalPos = {-1, -1};
-AStarNode nodeData[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-bool chunkDirty[MAX_CHUNKS_Y][MAX_CHUNKS_X];
+Point startPos = {-1, -1, 0};
+Point goalPos = {-1, -1, 0};
+AStarNode nodeData[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+bool chunkDirty[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X];
 
 // HPA* abstract graph search state
 AbstractNode abstractNodes[MAX_ABSTRACT_NODES];
@@ -94,12 +96,12 @@ static int oldToNewEntranceIndex[MAX_ENTRANCES];
 // ============================================================================
 #define MAX_ENTRANCES_PER_CHUNK 64
 
-static int chunkEntrances[MAX_CHUNKS_Y * MAX_CHUNKS_X][MAX_ENTRANCES_PER_CHUNK];
-static int chunkEntranceCount[MAX_CHUNKS_Y * MAX_CHUNKS_X];
+static int chunkEntrances[MAX_GRID_DEPTH * MAX_CHUNKS_Y * MAX_CHUNKS_X][MAX_ENTRANCES_PER_CHUNK];
+static int chunkEntranceCount[MAX_GRID_DEPTH * MAX_CHUNKS_Y * MAX_CHUNKS_X];
 
 // Build the chunk→entrances index from current entrances array
 static void BuildChunkEntranceIndex(void) {
-    int totalChunks = chunksX * chunksY;
+    int totalChunks = gridDepth * chunksX * chunksY;
     for (int c = 0; c < totalChunks; c++) {
         chunkEntranceCount[c] = 0;
     }
@@ -257,7 +259,7 @@ static void ChunkHeapBubbleUp(int idx) {
         int cy = UnpackY(chunkHeap.nodes[idx]);
         int px = UnpackX(chunkHeap.nodes[parent]);
         int py = UnpackY(chunkHeap.nodes[parent]);
-        if (nodeData[cy][cx].f < nodeData[py][px].f) {
+        if (nodeData[0][cy][cx].f < nodeData[0][py][px].f) {
             ChunkHeapSwap(idx, parent);
             idx = parent;
         } else {
@@ -274,20 +276,20 @@ static void ChunkHeapBubbleDown(int idx) {
 
         int sx = UnpackX(chunkHeap.nodes[smallest]);
         int sy = UnpackY(chunkHeap.nodes[smallest]);
-        int smallestF = nodeData[sy][sx].f;
+        int smallestF = nodeData[0][sy][sx].f;
 
         if (left < chunkHeap.size) {
             int lx = UnpackX(chunkHeap.nodes[left]);
             int ly = UnpackY(chunkHeap.nodes[left]);
-            if (nodeData[ly][lx].f < smallestF) {
+            if (nodeData[0][ly][lx].f < smallestF) {
                 smallest = left;
-                smallestF = nodeData[ly][lx].f;
+                smallestF = nodeData[0][ly][lx].f;
             }
         }
         if (right < chunkHeap.size) {
             int rx = UnpackX(chunkHeap.nodes[right]);
             int ry = UnpackY(chunkHeap.nodes[right]);
-            if (nodeData[ry][rx].f < smallestF) {
+            if (nodeData[0][ry][rx].f < smallestF) {
                 smallest = right;
             }
         }
@@ -355,99 +357,159 @@ void MarkChunkDirty(int cellX, int cellY) {
     int cx = cellX / chunkWidth;
     int cy = cellY / chunkHeight;
     if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY) {
-        chunkDirty[cy][cx] = true;
+        chunkDirty[0][cy][cx] = true;
         needsRebuild = true;
         hpaNeedsRebuild = true;
         jpsNeedsRebuild = true;
     }
 }
 
-static void AddEntrance(int x, int y, int chunk1, int chunk2) {
+static void AddEntrance(int x, int y, int z, int chunk1, int chunk2) {
     if (entranceCount < MAX_ENTRANCES)
-        entrances[entranceCount++] = (Entrance){x, y, chunk1, chunk2};
+        entrances[entranceCount++] = (Entrance){x, y, z, chunk1, chunk2};
 }
 
-static void AddEntrancesForRun(int startX, int startY, int length, int horizontal, int chunk1, int chunk2) {
+static void AddEntrancesForRun(int startX, int startY, int z, int length, int horizontal, int chunk1, int chunk2) {
     int remaining = length, pos = 0;
     while (remaining > 0) {
         int segLen = (remaining > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : remaining;
         int mid = pos + segLen / 2;
         int ex = horizontal ? startX + mid : startX;
         int ey = horizontal ? startY : startY + mid;
-        AddEntrance(ex, ey, chunk1, chunk2);
+        AddEntrance(ex, ey, z, chunk1, chunk2);
         pos += segLen;
         remaining -= segLen;
     }
 }
 
+// Add a ladder entrance at given position connecting two z-levels
+// Returns the entrance index, or -1 if no room
+static int AddLadderEntrance(int x, int y, int z) {
+    if (entranceCount >= MAX_ENTRANCES) return -1;
+    
+    // For ladder entrances, chunk1 and chunk2 are the same chunk
+    // (the ladder connects vertically, not horizontally between chunks)
+    int chunk = z * (chunksX * chunksY) + (y / chunkHeight) * chunksX + (x / chunkWidth);
+    entrances[entranceCount] = (Entrance){x, y, z, chunk, chunk};
+    return entranceCount++;
+}
+
+// Helper to check if a cell is walkable (CELL_WALKABLE or CELL_LADDER)
+static bool IsCellWalkable(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth) return false;
+    if (y < 0 || y >= gridHeight) return false;
+    if (x < 0 || x >= gridWidth) return false;
+    CellType cell = grid[z][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_LADDER;
+}
+
 void BuildEntrances(void) {
     entranceCount = 0;
-    // Horizontal borders (between rows of chunks)
-    for (int cy = 0; cy < chunksY - 1; cy++) {
-        for (int cx = 0; cx < chunksX; cx++) {
-            int borderY = (cy + 1) * chunkHeight;
-            int startX = cx * chunkWidth;
-            int chunk1 = cy * chunksX + cx;
-            int chunk2 = (cy + 1) * chunksX + cx;
-            int runStart = -1;
-            for (int i = 0; i < chunkWidth; i++) {
-                int x = startX + i;
-                bool open = (grid[borderY - 1][x] == CELL_WALKABLE && grid[borderY][x] == CELL_WALKABLE);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    AddEntrancesForRun(startX + runStart, borderY, i - runStart, 1, chunk1, chunk2);
-                    runStart = -1;
+    ladderLinkCount = 0;
+    
+    int chunksPerLevel = chunksX * chunksY;
+    
+    // Build entrances for each z-level
+    for (int z = 0; z < gridDepth; z++) {
+        // Horizontal borders (between rows of chunks)
+        for (int cy = 0; cy < chunksY - 1; cy++) {
+            for (int cx = 0; cx < chunksX; cx++) {
+                int borderY = (cy + 1) * chunkHeight;
+                int startX = cx * chunkWidth;
+                int chunk1 = z * chunksPerLevel + cy * chunksX + cx;
+                int chunk2 = z * chunksPerLevel + (cy + 1) * chunksX + cx;
+                int runStart = -1;
+                for (int i = 0; i < chunkWidth; i++) {
+                    int x = startX + i;
+                    bool open = (IsCellWalkable(z, borderY - 1, x) && IsCellWalkable(z, borderY, x));
+                    if (open && runStart < 0) runStart = i;
+                    else if (!open && runStart >= 0) {
+                        AddEntrancesForRun(startX + runStart, borderY, z, i - runStart, 1, chunk1, chunk2);
+                        runStart = -1;
+                    }
                 }
+                if (runStart >= 0)
+                    AddEntrancesForRun(startX + runStart, borderY, z, chunkWidth - runStart, 1, chunk1, chunk2);
             }
-            if (runStart >= 0)
-                AddEntrancesForRun(startX + runStart, borderY, chunkWidth - runStart, 1, chunk1, chunk2);
+        }
+        // Vertical borders (between columns of chunks)
+        for (int cy = 0; cy < chunksY; cy++) {
+            for (int cx = 0; cx < chunksX - 1; cx++) {
+                int borderX = (cx + 1) * chunkWidth;
+                int startY = cy * chunkHeight;
+                int chunk1 = z * chunksPerLevel + cy * chunksX + cx;
+                int chunk2 = z * chunksPerLevel + cy * chunksX + (cx + 1);
+                int runStart = -1;
+                for (int i = 0; i < chunkHeight; i++) {
+                    int y = startY + i;
+                    bool open = (IsCellWalkable(z, y, borderX - 1) && IsCellWalkable(z, y, borderX));
+                    if (open && runStart < 0) runStart = i;
+                    else if (!open && runStart >= 0) {
+                        AddEntrancesForRun(borderX, startY + runStart, z, i - runStart, 0, chunk1, chunk2);
+                        runStart = -1;
+                    }
+                }
+                if (runStart >= 0)
+                    AddEntrancesForRun(borderX, startY + runStart, z, chunkHeight - runStart, 0, chunk1, chunk2);
+            }
         }
     }
-    // Vertical borders (between columns of chunks)
-    for (int cy = 0; cy < chunksY; cy++) {
-        for (int cx = 0; cx < chunksX - 1; cx++) {
-            int borderX = (cx + 1) * chunkWidth;
-            int startY = cy * chunkHeight;
-            int chunk1 = cy * chunksX + cx;
-            int chunk2 = cy * chunksX + (cx + 1);
-            int runStart = -1;
-            for (int i = 0; i < chunkHeight; i++) {
-                int y = startY + i;
-                bool open = (grid[y][borderX - 1] == CELL_WALKABLE && grid[y][borderX] == CELL_WALKABLE);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    AddEntrancesForRun(borderX, startY + runStart, i - runStart, 0, chunk1, chunk2);
-                    runStart = -1;
+    
+    // Detect ladders and create ladder links
+    // A ladder link connects two z-levels where both have CELL_LADDER at the same (x,y)
+    for (int z = 0; z < gridDepth - 1; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                    // Found a ladder connection between z and z+1
+                    if (ladderLinkCount < MAX_LADDERS) {
+                        // Create entrances on both z-levels for this ladder
+                        int entLow = AddLadderEntrance(x, y, z);
+                        int entHigh = AddLadderEntrance(x, y, z + 1);
+                        
+                        if (entLow >= 0 && entHigh >= 0) {
+                            ladderLinks[ladderLinkCount++] = (LadderLink){
+                                .x = x,
+                                .y = y,
+                                .zLow = z,
+                                .zHigh = z + 1,
+                                .entranceLow = entLow,
+                                .entranceHigh = entHigh,
+                                .cost = 10  // Same cost as one step
+                            };
+                        }
+                    }
                 }
             }
-            if (runStart >= 0)
-                AddEntrancesForRun(borderX, startY + runStart, chunkHeight - runStart, 0, chunk1, chunk2);
         }
     }
-    for (int cy = 0; cy < chunksY; cy++)
-        for (int cx = 0; cx < chunksX; cx++)
-            chunkDirty[cy][cx] = false;
+    
+    // Clear dirty flags for all z-levels
+    for (int z = 0; z < gridDepth; z++)
+        for (int cy = 0; cy < chunksY; cy++)
+            for (int cx = 0; cx < chunksX; cx++)
+                chunkDirty[z][cy][cx] = false;
     needsRebuild = false;
     hpaNeedsRebuild = false;
 }
 
-int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY) {
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
     ChunkHeapInit();
 
-    nodeData[sy][sx].g = 0;
+    nodeData[sz][sy][sx].g = 0;
     if (use8Dir) {
-        nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+        nodeData[sz][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
     } else {
-        nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
     }
-    nodeData[sy][sx].open = true;
+    nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
 
     int dx4[] = {0, 1, 0, -1};
@@ -462,15 +524,15 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
     int bestX, bestY;
     while (ChunkHeapPop(&bestX, &bestY)) {
         if (bestX == gx && bestY == gy) {
-            return nodeData[gy][gx].g;
+            return nodeData[sz][gy][gx].g;
         }
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        nodeData[sz][bestY][bestX].open = false;
+        nodeData[sz][bestY][bestX].closed = true;
 
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
+            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
@@ -478,21 +540,21 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
                 // Check bounds before accessing grid for corner-cut check
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
+                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
                     continue;
             }
 
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            int ng = nodeData[bestY][bestX].g + moveCost;
-            if (ng < nodeData[ny][nx].g) {
-                bool wasOpen = nodeData[ny][nx].open;
-                nodeData[ny][nx].g = ng;
+            int ng = nodeData[sz][bestY][bestX].g + moveCost;
+            if (ng < nodeData[sz][ny][nx].g) {
+                bool wasOpen = nodeData[sz][ny][nx].open;
+                nodeData[sz][ny][nx].g = ng;
                 if (use8Dir) {
-                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
+                    nodeData[sz][ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
                 } else {
-                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
                 }
-                nodeData[ny][nx].open = true;
+                nodeData[sz][ny][nx].open = true;
                 if (wasOpen) {
                     ChunkHeapDecreaseKey(nx, ny);
                 } else {
@@ -506,13 +568,13 @@ int AStarChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int
 
 // Multi-target Dijkstra within chunk bounds - finds costs to all targets in a single search
 // Returns number of targets found. Costs are written to outCosts array (-1 if unreachable)
-int AStarChunkMultiTarget(int sx, int sy,
+int AStarChunkMultiTarget(int sx, int sy, int sz,
                           int* targetX, int* targetY, int* outCosts, int numTargets,
                           int minX, int minY, int maxX, int maxY) {
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
@@ -524,9 +586,9 @@ int AStarChunkMultiTarget(int sx, int sy,
     ChunkHeapInit();
 
     // Use Dijkstra (no heuristic) since we have multiple targets
-    nodeData[sy][sx].g = 0;
-    nodeData[sy][sx].f = 0;
-    nodeData[sy][sx].open = true;
+    nodeData[sz][sy][sx].g = 0;
+    nodeData[sz][sy][sx].f = 0;
+    nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
 
     int dx4[] = {0, 1, 0, -1};
@@ -546,7 +608,7 @@ int AStarChunkMultiTarget(int sx, int sy,
         for (int t = 0; t < numTargets; t++) {
             if (bestX == targetX[t] && bestY == targetY[t]) {
                 if (outCosts[t] < 0) {
-                    outCosts[t] = nodeData[bestY][bestX].g;
+                    outCosts[t] = nodeData[sz][bestY][bestX].g;
                     targetsFound++;
                     if (targetsFound == numTargets) {
                         return targetsFound;  // All targets found
@@ -556,13 +618,13 @@ int AStarChunkMultiTarget(int sx, int sy,
             }
         }
 
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        nodeData[sz][bestY][bestX].open = false;
+        nodeData[sz][bestY][bestX].closed = true;
 
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
+            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
@@ -570,17 +632,17 @@ int AStarChunkMultiTarget(int sx, int sy,
                 // Check bounds before accessing grid for corner-cut check
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
+                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
                     continue;
             }
 
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            int ng = nodeData[bestY][bestX].g + moveCost;
-            if (ng < nodeData[ny][nx].g) {
-                bool wasOpen = nodeData[ny][nx].open;
-                nodeData[ny][nx].g = ng;
-                nodeData[ny][nx].f = ng;  // Dijkstra: f = g (no heuristic)
-                nodeData[ny][nx].open = true;
+            int ng = nodeData[sz][bestY][bestX].g + moveCost;
+            if (ng < nodeData[sz][ny][nx].g) {
+                bool wasOpen = nodeData[sz][ny][nx].open;
+                nodeData[sz][ny][nx].g = ng;
+                nodeData[sz][ny][nx].f = ng;  // Dijkstra: f = g (no heuristic)
+                nodeData[sz][ny][nx].open = true;
                 if (wasOpen) {
                     ChunkHeapDecreaseKey(nx, ny);
                 } else {
@@ -602,9 +664,17 @@ void BuildGraph(void) {
     }
 
     double startTime = GetTime();
-    for (int chunk = 0; chunk < chunksX * chunksY; chunk++) {
-        int cx = chunk % chunksX;
-        int cy = chunk / chunksX;
+    int chunksPerLevel = chunksX * chunksY;
+    int totalChunks = gridDepth * chunksPerLevel;
+    
+    // Build intra-level edges (within each z-level)
+    for (int chunk = 0; chunk < totalChunks; chunk++) {
+        // Decode chunk ID to get z, cx, cy
+        int z = chunk / chunksPerLevel;
+        int xyChunk = chunk % chunksPerLevel;
+        int cx = xyChunk % chunksX;
+        int cy = xyChunk / chunksX;
+        
         int minX = cx * chunkWidth;
         int minY = cy * chunkHeight;
         int maxX = (cx + 1) * chunkWidth + 1;
@@ -615,6 +685,8 @@ void BuildGraph(void) {
         int chunkEnts[128];
         int numEnts = 0;
         for (int i = 0; i < entranceCount && numEnts < 128; i++) {
+            // Only consider entrances on the same z-level
+            if (entrances[i].z != z) continue;
             if (entrances[i].chunk1 == chunk || entrances[i].chunk2 == chunk)
                 chunkEnts[numEnts++] = i;
         }
@@ -630,7 +702,7 @@ void BuildGraph(void) {
                 }
                 if (exists) continue;
 
-                int cost = AStarChunk(entrances[e1].x, entrances[e1].y, entrances[e2].x, entrances[e2].y, minX, minY, maxX, maxY);
+                int cost = AStarChunk(entrances[e1].x, entrances[e1].y, z, entrances[e2].x, entrances[e2].y, minX, minY, maxX, maxY);
                 if (cost >= 0 && graphEdgeCount >= MAX_EDGES - 1) {
                     static bool warned = false;
                     if (!warned) {
@@ -655,7 +727,32 @@ void BuildGraph(void) {
             }
         }
     }
-    TraceLog(LOG_INFO, "Built graph: %d edges in %.2fms", graphEdgeCount, (GetTime() - startTime) * 1000);
+    
+    // Add edges for ladder links (cross z-level connections)
+    for (int i = 0; i < ladderLinkCount; i++) {
+        LadderLink* link = &ladderLinks[i];
+        int e1 = link->entranceLow;
+        int e2 = link->entranceHigh;
+        int cost = link->cost;
+        
+        if (graphEdgeCount < MAX_EDGES - 1) {
+            int edgeIdx1 = graphEdgeCount;
+            int edgeIdx2 = graphEdgeCount + 1;
+            graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+            graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+            
+            // Add to adjacency list
+            if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                adjList[e1][adjListCount[e1]++] = edgeIdx1;
+            }
+            if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                adjList[e2][adjListCount[e2]++] = edgeIdx2;
+            }
+        }
+    }
+    
+    TraceLog(LOG_INFO, "Built graph: %d edges (%d ladder links) in %.2fms", 
+             graphEdgeCount, ladderLinkCount, (GetTime() - startTime) * 1000);
 }
 
 // ============== Incremental Update Functions ==============
@@ -668,7 +765,7 @@ static void GetAffectedChunks(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
 
     for (int cy = 0; cy < chunksY; cy++) {
         for (int cx = 0; cx < chunksX; cx++) {
-            if (chunkDirty[cy][cx]) {
+            if (chunkDirty[0][cy][cx]) {
                 affectedChunks[cy][cx] = true;
                 // Mark neighbors as affected too (they share borders)
                 if (cy > 0) affectedChunks[cy-1][cx] = true;
@@ -681,11 +778,16 @@ static void GetAffectedChunks(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
 }
 
 // Check if an entrance touches any affected chunk
+// Note: affectedChunks is 2D (XY only), so we extract XY from 3D chunk IDs
 static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    int chunksPerLevel = chunksX * chunksY;
     int c1 = entrances[entranceIdx].chunk1;
     int c2 = entrances[entranceIdx].chunk2;
-    int cy1 = c1 / chunksX, cx1 = c1 % chunksX;
-    int cy2 = c2 / chunksX, cx2 = c2 % chunksX;
+    // Extract XY chunk indices (ignore z component)
+    int xyChunk1 = c1 % chunksPerLevel;
+    int xyChunk2 = c2 % chunksPerLevel;
+    int cy1 = xyChunk1 / chunksX, cx1 = xyChunk1 % chunksX;
+    int cy2 = xyChunk2 / chunksX, cx2 = xyChunk2 % chunksX;
     return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
 }
 
@@ -699,91 +801,99 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNK
         }
     }
     int keptCount = newCount;
+    
+    int chunksPerLevel = chunksX * chunksY;
 
-    // Rebuild entrances for borders where at least one chunk is affected
-    // Horizontal borders (between cy and cy+1)
-    for (int cy = 0; cy < chunksY - 1; cy++) {
-        for (int cx = 0; cx < chunksX; cx++) {
-            if (!affectedChunks[cy][cx] && !affectedChunks[cy+1][cx]) continue;
+    // Rebuild entrances for all z-levels where at least one chunk is affected
+    for (int z = 0; z < gridDepth; z++) {
+        // Horizontal borders (between cy and cy+1)
+        for (int cy = 0; cy < chunksY - 1; cy++) {
+            for (int cx = 0; cx < chunksX; cx++) {
+                if (!affectedChunks[cy][cx] && !affectedChunks[cy+1][cx]) continue;
 
-            int borderY = (cy + 1) * chunkHeight;
-            int startX = cx * chunkWidth;
-            int chunk1 = cy * chunksX + cx;
-            int chunk2 = (cy + 1) * chunksX + cx;
-            int runStart = -1;
+                int borderY = (cy + 1) * chunkHeight;
+                int startX = cx * chunkWidth;
+                int chunk1 = z * chunksPerLevel + cy * chunksX + cx;
+                int chunk2 = z * chunksPerLevel + (cy + 1) * chunksX + cx;
+                int runStart = -1;
 
-            for (int i = 0; i < chunkWidth; i++) {
-                int x = startX + i;
-                bool open = (grid[borderY - 1][x] == CELL_WALKABLE && grid[borderY][x] == CELL_WALKABLE);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    int length = i - runStart;
+                for (int i = 0; i < chunkWidth; i++) {
+                    int x = startX + i;
+                    bool open = (IsCellWalkable(z, borderY - 1, x) && IsCellWalkable(z, borderY, x));
+                    if (open && runStart < 0) runStart = i;
+                    else if (!open && runStart >= 0) {
+                        int length = i - runStart;
+                        int pos = 0;
+                        while (length > 0 && newCount < MAX_ENTRANCES) {
+                            int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
+                            int mid = pos + segLen / 2;
+                            entrances[newCount++] = (Entrance){startX + runStart + mid, borderY, z, chunk1, chunk2};
+                            pos += segLen;
+                            length -= segLen;
+                        }
+                        runStart = -1;
+                    }
+                }
+                if (runStart >= 0) {
+                    int length = chunkWidth - runStart;
                     int pos = 0;
                     while (length > 0 && newCount < MAX_ENTRANCES) {
                         int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
                         int mid = pos + segLen / 2;
-                        entrances[newCount++] = (Entrance){startX + runStart + mid, borderY, chunk1, chunk2};
+                        entrances[newCount++] = (Entrance){startX + runStart + mid, borderY, z, chunk1, chunk2};
                         pos += segLen;
                         length -= segLen;
                     }
-                    runStart = -1;
-                }
-            }
-            if (runStart >= 0) {
-                int length = chunkWidth - runStart;
-                int pos = 0;
-                while (length > 0 && newCount < MAX_ENTRANCES) {
-                    int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
-                    int mid = pos + segLen / 2;
-                    entrances[newCount++] = (Entrance){startX + runStart + mid, borderY, chunk1, chunk2};
-                    pos += segLen;
-                    length -= segLen;
                 }
             }
         }
-    }
 
-    // Vertical borders (between cx and cx+1)
-    for (int cy = 0; cy < chunksY; cy++) {
-        for (int cx = 0; cx < chunksX - 1; cx++) {
-            if (!affectedChunks[cy][cx] && !affectedChunks[cy][cx+1]) continue;
+        // Vertical borders (between cx and cx+1)
+        for (int cy = 0; cy < chunksY; cy++) {
+            for (int cx = 0; cx < chunksX - 1; cx++) {
+                if (!affectedChunks[cy][cx] && !affectedChunks[cy][cx+1]) continue;
 
-            int borderX = (cx + 1) * chunkWidth;
-            int startY = cy * chunkHeight;
-            int chunk1 = cy * chunksX + cx;
-            int chunk2 = cy * chunksX + (cx + 1);
-            int runStart = -1;
+                int borderX = (cx + 1) * chunkWidth;
+                int startY = cy * chunkHeight;
+                int chunk1 = z * chunksPerLevel + cy * chunksX + cx;
+                int chunk2 = z * chunksPerLevel + cy * chunksX + (cx + 1);
+                int runStart = -1;
 
-            for (int i = 0; i < chunkHeight; i++) {
-                int y = startY + i;
-                bool open = (grid[y][borderX - 1] == CELL_WALKABLE && grid[y][borderX] == CELL_WALKABLE);
-                if (open && runStart < 0) runStart = i;
-                else if (!open && runStart >= 0) {
-                    int length = i - runStart;
+                for (int i = 0; i < chunkHeight; i++) {
+                    int y = startY + i;
+                    bool open = (IsCellWalkable(z, y, borderX - 1) && IsCellWalkable(z, y, borderX));
+                    if (open && runStart < 0) runStart = i;
+                    else if (!open && runStart >= 0) {
+                        int length = i - runStart;
+                        int pos = 0;
+                        while (length > 0 && newCount < MAX_ENTRANCES) {
+                            int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
+                            int mid = pos + segLen / 2;
+                            entrances[newCount++] = (Entrance){borderX, startY + runStart + mid, z, chunk1, chunk2};
+                            pos += segLen;
+                            length -= segLen;
+                        }
+                        runStart = -1;
+                    }
+                }
+                if (runStart >= 0) {
+                    int length = chunkHeight - runStart;
                     int pos = 0;
                     while (length > 0 && newCount < MAX_ENTRANCES) {
                         int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
                         int mid = pos + segLen / 2;
-                        entrances[newCount++] = (Entrance){borderX, startY + runStart + mid, chunk1, chunk2};
+                        entrances[newCount++] = (Entrance){borderX, startY + runStart + mid, z, chunk1, chunk2};
                         pos += segLen;
                         length -= segLen;
                     }
-                    runStart = -1;
-                }
-            }
-            if (runStart >= 0) {
-                int length = chunkHeight - runStart;
-                int pos = 0;
-                while (length > 0 && newCount < MAX_ENTRANCES) {
-                    int segLen = (length > MAX_ENTRANCE_WIDTH) ? MAX_ENTRANCE_WIDTH : length;
-                    int mid = pos + segLen / 2;
-                    entrances[newCount++] = (Entrance){borderX, startY + runStart + mid, chunk1, chunk2};
-                    pos += segLen;
-                    length -= segLen;
                 }
             }
         }
     }
+    
+    // NOTE: Ladder entrances are not rebuilt incrementally yet.
+    // For full ladder support, ladderLinkCount would need to be rebuilt here too.
+    // For now, incremental updates don't affect ladders (which is fine if ladders don't change).
 
     entranceCount = newCount;
     TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total", keptCount, newCount);
@@ -802,11 +912,16 @@ static void SaveOldEntrances(void) {
 }
 
 // Check if an entrance (by new index) touches any affected chunk
+// Note: affectedChunks is 2D (XY only), so we extract XY from 3D chunk IDs
 static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    int chunksPerLevel = chunksX * chunksY;
     int c1 = entrances[idx].chunk1;
     int c2 = entrances[idx].chunk2;
-    int cy1 = c1 / chunksX, cx1 = c1 % chunksX;
-    int cy2 = c2 / chunksX, cx2 = c2 % chunksX;
+    // Extract XY chunk indices (ignore z component)
+    int xyChunk1 = c1 % chunksPerLevel;
+    int xyChunk2 = c2 % chunksPerLevel;
+    int cy1 = xyChunk1 / chunksX, cx1 = xyChunk1 % chunksX;
+    int cy2 = xyChunk2 / chunksX, cx2 = xyChunk2 % chunksX;
     return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
 }
 
@@ -861,104 +976,108 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
     // Step 3: Rebuild edges using multi-target Dijkstra (one search per affected entrance)
     // Instead of O(n²) A* calls per chunk, we do O(n) Dijkstra calls
     int dijkstraCalls = 0;
+    int chunksPerLevel = chunksX * chunksY;
 
-    for (int cy = 0; cy < chunksY; cy++) {
-        for (int cx = 0; cx < chunksX; cx++) {
-            int chunk = cy * chunksX + cx;
-            int numEnts = chunkEntranceCount[chunk];
-            if (numEnts == 0) continue;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int cy = 0; cy < chunksY; cy++) {
+            for (int cx = 0; cx < chunksX; cx++) {
+                int chunk = z * chunksPerLevel + cy * chunksX + cx;
+                int numEnts = chunkEntranceCount[chunk];
+                if (numEnts == 0) continue;
 
-            // Skip chunks that don't need processing
-            if (!affectedChunks[cy][cx]) {
-                // Check if any entrance in this chunk touches an affected chunk
-                bool needsProcessing = false;
-                for (int i = 0; i < numEnts && !needsProcessing; i++) {
+                // Skip chunks that don't need processing
+                // Note: affectedChunks is 2D (XY only), same XY affects all z-levels
+                if (!affectedChunks[cy][cx]) {
+                    // Check if any entrance in this chunk touches an affected chunk
+                    bool needsProcessing = false;
+                    for (int i = 0; i < numEnts && !needsProcessing; i++) {
+                        int entIdx = chunkEntrances[chunk][i];
+                        if (NewEntranceTouchesAffected(entIdx, affectedChunks)) {
+                            needsProcessing = true;
+                        }
+                    }
+                    if (!needsProcessing) continue;
+                }
+
+                int minX = cx * chunkWidth;
+                int minY = cy * chunkHeight;
+                int maxX = (cx + 1) * chunkWidth + 1;
+                int maxY = (cy + 1) * chunkHeight + 1;
+                if (maxX > gridWidth) maxX = gridWidth;
+                if (maxY > gridHeight) maxY = gridHeight;
+
+                // Collect which entrances in this chunk are affected
+                // and which need edges rebuilt
+                bool entAffected[MAX_ENTRANCES_PER_CHUNK];
+                for (int i = 0; i < numEnts; i++) {
                     int entIdx = chunkEntrances[chunk][i];
-                    if (NewEntranceTouchesAffected(entIdx, affectedChunks)) {
-                        needsProcessing = true;
-                    }
-                }
-                if (!needsProcessing) continue;
-            }
-
-            int minX = cx * chunkWidth;
-            int minY = cy * chunkHeight;
-            int maxX = (cx + 1) * chunkWidth + 1;
-            int maxY = (cy + 1) * chunkHeight + 1;
-            if (maxX > gridWidth) maxX = gridWidth;
-            if (maxY > gridHeight) maxY = gridHeight;
-
-            // Collect which entrances in this chunk are affected
-            // and which need edges rebuilt
-            bool entAffected[MAX_ENTRANCES_PER_CHUNK];
-            for (int i = 0; i < numEnts; i++) {
-                int entIdx = chunkEntrances[chunk][i];
-                entAffected[i] = NewEntranceTouchesAffected(entIdx, affectedChunks);
-            }
-
-            // For each AFFECTED entrance, run ONE multi-target Dijkstra to find
-            // costs to ALL other entrances in the chunk (not just affected ones)
-            // This is more efficient because:
-            // - We only run Dijkstra from affected entrances (fewer calls)
-            // - Each call finds edges to both affected and unaffected entrances
-            int targetX[MAX_ENTRANCES_PER_CHUNK];
-            int targetY[MAX_ENTRANCES_PER_CHUNK];
-            int targetIdx[MAX_ENTRANCES_PER_CHUNK];
-            int outCosts[MAX_ENTRANCES_PER_CHUNK];
-
-            for (int i = 0; i < numEnts; i++) {
-                if (!entAffected[i]) continue;  // Only run from affected entrances
-
-                int e1 = chunkEntrances[chunk][i];
-
-                // Build target list: all OTHER entrances that don't have edges yet
-                int numTargets = 0;
-                for (int j = 0; j < numEnts; j++) {
-                    if (j == i) continue;  // Skip self
-
-                    int e2 = chunkEntrances[chunk][j];
-
-                    // Check if edge already exists (from kept edges or earlier in this loop)
-                    bool exists = false;
-                    for (int k = 0; k < adjListCount[e1] && !exists; k++) {
-                        int edgeIdx = adjList[e1][k];
-                        if (graphEdges[edgeIdx].to == e2) exists = true;
-                    }
-                    if (exists) continue;
-
-                    targetX[numTargets] = entrances[e2].x;
-                    targetY[numTargets] = entrances[e2].y;
-                    targetIdx[numTargets] = j;  // Store chunk-local index
-                    numTargets++;
+                    entAffected[i] = NewEntranceTouchesAffected(entIdx, affectedChunks);
                 }
 
-                if (numTargets == 0) continue;
+                // For each AFFECTED entrance, run ONE multi-target Dijkstra to find
+                // costs to ALL other entrances in the chunk (not just affected ones)
+                // This is more efficient because:
+                // - We only run Dijkstra from affected entrances (fewer calls)
+                // - Each call finds edges to both affected and unaffected entrances
+                int targetX[MAX_ENTRANCES_PER_CHUNK];
+                int targetY[MAX_ENTRANCES_PER_CHUNK];
+                int targetIdx[MAX_ENTRANCES_PER_CHUNK];
+                int outCosts[MAX_ENTRANCES_PER_CHUNK];
 
-                // Run ONE multi-target Dijkstra from e1 to all targets
-                dijkstraCalls++;
-                AStarChunkMultiTarget(entrances[e1].x, entrances[e1].y,
-                                      targetX, targetY, outCosts, numTargets,
-                                      minX, minY, maxX, maxY);
+                for (int i = 0; i < numEnts; i++) {
+                    if (!entAffected[i]) continue;  // Only run from affected entrances
 
-                // Add edges for all reachable targets
-                for (int t = 0; t < numTargets; t++) {
-                    int cost = outCosts[t];
-                    if (cost < 0) continue;  // Unreachable
+                    int e1 = chunkEntrances[chunk][i];
 
-                    int e2 = chunkEntrances[chunk][targetIdx[t]];
+                    // Build target list: all OTHER entrances that don't have edges yet
+                    int numTargets = 0;
+                    for (int j = 0; j < numEnts; j++) {
+                        if (j == i) continue;  // Skip self
 
-                    if (graphEdgeCount >= MAX_EDGES - 1) continue;
+                        int e2 = chunkEntrances[chunk][j];
 
-                    int edgeIdx1 = graphEdgeCount;
-                    int edgeIdx2 = graphEdgeCount + 1;
-                    graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
-                    graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+                        // Check if edge already exists (from kept edges or earlier in this loop)
+                        bool exists = false;
+                        for (int k = 0; k < adjListCount[e1] && !exists; k++) {
+                            int edgeIdx = adjList[e1][k];
+                            if (graphEdges[edgeIdx].to == e2) exists = true;
+                        }
+                        if (exists) continue;
 
-                    if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
-                        adjList[e1][adjListCount[e1]++] = edgeIdx1;
+                        targetX[numTargets] = entrances[e2].x;
+                        targetY[numTargets] = entrances[e2].y;
+                        targetIdx[numTargets] = j;  // Store chunk-local index
+                        numTargets++;
                     }
-                    if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
-                        adjList[e2][adjListCount[e2]++] = edgeIdx2;
+
+                    if (numTargets == 0) continue;
+
+                    // Run ONE multi-target Dijkstra from e1 to all targets
+                    dijkstraCalls++;
+                    AStarChunkMultiTarget(entrances[e1].x, entrances[e1].y, z,
+                                          targetX, targetY, outCosts, numTargets,
+                                          minX, minY, maxX, maxY);
+
+                    // Add edges for all reachable targets
+                    for (int t = 0; t < numTargets; t++) {
+                        int cost = outCosts[t];
+                        if (cost < 0) continue;  // Unreachable
+
+                        int e2 = chunkEntrances[chunk][targetIdx[t]];
+
+                        if (graphEdgeCount >= MAX_EDGES - 1) continue;
+
+                        int edgeIdx1 = graphEdgeCount;
+                        int edgeIdx2 = graphEdgeCount + 1;
+                        graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+                        graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+
+                        if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                            adjList[e1][adjListCount[e1]++] = edgeIdx1;
+                        }
+                        if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                            adjList[e2][adjListCount[e2]++] = edgeIdx2;
+                        }
                     }
                 }
             }
@@ -974,7 +1093,7 @@ void UpdateDirtyChunks(void) {
     bool anyDirty = false;
     for (int cy = 0; cy < chunksY && !anyDirty; cy++)
         for (int cx = 0; cx < chunksX && !anyDirty; cx++)
-            if (chunkDirty[cy][cx]) anyDirty = true;
+            if (chunkDirty[0][cy][cx]) anyDirty = true;
 
     if (!anyDirty) return;
 
@@ -987,7 +1106,7 @@ void UpdateDirtyChunks(void) {
     int dirtyCount = 0, affectedCount = 0;
     for (int cy = 0; cy < chunksY; cy++) {
         for (int cx = 0; cx < chunksX; cx++) {
-            if (chunkDirty[cy][cx]) dirtyCount++;
+            if (chunkDirty[0][cy][cx]) dirtyCount++;
             if (affectedChunks[cy][cx]) affectedCount++;
         }
     }
@@ -1004,7 +1123,7 @@ void UpdateDirtyChunks(void) {
     // Clear dirty flags
     for (int cy = 0; cy < chunksY; cy++)
         for (int cx = 0; cx < chunksX; cx++)
-            chunkDirty[cy][cx] = false;
+            chunkDirty[0][cy][cx] = false;
     needsRebuild = false;
     hpaNeedsRebuild = false;
 
@@ -1013,25 +1132,49 @@ void UpdateDirtyChunks(void) {
              dirtyCount, affectedCount, elapsed);
 }
 
+// Helper to check if a cell is walkable (includes ladders) - 3D version
+static bool IsWalkable3D(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth) return false;
+    if (y < 0 || y >= gridHeight) return false;
+    if (x < 0 || x >= gridWidth) return false;
+    CellType cell = grid[z][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_LADDER;
+}
+
+// 3D heuristic - includes z-level difference
+static int Heuristic3D(int x0, int y0, int z0, int x1, int y1, int z1) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int dz = abs(z1 - z0);
+    // Manhattan on XY plane plus z-level cost
+    // Treat z-transition as equivalent to 10 (one step)
+    if (use8Dir) {
+        int maxXY = (dx > dy) ? dx : dy;
+        int minXY = (dx < dy) ? dx : dy;
+        return (maxXY - minXY) * 10 + minXY * 14 + dz * 10;
+    } else {
+        return (dx + dy + dz) * 10;
+    }
+}
+
 void RunAStar(void) {
     if (startPos.x < 0 || goalPos.x < 0) return;
     pathLength = 0;
     nodesExplored = 0;
     double startTime = GetTime();
 
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+    // Initialize nodeData for all z-levels
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                nodeData[z][y][x] = (AStarNode){999999, 999999, -1, -1, -1, false, false};
 
-    nodeData[startPos.y][startPos.x].g = 0;
-    if (use8Dir) {
-        nodeData[startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
-    } else {
-        nodeData[startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
-    }
-    nodeData[startPos.y][startPos.x].open = true;
+    int startZ = startPos.z;
+    nodeData[startZ][startPos.y][startPos.x].g = 0;
+    nodeData[startZ][startPos.y][startPos.x].f = Heuristic3D(startPos.x, startPos.y, startZ, goalPos.x, goalPos.y, goalPos.z);
+    nodeData[startZ][startPos.y][startPos.x].open = true;
 
-    // Direction arrays
+    // Direction arrays for XY movement
     int dx4[] = {0, 1, 0, -1};
     int dy4[] = {-1, 0, 1, 0};
     int dx8[] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -1042,86 +1185,133 @@ void RunAStar(void) {
     int numDirs = use8Dir ? 8 : 4;
 
     while (1) {
-        int bestX = -1, bestY = -1, bestF = 999999;
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                if (nodeData[y][x].open && nodeData[y][x].f < bestF) {
-                    bestF = nodeData[y][x].f;
-                    bestX = x;
-                    bestY = y;
-                }
+        // Find best open node across all z-levels
+        int bestX = -1, bestY = -1, bestZ = -1, bestF = 999999;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    if (nodeData[z][y][x].open && nodeData[z][y][x].f < bestF) {
+                        bestF = nodeData[z][y][x].f;
+                        bestX = x;
+                        bestY = y;
+                        bestZ = z;
+                    }
         if (bestX < 0) break;
-        if (bestX == goalPos.x && bestY == goalPos.y) {
-            int cx = goalPos.x, cy = goalPos.y;
-            while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
-                path[pathLength++] = (Point){cx, cy};
-                int px = nodeData[cy][cx].parentX;
-                int py = nodeData[cy][cx].parentY;
-                cx = px; cy = py;
+        
+        // Check if we reached the goal (must match z too!)
+        if (bestX == goalPos.x && bestY == goalPos.y && bestZ == goalPos.z) {
+            int cx = goalPos.x, cy = goalPos.y, cz = goalPos.z;
+            while (cx >= 0 && cy >= 0 && cz >= 0 && pathLength < MAX_PATH) {
+                path[pathLength++] = (Point){cx, cy, cz};
+                int px = nodeData[cz][cy][cx].parentX;
+                int py = nodeData[cz][cy][cx].parentY;
+                int pz = nodeData[cz][cy][cx].parentZ;
+                cx = px; cy = py; cz = pz;
             }
             break;
         }
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        
+        nodeData[bestZ][bestY][bestX].open = false;
+        nodeData[bestZ][bestY][bestX].closed = true;
         nodesExplored++;
+        
+        // Expand XY neighbors on same z-level
         for (int i = 0; i < numDirs; i++) {
-            int nx = bestX + dx[i], ny = bestY + dy[i];
-            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-            if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
+            int nx = bestX + dx[i], ny = bestY + dy[i], nz = bestZ;
+            if (!IsWalkable3D(nz, ny, nx)) continue;
+            if (nodeData[nz][ny][nx].closed) continue;
 
             // For diagonal movement, check that we can actually move diagonally
             // (not cutting corners through walls)
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                int adjX = bestX + dx[i], adjY = bestY + dy[i];
-                if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
-                    continue;
-                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
+                if (!IsWalkable3D(bestZ, bestY, bestX + dx[i]) || 
+                    !IsWalkable3D(bestZ, bestY + dy[i], bestX))
                     continue;
             }
 
             // Cost: 10 for cardinal, 14 for diagonal
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            int ng = nodeData[bestY][bestX].g + moveCost;
+            int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
 
-            if (ng < nodeData[ny][nx].g) {
-                nodeData[ny][nx].g = ng;
-                if (use8Dir) {
-                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, goalPos.x, goalPos.y);
-                } else {
-                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, goalPos.x, goalPos.y) * 10;
+            if (ng < nodeData[nz][ny][nx].g) {
+                nodeData[nz][ny][nx].g = ng;
+                nodeData[nz][ny][nx].f = ng + Heuristic3D(nx, ny, nz, goalPos.x, goalPos.y, goalPos.z);
+                nodeData[nz][ny][nx].parentX = bestX;
+                nodeData[nz][ny][nx].parentY = bestY;
+                nodeData[nz][ny][nx].parentZ = bestZ;
+                nodeData[nz][ny][nx].open = true;
+            }
+        }
+        
+        // Expand Z neighbors (ladder connections)
+        if (grid[bestZ][bestY][bestX] == CELL_LADDER) {
+            // Try going up (z+1)
+            int nz = bestZ + 1;
+            if (nz < gridDepth && grid[nz][bestY][bestX] == CELL_LADDER) {
+                if (!nodeData[nz][bestY][bestX].closed) {
+                    int moveCost = 10;  // Same cost as cardinal move
+                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                    if (ng < nodeData[nz][bestY][bestX].g) {
+                        nodeData[nz][bestY][bestX].g = ng;
+                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                        nodeData[nz][bestY][bestX].parentX = bestX;
+                        nodeData[nz][bestY][bestX].parentY = bestY;
+                        nodeData[nz][bestY][bestX].parentZ = bestZ;
+                        nodeData[nz][bestY][bestX].open = true;
+                    }
                 }
-                nodeData[ny][nx].parentX = bestX;
-                nodeData[ny][nx].parentY = bestY;
-                nodeData[ny][nx].open = true;
+            }
+            // Try going down (z-1)
+            nz = bestZ - 1;
+            if (nz >= 0 && grid[nz][bestY][bestX] == CELL_LADDER) {
+                if (!nodeData[nz][bestY][bestX].closed) {
+                    int moveCost = 10;
+                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                    if (ng < nodeData[nz][bestY][bestX].g) {
+                        nodeData[nz][bestY][bestX].g = ng;
+                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                        nodeData[nz][bestY][bestX].parentX = bestX;
+                        nodeData[nz][bestY][bestX].parentY = bestY;
+                        nodeData[nz][bestY][bestX].parentZ = bestZ;
+                        nodeData[nz][bestY][bestX].open = true;
+                    }
+                }
             }
         }
     }
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "A* (%s): time=%.2fms, nodes=%d, path=%d",
+    TraceLog(LOG_INFO, "A* 3D (%s): time=%.2fms, nodes=%d, path=%d",
              use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
 }
 
-// Get chunk index from cell coordinates
-static int GetChunk(int x, int y) {
+// Get chunk index from cell coordinates (includes z-level in ID)
+// Chunk ID = z * (chunksX * chunksY) + cy * chunksX + cx
+static int GetChunk(int x, int y, int z) {
     int cx = x / chunkWidth;
     int cy = y / chunkHeight;
     if (cx < 0) cx = 0;
     if (cx >= chunksX) cx = chunksX - 1;
     if (cy < 0) cy = 0;
     if (cy >= chunksY) cy = chunksY - 1;
-    return cy * chunksX + cx;
+    if (z < 0) z = 0;
+    if (z >= gridDepth) z = gridDepth - 1;
+    return z * (chunksX * chunksY) + cy * chunksX + cx;
 }
 
-// Get chunk bounds
-static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY) {
-    int cx = chunk % chunksX;
-    int cy = chunk / chunksX;
+// Get chunk bounds (extracts z from chunk ID, returns XY bounds)
+static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY, int* outZ) {
+    int chunksPerLevel = chunksX * chunksY;
+    int z = chunk / chunksPerLevel;
+    int xyChunk = chunk % chunksPerLevel;
+    int cx = xyChunk % chunksX;
+    int cy = xyChunk / chunksX;
     *minX = cx * chunkWidth;
     *minY = cy * chunkHeight;
     *maxX = (cx + 1) * chunkWidth;
     *maxY = (cy + 1) * chunkHeight;
     if (*maxX > gridWidth) *maxX = gridWidth;
     if (*maxY > gridHeight) *maxY = gridHeight;
+    if (outZ) *outZ = z;
 }
 
 // ============================================================================
@@ -1142,26 +1332,26 @@ static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY
 //   - Dungeon rooms span chunk boundaries with corridors in other chunks
 // ============================================================================
 
-// Helper: Run A* within given bounds
-static int ReconstructLocalPathWithBounds(int sx, int sy, int gx, int gy, 
+// Helper: Run A* within given bounds on specified z-level
+static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy, 
                                           int minX, int minY, int maxX, int maxY,
                                           Point* outPath, int maxLen) {
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
     ChunkHeapInit();
 
-    nodeData[sy][sx].g = 0;
+    nodeData[sz][sy][sx].g = 0;
     if (use8Dir) {
-        nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+        nodeData[sz][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
     } else {
-        nodeData[sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
     }
-    nodeData[sy][sx].open = true;
+    nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
 
     int dx4[] = {0, 1, 0, -1};
@@ -1180,44 +1370,44 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int gx, int gy,
             int len = 0;
             int cx = gx, cy = gy;
             while (cx >= 0 && cy >= 0 && len < maxLen) {
-                outPath[len++] = (Point){cx, cy};
-                int px = nodeData[cy][cx].parentX;
-                int py = nodeData[cy][cx].parentY;
+                outPath[len++] = (Point){cx, cy, sz};
+                int px = nodeData[sz][cy][cx].parentX;
+                int py = nodeData[sz][cy][cx].parentY;
                 cx = px;
                 cy = py;
             }
             return len;
         }
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        nodeData[sz][bestY][bestX].open = false;
+        nodeData[sz][bestY][bestX].closed = true;
 
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (grid[ny][nx] == CELL_WALL || nodeData[ny][nx].closed) continue;
+            if (grid[sz][ny][nx] == CELL_WALL || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
                 int adjX = bestX + dx[i], adjY = bestY + dy[i];
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (grid[bestY][adjX] == CELL_WALL || grid[adjY][bestX] == CELL_WALL)
+                if (grid[sz][bestY][adjX] == CELL_WALL || grid[sz][adjY][bestX] == CELL_WALL)
                     continue;
             }
 
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
-            int ng = nodeData[bestY][bestX].g + moveCost;
-            if (ng < nodeData[ny][nx].g) {
-                bool wasOpen = nodeData[ny][nx].open;
-                nodeData[ny][nx].g = ng;
+            int ng = nodeData[sz][bestY][bestX].g + moveCost;
+            if (ng < nodeData[sz][ny][nx].g) {
+                bool wasOpen = nodeData[sz][ny][nx].open;
+                nodeData[sz][ny][nx].g = ng;
                 if (use8Dir) {
-                    nodeData[ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
+                    nodeData[sz][ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
                 } else {
-                    nodeData[ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
                 }
-                nodeData[ny][nx].parentX = bestX;
-                nodeData[ny][nx].parentY = bestY;
-                nodeData[ny][nx].open = true;
+                nodeData[sz][ny][nx].parentX = bestX;
+                nodeData[sz][ny][nx].parentY = bestY;
+                nodeData[sz][ny][nx].open = true;
                 if (wasOpen) {
                     ChunkHeapDecreaseKey(nx, ny);
                 } else {
@@ -1230,15 +1420,21 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int gx, int gy,
 }
 
 // Main entry point: tries narrow bounds first, expands if needed
-static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, int maxLen) {
+// Note: This operates on a single z-level. For 3D HPA*, ladder transitions
+// happen at the abstract graph level, not during local path refinement.
+static int ReconstructLocalPath(int sx, int sy, int sz, int gx, int gy, int gz, Point* outPath, int maxLen) {
+    // For now, local path refinement stays on the same z-level
+    // (ladders are handled as abstract graph edges)
+    if (sz != gz) return 0;  // Can't reconstruct across z-levels locally
+    
     // Get bounds that cover both start and goal chunks
-    int startChunk = GetChunk(sx, sy);
-    int goalChunk = GetChunk(gx, gy);
+    int startChunk = GetChunk(sx, sy, sz);
+    int goalChunk = GetChunk(gx, gy, gz);
 
-    int minX1, minY1, maxX1, maxY1;
-    int minX2, minY2, maxX2, maxY2;
-    GetChunkBounds(startChunk, &minX1, &minY1, &maxX1, &maxY1);
-    GetChunkBounds(goalChunk, &minX2, &minY2, &maxX2, &maxY2);
+    int minX1, minY1, maxX1, maxY1, z1;
+    int minX2, minY2, maxX2, maxY2, z2;
+    GetChunkBounds(startChunk, &minX1, &minY1, &maxX1, &maxY1, &z1);
+    GetChunkBounds(goalChunk, &minX2, &minY2, &maxX2, &maxY2, &z2);
 
     // Union of both chunk bounds (narrow search area)
     int minX = minX1 < minX2 ? minX1 : minX2;
@@ -1253,7 +1449,7 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
     if (maxY > gridHeight) maxY = gridHeight;
 
     // Try narrow bounds first (fast path for most cases)
-    int len = ReconstructLocalPathWithBounds(sx, sy, gx, gy, minX, minY, maxX, maxY, outPath, maxLen);
+    int len = ReconstructLocalPathWithBounds(sx, sy, sz, gx, gy, minX, minY, maxX, maxY, outPath, maxLen);
     if (len > 0) return len;
 
     // Narrow search failed - expand bounds by one chunk in all directions
@@ -1269,7 +1465,7 @@ static int ReconstructLocalPath(int sx, int sy, int gx, int gy, Point* outPath, 
     if (expandedMaxX > gridWidth) expandedMaxX = gridWidth;
     if (expandedMaxY > gridHeight) expandedMaxY = gridHeight;
 
-    return ReconstructLocalPathWithBounds(sx, sy, gx, gy, expandedMinX, expandedMinY, expandedMaxX, expandedMaxY, outPath, maxLen);
+    return ReconstructLocalPathWithBounds(sx, sy, sz, gx, gy, expandedMinX, expandedMinY, expandedMaxX, expandedMaxY, outPath, maxLen);
 }
 
 void RunHPAStar(void) {
@@ -1283,14 +1479,15 @@ void RunHPAStar(void) {
     hpaRefinementTime = 0.0;
     double startTime = GetTime();
 
-    int startChunk = GetChunk(startPos.x, startPos.y);
-    int goalChunk = GetChunk(goalPos.x, goalPos.y);
+    int startChunk = GetChunk(startPos.x, startPos.y, startPos.z);
+    int goalChunk = GetChunk(goalPos.x, goalPos.y, goalPos.z);
 
-    // Special case: start and goal in same chunk - just do local A*
+    // Special case: start and goal in same chunk (and same z-level) - just do local A*
     if (startChunk == goalChunk) {
-        int minX, minY, maxX, maxY;
-        GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
-        pathLength = ReconstructLocalPath(startPos.x, startPos.y, goalPos.x, goalPos.y, path, MAX_PATH);
+        int minX, minY, maxX, maxY, chunkZ;
+        GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY, &chunkZ);
+        pathLength = ReconstructLocalPath(startPos.x, startPos.y, startPos.z, 
+                                          goalPos.x, goalPos.y, goalPos.z, path, MAX_PATH);
         lastPathTime = (GetTime() - startTime) * 1000.0;
         return;
     }
@@ -1357,21 +1554,22 @@ void RunHPAStar(void) {
     // ========== APPROACH 1: Multi-target Dijkstra ==========
     // double dijkstraStartTime = GetTime();
     int dijkstraStartCosts[128], dijkstraGoalCosts[128];
+    int chunkZ;
 
-    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY);
+    GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY, &chunkZ);
     if (maxX < gridWidth) maxX++;
     if (maxY < gridHeight) maxY++;
     if (startTargetCount > 0) {
-        AStarChunkMultiTarget(startPos.x, startPos.y,
+        AStarChunkMultiTarget(startPos.x, startPos.y, startPos.z,
                               startTargetX, startTargetY, dijkstraStartCosts, startTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
 
-    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY);
+    GetChunkBounds(goalChunk, &minX, &minY, &maxX, &maxY, &chunkZ);
     if (maxX < gridWidth) maxX++;
     if (maxY < gridHeight) maxY++;
     if (goalTargetCount > 0) {
-        AStarChunkMultiTarget(goalPos.x, goalPos.y,
+        AStarChunkMultiTarget(goalPos.x, goalPos.y, goalPos.z,
                               goalTargetX, goalTargetY, dijkstraGoalCosts, goalTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
@@ -1498,28 +1696,42 @@ void RunHPAStar(void) {
             int fromNode = abstractPath[i];
             int toNode = abstractPath[i - 1];
 
-            int fx, fy, tx, ty;
+            int fx, fy, fz, tx, ty, tz;
 
             // Get coordinates for from node
             if (fromNode == startNode) {
                 fx = startPos.x;
                 fy = startPos.y;
+                fz = startPos.z;
             } else {
                 fx = entrances[fromNode].x;
                 fy = entrances[fromNode].y;
+                fz = entrances[fromNode].z;
             }
 
             // Get coordinates for to node
             if (toNode == goalNode) {
                 tx = goalPos.x;
                 ty = goalPos.y;
+                tz = goalPos.z;
             } else {
                 tx = entrances[toNode].x;
                 ty = entrances[toNode].y;
+                tz = entrances[toNode].z;
             }
 
-            // Reconstruct local path for this segment
-            int localLen = ReconstructLocalPath(fx, fy, tx, ty, tempPath, MAX_PATH);
+            // Check if this is a ladder transition (z-level change)
+            if (fz != tz) {
+                // Ladder transition: just add the destination point (same x,y, different z)
+                // The mover will handle the actual ladder climbing
+                if (pathLength < MAX_PATH) {
+                    path[pathLength++] = (Point){tx, ty, tz};
+                }
+                continue;
+            }
+
+            // Reconstruct local path for this segment (same z-level)
+            int localLen = ReconstructLocalPath(fx, fy, fz, tx, ty, tz, tempPath, MAX_PATH);
 
             if (localLen == 0) {
                 // No path found for this segment - shouldn't happen with valid abstract path
@@ -1591,7 +1803,7 @@ void RunHPAStar(void) {
 
 static bool IsWalkable(int x, int y) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    return grid[y][x] == CELL_WALKABLE;
+    return grid[0][y][x] == CELL_WALKABLE;
 }
 
 // Jump in a cardinal direction (4-dir or 8-dir)
@@ -1663,15 +1875,15 @@ void RunJPS(void) {
     // Initialize node data
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            nodeData[0][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
 
-    nodeData[startPos.y][startPos.x].g = 0;
+    nodeData[0][startPos.y][startPos.x].g = 0;
     if (use8Dir) {
-        nodeData[startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
+        nodeData[0][startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
     } else {
-        nodeData[startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
+        nodeData[0][startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
     }
-    nodeData[startPos.y][startPos.x].open = true;
+    nodeData[0][startPos.y][startPos.x].open = true;
 
     // Direction arrays
     int dx4[] = {0, 1, 0, -1};
@@ -1688,8 +1900,8 @@ void RunJPS(void) {
         int bestX = -1, bestY = -1, bestF = 999999;
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                if (nodeData[y][x].open && nodeData[y][x].f < bestF) {
-                    bestF = nodeData[y][x].f;
+                if (nodeData[0][y][x].open && nodeData[0][y][x].f < bestF) {
+                    bestF = nodeData[0][y][x].f;
                     bestX = x;
                     bestY = y;
                 }
@@ -1700,9 +1912,9 @@ void RunJPS(void) {
             // Reconstruct path
             int cx = goalPos.x, cy = goalPos.y;
             while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
-                path[pathLength++] = (Point){cx, cy};
-                int px = nodeData[cy][cx].parentX;
-                int py = nodeData[cy][cx].parentY;
+                path[pathLength++] = (Point){cx, cy, 0};
+                int px = nodeData[0][cy][cx].parentX;
+                int py = nodeData[0][cy][cx].parentY;
 
                 // For JPS, we need to fill in intermediate points
                 if (px >= 0 && py >= 0) {
@@ -1711,7 +1923,7 @@ void RunJPS(void) {
                     int ix = cx + stepX;
                     int iy = cy + stepY;
                     while ((ix != px || iy != py) && pathLength < MAX_PATH) {
-                        path[pathLength++] = (Point){ix, iy};
+                        path[pathLength++] = (Point){ix, iy, 0};
                         ix += stepX;
                         iy += stepY;
                     }
@@ -1722,8 +1934,8 @@ void RunJPS(void) {
             break;
         }
 
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        nodeData[0][bestY][bestX].open = false;
+        nodeData[0][bestY][bestX].closed = true;
         nodesExplored++;
 
         // Explore neighbors using JPS
@@ -1741,7 +1953,7 @@ void RunJPS(void) {
                 if (!IsWalkable(jx, jy)) continue;
             }
 
-            if (nodeData[jy][jx].closed) continue;
+            if (nodeData[0][jy][jx].closed) continue;
 
             // Calculate cost
             int dist = abs(jx - bestX) + abs(jy - bestY);
@@ -1754,18 +1966,18 @@ void RunJPS(void) {
                 dist *= 10;
             }
 
-            int ng = nodeData[bestY][bestX].g + dist;
+            int ng = nodeData[0][bestY][bestX].g + dist;
 
-            if (ng < nodeData[jy][jx].g) {
-                nodeData[jy][jx].g = ng;
+            if (ng < nodeData[0][jy][jx].g) {
+                nodeData[0][jy][jx].g = ng;
                 if (use8Dir) {
-                    nodeData[jy][jx].f = ng + Heuristic8Dir(jx, jy, goalPos.x, goalPos.y);
+                    nodeData[0][jy][jx].f = ng + Heuristic8Dir(jx, jy, goalPos.x, goalPos.y);
                 } else {
-                    nodeData[jy][jx].f = ng + Heuristic(jx, jy, goalPos.x, goalPos.y) * 10;
+                    nodeData[0][jy][jx].f = ng + Heuristic(jx, jy, goalPos.x, goalPos.y) * 10;
                 }
-                nodeData[jy][jx].parentX = bestX;
-                nodeData[jy][jx].parentY = bestY;
-                nodeData[jy][jx].open = true;
+                nodeData[0][jy][jx].parentX = bestX;
+                nodeData[0][jy][jx].parentY = bestY;
+                nodeData[0][jy][jx].open = true;
             }
         }
     }
@@ -1791,7 +2003,7 @@ static const int jpsDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 // Check if a cell is walkable (bounds-checked)
 static bool JpsIsWalkable(int x, int y) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    return grid[y][x] == CELL_WALKABLE;
+    return grid[0][y][x] == CELL_WALKABLE;
 }
 
 // Check if diagonal move is allowed (no corner cutting)
@@ -2000,16 +2212,16 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
     // Initialize node data for bounded region
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            nodeData[y][x] = (AStarNode){999999, 999999, -1, -1, false, false};
+            nodeData[0][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
     }
 
     ChunkHeapInit();
 
-    nodeData[sy][sx].g = 0;
-    nodeData[sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
-    nodeData[sy][sx].open = true;
+    nodeData[0][sy][sx].g = 0;
+    nodeData[0][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+    nodeData[0][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
 
     while (chunkHeap.size > 0) {
@@ -2017,11 +2229,11 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
         ChunkHeapPop(&bestX, &bestY);
 
         if (bestX == gx && bestY == gy) {
-            return nodeData[gy][gx].g;  // Found goal
+            return nodeData[0][gy][gx].g;  // Found goal
         }
 
-        nodeData[bestY][bestX].open = false;
-        nodeData[bestY][bestX].closed = true;
+        nodeData[0][bestY][bestX].open = false;
+        nodeData[0][bestY][bestX].closed = true;
 
         // Explore all 8 directions using precomputed jump distances
         for (int dir = 0; dir < 8; dir++) {
@@ -2112,7 +2324,7 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
                 moveDist = clampDist;
             }
 
-            if (nodeData[targetY][targetX].closed) continue;
+            if (nodeData[0][targetY][targetX].closed) continue;
 
             // Calculate movement cost
             int cost;
@@ -2122,18 +2334,18 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
                 cost = moveDist * 10;  // Cardinal
             }
 
-            int ng = nodeData[bestY][bestX].g + cost;
+            int ng = nodeData[0][bestY][bestX].g + cost;
 
-            if (ng < nodeData[targetY][targetX].g) {
-                nodeData[targetY][targetX].g = ng;
-                nodeData[targetY][targetX].f = ng + Heuristic8Dir(targetX, targetY, gx, gy);
-                nodeData[targetY][targetX].parentX = bestX;
-                nodeData[targetY][targetX].parentY = bestY;
+            if (ng < nodeData[0][targetY][targetX].g) {
+                nodeData[0][targetY][targetX].g = ng;
+                nodeData[0][targetY][targetX].f = ng + Heuristic8Dir(targetX, targetY, gx, gy);
+                nodeData[0][targetY][targetX].parentX = bestX;
+                nodeData[0][targetY][targetX].parentY = bestY;
 
-                if (nodeData[targetY][targetX].open) {
+                if (nodeData[0][targetY][targetX].open) {
                     ChunkHeapDecreaseKey(targetX, targetY);
                 } else {
-                    nodeData[targetY][targetX].open = true;
+                    nodeData[0][targetY][targetX].open = true;
                     ChunkHeapPush(targetX, targetY);
                 }
             }
@@ -2158,9 +2370,9 @@ void RunJpsPlus(void) {
         // Reconstruct path
         int cx = goalPos.x, cy = goalPos.y;
         while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
-            path[pathLength++] = (Point){cx, cy};
-            int px = nodeData[cy][cx].parentX;
-            int py = nodeData[cy][cx].parentY;
+            path[pathLength++] = (Point){cx, cy, 0};
+            int px = nodeData[0][cy][cx].parentX;
+            int py = nodeData[0][cy][cx].parentY;
 
             // Fill in intermediate points between jump points
             if (px >= 0 && py >= 0) {
@@ -2169,7 +2381,7 @@ void RunJpsPlus(void) {
                 int ix = cx + stepX;
                 int iy = cy + stepY;
                 while ((ix != px || iy != py) && pathLength < MAX_PATH) {
-                    path[pathLength++] = (Point){ix, iy};
+                    path[pathLength++] = (Point){ix, iy, 0};
                     ix += stepX;
                     iy += stepY;
                 }
@@ -2206,14 +2418,15 @@ static int GetRandomInt(int min, int max) {
 
 Point GetRandomWalkableCell(void) {
     Point p;
+    p.z = 0;
     int attempts = 0;
     do {
         p.x = GetRandomInt(0, gridWidth - 1);
         p.y = GetRandomInt(0, gridHeight - 1);
         attempts++;
-    } while (grid[p.y][p.x] != CELL_WALKABLE && attempts < 1000);
+    } while (grid[0][p.y][p.x] != CELL_WALKABLE && attempts < 1000);
     if (attempts >= 1000) {
-        return (Point){-1, -1};
+        return (Point){-1, -1, 0};
     }
     return p;
 }

@@ -184,7 +184,7 @@ bool IsMoverInOpenArea(float x, float y) {
             }
             
             // Wall = not open
-            if (grid[cy][cx] == CELL_WALL) {
+            if (grid[0][cy][cx] == CELL_WALL) {
                 return false;
             }
         }
@@ -221,7 +221,7 @@ bool HasClearanceInDirection(float x, float y, int dir) {
         if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
             return false;
         }
-        if (grid[cy][cx] == CELL_WALL) {
+        if (grid[0][cy][cx] == CELL_WALL) {
             return false;
         }
     }
@@ -246,7 +246,7 @@ Vec2 ComputeWallRepulsion(float x, float y) {
             if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
             
             // Only care about walls
-            if (grid[cy][cx] != CELL_WALL) continue;
+            if (grid[0][cy][cx] != CELL_WALL) continue;
             
             // Wall cell center
             float wallX = cx * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -370,7 +370,7 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
 
     int x = x0, y = y0;
     while (1) {
-        if (grid[y][x] == CELL_WALL) return false;
+        if (grid[0][y][x] == CELL_WALL) return false;
         if (x == x1 && y == y1) return true;
 
         int e2 = 2 * err;
@@ -380,7 +380,7 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
             // Moving diagonally - check both adjacent cells
             int nx = x + sx;
             int ny = y + sy;
-            if (grid[y][nx] == CELL_WALL || grid[ny][x] == CELL_WALL) {
+            if (grid[0][y][nx] == CELL_WALL || grid[0][ny][x] == CELL_WALL) {
                 return false;
             }
         }
@@ -422,7 +422,7 @@ static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
         if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-            grid[ny][nx] == CELL_WALKABLE) {
+            grid[0][ny][nx] == CELL_WALKABLE) {
             if (!HasLineOfSight(nx, ny, x1, y1)) return false;
         }
     }
@@ -444,7 +444,7 @@ static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
         if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-            grid[ny][nx] == CELL_WALKABLE) {
+            grid[0][ny][nx] == CELL_WALKABLE) {
             if (HasLineOfSight(nx, ny, x1, y1)) return true;
         }
     }
@@ -532,7 +532,7 @@ static void AssignNewMoverGoal(Mover* m) {
     int currentX = (int)(m->x / CELL_SIZE);
     int currentY = (int)(m->y / CELL_SIZE);
 
-    startPos = (Point){currentX, currentY};
+    startPos = (Point){currentX, currentY, 0};
     goalPos = newGoal;
     RunHPAStar();
 
@@ -551,8 +551,8 @@ static void AssignNewMoverGoal(Mover* m) {
     m->pathIndex = m->pathLength - 1;
     m->needsRepath = false;
 
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 }
 
@@ -588,7 +588,7 @@ void UpdateMovers(void) {
         int currentY = (int)(m->y / CELL_SIZE);
 
         // Check if mover is standing on a wall - push to nearest walkable
-        if (grid[currentY][currentX] == CELL_WALL) {
+        if (grid[0][currentY][currentX] == CELL_WALL) {
             int dx[] = {0, 0, -1, 1};
             int dy[] = {-1, 1, 0, 0};
             bool pushed = false;
@@ -596,7 +596,7 @@ void UpdateMovers(void) {
                 int nx = currentX + dx[d];
                 int ny = currentY + dy[d];
                 if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight &&
-                    grid[ny][nx] == CELL_WALKABLE) {
+                    grid[0][ny][nx] == CELL_WALKABLE) {
                     m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
                     pushed = true;
@@ -714,7 +714,7 @@ void UpdateMovers(void) {
                 // Check if new position would be in a wall
                 bool newPosInWall = (newCellX < 0 || newCellX >= gridWidth ||
                                      newCellY < 0 || newCellY >= gridHeight ||
-                                     grid[newCellY][newCellX] == CELL_WALL);
+                                     grid[0][newCellY][newCellX] == CELL_WALL);
                 
                 if (newPosInWall) {
                     // Try sliding: move only in X
@@ -722,14 +722,14 @@ void UpdateMovers(void) {
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
                     bool xOnlyOk = (xOnlyCellX >= 0 && xOnlyCellX < gridWidth &&
                                     xOnlyCellY >= 0 && xOnlyCellY < gridHeight &&
-                                    grid[xOnlyCellY][xOnlyCellX] != CELL_WALL);
+                                    grid[0][xOnlyCellY][xOnlyCellX] != CELL_WALL);
                     
                     // Try sliding: move only in Y
                     int yOnlyCellX = (int)(m->x / CELL_SIZE);
                     int yOnlyCellY = (int)(newY / CELL_SIZE);
                     bool yOnlyOk = (yOnlyCellX >= 0 && yOnlyCellX < gridWidth &&
                                     yOnlyCellY >= 0 && yOnlyCellY < gridHeight &&
-                                    grid[yOnlyCellY][yOnlyCellX] != CELL_WALL);
+                                    grid[0][yOnlyCellY][yOnlyCellX] != CELL_WALL);
                     
                     if (xOnlyOk && yOnlyOk) {
                         // Both work - pick the one more aligned with velocity
@@ -798,7 +798,7 @@ void ProcessMoverRepaths(void) {
             UpdateDirtyChunks();
         }
 
-        startPos = (Point){currentX, currentY};
+        startPos = (Point){currentX, currentY, 0};
         goalPos = m->goal;
         RunHPAStar();
 
@@ -830,8 +830,8 @@ void ProcessMoverRepaths(void) {
         repathsThisFrame++;
     }
 
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 }
 

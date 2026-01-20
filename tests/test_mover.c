@@ -15,7 +15,7 @@ describe(mover_initialization) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {7, 3};
+        Point goal = {7, 3, 0};
         InitMover(m, 16.0f, 16.0f, goal, 100.0f);
         moverCount = 1;
 
@@ -35,8 +35,8 @@ describe(mover_initialization) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {4, 0};
-        Point testPath[] = {{4, 0}, {3, 0}, {2, 0}, {1, 0}, {0, 0}};
+        Point goal = {4, 0, 0};
+        Point testPath[] = {{4, 0, 0}, {3, 0, 0}, {2, 0, 0}, {1, 0, 0}, {0, 0, 0}};
         InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 5);
         moverCount = 1;
 
@@ -59,8 +59,8 @@ describe(fixed_timestep_movement) {
         Mover* m = &movers[0];
 
         // Path from (0,0) to (4,0), stored as {current, target}
-        Point goal = {4, 0};
-        Point testPath[] = {{0, 0}, {4, 0}};
+        Point goal = {4, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {4, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
@@ -85,8 +85,8 @@ describe(fixed_timestep_movement) {
         // First run
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {4, 0};
-        Point testPath[] = {{0, 0}, {4, 0}};
+        Point goal = {4, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {4, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
@@ -119,8 +119,8 @@ describe(fixed_timestep_movement) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {1, 0};
-        Point testPath[] = {{0, 0}, {1, 0}};
+        Point goal = {1, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
@@ -147,15 +147,15 @@ describe(wall_collision) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {3, 3};
-        Point testPath[] = {{1, 1}, {2, 2}, {3, 3}};
+        Point goal = {3, 3, 0};
+        Point testPath[] = {{1, 1, 0}, {2, 2, 0}, {3, 3, 0}};
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
         moverCount = 1;
 
         // Place wall on mover's current cell
-        grid[1][1] = CELL_WALL;
+        grid[0][1][1] = CELL_WALL;
         MarkChunkDirty(1, 1);
 
         // Run tick - mover should be pushed to adjacent walkable cell
@@ -178,15 +178,15 @@ describe(wall_collision) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {3, 3};
-        Point testPath[] = {{1, 1}, {3, 3}};
+        Point goal = {3, 3, 0};
+        Point testPath[] = {{1, 1, 0}, {3, 3, 0}};
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Place wall on mover's cell - now fully surrounded
-        grid[1][1] = CELL_WALL;
+        grid[0][1][1] = CELL_WALL;
 
         Tick();
 
@@ -207,19 +207,19 @@ describe(line_of_sight_repath) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {6, 0};
+        Point goal = {6, 0, 0};
         // Path stored goal-to-start: mover walks from pathIndex down to 0
         // pathIndex starts at pathLength-1, so mover walks toward path[pathLength-1] first
         // Actually path[pathIndex] is the next waypoint to reach
         // With pathIndex=1 (last elem), target is path[1]={6,0}
-        Point testPath[] = {{0, 0}, {6, 0}};  // path[0]=start(current), path[1]=goal(target)
+        Point testPath[] = {{0, 0, 0}, {6, 0, 0}};  // path[0]=start(current), path[1]=goal(target)
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Place wall between start and goal
-        grid[0][3] = CELL_WALL;
+        grid[0][0][3] = CELL_WALL;
         MarkChunkDirty(3, 0);
 
         Tick();
@@ -268,8 +268,8 @@ describe(count_active_movers) {
         // Add 3 movers
         for (int i = 0; i < 3; i++) {
             Mover* m = &movers[moverCount];
-            Point goal = {3, 0};
-            Point testPath[] = {{3, 0}, {0, 0}};
+            Point goal = {3, 0, 0};
+            Point testPath[] = {{3, 0, 0}, {0, 0, 0}};
             InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 2);
             moverCount++;
         }
@@ -303,8 +303,8 @@ describe(endless_mode) {
 
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {1, 0};
-        Point testPath[] = {{0, 0}, {1, 0}};
+        Point goal = {1, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
@@ -347,8 +347,8 @@ describe(endless_mode) {
         ClearMovers();
         // Create a mover with a short path
         Mover* m = &movers[0];
-        Point goal = {2, 0};
-        Point testPath[] = {{0, 0}, {1, 0}, {2, 0}};
+        Point goal = {2, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {1, 0, 0}, {2, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
@@ -382,8 +382,8 @@ describe(endless_mode) {
         SeedRandom(99999);
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {1, 0};
-        Point testPath[] = {{0, 0}, {1, 0}};
+        Point goal = {1, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
         InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
@@ -582,7 +582,7 @@ describe(refinement_after_wall_changes) {
             int wx = wallPositions[i][0];
             int wy = wallPositions[i][1];
             if (wx < gridWidth && wy < gridHeight) {
-                grid[wy][wx] = CELL_WALL;
+                grid[0][wy][wx] = CELL_WALL;
                 MarkChunkDirty(wx, wy);
             }
             // Run a few ticks between each wall (simulates drawing at ~60fps)
@@ -742,11 +742,11 @@ describe(chunk_boundary_paths) {
         int goalX = 12;
         int goalY = 12;
         
-        expect(grid[startY][startX] == CELL_WALKABLE);
-        expect(grid[goalY][goalX] == CELL_WALKABLE);
+        expect(grid[0][startY][startX] == CELL_WALKABLE);
+        expect(grid[0][goalY][goalX] == CELL_WALKABLE);
         
-        startPos = (Point){startX, startY};
-        goalPos = (Point){goalX, goalY};
+        startPos = (Point){startX, startY, 0};
+        goalPos = (Point){goalX, goalY, 0};
         RunHPAStar();
         
         // Path should be found
@@ -761,7 +761,7 @@ describe(chunk_boundary_paths) {
         Mover* m = &movers[0];
         float x = startX * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = startY * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, x, y, (Point){goalX, goalY}, 100.0f, path, pathLength);
+        InitMoverWithPath(m, x, y, (Point){goalX, goalY, 0}, 100.0f, path, pathLength);
         moverCount = 1;
         
         // Run until mover reaches goal or times out
@@ -791,7 +791,7 @@ describe(path_truncation) {
         
         ClearMovers();
         Mover* m = &movers[0];
-        Point goal = {1999, 0};
+        Point goal = {1999, 0, 0};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         

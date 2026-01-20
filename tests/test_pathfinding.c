@@ -15,7 +15,7 @@ describe(grid_initialization) {
         int allWalkable = 1;
         for (int y = 0; y < gridHeight && allWalkable; y++)
             for (int x = 0; x < gridWidth && allWalkable; x++)
-                if (grid[y][x] != CELL_WALKABLE) allWalkable = 0;
+                if (grid[0][y][x] != CELL_WALKABLE) allWalkable = 0;
         expect(allWalkable == 1);
     }
 
@@ -24,16 +24,16 @@ describe(grid_initialization) {
         // Clear dirty flags
         for (int cy = 0; cy < chunksY; cy++)
             for (int cx = 0; cx < chunksX; cx++)
-                chunkDirty[cy][cx] = false;
+                chunkDirty[0][cy][cx] = false;
         needsRebuild = false;
 
         // Place a wall and mark dirty
-        grid[10][10] = CELL_WALL;
+        grid[0][10][10] = CELL_WALL;
         MarkChunkDirty(10, 10);
 
         int cx = 10 / chunkWidth;
         int cy = 10 / chunkHeight;
-        expect(chunkDirty[cy][cx] == true && needsRebuild == true);
+        expect(chunkDirty[0][cy][cx] == true && needsRebuild == true);
     }
 }
 
@@ -67,13 +67,13 @@ describe(entrance_building) {
         // Block the entire first horizontal border
         int borderY = chunkHeight;
         for (int x = 0; x < gridWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALL;
+            grid[0][borderY - 1][x] = CELL_WALL;
         }
         BuildEntrances();
-        // Check no entrances at y=borderY
+        // Check no entrances at y=borderY on z=0
         int entrancesAtBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].y == borderY) entrancesAtBorder++;
+            if (entrances[i].z == 0 && entrances[i].y == borderY) entrancesAtBorder++;
         }
         expect(entrancesAtBorder == 0);
     }
@@ -83,10 +83,10 @@ describe(entrance_building) {
         InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
         BuildEntrances();
 
-        // Count entrances on the horizontal border at y=chunkHeight, x in [0, chunkWidth)
+        // Count entrances on the horizontal border at y=chunkHeight, x in [0, chunkWidth) on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].y == chunkHeight && entrances[i].x < chunkWidth) {
+            if (entrances[i].z == 0 && entrances[i].y == chunkHeight && entrances[i].x < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -102,23 +102,23 @@ describe(entrance_building) {
         // Block the horizontal border except for a 3-cell gap
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALL;
-            grid[borderY][x] = CELL_WALL;
+            grid[0][borderY - 1][x] = CELL_WALL;
+            grid[0][borderY][x] = CELL_WALL;
         }
         // Open a narrow gap (3 cells wide, less than MAX_ENTRANCE_WIDTH)
         int gapStart = 10;
         int gapWidth = 3;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALKABLE;
-            grid[borderY][x] = CELL_WALKABLE;
+            grid[0][borderY - 1][x] = CELL_WALKABLE;
+            grid[0][borderY][x] = CELL_WALKABLE;
         }
 
         BuildEntrances();
 
-        // Count entrances on this border section
+        // Count entrances on this border section on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].y == borderY && entrances[i].x < chunkWidth) {
+            if (entrances[i].z == 0 && entrances[i].y == borderY && entrances[i].x < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -133,23 +133,23 @@ describe(entrance_building) {
         // Block the horizontal border except for a wide gap
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALL;
-            grid[borderY][x] = CELL_WALL;
+            grid[0][borderY - 1][x] = CELL_WALL;
+            grid[0][borderY][x] = CELL_WALL;
         }
         // Open a wide gap (15 cells, more than 2x MAX_ENTRANCE_WIDTH)
         int gapStart = 5;
         int gapWidth = 15;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALKABLE;
-            grid[borderY][x] = CELL_WALKABLE;
+            grid[0][borderY - 1][x] = CELL_WALKABLE;
+            grid[0][borderY][x] = CELL_WALKABLE;
         }
 
         BuildEntrances();
 
-        // Count entrances on this border section
+        // Count entrances on this border section on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].y == borderY && entrances[i].x < chunkWidth) {
+            if (entrances[i].z == 0 && entrances[i].y == borderY && entrances[i].x < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -276,7 +276,7 @@ describe(graph_building) {
         // Put a wall that divides chunk 0 into two unreachable halves
         // Vertical wall from top to bottom of chunk 0
         for (int y = 0; y < chunkHeight; y++) {
-            grid[y][chunkWidth / 2] = CELL_WALL;
+            grid[0][y][chunkWidth / 2] = CELL_WALL;
         }
 
         BuildEntrances();
@@ -432,9 +432,9 @@ describe(incremental_graph_updates) {
         BuildGraph();
 
         // Add some walls
-        grid[10][10] = CELL_WALL;
-        grid[10][11] = CELL_WALL;
-        grid[11][10] = CELL_WALL;
+        grid[0][10][10] = CELL_WALL;
+        grid[0][10][11] = CELL_WALL;
+        grid[0][11][10] = CELL_WALL;
         MarkChunkDirty(10, 10);
         MarkChunkDirty(10, 11);
         MarkChunkDirty(11, 10);
@@ -465,13 +465,13 @@ describe(incremental_graph_updates) {
         BuildGraph();
 
         // Verify path works before
-        startPos = (Point){5, 5};
-        goalPos = (Point){chunkWidth + 20, chunkHeight + 20};
+        startPos = (Point){5, 5, 0};
+        goalPos = (Point){chunkWidth + 20, chunkHeight + 20, 0};
         RunHPAStar();
         int pathBeforeWall = pathLength;
 
         // Add wall and update incrementally
-        grid[chunkHeight / 2][chunkWidth / 2] = CELL_WALL;
+        grid[0][chunkHeight / 2][chunkWidth / 2] = CELL_WALL;
         MarkChunkDirty(chunkWidth / 2, chunkHeight / 2);
         UpdateDirtyChunks();
 
@@ -490,8 +490,8 @@ describe(incremental_graph_updates) {
         // Block an entire border to remove entrances
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
-            grid[borderY - 1][x] = CELL_WALL;
-            grid[borderY][x] = CELL_WALL;
+            grid[0][borderY - 1][x] = CELL_WALL;
+            grid[0][borderY][x] = CELL_WALL;
         }
         MarkChunkDirty(0, borderY);
         UpdateDirtyChunks();
@@ -513,14 +513,14 @@ describe(incremental_graph_updates) {
         BuildGraph();
 
         // Find path in bottom-right area (chunks 10, 11, 14, 15)
-        startPos = (Point){chunkWidth * 2 + 5, chunkHeight * 2 + 5};
-        goalPos = (Point){chunkWidth * 4 - 10, chunkHeight * 4 - 10};
+        startPos = (Point){chunkWidth * 2 + 5, chunkHeight * 2 + 5, 0};
+        goalPos = (Point){chunkWidth * 4 - 10, chunkHeight * 4 - 10, 0};
         RunHPAStar();
         int pathBefore = pathLength;
 
         // Add walls in top-left corner (chunk 0)
         for (int i = 0; i < 10; i++) {
-            grid[i][i] = CELL_WALL;
+            grid[0][i][i] = CELL_WALL;
             MarkChunkDirty(i, i);
         }
         UpdateDirtyChunks();
@@ -536,8 +536,8 @@ describe(incremental_graph_updates) {
 describe(astar_pathfinding) {
     it("should find a path on an empty grid") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        startPos = (Point){5, 5};
-        goalPos = (Point){50, 50};
+        startPos = (Point){5, 5, 0};
+        goalPos = (Point){50, 50, 0};
         RunAStar();
         expect(pathLength > 0);
     }
@@ -547,15 +547,15 @@ describe(astar_pathfinding) {
         // Create a box around the goal
         int gx = 50, gy = 50;
         for (int x = gx - 2; x <= gx + 2; x++) {
-            grid[gy - 2][x] = CELL_WALL;
-            grid[gy + 2][x] = CELL_WALL;
+            grid[0][gy - 2][x] = CELL_WALL;
+            grid[0][gy + 2][x] = CELL_WALL;
         }
         for (int y = gy - 2; y <= gy + 2; y++) {
-            grid[y][gx - 2] = CELL_WALL;
-            grid[y][gx + 2] = CELL_WALL;
+            grid[0][y][gx - 2] = CELL_WALL;
+            grid[0][y][gx + 2] = CELL_WALL;
         }
-        startPos = (Point){5, 5};
-        goalPos = (Point){gx, gy};
+        startPos = (Point){5, 5, 0};
+        goalPos = (Point){gx, gy, 0};
         RunAStar();
         expect(pathLength == 0);
     }
@@ -568,8 +568,8 @@ describe(hpa_star_pathfinding) {
         BuildEntrances();
         BuildGraph();
 
-        startPos = (Point){1, 1};      // chunk 0 (top-left)
-        goalPos = (Point){10, 10};     // chunk 8 (bottom-right)
+        startPos = (Point){1, 1, 0};      // chunk 0 (top-left)
+        goalPos = (Point){10, 10, 0};     // chunk 8 (bottom-right)
         RunHPAStar();
 
         expect(pathLength > 0);
@@ -610,8 +610,8 @@ describe(hpa_star_pathfinding) {
         BuildEntrances();
         BuildGraph();
 
-        startPos = (Point){1, 1};      // above the wall
-        goalPos = (Point){10, 10};     // below the wall
+        startPos = (Point){1, 1, 0};      // above the wall
+        goalPos = (Point){10, 10, 0};     // below the wall
         RunHPAStar();
 
         expect(pathLength == 0);
@@ -651,8 +651,8 @@ describe(hpa_star_pathfinding) {
         BuildEntrances();
         BuildGraph();
 
-        startPos = (Point){1, 1};      // above the wall
-        goalPos = (Point){10, 10};     // below the wall
+        startPos = (Point){1, 1, 0};      // above the wall
+        goalPos = (Point){10, 10, 0};     // below the wall
         RunHPAStar();
 
         expect(pathLength > 0);
@@ -692,8 +692,8 @@ describe(hpa_star_pathfinding) {
         BuildEntrances();
         BuildGraph();
 
-        startPos = (Point){0, 0};
-        goalPos = (Point){10, 10};
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){10, 10, 0};
         RunHPAStar();
 
         // Every cell in the path must be walkable
@@ -703,7 +703,7 @@ describe(hpa_star_pathfinding) {
             int y = path[i].y;
             if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
                 allWalkable = 0;
-            } else if (grid[y][x] != CELL_WALKABLE) {
+            } else if (grid[0][y][x] != CELL_WALKABLE) {
                 allWalkable = 0;
             }
         }
@@ -717,8 +717,8 @@ describe(hpa_star_pathfinding) {
         BuildGraph();
 
         // Start and goal in same chunk (chunk 0)
-        startPos = (Point){1, 1};
-        goalPos = (Point){2, 2};
+        startPos = (Point){1, 1, 0};
+        goalPos = (Point){2, 2, 0};
         RunHPAStar();
 
         expect(pathLength > 0);
@@ -734,7 +734,7 @@ describe(incremental_updates) {
         (void)originalEdgeCount;  // Suppress unused warning
 
         // Add a wall and update
-        grid[chunkHeight + 5][chunkWidth + 5] = CELL_WALL;
+        grid[0][chunkHeight + 5][chunkWidth + 5] = CELL_WALL;
         MarkChunkDirty(chunkWidth + 5, chunkHeight + 5);
         UpdateDirtyChunks();
 
@@ -749,13 +749,13 @@ describe(incremental_updates) {
 
         // Add some walls
         for (int i = 0; i < 5; i++) {
-            grid[chunkHeight + 10][chunkWidth + i] = CELL_WALL;
+            grid[0][chunkHeight + 10][chunkWidth + i] = CELL_WALL;
             MarkChunkDirty(chunkWidth + i, chunkHeight + 10);
         }
         UpdateDirtyChunks();
 
-        startPos = (Point){5, 5};
-        goalPos = (Point){TEST_GRID_SIZE - 10, TEST_GRID_SIZE - 10};
+        startPos = (Point){5, 5, 0};
+        goalPos = (Point){TEST_GRID_SIZE - 10, TEST_GRID_SIZE - 10, 0};
         RunHPAStar();
         expect(pathLength > 0);
     }
@@ -967,7 +967,7 @@ describe(dijkstra_vs_astar_consistency) {
 
         // The problematic case: start at (83,130), target entrance at (64,128)
         // Chunk bounds for chunk containing (83,130) are [64,128]-[96,160]
-        startPos = (Point){83, 130};
+        startPos = (Point){83, 130, 0};
         int targetX = 64, targetY = 128;
 
         // Get chunk bounds
@@ -991,12 +991,12 @@ describe(dijkstra_vs_astar_consistency) {
         int costs[1];
         int tx[1] = {targetX};
         int ty[1] = {targetY};
-        AStarChunkMultiTarget(startPos.x, startPos.y, tx, ty, costs, 1,
+        AStarChunkMultiTarget(startPos.x, startPos.y, 0, tx, ty, costs, 1,
                               searchMinX, searchMinY, maxX, maxY);
         dijkstraCost = costs[0];
         
         // Directed A*
-        astarCost = AStarChunk(startPos.x, startPos.y, targetX, targetY,
+        astarCost = AStarChunk(startPos.x, startPos.y, 0, targetX, targetY,
                                searchMinX, searchMinY, maxX, maxY);
 
         // Both should find the same cost (or both fail)
@@ -1083,7 +1083,7 @@ describe(maze_refinement_failure) {
             // Try to path between them using chunk-bounded A*
             // The chunk that contains both is chunk 0 (0,0)-(8,8) or chunk 2 (0,8)-(8,16)
             // Let's use bounds that would be used in refinement: a single chunk
-            int cost = AStarChunk(x1, 8, x2, 8, 0, 0, 9, 16);
+            int cost = AStarChunk(x1, 8, 0, x2, 8, 0, 0, 9, 16);
             
             // This should succeed even though there's walls in between
             // because we can go around (up or down)
@@ -1153,8 +1153,8 @@ describe(maze_refinement_failure) {
         //   we can still do it by going left around the wall
         
         // This test just verifies we handle this case gracefully
-        startPos = (Point){1, 1};
-        goalPos = (Point){6, 6};
+        startPos = (Point){1, 1, 0};
+        goalPos = (Point){6, 6, 0};
         RunHPAStar();
         
         // Path should exist - go around through x=0 column
@@ -1185,10 +1185,10 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
         
-        startPos = (Point){1, 1};
-        goalPos = (Point){6, 3};
+        startPos = (Point){1, 1, 0};
+        goalPos = (Point){6, 3, 0};
         RunAStar();
         
         // Path exists - diagonal movement allowed
@@ -1217,10 +1217,10 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
         
-        startPos = (Point){1, 1};
-        goalPos = (Point){6, 3};
+        startPos = (Point){1, 1, 0};
+        goalPos = (Point){6, 3, 0};
         RunAStar();
         
         // Path still exists but must go around
@@ -1258,14 +1258,14 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
         
-        startPos = (Point){2, 3};
-        goalPos = (Point){6, 6};
+        startPos = (Point){2, 3, 0};
+        goalPos = (Point){6, 6, 0};
         
         // Both cells are walkable
-        expect(grid[3][2] == CELL_WALKABLE);
-        expect(grid[6][6] == CELL_WALKABLE);
+        expect(grid[0][3][2] == CELL_WALKABLE);
+        expect(grid[0][6][6] == CELL_WALKABLE);
         
         RunAStar();
         
@@ -1303,10 +1303,10 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
         
-        startPos = (Point){2, 3};
-        goalPos = (Point){6, 6};
+        startPos = (Point){2, 3, 0};
+        goalPos = (Point){6, 6, 0};
         RunAStar();
         
         // Path exists - can escape via (1,2) then diagonal to (0,1)
@@ -1326,7 +1326,7 @@ static bool TestHasLineOfSight(int x0, int y0, int x1, int y1) {
     
     int x = x0, y = y0;
     while (1) {
-        if (grid[y][x] == CELL_WALL) return false;
+        if (grid[0][y][x] == CELL_WALL) return false;
         if (x == x1 && y == y1) return true;
         
         int e2 = 2 * err;
@@ -1334,7 +1334,7 @@ static bool TestHasLineOfSight(int x0, int y0, int x1, int y1) {
         if (e2 > -dy && e2 < dx) {
             int nx = x + sx;
             int ny = y + sy;
-            if (grid[y][nx] == CELL_WALL || grid[ny][x] == CELL_WALL) {
+            if (grid[0][y][nx] == CELL_WALL || grid[0][ny][x] == CELL_WALL) {
                 return false;
             }
         }
@@ -1383,8 +1383,8 @@ describe(string_pulling) {
         // Open 16x16 grid, path from corner to corner
         InitGridWithSizeAndChunkSize(16, 16, 16, 16);
         
-        startPos = (Point){0, 0};
-        goalPos = (Point){15, 15};
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 0};
         RunAStar();
         
         // Should have a long stair-step path
@@ -1411,14 +1411,14 @@ describe(string_pulling) {
         // 5 .........G
         InitGridWithSizeAndChunkSize(10, 6, 10, 6);
         
-        grid[1][1] = CELL_WALL;
-        grid[1][2] = CELL_WALL;
-        grid[1][3] = CELL_WALL;
-        grid[2][3] = CELL_WALL;
-        grid[3][3] = CELL_WALL;
+        grid[0][1][1] = CELL_WALL;
+        grid[0][1][2] = CELL_WALL;
+        grid[0][1][3] = CELL_WALL;
+        grid[0][2][3] = CELL_WALL;
+        grid[0][3][3] = CELL_WALL;
         
-        startPos = (Point){0, 0};
-        goalPos = (Point){9, 5};
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){9, 5, 0};
         RunAStar();
         
         expect(pathLength > 0);
@@ -1440,11 +1440,11 @@ describe(string_pulling) {
         // 3 ...G
         InitGridWithSizeAndChunkSize(4, 4, 4, 4);
         
-        grid[1][1] = CELL_WALL;
-        grid[2][2] = CELL_WALL;
+        grid[0][1][1] = CELL_WALL;
+        grid[0][2][2] = CELL_WALL;
         
-        startPos = (Point){0, 0};
-        goalPos = (Point){3, 3};
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){3, 3, 0};
         RunAStar();
         
         expect(pathLength > 0);
@@ -1454,6 +1454,412 @@ describe(string_pulling) {
         // Should NOT be able to go directly (would cut corners)
         // Path should have waypoints to avoid corner cutting
         expect(pathLength > 2);
+    }
+}
+
+// ============== LADDER / Z-LEVEL TESTS ==============
+
+describe(ladder_pathfinding) {
+    it("should parse multi-floor ASCII correctly") {
+        const char* map =
+            "floor:0\n"
+            "......\n"
+            ".L....\n"
+            "......\n"
+            "floor:1\n"
+            "......\n"
+            ".L....\n"
+            "......\n";
+        
+        int result = InitMultiFloorGridFromAscii(map, 6, 6);
+        expect(result == 1);
+        expect(gridWidth == 6);
+        expect(gridHeight == 3);
+        expect(gridDepth == 2);
+        
+        // Check ladder is placed correctly on both floors
+        expect(grid[0][1][1] == CELL_LADDER);
+        expect(grid[1][1][1] == CELL_LADDER);
+        
+        // Check other cells are walkable
+        expect(grid[0][0][0] == CELL_WALKABLE);
+        expect(grid[1][0][0] == CELL_WALKABLE);
+    }
+    
+    it("should find path using ladder to reach upper floor") {
+        // Start on floor 0, goal on floor 1
+        // Must climb ladder to reach goal
+        const char* map =
+            "floor:0\n"
+            "......\n"
+            ".L....\n"
+            "......\n"
+            "floor:1\n"
+            ".....G\n"
+            ".L....\n"
+            "......\n";
+        
+        InitMultiFloorGridFromAscii(map, 6, 6);
+        
+        startPos = (Point){0, 0, 0};  // Start floor 0
+        goalPos = (Point){5, 0, 1};   // Goal floor 1
+        RunAStar();
+        
+        // Path should exist
+        expect(pathLength > 0);
+        
+        // Path should end at goal (z=1)
+        expect(path[0].z == 1);
+        
+        // Path should start at start (z=0)
+        expect(path[pathLength - 1].z == 0);
+    }
+    
+    it("should stay on same floor when ladder not needed") {
+        // Start and goal on floor 0, ladder exists but not needed
+        const char* map =
+            "floor:0\n"
+            ".....G\n"
+            ".L....\n"
+            "......\n"
+            "floor:1\n"
+            "......\n"
+            ".L....\n"
+            "......\n";
+        
+        InitMultiFloorGridFromAscii(map, 6, 6);
+        
+        startPos = (Point){0, 0, 0};  // Start floor 0
+        goalPos = (Point){5, 0, 0};   // Goal floor 0
+        RunAStar();
+        
+        // Path should exist
+        expect(pathLength > 0);
+        
+        // All path points should be on z=0
+        int allOnFloor0 = 1;
+        for (int i = 0; i < pathLength; i++) {
+            if (path[i].z != 0) allOnFloor0 = 0;
+        }
+        expect(allOnFloor0 == 1);
+    }
+    
+    it("should not find path when ladder only on one floor") {
+        // Ladder on floor 0 but not floor 1 - no connection
+        const char* map =
+            "floor:0\n"
+            "......\n"
+            ".L....\n"
+            "......\n"
+            "floor:1\n"
+            ".....G\n"
+            "......\n"
+            "......\n";
+        
+        InitMultiFloorGridFromAscii(map, 6, 6);
+        
+        startPos = (Point){0, 0, 0};  // Start floor 0
+        goalPos = (Point){5, 0, 1};   // Goal floor 1
+        RunAStar();
+        
+        // No path should exist - can't reach floor 1
+        expect(pathLength == 0);
+    }
+    
+    it("should choose closer ladder when multiple exist") {
+        // Two ladders - start near left, goal near right ladder
+        // Make the right ladder clearly closer to goal
+        const char* map =
+            "floor:0\n"
+            "...........\n"
+            ".L.......L.\n"
+            "...........\n"
+            "floor:1\n"
+            "..........G\n"
+            ".L.......L.\n"
+            "...........\n";
+        
+        InitMultiFloorGridFromAscii(map, 11, 11);
+        
+        startPos = (Point){5, 1, 0};  // Start floor 0, middle (between ladders)
+        goalPos = (Point){10, 0, 1};  // Goal floor 1, far right (near right ladder)
+        RunAStar();
+        
+        // Path should exist
+        expect(pathLength > 0);
+        
+        // Path should use the right ladder (at x=9) not left ladder (at x=1)
+        // Find the z-transition point
+        int usedRightLadder = 0;
+        for (int i = 0; i < pathLength - 1; i++) {
+            if (path[i].z != path[i+1].z) {
+                // Found z-transition
+                if (path[i].x == 9 || path[i+1].x == 9) {
+                    usedRightLadder = 1;
+                }
+            }
+        }
+        expect(usedRightLadder == 1);
+    }
+    
+    it("should find path when ladder destination is blocked but alternate route exists") {
+        // Ladder leads to blocked area but can go around
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            ".L......\n"
+            "........\n"
+            "floor:1\n"
+            "###....G\n"
+            "#L......\n"
+            "........\n";
+        
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        
+        startPos = (Point){0, 2, 0};  // Start floor 0, bottom left
+        goalPos = (Point){7, 0, 1};   // Goal floor 1, top right
+        RunAStar();
+        
+        // Path should exist - can climb ladder then go around walls
+        expect(pathLength > 0);
+    }
+}
+
+// ============== HPA* LADDER / Z-LEVEL TESTS ==============
+
+describe(hpa_ladder_pathfinding) {
+    it("should build ladder links when entrances are built") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+
+        // Should have detected 1 ladder link
+        expect(ladderLinkCount == 1);
+
+        // Ladder link should be at position (7, 6)
+        expect(ladderLinks[0].x == 7);
+        expect(ladderLinks[0].y == 6);
+        expect(ladderLinks[0].zLow == 0);
+        expect(ladderLinks[0].zHigh == 1);
+    }
+
+    it("should connect ladder entrances in graph") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        // Should have edges connecting the ladder entrances
+        // The ladder link creates 2 edges (bidirectional)
+        int ladderEdges = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = graphEdges[i].from;
+            int e2 = graphEdges[i].to;
+            // Check if this edge crosses z-levels
+            if (entrances[e1].z != entrances[e2].z) {
+                ladderEdges++;
+            }
+        }
+        expect(ladderEdges == 2);  // 2 edges for bidirectional connection
+    }
+
+    it("should find HPA* path using ladder to reach upper floor") {
+        // Grid with multiple chunks to ensure HPA* uses the abstract graph
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        startPos = (Point){0, 0, 0};   // Start floor 0, top-left
+        goalPos = (Point){15, 15, 1};  // Goal floor 1, bottom-right
+        RunHPAStar();
+
+        // Path should exist
+        expect(pathLength > 0);
+
+        // Path should end at goal z-level (z=1)
+        expect(path[0].z == 1);
+
+        // Path should start at start z-level (z=0)
+        expect(path[pathLength - 1].z == 0);
+    }
+
+    it("HPA* should produce same z-level transitions as A*") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        startPos = (Point){0, 0, 0};   // Start floor 0
+        goalPos = (Point){15, 15, 1};  // Goal floor 1
+
+        // Run A* first
+        RunAStar();
+        int astarPathLen = pathLength;
+
+        // Count z-transitions in A* path
+        int astarZTransitions = 0;
+        for (int i = 0; i < pathLength - 1; i++) {
+            if (path[i].z != path[i+1].z) astarZTransitions++;
+        }
+
+        // Run HPA*
+        RunHPAStar();
+        int hpaPathLen = pathLength;
+
+        // Count z-transitions in HPA* path
+        int hpaZTransitions = 0;
+        for (int i = 0; i < pathLength - 1; i++) {
+            if (path[i].z != path[i+1].z) hpaZTransitions++;
+        }
+
+        // Both should find a path
+        expect(astarPathLen > 0);
+        expect(hpaPathLen > 0);
+
+        // Both should have exactly 1 z-transition (climb ladder once)
+        expect(astarZTransitions == 1);
+        expect(hpaZTransitions == 1);
     }
 }
 
@@ -1478,5 +1884,7 @@ int main(int argc, char* argv[]) {
     test(maze_refinement_failure);
     test(diagonal_corner_cutting);
     test(string_pulling);
+    test(ladder_pathfinding);
+    test(hpa_ladder_pathfinding);
     return summary();
 }

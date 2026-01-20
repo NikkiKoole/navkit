@@ -15,7 +15,7 @@ typedef struct {
 void InitGrid(void) {
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            grid[y][x] = CELL_WALKABLE;
+            grid[0][y][x] = CELL_WALKABLE;
 }
 
 void GenerateSparse(float density) {
@@ -23,7 +23,7 @@ void GenerateSparse(float density) {
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
-                grid[y][x] = CELL_WALL;
+                grid[0][y][x] = CELL_WALL;
     needsRebuild = true;
 }
 
@@ -43,7 +43,7 @@ static void CarveRoom(int x, int y, int w, int h) {
     for (int py = y; py < y + h && py < gridHeight; py++) {
         for (int px = x; px < x + w && px < gridWidth; px++) {
             if (px >= 0 && py >= 0) {
-                grid[py][px] = CELL_WALKABLE;
+                grid[0][py][px] = CELL_WALKABLE;
             }
         }
     }
@@ -58,14 +58,14 @@ static void CarveCorridor(int x1, int y1, int x2, int y2) {
         while (x != x2) {
             for (int w = 0; w < CORRIDOR_WIDTH; w++) {
                 if (y + w >= 0 && y + w < gridHeight && x >= 0 && x < gridWidth)
-                    grid[y + w][x] = CELL_WALKABLE;
+                    grid[0][y + w][x] = CELL_WALKABLE;
             }
             x += (x2 > x) ? 1 : -1;
         }
         while (y != y2) {
             for (int w = 0; w < CORRIDOR_WIDTH; w++) {
                 if (y >= 0 && y < gridHeight && x + w >= 0 && x + w < gridWidth)
-                    grid[y][x + w] = CELL_WALKABLE;
+                    grid[0][y][x + w] = CELL_WALKABLE;
             }
             y += (y2 > y) ? 1 : -1;
         }
@@ -74,14 +74,14 @@ static void CarveCorridor(int x1, int y1, int x2, int y2) {
         while (y != y2) {
             for (int w = 0; w < CORRIDOR_WIDTH; w++) {
                 if (y >= 0 && y < gridHeight && x + w >= 0 && x + w < gridWidth)
-                    grid[y][x + w] = CELL_WALKABLE;
+                    grid[0][y][x + w] = CELL_WALKABLE;
             }
             y += (y2 > y) ? 1 : -1;
         }
         while (x != x2) {
             for (int w = 0; w < CORRIDOR_WIDTH; w++) {
                 if (y + w >= 0 && y + w < gridHeight && x >= 0 && x < gridWidth)
-                    grid[y + w][x] = CELL_WALKABLE;
+                    grid[0][y + w][x] = CELL_WALKABLE;
             }
             x += (x2 > x) ? 1 : -1;
         }
@@ -107,7 +107,7 @@ void GenerateDungeonRooms(void) {
     // Fill with walls
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            grid[y][x] = CELL_WALL;
+            grid[0][y][x] = CELL_WALL;
     
     dungeonRoomCount = 0;
     
@@ -178,9 +178,9 @@ void GenerateCaves(void) {
         for (int x = 0; x < gridWidth; x++) {
             // Border is always wall
             if (x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1) {
-                grid[y][x] = CELL_WALL;
+                grid[0][y][x] = CELL_WALL;
             } else {
-                grid[y][x] = (GetRandomValue(0, 100) < 45) ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (GetRandomValue(0, 100) < 45) ? CELL_WALL : CELL_WALKABLE;
             }
         }
     }
@@ -196,7 +196,7 @@ void GenerateCaves(void) {
                 int walls = 0;
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
-                        if (grid[y + dy][x + dx] == CELL_WALL) walls++;
+                        if (grid[0][y + dy][x + dx] == CELL_WALL) walls++;
                     }
                 }
                 // 4-5 rule: become wall if >= 5 neighbors are walls
@@ -206,7 +206,7 @@ void GenerateCaves(void) {
         // Copy back
         for (int y = 1; y < gridHeight - 1; y++) {
             for (int x = 1; x < gridWidth - 1; x++) {
-                grid[y][x] = temp[y * gridWidth + x];
+                grid[0][y][x] = temp[y * gridWidth + x];
             }
         }
     }
@@ -221,7 +221,7 @@ void GenerateCaves(void) {
             for (int dx = -r; dx <= r; dx++) {
                 int nx = cx + dx, ny = cy + dy;
                 if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
-                    grid[ny][nx] = CELL_WALKABLE;
+                    grid[0][ny][nx] = CELL_WALKABLE;
                 }
             }
         }
@@ -238,7 +238,7 @@ void GenerateDrunkard(void) {
     // Fill with walls
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            grid[y][x] = CELL_WALL;
+            grid[0][y][x] = CELL_WALL;
     
     // Start from center
     int x = gridWidth / 2;
@@ -252,8 +252,8 @@ void GenerateDrunkard(void) {
     
     for (int step = 0; step < maxSteps && floorCount < targetFloor; step++) {
         // Carve current position
-        if (grid[y][x] == CELL_WALL) {
-            grid[y][x] = CELL_WALKABLE;
+        if (grid[0][y][x] == CELL_WALL) {
+            grid[0][y][x] = CELL_WALKABLE;
             floorCount++;
         }
         
@@ -289,7 +289,7 @@ static void CarveTunnelRoom(TunnelRoom* room) {
     for (int y = room->y; y < room->y + room->h; y++) {
         for (int x = room->x; x < room->x + room->w; x++) {
             if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
-                grid[y][x] = CELL_WALKABLE;
+                grid[0][y][x] = CELL_WALKABLE;
             }
         }
     }
@@ -300,7 +300,7 @@ static void CarveHorizontalTunnel(int x1, int x2, int y) {
     int maxX = x1 > x2 ? x1 : x2;
     for (int x = minX; x <= maxX; x++) {
         if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
-            grid[y][x] = CELL_WALKABLE;
+            grid[0][y][x] = CELL_WALKABLE;
         }
     }
 }
@@ -310,7 +310,7 @@ static void CarveVerticalTunnel(int y1, int y2, int x) {
     int maxY = y1 > y2 ? y1 : y2;
     for (int y = minY; y <= maxY; y++) {
         if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
-            grid[y][x] = CELL_WALKABLE;
+            grid[0][y][x] = CELL_WALKABLE;
         }
     }
 }
@@ -319,7 +319,7 @@ void GenerateTunneler(void) {
     // Fill with walls
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            grid[y][x] = CELL_WALL;
+            grid[0][y][x] = CELL_WALL;
     
     // Scale room count based on world size
     // Roughly 1 room per 150 tiles, with min 5 and max 100
@@ -402,7 +402,7 @@ void GenerateMixMax(void) {
         for (int y = ry; y < ry + h && y < gridHeight - 1; y++) {
             for (int x = rx; x < rx + w && x < gridWidth - 1; x++) {
                 if (x > 0 && y > 0) {
-                    grid[y][x] = CELL_WALKABLE;
+                    grid[0][y][x] = CELL_WALKABLE;
                 }
             }
         }
@@ -446,7 +446,7 @@ void GenerateConcentricMaze(void) {
         for (int x = left; x <= right; x++) {
             if (gapSide == 3 && x >= gapStart && x < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && top + t < gridHeight; t++) {
-                grid[top + t][x] = CELL_WALL;
+                grid[0][top + t][x] = CELL_WALL;
             }
         }
         
@@ -457,7 +457,7 @@ void GenerateConcentricMaze(void) {
         for (int x = left; x <= right; x++) {
             if (gapSide == 1 && x >= gapStart && x < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && bottom - t >= 0; t++) {
-                grid[bottom - t][x] = CELL_WALL;
+                grid[0][bottom - t][x] = CELL_WALL;
             }
         }
         
@@ -468,7 +468,7 @@ void GenerateConcentricMaze(void) {
         for (int y = top; y <= bottom; y++) {
             if (gapSide == 2 && y >= gapStart && y < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && left + t < gridWidth; t++) {
-                grid[y][left + t] = CELL_WALL;
+                grid[0][y][left + t] = CELL_WALL;
             }
         }
         
@@ -479,7 +479,7 @@ void GenerateConcentricMaze(void) {
         for (int y = top; y <= bottom; y++) {
             if (gapSide == 0 && y >= gapStart && y < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && right - t >= 0; t++) {
-                grid[y][right - t] = CELL_WALL;
+                grid[0][y][right - t] = CELL_WALL;
             }
         }
     }
@@ -552,7 +552,7 @@ void GeneratePerlin(void) {
                 density = 0.02f;  // light debris in city
             }
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
-                grid[y][x] = CELL_WALL;
+                grid[0][y][x] = CELL_WALL;
         }
     }
 
@@ -571,8 +571,8 @@ void GeneratePerlin(void) {
             for (int x = wx; x < wx + wallLen && x < gridWidth; x++) {
                 float n2 = OctavePerlin(x * scale, wy * scale, 4, 0.5f);
                 if (n2 > 0.48f) {
-                    grid[wy][x] = CELL_WALL;
-                    if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
+                    grid[0][wy][x] = CELL_WALL;
+                    if (wy + 1 < gridHeight) grid[0][wy + 1][x] = CELL_WALL;
                 }
             }
             wx += wallLen + gapSize;
@@ -593,8 +593,8 @@ void GeneratePerlin(void) {
             for (int y = wy; y < wy + wallLen && y < gridHeight; y++) {
                 float n2 = OctavePerlin(wx * scale, y * scale, 4, 0.5f);
                 if (n2 > 0.48f) {
-                    grid[y][wx] = CELL_WALL;
-                    if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
+                    grid[0][y][wx] = CELL_WALL;
+                    if (wx + 1 < gridWidth) grid[0][y][wx + 1] = CELL_WALL;
                 }
             }
             wy += wallLen + gapSize;
@@ -611,8 +611,8 @@ void GenerateCity(void) {
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
             for (int x = wx; x < wx + gapPos && x < gridWidth; x++) {
-                grid[wy][x] = CELL_WALL;
-                if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
+                grid[0][wy][x] = CELL_WALL;
+                if (wy + 1 < gridHeight) grid[0][wy + 1][x] = CELL_WALL;
             }
             wx += gapPos + gapSize;
         }
@@ -622,16 +622,16 @@ void GenerateCity(void) {
             int gapPos = GetRandomValue(6, 20);
             int gapSize = GetRandomValue(3, 6);
             for (int y = wy; y < wy + gapPos && y < gridHeight; y++) {
-                grid[y][wx] = CELL_WALL;
-                if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
+                grid[0][y][wx] = CELL_WALL;
+                if (wx + 1 < gridWidth) grid[0][y][wx + 1] = CELL_WALL;
             }
             wy += gapPos + gapSize;
         }
     }
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            if (grid[y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 5)
-                grid[y][x] = CELL_WALL;
+            if (grid[0][y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 5)
+                grid[0][y][x] = CELL_WALL;
     needsRebuild = true;
 }
 
@@ -654,8 +654,8 @@ void GenerateMixed(void) {
             for (int x = wx; x < wx + gapPos && x < gridWidth; x++) {
                 int zx2 = x / zoneSize;
                 if (zx2 < 16 && zones[zy][zx2] == 1) {
-                    grid[wy][x] = CELL_WALL;
-                    if (wy + 1 < gridHeight) grid[wy + 1][x] = CELL_WALL;
+                    grid[0][wy][x] = CELL_WALL;
+                    if (wy + 1 < gridHeight) grid[0][wy + 1][x] = CELL_WALL;
                 }
             }
             wx += gapPos + gapSize;
@@ -670,8 +670,8 @@ void GenerateMixed(void) {
             for (int y = wy; y < wy + gapPos && y < gridHeight; y++) {
                 int zy2 = y / zoneSize;
                 if (zy2 < 16 && zones[zy2][zx] == 1) {
-                    grid[y][wx] = CELL_WALL;
-                    if (wx + 1 < gridWidth) grid[y][wx + 1] = CELL_WALL;
+                    grid[0][y][wx] = CELL_WALL;
+                    if (wx + 1 < gridWidth) grid[0][y][wx + 1] = CELL_WALL;
                 }
             }
             wy += gapPos + gapSize;
@@ -679,11 +679,11 @@ void GenerateMixed(void) {
     }
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[y][x] == CELL_WALKABLE) {
+            if (grid[0][y][x] == CELL_WALKABLE) {
                 int zx = x / zoneSize, zy = y / zoneSize;
                 bool isCity = (zx < 16 && zy < 16 && zones[zy][zx] == 1);
                 int chance = isCity ? 3 : 15;
-                if (GetRandomValue(0, 100) < chance) grid[y][x] = CELL_WALL;
+                if (GetRandomValue(0, 100) < chance) grid[0][y][x] = CELL_WALL;
             }
         }
     }

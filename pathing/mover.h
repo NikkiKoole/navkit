@@ -26,7 +26,7 @@
 
 // Mover struct (no Color - that's raylib specific, for rendering only)
 typedef struct {
-    float x, y;
+    float x, y, z;              // z for future multi-level support (always 0 for now)
     Point goal;
     Point path[MAX_MOVER_PATH];
     int pathLength;
@@ -38,7 +38,7 @@ typedef struct {
     // Knot detection: time spent near current waypoint without reaching it
     float timeNearWaypoint;
     // Stuck detection: track if mover is making progress
-    float lastX, lastY;         // Position at last progress check
+    float lastX, lastY, lastZ;  // Position at last progress check
     float timeWithoutProgress;  // Time since significant movement
 } Mover;
 

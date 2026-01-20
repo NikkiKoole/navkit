@@ -114,13 +114,13 @@ void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            if (grid[y][x] == CELL_WALKABLE) {
+            if (grid[0][y][x] == CELL_WALKABLE) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawTexturePro(texGrass, src, dest, (Vector2){0,0}, 0, WHITE);
             }
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            if (grid[y][x] == CELL_WALL) {
+            if (grid[0][y][x] == CELL_WALL) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawTexturePro(texWall, src, dest, (Vector2){0,0}, 0, WHITE);
             }
@@ -214,8 +214,8 @@ void SpawnAgents(int count) {
     }
 
     // Clear global path
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 
     double totalTime = (GetTime() - startTime) * 1000.0;
@@ -248,8 +248,8 @@ void RepathAgents(void) {
     }
 
     // Clear global path
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 
     double totalTime = (GetTime() - startTime) * 1000.0;
@@ -330,8 +330,8 @@ void SpawnMoversDemo(int count) {
     }
 
     // Clear global state
-    startPos = (Point){-1, -1};
-    goalPos = (Point){-1, -1};
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
     pathLength = 0;
 
     double elapsed = (GetTime() - startTime) * 1000.0;
@@ -477,8 +477,8 @@ void HandleInput(void) {
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
             switch (currentTool) {
                 case 0:  // Draw Walls
-                    if (grid[y][x] != CELL_WALL) {
-                        grid[y][x] = CELL_WALL;
+                    if (grid[0][y][x] != CELL_WALL) {
+                        grid[0][y][x] = CELL_WALL;
                         MarkChunkDirty(x, y);
                         // Mark movers whose path crosses this cell for replanning
                         for (int i = 0; i < moverCount; i++) {
@@ -494,20 +494,20 @@ void HandleInput(void) {
                     }
                     break;
                 case 1:  // Erase Walls
-                    if (grid[y][x] != CELL_WALKABLE) {
-                        grid[y][x] = CELL_WALKABLE;
+                    if (grid[0][y][x] != CELL_WALKABLE) {
+                        grid[0][y][x] = CELL_WALKABLE;
                         MarkChunkDirty(x, y);
                     }
                     break;
                 case 2:  // Set Start
-                    if (grid[y][x] == CELL_WALKABLE) {
-                        startPos = (Point){x, y};
+                    if (grid[0][y][x] == CELL_WALKABLE) {
+                        startPos = (Point){x, y, 0};
                         pathLength = 0;
                     }
                     break;
                 case 3:  // Set Goal
-                    if (grid[y][x] == CELL_WALKABLE) {
-                        goalPos = (Point){x, y};
+                    if (grid[0][y][x] == CELL_WALKABLE) {
+                        goalPos = (Point){x, y, 0};
                         pathLength = 0;
                     }
                     break;
@@ -519,8 +519,8 @@ void HandleInput(void) {
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[y][x] != CELL_WALKABLE) {
-            grid[y][x] = CELL_WALKABLE;
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[0][y][x] != CELL_WALKABLE) {
+            grid[0][y][x] = CELL_WALKABLE;
             MarkChunkDirty(x, y);
         }
     }
@@ -701,7 +701,7 @@ void DrawUI(void) {
             int idx = 0;
             for (int row = 0; row < gridHeight; row++) {
                 for (int col = 0; col < gridWidth; col++) {
-                    buffer[idx++] = (grid[row][col] == CELL_WALL) ? '#' : '.';
+                    buffer[idx++] = (grid[0][row][col] == CELL_WALL) ? '#' : '.';
                 }
                 buffer[idx++] = '\n';
             }

@@ -6,11 +6,13 @@
 // Maximum grid dimensions (for static array allocation)
 #define MAX_GRID_WIDTH  (128*4)
 #define MAX_GRID_HEIGHT (128*4)
+#define MAX_GRID_DEPTH  2           // Z-levels (2 for ladder testing)
 #define DEFAULT_CHUNK_SIZE  16
 
 // Runtime grid and chunk dimensions
 extern int gridWidth;
 extern int gridHeight;
+extern int gridDepth;               // Z-levels at runtime
 extern int chunkWidth;
 extern int chunkHeight;
 extern int chunksX;
@@ -20,9 +22,9 @@ extern int chunksY;
 #define MAX_CHUNKS_X (MAX_GRID_WIDTH / 8)   // minimum chunk size of 8
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
-typedef enum { CELL_WALKABLE, CELL_WALL } CellType;
+typedef enum { CELL_WALKABLE, CELL_WALL, CELL_LADDER } CellType;
 
-extern CellType grid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern bool needsRebuild;      // Generic flag (legacy)
 extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
 extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag
@@ -42,5 +44,11 @@ int InitGridFromAscii(const char* ascii);
 // Initialize grid from ASCII map with custom chunk size
 // If chunkW/chunkH are 0, uses grid dimensions (1 chunk = whole grid)
 int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH);
+
+// Initialize multi-floor grid from ASCII map
+// Format: "floor:0\n...\nfloor:1\n..." 
+// '.' = walkable, '#' = wall, 'L' = ladder, newlines separate rows
+// Returns 1 on success, 0 on failure
+int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH);
 
 #endif // GRID_H
