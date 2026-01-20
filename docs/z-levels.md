@@ -22,6 +22,16 @@
   - 3D heuristic includes z-distance
 - All 6 ladder tests pass
 
+**Phase 3: HPA* Z-Level Support (Completed)**
+- Added `LadderLink` structure for cross-level connections
+- Updated chunk functions (`GetChunk`, `GetChunkBounds`) to include z in chunk IDs
+- Updated `BuildEntrances()` to scan all z-levels and detect ladders
+- Updated `BuildGraph()` to build per-level graphs with ladder link edges
+- Updated `AStarChunk()` and `AStarChunkMultiTarget()` with z parameter
+- Updated `ReconstructLocalPathWithBounds()` to operate on correct z-level
+- Updated `RunHPAStar()` refinement phase to handle z-level transitions
+- All 4 HPA* ladder tests pass (47 total tests, 76 assertions)
+
 ### What Works Now
 
 ```
@@ -31,13 +41,13 @@ S.....           ......G
 ......           ......
 ```
 
-A* finds path: S → ladder → climb → walk to G
+Both A* and HPA* find path: S → ladder → climb → walk to G
 
 ### What Doesn't Work Yet
 
-- **HPA*** only operates on z=0, ignores ladders
-- **Movers** don't handle z-coordinate
+- **Movers** don't handle z-coordinate (always use z=0)
 - **Demo** can't visualize multi-floor maps
+- **RunAStar** performance is slow (O(n³) best-node search across all z-levels)
 
 ---
 
@@ -113,33 +123,84 @@ int ladderLinkCount;
 
 ## Implementation Plan
 
-### Step 1: Add LadderLink Structure
-- Add to pathfinding.h
-- `MAX_LADDERS` constant (1024?)
+### ✅ Step 1: Add LadderLink Structure (DONE)
+- Added to pathfinding.h
+- `MAX_LADDERS` = 1024
 - `ladderLinks[]` array and `ladderLinkCount`
 
-### Step 2: Update BuildEntrances()
-- Keep existing horizontal border scan (but track z-level)
-- Add ladder detection pass:
-  - For each (x, y, z) where grid[z][y][x] == CELL_LADDER && grid[z+1][y][x] == CELL_LADDER
-  - Create/find entrance at (x, y, z)
-  - Create/find entrance at (x, y, z+1)
-  - Create LadderLink
+### ✅ Step 2: Update BuildEntrances() (DONE)
+- Scans all z-levels for chunk border entrances
+- Detects ladder pairs and creates LadderLinks
+- Creates ladder entrances on both z-levels
 
-### Step 3: Update BuildGraph()
-- When building edges, consider all entrances in a chunk (including ladder entrances)
-- Ladder entrances connect to other entrances in their chunk via local A*
-- The ladder-to-ladder edge is added directly (cost = climb cost)
+### ✅ Step 3: Update BuildGraph() (DONE)
+- Iterates over all z-level chunks
+- Connects entrances within same z-level via local A*
+- Adds ladder link edges for cross-level connections
 
-### Step 4: Update RunHPAStar()
-- Should mostly work as-is since it follows graph edges
-- May need to handle z in refinement phase
+### ✅ Step 4: Update RunHPAStar() (DONE)
+- Works with z-level aware chunk functions
+- Refinement handles z-level transitions correctly
 
-### Step 5: Tests
-- HPA* finds path across z-levels
-- HPA* stays on one level when optimal
-- HPA* handles multiple ladders
-- Performance: path on single level should be same speed as before
+### ✅ Step 5: Tests (DONE)
+- HPA* finds path across z-levels ✓
+- HPA* produces same z-level transitions as A* ✓
+- Ladder links are built correctly ✓
+- Graph edges include ladder connections ✓
+
+---
+
+## Next Steps
+
+### Phase 4: Mover Z-Level Support
+The mover system currently ignores z-coordinates. To fully support multi-floor navigation:
+
+1. **Update Mover struct usage**
+   - Movers already have `z` field but it's unused
+   - Track mover's current z-level during movement
+   - Update `ProcessMoverRepaths()` to use mover's z in `startPos`
+
+2. **Update movement code**
+   - `UpdateMovers()` uses `grid[0][y][x]` - should use mover's z
+   - `HasLineOfSight()` uses `grid[0][y][x]` - should use z parameter
+   - Handle ladder climbing animation/transition
+
+3. **Handle z-level transitions in path following**
+   - Detect when next waypoint is on different z
+   - Trigger ladder climb behavior
+   - Update mover's z after climb completes
+
+### Phase 5: Demo Visualization
+The demo can't show multi-floor maps:
+
+1. **Layer switching UI**
+   - Keyboard shortcuts to view different z-levels
+   - Indicator showing current viewed level
+
+2. **Ladder visualization**
+   - Draw ladder cells distinctly
+   - Show connections between levels
+
+3. **Multi-floor path display**
+   - Different colors for path segments on different z-levels
+   - Visual indicator where path changes z
+
+### Phase 6: Performance Optimization
+`RunAStar()` is slow with multiple z-levels due to O(n³) best-node search:
+
+1. **Add priority queue for 3D A***
+   - Replace linear scan with heap
+   - Currently iterates all `gridDepth * gridHeight * gridWidth` nodes each step
+
+2. **Consider lazy initialization**
+   - Only initialize nodeData for z-levels actually used
+   - Most paths stay on one level
+
+### Future Considerations
+
+- **One-way transitions**: Drop-down holes, up-only jumps (add direction to LadderLink)
+- **Multi-level ladders**: Elevators going z=0 to z=5 directly
+- **Incremental updates for ladders**: Currently ladder changes require full rebuild
 
 ---
 
