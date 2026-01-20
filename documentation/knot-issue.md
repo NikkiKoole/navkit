@@ -1,22 +1,37 @@
 # Mover Knot Issue
 
-## Problem
-When many movers converge on a chokepoint or shared waypoint, they can form "knots" - clusters of movers stuck orbiting a waypoint without ever reaching it. Avoidance pushes them away from each other, but they all need to hit the same waypoint center.
+## Status: RESOLVED
 
-## Cause
-Current waypoint arrival check requires movers to get within `m->speed * dt` (~1.6 pixels) of the waypoint center. When avoidance is active, movers can orbit the waypoint indefinitely as the avoidance force keeps pushing them away from neighbors who are also trying to reach the same point.
+The knot issue has been fixed using a combination of Option 2 + Option 3.
 
-## Potential Solutions
+## Problem (Historical)
 
-1. **Larger waypoint threshold** - increase arrival distance to half a cell (16 pixels) so movers don't need exact center hits
+When many movers converge on a chokepoint or shared waypoint, they formed "knots" - clusters of movers stuck orbiting a waypoint without ever reaching it. Avoidance pushed them away from each other, but they all needed to hit the same waypoint center.
 
-2. **Reduce avoidance near waypoints** - when very close to a waypoint, prioritize reaching it over avoiding neighbors
+## Solution Implemented
 
-3. **Pass-through detection** - instead of distance check, detect when mover has passed the waypoint relative to approach direction
+### Knot Fix (toggleable via `useKnotFix`)
 
-## Status
-To be addressed later. The directional avoidance system is working well otherwise.
+1. **Larger arrival radius without snap (Option 2)**: Movers advance to next waypoint when within 16px instead of ~1.67px, without snapping position. This lets them smoothly redirect.
 
+2. **Reduced avoidance near waypoints (Option 3)**: Within 32px of the current waypoint, avoidance strength fades out quadratically. At 16px it's 25% strength, at waypoint it's 0%. This lets movers push through to reach waypoints.
 
-so we tried the larger waypoint treshold, the fis  visible clue what happend , agents no jump a few pixels, whn reachin the waypoint. oesnt look attractive, might be easy to fix.
-we dont know yet
+### Related Fixes
+
+- **Wall Repulsion**: Pushes movers away from walls before collision
+- **Wall Sliding**: Slides along walls instead of penetrating
+- **Stuck Detection**: Tracks movers not making progress, triggers repath after 2s
+
+## Code Locations
+
+- `mover.h`: `KNOT_FIX_ARRIVAL_RADIUS`, `useKnotFix`
+- `mover.c`: Waypoint arrival check (~line 630), avoidance scaling (~line 670)
+- `demo.c`: UI toggles in Movers > Walls section
+
+## Visualization
+
+Enable "Show Knots" in demo UI to see mover waypoint proximity:
+- Green: moving normally
+- Yellow: near waypoint, still progressing
+- Orange: getting stuck (>0.75s)
+- Red: stuck (>1.5s)

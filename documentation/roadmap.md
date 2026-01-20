@@ -72,14 +72,15 @@ These must be implemented in order - each layer builds on the previous.
 - [x] **Wall representation** - line segments (Wall struct)
 - [x] **Obstacle shapes** - circles (CircleObstacle struct)
 - [ ] **Spatial queries** - "what obstacles are near me?"
-- [ ] **Ray casting** - line-of-sight, wall detection ahead
+- [x] **Ray casting** - line-of-sight, wall detection ahead
 - [x] **Obstacle avoidance steering** - feeler rays or force fields
-- [ ] **Wall sliding** - slide along walls rather than stopping
+- [x] **Wall sliding** - slide along walls rather than stopping
+- [x] **Wall repulsion** - push movers away from walls
 
 ### Layer 3: Pathfinding Integration
 - [x] **Path following behavior** - smoothly traverse waypoints
-- [ ] **Path smoothing** - string-pulling, remove unnecessary waypoints
-- [ ] **Dynamic replanning** - request new path when blocked
+- [x] **Path smoothing** - string-pulling, remove unnecessary waypoints
+- [x] **Dynamic replanning** - request new path when blocked (LOS check)
 
 ### Layer 4: Social Navigation
 - [ ] **Queuing** - orderly lines at bottlenecks
@@ -104,6 +105,13 @@ See [social-navigation.md](social-navigation.md) for detailed design.
 - More memory efficient for large open spaces
 - Better for 3D or irregular terrain
 - Pairs well with HPA* for hierarchical queries
+
+## Mover Collision Avoidance — DONE
+Implemented in `pathing/mover.c`:
+- Boids-style separation (spatial grid for neighbor lookup)
+- Wall repulsion and wall sliding
+- Knot fix (larger waypoint arrival + reduced avoidance near waypoints)
+- Stuck detection with auto-repath
 
 ## ~~ORCA/RVO~~ — REMOVED
 We experimented with ORCA but removed it because:
