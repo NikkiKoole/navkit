@@ -62,19 +62,13 @@ The formula `z * chunksPerLevel + cy * chunksX + cx` appears in:
 
 ---
 
-## 5. Magic Number 999999
+## 5. Magic Number 999999 - FIXED
 
 **Location:** Throughout `pathfinding.c`
 
-Used as "infinity" for pathfinding costs:
-```c
-nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
-```
+~~Used as "infinity" for pathfinding costs~~
 
-**Suggestion:** Define a constant:
-```c
-#define COST_INFINITY 999999
-```
+**FIXED:** Added `#define COST_INF 999999` and replaced all occurrences.
 
 ---
 
@@ -149,19 +143,13 @@ All three do bounded single-z-level search with slight variations.
 
 ---
 
-## 10. Commented Debug Code
+## 10. Commented Debug Code - FIXED
 
 **Location:** Various
 
-There's `#if 0` blocks and commented-out debug logging:
-```c
-#if 0  // Temporarily disabled A* diagnostic
-    RunAStar();
-    ...
-#endif
-```
+~~There's `#if 0` blocks and commented-out debug logging~~
 
-**Suggestion:** Either remove or convert to proper debug flag that can be enabled.
+**FIXED:** Removed the `#if 0` diagnostic block in RunHPAStar (~35 lines of dead code).
 
 ---
 
@@ -179,9 +167,9 @@ There's `#if 0` blocks and commented-out debug logging:
 
 If tackling these, suggested order:
 
-1. **High:** #3 (inconsistent walkability) - potential bugs
-2. ~~**Medium:** #1 (duplicate functions) - confusion~~ FIXED
-3. **Medium:** #5 (magic numbers) - readability
-4. **Low:** Rest - optimizations or style preferences
+1. ~~**High:** #3 (inconsistent walkability)~~ - reviewed, not a bug (checking for wall is correct)
+2. ~~**Medium:** #1 (duplicate functions)~~ - FIXED
+3. ~~**Medium:** #5 (magic numbers)~~ - FIXED
+4. **Low:** #2, #4, #6, #7, #9 - reviewed, not worth the added complexity
 
 None of these are blocking issues - all tests pass and performance is good.

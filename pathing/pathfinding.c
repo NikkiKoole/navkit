@@ -2,6 +2,8 @@
 #include "../vendor/raylib.h"
 #include <stdlib.h>
 
+#define COST_INF 999999
+
 // State
 Entrance entrances[MAX_ENTRANCES];
 int entranceCount = 0;
@@ -497,7 +499,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
+            nodeData[sz][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
@@ -574,7 +576,7 @@ int AStarChunkMultiTarget(int sx, int sy, int sz,
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
+            nodeData[sz][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
@@ -1158,7 +1160,7 @@ void RunAStar(void) {
     for (int z = 0; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                nodeData[z][y][x] = (AStarNode){999999, 999999, -1, -1, -1, false, false};
+                nodeData[z][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, -1, false, false};
 
     int startZ = startPos.z;
     nodeData[startZ][startPos.y][startPos.x].g = 0;
@@ -1177,7 +1179,7 @@ void RunAStar(void) {
 
     while (1) {
         // Find best open node across all z-levels
-        int bestX = -1, bestY = -1, bestZ = -1, bestF = 999999;
+        int bestX = -1, bestY = -1, bestZ = -1, bestF = COST_INF;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
@@ -1330,7 +1332,7 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
-            nodeData[sz][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
+            nodeData[sz][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
 
@@ -1490,7 +1492,7 @@ void RunHPAStar(void) {
 
     // Initialize abstract nodes
     for (int i = 0; i < totalNodes; i++) {
-        abstractNodes[i] = (AbstractNode){999999, 999999, -1, false, false};
+        abstractNodes[i] = (AbstractNode){COST_INF, COST_INF, -1, false, false};
     }
 
     // Build temporary edges from start to entrances in its chunk
@@ -1752,42 +1754,6 @@ void RunHPAStar(void) {
     // TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d",
     //          lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
 
-    if (pathLength == 0) {
-        // No path found - this can happen legitimately when start/goal are disconnected
-        // TraceLog(LOG_WARNING, "HPA*: NO PATH from (%d,%d) to (%d,%d) - startEdges=%d, goalEdges=%d, startChunk=%d, goalChunk=%d",
-        //          startPos.x, startPos.y, goalPos.x, goalPos.y, startEdgeCount, goalEdgeCount, startChunk, goalChunk);
-
-#if 0  // Temporarily disabled A* diagnostic
-        // Diagnostic: try raw A* to see if it's a real disconnection or graph bug
-        RunAStar();
-        if (pathLength > 0) {
-            TraceLog(LOG_ERROR, "BUG: A* found path (%d steps) but HPA* didn't!", pathLength);
-            TraceLog(LOG_ERROR, "  Start chunk %d has %d entrances, goal chunk %d has %d entrances",
-                     startChunk, startEdgeCount, goalChunk, goalEdgeCount);
-            // Check if chunks share any entrances (adjacent chunks)
-            int sharedEntrances = 0;
-            for (int i = 0; i < entranceCount; i++) {
-                bool touchesStart = (entrances[i].chunk1 == startChunk || entrances[i].chunk2 == startChunk);
-                bool touchesGoal = (entrances[i].chunk1 == goalChunk || entrances[i].chunk2 == goalChunk);
-                if (touchesStart && touchesGoal) sharedEntrances++;
-            }
-            TraceLog(LOG_ERROR, "  Shared entrances between chunks: %d", sharedEntrances);
-            // Check connectivity: can we reach any goal entrance from any start entrance?
-            for (int si = 0; si < startEdgeCount && si < 3; si++) {
-                int startEnt = startEdgeTargets[si];
-                TraceLog(LOG_ERROR, "  Start entrance %d at (%d,%d), adjCount=%d",
-                         startEnt, entrances[startEnt].x, entrances[startEnt].y, adjListCount[startEnt]);
-            }
-            for (int gi = 0; gi < goalEdgeCount && gi < 3; gi++) {
-                int goalEnt = goalEdgeTargets[gi];
-                TraceLog(LOG_ERROR, "  Goal entrance %d at (%d,%d), adjCount=%d",
-                         goalEnt, entrances[goalEnt].x, entrances[goalEnt].y, adjListCount[goalEnt]);
-            }
-        } else {
-            TraceLog(LOG_INFO, "Confirmed: no path exists (A* also failed)");
-        }
-#endif  // Temporarily disabled A* diagnostic
-    }
 }
 
 // ============== JPS Implementation ==============
@@ -1867,7 +1833,7 @@ void RunJPS(void) {
     // Initialize node data
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            nodeData[0][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
+            nodeData[0][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
 
     nodeData[0][startPos.y][startPos.x].g = 0;
     if (use8Dir) {
@@ -1889,7 +1855,7 @@ void RunJPS(void) {
 
     while (1) {
         // Find node with lowest f
-        int bestX = -1, bestY = -1, bestF = 999999;
+        int bestX = -1, bestY = -1, bestF = COST_INF;
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
                 if (nodeData[0][y][x].open && nodeData[0][y][x].f < bestF) {
@@ -2205,7 +2171,7 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
     // Initialize node data for bounded region
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            nodeData[0][y][x] = (AStarNode){999999, 999999, -1, -1, 0, false, false};
+            nodeData[0][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
             heapPos[y][x] = -1;
         }
     }
