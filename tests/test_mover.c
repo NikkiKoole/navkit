@@ -16,7 +16,7 @@ describe(mover_initialization) {
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {7, 3, 0};
-        InitMover(m, 16.0f, 16.0f, goal, 100.0f);
+        InitMover(m, 16.0f, 16.0f, 0.0f, goal, 100.0f);
         moverCount = 1;
 
         expect(m->x == 16.0f);
@@ -37,7 +37,7 @@ describe(mover_initialization) {
         Mover* m = &movers[0];
         Point goal = {4, 0, 0};
         Point testPath[] = {{4, 0, 0}, {3, 0, 0}, {2, 0, 0}, {1, 0, 0}, {0, 0, 0}};
-        InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 5);
+        InitMoverWithPath(m, 16.0f, 16.0f, 0.0f, goal, 100.0f, testPath, 5);
         moverCount = 1;
 
         expect(m->pathLength == 5);
@@ -63,7 +63,7 @@ describe(fixed_timestep_movement) {
         Point testPath[] = {{0, 0, 0}, {4, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         float initialX = m->x;
@@ -89,7 +89,7 @@ describe(fixed_timestep_movement) {
         Point testPath[] = {{0, 0, 0}, {4, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         RunTicks(60);  // 1 second of simulation
@@ -99,7 +99,7 @@ describe(fixed_timestep_movement) {
         // Second run - same setup
         ClearMovers();
         m = &movers[0];
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         RunTicks(60);
@@ -123,7 +123,7 @@ describe(fixed_timestep_movement) {
         Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Run enough ticks to reach goal (1 cell = 32 pixels, speed = 100 px/s)
@@ -151,7 +151,7 @@ describe(wall_collision) {
         Point testPath[] = {{1, 1, 0}, {2, 2, 0}, {3, 3, 0}};
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 3);
         moverCount = 1;
 
         // Place wall on mover's current cell
@@ -182,7 +182,7 @@ describe(wall_collision) {
         Point testPath[] = {{1, 1, 0}, {3, 3, 0}};
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Place wall on mover's cell - now fully surrounded
@@ -215,7 +215,7 @@ describe(line_of_sight_repath) {
         Point testPath[] = {{0, 0, 0}, {6, 0, 0}};  // path[0]=start(current), path[1]=goal(target)
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Place wall between start and goal
@@ -270,7 +270,7 @@ describe(count_active_movers) {
             Mover* m = &movers[moverCount];
             Point goal = {3, 0, 0};
             Point testPath[] = {{3, 0, 0}, {0, 0, 0}};
-            InitMoverWithPath(m, 16.0f, 16.0f, goal, 100.0f, testPath, 2);
+            InitMoverWithPath(m, 16.0f, 16.0f, 0.0f, goal, 100.0f, testPath, 2);
             moverCount++;
         }
 
@@ -307,7 +307,7 @@ describe(endless_mode) {
         Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         // Run enough ticks to reach goal
@@ -351,7 +351,7 @@ describe(endless_mode) {
         Point testPath[] = {{0, 0, 0}, {1, 0, 0}, {2, 0, 0}};
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, testPath, 3);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 3);
         moverCount = 1;
 
         // Run many ticks - mover should keep getting new goals
@@ -384,7 +384,7 @@ describe(endless_mode) {
         Mover* m = &movers[0];
         Point goal = {1, 0, 0};
         Point testPath[] = {{0, 0, 0}, {1, 0, 0}};
-        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         RunTicks(300);
@@ -396,7 +396,7 @@ describe(endless_mode) {
         SeedRandom(99999);
         ClearMovers();
         m = &movers[0];
-        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, goal, 100.0f, testPath, 2);
+        InitMoverWithPath(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f, testPath, 2);
         moverCount = 1;
 
         RunTicks(300);
@@ -472,9 +472,9 @@ describe(refinement_after_wall_changes) {
             float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
 
             if (pathLength > 0) {
-                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+                InitMoverWithPath(m, x, y, 0.0f, goal, 100.0f, path, pathLength);
             } else {
-                InitMover(m, x, y, goal, 100.0f);
+                InitMover(m, x, y, 0.0f, goal, 100.0f);
             }
             moverCount++;
         }
@@ -554,7 +554,7 @@ describe(refinement_after_wall_changes) {
                 Mover* m = &movers[moverCount];
                 float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
                 float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
-                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+                InitMoverWithPath(m, x, y, 0.0f, goal, 100.0f, path, pathLength);
                 moverCount++;
             }
         }
@@ -670,7 +670,7 @@ describe(string_pulling_narrow_gaps) {
                 Mover* m = &movers[moverCount];
                 float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
                 float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
-                InitMoverWithPath(m, x, y, goal, 100.0f, path, pathLength);
+                InitMoverWithPath(m, x, y, 0.0f, goal, 100.0f, path, pathLength);
                 moverCount++;
             }
         }
@@ -761,7 +761,7 @@ describe(chunk_boundary_paths) {
         Mover* m = &movers[0];
         float x = startX * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = startY * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMoverWithPath(m, x, y, (Point){goalX, goalY, 0}, 100.0f, path, pathLength);
+        InitMoverWithPath(m, x, y, 0.0f, (Point){goalX, goalY, 0}, 100.0f, path, pathLength);
         moverCount = 1;
         
         // Run until mover reaches goal or times out
@@ -795,7 +795,7 @@ describe(path_truncation) {
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         
-        InitMoverWithPath(m, startX, startY, goal, 100.0f, longPath, longPathLen);
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, longPath, longPathLen);
         moverCount = 1;
         
         // Path should be truncated to MAX_MOVER_PATH

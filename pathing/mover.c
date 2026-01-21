@@ -490,9 +490,10 @@ void StringPullPath(Point* pathArr, int* pathLen) {
     *pathLen = resultLen;
 }
 
-void InitMover(Mover* m, float x, float y, Point goal, float speed) {
+void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->x = x;
     m->y = y;
+    m->z = z;
     m->goal = goal;
     m->speed = speed;
     m->active = true;
@@ -503,11 +504,12 @@ void InitMover(Mover* m, float x, float y, Point goal, float speed) {
     m->timeNearWaypoint = 0.0f;
     m->lastX = x;
     m->lastY = y;
+    m->lastZ = z;
     m->timeWithoutProgress = 0.0f;
 }
 
-void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Point* pathArr, int pathLen) {
-    InitMover(m, x, y, goal, speed);
+void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen) {
+    InitMover(m, x, y, z, goal, speed);
     m->pathLength = (pathLen > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLen;
     
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
@@ -543,7 +545,8 @@ static void AssignNewMoverGoal(Mover* m) {
 
     int currentX = (int)(m->x / CELL_SIZE);
     int currentY = (int)(m->y / CELL_SIZE);
-    Point start = {currentX, currentY, 0};
+    int currentZ = (int)m->z;
+    Point start = {currentX, currentY, currentZ};
 
     Point tempPath[MAX_PATH];
     int len = FindPathHPA(start, newGoal, tempPath, MAX_PATH);
@@ -594,16 +597,17 @@ void UpdateMovers(void) {
 
         int currentX = (int)(m->x / CELL_SIZE);
         int currentY = (int)(m->y / CELL_SIZE);
+        int currentZ = (int)m->z;
 
         // Check if mover is standing on a wall - push to nearest walkable
-        if (grid[0][currentY][currentX] == CELL_WALL) {
+        if (grid[currentZ][currentY][currentX] == CELL_WALL) {
             int dx[] = {0, 0, -1, 1};
             int dy[] = {-1, 1, 0, 0};
             bool pushed = false;
             for (int d = 0; d < 4; d++) {
                 int nx = currentX + dx[d];
                 int ny = currentY + dy[d];
-                if (IsCellWalkableAt(0, ny, nx)) {
+                if (IsCellWalkableAt(currentZ, ny, nx)) {
                     m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
                     pushed = true;
@@ -651,6 +655,8 @@ void UpdateMovers(void) {
                 m->x = tx;
                 m->y = ty;
             }
+            // Update z-level when reaching a waypoint
+            m->z = (float)target.z;
             m->pathIndex--;
             m->timeNearWaypoint = 0.0f;  // Reset on waypoint arrival
         } else {
@@ -800,12 +806,13 @@ void ProcessMoverRepaths(void) {
 
         int currentX = (int)(m->x / CELL_SIZE);
         int currentY = (int)(m->y / CELL_SIZE);
+        int currentZ = (int)m->z;
 
         if (hpaNeedsRebuild) {
             UpdateDirtyChunks();
         }
 
-        Point start = {currentX, currentY, 0};
+        Point start = {currentX, currentY, currentZ};
         Point tempPath[MAX_PATH];
         int len = FindPathHPA(start, m->goal, tempPath, MAX_PATH);
 

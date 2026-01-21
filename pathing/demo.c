@@ -354,6 +354,7 @@ void SpawnMoversDemo(int count) {
         // Initial position (center of start cell)
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float z = (float)start.z;
         float speed = MOVER_SPEED + GetRandomValue(-30, 30);
 
         // Compute initial path using HPA*
@@ -362,7 +363,7 @@ void SpawnMoversDemo(int count) {
         RunHPAStar();
 
         if (pathLength > 0) {
-            InitMoverWithPath(m, x, y, goal, speed, path, pathLength);
+            InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
 
             // Apply string pulling to smooth path
             if (useStringPulling && m->pathLength > 2) {
@@ -372,8 +373,8 @@ void SpawnMoversDemo(int count) {
 
         } else {
             // No path found, spawn anyway - endless mode will assign a new goal
-            InitMover(m, x, y, goal, speed);
-            TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d) to (%d,%d)", moverCount, start.x, start.y, goal.x, goal.y);
+            InitMover(m, x, y, z, goal, speed);
+            TraceLog(LOG_WARNING, "Mover %d spawned without path: (%d,%d,%d) to (%d,%d,%d)", moverCount, start.x, start.y, start.z, goal.x, goal.y, goal.z);
         }
 
         // Store render data (color)
@@ -392,10 +393,14 @@ void SpawnMoversDemo(int count) {
 
 void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
 
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
+        
+        // Only draw movers on the current z-level
+        if ((int)m->z != viewZ) continue;
 
         // Screen position
         float sx = offset.x + m->x * zoom;
@@ -455,17 +460,20 @@ void DrawMovers(void) {
         float moverSize = size * 0.5f;
         DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, moverColor);
 
-        // Optionally draw remaining path
+        // Optionally draw remaining path (only segments on current z-level)
         if (showMoverPaths && m->pathIndex >= 0) {
             Color color = moverRenderData[i].color;
-            // Line to next waypoint
+            // Line to next waypoint (if on same z)
             Point next = m->path[m->pathIndex];
-            float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-            float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-            DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, color);
+            if (next.z == viewZ) {
+                float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, color);
+            }
 
-            // Rest of path
+            // Rest of path (only segments where both points are on current z)
             for (int j = m->pathIndex; j > 0; j--) {
+                if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
                 float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
                 float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
                 float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;

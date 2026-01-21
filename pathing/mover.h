@@ -72,8 +72,8 @@ extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 
 // Core functions
-void InitMover(Mover* m, float x, float y, Point goal, float speed);
-void InitMoverWithPath(Mover* m, float x, float y, Point goal, float speed, Point* pathArr, int pathLen);
+void InitMover(Mover* m, float x, float y, float z, Point goal, float speed);
+void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen);
 void UpdateMovers(void);
 void ProcessMoverRepaths(void);
 void Tick(void);
