@@ -22,6 +22,14 @@ int nodesExplored = 0;
 double lastPathTime = 0.0;
 double hpaAbstractTime = 0.0;
 double hpaRefinementTime = 0.0;
+
+// Path stats for performance comparison (reset every 5 seconds)
+static int statsPathCount = 0;
+static double statsTotalTime = 0.0;
+static double statsLastReportTime = 0.0;
+int pathStatsCount = 0;          // Paths computed since last report
+double pathStatsTotalMs = 0.0;   // Total ms spent on paths since last report
+double pathStatsAvgMs = 0.0;     // Average ms per path
 Point startPos = {-1, -1, 0};
 Point goalPos = {-1, -1, 0};
 AStarNode nodeData[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -1800,7 +1808,40 @@ int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int ma
     goalPos = savedGoal;
     pathLength = savedPathLength;
     
+    // Track stats
+    statsPathCount++;
+    statsTotalTime += lastPathTime;
+    
     return len;
+}
+
+// Update path stats - call this every frame, reports every 5 seconds
+void UpdatePathStats(void) {
+    double now = GetTime();
+    if (statsLastReportTime == 0.0) {
+        statsLastReportTime = now;
+    }
+    
+    if (now - statsLastReportTime >= 5.0) {
+        pathStatsCount = statsPathCount;
+        pathStatsTotalMs = statsTotalTime;
+        pathStatsAvgMs = (statsPathCount > 0) ? (statsTotalTime / statsPathCount) : 0.0;
+        
+        // Reset for next period
+        statsPathCount = 0;
+        statsTotalTime = 0.0;
+        statsLastReportTime = now;
+    }
+}
+
+// Reset path stats (call when switching algorithms)
+void ResetPathStats(void) {
+    statsPathCount = 0;
+    statsTotalTime = 0.0;
+    statsLastReportTime = 0.0;
+    pathStatsCount = 0;
+    pathStatsTotalMs = 0.0;
+    pathStatsAvgMs = 0.0;
 }
 
 // Wrapper that uses globals (for backward compatibility)
@@ -2523,9 +2564,7 @@ void RunJpsPlus(void) {
     }
     
     nodesExplored = pathLength;  // Approximate
-
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "JPS+ 3D: time=%.2fms, cost=%d, path=%d", lastPathTime, cost, pathLength);
 }
 
 // ============== JPS+ 3D Ladder Graph ==============

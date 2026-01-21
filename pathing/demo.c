@@ -108,7 +108,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 100;
+int moverCountSetting = 10000;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
@@ -749,7 +749,9 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
         y += 18;
+        int prevAlgo = pathAlgorithm;
         CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
+        if (pathAlgorithm != prevAlgo) ResetPathStats();
         y += 22;
         CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
         use8Dir = (currentDirection == 1);  // Sync with pathfinding
@@ -949,6 +951,7 @@ int main(void) {
 
         ui_update();
         HandleInput();
+        UpdatePathStats();
 
         // Fixed timestep update (Factorio-style: max 1 tick per frame, slowdown if behind)
         if (accumulator >= TICK_DT) {
@@ -1031,6 +1034,11 @@ int main(void) {
                      pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
         } else {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
+        }
+        // Show path stats (updated every 5 seconds)
+        if (pathStatsCount > 0) {
+            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg", 
+                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 65, 16, YELLOW);
         }
 
         // Draw UI

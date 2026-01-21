@@ -59,6 +59,13 @@ extern int nodesExplored;
 extern double lastPathTime;
 extern double hpaAbstractTime;    // Time for abstract graph search
 extern double hpaRefinementTime;  // Time for path refinement (local A*)
+
+// Path stats (updated every 5 seconds)
+extern int pathStatsCount;        // Paths computed in last 5 second period
+extern double pathStatsTotalMs;   // Total ms spent on paths in last period
+extern double pathStatsAvgMs;     // Average ms per path
+void UpdatePathStats(void);       // Call every frame
+void ResetPathStats(void);        // Call when switching algorithms
 extern Point startPos;
 extern Point goalPos;
 extern AStarNode nodeData[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
