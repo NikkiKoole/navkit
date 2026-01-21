@@ -28,6 +28,416 @@ void GenerateSparse(float density) {
 }
 
 // ============================================================================
+// Labyrinth3D Generator
+// Creates a multi-level maze where each level has passages in different 
+// orientations. Ladders are placed to force long detours - you often need
+// to travel in the "wrong" direction to find the ladder to the next level.
+//
+// This creates pathological cases where 2D heuristics are completely wrong:
+// - Start and goal may be close in XY but require traversing the entire map
+// - The "obvious" nearby ladder often leads to a dead end
+// ============================================================================
+
+void GenerateLabyrinth3D(void) {
+    // Use 4 z-levels for the maze
+    int numLevels = 4;
+    if (numLevels > gridDepth) numLevels = gridDepth;
+    
+    // Clear all levels
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = (z < numLevels) ? CELL_WALL : CELL_AIR;
+            }
+        }
+    }
+    
+    // Passage parameters
+    int passageWidth = 2;
+    int wallThickness = 3;
+    int spacing = passageWidth + wallThickness;
+    
+    // Level 0: Horizontal passages (East-West)
+    // Passages run left-right, with vertical connections only on the WEST side
+    for (int y = spacing; y < gridHeight - spacing; y += spacing) {
+        for (int x = 1; x < gridWidth - 1; x++) {
+            for (int w = 0; w < passageWidth && y + w < gridHeight - 1; w++) {
+                grid[0][y + w][x] = CELL_FLOOR;
+            }
+        }
+    }
+    // Vertical connectors on west side only (first quarter of map)
+    int westConnectorX = gridWidth / 6;
+    for (int y = 1; y < gridHeight - 1; y++) {
+        for (int w = 0; w < passageWidth && westConnectorX + w < gridWidth; w++) {
+            grid[0][y][westConnectorX + w] = CELL_FLOOR;
+        }
+    }
+    
+    // Level 1: Vertical passages (North-South)
+    // Passages run up-down, with horizontal connections only on the SOUTH side
+    for (int x = spacing; x < gridWidth - spacing; x += spacing) {
+        for (int y = 1; y < gridHeight - 1; y++) {
+            for (int w = 0; w < passageWidth && x + w < gridWidth - 1; w++) {
+                grid[1][y][x + w] = CELL_FLOOR;
+            }
+        }
+    }
+    // Horizontal connector on south side only (last quarter of map)
+    int southConnectorY = gridHeight - gridHeight / 6;
+    for (int x = 1; x < gridWidth - 1; x++) {
+        for (int w = 0; w < passageWidth && southConnectorY + w < gridHeight; w++) {
+            grid[1][southConnectorY + w][x] = CELL_FLOOR;
+        }
+    }
+    
+    // Level 2: Horizontal passages (East-West) but OFFSET from level 0
+    // Offset by half the spacing so passages don't align
+    int offset = spacing / 2;
+    for (int y = spacing + offset; y < gridHeight - spacing; y += spacing) {
+        for (int x = 1; x < gridWidth - 1; x++) {
+            for (int w = 0; w < passageWidth && y + w < gridHeight - 1; w++) {
+                grid[2][y + w][x] = CELL_FLOOR;
+            }
+        }
+    }
+    // Vertical connector on EAST side only (last quarter of map)
+    int eastConnectorX = gridWidth - gridWidth / 6;
+    for (int y = 1; y < gridHeight - 1; y++) {
+        for (int w = 0; w < passageWidth && eastConnectorX + w < gridWidth; w++) {
+            grid[2][y][eastConnectorX + w] = CELL_FLOOR;
+        }
+    }
+    
+    // Level 3: More open - destination level
+    // Create a grid pattern so you can move freely but still need to navigate
+    for (int y = 1; y < gridHeight - 1; y++) {
+        for (int x = 1; x < gridWidth - 1; x++) {
+            // Create a grid with thick walls
+            bool isPassageY = (y % spacing) < passageWidth;
+            bool isPassageX = (x % spacing) < passageWidth;
+            if (isPassageY || isPassageX) {
+                grid[3][y][x] = CELL_FLOOR;
+            }
+        }
+    }
+    
+    // Place ladders strategically to force the "wrong direction" travel
+    
+    // Ladders from z=0 to z=1: Only in the WEST region
+    // This forces you to go west on level 0 before you can go up
+    int ladder01_x = gridWidth / 8;
+    int ladder01_y = gridHeight / 2;
+    // Find a walkable spot nearby
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder01_x + dx;
+            int ly = ladder01_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[0][ly][lx] == CELL_FLOOR && grid[1][ly][lx] == CELL_FLOOR) {
+                    grid[0][ly][lx] = CELL_LADDER;
+                    grid[1][ly][lx] = CELL_LADDER;
+                    goto ladder01_done;
+                }
+            }
+        }
+    }
+    ladder01_done:;
+    
+    // Second ladder from z=0 to z=1 in a different west location
+    int ladder01b_x = gridWidth / 5;
+    int ladder01b_y = gridHeight * 3 / 4;
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder01b_x + dx;
+            int ly = ladder01b_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[0][ly][lx] == CELL_FLOOR && grid[1][ly][lx] == CELL_FLOOR) {
+                    grid[0][ly][lx] = CELL_LADDER;
+                    grid[1][ly][lx] = CELL_LADDER;
+                    goto ladder01b_done;
+                }
+            }
+        }
+    }
+    ladder01b_done:;
+    
+    // Ladders from z=1 to z=2: Only in the SOUTH region
+    // This forces you to go south on level 1 before you can go up
+    int ladder12_x = gridWidth / 2;
+    int ladder12_y = gridHeight - gridHeight / 8;
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder12_x + dx;
+            int ly = ladder12_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[1][ly][lx] == CELL_FLOOR && grid[2][ly][lx] == CELL_FLOOR) {
+                    grid[1][ly][lx] = CELL_LADDER;
+                    grid[2][ly][lx] = CELL_LADDER;
+                    goto ladder12_done;
+                }
+            }
+        }
+    }
+    ladder12_done:;
+    
+    // Second ladder from z=1 to z=2
+    int ladder12b_x = gridWidth / 4;
+    int ladder12b_y = gridHeight - gridHeight / 6;
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder12b_x + dx;
+            int ly = ladder12b_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[1][ly][lx] == CELL_FLOOR && grid[2][ly][lx] == CELL_FLOOR) {
+                    grid[1][ly][lx] = CELL_LADDER;
+                    grid[2][ly][lx] = CELL_LADDER;
+                    goto ladder12b_done;
+                }
+            }
+        }
+    }
+    ladder12b_done:;
+    
+    // Ladders from z=2 to z=3: Only in the EAST region
+    // This forces you to go east on level 2 before you can reach the top
+    int ladder23_x = gridWidth - gridWidth / 8;
+    int ladder23_y = gridHeight / 2;
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder23_x + dx;
+            int ly = ladder23_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[2][ly][lx] == CELL_FLOOR && grid[3][ly][lx] == CELL_FLOOR) {
+                    grid[2][ly][lx] = CELL_LADDER;
+                    grid[3][ly][lx] = CELL_LADDER;
+                    goto ladder23_done;
+                }
+            }
+        }
+    }
+    ladder23_done:;
+    
+    // Second ladder from z=2 to z=3
+    int ladder23b_x = gridWidth - gridWidth / 6;
+    int ladder23b_y = gridHeight / 4;
+    for (int dy = -5; dy <= 5; dy++) {
+        for (int dx = -5; dx <= 5; dx++) {
+            int lx = ladder23b_x + dx;
+            int ly = ladder23b_y + dy;
+            if (lx > 0 && lx < gridWidth - 1 && ly > 0 && ly < gridHeight - 1) {
+                if (grid[2][ly][lx] == CELL_FLOOR && grid[3][ly][lx] == CELL_FLOOR) {
+                    grid[2][ly][lx] = CELL_LADDER;
+                    grid[3][ly][lx] = CELL_LADDER;
+                    goto ladder23b_done;
+                }
+            }
+        }
+    }
+    ladder23b_done:;
+    
+    needsRebuild = true;
+}
+
+// ============================================================================
+// Spiral3D Generator
+// Creates concentric rings on each level, where the exit from each ring
+// is on a different side. Combined with ladders at specific positions,
+// this forces a spiral traversal pattern through the levels.
+//
+// Level 0: Exit NORTH
+// Level 1: Exit EAST  
+// Level 2: Exit SOUTH
+// Level 3: Goal in center
+// ============================================================================
+
+void GenerateSpiral3D(void) {
+    int numLevels = 4;
+    if (numLevels > gridDepth) numLevels = gridDepth;
+    
+    // Clear all levels
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = (z < numLevels) ? CELL_FLOOR : CELL_AIR;
+            }
+        }
+    }
+    
+    int centerX = gridWidth / 2;
+    int centerY = gridHeight / 2;
+    
+    // Ring parameters
+    int ringSpacing = 8;
+    int wallThickness = 2;
+    int gapSize = 3;
+    
+    int numRings = (gridWidth < gridHeight ? gridWidth : gridHeight) / (2 * ringSpacing) - 1;
+    if (numRings < 3) numRings = 3;
+    if (numRings > 8) numRings = 8;
+    
+    // Build rings on levels 0, 1, 2
+    for (int z = 0; z < 3 && z < numLevels; z++) {
+        // Determine which side has the gap for this level
+        // 0 = North, 1 = East, 2 = South, 3 = West
+        int gapSide = z;  // Level 0: North, Level 1: East, Level 2: South
+        
+        for (int ring = 0; ring < numRings; ring++) {
+            int ringDist = (ring + 1) * ringSpacing;
+            
+            int left = centerX - ringDist;
+            int right = centerX + ringDist;
+            int top = centerY - ringDist;
+            int bottom = centerY + ringDist;
+            
+            // Clamp to grid
+            if (left < 1) left = 1;
+            if (top < 1) top = 1;
+            if (right >= gridWidth - 1) right = gridWidth - 2;
+            if (bottom >= gridHeight - 1) bottom = gridHeight - 2;
+            
+            // Calculate gap position for this side
+            int gapCenter;
+            
+            // North wall
+            gapCenter = centerX;
+            for (int x = left; x <= right; x++) {
+                bool isGap = (gapSide == 0) && (x >= gapCenter - gapSize/2) && (x <= gapCenter + gapSize/2);
+                if (!isGap) {
+                    for (int t = 0; t < wallThickness && top + t < gridHeight; t++) {
+                        grid[z][top + t][x] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // South wall
+            gapCenter = centerX;
+            for (int x = left; x <= right; x++) {
+                bool isGap = (gapSide == 2) && (x >= gapCenter - gapSize/2) && (x <= gapCenter + gapSize/2);
+                if (!isGap) {
+                    for (int t = 0; t < wallThickness && bottom - t >= 0; t++) {
+                        grid[z][bottom - t][x] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // West wall
+            gapCenter = centerY;
+            for (int y = top; y <= bottom; y++) {
+                bool isGap = (gapSide == 3) && (y >= gapCenter - gapSize/2) && (y <= gapCenter + gapSize/2);
+                if (!isGap) {
+                    for (int t = 0; t < wallThickness && left + t < gridWidth; t++) {
+                        grid[z][y][left + t] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // East wall
+            gapCenter = centerY;
+            for (int y = top; y <= bottom; y++) {
+                bool isGap = (gapSide == 1) && (y >= gapCenter - gapSize/2) && (y <= gapCenter + gapSize/2);
+                if (!isGap) {
+                    for (int t = 0; t < wallThickness && right - t >= 0; t++) {
+                        grid[z][y][right - t] = CELL_WALL;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Level 3: Open center area (the goal destination)
+    // Just leave it as floor (already initialized)
+    // Add some decorative walls to make it interesting
+    int innerRing = ringSpacing;
+    for (int x = centerX - innerRing; x <= centerX + innerRing; x++) {
+        if (x > 0 && x < gridWidth - 1) {
+            grid[3][centerY - innerRing][x] = CELL_WALL;
+            grid[3][centerY + innerRing][x] = CELL_WALL;
+        }
+    }
+    for (int y = centerY - innerRing; y <= centerY + innerRing; y++) {
+        if (y > 0 && y < gridHeight - 1) {
+            grid[3][y][centerX - innerRing] = CELL_WALL;
+            grid[3][y][centerX + innerRing] = CELL_WALL;
+        }
+    }
+    // Gaps on all sides for level 3
+    for (int i = -gapSize/2; i <= gapSize/2; i++) {
+        if (centerX + i > 0 && centerX + i < gridWidth - 1) {
+            grid[3][centerY - innerRing][centerX + i] = CELL_FLOOR;
+            grid[3][centerY + innerRing][centerX + i] = CELL_FLOOR;
+        }
+        if (centerY + i > 0 && centerY + i < gridHeight - 1) {
+            grid[3][centerY + i][centerX - innerRing] = CELL_FLOOR;
+            grid[3][centerY + i][centerX + innerRing] = CELL_FLOOR;
+        }
+    }
+    
+    // Place ladders at specific positions to force the spiral
+    // Ladder 0→1: Must be accessed from NORTH (outside the outermost ring, north side)
+    // After exiting north on level 0, climb to level 1
+    int outerRingDist = numRings * ringSpacing;
+    
+    int ladder01_x = centerX;
+    int ladder01_y = centerY - outerRingDist - ringSpacing/2;
+    if (ladder01_y < 2) ladder01_y = 2;
+    // Place ladder
+    grid[0][ladder01_y][ladder01_x] = CELL_LADDER;
+    grid[1][ladder01_y][ladder01_x] = CELL_LADDER;
+    // Ensure path to ladder is clear
+    for (int y = ladder01_y; y < centerY - outerRingDist; y++) {
+        grid[0][y][ladder01_x] = (grid[0][y][ladder01_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        grid[1][y][ladder01_x] = (grid[1][y][ladder01_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+    }
+    
+    // Ladder 1→2: Must be accessed from EAST (outside the outermost ring, east side)
+    int ladder12_x = centerX + outerRingDist + ringSpacing/2;
+    int ladder12_y = centerY;
+    if (ladder12_x >= gridWidth - 2) ladder12_x = gridWidth - 3;
+    grid[1][ladder12_y][ladder12_x] = CELL_LADDER;
+    grid[2][ladder12_y][ladder12_x] = CELL_LADDER;
+    // Ensure path to ladder is clear
+    for (int x = centerX + outerRingDist; x <= ladder12_x; x++) {
+        grid[1][ladder12_y][x] = (grid[1][ladder12_y][x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        grid[2][ladder12_y][x] = (grid[2][ladder12_y][x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+    }
+    
+    // Ladder 2→3: Must be accessed from SOUTH (outside the outermost ring, south side)
+    int ladder23_x = centerX;
+    int ladder23_y = centerY + outerRingDist + ringSpacing/2;
+    if (ladder23_y >= gridHeight - 2) ladder23_y = gridHeight - 3;
+    grid[2][ladder23_y][ladder23_x] = CELL_LADDER;
+    grid[3][ladder23_y][ladder23_x] = CELL_LADDER;
+    // Ensure path to ladder is clear
+    for (int y = centerY + outerRingDist; y <= ladder23_y; y++) {
+        grid[2][y][ladder23_x] = (grid[2][y][ladder23_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        grid[3][y][ladder23_x] = (grid[3][y][ladder23_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+    }
+    
+    // Add a few "decoy" ladders that lead to dead ends or longer routes
+    // Decoy 1: East side of level 0 - goes up but you're stuck
+    int decoy1_x = centerX + outerRingDist + ringSpacing/2;
+    int decoy1_y = centerY - ringSpacing;
+    if (decoy1_x < gridWidth - 2 && decoy1_y > 1) {
+        grid[0][decoy1_y][decoy1_x] = CELL_LADDER;
+        grid[1][decoy1_y][decoy1_x] = CELL_LADDER;
+        // Make sure there's floor around it
+        if (grid[0][decoy1_y][decoy1_x - 1] == CELL_WALL) grid[0][decoy1_y][decoy1_x - 1] = CELL_FLOOR;
+        if (grid[1][decoy1_y][decoy1_x - 1] == CELL_WALL) grid[1][decoy1_y][decoy1_x - 1] = CELL_FLOOR;
+    }
+    
+    // Decoy 2: Center area ladder that skips a level but puts you in a bad spot
+    int decoy2_x = centerX - ringSpacing;
+    int decoy2_y = centerY - ringSpacing;
+    if (decoy2_x > 1 && decoy2_y > 1) {
+        grid[0][decoy2_y][decoy2_x] = CELL_LADDER;
+        grid[1][decoy2_y][decoy2_x] = CELL_LADDER;
+    }
+    
+    needsRebuild = true;
+}
+
+// ============================================================================
 // Feature-based Dungeon Generator (Rooms & Corridors)
 // ============================================================================
 

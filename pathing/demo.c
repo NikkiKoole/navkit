@@ -43,7 +43,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 // Terrain selection
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps", "Towers3D", "GalleryFlat", "Castle"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D"};
 
 // UI section collapse state
 bool sectionView = false;
@@ -512,6 +512,8 @@ void GenerateCurrentTerrain(void) {
         case 12: GenerateTowers(); break;
         case 13: GenerateGalleryFlat(); break;
         case 14: GenerateCastle(); break;
+        case 15: GenerateLabyrinth3D(); break;
+        case 16: GenerateSpiral3D(); break;
     }
 }
 
@@ -774,7 +776,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 15, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 17, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();

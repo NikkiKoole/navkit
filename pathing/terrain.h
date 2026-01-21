@@ -18,6 +18,8 @@ void GenerateMixMax(void);        // Tunneler + extra rooms
 void GenerateTowers(void);        // 3D towers with bridges
 void GenerateGalleryFlat(void);   // 3D gallery flat apartment building
 void GenerateCastle(void);        // 3D medieval castle with wall walk
+void GenerateLabyrinth3D(void);   // 3D layered maze with offset passages
+void GenerateSpiral3D(void);      // 3D concentric rings with spiral traversal
 
 // Perlin noise utilities
 void InitPerlin(int seed);
