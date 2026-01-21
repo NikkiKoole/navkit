@@ -1461,28 +1461,28 @@ static int ReconstructLocalPath(int sx, int sy, int sz, int gx, int gy, int gz, 
     return ReconstructLocalPathWithBounds(sx, sy, sz, gx, gy, expandedMinX, expandedMinY, expandedMaxX, expandedMaxY, outPath, maxLen);
 }
 
-void RunHPAStar(void) {
-    if (startPos.x < 0 || goalPos.x < 0) return;
-    if (entranceCount == 0) return;  // Need to build entrances first
+int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
+    if (start.x < 0 || goal.x < 0) return 0;
+    if (entranceCount == 0) return 0;  // Need to build entrances first
 
-    pathLength = 0;
+    int resultLen = 0;
     abstractPathLength = 0;
     nodesExplored = 0;
     hpaAbstractTime = 0.0;
     hpaRefinementTime = 0.0;
     double startTime = GetTime();
 
-    int startChunk = GetChunk(startPos.x, startPos.y, startPos.z);
-    int goalChunk = GetChunk(goalPos.x, goalPos.y, goalPos.z);
+    int startChunk = GetChunk(start.x, start.y, start.z);
+    int goalChunk = GetChunk(goal.x, goal.y, goal.z);
 
     // Special case: start and goal in same chunk (and same z-level) - just do local A*
     if (startChunk == goalChunk) {
         int minX, minY, maxX, maxY, chunkZ;
         GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY, &chunkZ);
-        pathLength = ReconstructLocalPath(startPos.x, startPos.y, startPos.z, 
-                                          goalPos.x, goalPos.y, goalPos.z, path, MAX_PATH);
+        resultLen = ReconstructLocalPath(start.x, start.y, start.z, 
+                                         goal.x, goal.y, goal.z, outPath, maxLen);
         lastPathTime = (GetTime() - startTime) * 1000.0;
-        return;
+        return resultLen;
     }
 
     // Temporary entrance indices for start and goal
@@ -1553,7 +1553,7 @@ void RunHPAStar(void) {
     if (maxX < gridWidth) maxX++;
     if (maxY < gridHeight) maxY++;
     if (startTargetCount > 0) {
-        AStarChunkMultiTarget(startPos.x, startPos.y, startPos.z,
+        AStarChunkMultiTarget(start.x, start.y, start.z,
                               startTargetX, startTargetY, dijkstraStartCosts, startTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
@@ -1562,7 +1562,7 @@ void RunHPAStar(void) {
     if (maxX < gridWidth) maxX++;
     if (maxY < gridHeight) maxY++;
     if (goalTargetCount > 0) {
-        AStarChunkMultiTarget(goalPos.x, goalPos.y, goalPos.z,
+        AStarChunkMultiTarget(goal.x, goal.y, goal.z,
                               goalTargetX, goalTargetY, dijkstraGoalCosts, goalTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
@@ -1592,7 +1592,7 @@ void RunHPAStar(void) {
     HeapInit(totalNodes);
 
     abstractNodes[startNode].g = 0;
-    abstractNodes[startNode].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y);
+    abstractNodes[startNode].f = Heuristic(start.x, start.y, goal.x, goal.y);
     abstractNodes[startNode].open = true;
     HeapPush(startNode);
 
@@ -1624,7 +1624,7 @@ void RunHPAStar(void) {
                 if (ng < abstractNodes[neighbor].g) {
                     bool wasOpen = abstractNodes[neighbor].open;
                     abstractNodes[neighbor].g = ng;
-                    abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goalPos.x, goalPos.y);
+                    abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goal.x, goal.y);
                     abstractNodes[neighbor].parent = best;
                     abstractNodes[neighbor].open = true;
                     if (wasOpen) {
@@ -1644,7 +1644,7 @@ void RunHPAStar(void) {
                 if (ng < abstractNodes[neighbor].g) {
                     bool wasOpen = abstractNodes[neighbor].open;
                     abstractNodes[neighbor].g = ng;
-                    abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goalPos.x, goalPos.y);
+                    abstractNodes[neighbor].f = ng + Heuristic(entrances[neighbor].x, entrances[neighbor].y, goal.x, goal.y);
                     abstractNodes[neighbor].parent = best;
                     abstractNodes[neighbor].open = true;
                     if (wasOpen) {
@@ -1693,9 +1693,9 @@ void RunHPAStar(void) {
 
             // Get coordinates for from node
             if (fromNode == startNode) {
-                fx = startPos.x;
-                fy = startPos.y;
-                fz = startPos.z;
+                fx = start.x;
+                fy = start.y;
+                fz = start.z;
             } else {
                 fx = entrances[fromNode].x;
                 fy = entrances[fromNode].y;
@@ -1704,9 +1704,9 @@ void RunHPAStar(void) {
 
             // Get coordinates for to node
             if (toNode == goalNode) {
-                tx = goalPos.x;
-                ty = goalPos.y;
-                tz = goalPos.z;
+                tx = goal.x;
+                ty = goal.y;
+                tz = goal.z;
             } else {
                 tx = entrances[toNode].x;
                 ty = entrances[toNode].y;
@@ -1717,8 +1717,8 @@ void RunHPAStar(void) {
             if (fz != tz) {
                 // Ladder transition: just add the destination point (same x,y, different z)
                 // The mover will handle the actual ladder climbing
-                if (pathLength < MAX_PATH) {
-                    path[pathLength++] = (Point){tx, ty, tz};
+                if (resultLen < maxLen) {
+                    outPath[resultLen++] = (Point){tx, ty, tz};
                 }
                 continue;
             }
@@ -1736,24 +1736,27 @@ void RunHPAStar(void) {
             // We iterate from source to destination (high index to low)
             // Skip source point for subsequent segments (it's the destination of previous segment)
             int skipSource = (i == abstractPathLength - 1) ? 0 : 1;
-            for (int j = localLen - 1 - skipSource; j >= 0 && pathLength < MAX_PATH; j--) {
-                path[pathLength++] = tempPath[j];
+            for (int j = localLen - 1 - skipSource; j >= 0 && resultLen < maxLen; j--) {
+                outPath[resultLen++] = tempPath[j];
             }
         }
 
         // Reverse path so it goes from goal to start (matching RunAStar behavior)
-        for (int i = 0; i < pathLength / 2; i++) {
-            Point tmp = path[i];
-            path[i] = path[pathLength - 1 - i];
-            path[pathLength - 1 - i] = tmp;
+        for (int i = 0; i < resultLen / 2; i++) {
+            Point tmp = outPath[i];
+            outPath[i] = outPath[resultLen - 1 - i];
+            outPath[resultLen - 1 - i] = tmp;
         }
     }
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
 
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    // TraceLog(LOG_INFO, "HPA*: total=%.2fms (connect=%.2fms, search=%.2fms, refine=%.2fms), nodes=%d, path=%d",
-    //          lastPathTime, dijkstraTime, hpaAbstractTime, hpaRefinementTime, nodesExplored, pathLength);
+    return resultLen;
+}
 
+// Wrapper that uses globals (for backward compatibility)
+void RunHPAStar(void) {
+    pathLength = FindPathHPA(startPos, goalPos, path, MAX_PATH);
 }
 
 // ============== JPS Implementation ==============

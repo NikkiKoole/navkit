@@ -23,12 +23,6 @@ bool showGraph = false;
 bool showEntrances = false;
 int currentViewZ = 0;  // Which z-level we're viewing
 
-// Demo-specific start/goal/path (separate from pathfinding globals which get reset by mover system)
-Point demoStartPos = {-1, -1, 0};
-Point demoGoalPos = {-1, -1, 0};
-Point demoPath[MAX_PATH];
-int demoPathLength = 0;
-
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -200,22 +194,22 @@ void DrawPath(void) {
     int z = currentViewZ;
     
     // Draw start (green) - full opacity on same z, faded on different z
-    if (demoStartPos.x >= 0) {
-        Color col = (demoStartPos.z == z) ? GREEN : (Color){0, 228, 48, 80};
-        DrawRectangle((int)(offset.x + demoStartPos.x * size), (int)(offset.y + demoStartPos.y * size), (int)size, (int)size, col);
+    if (startPos.x >= 0) {
+        Color col = (startPos.z == z) ? GREEN : (Color){0, 228, 48, 80};
+        DrawRectangle((int)(offset.x + startPos.x * size), (int)(offset.y + startPos.y * size), (int)size, (int)size, col);
     }
     
     // Draw goal (red) - full opacity on same z, faded on different z
-    if (demoGoalPos.x >= 0) {
-        Color col = (demoGoalPos.z == z) ? RED : (Color){230, 41, 55, 80};
-        DrawRectangle((int)(offset.x + demoGoalPos.x * size), (int)(offset.y + demoGoalPos.y * size), (int)size, (int)size, col);
+    if (goalPos.x >= 0) {
+        Color col = (goalPos.z == z) ? RED : (Color){230, 41, 55, 80};
+        DrawRectangle((int)(offset.x + goalPos.x * size), (int)(offset.y + goalPos.y * size), (int)size, (int)size, col);
     }
     
     // Draw path - full opacity on same z, faded on different z
-    for (int i = 0; i < demoPathLength; i++) {
-        float px = offset.x + demoPath[i].x * size + size * 0.25f;
-        float py = offset.y + demoPath[i].y * size + size * 0.25f;
-        Color col = (demoPath[i].z == z) ? BLUE : (Color){0, 121, 241, 80};
+    for (int i = 0; i < pathLength; i++) {
+        float px = offset.x + path[i].x * size + size * 0.25f;
+        float py = offset.y + path[i].y * size + size * 0.25f;
+        Color col = (path[i].z == z) ? BLUE : (Color){0, 121, 241, 80};
         DrawRectangle((int)px, (int)py, (int)(size * 0.5f), (int)(size * 0.5f), col);
     }
 }
@@ -561,13 +555,13 @@ void HandleInput(void) {
                     break;
                 case 4:  // Set Start
                     if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
-                        demoStartPos = (Point){x, y, z};
+                        startPos = (Point){x, y, z};
                         pathLength = 0;
                     }
                     break;
                 case 5:  // Set Goal
                     if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
-                        demoGoalPos = (Point){x, y, z};
+                        goalPos = (Point){x, y, z};
                         pathLength = 0;
                     }
                     break;
@@ -639,9 +633,6 @@ void DrawUI(void) {
         }
         y += 22;
         if (PushButton(x, y, "Find Path")) {
-            // Copy demo positions to global pathfinding vars
-            startPos = demoStartPos;
-            goalPos = demoGoalPos;
             if (pathAlgorithm == 1) {
                 if (graphEdgeCount == 0) {
                     BuildEntrances();
@@ -655,11 +646,6 @@ void DrawUI(void) {
                 case 1: RunHPAStar(); break;
                 case 2: RunJPS(); break;
                 case 3: RunJpsPlus(); break;
-            }
-            // Copy result to demo path
-            demoPathLength = pathLength;
-            for (int i = 0; i < pathLength; i++) {
-                demoPath[i] = path[i];
             }
         }
     }

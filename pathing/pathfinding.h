@@ -78,6 +78,7 @@ void BuildEntrances(void);
 void BuildGraph(void);
 void RunAStar(void);
 void RunHPAStar(void);
+int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen);
 void RunJPS(void);
 void RunJpsPlus(void);
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY);

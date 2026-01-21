@@ -543,17 +543,17 @@ static void AssignNewMoverGoal(Mover* m) {
 
     int currentX = (int)(m->x / CELL_SIZE);
     int currentY = (int)(m->y / CELL_SIZE);
+    Point start = {currentX, currentY, 0};
 
-    startPos = (Point){currentX, currentY, 0};
-    goalPos = newGoal;
-    RunHPAStar();
+    Point tempPath[MAX_PATH];
+    int len = FindPathHPA(start, newGoal, tempPath, MAX_PATH);
 
-    m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+    m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
     // If truncating, keep the START end (high indices), not the goal end
-    int srcOffset = pathLength - m->pathLength;
+    int srcOffset = len - m->pathLength;
     for (int j = 0; j < m->pathLength; j++) {
-        m->path[j] = path[srcOffset + j];
+        m->path[j] = tempPath[srcOffset + j];
     }
 
     if (useStringPulling && m->pathLength > 2) {
@@ -562,10 +562,6 @@ static void AssignNewMoverGoal(Mover* m) {
 
     m->pathIndex = m->pathLength - 1;
     m->needsRepath = false;
-
-    startPos = (Point){-1, -1, 0};
-    goalPos = (Point){-1, -1, 0};
-    pathLength = 0;
 }
 
 void UpdateMovers(void) {
@@ -809,16 +805,16 @@ void ProcessMoverRepaths(void) {
             UpdateDirtyChunks();
         }
 
-        startPos = (Point){currentX, currentY, 0};
-        goalPos = m->goal;
-        RunHPAStar();
+        Point start = {currentX, currentY, 0};
+        Point tempPath[MAX_PATH];
+        int len = FindPathHPA(start, m->goal, tempPath, MAX_PATH);
 
-        m->pathLength = (pathLength > MAX_MOVER_PATH) ? MAX_MOVER_PATH : pathLength;
+        m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
         // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
         // If truncating, keep the START end (high indices), not the goal end
-        int srcOffset = pathLength - m->pathLength;
+        int srcOffset = len - m->pathLength;
         for (int j = 0; j < m->pathLength; j++) {
-            m->path[j] = path[srcOffset + j];
+            m->path[j] = tempPath[srcOffset + j];
         }
 
         if (m->pathLength == 0) {
@@ -840,10 +836,6 @@ void ProcessMoverRepaths(void) {
 
         repathsThisFrame++;
     }
-
-    startPos = (Point){-1, -1, 0};
-    goalPos = (Point){-1, -1, 0};
-    pathLength = 0;
 }
 
 void Tick(void) {
