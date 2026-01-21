@@ -17,7 +17,7 @@ path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathf
 
 # Test targets
 test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
-test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c
+test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c
 test_steering_SRC := tests/test_steering.c steering/steering.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS))

@@ -3,7 +3,9 @@
 #include "../pathing/grid.h"
 #include "../pathing/pathfinding.h"
 #include "../pathing/mover.h"
+#include "../pathing/terrain.h"
 #include <stdlib.h>
+#include <math.h>
 
 describe(mover_initialization) {
     it("should initialize mover with correct position and goal") {
@@ -1020,6 +1022,347 @@ describe(mover_z_level_collision) {
     }
 }
 
+describe(mover_ladder_transitions) {
+    it("should transition z-level when reaching ladder waypoint") {
+        // Simple two-floor map with a ladder at (2,1)
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..L..\n"  // Ladder at (2,1) on z=0
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            "..L..\n"  // Ladder at (2,1) on z=1
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+
+        // Verify ladder setup
+        expect(grid[0][1][2] == CELL_LADDER);
+        expect(grid[1][1][2] == CELL_LADDER);
+
+        ClearMovers();
+        Mover* m = &movers[0];
+
+        // Mover starts at (0,1) z=0, needs to go to (4,1) z=1
+        // Path: start(0,1,0) -> ladder(2,1,0) -> ladder(2,1,1) -> goal(4,1,1)
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {4, 1, 1};
+
+        // Path stored goal-to-start
+        Point testPath[] = {
+            {4, 1, 1},  // goal
+            {2, 1, 1},  // ladder on z=1
+            {2, 1, 0},  // ladder on z=0
+            {0, 1, 0}   // start
+        };
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 4);
+        moverCount = 1;
+
+        expect((int)m->z == 0);  // Starts at z=0
+
+        // Run until mover reaches goal or times out
+        int maxTicks = 600;  // 10 seconds should be plenty
+        for (int tick = 0; tick < maxTicks; tick++) {
+            Tick();
+            if (!m->active) break;
+        }
+
+        // Mover should have reached the goal on z=1
+        expect(m->active == false);
+    }
+
+    it("should climb ladder when path goes through ladder cell") {
+        // Map with ladder connecting z=0 and z=1
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..L..\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            "..L..\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+
+        ClearMovers();
+        Mover* m = &movers[0];
+
+        // Start right next to ladder, goal is on z=1
+        float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {3, 1, 1};
+
+        // Direct path through ladder
+        Point testPath[] = {
+            {3, 1, 1},  // goal on z=1
+            {2, 1, 1},  // ladder on z=1 (after climb)
+            {2, 1, 0},  // ladder on z=0 (before climb)
+            {1, 1, 0}   // start
+        };
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 4);
+        moverCount = 1;
+
+        // Track z-level changes
+        int initialZ = (int)m->z;
+        expect(initialZ == 0);
+
+        // Run simulation
+        for (int tick = 0; tick < 300; tick++) {
+            Tick();
+            if (!m->active) break;
+        }
+
+        // Mover should have reached goal on z=1
+        expect(m->active == false);
+    }
+
+    it("should handle JPS+ 3D path through Labyrinth3D") {
+        // Use actual Labyrinth3D terrain
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        BuildEntrances();
+        BuildGraph();
+        PrecomputeJpsPlus();
+
+        // Find a start on z=0 and goal on z=1
+        SeedRandom(12345);
+        Point start = {-1, -1, 0};
+        Point goal = {-1, -1, 1};
+
+        // Find walkable start on z=0
+        for (int attempts = 0; attempts < 1000 && start.x < 0; attempts++) {
+            int x = rand() % gridWidth;
+            int y = rand() % gridHeight;
+            if (IsCellWalkableAt(0, y, x)) {
+                start = (Point){x, y, 0};
+            }
+        }
+
+        // Find walkable goal on z=1
+        for (int attempts = 0; attempts < 1000 && goal.x < 0; attempts++) {
+            int x = rand() % gridWidth;
+            int y = rand() % gridHeight;
+            if (IsCellWalkableAt(1, y, x)) {
+                goal = (Point){x, y, 1};
+            }
+        }
+
+        expect(start.x >= 0);
+        expect(goal.x >= 0);
+
+        // Get JPS+ 3D path
+        Point pathBuf[MAX_PATH];
+        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
+        int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+
+        if (pathLen > 0) {
+            // Validate path: each step should be walkable
+            int invalidSteps = 0;
+            for (int i = 0; i < pathLen; i++) {
+                Point p = pathBuf[i];
+                if (!IsCellWalkableAt(p.z, p.y, p.x)) {
+                    TraceLog(LOG_WARNING, "  path[%d]=(%d,%d,%d) is NOT walkable!", i, p.x, p.y, p.z);
+                    invalidSteps++;
+                }
+            }
+            expect(invalidSteps == 0);
+
+            // Validate path: no step should be more than 1 cell away (except z transitions at ladders)
+            int bigJumps = 0;
+            for (int i = 1; i < pathLen; i++) {
+                int dx = abs(pathBuf[i].x - pathBuf[i-1].x);
+                int dy = abs(pathBuf[i].y - pathBuf[i-1].y);
+                int dz = abs(pathBuf[i].z - pathBuf[i-1].z);
+
+                // Normal step: max 1 cell in x and y, same z
+                // Ladder step: same x and y, z changes by 1
+                bool normalStep = (dx <= 1 && dy <= 1 && dz == 0);
+                bool ladderStep = (dx == 0 && dy == 0 && dz == 1);
+
+                if (!normalStep && !ladderStep) {
+                    TraceLog(LOG_WARNING, "  Big jump from (%d,%d,%d) to (%d,%d,%d)",
+                             pathBuf[i-1].x, pathBuf[i-1].y, pathBuf[i-1].z,
+                             pathBuf[i].x, pathBuf[i].y, pathBuf[i].z);
+                    bigJumps++;
+                }
+            }
+            expect(bigJumps == 0);
+
+            // Now test actual mover following the path
+            ClearMovers();
+            Mover* m = &movers[0];
+            float startX = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float startY = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            InitMoverWithPath(m, startX, startY, (float)start.z, goal, 100.0f, pathBuf, pathLen);
+            moverCount = 1;
+
+            // Run simulation - long paths across z-levels need more time
+            for (int tick = 0; tick < 3000; tick++) {
+                Tick();
+                if (!m->active) break;
+            }
+
+            // Mover should have reached goal
+            expect(m->active == false);
+        }
+    }
+
+    it("JPS+ 3D path should match JPS 3D path structure") {
+        // Compare paths from both algorithms to ensure JPS+ produces valid paths
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        BuildEntrances();
+        BuildGraph();
+        PrecomputeJpsPlus();
+
+        // Find a ladder
+        int ladderX = -1, ladderY = -1;
+        for (int y = 0; y < gridHeight && ladderX < 0; y++) {
+            for (int x = 0; x < gridWidth && ladderX < 0; x++) {
+                if (grid[0][y][x] == CELL_LADDER && grid[1][y][x] == CELL_LADDER) {
+                    ladderX = x;
+                    ladderY = y;
+                }
+            }
+        }
+        expect(ladderX >= 0);
+
+        // Find walkable start near ladder on z=0
+        Point start = {-1, -1, 0};
+        for (int dy = -5; dy <= 5 && start.x < 0; dy++) {
+            for (int dx = -5; dx <= 5 && start.x < 0; dx++) {
+                int x = ladderX + dx;
+                int y = ladderY + dy;
+                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                    if (IsCellWalkableAt(0, y, x) && grid[0][y][x] != CELL_LADDER) {
+                        start = (Point){x, y, 0};
+                    }
+                }
+            }
+        }
+
+        // Find walkable goal near ladder on z=1
+        Point goal = {-1, -1, 1};
+        for (int dy = -5; dy <= 5 && goal.x < 0; dy++) {
+            for (int dx = -5; dx <= 5 && goal.x < 0; dx++) {
+                int x = ladderX + dx;
+                int y = ladderY + dy;
+                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                    if (IsCellWalkableAt(1, y, x) && grid[1][y][x] != CELL_LADDER) {
+                        goal = (Point){x, y, 1};
+                    }
+                }
+            }
+        }
+
+        expect(start.x >= 0);
+        expect(goal.x >= 0);
+
+        // Get JPS path
+        startPos = start;
+        goalPos = goal;
+        use8Dir = true;
+        RunJPS();
+        int jpsLen = pathLength;
+
+        // Check JPS path has ladder transition
+        bool jpsHasLadder = false;
+        for (int i = 1; i < jpsLen; i++) {
+            if (path[i].x == path[i-1].x && path[i].y == path[i-1].y && path[i].z != path[i-1].z) {
+                jpsHasLadder = true;
+            }
+        }
+        expect(jpsHasLadder == true);
+
+        // Get JPS+ path
+        Point jpsPlusPath[MAX_PATH];
+        int jpsPlusLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, jpsPlusPath, MAX_PATH);
+
+        // Check JPS+ path has ladder transition
+        bool jpsPlusHasLadder = false;
+        for (int i = 1; i < jpsPlusLen; i++) {
+            if (jpsPlusPath[i].x == jpsPlusPath[i-1].x && 
+                jpsPlusPath[i].y == jpsPlusPath[i-1].y && 
+                jpsPlusPath[i].z != jpsPlusPath[i-1].z) {
+                jpsPlusHasLadder = true;
+            }
+        }
+        expect(jpsPlusHasLadder == true);
+
+        // Both should find paths
+        expect(jpsLen > 0);
+        expect(jpsPlusLen > 0);
+    }
+
+    it("should handle multiple random cross-z paths with JPS+") {
+        // Test many random paths to catch intermittent issues
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        BuildEntrances();
+        BuildGraph();
+        PrecomputeJpsPlus();
+
+        SeedRandom(99999);
+        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
+
+        int totalTests = 20;
+        int pathsFound = 0;
+        int moversReachedGoal = 0;
+
+        for (int test = 0; test < totalTests; test++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+
+            if (start.x < 0 || goal.x < 0) continue;
+
+            Point pathBuf[MAX_PATH];
+            int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+
+            if (pathLen > 0) {
+                pathsFound++;
+
+                // Test mover following this path
+                ClearMovers();
+                Mover* m = &movers[0];
+                float startX = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float startY = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, startX, startY, (float)start.z, goal, 100.0f, pathBuf, pathLen);
+                moverCount = 1;
+
+                // Run simulation - 10000 ticks allows traversing long labyrinth paths
+                for (int tick = 0; tick < 10000; tick++) {
+                    Tick();
+                    if (!m->active) break;
+                }
+
+                if (!m->active) {
+                    moversReachedGoal++;
+                } else {
+                    // Debug: mover got stuck
+                    int stuckX = (int)(m->x / CELL_SIZE);
+                    int stuckY = (int)(m->y / CELL_SIZE);
+                    int stuckZ = (int)m->z;
+                    printf("STUCK: test %d, start=(%d,%d,%d) goal=(%d,%d,%d) stuck at cell=(%d,%d,%d) pathIndex=%d/%d\n",
+                           test, start.x, start.y, start.z, goal.x, goal.y, goal.z,
+                           stuckX, stuckY, stuckZ, m->pathIndex, m->pathLength);
+                }
+            }
+        }
+
+        // At least some paths should be found
+        expect(pathsFound > 5);
+        // All movers that got paths should reach their goals
+        printf("pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
+        expect(moversReachedGoal == pathsFound);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1043,5 +1386,6 @@ int main(int argc, char* argv[]) {
     test(path_truncation);
     test(mover_falling);
     test(mover_z_level_collision);
+    test(mover_ladder_transitions);
     return summary();
 }

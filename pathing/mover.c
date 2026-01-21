@@ -659,9 +659,13 @@ void UpdateMovers(void) {
 
         // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
         // This detects when a wall is placed across the mover's path
-        if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
-            m->needsRepath = true;
-            continue;
+        // For z-level transitions (ladders), skip LOS check - we trust the pathfinder
+        // and the ladder may not be "visible" on our current z-level
+        if (target.z == currentZ) {
+            if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
+                m->needsRepath = true;
+                continue;
+            }
         }
 
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -688,17 +692,18 @@ void UpdateMovers(void) {
                 m->x = tx;
                 m->y = ty;
             }
-            // Only update z-level when on a ladder cell (z-transitions require ladders)
+            // Only update z-level when target waypoint is a ladder cell
             if (target.z != (int)m->z) {
-                // Changing z-level - must be on a ladder
-                int cellX = (int)(m->x / CELL_SIZE);
-                int cellY = (int)(m->y / CELL_SIZE);
+                // Changing z-level - use the waypoint's coordinates (not mover's position)
+                // The pathfinder guaranteed this waypoint is a ladder cell
                 int cellZ = (int)m->z;
-                if (grid[cellZ][cellY][cellX] == CELL_LADDER && 
-                    grid[target.z][cellY][cellX] == CELL_LADDER) {
+                if (grid[cellZ][target.y][target.x] == CELL_LADDER && 
+                    grid[target.z][target.y][target.x] == CELL_LADDER) {
                     m->z = (float)target.z;
+                    // Snap to ladder cell center for clean transition
+                    m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
                 }
-                // If not on ladder, don't change z - path may be stale
             }
             m->pathIndex--;
             m->timeNearWaypoint = 0.0f;  // Reset on waypoint arrival
@@ -765,11 +770,22 @@ void UpdateMovers(void) {
             float newY = m->y + vy * dt;
             int mz = (int)m->z;
             
+            // For z-level transitions, check if target cell is a ladder (walkable on both levels)
+            bool targetIsLadderTransition = (target.z != mz);
+            
             if (useWallSliding) {
                 int newCellX = (int)(newX / CELL_SIZE);
                 int newCellY = (int)(newY / CELL_SIZE);
                 
-                if (IsCellWalkableAt(mz, newCellY, newCellX)) {
+                // Check walkability - for ladder transitions, also accept if it's a ladder on target z
+                bool canMove = IsCellWalkableAt(mz, newCellY, newCellX);
+                if (!canMove && targetIsLadderTransition) {
+                    // Moving toward a ladder on different z-level
+                    // Allow if the cell is a ladder on the target z-level
+                    canMove = (grid[target.z][newCellY][newCellX] == CELL_LADDER);
+                }
+                
+                if (canMove) {
                     // Normal movement
                     m->x = newX;
                     m->y = newY;

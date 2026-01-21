@@ -108,7 +108,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10000;
+int moverCountSetting = 100;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
@@ -136,7 +136,7 @@ void DrawCellGrid(void) {
     Rectangle src = {0, 0, 16, 16};
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    
+
     // Draw layer below with transparency (if viewing z > 0)
     if (z > 0) {
         Color tint = (Color){255, 255, 255, 128};
@@ -150,7 +150,7 @@ void DrawCellGrid(void) {
             }
         }
     }
-    
+
     // Draw current layer
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
@@ -200,19 +200,19 @@ void DrawGraph(void) {
 void DrawPath(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    
+
     // Draw start (green) - full opacity on same z, faded on different z
     if (startPos.x >= 0) {
         Color col = (startPos.z == z) ? GREEN : (Color){0, 228, 48, 80};
         DrawRectangle((int)(offset.x + startPos.x * size), (int)(offset.y + startPos.y * size), (int)size, (int)size, col);
     }
-    
+
     // Draw goal (red) - full opacity on same z, faded on different z
     if (goalPos.x >= 0) {
         Color col = (goalPos.z == z) ? RED : (Color){230, 41, 55, 80};
         DrawRectangle((int)(offset.x + goalPos.x * size), (int)(offset.y + goalPos.y * size), (int)size, (int)size, col);
     }
-    
+
     // Draw path - full opacity on same z, faded on different z
     for (int i = 0; i < pathLength; i++) {
         float px = offset.x + path[i].x * size + size * 0.25f;
@@ -406,7 +406,7 @@ void DrawMovers(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
-        
+
         // Only draw movers on the current z-level
         if ((int)m->z != viewZ) continue;
 
@@ -463,7 +463,7 @@ void DrawMovers(void) {
         } else {
             moverColor = GREEN;   // Normal, has valid path
         }
-        
+
         // Override color if mover just fell
         if (m->fallTimer > 0) {
             moverColor = BLUE;
@@ -553,25 +553,25 @@ void HandleInput(void) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
-        
+
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             drawingRoom = true;
             roomStartX = x;
             roomStartY = y;
         }
-        
+
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingRoom) {
             drawingRoom = false;
             int x1 = roomStartX < x ? roomStartX : x;
             int y1 = roomStartY < y ? roomStartY : y;
             int x2 = roomStartX > x ? roomStartX : x;
             int y2 = roomStartY > y ? roomStartY : y;
-            
+
             if (x1 < 0) x1 = 0;
             if (y1 < 0) y1 = 0;
             if (x2 >= gridWidth) x2 = gridWidth - 1;
             if (y2 >= gridHeight) y2 = gridHeight - 1;
-            
+
             for (int ry = y1; ry <= y2; ry++) {
                 for (int rx = x1; rx <= x2; rx++) {
                     bool isBorder = (rx == x1 || rx == x2 || ry == y1 || ry == y2);
@@ -590,25 +590,25 @@ void HandleInput(void) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
-        
+
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             drawingFloor = true;
             floorStartX = x;
             floorStartY = y;
         }
-        
+
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingFloor) {
             drawingFloor = false;
             int x1 = floorStartX < x ? floorStartX : x;
             int y1 = floorStartY < y ? floorStartY : y;
             int x2 = floorStartX > x ? floorStartX : x;
             int y2 = floorStartY > y ? floorStartY : y;
-            
+
             if (x1 < 0) x1 = 0;
             if (y1 < 0) y1 = 0;
             if (x2 >= gridWidth) x2 = gridWidth - 1;
             if (y2 >= gridHeight) y2 = gridHeight - 1;
-            
+
             for (int ry = y1; ry <= y2; ry++) {
                 for (int rx = x1; rx <= x2; rx++) {
                     grid[z][ry][rx] = CELL_FLOOR;
@@ -851,7 +851,7 @@ void DrawUI(void) {
         ToggleBool(x, y, "Prefer Diff Z", &preferDifferentZ);
         y += 22;
         ToggleBool(x, y, "Allow Falling", &allowFallingFromAvoidance);
-        
+
         // Avoidance subsection
         y += 22;
         if (SectionHeader(x + 10, y, "Avoidance", &sectionMoverAvoidance)) {
@@ -864,7 +864,7 @@ void DrawUI(void) {
             y += 22;
             DraggableFloat(x + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
         }
-        
+
         // Walls subsection
         y += 22;
         if (SectionHeader(x + 10, y, "Walls", &sectionMoverWalls)) {
@@ -877,7 +877,7 @@ void DrawUI(void) {
             y += 22;
             ToggleBool(x + 10, y, "Knot Fix", &useKnotFix);
         }
-        
+
         // Debug views subsection
         y += 22;
         if (SectionHeader(x + 10, y, "Debug Views", &sectionMoverDebug)) {
@@ -970,7 +970,7 @@ int main(void) {
         DrawPath();
         DrawAgents();
         DrawMovers();
-        
+
         // Draw room preview while dragging
         if (drawingRoom && IsKeyDown(KEY_R)) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -980,7 +980,7 @@ int main(void) {
             int x2 = roomStartX > x ? roomStartX : x;
             int y2 = roomStartY > y ? roomStartY : y;
             float size = CELL_SIZE * zoom;
-            
+
             // Draw preview outline
             float px = offset.x + x1 * size;
             float py = offset.y + y1 * size;
@@ -988,7 +988,7 @@ int main(void) {
             float ph = (y2 - y1 + 1) * size;
             DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, YELLOW);
         }
-        
+
         // Draw floor preview while dragging
         if (drawingFloor && IsKeyDown(KEY_F)) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -998,7 +998,7 @@ int main(void) {
             int x2 = floorStartX > x ? floorStartX : x;
             int y2 = floorStartY > y ? floorStartY : y;
             float size = CELL_SIZE * zoom;
-            
+
             // Draw preview as filled semi-transparent rectangle
             float px = offset.x + x1 * size;
             float py = offset.y + y1 * size;
@@ -1011,7 +1011,7 @@ int main(void) {
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), screenWidth - 120, 5, 18, SKYBLUE);
-        
+
         // Count stuck movers if knot detection is enabled
         int stuckCount = 0;
         if (showKnotDetection) {

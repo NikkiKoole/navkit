@@ -134,6 +134,8 @@ typedef struct {
     
     // All-pairs shortest paths through ladder graph
     int allPairs[MAX_LADDER_ENDPOINTS][MAX_LADDER_ENDPOINTS];
+    // Next node in path from i to j (for path reconstruction through intermediate ladders)
+    int next[MAX_LADDER_ENDPOINTS][MAX_LADDER_ENDPOINTS];
 } JpsLadderGraph;
 
 extern JpsLadderGraph jpsLadderGraph;
