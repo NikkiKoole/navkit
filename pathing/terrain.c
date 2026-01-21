@@ -640,11 +640,93 @@ void GenerateCity(void) {
 // Creates towers (vertical structures) with bridges connecting them at higher levels
 // ============================================================================
 
+#define MAX_TOWERS 50
+
 typedef struct {
     int x, y;       // Tower base position
     int w, h;       // Tower footprint
     int height;     // Tower height (z-levels)
 } Tower;
+
+// Union-Find for connectivity checking
+static int towerParent[MAX_TOWERS];
+
+static int TowerFind(int i) {
+    if (towerParent[i] != i)
+        towerParent[i] = TowerFind(towerParent[i]);
+    return towerParent[i];
+}
+
+static void TowerUnion(int i, int j) {
+    int pi = TowerFind(i);
+    int pj = TowerFind(j);
+    if (pi != pj) towerParent[pi] = pj;
+}
+
+// Build a bridge between two towers
+static void BuildBridge(Tower* t1, Tower* t2) {
+    int c1x = t1->x + t1->w / 2;
+    int c1y = t1->y + t1->h / 2;
+    int c2x = t2->x + t2->w / 2;
+    int c2y = t2->y + t2->h / 2;
+    int dx = c2x - c1x;
+    int dy = c2y - c1y;
+    
+    // Build bridge at z=1 (or z=2 for taller towers)
+    int bridgeZ = (t1->height >= 3 && t2->height >= 3 && GetRandomValue(0, 1)) ? 2 : 1;
+    
+    // Find bridge start and end points (on tower edges)
+    int startX, startY, endX, endY;
+    if ((dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy)) {
+        // Horizontal bridge
+        if (dx > 0) {
+            startX = t1->x + t1->w - 1;
+            endX = t2->x;
+        } else {
+            startX = t1->x;
+            endX = t2->x + t2->w - 1;
+        }
+        startY = t1->y + t1->h / 2;
+        endY = t2->y + t2->h / 2;
+    } else {
+        // Vertical bridge
+        if (dy > 0) {
+            startY = t1->y + t1->h - 1;
+            endY = t2->y;
+        } else {
+            startY = t1->y;
+            endY = t2->y + t2->h - 1;
+        }
+        startX = t1->x + t1->w / 2;
+        endX = t2->x + t2->w / 2;
+    }
+    
+    // Carve bridge (simple L-shape)
+    int x = startX, y = startY;
+    
+    // Open the tower walls at bridge connection points
+    grid[bridgeZ][startY][startX] = CELL_FLOOR;
+    grid[bridgeZ][endY][endX] = CELL_FLOOR;
+    
+    // Horizontal segment
+    while (x != endX) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+            if (grid[bridgeZ][y][x] == CELL_AIR) {
+                grid[bridgeZ][y][x] = CELL_FLOOR;
+            }
+        }
+        x += (endX > x) ? 1 : -1;
+    }
+    // Vertical segment  
+    while (y != endY) {
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+            if (grid[bridgeZ][y][x] == CELL_AIR) {
+                grid[bridgeZ][y][x] = CELL_FLOOR;
+            }
+        }
+        y += (endY > y) ? 1 : -1;
+    }
+}
 
 void GenerateTowers(void) {
     // Clear all levels: z=0 is ground (walkable), z>0 is air
@@ -662,7 +744,6 @@ void GenerateTowers(void) {
     }
     
     // Place towers
-    #define MAX_TOWERS 50
     Tower towers[MAX_TOWERS];
     int towerCount = 0;
     
@@ -723,6 +804,11 @@ void GenerateTowers(void) {
         }
     }
     
+    // Initialize union-find: all towers connected via ground (z=0)
+    for (int i = 0; i < towerCount; i++) {
+        towerParent[i] = 0;  // All towers are connected at ground level
+    }
+    
     // Connect some towers with bridges at z=1 or z=2
     for (int i = 0; i < towerCount; i++) {
         Tower* t1 = &towers[i];
@@ -750,62 +836,39 @@ void GenerateTowers(void) {
             // Random chance to skip
             if (GetRandomValue(0, 100) < 50) continue;
             
-            // Build bridge at z=1 (or z=2 for taller towers)
-            int bridgeZ = (t1->height >= 3 && t2->height >= 3 && GetRandomValue(0, 1)) ? 2 : 1;
-            
-            // Find bridge start and end points (on tower edges)
-            int startX, startY, endX, endY;
-            if ((dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy)) {
-                // Horizontal bridge
-                if (dx > 0) {
-                    startX = t1->x + t1->w - 1;
-                    endX = t2->x;
-                } else {
-                    startX = t1->x;
-                    endX = t2->x + t2->w - 1;
-                }
-                startY = t1->y + t1->h / 2;
-                endY = t2->y + t2->h / 2;
-            } else {
-                // Vertical bridge
-                if (dy > 0) {
-                    startY = t1->y + t1->h - 1;
-                    endY = t2->y;
-                } else {
-                    startY = t1->y;
-                    endY = t2->y + t2->h - 1;
-                }
-                startX = t1->x + t1->w / 2;
-                endX = t2->x + t2->w / 2;
-            }
-            
-            // Carve bridge (simple L-shape)
-            int x = startX, y = startY;
-            
-            // Open the tower walls at bridge connection points
-            grid[bridgeZ][startY][startX] = CELL_FLOOR;
-            grid[bridgeZ][endY][endX] = CELL_FLOOR;
-            
-            // Horizontal segment
-            while (x != endX) {
-                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (grid[bridgeZ][y][x] == CELL_AIR) {
-                        grid[bridgeZ][y][x] = CELL_FLOOR;
-                    }
-                }
-                x += (endX > x) ? 1 : -1;
-            }
-            // Vertical segment  
-            while (y != endY) {
-                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (grid[bridgeZ][y][x] == CELL_AIR) {
-                        grid[bridgeZ][y][x] = CELL_FLOOR;
-                    }
-                }
-                y += (endY > y) ? 1 : -1;
-            }
-            
+            BuildBridge(t1, t2);
+            TowerUnion(i, j);
             connections++;
+        }
+    }
+    
+    // Ensure all towers with height >= 2 are connected via bridges
+    // Find towers that aren't in the main connected component
+    for (int i = 1; i < towerCount; i++) {
+        if (towers[i].height < 2) continue;
+        
+        // Find first tower with height >= 2 in a different component
+        if (TowerFind(i) != TowerFind(0)) {
+            // Find nearest tower in the main component to connect to
+            int nearest = -1;
+            int nearestDist = 999999;
+            for (int j = 0; j < towerCount; j++) {
+                if (i == j || towers[j].height < 2) continue;
+                if (TowerFind(j) != TowerFind(0)) continue;  // Must be in main component
+                
+                int dx = (towers[i].x + towers[i].w/2) - (towers[j].x + towers[j].w/2);
+                int dy = (towers[i].y + towers[i].h/2) - (towers[j].y + towers[j].h/2);
+                int dist = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+                if (dist < nearestDist) {
+                    nearestDist = dist;
+                    nearest = j;
+                }
+            }
+            
+            if (nearest >= 0) {
+                BuildBridge(&towers[i], &towers[nearest]);
+                TowerUnion(i, nearest);
+            }
         }
     }
     
