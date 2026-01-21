@@ -27,6 +27,10 @@ int currentViewZ = 0;  // Which z-level we're viewing
 bool drawingRoom = false;
 int roomStartX = 0, roomStartY = 0;
 
+// Floor drawing state (F key to activate, drag to draw)
+bool drawingFloor = false;
+int floorStartX = 0, floorStartY = 0;
+
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -550,6 +554,56 @@ void HandleInput(void) {
         drawingRoom = false;
     }
 
+    // Floor drawing mode (F key + drag) - fills entire area with floor
+    if (IsKeyDown(KEY_F)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+        
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            drawingFloor = true;
+            floorStartX = x;
+            floorStartY = y;
+        }
+        
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingFloor) {
+            drawingFloor = false;
+            int x1 = floorStartX < x ? floorStartX : x;
+            int y1 = floorStartY < y ? floorStartY : y;
+            int x2 = floorStartX > x ? floorStartX : x;
+            int y2 = floorStartY > y ? floorStartY : y;
+            
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+            
+            for (int ry = y1; ry <= y2; ry++) {
+                for (int rx = x1; rx <= x2; rx++) {
+                    grid[z][ry][rx] = CELL_FLOOR;
+                    MarkChunkDirty(rx, ry);
+                }
+            }
+        }
+        return;  // Skip normal tool interactions while F is held
+    } else {
+        drawingFloor = false;
+    }
+
+    // Ladder drawing shortcut (L key + click/drag)
+    if (IsKeyDown(KEY_L) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+            if (grid[z][y][x] != CELL_LADDER) {
+                grid[z][y][x] = CELL_LADDER;
+                MarkChunkDirty(x, y);
+            }
+        }
+        return;
+    }
+
     // Tool-based interactions
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -898,6 +952,25 @@ int main(void) {
             float pw = (x2 - x1 + 1) * size;
             float ph = (y2 - y1 + 1) * size;
             DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, YELLOW);
+        }
+        
+        // Draw floor preview while dragging
+        if (drawingFloor && IsKeyDown(KEY_F)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = floorStartX < x ? floorStartX : x;
+            int y1 = floorStartY < y ? floorStartY : y;
+            int x2 = floorStartX > x ? floorStartX : x;
+            int y2 = floorStartY > y ? floorStartY : y;
+            float size = CELL_SIZE * zoom;
+            
+            // Draw preview as filled semi-transparent rectangle
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){139, 90, 43, 100});
+            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, BROWN);
         }
 
         // Stats display
