@@ -43,7 +43,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 // Terrain selection
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council"};
 
 // UI section collapse state
 bool sectionView = false;
@@ -522,6 +522,7 @@ void GenerateCurrentTerrain(void) {
         case 14: GenerateCastle(); break;
         case 15: GenerateLabyrinth3D(); break;
         case 16: GenerateSpiral3D(); break;
+        case 17: GenerateCouncilEstate(); break;
     }
 }
 
@@ -786,7 +787,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 17, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 18, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();
@@ -929,7 +930,7 @@ int main(void) {
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGridWithSizeAndChunkSize(64, 64, 8, 8);  // Smaller grid, 3 z-levels
+    InitGridWithSizeAndChunkSize(256, 256, 16, 16);  // 256x256 grid, 16x16 chunks
     gridDepth = 3;  // Use 3 z-levels
     // Initialize z=0 as walkable (ground), z>0 as air
     for (int y = 0; y < gridHeight; y++)

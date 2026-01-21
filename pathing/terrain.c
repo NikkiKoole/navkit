@@ -1668,6 +1668,338 @@ void GenerateCastle(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Council Estate Generator
+// UK-style council estate with:
+// - Tower blocks (tall apartment buildings with corridors and stairwells)
+// - Low-rise terraced housing (rows of small connected units)
+// - Winding paths and alleyways
+// - Courtyards and green spaces
+// - Multi-level with ladders for vertical connections
+// ============================================================================
+
+// Helper: Build a tower block at position with specified floors
+static void BuildTowerBlock(int baseX, int baseY, int width, int depth, int floors) {
+    if (floors > gridDepth) floors = gridDepth;
+    
+    int corridorWidth = 2;
+    int unitDepth = (depth - corridorWidth) / 2;
+    
+    for (int z = 0; z < floors; z++) {
+        // Outer walls
+        for (int x = baseX; x < baseX + width; x++) {
+            grid[z][baseY][x] = CELL_WALL;
+            grid[z][baseY + depth - 1][x] = CELL_WALL;
+        }
+        for (int y = baseY; y < baseY + depth; y++) {
+            grid[z][y][baseX] = CELL_WALL;
+            grid[z][y][baseX + width - 1] = CELL_WALL;
+        }
+        
+        // Interior floor
+        for (int y = baseY + 1; y < baseY + depth - 1; y++) {
+            for (int x = baseX + 1; x < baseX + width - 1; x++) {
+                grid[z][y][x] = CELL_FLOOR;
+            }
+        }
+        
+        // Central corridor (horizontal through middle)
+        int corridorY = baseY + unitDepth;
+        for (int x = baseX + 1; x < baseX + width - 1; x++) {
+            for (int cy = 0; cy < corridorWidth; cy++) {
+                grid[z][corridorY + cy][x] = CELL_FLOOR;
+            }
+        }
+        
+        // Internal walls for units (perpendicular to corridor)
+        int unitWidth = 4;
+        for (int x = baseX + unitWidth; x < baseX + width - 2; x += unitWidth) {
+            // North side units
+            for (int y = baseY + 1; y < corridorY; y++) {
+                grid[z][y][x] = CELL_WALL;
+            }
+            // South side units
+            for (int y = corridorY + corridorWidth; y < baseY + depth - 1; y++) {
+                grid[z][y][x] = CELL_WALL;
+            }
+        }
+        
+        // Unit doors to corridor
+        for (int x = baseX + unitWidth / 2; x < baseX + width - 2; x += unitWidth) {
+            grid[z][corridorY][x] = CELL_FLOOR;  // North unit door
+            grid[z][corridorY + corridorWidth - 1][x] = CELL_FLOOR;  // South unit door
+        }
+    }
+    
+    // Stairwell at west end (ladders connecting all floors)
+    int stairX = baseX + 2;
+    int stairY = baseY + depth / 2;
+    for (int z = 0; z < floors; z++) {
+        grid[z][stairY][stairX] = CELL_LADDER;
+        grid[z][stairY + 1][stairX] = CELL_LADDER;
+    }
+    
+    // Stairwell at east end
+    stairX = baseX + width - 3;
+    for (int z = 0; z < floors; z++) {
+        grid[z][stairY][stairX] = CELL_LADDER;
+        grid[z][stairY + 1][stairX] = CELL_LADDER;
+    }
+    
+    // Ground floor entrances
+    grid[0][baseY + depth / 2][baseX] = CELL_FLOOR;  // West entrance
+    grid[0][baseY + depth / 2][baseX + width - 1] = CELL_FLOOR;  // East entrance
+}
+
+// Helper: Build low-rise terraced housing row
+static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, int unitDepth, bool doorsNorth) {
+    int totalWidth = numUnits * unitWidth;
+    
+    // All terrace at z=0 only (ground level)
+    int z = 0;
+    
+    // Outer walls
+    for (int x = baseX; x < baseX + totalWidth; x++) {
+        grid[z][baseY][x] = CELL_WALL;
+        grid[z][baseY + unitDepth - 1][x] = CELL_WALL;
+    }
+    for (int y = baseY; y < baseY + unitDepth; y++) {
+        grid[z][y][baseX] = CELL_WALL;
+        grid[z][y][baseX + totalWidth - 1] = CELL_WALL;
+    }
+    
+    // Interior and unit dividers
+    for (int y = baseY + 1; y < baseY + unitDepth - 1; y++) {
+        for (int x = baseX + 1; x < baseX + totalWidth - 1; x++) {
+            grid[z][y][x] = CELL_FLOOR;
+        }
+    }
+    
+    // Internal walls between units
+    for (int u = 1; u < numUnits; u++) {
+        int wallX = baseX + u * unitWidth;
+        for (int y = baseY; y < baseY + unitDepth; y++) {
+            grid[z][y][wallX] = CELL_WALL;
+        }
+    }
+    
+    // Doors for each unit
+    for (int u = 0; u < numUnits; u++) {
+        int doorX = baseX + u * unitWidth + unitWidth / 2;
+        if (doorsNorth) {
+            grid[z][baseY][doorX] = CELL_FLOOR;
+        } else {
+            grid[z][baseY + unitDepth - 1][doorX] = CELL_FLOOR;
+        }
+    }
+}
+
+// Helper: Carve a winding path
+static void CarvePath(int x1, int y1, int x2, int y2, int width) {
+    int x = x1, y = y1;
+    
+    while (x != x2 || y != y2) {
+        // Carve current position
+        for (int dy = 0; dy < width; dy++) {
+            for (int dx = 0; dx < width; dx++) {
+                int px = x + dx, py = y + dy;
+                if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
+                    if (grid[0][py][px] == CELL_WALL || grid[0][py][px] == CELL_AIR) {
+                        grid[0][py][px] = CELL_WALKABLE;
+                    }
+                }
+            }
+        }
+        
+        // Move toward target with some randomness
+        int dx = x2 - x;
+        int dy = y2 - y;
+        
+        if (GetRandomValue(0, 100) < 70) {
+            // Move toward target
+            if (abs(dx) > abs(dy)) {
+                x += (dx > 0) ? 1 : -1;
+            } else if (dy != 0) {
+                y += (dy > 0) ? 1 : -1;
+            }
+        } else {
+            // Random perpendicular movement
+            if (abs(dx) > abs(dy)) {
+                y += GetRandomValue(0, 1) ? 1 : -1;
+            } else {
+                x += GetRandomValue(0, 1) ? 1 : -1;
+            }
+        }
+        
+        // Clamp to bounds
+        if (x < 1) x = 1;
+        if (y < 1) y = 1;
+        if (x >= gridWidth - 1) x = gridWidth - 2;
+        if (y >= gridHeight - 1) y = gridHeight - 2;
+    }
+}
+
+void GenerateCouncilEstate(void) {
+    // Clear all levels: z=0 is ground (walkable), z>0 is air
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALKABLE;
+        }
+    }
+    for (int z = 1; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = CELL_AIR;
+            }
+        }
+    }
+    
+    // Scale building count based on grid size
+    int numTowerBlocks = 2 + (gridWidth * gridHeight) / 8000;
+    int numTerraceRows = 3 + (gridWidth * gridHeight) / 5000;
+    
+    if (numTowerBlocks > 6) numTowerBlocks = 6;
+    if (numTerraceRows > 10) numTerraceRows = 10;
+    
+    // Place tower blocks (tall, multi-floor)
+    int towerWidth = 16;
+    int towerDepth = 10;
+    int towerFloors = gridDepth > 3 ? 3 : gridDepth;
+    
+    typedef struct { int x, y, w, h; } Rect;
+    Rect placed[20];
+    int placedCount = 0;
+    
+    for (int t = 0; t < numTowerBlocks; t++) {
+        int attempts = 50;
+        while (attempts-- > 0) {
+            int tx = 4 + GetRandomValue(0, gridWidth - towerWidth - 8);
+            int ty = 4 + GetRandomValue(0, gridHeight - towerDepth - 8);
+            
+            // Check overlap with existing buildings
+            bool overlaps = false;
+            for (int p = 0; p < placedCount; p++) {
+                int margin = 6;  // Space between buildings
+                if (tx < placed[p].x + placed[p].w + margin && tx + towerWidth + margin > placed[p].x &&
+                    ty < placed[p].y + placed[p].h + margin && ty + towerDepth + margin > placed[p].y) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            
+            if (!overlaps) {
+                BuildTowerBlock(tx, ty, towerWidth, towerDepth, towerFloors);
+                placed[placedCount++] = (Rect){tx, ty, towerWidth, towerDepth};
+                break;
+            }
+        }
+    }
+    
+    // Place terraced housing rows (single floor, multiple units)
+    int terraceUnitWidth = 4;
+    int terraceUnitDepth = 5;
+    int unitsPerRow = 4 + GetRandomValue(0, 3);
+    
+    for (int r = 0; r < numTerraceRows && placedCount < 20; r++) {
+        int attempts = 50;
+        int rowWidth = unitsPerRow * terraceUnitWidth;
+        
+        while (attempts-- > 0) {
+            int rx = 4 + GetRandomValue(0, gridWidth - rowWidth - 8);
+            int ry = 4 + GetRandomValue(0, gridHeight - terraceUnitDepth - 8);
+            
+            // Check overlap
+            bool overlaps = false;
+            for (int p = 0; p < placedCount; p++) {
+                int margin = 4;
+                if (rx < placed[p].x + placed[p].w + margin && rx + rowWidth + margin > placed[p].x &&
+                    ry < placed[p].y + placed[p].h + margin && ry + terraceUnitDepth + margin > placed[p].y) {
+                    overlaps = true;
+                    break;
+                }
+            }
+            
+            if (!overlaps) {
+                bool doorsNorth = GetRandomValue(0, 1) == 0;
+                BuildTerraceRow(rx, ry, unitsPerRow, terraceUnitWidth, terraceUnitDepth, doorsNorth);
+                placed[placedCount++] = (Rect){rx, ry, rowWidth, terraceUnitDepth};
+                
+                // Vary next row
+                unitsPerRow = 3 + GetRandomValue(0, 4);
+                break;
+            }
+        }
+    }
+    
+    // Add some courtyards (clear rectangular areas)
+    int numCourtyards = 2 + GetRandomValue(0, 2);
+    for (int c = 0; c < numCourtyards; c++) {
+        int cw = 8 + GetRandomValue(0, 6);
+        int ch = 8 + GetRandomValue(0, 6);
+        int cx = 4 + GetRandomValue(0, gridWidth - cw - 8);
+        int cy = 4 + GetRandomValue(0, gridHeight - ch - 8);
+        
+        // Just ensure it's walkable (may overlap buildings, creating interesting spaces)
+        for (int y = cy; y < cy + ch && y < gridHeight; y++) {
+            for (int x = cx; x < cx + cw && x < gridWidth; x++) {
+                if (grid[0][y][x] == CELL_WALL) {
+                    // Only clear ground-floor walls that aren't structural
+                    // Check if it's an outer building wall (has floor on one side)
+                    bool isStructural = false;
+                    if (x > 0 && grid[0][y][x-1] == CELL_FLOOR) isStructural = true;
+                    if (x < gridWidth-1 && grid[0][y][x+1] == CELL_FLOOR) isStructural = true;
+                    if (y > 0 && grid[0][y-1][x] == CELL_FLOOR) isStructural = true;
+                    if (y < gridHeight-1 && grid[0][y+1][x] == CELL_FLOOR) isStructural = true;
+                    
+                    if (!isStructural) {
+                        grid[0][y][x] = CELL_WALKABLE;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Add winding alleyways between buildings
+    for (int i = 0; i < placedCount - 1; i++) {
+        // Connect adjacent buildings with paths
+        int x1 = placed[i].x + placed[i].w / 2;
+        int y1 = placed[i].y + placed[i].h / 2;
+        int x2 = placed[i + 1].x + placed[i + 1].w / 2;
+        int y2 = placed[i + 1].y + placed[i + 1].h / 2;
+        
+        // Find exit points (just outside the buildings)
+        if (x1 < x2) {
+            x1 = placed[i].x + placed[i].w + 1;
+            x2 = placed[i + 1].x - 1;
+        } else {
+            x1 = placed[i].x - 1;
+            x2 = placed[i + 1].x + placed[i + 1].w + 1;
+        }
+        
+        CarvePath(x1, y1, x2, y2, 2);
+    }
+    
+    // Add some random connecting paths
+    for (int p = 0; p < 3; p++) {
+        int x1 = GetRandomValue(5, gridWidth - 5);
+        int y1 = GetRandomValue(5, gridHeight - 5);
+        int x2 = GetRandomValue(5, gridWidth - 5);
+        int y2 = GetRandomValue(5, gridHeight - 5);
+        CarvePath(x1, y1, x2, y2, 2);
+    }
+    
+    // Scatter some debris/obstacles
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            if (grid[0][y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 2) {
+                grid[0][y][x] = CELL_WALL;
+            }
+        }
+    }
+    
+    needsRebuild = true;
+}
+
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = chunkWidth * 4;

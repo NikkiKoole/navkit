@@ -4,8 +4,8 @@
 #include <stdbool.h>
 
 // Maximum grid dimensions (for static array allocation)
-#define MAX_GRID_WIDTH  (128*4)
-#define MAX_GRID_HEIGHT (128*4)
+#define MAX_GRID_WIDTH  512
+#define MAX_GRID_HEIGHT 512
 #define MAX_GRID_DEPTH  16          // Z-levels
 #define DEFAULT_CHUNK_SIZE  16
 
