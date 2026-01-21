@@ -32,32 +32,19 @@ static inline int clampi(int v, int lo, int hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
 }
 
-// Helper to check if a cell is walkable
-static inline bool IsCellWalkableAt(int z, int y, int x) {
-    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
-}
-
-// Helper to check if a cell is air (empty space that can be fallen through)
-static inline bool IsCellAirAt(int z, int y, int x) {
-    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    return grid[z][y][x] == CELL_AIR;
-}
-
 // Try to make a mover fall to ground. Returns true if mover fell.
 // Searches downward from current z for a walkable cell, stops at walls.
 static bool TryFallToGround(Mover* m, int cellX, int cellY) {
     int currentZ = (int)m->z;
     
     for (int checkZ = currentZ - 1; checkZ >= 0; checkZ--) {
-        CellType belowCell = grid[checkZ][cellY][cellX];
-        if (belowCell == CELL_WALKABLE || belowCell == CELL_FLOOR || belowCell == CELL_LADDER) {
+        if (IsCellWalkableAt(checkZ, cellY, cellX)) {
             m->z = (float)checkZ;
             m->needsRepath = true;
             m->fallTimer = 1.0f;
             return true;
-        } else if (belowCell == CELL_WALL) {
+        }
+        if (grid[checkZ][cellY][cellX] == CELL_WALL) {
             break;  // Can't fall through walls
         }
     }
@@ -781,35 +768,21 @@ void UpdateMovers(void) {
                 int newCellX = (int)(newX / CELL_SIZE);
                 int newCellY = (int)(newY / CELL_SIZE);
                 
-                // Check what's at the new position
-                CellType newCell = CELL_AIR;
-                if (newCellX >= 0 && newCellX < gridWidth && 
-                    newCellY >= 0 && newCellY < gridHeight) {
-                    newCell = grid[mz][newCellY][newCellX];
-                }
-                
-                bool isWalkable = (newCell == CELL_WALKABLE || newCell == CELL_FLOOR || newCell == CELL_LADDER);
-                bool isWall = (newCell == CELL_WALL);
-                bool isAir = (newCell == CELL_AIR);
-                
-                if (isWalkable) {
+                if (IsCellWalkableAt(mz, newCellY, newCellX)) {
                     // Normal movement
                     m->x = newX;
                     m->y = newY;
-                } else if (isAir) {
+                } else if (IsCellAirAt(mz, newCellY, newCellX)) {
                     // Moving into air - allow it, then fall
                     m->x = newX;
                     m->y = newY;
                     TryFallToGround(m, newCellX, newCellY);
-                } else if (isWall) {
-                    // Wall collision - try sliding
-                    int xOnlyCellX = (int)(newX / CELL_SIZE);
+                } else {
+                    // Wall or out of bounds - try sliding
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
-                    bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, xOnlyCellX);
-                    
                     int yOnlyCellX = (int)(m->x / CELL_SIZE);
-                    int yOnlyCellY = (int)(newY / CELL_SIZE);
-                    bool yOnlyOk = IsCellWalkableAt(mz, yOnlyCellY, yOnlyCellX);
+                    bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, newCellX);
+                    bool yOnlyOk = IsCellWalkableAt(mz, newCellY, yOnlyCellX);
                     
                     if (xOnlyOk && yOnlyOk) {
                         if (fabsf(vx) > fabsf(vy)) {
@@ -823,7 +796,6 @@ void UpdateMovers(void) {
                         m->y = newY;
                     }
                 }
-                // Out of bounds - don't move
             } else {
                 m->x = newX;
                 m->y = newY;

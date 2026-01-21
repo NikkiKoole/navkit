@@ -2380,37 +2380,26 @@ static int GetRandomInt(int min, int max) {
 
 Point GetRandomWalkableCell(void) {
     Point p;
-    int attempts = 0;
-    do {
+    for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomInt(0, gridWidth - 1);
         p.y = GetRandomInt(0, gridHeight - 1);
         p.z = GetRandomInt(0, gridDepth - 1);
-        attempts++;
-        CellType cell = grid[p.z][p.y][p.x];
-        // Accept walkable, floor, or ladder cells
-        if (cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER) {
+        if (IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }
-    } while (attempts < 1000);
+    }
     return (Point){-1, -1, 0};
 }
 
 Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     Point p;
-    int attempts = 0;
-    do {
+    for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomInt(0, gridWidth - 1);
         p.y = GetRandomInt(0, gridHeight - 1);
         p.z = GetRandomInt(0, gridDepth - 1);
-        attempts++;
-        // Skip if same z-level as excluded
-        if (p.z == excludeZ) continue;
-        CellType cell = grid[p.z][p.y][p.x];
-        // Accept walkable, floor, or ladder cells
-        if (cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER) {
+        if (p.z != excludeZ && IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }
-    } while (attempts < 1000);
-    // Fallback to any walkable cell if can't find different z
+    }
     return GetRandomWalkableCell();
 }

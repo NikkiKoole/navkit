@@ -25,6 +25,19 @@ extern int chunksY;
 typedef enum { CELL_WALKABLE, CELL_WALL, CELL_LADDER, CELL_AIR, CELL_FLOOR } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Helper to check if a cell is walkable (includes floor and ladder)
+static inline bool IsCellWalkableAt(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    CellType cell = grid[z][y][x];
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+}
+
+// Helper to check if a cell is air (empty space that can be fallen through)
+static inline bool IsCellAirAt(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    return grid[z][y][x] == CELL_AIR;
+}
 extern bool needsRebuild;      // Generic flag (legacy)
 extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
 extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag
