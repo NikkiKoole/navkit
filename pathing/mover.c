@@ -655,8 +655,18 @@ void UpdateMovers(void) {
                 m->x = tx;
                 m->y = ty;
             }
-            // Update z-level when reaching a waypoint
-            m->z = (float)target.z;
+            // Only update z-level when on a ladder cell (z-transitions require ladders)
+            if (target.z != (int)m->z) {
+                // Changing z-level - must be on a ladder
+                int cellX = (int)(m->x / CELL_SIZE);
+                int cellY = (int)(m->y / CELL_SIZE);
+                int cellZ = (int)m->z;
+                if (grid[cellZ][cellY][cellX] == CELL_LADDER && 
+                    grid[target.z][cellY][cellX] == CELL_LADDER) {
+                    m->z = (float)target.z;
+                }
+                // If not on ladder, don't change z - path may be stale
+            }
             m->pathIndex--;
             m->timeNearWaypoint = 0.0f;  // Reset on waypoint arrival
         } else {
