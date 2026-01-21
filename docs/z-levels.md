@@ -43,10 +43,20 @@ S.....           ......G
 
 Both A* and HPA* find path: S → ladder → climb → walk to G
 
+**Phase 4: Mover Z-Level Support (Completed)**
+- Movers track z-coordinate during movement
+- Movers climb ladders and transition between z-levels
+- `ProcessMoverRepaths()` uses mover's z in `startPos`
+- String pulling respects z-level transitions (won't skip ladder waypoints)
+- "Prefer Diff Z" toggle for testing (movers prefer goals on different z-levels)
+
+**Phase 5: Demo Visualization (Completed)**
+- Layer switching UI with keyboard shortcuts
+- Ladder cells drawn distinctly
+- Multi-floor path display with visual indicators
+
 ### What Doesn't Work Yet
 
-- **Movers** don't handle z-coordinate (always use z=0)
-- **Demo** can't visualize multi-floor maps
 - **RunAStar** performance is slow (O(n³) best-node search across all z-levels)
 
 ---
@@ -151,39 +161,6 @@ int ladderLinkCount;
 ---
 
 ## Next Steps
-
-### Phase 4: Mover Z-Level Support
-The mover system currently ignores z-coordinates. To fully support multi-floor navigation:
-
-1. **Update Mover struct usage**
-   - Movers already have `z` field but it's unused
-   - Track mover's current z-level during movement
-   - Update `ProcessMoverRepaths()` to use mover's z in `startPos`
-
-2. **Update movement code**
-   - `UpdateMovers()` uses `grid[0][y][x]` - should use mover's z
-   - `HasLineOfSight()` uses `grid[0][y][x]` - should use z parameter
-   - Handle ladder climbing animation/transition
-
-3. **Handle z-level transitions in path following**
-   - Detect when next waypoint is on different z
-   - Trigger ladder climb behavior
-   - Update mover's z after climb completes
-
-### Phase 5: Demo Visualization
-The demo can't show multi-floor maps:
-
-1. **Layer switching UI**
-   - Keyboard shortcuts to view different z-levels
-   - Indicator showing current viewed level
-
-2. **Ladder visualization**
-   - Draw ladder cells distinctly
-   - Show connections between levels
-
-3. **Multi-floor path display**
-   - Different colors for path segments on different z-levels
-   - Visual indicator where path changes z
 
 ### Phase 6: Performance Optimization
 `RunAStar()` is slow with multiple z-levels due to O(n³) best-node search:

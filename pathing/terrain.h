@@ -17,6 +17,7 @@ void GenerateTunneler(void);      // Tunneler algorithm (rooms + corridors)
 void GenerateMixMax(void);        // Tunneler + extra rooms
 void GenerateTowers(void);        // 3D towers with bridges
 void GenerateGalleryFlat(void);   // 3D gallery flat apartment building
+void GenerateCastle(void);        // 3D medieval castle with wall walk
 
 // Perlin noise utilities
 void InitPerlin(int seed);

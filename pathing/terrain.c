@@ -1032,6 +1032,327 @@ void GenerateGalleryFlat(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Castle Generator
+// Medieval British walled castle with:
+// - Rectangular outer wall with corner towers
+// - Wall walk (z=2) with crenellations (merlons and crenels)
+// - 2 stair towers for access to wall walk
+// - Main gate on one side
+// - Courtyard with small buildings (some 2-story)
+// ============================================================================
+
+void GenerateCastle(void) {
+    // Clear all levels: z=0 is ground (walkable), z>0 is air
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+            }
+        }
+    }
+    
+    // Castle dimensions - centered in grid
+    int wallThickness = 2;
+    int towerSize = 5;  // Corner towers are 5x5
+    int stairTowerSize = 4;  // Stair towers are 4x4
+    
+    // Calculate castle size based on grid (leave margin around edges)
+    int margin = 4;
+    int castleWidth = gridWidth - 2 * margin;
+    int castleHeight = gridHeight - 2 * margin;
+    
+    // Minimum size check
+    if (castleWidth < 30) castleWidth = 30;
+    if (castleHeight < 30) castleHeight = 30;
+    
+    int castleX = (gridWidth - castleWidth) / 2;
+    int castleY = (gridHeight - castleHeight) / 2;
+    
+    // ========================================
+    // Build outer walls (z=0, z=1, z=2)
+    // ========================================
+    for (int z = 0; z < 3 && z < gridDepth; z++) {
+        // North wall
+        for (int x = castleX; x < castleX + castleWidth; x++) {
+            for (int t = 0; t < wallThickness; t++) {
+                grid[z][castleY + t][x] = CELL_WALL;
+            }
+        }
+        // South wall
+        for (int x = castleX; x < castleX + castleWidth; x++) {
+            for (int t = 0; t < wallThickness; t++) {
+                grid[z][castleY + castleHeight - 1 - t][x] = CELL_WALL;
+            }
+        }
+        // West wall
+        for (int y = castleY; y < castleY + castleHeight; y++) {
+            for (int t = 0; t < wallThickness; t++) {
+                grid[z][y][castleX + t] = CELL_WALL;
+            }
+        }
+        // East wall
+        for (int y = castleY; y < castleY + castleHeight; y++) {
+            for (int t = 0; t < wallThickness; t++) {
+                grid[z][y][castleX + castleWidth - 1 - t] = CELL_WALL;
+            }
+        }
+    }
+    
+    // ========================================
+    // Wall walk at z=2 (walkable on top of walls)
+    // ========================================
+    if (gridDepth > 2) {
+        // North wall walk
+        for (int x = castleX + wallThickness; x < castleX + castleWidth - wallThickness; x++) {
+            grid[2][castleY + wallThickness][x] = CELL_FLOOR;
+        }
+        // South wall walk
+        for (int x = castleX + wallThickness; x < castleX + castleWidth - wallThickness; x++) {
+            grid[2][castleY + castleHeight - 1 - wallThickness][x] = CELL_FLOOR;
+        }
+        // West wall walk
+        for (int y = castleY + wallThickness; y < castleY + castleHeight - wallThickness; y++) {
+            grid[2][y][castleX + wallThickness] = CELL_FLOOR;
+        }
+        // East wall walk
+        for (int y = castleY + wallThickness; y < castleY + castleHeight - wallThickness; y++) {
+            grid[2][y][castleX + castleWidth - 1 - wallThickness] = CELL_FLOOR;
+        }
+        
+        // Crenellations (merlons on outer edge of wall walk)
+        // Alternating wall/air pattern on the outer edge at z=2
+        for (int x = castleX; x < castleX + castleWidth; x++) {
+            // North crenellations
+            if ((x - castleX) % 2 == 0) {
+                grid[2][castleY][x] = CELL_WALL;  // Merlon
+            }
+            // South crenellations
+            if ((x - castleX) % 2 == 0) {
+                grid[2][castleY + castleHeight - 1][x] = CELL_WALL;  // Merlon
+            }
+        }
+        for (int y = castleY; y < castleY + castleHeight; y++) {
+            // West crenellations
+            if ((y - castleY) % 2 == 0) {
+                grid[2][y][castleX] = CELL_WALL;  // Merlon
+            }
+            // East crenellations
+            if ((y - castleY) % 2 == 0) {
+                grid[2][y][castleX + castleWidth - 1] = CELL_WALL;  // Merlon
+            }
+        }
+    }
+    
+    // ========================================
+    // Corner towers (all 4 corners, 3 levels)
+    // ========================================
+    int cornerPositions[4][2] = {
+        {castleX, castleY},                                              // NW
+        {castleX + castleWidth - towerSize, castleY},                    // NE
+        {castleX, castleY + castleHeight - towerSize},                   // SW
+        {castleX + castleWidth - towerSize, castleY + castleHeight - towerSize}  // SE
+    };
+    
+    for (int t = 0; t < 4; t++) {
+        int tx = cornerPositions[t][0];
+        int ty = cornerPositions[t][1];
+        
+        for (int z = 0; z < 3 && z < gridDepth; z++) {
+            for (int py = ty; py < ty + towerSize; py++) {
+                for (int px = tx; px < tx + towerSize; px++) {
+                    bool isBorder = (px == tx || px == tx + towerSize - 1 ||
+                                    py == ty || py == ty + towerSize - 1);
+                    grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                }
+            }
+        }
+        
+        // Ladder in center of tower (connects all levels)
+        int ladderX = tx + towerSize / 2;
+        int ladderY = ty + towerSize / 2;
+        for (int z = 0; z < 3 && z < gridDepth; z++) {
+            grid[z][ladderY][ladderX] = CELL_LADDER;
+        }
+        
+        // Door from tower to courtyard at z=0
+        // Open toward the inside of the castle
+        if (t == 0) { // NW - open south and east
+            grid[0][ty + towerSize - 1][tx + towerSize / 2] = CELL_FLOOR;
+        } else if (t == 1) { // NE - open south and west
+            grid[0][ty + towerSize - 1][tx + towerSize / 2] = CELL_FLOOR;
+        } else if (t == 2) { // SW - open north and east
+            grid[0][ty][tx + towerSize / 2] = CELL_FLOOR;
+        } else { // SE - open north and west
+            grid[0][ty][tx + towerSize / 2] = CELL_FLOOR;
+        }
+        
+        // Connect tower to wall walk at z=2
+        if (gridDepth > 2) {
+            if (t == 0) { // NW
+                grid[2][ty + towerSize - 1][tx + towerSize / 2] = CELL_FLOOR;
+                grid[2][ty + towerSize / 2][tx + towerSize - 1] = CELL_FLOOR;
+            } else if (t == 1) { // NE
+                grid[2][ty + towerSize - 1][tx + towerSize / 2] = CELL_FLOOR;
+                grid[2][ty + towerSize / 2][tx] = CELL_FLOOR;
+            } else if (t == 2) { // SW
+                grid[2][ty][tx + towerSize / 2] = CELL_FLOOR;
+                grid[2][ty + towerSize / 2][tx + towerSize - 1] = CELL_FLOOR;
+            } else { // SE
+                grid[2][ty][tx + towerSize / 2] = CELL_FLOOR;
+                grid[2][ty + towerSize / 2][tx] = CELL_FLOOR;
+            }
+        }
+    }
+    
+    // ========================================
+    // Stair towers (2 towers on opposite walls for wall walk access)
+    // ========================================
+    // Stair tower 1: West wall, middle
+    int stair1X = castleX;
+    int stair1Y = castleY + castleHeight / 2 - stairTowerSize / 2;
+    
+    // Stair tower 2: East wall, middle  
+    int stair2X = castleX + castleWidth - stairTowerSize;
+    int stair2Y = castleY + castleHeight / 2 - stairTowerSize / 2;
+    
+    // Build stair towers (3 levels)
+    int stairTowers[2][2] = {{stair1X, stair1Y}, {stair2X, stair2Y}};
+    
+    for (int s = 0; s < 2; s++) {
+        int sx = stairTowers[s][0];
+        int sy = stairTowers[s][1];
+        
+        for (int z = 0; z < 3 && z < gridDepth; z++) {
+            for (int py = sy; py < sy + stairTowerSize; py++) {
+                for (int px = sx; px < sx + stairTowerSize; px++) {
+                    bool isBorder = (px == sx || px == sx + stairTowerSize - 1 ||
+                                    py == sy || py == sy + stairTowerSize - 1);
+                    grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                }
+            }
+        }
+        
+        // Ladder in stair tower (connects all 3 levels)
+        int ladderX = sx + stairTowerSize / 2;
+        int ladderY = sy + stairTowerSize / 2;
+        for (int z = 0; z < 3 && z < gridDepth; z++) {
+            grid[z][ladderY][ladderX] = CELL_LADDER;
+        }
+        
+        // Door to courtyard at z=0
+        if (s == 0) { // West stair - door on east side
+            grid[0][sy + stairTowerSize / 2][sx + stairTowerSize - 1] = CELL_FLOOR;
+        } else { // East stair - door on west side
+            grid[0][sy + stairTowerSize / 2][sx] = CELL_FLOOR;
+        }
+        
+        // Connect to wall walk at z=2
+        if (gridDepth > 2) {
+            if (s == 0) { // West stair
+                grid[2][sy + stairTowerSize / 2][sx + stairTowerSize - 1] = CELL_FLOOR;
+            } else { // East stair
+                grid[2][sy + stairTowerSize / 2][sx] = CELL_FLOOR;
+            }
+        }
+    }
+    
+    // ========================================
+    // Main gate (large opening on south wall)
+    // ========================================
+    int gateWidth = 4;
+    int gateX = castleX + castleWidth / 2 - gateWidth / 2;
+    
+    // Clear the gate opening at z=0 only (wall above remains)
+    for (int x = gateX; x < gateX + gateWidth; x++) {
+        for (int t = 0; t < wallThickness; t++) {
+            grid[0][castleY + castleHeight - 1 - t][x] = CELL_FLOOR;
+        }
+    }
+    
+    // ========================================
+    // Courtyard floor (z=0, inside the walls)
+    // ========================================
+    int courtyardX = castleX + wallThickness;
+    int courtyardY = castleY + wallThickness;
+    int courtyardW = castleWidth - 2 * wallThickness;
+    int courtyardH = castleHeight - 2 * wallThickness;
+    
+    for (int y = courtyardY; y < courtyardY + courtyardH; y++) {
+        for (int x = courtyardX; x < courtyardX + courtyardW; x++) {
+            if (grid[0][y][x] != CELL_LADDER) {
+                grid[0][y][x] = CELL_FLOOR;
+            }
+        }
+    }
+    
+    // ========================================
+    // Interior buildings in courtyard
+    // ========================================
+    
+    // Building 1: NW area, 2 floors (barracks)
+    int b1x = courtyardX + 3;
+    int b1y = courtyardY + 3;
+    int b1w = 6;
+    int b1h = 5;
+    
+    for (int z = 0; z < 2 && z < gridDepth; z++) {
+        for (int py = b1y; py < b1y + b1h; py++) {
+            for (int px = b1x; px < b1x + b1w; px++) {
+                bool isBorder = (px == b1x || px == b1x + b1w - 1 ||
+                                py == b1y || py == b1y + b1h - 1);
+                grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+            }
+        }
+    }
+    // Door on south
+    grid[0][b1y + b1h - 1][b1x + b1w / 2] = CELL_FLOOR;
+    // Ladder inside
+    for (int z = 0; z < 2 && z < gridDepth; z++) {
+        grid[z][b1y + 1][b1x + 1] = CELL_LADDER;
+    }
+    
+    // Building 2: NE area, 2 floors (armory)
+    int b2x = courtyardX + courtyardW - 9;
+    int b2y = courtyardY + 3;
+    int b2w = 6;
+    int b2h = 5;
+    
+    for (int z = 0; z < 2 && z < gridDepth; z++) {
+        for (int py = b2y; py < b2y + b2h; py++) {
+            for (int px = b2x; px < b2x + b2w; px++) {
+                bool isBorder = (px == b2x || px == b2x + b2w - 1 ||
+                                py == b2y || py == b2y + b2h - 1);
+                grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+            }
+        }
+    }
+    // Door on south
+    grid[0][b2y + b2h - 1][b2x + b2w / 2] = CELL_FLOOR;
+    // Ladder inside
+    for (int z = 0; z < 2 && z < gridDepth; z++) {
+        grid[z][b2y + 1][b2x + b2w - 2] = CELL_LADDER;
+    }
+    
+    // Building 3: Center-south, 1 floor (stables)
+    int b3x = courtyardX + courtyardW / 2 - 4;
+    int b3y = courtyardY + courtyardH - 10;
+    int b3w = 8;
+    int b3h = 4;
+    
+    for (int py = b3y; py < b3y + b3h; py++) {
+        for (int px = b3x; px < b3x + b3w; px++) {
+            bool isBorder = (px == b3x || px == b3x + b3w - 1 ||
+                            py == b3y || py == b3y + b3h - 1);
+            grid[0][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+        }
+    }
+    // Door on north
+    grid[0][b3y][b3x + b3w / 2] = CELL_FLOOR;
+    
+    needsRebuild = true;
+}
+
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = chunkWidth * 4;

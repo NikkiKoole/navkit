@@ -559,6 +559,14 @@ static void AssignNewMoverGoal(Mover* m) {
 
     Point tempPath[MAX_PATH];
     int len = FindPathHPA(start, newGoal, tempPath, MAX_PATH);
+    
+    if (len == 0 && preferDifferentZ) {
+        CellType goalCell = grid[newGoal.z][newGoal.y][newGoal.x];
+        CellType startCell = grid[currentZ][currentY][currentX];
+        printf("PreferDiffZ path failed: start(%d,%d,%d)[%d] -> goal(%d,%d,%d)[%d]\n",
+               currentX, currentY, currentZ, startCell,
+               newGoal.x, newGoal.y, newGoal.z, goalCell);
+    }
 
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
