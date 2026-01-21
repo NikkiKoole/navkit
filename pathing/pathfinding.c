@@ -1749,6 +1749,40 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
     return resultLen;
 }
 
+// Unified path finding function that dispatches to the selected algorithm
+int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen) {
+    if (start.x < 0 || goal.x < 0) return 0;
+    
+    // Set globals for algorithms that need them
+    startPos = start;
+    goalPos = goal;
+    
+    switch (algo) {
+        case PATH_ALGO_ASTAR:
+            RunAStar();
+            break;
+        case PATH_ALGO_HPA:
+            return FindPathHPA(start, goal, outPath, maxLen);
+        case PATH_ALGO_JPS:
+            RunJPS();
+            break;
+        case PATH_ALGO_JPS_PLUS:
+            // JPS+ handles 3D via ladder graph when z-levels differ
+            if (start.z != goal.z) {
+                return FindPath3D_JpsPlus(start, goal, outPath, maxLen);
+            }
+            RunJpsPlus();
+            break;
+    }
+    
+    // Copy from global path array to output
+    int len = (pathLength < maxLen) ? pathLength : maxLen;
+    for (int i = 0; i < len; i++) {
+        outPath[i] = path[i];
+    }
+    return len;
+}
+
 // Wrapper that uses globals (for backward compatibility)
 void RunHPAStar(void) {
     pathLength = FindPathHPA(startPos, goalPos, path, MAX_PATH);

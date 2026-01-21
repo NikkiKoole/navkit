@@ -73,6 +73,7 @@ extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
 extern bool allowFallingFromAvoidance;  // When true, avoidance can push movers into air (they will fall)
+extern PathAlgorithm moverPathAlgorithm;  // Algorithm used for mover pathfinding (default: HPA*)
 
 // Core functions
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed);

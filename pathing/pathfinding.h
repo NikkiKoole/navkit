@@ -3,6 +3,14 @@
 
 #include "grid.h"
 
+// Pathfinding algorithm selection
+typedef enum {
+    PATH_ALGO_ASTAR = 0,
+    PATH_ALGO_HPA = 1,
+    PATH_ALGO_JPS = 2,
+    PATH_ALGO_JPS_PLUS = 3
+} PathAlgorithm;
+
 #define MAX_ENTRANCE_WIDTH 6
 #define MAX_ENTRANCES (4096*4)
 #define MAX_PATH 65536*2
@@ -79,6 +87,7 @@ void BuildGraph(void);
 void RunAStar(void);
 void RunHPAStar(void);
 int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen);
+int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int maxLen);
 void RunJPS(void);
 void RunJpsPlus(void);
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY);

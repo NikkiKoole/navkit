@@ -23,6 +23,7 @@ bool useWallSliding = true;
 float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = true;
+PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
@@ -570,7 +571,7 @@ static void AssignNewMoverGoal(Mover* m) {
     Point start = {currentX, currentY, currentZ};
 
     Point tempPath[MAX_PATH];
-    int len = FindPathHPA(start, newGoal, tempPath, MAX_PATH);
+    int len = FindPath(moverPathAlgorithm, start, newGoal, tempPath, MAX_PATH);
 
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
@@ -843,13 +844,14 @@ void ProcessMoverRepaths(void) {
         int currentY = (int)(m->y / CELL_SIZE);
         int currentZ = (int)m->z;
 
-        if (hpaNeedsRebuild) {
+        // HPA* needs dirty chunks updated before pathfinding
+        if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
             UpdateDirtyChunks();
         }
 
         Point start = {currentX, currentY, currentZ};
         Point tempPath[MAX_PATH];
-        int len = FindPathHPA(start, m->goal, tempPath, MAX_PATH);
+        int len = FindPath(moverPathAlgorithm, start, m->goal, tempPath, MAX_PATH);
 
         m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
         // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start

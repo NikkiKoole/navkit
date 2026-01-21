@@ -338,8 +338,11 @@ void DrawAgents(void) {
 void SpawnMoversDemo(int count) {
     double startTime = GetTime();
 
-    // Ensure HPA* graph is built
-    if (graphEdgeCount == 0) {
+    // Sync mover algorithm with UI selection
+    moverPathAlgorithm = (PathAlgorithm)pathAlgorithm;
+
+    // Ensure HPA* graph is built if using HPA*
+    if (pathAlgorithm == 1 && graphEdgeCount == 0) {
         BuildEntrances();
         BuildGraph();
     }
@@ -357,10 +360,15 @@ void SpawnMoversDemo(int count) {
         float z = (float)start.z;
         float speed = MOVER_SPEED + GetRandomValue(-30, 30);
 
-        // Compute initial path using HPA*
+        // Compute initial path using selected algorithm
         startPos = start;
         goalPos = goal;
-        RunHPAStar();
+        switch (pathAlgorithm) {
+            case 0: RunAStar(); break;
+            case 1: RunHPAStar(); break;
+            case 2: RunJPS(); break;
+            case 3: RunJpsPlus(); break;
+        }
 
         if (pathLength > 0) {
             InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
