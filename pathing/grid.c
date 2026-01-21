@@ -43,6 +43,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
                 grid[z][y][x] = CELL_WALKABLE;
 
     needsRebuild = true;
+    jpsNeedsRebuild = true;
 }
 
 void InitGridWithSize(int width, int height) {
