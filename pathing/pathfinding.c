@@ -1762,28 +1762,37 @@ int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int ma
     startPos = start;
     goalPos = goal;
     
+    int len = 0;
+    bool usesGlobalPath = true;
+    
     switch (algo) {
         case PATH_ALGO_ASTAR:
             RunAStar();
             break;
         case PATH_ALGO_HPA:
-            return FindPathHPA(start, goal, outPath, maxLen);
+            len = FindPathHPA(start, goal, outPath, maxLen);
+            usesGlobalPath = false;
+            break;
         case PATH_ALGO_JPS:
             RunJPS();
             break;
         case PATH_ALGO_JPS_PLUS:
             // JPS+ handles 3D via ladder graph when z-levels differ
             if (start.z != goal.z) {
-                return FindPath3D_JpsPlus(start, goal, outPath, maxLen);
+                len = FindPath3D_JpsPlus(start, goal, outPath, maxLen);
+                usesGlobalPath = false;
+            } else {
+                RunJpsPlus();
             }
-            RunJpsPlus();
             break;
     }
     
-    // Copy from global path array to output
-    int len = (pathLength < maxLen) ? pathLength : maxLen;
-    for (int i = 0; i < len; i++) {
-        outPath[i] = path[i];
+    // Copy from global path array to output (for algorithms that use globals)
+    if (usesGlobalPath) {
+        len = (pathLength < maxLen) ? pathLength : maxLen;
+        for (int i = 0; i < len; i++) {
+            outPath[i] = path[i];
+        }
     }
     
     // Restore globals so debug visualization isn't affected by mover pathfinding
