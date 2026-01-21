@@ -178,7 +178,7 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
     return avoidance;
 }
 
-bool IsMoverInOpenArea(float x, float y) {
+bool IsMoverInOpenArea(float x, float y, int z) {
     // Convert pixel position to grid cell
     int cellX = (int)(x / CELL_SIZE);
     int cellY = (int)(y / CELL_SIZE);
@@ -189,13 +189,8 @@ bool IsMoverInOpenArea(float x, float y) {
             int cx = cellX + dx;
             int cy = cellY + dy;
             
-            // Out of bounds = not open
-            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
-                return false;
-            }
-            
-            // Wall = not open
-            if (grid[0][cy][cx] == CELL_WALL) {
+            // Non-walkable (wall, air, out of bounds) = not open
+            if (!IsCellWalkableAt(z, cy, cx)) {
                 return false;
             }
         }
@@ -207,7 +202,7 @@ bool IsMoverInOpenArea(float x, float y) {
 // Check if there's clearance in a direction
 // Checks a 3x2 strip: current cell + neighbor in that direction, for 3 rows
 // dir: 0=up (-y), 1=right (+x), 2=down (+y), 3=left (-x)
-bool HasClearanceInDirection(float x, float y, int dir) {
+bool HasClearanceInDirection(float x, float y, int z, int dir) {
     int cellX = (int)(x / CELL_SIZE);
     int cellY = (int)(y / CELL_SIZE);
     
@@ -229,10 +224,8 @@ bool HasClearanceInDirection(float x, float y, int dir) {
         int cx = cellX + fx + p * px;
         int cy = cellY + fy + p * py;
         
-        if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
-            return false;
-        }
-        if (grid[0][cy][cx] == CELL_WALL) {
+        // Non-walkable (wall, air, out of bounds) = no clearance
+        if (!IsCellWalkableAt(z, cy, cx)) {
             return false;
         }
     }
@@ -240,24 +233,32 @@ bool HasClearanceInDirection(float x, float y, int dir) {
     return true;
 }
 
-// Compute wall repulsion force - pushes mover away from nearby walls
-Vec2 ComputeWallRepulsion(float x, float y) {
+// Compute wall/obstacle repulsion force - pushes mover away from non-walkable cells
+// 
+// NOTE: Currently treats air cells the same as walls - movers are repelled from air
+// as if there's a force field. This works but is physically unintuitive.
+// 
+// FUTURE: Consider allowing movers to be pushed into air and then fall to a lower
+// z-level. This would require:
+// - Detecting when mover enters air cell
+// - Finding the ground level below (first walkable z at that x,y)
+// - Animating/transitioning the fall
+// - Possibly taking fall damage or having a landing state
+Vec2 ComputeWallRepulsion(float x, float y, int z) {
     Vec2 repulsion = {0.0f, 0.0f};
     
     int cellX = (int)(x / CELL_SIZE);
     int cellY = (int)(y / CELL_SIZE);
     
-    // Check 3x3 area around mover for walls
+    // Check 3x3 area around mover for non-walkable cells (walls, air, etc.)
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             int cx = cellX + dx;
             int cy = cellY + dy;
             
-            // Skip out of bounds
-            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
-            
-            // Only care about walls
-            if (grid[0][cy][cx] != CELL_WALL) continue;
+            // Skip out of bounds (handled by IsCellWalkableAt returning false)
+            // Only care about non-walkable cells
+            if (IsCellWalkableAt(z, cy, cx)) continue;
             
             // Wall cell center
             float wallX = cx * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -289,7 +290,7 @@ Vec2 ComputeWallRepulsion(float x, float y) {
     return repulsion;
 }
 
-Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance) {
+Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance) {
     Vec2 result = avoidance;
     
     // Check if avoidance pushes in a direction without clearance
@@ -297,24 +298,24 @@ Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance) {
     
     if (avoidance.x > 0.01f) {
         // Pushing right
-        if (!HasClearanceInDirection(x, y, 1)) {
+        if (!HasClearanceInDirection(x, y, z, 1)) {
             result.x = 0.0f;
         }
     } else if (avoidance.x < -0.01f) {
         // Pushing left
-        if (!HasClearanceInDirection(x, y, 3)) {
+        if (!HasClearanceInDirection(x, y, z, 3)) {
             result.x = 0.0f;
         }
     }
     
     if (avoidance.y > 0.01f) {
         // Pushing down
-        if (!HasClearanceInDirection(x, y, 2)) {
+        if (!HasClearanceInDirection(x, y, z, 2)) {
             result.y = 0.0f;
         }
     } else if (avoidance.y < -0.01f) {
         // Pushing up
-        if (!HasClearanceInDirection(x, y, 0)) {
+        if (!HasClearanceInDirection(x, y, z, 0)) {
             result.y = 0.0f;
         }
     }
@@ -367,7 +368,7 @@ int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
 }
 
 // Check if there's line-of-sight between two points (Bresenham)
-bool HasLineOfSight(int x0, int y0, int x1, int y1) {
+bool HasLineOfSight(int x0, int y0, int x1, int y1, int z) {
     // Bounds check
     if (x0 < 0 || x0 >= gridWidth || y0 < 0 || y0 >= gridHeight ||
         x1 < 0 || x1 >= gridWidth || y1 < 0 || y1 >= gridHeight) {
@@ -381,7 +382,7 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
 
     int x = x0, y = y0;
     while (1) {
-        if (grid[0][y][x] == CELL_WALL) return false;
+        if (!IsCellWalkableAt(z, y, x)) return false;
         if (x == x1 && y == y1) return true;
 
         int e2 = 2 * err;
@@ -391,7 +392,7 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
             // Moving diagonally - check both adjacent cells
             int nx = x + sx;
             int ny = y + sy;
-            if (grid[0][y][nx] == CELL_WALL || grid[0][ny][x] == CELL_WALL) {
+            if (!IsCellWalkableAt(z, y, nx) || !IsCellWalkableAt(z, ny, x)) {
                 return false;
             }
         }
@@ -413,9 +414,9 @@ bool HasLineOfSight(int x0, int y0, int x1, int y1) {
 // This ensures the path is safe regardless of sub-cell mover position.
 // The runtime check (HasLineOfSightLenient) is the inverse: it passes if
 // ANY neighbor has LOS, preventing movers from getting stuck on valid paths.
-static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
+static bool HasClearCorridor(int x0, int y0, int x1, int y1, int z) {
     // First check the center line
-    if (!HasLineOfSight(x0, y0, x1, y1)) return false;
+    if (!HasLineOfSight(x0, y0, x1, y1, z)) return false;
     
     int dx = x1 - x0;
     int dy = y1 - y0;
@@ -432,8 +433,8 @@ static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
     for (int i = 0; i < 4; i++) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
-        if (IsCellWalkableAt(0, ny, nx)) {
-            if (!HasLineOfSight(nx, ny, x1, y1)) return false;
+        if (IsCellWalkableAt(z, ny, nx)) {
+            if (!HasLineOfSight(nx, ny, x1, y1, z)) return false;
         }
     }
     
@@ -442,9 +443,9 @@ static bool HasClearCorridor(int x0, int y0, int x1, int y1) {
 
 // Lenient LOS check for runtime - returns true if LOS exists from current cell
 // OR any cardinal neighbor. Matches the corridor check used in string pulling.
-static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1) {
+static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1, int z) {
     // First try from current position
-    if (HasLineOfSight(x0, y0, x1, y1)) return true;
+    if (HasLineOfSight(x0, y0, x1, y1, z)) return true;
     
     // Try from all 4 cardinal neighbors - if ANY has LOS, we're okay
     int ndx[] = {0, 0, -1, 1};
@@ -453,8 +454,8 @@ static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1) {
     for (int i = 0; i < 4; i++) {
         int nx = x0 + ndx[i];
         int ny = y0 + ndy[i];
-        if (IsCellWalkableAt(0, ny, nx)) {
-            if (HasLineOfSight(nx, ny, x1, y1)) return true;
+        if (IsCellWalkableAt(z, ny, nx)) {
+            if (HasLineOfSight(nx, ny, x1, y1, z)) return true;
         }
     }
     
@@ -479,7 +480,7 @@ void StringPullPath(Point* pathArr, int* pathLen) {
             if (pathArr[current].z != pathArr[i].z) continue;
             
             if (HasClearCorridor(pathArr[current].x, pathArr[current].y,
-                                 pathArr[i].x, pathArr[i].y)) {
+                                 pathArr[i].x, pathArr[i].y, pathArr[current].z)) {
                 furthest = i;
                 break;
             }
@@ -643,7 +644,7 @@ void UpdateMovers(void) {
 
         // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
         // This detects when a wall is placed across the mover's path
-        if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y)) {
+        if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
             m->needsRepath = true;
             continue;
         }
@@ -702,10 +703,11 @@ void UpdateMovers(void) {
             // Add avoidance if enabled
             if (useMoverAvoidance) {
                 Vec2 avoid = ComputeMoverAvoidance(i);
+                int moverZ = (int)m->z;
                 
                 if (useDirectionalAvoidance) {
                     // Filter avoidance by directional wall clearance
-                    avoid = FilterAvoidanceByWalls(m->x, m->y, avoid);
+                    avoid = FilterAvoidanceByWalls(m->x, m->y, moverZ, avoid);
                     float avoidScale = m->speed * avoidStrengthOpen;
                     
                     // Knot fix: reduce avoidance near waypoint so mover can reach it
@@ -718,7 +720,7 @@ void UpdateMovers(void) {
                     vy += avoid.y * avoidScale;
                 } else {
                     // Original open/closed area check
-                    bool inOpen = IsMoverInOpenArea(m->x, m->y);
+                    bool inOpen = IsMoverInOpenArea(m->x, m->y, moverZ);
                     float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
                     float avoidScale = m->speed * strength;
                     
@@ -737,7 +739,7 @@ void UpdateMovers(void) {
             
             // Add wall repulsion if enabled
             if (useWallRepulsion) {
-                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y);
+                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y, (int)m->z);
                 float repelScale = m->speed * wallRepulsionStrength;
                 vx += wallRepel.x * repelScale;
                 vy += wallRepel.y * repelScale;
@@ -746,30 +748,25 @@ void UpdateMovers(void) {
             // Apply movement with optional wall sliding
             float newX = m->x + vx * dt;
             float newY = m->y + vy * dt;
+            int mz = (int)m->z;
             
             if (useWallSliding) {
                 int newCellX = (int)(newX / CELL_SIZE);
                 int newCellY = (int)(newY / CELL_SIZE);
                 
-                // Check if new position would be in a wall
-                bool newPosInWall = (newCellX < 0 || newCellX >= gridWidth ||
-                                     newCellY < 0 || newCellY >= gridHeight ||
-                                     grid[0][newCellY][newCellX] == CELL_WALL);
+                // Check if new position would be non-walkable (wall, air, out of bounds)
+                bool newPosBlocked = !IsCellWalkableAt(mz, newCellY, newCellX);
                 
-                if (newPosInWall) {
+                if (newPosBlocked) {
                     // Try sliding: move only in X
                     int xOnlyCellX = (int)(newX / CELL_SIZE);
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
-                    bool xOnlyOk = (xOnlyCellX >= 0 && xOnlyCellX < gridWidth &&
-                                    xOnlyCellY >= 0 && xOnlyCellY < gridHeight &&
-                                    grid[0][xOnlyCellY][xOnlyCellX] != CELL_WALL);
+                    bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, xOnlyCellX);
                     
                     // Try sliding: move only in Y
                     int yOnlyCellX = (int)(m->x / CELL_SIZE);
                     int yOnlyCellY = (int)(newY / CELL_SIZE);
-                    bool yOnlyOk = (yOnlyCellX >= 0 && yOnlyCellX < gridWidth &&
-                                    yOnlyCellY >= 0 && yOnlyCellY < gridHeight &&
-                                    grid[0][yOnlyCellY][yOnlyCellX] != CELL_WALL);
+                    bool yOnlyOk = IsCellWalkableAt(mz, yOnlyCellY, yOnlyCellX);
                     
                     if (xOnlyOk && yOnlyOk) {
                         // Both work - pick the one more aligned with velocity

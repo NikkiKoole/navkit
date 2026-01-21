@@ -432,7 +432,7 @@ void DrawMovers(void) {
             }
         } else if (showOpenArea) {
             // Color by whether mover is in open area (can avoid freely)
-            bool open = IsMoverInOpenArea(m->x, m->y);
+            bool open = IsMoverInOpenArea(m->x, m->y, (int)m->z);
             moverColor = open ? SKYBLUE : MAGENTA;
         } else if (showNeighborCounts) {
             // Color by neighbor count (green=0, yellow=few, red=many)

@@ -83,7 +83,7 @@ void ClearMovers(void);
 
 // Utility
 int CountActiveMovers(void);
-bool HasLineOfSight(int x0, int y0, int x1, int y1);
+bool HasLineOfSight(int x0, int y0, int x1, int y1, int z);
 void StringPullPath(Point* pathArr, int* pathLen);
 
 // Spatial grid for neighbor queries
@@ -111,7 +111,7 @@ int QueryMoverNeighbors(float x, float y, float radius, int excludeIndex,
 
 // Check if mover is in open area (3x3 grid cells around it are all walkable)
 // Returns true if full avoidance is safe, false if near walls
-bool IsMoverInOpenArea(float x, float y);
+bool IsMoverInOpenArea(float x, float y, int z);
 
 // Vec2 for avoidance calculations
 typedef struct {
@@ -121,11 +121,11 @@ typedef struct {
 // Check clearance in a specific direction (for directional avoidance)
 // Returns true if the cells in that direction are walkable
 // dir: 0=up, 1=right, 2=down, 3=left
-bool HasClearanceInDirection(float x, float y, int dir);
+bool HasClearanceInDirection(float x, float y, int z, int dir);
 
 // Filter avoidance vector based on directional clearance
 // Reduces or zeroes components that would push toward walls
-Vec2 FilterAvoidanceByWalls(float x, float y, Vec2 avoidance);
+Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance);
 
 // Avoidance settings
 #define AVOID_MAX_NEIGHBORS  10
