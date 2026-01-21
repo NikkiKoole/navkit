@@ -901,6 +901,20 @@ void GenerateTowers(void) {
         }
     }
     
+    // Final pass: ensure ALL towers have proper ladders through all levels
+    for (int i = 0; i < towerCount; i++) {
+        Tower* t = &towers[i];
+        if (t->height < 2) continue;
+        
+        int ladderX = t->x + t->w / 2;
+        int ladderY = t->y + t->h / 2;
+        // Ladders from z=0 to z=height-2, floor at top
+        for (int z = 0; z < t->height - 1; z++) {
+            grid[z][ladderY][ladderX] = CELL_LADDER;
+        }
+        grid[t->height - 1][ladderY][ladderX] = CELL_FLOOR;
+    }
+    
     needsRebuild = true;
 }
 
