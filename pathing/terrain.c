@@ -695,13 +695,13 @@ static void BuildBridge(Tower* t1, Tower* t2) {
             // Update tower height
             t->height = newHeight;
         }
-        // Always ensure ladders go through all levels (except top)
+        // Always ensure ladders go through all levels
+        // Ladders must exist on BOTH z-levels to allow climbing between them
         int ladderX = t->x + t->w / 2;
         int ladderY = t->y + t->h / 2;
-        for (int z = 0; z < t->height - 1; z++) {
+        for (int z = 0; z < t->height; z++) {
             grid[z][ladderY][ladderX] = CELL_LADDER;
         }
-        grid[t->height - 1][ladderY][ladderX] = CELL_FLOOR;  // Top is floor
     }
     
     // Find bridge start and end points (on tower edges)
@@ -815,12 +815,12 @@ void GenerateTowers(void) {
             }
             
             // Add ladder inside tower (connects all levels)
+            // Ladders must exist on BOTH z-levels to allow climbing between them
             int ladderX = tx + tw / 2;
             int ladderY = ty + th / 2;
-            for (int z = 0; z < tHeight - 1; z++) {
+            for (int z = 0; z < tHeight; z++) {
                 grid[z][ladderY][ladderX] = CELL_LADDER;
             }
-            grid[tHeight - 1][ladderY][ladderX] = CELL_FLOOR;  // Top of ladder is floor
             
             // Add door at z=0 (opening in wall)
             int doorSide = GetRandomValue(0, 3);
@@ -902,17 +902,17 @@ void GenerateTowers(void) {
     }
     
     // Final pass: ensure ALL towers have proper ladders through all levels
+    // Ladders must exist on BOTH z-levels to allow climbing between them
     for (int i = 0; i < towerCount; i++) {
         Tower* t = &towers[i];
         if (t->height < 2) continue;
         
         int ladderX = t->x + t->w / 2;
         int ladderY = t->y + t->h / 2;
-        // Ladders from z=0 to z=height-2, floor at top
-        for (int z = 0; z < t->height - 1; z++) {
+        // Ladders on ALL levels of the tower
+        for (int z = 0; z < t->height; z++) {
             grid[z][ladderY][ladderX] = CELL_LADDER;
         }
-        grid[t->height - 1][ladderY][ladderX] = CELL_FLOOR;
     }
     
     needsRebuild = true;
