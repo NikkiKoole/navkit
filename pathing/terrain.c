@@ -672,8 +672,36 @@ static void BuildBridge(Tower* t1, Tower* t2) {
     int dx = c2x - c1x;
     int dy = c2y - c1y;
     
-    // Build bridge at z=1 (or z=2 for taller towers)
+    // Build bridge at z=1 (only use z=2 if both towers are already 3 levels)
     int bridgeZ = (t1->height >= 3 && t2->height >= 3 && GetRandomValue(0, 1)) ? 2 : 1;
+    
+    // Extend towers to reach bridge level if needed
+    // This adds floors, walls, and ladders up to bridgeZ
+    Tower* towersToExtend[2] = {t1, t2};
+    for (int ti = 0; ti < 2; ti++) {
+        Tower* t = towersToExtend[ti];
+        if (t->height <= bridgeZ) {
+            // Extend tower structure up to bridgeZ
+            for (int z = t->height; z <= bridgeZ; z++) {
+                for (int py = t->y; py < t->y + t->h; py++) {
+                    for (int px = t->x; px < t->x + t->w; px++) {
+                        bool isBorder = (px == t->x || px == t->x + t->w - 1 || 
+                                        py == t->y || py == t->y + t->h - 1);
+                        grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    }
+                }
+            }
+            // Extend ladder up to bridgeZ
+            int ladderX = t->x + t->w / 2;
+            int ladderY = t->y + t->h / 2;
+            for (int z = 0; z < bridgeZ; z++) {
+                grid[z][ladderY][ladderX] = CELL_LADDER;
+            }
+            grid[bridgeZ][ladderY][ladderX] = CELL_FLOOR;
+            // Update tower height
+            t->height = bridgeZ + 1;
+        }
+    }
     
     // Find bridge start and end points (on tower edges)
     int startX, startY, endX, endY;
