@@ -2656,6 +2656,40 @@ done_scanning:
              g->endpointCount, (GetTime() - startTime) * 1000.0);
 }
 
+// Helper: Trace JPS+ path from goal back to start, filling intermediate cells
+// Adds points to outPath starting at outPath[*len], increments *len
+// Stops when reaching (stopX, stopY) or when parent is invalid
+// Returns true if stopX,stopY was reached
+static bool TraceJpsPlusPath(int goalX, int goalY, int z, int stopX, int stopY,
+                              Point* outPath, int* len, int maxLen) {
+    int cx = goalX, cy = goalY;
+    while (cx >= 0 && cy >= 0 && *len < maxLen) {
+        outPath[(*len)++] = (Point){cx, cy, z};
+        int px = nodeData[z][cy][cx].parentX;
+        int py = nodeData[z][cy][cx].parentY;
+        
+        // Fill in intermediate points between jump points
+        if (px >= 0 && py >= 0) {
+            int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
+            int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
+            int ix = cx + stepX;
+            int iy = cy + stepY;
+            while ((ix != px || iy != py) && *len < maxLen) {
+                outPath[(*len)++] = (Point){ix, iy, z};
+                ix += stepX;
+                iy += stepY;
+            }
+        }
+        
+        if (px == stopX && py == stopY) {
+            return true;
+        }
+        cx = px;
+        cy = py;
+    }
+    return false;
+}
+
 // JPS+ 3D pathfinding using ladder graph for cross-level queries
 // Returns path length, or 0 if no path found
 int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
@@ -2672,29 +2706,8 @@ int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
                                    0, 0, gridWidth, gridHeight);
         if (cost < 0) return 0;
         
-        // Reconstruct path
         int len = 0;
-        int cx = goal.x, cy = goal.y, cz = goal.z;
-        while (cx >= 0 && cy >= 0 && len < maxLen) {
-            outPath[len++] = (Point){cx, cy, cz};
-            int px = nodeData[cz][cy][cx].parentX;
-            int py = nodeData[cz][cy][cx].parentY;
-            
-            // Fill in intermediate points
-            if (px >= 0 && py >= 0) {
-                int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
-                int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
-                int ix = cx + stepX;
-                int iy = cy + stepY;
-                while ((ix != px || iy != py) && len < maxLen) {
-                    outPath[len++] = (Point){ix, iy, cz};
-                    ix += stepX;
-                    iy += stepY;
-                }
-            }
-            cx = px;
-            cy = py;
-        }
+        TraceJpsPlusPath(goal.x, goal.y, goal.z, start.x, start.y, outPath, &len, maxLen);
         return len;
     }
     
@@ -2765,84 +2778,52 @@ int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
     LadderEndpoint* goalLadder = &g->endpoints[bestGoalEP];
     LadderEndpoint* startLadder = &g->endpoints[bestStartEP];
     
-    // Part A: Reconstruct path from goalLadder to goal (on goal's z-level)
-    // Re-run JPS+ to populate nodeData for reconstruction
+    // Part A: Reconstruct path from goal back to goalLadder (on goal's z-level)
     JpsPlusChunk2D(goalLadder->x, goalLadder->y, goal.z, goal.x, goal.y,
                    0, 0, gridWidth, gridHeight);
-    
-    // Trace from goal back to goalLadder
-    int cx = goal.x, cy = goal.y, cz = goal.z;
-    while (cx >= 0 && cy >= 0 && len < maxLen) {
-        outPath[len++] = (Point){cx, cy, cz};
-        int px = nodeData[cz][cy][cx].parentX;
-        int py = nodeData[cz][cy][cx].parentY;
-        
-        // Fill in intermediate points between jump points
-        if (px >= 0 && py >= 0) {
-            int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
-            int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
-            int ix = cx + stepX;
-            int iy = cy + stepY;
-            while ((ix != px || iy != py) && len < maxLen) {
-                outPath[len++] = (Point){ix, iy, cz};
-                ix += stepX;
-                iy += stepY;
-            }
-        }
-        
-        // Stop when we reach the goalLadder
-        if (px == goalLadder->x && py == goalLadder->y) {
-            break;
-        }
-        cx = px;
-        cy = py;
-    }
+    TraceJpsPlusPath(goal.x, goal.y, goal.z, goalLadder->x, goalLadder->y, 
+                     outPath, &len, maxLen);
     
     // Part B: Walk through ladder graph from goalLadder back to startLadder
     // Use the 'next' matrix to find intermediate ladder endpoints
     if (len < maxLen) outPath[len++] = (Point){goalLadder->x, goalLadder->y, goal.z};
     
     if (bestStartEP != bestGoalEP) {
-        // Different ladders - need to traverse through intermediate endpoints
-        // Walk from bestGoalEP to bestStartEP using the next matrix
+        // Different ladders - traverse through intermediate endpoints using next matrix
         int current = bestGoalEP;
         int visited = 0;
         while (current != bestStartEP && visited < g->endpointCount) {
             int nextEP = g->next[current][bestStartEP];
-            if (nextEP < 0 || nextEP == current) break;  // No path or stuck
+            if (nextEP < 0 || nextEP == current) break;
             
             LadderEndpoint* nextEndpoint = &g->endpoints[nextEP];
             LadderEndpoint* currEndpoint = &g->endpoints[current];
             
-            // If moving to same x,y but different z, it's a ladder climb
-            // If moving to different x,y on same z, need to add JPS+ path between them
-            if (currEndpoint->x == nextEndpoint->x && currEndpoint->y == nextEndpoint->y) {
+            bool samePosition = (currEndpoint->x == nextEndpoint->x && 
+                                 currEndpoint->y == nextEndpoint->y);
+            if (samePosition) {
                 // Ladder climb - just add the endpoint
                 if (len < maxLen) outPath[len++] = (Point){nextEndpoint->x, nextEndpoint->y, nextEndpoint->z};
             } else {
-                // Same z-level movement - add JPS+ path between ladder endpoints
-                // Re-run JPS+ to get the path
+                // Same z-level movement - add JPS+ path between endpoints
                 JpsPlusChunk2D(nextEndpoint->x, nextEndpoint->y, currEndpoint->z, 
                                currEndpoint->x, currEndpoint->y,
                                0, 0, gridWidth, gridHeight);
                 
-                // Trace from current to next (both on same z)
+                // Trace path, skipping first point (currEndpoint already added)
                 int tx = currEndpoint->x, ty = currEndpoint->y, tz = currEndpoint->z;
                 while (tx >= 0 && ty >= 0 && len < maxLen) {
                     int px = nodeData[tz][ty][tx].parentX;
                     int py = nodeData[tz][ty][tx].parentY;
-                    
                     if (px < 0 || py < 0) break;
                     
                     // Fill intermediate points
                     int stepX = (px > tx) ? 1 : (px < tx) ? -1 : 0;
                     int stepY = (py > ty) ? 1 : (py < ty) ? -1 : 0;
-                    int ix = tx + stepX;
-                    int iy = ty + stepY;
-                    while ((ix != px || iy != py) && len < maxLen) {
+                    for (int ix = tx + stepX, iy = ty + stepY; 
+                         (ix != px || iy != py) && len < maxLen; 
+                         ix += stepX, iy += stepY) {
                         outPath[len++] = (Point){ix, iy, tz};
-                        ix += stepX;
-                        iy += stepY;
                     }
                     
                     if (px == nextEndpoint->x && py == nextEndpoint->y) {
@@ -2865,53 +2846,20 @@ int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
         if (len < maxLen) outPath[len++] = (Point){goalLadder->x, goalLadder->y, start.z};
     }
     
-    // Part C: Reconstruct path from start to startLadder (on start's z-level)
-    // Re-run JPS+ from start to startLadder
-    int startToLadderX = (bestStartEP != bestGoalEP) ? startLadder->x : goalLadder->x;
-    int startToLadderY = (bestStartEP != bestGoalEP) ? startLadder->y : goalLadder->y;
+    // Part C: Reconstruct path from startLadder back to start (on start's z-level)
+    int ladderX = (bestStartEP != bestGoalEP) ? startLadder->x : goalLadder->x;
+    int ladderY = (bestStartEP != bestGoalEP) ? startLadder->y : goalLadder->y;
     
-    JpsPlusChunk2D(start.x, start.y, start.z, startToLadderX, startToLadderY,
+    JpsPlusChunk2D(start.x, start.y, start.z, ladderX, ladderY,
                    0, 0, gridWidth, gridHeight);
     
-    // Trace from startLadder back to start, collecting points in a temp buffer
-    // (we need to reverse this segment)
+    // Trace into temp buffer (ladder -> start), then append skipping first point
     Point tempPath[MAX_PATH];
     int tempLen = 0;
-    
-    cx = startToLadderX;
-    cy = startToLadderY;
-    cz = start.z;
-    while (cx >= 0 && cy >= 0 && tempLen < MAX_PATH) {
-        tempPath[tempLen++] = (Point){cx, cy, cz};
-        int px = nodeData[cz][cy][cx].parentX;
-        int py = nodeData[cz][cy][cx].parentY;
-        
-        // Fill in intermediate points
-        if (px >= 0 && py >= 0) {
-            int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
-            int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
-            int ix = cx + stepX;
-            int iy = cy + stepY;
-            while ((ix != px || iy != py) && tempLen < MAX_PATH) {
-                tempPath[tempLen++] = (Point){ix, iy, cz};
-                ix += stepX;
-                iy += stepY;
-            }
-        }
-        
-        // Stop when we reach start
-        if (px == start.x && py == start.y) {
-            break;
-        }
-        cx = px;
-        cy = py;
-    }
-    
-    // Add start
+    TraceJpsPlusPath(ladderX, ladderY, start.z, start.x, start.y, tempPath, &tempLen, MAX_PATH);
     if (tempLen < MAX_PATH) tempPath[tempLen++] = start;
     
-    // Append tempPath in reverse order (so it goes ladder -> start)
-    // But we skip the first point (ladder) since we already added it
+    // Append skipping first point (ladder already added)
     for (int i = 1; i < tempLen && len < maxLen; i++) {
         outPath[len++] = tempPath[i];
     }
