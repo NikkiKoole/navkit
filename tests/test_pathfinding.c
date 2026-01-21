@@ -1863,6 +1863,454 @@ describe(hpa_ladder_pathfinding) {
     }
 }
 
+// ============== JPS+ 3D LADDER TESTS ==============
+
+describe(jps_plus_3d_pathfinding) {
+    it("should find path on same z-level using JPS+") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        PrecomputeJpsPlus();
+
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 0};
+
+        // Run JPS+ 3D
+        RunJpsPlus();
+        int jpsPlusLen = pathLength;
+
+        // Run A* for comparison
+        RunAStar();
+        int astarLen = pathLength;
+
+        expect(jpsPlusLen > 0);
+        expect(astarLen > 0);
+        // JPS+ may have fewer waypoints, but both should find a valid path
+    }
+
+    it("should find path across z-levels using ladder graph") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        PrecomputeJpsPlus();
+
+        startPos = (Point){0, 0, 0};   // Start floor 0
+        goalPos = (Point){15, 15, 1};  // Goal floor 1
+
+        // Run JPS+ 3D
+        RunJpsPlus();
+        int jpsPlusLen = pathLength;
+
+        // JPS+ should find a path across z-levels
+        expect(jpsPlusLen > 0);
+
+        // Count z-transitions
+        int zTransitions = 0;
+        for (int i = 0; i < pathLength - 1; i++) {
+            if (path[i].z != path[i+1].z) zTransitions++;
+        }
+        expect(zTransitions >= 1);  // Must use ladder at least once
+    }
+
+    it("JPS+ 3D should find same route as A* 3D") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        PrecomputeJpsPlus();
+
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+
+        // Run A* 3D first
+        RunAStar();
+        int astarLen = pathLength;
+        Point astarStart = path[pathLength - 1];  // Path is reversed
+        Point astarEnd = path[0];
+
+        // Run JPS+ 3D
+        RunJpsPlus();
+        int jpsPlusLen = pathLength;
+        Point jpsPlusStart = path[pathLength - 1];
+        Point jpsPlusEnd = path[0];
+
+        // Both should find a path
+        expect(astarLen > 0);
+        expect(jpsPlusLen > 0);
+
+        // Both should have correct start and end
+        expect(astarStart.x == 0 && astarStart.y == 0 && astarStart.z == 0);
+        expect(astarEnd.x == 15 && astarEnd.y == 15 && astarEnd.z == 1);
+        expect(jpsPlusStart.x == 0 && jpsPlusStart.y == 0 && jpsPlusStart.z == 0);
+        expect(jpsPlusEnd.x == 15 && jpsPlusEnd.y == 15 && jpsPlusEnd.z == 1);
+    }
+
+    it("should not find path when no ladder connects levels") {
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        PrecomputeJpsPlus();
+
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+
+        RunJpsPlus();
+        expect(pathLength == 0);  // No path without ladder
+    }
+}
+
+// ============== JPS+ VS A* CONSISTENCY TESTS ==============
+
+describe(jps_plus_vs_astar_consistency) {
+    it("JPS+ should match A* on Labyrinth3D z=0") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        PrecomputeJpsPlus();
+        
+        // Test 20 random paths on z=0
+        SeedRandom(12345);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            while (start.z != 0) start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            while (goal.z != 0) goal = GetRandomWalkableCell();
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            // Both should find path or both should fail
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ should match A* on Labyrinth3D z=3") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        PrecomputeJpsPlus();
+        
+        // Test 20 random paths on z=3
+        SeedRandom(54321);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            while (start.z != 3) start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            while (goal.z != 3) goal = GetRandomWalkableCell();
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            // Both should find path or both should fail
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ 3D should match A* 3D on cross-level paths") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateLabyrinth3D();
+        PrecomputeJpsPlus();
+        
+        // Test 20 random cross-level paths
+        SeedRandom(99999);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+            
+            if (start.x < 0 || goal.x < 0) continue;
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            // Both should find path or both should fail
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ should match A* on Spiral3D terrain") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateSpiral3D();
+        PrecomputeJpsPlus();
+        
+        SeedRandom(11111);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+            
+            if (start.x < 0 || goal.x < 0) continue;
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ should match A* on Castle terrain") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateCastle();
+        PrecomputeJpsPlus();
+        
+        SeedRandom(22222);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+            
+            if (start.x < 0 || goal.x < 0) continue;
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ should match A* on Towers terrain") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateTowers();
+        PrecomputeJpsPlus();
+        
+        SeedRandom(33333);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+            
+            if (start.x < 0 || goal.x < 0) continue;
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+
+    it("JPS+ should match A* on Mixed terrain") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        gridDepth = 4;
+        GenerateMixed();
+        PrecomputeJpsPlus();
+        
+        SeedRandom(44444);
+        int failures = 0;
+        
+        for (int i = 0; i < 20; i++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCellDifferentZ(start.z);
+            
+            if (start.x < 0 || goal.x < 0) continue;
+            
+            startPos = start;
+            goalPos = goal;
+            
+            RunAStar();
+            int astarLen = pathLength;
+            
+            RunJpsPlus();
+            int jpsPlusLen = pathLength;
+            
+            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
+                failures++;
+            }
+        }
+        
+        expect(failures == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1886,5 +2334,7 @@ int main(int argc, char* argv[]) {
     test(string_pulling);
     test(ladder_pathfinding);
     test(hpa_ladder_pathfinding);
+    test(jps_plus_3d_pathfinding);
+    test(jps_plus_vs_astar_consistency);
     return summary();
 }

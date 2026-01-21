@@ -89,6 +89,52 @@ int AStarChunkMultiTarget(int sx, int sy, int sz, int* targetX, int* targetY, in
 void PrecomputeJpsPlus(void);
 int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY);
 
+// JPS+ 3D with ladder graph
+// NOTE: This duplicates some ladder data from ladderLinks[] (used by HPA*).
+// We keep them separate so JPS+ doesn't depend on HPA* initialization.
+// Future refactor: extract shared BuildLadderLinks() function for both systems.
+#define MAX_LADDER_ENDPOINTS (MAX_LADDERS * 2)
+#define MAX_LADDER_EDGES (MAX_LADDER_ENDPOINTS * MAX_LADDER_ENDPOINTS / 4)  // Sparse, not all pairs connected
+#define MAX_ENDPOINTS_PER_LEVEL 128
+
+// Ladder endpoint - one per z-level that a ladder touches
+typedef struct {
+    int x, y, z;           // Position
+    int ladderIndex;       // Which ladder this belongs to
+    bool isLow;            // Is this the lower or upper endpoint?
+} LadderEndpoint;
+
+// Precomputed distances between ladder endpoints on same z-level
+typedef struct {
+    int from;              // LadderEndpoint index
+    int to;                // LadderEndpoint index  
+    int cost;              // JPS+ distance between them (-1 if unreachable)
+} JpsLadderEdge;
+
+// The complete ladder graph for JPS+ 3D
+typedef struct {
+    LadderEndpoint endpoints[MAX_LADDER_ENDPOINTS];
+    int endpointCount;
+    
+    JpsLadderEdge edges[MAX_LADDER_EDGES];
+    int edgeCount;
+    
+    // For fast lookup: which endpoints are on each z-level?
+    int endpointsByLevel[MAX_GRID_DEPTH][MAX_ENDPOINTS_PER_LEVEL];
+    int endpointsPerLevelCount[MAX_GRID_DEPTH];
+    
+    // All-pairs shortest paths through ladder graph
+    int allPairs[MAX_LADDER_ENDPOINTS][MAX_LADDER_ENDPOINTS];
+} JpsLadderGraph;
+
+extern JpsLadderGraph jpsLadderGraph;
+
+// Build ladder graph for JPS+ 3D (call after PrecomputeJpsPlus)
+void BuildJpsLadderGraph(void);
+
+// JPS+ 3D pathfinding (uses ladder graph for cross-level queries)
+int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen);
+
 // Incremental update functions
 void UpdateDirtyChunks(void);
 

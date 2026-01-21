@@ -238,6 +238,9 @@ static inline int PackCoord(int x, int y) { return x + y * MAX_GRID_WIDTH; }
 static inline int UnpackX(int packed) { return packed % MAX_GRID_WIDTH; }
 static inline int UnpackY(int packed) { return packed / MAX_GRID_WIDTH; }
 
+// Current z-level for chunk heap operations (set before using heap)
+static int chunkHeapZ = 0;
+
 static void ChunkHeapInit(void) {
     chunkHeap.nodes = chunkHeapStorage;
     chunkHeap.size = 0;
@@ -261,7 +264,7 @@ static void ChunkHeapBubbleUp(int idx) {
         int cy = UnpackY(chunkHeap.nodes[idx]);
         int px = UnpackX(chunkHeap.nodes[parent]);
         int py = UnpackY(chunkHeap.nodes[parent]);
-        if (nodeData[0][cy][cx].f < nodeData[0][py][px].f) {
+        if (nodeData[chunkHeapZ][cy][cx].f < nodeData[chunkHeapZ][py][px].f) {
             ChunkHeapSwap(idx, parent);
             idx = parent;
         } else {
@@ -278,20 +281,20 @@ static void ChunkHeapBubbleDown(int idx) {
 
         int sx = UnpackX(chunkHeap.nodes[smallest]);
         int sy = UnpackY(chunkHeap.nodes[smallest]);
-        int smallestF = nodeData[0][sy][sx].f;
+        int smallestF = nodeData[chunkHeapZ][sy][sx].f;
 
         if (left < chunkHeap.size) {
             int lx = UnpackX(chunkHeap.nodes[left]);
             int ly = UnpackY(chunkHeap.nodes[left]);
-            if (nodeData[0][ly][lx].f < smallestF) {
+            if (nodeData[chunkHeapZ][ly][lx].f < smallestF) {
                 smallest = left;
-                smallestF = nodeData[0][ly][lx].f;
+                smallestF = nodeData[chunkHeapZ][ly][lx].f;
             }
         }
         if (right < chunkHeap.size) {
             int rx = UnpackX(chunkHeap.nodes[right]);
             int ry = UnpackY(chunkHeap.nodes[right]);
-            if (nodeData[0][ry][rx].f < smallestF) {
+            if (nodeData[chunkHeapZ][ry][rx].f < smallestF) {
                 smallest = right;
             }
         }
@@ -1753,18 +1756,33 @@ void RunHPAStar(void) {
 
 // ============== JPS Implementation ==============
 
-static bool IsWalkable(int x, int y) {
-    return IsCellWalkableAt(0, y, x);
+static bool JpsIsWalkable3D(int x, int y, int z) {
+    return IsCellWalkableAt(z, y, x);
 }
 
-// Jump in a cardinal direction (4-dir or 8-dir)
-static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy) {
+// Check if cell is a ladder (forced jump point for 3D JPS)
+static bool JpsIsLadder(int x, int y, int z) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    return grid[z][y][x] == CELL_LADDER;
+}
+
+// Jump in a cardinal direction (4-dir or 8-dir) with z-level support
+// Ladders are forced jump points - we stop there to allow z-transitions
+static bool Jump(int x, int y, int z, int dx, int dy, int gx, int gy, int gz, int* jx, int* jy) {
     int nx = x + dx;
     int ny = y + dy;
 
-    if (!IsWalkable(nx, ny)) return false;
+    if (!JpsIsWalkable3D(nx, ny, z)) return false;
 
-    if (nx == gx && ny == gy) {
+    // Goal check (must be on same z-level for horizontal jump to reach it)
+    if (nx == gx && ny == gy && z == gz) {
+        *jx = nx;
+        *jy = ny;
+        return true;
+    }
+
+    // LADDER = forced jump point (must stop here to allow z-transition decision)
+    if (JpsIsLadder(nx, ny, z)) {
         *jx = nx;
         *jy = ny;
         return true;
@@ -1773,20 +1791,20 @@ static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy)
     // Diagonal movement
     if (dx != 0 && dy != 0) {
         // Check for forced neighbors
-        if ((!IsWalkable(nx - dx, ny) && IsWalkable(nx - dx, ny + dy)) ||
-            (!IsWalkable(nx, ny - dy) && IsWalkable(nx + dx, ny - dy))) {
+        if ((!JpsIsWalkable3D(nx - dx, ny, z) && JpsIsWalkable3D(nx - dx, ny + dy, z)) ||
+            (!JpsIsWalkable3D(nx, ny - dy, z) && JpsIsWalkable3D(nx + dx, ny - dy, z))) {
             *jx = nx;
             *jy = ny;
             return true;
         }
         // Recursively jump in cardinal directions
         int tempX, tempY;
-        if (Jump(nx, ny, dx, 0, gx, gy, &tempX, &tempY)) {
+        if (Jump(nx, ny, z, dx, 0, gx, gy, gz, &tempX, &tempY)) {
             *jx = nx;
             *jy = ny;
             return true;
         }
-        if (Jump(nx, ny, 0, dy, gx, gy, &tempX, &tempY)) {
+        if (Jump(nx, ny, z, 0, dy, gx, gy, gz, &tempX, &tempY)) {
             *jx = nx;
             *jy = ny;
             return true;
@@ -1794,8 +1812,8 @@ static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy)
     } else {
         // Horizontal movement
         if (dx != 0) {
-            if ((!IsWalkable(nx, ny + 1) && IsWalkable(nx + dx, ny + 1)) ||
-                (!IsWalkable(nx, ny - 1) && IsWalkable(nx + dx, ny - 1))) {
+            if ((!JpsIsWalkable3D(nx, ny + 1, z) && JpsIsWalkable3D(nx + dx, ny + 1, z)) ||
+                (!JpsIsWalkable3D(nx, ny - 1, z) && JpsIsWalkable3D(nx + dx, ny - 1, z))) {
                 *jx = nx;
                 *jy = ny;
                 return true;
@@ -1803,8 +1821,8 @@ static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy)
         }
         // Vertical movement
         if (dy != 0) {
-            if ((!IsWalkable(nx + 1, ny) && IsWalkable(nx + 1, ny + dy)) ||
-                (!IsWalkable(nx - 1, ny) && IsWalkable(nx - 1, ny + dy))) {
+            if ((!JpsIsWalkable3D(nx + 1, ny, z) && JpsIsWalkable3D(nx + 1, ny + dy, z)) ||
+                (!JpsIsWalkable3D(nx - 1, ny, z) && JpsIsWalkable3D(nx - 1, ny + dy, z))) {
                 *jx = nx;
                 *jy = ny;
                 return true;
@@ -1813,7 +1831,7 @@ static bool Jump(int x, int y, int dx, int dy, int gx, int gy, int* jx, int* jy)
     }
 
     // Continue jumping in this direction
-    return Jump(nx, ny, dx, dy, gx, gy, jx, jy);
+    return Jump(nx, ny, z, dx, dy, gx, gy, gz, jx, jy);
 }
 
 void RunJPS(void) {
@@ -1823,18 +1841,16 @@ void RunJPS(void) {
     nodesExplored = 0;
     double startTime = GetTime();
 
-    // Initialize node data
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            nodeData[0][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
+    // Initialize node data for all z-levels
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                nodeData[z][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, -1, false, false};
 
-    nodeData[0][startPos.y][startPos.x].g = 0;
-    if (use8Dir) {
-        nodeData[0][startPos.y][startPos.x].f = Heuristic8Dir(startPos.x, startPos.y, goalPos.x, goalPos.y);
-    } else {
-        nodeData[0][startPos.y][startPos.x].f = Heuristic(startPos.x, startPos.y, goalPos.x, goalPos.y) * 10;
-    }
-    nodeData[0][startPos.y][startPos.x].open = true;
+    int startZ = startPos.z;
+    nodeData[startZ][startPos.y][startPos.x].g = 0;
+    nodeData[startZ][startPos.y][startPos.x].f = Heuristic3D(startPos.x, startPos.y, startZ, goalPos.x, goalPos.y, goalPos.z);
+    nodeData[startZ][startPos.y][startPos.x].open = true;
 
     // Direction arrays
     int dx4[] = {0, 1, 0, -1};
@@ -1847,64 +1863,69 @@ void RunJPS(void) {
     int numDirs = use8Dir ? 8 : 4;
 
     while (1) {
-        // Find node with lowest f
-        int bestX = -1, bestY = -1, bestF = COST_INF;
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                if (nodeData[0][y][x].open && nodeData[0][y][x].f < bestF) {
-                    bestF = nodeData[0][y][x].f;
-                    bestX = x;
-                    bestY = y;
-                }
+        // Find node with lowest f across all z-levels
+        int bestX = -1, bestY = -1, bestZ = -1, bestF = COST_INF;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    if (nodeData[z][y][x].open && nodeData[z][y][x].f < bestF) {
+                        bestF = nodeData[z][y][x].f;
+                        bestX = x;
+                        bestY = y;
+                        bestZ = z;
+                    }
 
         if (bestX < 0) break;  // No path
 
-        if (bestX == goalPos.x && bestY == goalPos.y) {
+        // Goal check (must match z too)
+        if (bestX == goalPos.x && bestY == goalPos.y && bestZ == goalPos.z) {
             // Reconstruct path
-            int cx = goalPos.x, cy = goalPos.y;
-            while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
-                path[pathLength++] = (Point){cx, cy, 0};
-                int px = nodeData[0][cy][cx].parentX;
-                int py = nodeData[0][cy][cx].parentY;
+            int cx = goalPos.x, cy = goalPos.y, cz = goalPos.z;
+            while (cx >= 0 && cy >= 0 && cz >= 0 && pathLength < MAX_PATH) {
+                path[pathLength++] = (Point){cx, cy, cz};
+                int px = nodeData[cz][cy][cx].parentX;
+                int py = nodeData[cz][cy][cx].parentY;
+                int pz = nodeData[cz][cy][cx].parentZ;
 
-                // For JPS, we need to fill in intermediate points
-                if (px >= 0 && py >= 0) {
+                // For JPS, fill in intermediate points (only for same z-level jumps)
+                if (px >= 0 && py >= 0 && pz >= 0 && pz == cz) {
                     int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
                     int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
                     int ix = cx + stepX;
                     int iy = cy + stepY;
                     while ((ix != px || iy != py) && pathLength < MAX_PATH) {
-                        path[pathLength++] = (Point){ix, iy, 0};
+                        path[pathLength++] = (Point){ix, iy, cz};
                         ix += stepX;
                         iy += stepY;
                     }
                 }
                 cx = px;
                 cy = py;
+                cz = pz;
             }
             break;
         }
 
-        nodeData[0][bestY][bestX].open = false;
-        nodeData[0][bestY][bestX].closed = true;
+        nodeData[bestZ][bestY][bestX].open = false;
+        nodeData[bestZ][bestY][bestX].closed = true;
         nodesExplored++;
 
-        // Explore neighbors using JPS
+        // Explore XY neighbors using JPS (on same z-level)
         for (int i = 0; i < numDirs; i++) {
             int jx, jy;
 
             if (use8Dir) {
                 // Try to jump in this direction
-                if (!Jump(bestX, bestY, dx[i], dy[i], goalPos.x, goalPos.y, &jx, &jy))
+                if (!Jump(bestX, bestY, bestZ, dx[i], dy[i], goalPos.x, goalPos.y, goalPos.z, &jx, &jy))
                     continue;
             } else {
                 // For 4-dir, just do regular A* neighbor expansion (JPS needs diagonals)
                 jx = bestX + dx[i];
                 jy = bestY + dy[i];
-                if (!IsWalkable(jx, jy)) continue;
+                if (!JpsIsWalkable3D(jx, jy, bestZ)) continue;
             }
 
-            if (nodeData[0][jy][jx].closed) continue;
+            if (nodeData[bestZ][jy][jx].closed) continue;
 
             // Calculate cost
             int dist = abs(jx - bestX) + abs(jy - bestY);
@@ -1917,54 +1938,97 @@ void RunJPS(void) {
                 dist *= 10;
             }
 
-            int ng = nodeData[0][bestY][bestX].g + dist;
+            int ng = nodeData[bestZ][bestY][bestX].g + dist;
 
-            if (ng < nodeData[0][jy][jx].g) {
-                nodeData[0][jy][jx].g = ng;
-                if (use8Dir) {
-                    nodeData[0][jy][jx].f = ng + Heuristic8Dir(jx, jy, goalPos.x, goalPos.y);
-                } else {
-                    nodeData[0][jy][jx].f = ng + Heuristic(jx, jy, goalPos.x, goalPos.y) * 10;
+            if (ng < nodeData[bestZ][jy][jx].g) {
+                nodeData[bestZ][jy][jx].g = ng;
+                nodeData[bestZ][jy][jx].f = ng + Heuristic3D(jx, jy, bestZ, goalPos.x, goalPos.y, goalPos.z);
+                nodeData[bestZ][jy][jx].parentX = bestX;
+                nodeData[bestZ][jy][jx].parentY = bestY;
+                nodeData[bestZ][jy][jx].parentZ = bestZ;
+                nodeData[bestZ][jy][jx].open = true;
+            }
+        }
+
+        // Expand Z neighbors (ladder connections) - same as A* 3D
+        if (grid[bestZ][bestY][bestX] == CELL_LADDER) {
+            // Try going up (z+1)
+            int nz = bestZ + 1;
+            if (nz < gridDepth && grid[nz][bestY][bestX] == CELL_LADDER) {
+                if (!nodeData[nz][bestY][bestX].closed) {
+                    int moveCost = 10;  // Same cost as cardinal move
+                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                    if (ng < nodeData[nz][bestY][bestX].g) {
+                        nodeData[nz][bestY][bestX].g = ng;
+                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                        nodeData[nz][bestY][bestX].parentX = bestX;
+                        nodeData[nz][bestY][bestX].parentY = bestY;
+                        nodeData[nz][bestY][bestX].parentZ = bestZ;
+                        nodeData[nz][bestY][bestX].open = true;
+                    }
                 }
-                nodeData[0][jy][jx].parentX = bestX;
-                nodeData[0][jy][jx].parentY = bestY;
-                nodeData[0][jy][jx].open = true;
+            }
+            // Try going down (z-1)
+            nz = bestZ - 1;
+            if (nz >= 0 && grid[nz][bestY][bestX] == CELL_LADDER) {
+                if (!nodeData[nz][bestY][bestX].closed) {
+                    int moveCost = 10;
+                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                    if (ng < nodeData[nz][bestY][bestX].g) {
+                        nodeData[nz][bestY][bestX].g = ng;
+                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                        nodeData[nz][bestY][bestX].parentX = bestX;
+                        nodeData[nz][bestY][bestX].parentY = bestY;
+                        nodeData[nz][bestY][bestX].parentZ = bestZ;
+                        nodeData[nz][bestY][bestX].open = true;
+                    }
+                }
             }
         }
     }
 
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "JPS (%s): time=%.2fms, nodes=%d, path=%d",
+    TraceLog(LOG_INFO, "JPS 3D (%s): time=%.2fms, nodes=%d, path=%d",
              use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
 }
 
 // ============== JPS+ (Jump Point Search Plus - with preprocessing) ==============
 
-// JPS+ precomputed jump distances for each cell in each of 8 directions
+// JPS+ precomputed jump distances for each cell in each of 8 directions (per z-level)
 // Positive value: distance to wall (no jump point found)
 // Negative value: distance to jump point (negate to get actual distance)
 // 0: cell is a wall or immediately blocked
-static int16_t jpsDist[MAX_GRID_HEIGHT][MAX_GRID_WIDTH][8];
+static int16_t jpsDist[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH][8];
 static bool jpsPrecomputed = false;  // Set to false when needsRebuild triggers
+
+// Ladder graph for JPS+ 3D cross-level queries
+JpsLadderGraph jpsLadderGraph;
+static bool jpsLadderGraphBuilt = false;
 
 // Direction indices: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
 static const int jpsDx[8] = {0, 1, 1, 1, 0, -1, -1, -1};
 static const int jpsDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
-// Check if a cell is walkable (bounds-checked)
-static bool JpsIsWalkable(int x, int y) {
-    return IsCellWalkableAt(0, y, x);
+// Check if a cell is walkable (bounds-checked) - for JPS+ precomputation
+static bool JpsPlusIsWalkable(int x, int y, int z) {
+    return IsCellWalkableAt(z, y, x);
+}
+
+// Check if cell is a ladder (forced stop for JPS+ precomputation)
+static bool JpsPlusIsLadder(int x, int y, int z) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    return grid[z][y][x] == CELL_LADDER;
 }
 
 // Check if diagonal move is allowed (no corner cutting)
-static bool JpsDiagonalAllowed(int x, int y, int dx, int dy) {
+static bool JpsPlusDiagonalAllowed(int x, int y, int z, int dx, int dy) {
     // Both adjacent cardinal cells must be walkable
-    return JpsIsWalkable(x + dx, y) && JpsIsWalkable(x, y + dy);
+    return JpsPlusIsWalkable(x + dx, y, z) && JpsPlusIsWalkable(x, y + dy, z);
 }
 
 // Compute jump distance for a diagonal direction
 // Returns positive distance to wall, or negative distance to jump point
-static int16_t ComputeDiagonalJumpDist(int x, int y, int dir) {
+static int16_t ComputeDiagonalJumpDist(int x, int y, int z, int dir) {
     int dx = jpsDx[dir];
     int dy = jpsDy[dir];
     int dist = 0;
@@ -1975,19 +2039,24 @@ static int16_t ComputeDiagonalJumpDist(int x, int y, int dir) {
     int cardinalH = (dx > 0) ? 2 : 6;  // E or W
     int cardinalV = (dy > 0) ? 4 : 0;  // S or N
 
-    while (JpsIsWalkable(nx, ny) && JpsDiagonalAllowed(x + dist * dx, y + dist * dy, dx, dy)) {
+    while (JpsPlusIsWalkable(nx, ny, z) && JpsPlusDiagonalAllowed(x + dist * dx, y + dist * dy, z, dx, dy)) {
         dist++;
 
+        // LADDER = forced jump point (must stop here)
+        if (JpsPlusIsLadder(nx, ny, z)) {
+            return -dist;  // Jump point found (ladder)
+        }
+
         // Check for forced neighbors (diagonal)
-        if ((!JpsIsWalkable(nx - dx, ny) && JpsIsWalkable(nx - dx, ny + dy)) ||
-            (!JpsIsWalkable(nx, ny - dy) && JpsIsWalkable(nx + dx, ny - dy))) {
+        if ((!JpsPlusIsWalkable(nx - dx, ny, z) && JpsPlusIsWalkable(nx - dx, ny + dy, z)) ||
+            (!JpsPlusIsWalkable(nx, ny - dy, z) && JpsPlusIsWalkable(nx + dx, ny - dy, z))) {
             return -dist;  // Jump point found
         }
 
         // Check if cardinal directions from here have jump points
         // If so, this is a jump point
-        int16_t hDist = jpsDist[ny][nx][cardinalH];
-        int16_t vDist = jpsDist[ny][nx][cardinalV];
+        int16_t hDist = jpsDist[z][ny][nx][cardinalH];
+        int16_t vDist = jpsDist[z][ny][nx][cardinalV];
         if (hDist < 0 || vDist < 0) {
             return -dist;  // Jump point found (cardinal component leads to one)
         }
@@ -2000,31 +2069,31 @@ static int16_t ComputeDiagonalJumpDist(int x, int y, int dir) {
 }
 
 // Check if cell has a forced neighbor for cardinal movement
-static bool HasForcedNeighborCardinal(int x, int y, int dir) {
+// Also returns true for ladder cells (forced stop points)
+static bool HasForcedNeighborCardinal(int x, int y, int z, int dir) {
+    // Ladder = forced jump point
+    if (JpsPlusIsLadder(x, y, z)) {
+        return true;
+    }
+    
     int dx = jpsDx[dir];
     int dy = jpsDy[dir];
     if (dir == 0 || dir == 4) {  // N or S (vertical)
-        return (!JpsIsWalkable(x - 1, y) && JpsIsWalkable(x - 1, y + dy)) ||
-               (!JpsIsWalkable(x + 1, y) && JpsIsWalkable(x + 1, y + dy));
+        return (!JpsPlusIsWalkable(x - 1, y, z) && JpsPlusIsWalkable(x - 1, y + dy, z)) ||
+               (!JpsPlusIsWalkable(x + 1, y, z) && JpsPlusIsWalkable(x + 1, y + dy, z));
     } else {  // E or W (horizontal)
-        return (!JpsIsWalkable(x, y - 1) && JpsIsWalkable(x + dx, y - 1)) ||
-               (!JpsIsWalkable(x, y + 1) && JpsIsWalkable(x + dx, y + 1));
+        return (!JpsPlusIsWalkable(x, y - 1, z) && JpsPlusIsWalkable(x + dx, y - 1, z)) ||
+               (!JpsPlusIsWalkable(x, y + 1, z) && JpsPlusIsWalkable(x + dx, y + 1, z));
     }
 }
 
-// Precompute JPS+ data using efficient row/column sweeps
+// Precompute JPS+ data for a single z-level using efficient row/column sweeps
 // This is O(n²) instead of O(n² × avg_jump_dist)
-static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
-    // Clamp to grid bounds
-    if (minX < 0) minX = 0;
-    if (minY < 0) minY = 0;
-    if (maxX > gridWidth) maxX = gridWidth;
-    if (maxY > gridHeight) maxY = gridHeight;
-
+static void PrecomputeJpsPlusForLevel(int z) {
     // Initialize all to 0 (walls)
-    for (int y = minY; y < maxY; y++) {
-        for (int x = minX; x < maxX; x++) {
-            for (int d = 0; d < 8; d++) jpsDist[y][x][d] = 0;
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            for (int d = 0; d < 8; d++) jpsDist[z][y][x][d] = 0;
         }
     }
 
@@ -2036,7 +2105,7 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
         bool countingFromWall = true;
 
         for (int x = gridWidth - 1; x >= 0; x--) {
-            if (!JpsIsWalkable(x, y)) {
+            if (!JpsPlusIsWalkable(x, y, z)) {
                 distToJP = 0;
                 countingFromWall = true;
                 continue;
@@ -2044,13 +2113,13 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
 
             distToJP++;
 
-            if (HasForcedNeighborCardinal(x, y, 2)) {
+            if (HasForcedNeighborCardinal(x, y, z, 2)) {
                 // This cell is a jump point for westward travelers
-                jpsDist[y][x][2] = countingFromWall ? distToJP : -distToJP;
+                jpsDist[z][y][x][2] = countingFromWall ? distToJP : -distToJP;
                 distToJP = 0;
                 countingFromWall = false;  // Next cells count toward this jump point
             } else {
-                jpsDist[y][x][2] = countingFromWall ? distToJP : -distToJP;
+                jpsDist[z][y][x][2] = countingFromWall ? distToJP : -distToJP;
             }
         }
     }
@@ -2061,7 +2130,7 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
         bool countingFromWall = true;
 
         for (int x = 0; x < gridWidth; x++) {
-            if (!JpsIsWalkable(x, y)) {
+            if (!JpsPlusIsWalkable(x, y, z)) {
                 distToJP = 0;
                 countingFromWall = true;
                 continue;
@@ -2069,12 +2138,12 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
 
             distToJP++;
 
-            if (HasForcedNeighborCardinal(x, y, 6)) {
-                jpsDist[y][x][6] = countingFromWall ? distToJP : -distToJP;
+            if (HasForcedNeighborCardinal(x, y, z, 6)) {
+                jpsDist[z][y][x][6] = countingFromWall ? distToJP : -distToJP;
                 distToJP = 0;
                 countingFromWall = false;
             } else {
-                jpsDist[y][x][6] = countingFromWall ? distToJP : -distToJP;
+                jpsDist[z][y][x][6] = countingFromWall ? distToJP : -distToJP;
             }
         }
     }
@@ -2085,7 +2154,7 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
         bool countingFromWall = true;
 
         for (int y = gridHeight - 1; y >= 0; y--) {
-            if (!JpsIsWalkable(x, y)) {
+            if (!JpsPlusIsWalkable(x, y, z)) {
                 distToJP = 0;
                 countingFromWall = true;
                 continue;
@@ -2093,12 +2162,12 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
 
             distToJP++;
 
-            if (HasForcedNeighborCardinal(x, y, 4)) {
-                jpsDist[y][x][4] = countingFromWall ? distToJP : -distToJP;
+            if (HasForcedNeighborCardinal(x, y, z, 4)) {
+                jpsDist[z][y][x][4] = countingFromWall ? distToJP : -distToJP;
                 distToJP = 0;
                 countingFromWall = false;
             } else {
-                jpsDist[y][x][4] = countingFromWall ? distToJP : -distToJP;
+                jpsDist[z][y][x][4] = countingFromWall ? distToJP : -distToJP;
             }
         }
     }
@@ -2109,7 +2178,7 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
         bool countingFromWall = true;
 
         for (int y = 0; y < gridHeight; y++) {
-            if (!JpsIsWalkable(x, y)) {
+            if (!JpsPlusIsWalkable(x, y, z)) {
                 distToJP = 0;
                 countingFromWall = true;
                 continue;
@@ -2117,12 +2186,12 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
 
             distToJP++;
 
-            if (HasForcedNeighborCardinal(x, y, 0)) {
-                jpsDist[y][x][0] = countingFromWall ? distToJP : -distToJP;
+            if (HasForcedNeighborCardinal(x, y, z, 0)) {
+                jpsDist[z][y][x][0] = countingFromWall ? distToJP : -distToJP;
                 distToJP = 0;
                 countingFromWall = false;
             } else {
-                jpsDist[y][x][0] = countingFromWall ? distToJP : -distToJP;
+                jpsDist[z][y][x][0] = countingFromWall ? distToJP : -distToJP;
             }
         }
     }
@@ -2130,48 +2199,57 @@ static void PrecomputeJpsPlusRegion(int minX, int minY, int maxX, int maxY) {
     // === DIAGONAL DIRECTIONS (still need per-cell, but use precomputed cardinals) ===
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (!JpsIsWalkable(x, y)) continue;
-            jpsDist[y][x][1] = ComputeDiagonalJumpDist(x, y, 1);
-            jpsDist[y][x][3] = ComputeDiagonalJumpDist(x, y, 3);
-            jpsDist[y][x][5] = ComputeDiagonalJumpDist(x, y, 5);
-            jpsDist[y][x][7] = ComputeDiagonalJumpDist(x, y, 7);
+            if (!JpsPlusIsWalkable(x, y, z)) continue;
+            jpsDist[z][y][x][1] = ComputeDiagonalJumpDist(x, y, z, 1);
+            jpsDist[z][y][x][3] = ComputeDiagonalJumpDist(x, y, z, 3);
+            jpsDist[z][y][x][5] = ComputeDiagonalJumpDist(x, y, z, 5);
+            jpsDist[z][y][x][7] = ComputeDiagonalJumpDist(x, y, z, 7);
         }
     }
 }
 
-// Precompute JPS+ data for the entire grid
-// NOTE: JPS+ is optimized for STATIC maps. Preprocessing takes ~500ms on 512x512.
+// Precompute JPS+ data for all z-levels
+// NOTE: JPS+ is optimized for STATIC maps. Preprocessing takes ~500ms on 512x512 per level.
 // For dynamic terrain (colony sims, etc.), use HPA* instead which supports incremental updates.
 void PrecomputeJpsPlus(void) {
     double startTime = GetTime();
-    PrecomputeJpsPlusRegion(0, 0, gridWidth, gridHeight);
+    
+    // Precompute jump distances for each z-level
+    for (int z = 0; z < gridDepth; z++) {
+        PrecomputeJpsPlusForLevel(z);
+    }
+    
     jpsPrecomputed = true;
     jpsNeedsRebuild = false;
-    TraceLog(LOG_INFO, "JPS+ precomputed in %.2fms", (GetTime() - startTime) * 1000.0);
+    jpsLadderGraphBuilt = false;  // Ladder graph needs rebuild after JPS+ precompute
+    
+    TraceLog(LOG_INFO, "JPS+ precomputed for %d z-levels in %.2fms", gridDepth, (GetTime() - startTime) * 1000.0);
 }
 
-// JPS+ search with bounded region (can be used for full grid or chunk)
-int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+// JPS+ search on a single z-level with bounded region
+// Returns cost to goal, or -1 if no path found
+static int JpsPlusChunk2D(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY) {
     if (!jpsPrecomputed || jpsNeedsRebuild) {
         // Full recompute needed - jumps can span entire grid, so incremental updates are unsafe
         PrecomputeJpsPlus();
     }
 
-    if (!JpsIsWalkable(sx, sy) || !JpsIsWalkable(gx, gy)) return -1;
+    if (!JpsPlusIsWalkable(sx, sy, sz) || !JpsPlusIsWalkable(gx, gy, sz)) return -1;
 
     // Initialize node data for bounded region
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            nodeData[0][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, 0, false, false};
+            nodeData[sz][y][x] = (AStarNode){COST_INF, COST_INF, -1, -1, -1, false, false};
             heapPos[y][x] = -1;
         }
     }
 
     ChunkHeapInit();
+    chunkHeapZ = sz;  // Set z-level for heap operations
 
-    nodeData[0][sy][sx].g = 0;
-    nodeData[0][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
-    nodeData[0][sy][sx].open = true;
+    nodeData[sz][sy][sx].g = 0;
+    nodeData[sz][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
+    nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
 
     while (chunkHeap.size > 0) {
@@ -2179,15 +2257,15 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
         ChunkHeapPop(&bestX, &bestY);
 
         if (bestX == gx && bestY == gy) {
-            return nodeData[0][gy][gx].g;  // Found goal
+            return nodeData[sz][gy][gx].g;  // Found goal
         }
 
-        nodeData[0][bestY][bestX].open = false;
-        nodeData[0][bestY][bestX].closed = true;
+        nodeData[sz][bestY][bestX].open = false;
+        nodeData[sz][bestY][bestX].closed = true;
 
         // Explore all 8 directions using precomputed jump distances
         for (int dir = 0; dir < 8; dir++) {
-            int16_t dist = jpsDist[bestY][bestX][dir];
+            int16_t dist = jpsDist[sz][bestY][bestX][dir];
             if (dist == 0) continue;  // Blocked
 
             int actualDist = (dist < 0) ? -dist : dist;
@@ -2255,8 +2333,41 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
                     continue;
                 }
             } else {
-                // Cardinal direction with no jump point and goal not in line
-                continue;
+                // Cardinal direction with positive dist (no jump point, just wall)
+                // Check if we could turn toward the goal at an intermediate cell
+                // This handles corridors where we need to exit before hitting the wall
+                
+                // For cardinal moves: perpGoal is the goal offset perpendicular to movement,
+                // and paraGoal is the goal offset parallel to movement
+                int perpGoal = (dx == 0) ? toGoalX : toGoalY;
+                int paraGoal = (dx == 0) ? toGoalY : toGoalX;
+                int moveDir = (dx == 0) ? dy : dx;
+                
+                if (perpGoal == 0) continue;  // Goal is on our line, handled by goalInDir above
+                
+                // Determine turn distance: where we should turn to head toward goal
+                int turnDist;
+                if ((moveDir > 0 && paraGoal > 0) || (moveDir < 0 && paraGoal < 0)) {
+                    // Goal is ahead in our direction - turn at that distance
+                    turnDist = abs(paraGoal);
+                } else {
+                    // Goal is behind or same row/col - turn at first opportunity
+                    turnDist = 1;
+                }
+                
+                if (turnDist <= 0 || turnDist > actualDist) continue;
+                
+                // Check if perpendicular direction toward goal is open at turn point
+                int turnX = bestX + dx * turnDist;
+                int turnY = bestY + dy * turnDist;
+                int perpDx = (dx == 0) ? ((toGoalX > 0) ? 1 : -1) : 0;
+                int perpDy = (dy == 0) ? ((toGoalY > 0) ? 1 : -1) : 0;
+                
+                if (!JpsPlusIsWalkable(turnX + perpDx, turnY + perpDy, sz)) continue;
+                
+                targetX = turnX;
+                targetY = turnY;
+                moveDist = turnDist;
             }
 
             // Check bounds
@@ -2274,7 +2385,7 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
                 moveDist = clampDist;
             }
 
-            if (nodeData[0][targetY][targetX].closed) continue;
+            if (nodeData[sz][targetY][targetX].closed) continue;
 
             // Calculate movement cost
             int cost;
@@ -2284,18 +2395,19 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
                 cost = moveDist * 10;  // Cardinal
             }
 
-            int ng = nodeData[0][bestY][bestX].g + cost;
+            int ng = nodeData[sz][bestY][bestX].g + cost;
 
-            if (ng < nodeData[0][targetY][targetX].g) {
-                nodeData[0][targetY][targetX].g = ng;
-                nodeData[0][targetY][targetX].f = ng + Heuristic8Dir(targetX, targetY, gx, gy);
-                nodeData[0][targetY][targetX].parentX = bestX;
-                nodeData[0][targetY][targetX].parentY = bestY;
+            if (ng < nodeData[sz][targetY][targetX].g) {
+                nodeData[sz][targetY][targetX].g = ng;
+                nodeData[sz][targetY][targetX].f = ng + Heuristic8Dir(targetX, targetY, gx, gy);
+                nodeData[sz][targetY][targetX].parentX = bestX;
+                nodeData[sz][targetY][targetX].parentY = bestY;
+                nodeData[sz][targetY][targetX].parentZ = sz;
 
-                if (nodeData[0][targetY][targetX].open) {
+                if (nodeData[sz][targetY][targetX].open) {
                     ChunkHeapDecreaseKey(targetX, targetY);
                 } else {
-                    nodeData[0][targetY][targetX].open = true;
+                    nodeData[sz][targetY][targetX].open = true;
                     ChunkHeapPush(targetX, targetY);
                 }
             }
@@ -2303,6 +2415,11 @@ int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, i
     }
 
     return -1;  // No path found
+}
+
+// Wrapper for backward compatibility (uses z=0)
+int JpsPlusChunk(int sx, int sy, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+    return JpsPlusChunk2D(sx, sy, 0, gx, gy, minX, minY, maxX, maxY);
 }
 
 // Standalone JPS+ runner (full grid)
@@ -2313,25 +2430,212 @@ void RunJpsPlus(void) {
     nodesExplored = 0;
     double startTime = GetTime();
 
-    int cost = JpsPlusChunk(startPos.x, startPos.y, goalPos.x, goalPos.y,
-                            0, 0, gridWidth, gridHeight);
+    int cost = -1;
+    
+    // Use 3D pathfinding when z-levels differ
+    if (startPos.z != goalPos.z) {
+        pathLength = FindPath3D_JpsPlus(startPos, goalPos, path, MAX_PATH);
+        cost = (pathLength > 0) ? pathLength * 10 : -1;  // Approximate cost
+    } else {
+        // Same z-level: use 2D JPS+ directly
+        cost = JpsPlusChunk2D(startPos.x, startPos.y, startPos.z, 
+                              goalPos.x, goalPos.y,
+                              0, 0, gridWidth, gridHeight);
 
-    if (cost >= 0) {
+        if (cost >= 0) {
+            // Reconstruct path
+            int cx = goalPos.x, cy = goalPos.y, cz = startPos.z;
+            while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
+                path[pathLength++] = (Point){cx, cy, cz};
+                int px = nodeData[cz][cy][cx].parentX;
+                int py = nodeData[cz][cy][cx].parentY;
+
+                // Fill in intermediate points between jump points
+                if (px >= 0 && py >= 0) {
+                    int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
+                    int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
+                    int ix = cx + stepX;
+                    int iy = cy + stepY;
+                    while ((ix != px || iy != py) && pathLength < MAX_PATH) {
+                        path[pathLength++] = (Point){ix, iy, cz};
+                        ix += stepX;
+                        iy += stepY;
+                    }
+                }
+                cx = px;
+                cy = py;
+            }
+        }
+    }
+    
+    nodesExplored = pathLength;  // Approximate
+
+    lastPathTime = (GetTime() - startTime) * 1000.0;
+    TraceLog(LOG_INFO, "JPS+ 3D: time=%.2fms, cost=%d, path=%d", lastPathTime, cost, pathLength);
+}
+
+// ============== JPS+ 3D Ladder Graph ==============
+
+// Build ladder graph for JPS+ 3D cross-level queries
+// This scans the grid for ladders (independent of HPA*'s ladderLinks)
+void BuildJpsLadderGraph(void) {
+    if (!jpsPrecomputed || jpsNeedsRebuild) {
+        PrecomputeJpsPlus();
+    }
+    
+    double startTime = GetTime();
+    JpsLadderGraph* g = &jpsLadderGraph;
+    
+    // Reset graph
+    g->endpointCount = 0;
+    g->edgeCount = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        g->endpointsPerLevelCount[z] = 0;
+    }
+    
+    // Step 1: Scan grid for ladder pairs and create endpoints
+    // A ladder connects z and z+1 where both have CELL_LADDER at same (x,y)
+    int ladderIndex = 0;
+    for (int z = 0; z < gridDepth - 1; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                    // Found a ladder - create two endpoints
+                    if (g->endpointCount + 2 > MAX_LADDER_ENDPOINTS) {
+                        TraceLog(LOG_WARNING, "JPS+ ladder graph: too many endpoints");
+                        goto done_scanning;
+                    }
+                    
+                    // Low endpoint (z)
+                    int lowIdx = g->endpointCount++;
+                    g->endpoints[lowIdx] = (LadderEndpoint){
+                        .x = x, .y = y, .z = z,
+                        .ladderIndex = ladderIndex,
+                        .isLow = true
+                    };
+                    
+                    // High endpoint (z+1)
+                    int highIdx = g->endpointCount++;
+                    g->endpoints[highIdx] = (LadderEndpoint){
+                        .x = x, .y = y, .z = z + 1,
+                        .ladderIndex = ladderIndex,
+                        .isLow = false
+                    };
+                    
+                    // Index by z-level
+                    if (g->endpointsPerLevelCount[z] < MAX_ENDPOINTS_PER_LEVEL) {
+                        g->endpointsByLevel[z][g->endpointsPerLevelCount[z]++] = lowIdx;
+                    }
+                    if (g->endpointsPerLevelCount[z + 1] < MAX_ENDPOINTS_PER_LEVEL) {
+                        g->endpointsByLevel[z + 1][g->endpointsPerLevelCount[z + 1]++] = highIdx;
+                    }
+                    
+                    ladderIndex++;
+                }
+            }
+        }
+    }
+done_scanning:
+    
+    // Step 2: Initialize all-pairs to infinity
+    for (int i = 0; i < g->endpointCount; i++) {
+        for (int j = 0; j < g->endpointCount; j++) {
+            g->allPairs[i][j] = (i == j) ? 0 : COST_INF;
+        }
+    }
+    
+    // Step 3: Add vertical edges (climb cost between low/high of same ladder)
+    for (int i = 0; i < g->endpointCount; i++) {
+        LadderEndpoint* ep = &g->endpoints[i];
+        if (ep->isLow) {
+            // Find the matching high endpoint (next index, same ladder)
+            int highIdx = i + 1;
+            if (highIdx < g->endpointCount && 
+                g->endpoints[highIdx].ladderIndex == ep->ladderIndex &&
+                !g->endpoints[highIdx].isLow) {
+                // Add bidirectional climb edge
+                int climbCost = 10;  // Same as one step
+                g->allPairs[i][highIdx] = climbCost;
+                g->allPairs[highIdx][i] = climbCost;
+            }
+        }
+    }
+    
+    // Step 4: Compute same-level distances between ladder endpoints using JPS+
+    for (int z = 0; z < gridDepth; z++) {
+        int count = g->endpointsPerLevelCount[z];
+        for (int i = 0; i < count; i++) {
+            int fromIdx = g->endpointsByLevel[z][i];
+            LadderEndpoint* from = &g->endpoints[fromIdx];
+            
+            for (int j = i + 1; j < count; j++) {
+                int toIdx = g->endpointsByLevel[z][j];
+                LadderEndpoint* to = &g->endpoints[toIdx];
+                
+                // Run JPS+ to find distance
+                int cost = JpsPlusChunk2D(from->x, from->y, z, to->x, to->y,
+                                          0, 0, gridWidth, gridHeight);
+                
+                if (cost >= 0) {
+                    g->allPairs[fromIdx][toIdx] = cost;
+                    g->allPairs[toIdx][fromIdx] = cost;
+                }
+            }
+        }
+    }
+    
+    // Step 5: Floyd-Warshall for all-pairs shortest paths through ladder graph
+    int n = g->endpointCount;
+    for (int k = 0; k < n; k++) {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (g->allPairs[i][k] < COST_INF && g->allPairs[k][j] < COST_INF) {
+                    int through = g->allPairs[i][k] + g->allPairs[k][j];
+                    if (through < g->allPairs[i][j]) {
+                        g->allPairs[i][j] = through;
+                    }
+                }
+            }
+        }
+    }
+    
+    jpsLadderGraphBuilt = true;
+    TraceLog(LOG_INFO, "JPS+ ladder graph: %d endpoints, built in %.2fms", 
+             g->endpointCount, (GetTime() - startTime) * 1000.0);
+}
+
+// JPS+ 3D pathfinding using ladder graph for cross-level queries
+// Returns path length, or 0 if no path found
+int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
+    if (!jpsPrecomputed || jpsNeedsRebuild) {
+        PrecomputeJpsPlus();
+    }
+    if (!jpsLadderGraphBuilt) {
+        BuildJpsLadderGraph();
+    }
+    
+    // Same z-level: pure JPS+
+    if (start.z == goal.z) {
+        int cost = JpsPlusChunk2D(start.x, start.y, start.z, goal.x, goal.y,
+                                   0, 0, gridWidth, gridHeight);
+        if (cost < 0) return 0;
+        
         // Reconstruct path
-        int cx = goalPos.x, cy = goalPos.y;
-        while (cx >= 0 && cy >= 0 && pathLength < MAX_PATH) {
-            path[pathLength++] = (Point){cx, cy, 0};
-            int px = nodeData[0][cy][cx].parentX;
-            int py = nodeData[0][cy][cx].parentY;
-
-            // Fill in intermediate points between jump points
+        int len = 0;
+        int cx = goal.x, cy = goal.y, cz = goal.z;
+        while (cx >= 0 && cy >= 0 && len < maxLen) {
+            outPath[len++] = (Point){cx, cy, cz};
+            int px = nodeData[cz][cy][cx].parentX;
+            int py = nodeData[cz][cy][cx].parentY;
+            
+            // Fill in intermediate points
             if (px >= 0 && py >= 0) {
                 int stepX = (px > cx) ? 1 : (px < cx) ? -1 : 0;
                 int stepY = (py > cy) ? 1 : (py < cy) ? -1 : 0;
                 int ix = cx + stepX;
                 int iy = cy + stepY;
-                while ((ix != px || iy != py) && pathLength < MAX_PATH) {
-                    path[pathLength++] = (Point){ix, iy, 0};
+                while ((ix != px || iy != py) && len < maxLen) {
+                    outPath[len++] = (Point){ix, iy, cz};
                     ix += stepX;
                     iy += stepY;
                 }
@@ -2339,11 +2643,92 @@ void RunJpsPlus(void) {
             cx = px;
             cy = py;
         }
-        nodesExplored = pathLength;  // Approximate
+        return len;
     }
-
-    lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "JPS+: time=%.2fms, cost=%d, path=%d", lastPathTime, cost, pathLength);
+    
+    // Different z-levels: use ladder graph
+    JpsLadderGraph* g = &jpsLadderGraph;
+    
+    // Step 1: Connect start to ladder graph (JPS+ to endpoints on start's z-level)
+    int startDist[MAX_ENDPOINTS_PER_LEVEL];
+    int startEP[MAX_ENDPOINTS_PER_LEVEL];
+    int startCount = 0;
+    
+    for (int i = 0; i < g->endpointsPerLevelCount[start.z]; i++) {
+        int epIdx = g->endpointsByLevel[start.z][i];
+        LadderEndpoint* ep = &g->endpoints[epIdx];
+        int cost = JpsPlusChunk2D(start.x, start.y, start.z, ep->x, ep->y,
+                                   0, 0, gridWidth, gridHeight);
+        if (cost >= 0 && startCount < MAX_ENDPOINTS_PER_LEVEL) {
+            startDist[startCount] = cost;
+            startEP[startCount] = epIdx;
+            startCount++;
+        }
+    }
+    
+    // Step 2: Connect goal to ladder graph (JPS+ from endpoints on goal's z-level)
+    int goalDist[MAX_ENDPOINTS_PER_LEVEL];
+    int goalEP[MAX_ENDPOINTS_PER_LEVEL];
+    int goalCount = 0;
+    
+    for (int i = 0; i < g->endpointsPerLevelCount[goal.z]; i++) {
+        int epIdx = g->endpointsByLevel[goal.z][i];
+        LadderEndpoint* ep = &g->endpoints[epIdx];
+        int cost = JpsPlusChunk2D(ep->x, ep->y, goal.z, goal.x, goal.y,
+                                   0, 0, gridWidth, gridHeight);
+        if (cost >= 0 && goalCount < MAX_ENDPOINTS_PER_LEVEL) {
+            goalDist[goalCount] = cost;
+            goalEP[goalCount] = epIdx;
+            goalCount++;
+        }
+    }
+    
+    // Step 3: Find best path through ladder graph
+    int bestCost = COST_INF;
+    int bestStartEP = -1;
+    int bestGoalEP = -1;
+    
+    for (int i = 0; i < startCount; i++) {
+        for (int j = 0; j < goalCount; j++) {
+            int ladderCost = g->allPairs[startEP[i]][goalEP[j]];
+            if (ladderCost < COST_INF) {
+                int totalCost = startDist[i] + ladderCost + goalDist[j];
+                if (totalCost < bestCost) {
+                    bestCost = totalCost;
+                    bestStartEP = startEP[i];
+                    bestGoalEP = goalEP[j];
+                }
+            }
+        }
+    }
+    
+    if (bestStartEP < 0 || bestGoalEP < 0) {
+        return 0;  // No path through ladder graph
+    }
+    
+    // Step 4: Reconstruct full path
+    // For now, simplified reconstruction: start -> ladder1 -> ladder2 -> goal
+    // (Full reconstruction would trace through all intermediate ladders)
+    int len = 0;
+    
+    // Add goal
+    if (len < maxLen) outPath[len++] = goal;
+    
+    // Add goal-side ladder endpoint
+    LadderEndpoint* goalLadder = &g->endpoints[bestGoalEP];
+    if (len < maxLen) outPath[len++] = (Point){goalLadder->x, goalLadder->y, goalLadder->z};
+    
+    // Add start-side ladder endpoint (if different from goal-side)
+    if (bestStartEP != bestGoalEP) {
+        LadderEndpoint* startLadder = &g->endpoints[bestStartEP];
+        if (len < maxLen) outPath[len++] = (Point){startLadder->x, startLadder->y, startLadder->z};
+    }
+    
+    // Add start
+    if (len < maxLen) outPath[len++] = start;
+    
+    // Path is in reverse order (goal to start), which matches RunAStar convention
+    return len;
 }
 
 // Random utilities using stdlib for portability
