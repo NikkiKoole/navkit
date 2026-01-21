@@ -918,6 +918,120 @@ void GenerateTowers(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Gallery Flat (Galerij Flat) Generator
+// Long rectangular apartment building with external corridor (gallery) on one side
+// Staircases at both ends connecting all floors
+// ============================================================================
+
+void GenerateGalleryFlat(void) {
+    // Clear all levels: z=0 is ground (walkable), z>0 is air
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALKABLE;
+        }
+    }
+    for (int z = 1; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = CELL_AIR;
+            }
+        }
+    }
+    
+    // Building parameters
+    int apartmentWidth = 4;
+    int apartmentDepth = 4;
+    int corridorWidth = 2;
+    int stairWidth = 2;
+    int numFloors = gridDepth;  // Use all available z-levels
+    
+    // Calculate building dimensions
+    int numApartments = (gridWidth - 4 - 2 * stairWidth) / apartmentWidth;
+    if (numApartments < 2) numApartments = 2;
+    
+    int buildingWidth = stairWidth + numApartments * apartmentWidth + stairWidth;
+    int buildingDepth = apartmentDepth + corridorWidth;
+    
+    // Center the building
+    int buildingX = (gridWidth - buildingWidth) / 2;
+    int buildingY = (gridHeight - buildingDepth) / 2;
+    
+    // Build each floor
+    for (int z = 0; z < numFloors; z++) {
+        // Outer walls of the building
+        for (int x = buildingX; x < buildingX + buildingWidth; x++) {
+            grid[z][buildingY][x] = CELL_WALL;                           // North wall
+            grid[z][buildingY + buildingDepth - 1][x] = CELL_WALL;       // South wall
+        }
+        for (int y = buildingY; y < buildingY + buildingDepth; y++) {
+            grid[z][y][buildingX] = CELL_WALL;                           // West wall
+            grid[z][y][buildingX + buildingWidth - 1] = CELL_WALL;       // East wall
+        }
+        
+        // Fill building interior with floor
+        for (int y = buildingY + 1; y < buildingY + buildingDepth - 1; y++) {
+            for (int x = buildingX + 1; x < buildingX + buildingWidth - 1; x++) {
+                grid[z][y][x] = CELL_FLOOR;
+            }
+        }
+        
+        // Gallery corridor (south side, inside the building)
+        // Already filled with floor above
+        
+        // Apartment walls (north side)
+        int apartmentStartX = buildingX + stairWidth;
+        for (int apt = 0; apt < numApartments; apt++) {
+            int aptX = apartmentStartX + apt * apartmentWidth;
+            
+            // Wall between apartments (except first one which uses building wall)
+            if (apt > 0) {
+                for (int y = buildingY; y < buildingY + apartmentDepth; y++) {
+                    grid[z][y][aptX] = CELL_WALL;
+                }
+            }
+            
+            // Back wall of apartment (separating from corridor)
+            for (int x = aptX; x < aptX + apartmentWidth && x < buildingX + buildingWidth - stairWidth; x++) {
+                grid[z][buildingY + apartmentDepth - 1][x] = CELL_WALL;
+            }
+            
+            // Door to corridor (middle of back wall)
+            int doorX = aptX + apartmentWidth / 2;
+            if (doorX < buildingX + buildingWidth - stairWidth) {
+                grid[z][buildingY + apartmentDepth - 1][doorX] = CELL_FLOOR;
+            }
+        }
+        
+        // Last apartment wall
+        int lastWallX = apartmentStartX + numApartments * apartmentWidth;
+        if (lastWallX < buildingX + buildingWidth - 1) {
+            for (int y = buildingY; y < buildingY + apartmentDepth; y++) {
+                grid[z][y][lastWallX] = CELL_WALL;
+            }
+        }
+        
+        // West staircase area
+        int westStairX = buildingX + 1;
+        int stairY = buildingY + 1;
+        // Ladder in west staircase (on all floors)
+        grid[z][stairY][westStairX] = CELL_LADDER;
+        
+        // East staircase area  
+        int eastStairX = buildingX + buildingWidth - 2;
+        // Ladder in east staircase (on all floors)
+        grid[z][stairY][eastStairX] = CELL_LADDER;
+    }
+    
+    // Ground floor entrance (door in south wall)
+    int entranceX = buildingX + buildingWidth / 2;
+    grid[0][buildingY + buildingDepth - 1][entranceX] = CELL_FLOOR;
+    // Second entrance on the other side
+    grid[0][buildingY + buildingDepth - 1][entranceX + 2] = CELL_FLOOR;
+    
+    needsRebuild = true;
+}
+
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = chunkWidth * 4;

@@ -16,6 +16,7 @@ void GenerateDrunkard(void);      // Drunkard's walk tunnels
 void GenerateTunneler(void);      // Tunneler algorithm (rooms + corridors)
 void GenerateMixMax(void);        // Tunneler + extra rooms
 void GenerateTowers(void);        // 3D towers with bridges
+void GenerateGalleryFlat(void);   // 3D gallery flat apartment building
 
 // Perlin noise utilities
 void InitPerlin(int seed);
