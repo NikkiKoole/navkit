@@ -95,5 +95,6 @@ void UpdateDirtyChunks(void);
 // Random utilities
 void SeedRandom(unsigned int seed);
 Point GetRandomWalkableCell(void);
+Point GetRandomWalkableCellDifferentZ(int excludeZ);
 
 #endif // PATHFINDING_H

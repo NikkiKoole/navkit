@@ -831,6 +831,8 @@ void DrawUI(void) {
         ToggleBool(x, y, "String Pulling", &useStringPulling);
         y += 22;
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
+        y += 22;
+        ToggleBool(x, y, "Prefer Diff Z", &preferDifferentZ);
         
         // Avoidance subsection
         y += 22;

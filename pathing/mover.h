@@ -70,6 +70,7 @@ extern unsigned long currentTick;
 extern bool useStringPulling;
 extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
+extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
 
 // Core functions
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed);

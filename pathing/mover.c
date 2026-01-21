@@ -14,6 +14,7 @@ unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = false;
 bool useMoverAvoidance = true;
+bool preferDifferentZ = false;
 bool useKnotFix = true;
 bool useWallRepulsion = true;
 float wallRepulsionStrength = 0.5f;
@@ -543,7 +544,12 @@ int CountActiveMovers(void) {
 
 // Assign a new random goal to a mover and compute path
 static void AssignNewMoverGoal(Mover* m) {
-    Point newGoal = GetRandomWalkableCell();
+    Point newGoal;
+    if (preferDifferentZ && gridDepth > 1) {
+        newGoal = GetRandomWalkableCellDifferentZ((int)m->z);
+    } else {
+        newGoal = GetRandomWalkableCell();
+    }
     m->goal = newGoal;
 
     int currentX = (int)(m->x / CELL_SIZE);
