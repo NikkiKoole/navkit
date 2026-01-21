@@ -213,6 +213,36 @@ One new logical tile (like "road") creates tons of new layouts.
 
 ---
 
+## Maybe Later (more tile ideas)
+
+### Terrain/Ground types
+- **Grass vs Dirt** - distinguish from CELL_WALKABLE for visuals or cost later
+- **Sand** - slower movement, beaches/desert areas
+- **Ice** - slippery? momentum-based movement? Or just visual
+- **Mud** - slow terrain, appears after rain/floods
+
+### Vertical stuff
+- **Ramp** - like stairs but for vehicles/carts if you ever have those
+- **Bridge** - walkable over water/void, needs z-level awareness
+- **Hole/Trapdoor** - like ladder but one-way down, or openable
+
+### Urban/Building
+- **Window** - blocks movement, doesn't block sight (like fence but for buildings)
+- **Counter/Table** - blocks movement, partial cover, could be vaulted over
+- **Elevator** - like ladder but for multi-floor jumps, colony sim vibes
+
+### Functional (colony sim)
+- **Spawn point** - where movers appear
+- **Goal/Target** - destinations for testing
+
+### Hazards
+- **Fire** - damages, spreads, blocks movement or high cost
+- **Electric/Danger** - instant death or avoidance zone
+
+Most of these are variations on: blocking, cost modifier, or z-transition.
+
+---
+
 ## Big Picture
 
 1. Abstract city grid with district types
