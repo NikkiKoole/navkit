@@ -474,6 +474,9 @@ void StringPullPath(Point* pathArr, int* pathLen) {
     while (current > 0) {
         int furthest = current - 1;
         for (int i = 0; i < current; i++) {
+            // Don't string-pull across z-level changes (would skip ladder waypoints)
+            if (pathArr[current].z != pathArr[i].z) continue;
+            
             if (HasClearCorridor(pathArr[current].x, pathArr[current].y,
                                  pathArr[i].x, pathArr[i].y)) {
                 furthest = i;
