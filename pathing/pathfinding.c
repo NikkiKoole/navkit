@@ -1868,6 +1868,13 @@ static bool Jump(int x, int y, int z, int dx, int dy, int gx, int gy, int gz, in
     int ny = y + dy;
 
     if (!JpsIsWalkable3D(nx, ny, z)) return false;
+    
+    // For diagonal movement, check corner-cutting (both adjacent cardinals must be walkable)
+    if (dx != 0 && dy != 0) {
+        if (!JpsIsWalkable3D(x + dx, y, z) || !JpsIsWalkable3D(x, y + dy, z)) {
+            return false;
+        }
+    }
 
     // Goal check (must be on same z-level for horizontal jump to reach it)
     if (nx == gx && ny == gy && z == gz) {

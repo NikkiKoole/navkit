@@ -1363,6 +1363,122 @@ describe(mover_ladder_transitions) {
     }
 }
 
+describe(sparse_level_pathfinding) {
+    it("should handle random paths with JPS on sparse level") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        SetRandomSeed(12345);  // raylib's seed
+        SeedRandom(12345);
+        GenerateSparse(0.10f);
+        BuildEntrances();
+        BuildGraph();
+
+        moverPathAlgorithm = PATH_ALGO_JPS;
+
+        int totalTests = 20;
+        int pathsFound = 0;
+        int moversReachedGoal = 0;
+
+        for (int test = 0; test < totalTests; test++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            start.z = 0;  // Force z=0 for 2D sparse level
+            goal.z = 0;
+
+            if (start.x < 0 || goal.x < 0) continue;
+
+            Point pathBuf[MAX_PATH];
+            int pathLen = FindPath(PATH_ALGO_JPS, start, goal, pathBuf, MAX_PATH);
+
+            if (pathLen > 0) {
+                pathsFound++;
+
+                ClearMovers();
+                Mover* m = &movers[0];
+                float startX = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float startY = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, startX, startY, (float)start.z, goal, 100.0f, pathBuf, pathLen);
+                moverCount = 1;
+
+                for (int tick = 0; tick < 5000; tick++) {
+                    Tick();
+                    if (!m->active) break;
+                }
+
+                if (!m->active) {
+                    moversReachedGoal++;
+                } else {
+                    int stuckX = (int)(m->x / CELL_SIZE);
+                    int stuckY = (int)(m->y / CELL_SIZE);
+                    printf("JPS STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
+                           test, start.x, start.y, goal.x, goal.y,
+                           stuckX, stuckY, m->pathIndex, m->pathLength);
+                }
+            }
+        }
+
+        printf("JPS sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
+        expect(pathsFound > 5);
+        expect(moversReachedGoal == pathsFound);
+    }
+
+    it("should handle random paths with JPS+ on sparse level") {
+        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+        SeedRandom(12345);
+        GenerateSparse(0.10f);
+        BuildEntrances();
+        BuildGraph();
+        PrecomputeJpsPlus();
+
+        moverPathAlgorithm = PATH_ALGO_JPS_PLUS;
+
+        int totalTests = 20;
+        int pathsFound = 0;
+        int moversReachedGoal = 0;
+
+        for (int test = 0; test < totalTests; test++) {
+            Point start = GetRandomWalkableCell();
+            Point goal = GetRandomWalkableCell();
+            start.z = 0;  // Force z=0 for 2D sparse level
+            goal.z = 0;
+
+            if (start.x < 0 || goal.x < 0) continue;
+
+            Point pathBuf[MAX_PATH];
+            int pathLen = FindPath(PATH_ALGO_JPS_PLUS, start, goal, pathBuf, MAX_PATH);
+
+            if (pathLen > 0) {
+                pathsFound++;
+
+                ClearMovers();
+                Mover* m = &movers[0];
+                float startX = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float startY = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, startX, startY, (float)start.z, goal, 100.0f, pathBuf, pathLen);
+                moverCount = 1;
+
+                for (int tick = 0; tick < 5000; tick++) {
+                    Tick();
+                    if (!m->active) break;
+                }
+
+                if (!m->active) {
+                    moversReachedGoal++;
+                } else {
+                    int stuckX = (int)(m->x / CELL_SIZE);
+                    int stuckY = (int)(m->y / CELL_SIZE);
+                    printf("JPS+ STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
+                           test, start.x, start.y, goal.x, goal.y,
+                           stuckX, stuckY, m->pathIndex, m->pathLength);
+                }
+            }
+        }
+
+        printf("JPS+ sparse: pathsFound=%d, moversReachedGoal=%d\n", pathsFound, moversReachedGoal);
+        expect(pathsFound > 5);
+        expect(moversReachedGoal == pathsFound);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1387,5 +1503,6 @@ int main(int argc, char* argv[]) {
     test(mover_falling);
     test(mover_z_level_collision);
     test(mover_ladder_transitions);
+    test(sparse_level_pathfinding);
     return summary();
 }
