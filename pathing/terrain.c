@@ -1678,164 +1678,390 @@ void GenerateCastle(void) {
 // - Multi-level with ladders for vertical connections
 // ============================================================================
 
-// Helper: Build a tower block at position with specified floors
-static void BuildTowerBlock(int baseX, int baseY, int width, int depth, int floors) {
+// Helper: Build a massive tower block at position with specified floors
+// UK council tower blocks are large with multiple stairwell cores
+// Features external gallery walkways (balconies) running the length of the building
+// If vertical=true, the building is rotated 90 degrees (gallery on east side instead of south)
+// width/height are the TOTAL footprint dimensions (X and Y) including gallery
+static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
     if (floors > gridDepth) floors = gridDepth;
+    if (floors < 1) floors = 1;
     
-    int corridorWidth = 2;
-    int unitDepth = (depth - corridorWidth) / 2;
+    // Gallery walkway width
+    int galleryWidth = 2;
+    
+    // For horizontal: width is X (long), height is Y (short, includes gallery)
+    // For vertical: width is X (short, includes gallery), height is Y (long)
+    int length;         // The long axis (along the gallery corridor)
+    int buildingShort;  // The short axis excluding gallery
+    
+    if (!vertical) {
+        length = width;
+        buildingShort = height - galleryWidth;
+    } else {
+        length = height;
+        buildingShort = width - galleryWidth;
+    }
+    
+    // Unit dimensions
+    int unitSize = 5;  // Each flat is 5 cells along the corridor
+    
+    // Calculate number of units and stairwell cores based on length
+    int numUnits = (length - 4) / unitSize;
+    int numStairCores = 1 + length / 20;
+    if (numStairCores < 2) numStairCores = 2;
+    if (numStairCores > 5) numStairCores = 5;
+    
+    // Stairwell positions (evenly distributed along length)
+    int stairPositions[5];
+    for (int s = 0; s < numStairCores; s++) {
+        stairPositions[s] = 2 + (s * (length - 4)) / (numStairCores - 1 > 0 ? numStairCores - 1 : 1);
+    }
     
     for (int z = 0; z < floors; z++) {
-        // Outer walls
-        for (int x = baseX; x < baseX + width; x++) {
-            grid[z][baseY][x] = CELL_WALL;
-            grid[z][baseY + depth - 1][x] = CELL_WALL;
-        }
-        for (int y = baseY; y < baseY + depth; y++) {
-            grid[z][y][baseX] = CELL_WALL;
-            grid[z][y][baseX + width - 1] = CELL_WALL;
-        }
-        
-        // Interior floor
-        for (int y = baseY + 1; y < baseY + depth - 1; y++) {
-            for (int x = baseX + 1; x < baseX + width - 1; x++) {
-                grid[z][y][x] = CELL_FLOOR;
+        if (!vertical) {
+            // === HORIZONTAL ORIENTATION (gallery on south) ===
+            // X extent: baseX to baseX + width
+            // Y extent: baseY to baseY + height (buildingShort + gallery)
+            
+            // North wall (back of building)
+            for (int x = baseX; x < baseX + width; x++) {
+                grid[z][baseY][x] = CELL_WALL;
             }
-        }
-        
-        // Central corridor (horizontal through middle)
-        int corridorY = baseY + unitDepth;
-        for (int x = baseX + 1; x < baseX + width - 1; x++) {
-            for (int cy = 0; cy < corridorWidth; cy++) {
-                grid[z][corridorY + cy][x] = CELL_FLOOR;
+            
+            // South wall of main building (separates from gallery)
+            for (int x = baseX; x < baseX + width; x++) {
+                grid[z][baseY + buildingShort - 1][x] = CELL_WALL;
             }
-        }
-        
-        // Internal walls for units (perpendicular to corridor)
-        int unitWidth = 4;
-        for (int x = baseX + unitWidth; x < baseX + width - 2; x += unitWidth) {
-            // North side units
-            for (int y = baseY + 1; y < corridorY; y++) {
-                grid[z][y][x] = CELL_WALL;
+            
+            // East and west end walls
+            for (int y = baseY; y < baseY + buildingShort; y++) {
+                grid[z][y][baseX] = CELL_WALL;
+                grid[z][y][baseX + width - 1] = CELL_WALL;
             }
-            // South side units
-            for (int y = corridorY + corridorWidth; y < baseY + depth - 1; y++) {
-                grid[z][y][x] = CELL_WALL;
+            
+            // Interior floor of main building
+            for (int y = baseY + 1; y < baseY + buildingShort - 1; y++) {
+                for (int x = baseX + 1; x < baseX + width - 1; x++) {
+                    grid[z][y][x] = CELL_FLOOR;
+                }
             }
-        }
-        
-        // Unit doors to corridor
-        for (int x = baseX + unitWidth / 2; x < baseX + width - 2; x += unitWidth) {
-            grid[z][corridorY][x] = CELL_FLOOR;  // North unit door
-            grid[z][corridorY + corridorWidth - 1][x] = CELL_FLOOR;  // South unit door
-        }
-    }
-    
-    // Stairwell at west end (ladders connecting all floors)
-    int stairX = baseX + 2;
-    int stairY = baseY + depth / 2;
-    for (int z = 0; z < floors; z++) {
-        grid[z][stairY][stairX] = CELL_LADDER;
-        grid[z][stairY + 1][stairX] = CELL_LADDER;
-    }
-    
-    // Stairwell at east end
-    stairX = baseX + width - 3;
-    for (int z = 0; z < floors; z++) {
-        grid[z][stairY][stairX] = CELL_LADDER;
-        grid[z][stairY + 1][stairX] = CELL_LADDER;
-    }
-    
-    // Ground floor entrances
-    grid[0][baseY + depth / 2][baseX] = CELL_FLOOR;  // West entrance
-    grid[0][baseY + depth / 2][baseX + width - 1] = CELL_FLOOR;  // East entrance
-}
-
-// Helper: Build low-rise terraced housing row
-static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, int unitDepth, bool doorsNorth) {
-    int totalWidth = numUnits * unitWidth;
-    
-    // All terrace at z=0 only (ground level)
-    int z = 0;
-    
-    // Outer walls
-    for (int x = baseX; x < baseX + totalWidth; x++) {
-        grid[z][baseY][x] = CELL_WALL;
-        grid[z][baseY + unitDepth - 1][x] = CELL_WALL;
-    }
-    for (int y = baseY; y < baseY + unitDepth; y++) {
-        grid[z][y][baseX] = CELL_WALL;
-        grid[z][y][baseX + totalWidth - 1] = CELL_WALL;
-    }
-    
-    // Interior and unit dividers
-    for (int y = baseY + 1; y < baseY + unitDepth - 1; y++) {
-        for (int x = baseX + 1; x < baseX + totalWidth - 1; x++) {
-            grid[z][y][x] = CELL_FLOOR;
-        }
-    }
-    
-    // Internal walls between units
-    for (int u = 1; u < numUnits; u++) {
-        int wallX = baseX + u * unitWidth;
-        for (int y = baseY; y < baseY + unitDepth; y++) {
-            grid[z][y][wallX] = CELL_WALL;
-        }
-    }
-    
-    // Doors for each unit
-    for (int u = 0; u < numUnits; u++) {
-        int doorX = baseX + u * unitWidth + unitWidth / 2;
-        if (doorsNorth) {
-            grid[z][baseY][doorX] = CELL_FLOOR;
-        } else {
-            grid[z][baseY + unitDepth - 1][doorX] = CELL_FLOOR;
-        }
-    }
-}
-
-// Helper: Carve a winding path
-static void CarvePath(int x1, int y1, int x2, int y2, int width) {
-    int x = x1, y = y1;
-    
-    while (x != x2 || y != y2) {
-        // Carve current position
-        for (int dy = 0; dy < width; dy++) {
-            for (int dx = 0; dx < width; dx++) {
-                int px = x + dx, py = y + dy;
-                if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight) {
-                    if (grid[0][py][px] == CELL_WALL || grid[0][py][px] == CELL_AIR) {
-                        grid[0][py][px] = CELL_WALKABLE;
+            
+            // Divide into flats with internal walls
+            for (int u = 1; u < numUnits; u++) {
+                int wallX = baseX + 1 + u * unitSize;
+                if (wallX >= baseX + width - 1) break;
+                
+                bool isStairwell = false;
+                for (int s = 0; s < numStairCores; s++) {
+                    if (abs(wallX - baseX - stairPositions[s]) < 3) {
+                        isStairwell = true;
+                        break;
                     }
+                }
+                
+                if (!isStairwell) {
+                    for (int y = baseY + 1; y < baseY + buildingShort - 2; y++) {
+                        grid[z][y][wallX] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // Gallery walkway (south side)
+            int galleryY = baseY + buildingShort;
+            for (int x = baseX; x < baseX + width; x++) {
+                for (int gy = 0; gy < galleryWidth; gy++) {
+                    if (galleryY + gy < gridHeight) {
+                        grid[z][galleryY + gy][x] = CELL_FLOOR;
+                    }
+                }
+            }
+            
+            // Gallery railing
+            if (galleryY + galleryWidth < gridHeight) {
+                for (int x = baseX; x < baseX + width; x++) {
+                    if ((x - baseX) % 8 != 0) {
+                        grid[z][galleryY + galleryWidth - 1][x] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // Gallery end walls
+            for (int gy = 0; gy < galleryWidth; gy++) {
+                if (galleryY + gy < gridHeight) {
+                    grid[z][galleryY + gy][baseX] = CELL_WALL;
+                    grid[z][galleryY + gy][baseX + width - 1] = CELL_WALL;
+                }
+            }
+            
+            // Doors from flats to gallery
+            for (int u = 0; u < numUnits; u++) {
+                int doorX = baseX + 2 + u * unitSize + unitSize / 2;
+                if (doorX >= baseX + width - 1) break;
+                grid[z][baseY + buildingShort - 1][doorX] = CELL_FLOOR;
+            }
+            
+            // Stairwell cores
+            for (int s = 0; s < numStairCores; s++) {
+                int stairX = baseX + stairPositions[s];
+                int stairY = baseY + 1;
+                
+                for (int sy = 0; sy < 3 && stairY + sy < baseY + buildingShort - 1; sy++) {
+                    for (int sx = 0; sx < 3 && stairX + sx < baseX + width - 1; sx++) {
+                        grid[z][stairY + sy][stairX + sx] = CELL_FLOOR;
+                    }
+                }
+                
+                if (stairX > baseX + 1) {
+                    grid[z][stairY][stairX - 1] = CELL_WALL;
+                    grid[z][stairY + 1][stairX - 1] = CELL_WALL;
+                }
+                if (stairX + 3 < baseX + width - 1) {
+                    grid[z][stairY][stairX + 3] = CELL_WALL;
+                    grid[z][stairY + 1][stairX + 3] = CELL_WALL;
+                }
+                
+                grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
+                grid[z][baseY + buildingShort - 1][stairX + 1] = CELL_FLOOR;
+            }
+        } else {
+            // === VERTICAL ORIENTATION (gallery on east) ===
+            // X extent: baseX to baseX + width (buildingShort + gallery)
+            // Y extent: baseY to baseY + height
+            
+            // West wall (back of building)
+            for (int y = baseY; y < baseY + height; y++) {
+                grid[z][y][baseX] = CELL_WALL;
+            }
+            
+            // East wall of main building (separates from gallery)
+            for (int y = baseY; y < baseY + height; y++) {
+                grid[z][y][baseX + buildingShort - 1] = CELL_WALL;
+            }
+            
+            // North and south end walls
+            for (int x = baseX; x < baseX + buildingShort; x++) {
+                grid[z][baseY][x] = CELL_WALL;
+                grid[z][baseY + height - 1][x] = CELL_WALL;
+            }
+            
+            // Interior floor of main building
+            for (int y = baseY + 1; y < baseY + height - 1; y++) {
+                for (int x = baseX + 1; x < baseX + buildingShort - 1; x++) {
+                    grid[z][y][x] = CELL_FLOOR;
+                }
+            }
+            
+            // Divide into flats with internal walls (horizontal walls)
+            for (int u = 1; u < numUnits; u++) {
+                int wallY = baseY + 1 + u * unitSize;
+                if (wallY >= baseY + height - 1) break;
+                
+                bool isStairwell = false;
+                for (int s = 0; s < numStairCores; s++) {
+                    if (abs(wallY - baseY - stairPositions[s]) < 3) {
+                        isStairwell = true;
+                        break;
+                    }
+                }
+                
+                if (!isStairwell) {
+                    for (int x = baseX + 1; x < baseX + buildingShort - 2; x++) {
+                        grid[z][wallY][x] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // Gallery walkway (east side)
+            int galleryX = baseX + buildingShort;
+            for (int y = baseY; y < baseY + height; y++) {
+                for (int gx = 0; gx < galleryWidth; gx++) {
+                    if (galleryX + gx < gridWidth) {
+                        grid[z][y][galleryX + gx] = CELL_FLOOR;
+                    }
+                }
+            }
+            
+            // Gallery railing (east edge)
+            if (galleryX + galleryWidth < gridWidth) {
+                for (int y = baseY; y < baseY + height; y++) {
+                    if ((y - baseY) % 8 != 0) {
+                        grid[z][y][galleryX + galleryWidth - 1] = CELL_WALL;
+                    }
+                }
+            }
+            
+            // Gallery end walls
+            for (int gx = 0; gx < galleryWidth; gx++) {
+                if (galleryX + gx < gridWidth) {
+                    grid[z][baseY][galleryX + gx] = CELL_WALL;
+                    grid[z][baseY + height - 1][galleryX + gx] = CELL_WALL;
+                }
+            }
+            
+            // Doors from flats to gallery
+            for (int u = 0; u < numUnits; u++) {
+                int doorY = baseY + 2 + u * unitSize + unitSize / 2;
+                if (doorY >= baseY + height - 1) break;
+                grid[z][doorY][baseX + buildingShort - 1] = CELL_FLOOR;
+            }
+            
+            // Stairwell cores
+            for (int s = 0; s < numStairCores; s++) {
+                int stairY = baseY + stairPositions[s];
+                int stairX = baseX + 1;
+                
+                for (int sy = 0; sy < 3 && stairY + sy < baseY + height - 1; sy++) {
+                    for (int sx = 0; sx < 3 && stairX + sx < baseX + buildingShort - 1; sx++) {
+                        grid[z][stairY + sy][stairX + sx] = CELL_FLOOR;
+                    }
+                }
+                
+                if (stairY > baseY + 1) {
+                    grid[z][stairY - 1][stairX] = CELL_WALL;
+                    grid[z][stairY - 1][stairX + 1] = CELL_WALL;
+                }
+                if (stairY + 3 < baseY + height - 1) {
+                    grid[z][stairY + 3][stairX] = CELL_WALL;
+                    grid[z][stairY + 3][stairX + 1] = CELL_WALL;
+                }
+                
+                grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
+                grid[z][stairY + 1][baseX + buildingShort - 1] = CELL_FLOOR;
+            }
+        }
+    }
+    
+    // === Ground floor entrances ===
+    if (!vertical) {
+        int galleryY = baseY + buildingShort;
+        for (int s = 0; s < numStairCores; s++) {
+            int stairX = baseX + stairPositions[s];
+            if (galleryY + galleryWidth < gridHeight) {
+                grid[0][galleryY + galleryWidth - 1][stairX + 1] = CELL_FLOOR;
+            }
+        }
+        grid[0][galleryY][baseX] = CELL_FLOOR;
+        grid[0][galleryY][baseX + width - 1] = CELL_FLOOR;
+    } else {
+        int galleryX = baseX + buildingShort;
+        for (int s = 0; s < numStairCores; s++) {
+            int stairY = baseY + stairPositions[s];
+            if (galleryX + galleryWidth < gridWidth) {
+                grid[0][stairY + 1][galleryX + galleryWidth - 1] = CELL_FLOOR;
+            }
+        }
+        grid[0][baseY][galleryX] = CELL_FLOOR;
+        grid[0][baseY + height - 1][galleryX] = CELL_FLOOR;
+    }
+}
+
+// Helper: Build 2-story terraced housing row where each unit has its own internal staircase
+// If vertical=true, the row runs north-south instead of east-west
+static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, int unitDepth, bool doorsNorth, bool vertical) {
+    int numFloors = 2;  // 2-story terraced houses
+    if (numFloors > gridDepth) numFloors = gridDepth;
+    
+    if (!vertical) {
+        // === HORIZONTAL ORIENTATION (row runs east-west) ===
+        int totalWidth = numUnits * unitWidth;
+        
+        for (int z = 0; z < numFloors; z++) {
+            // Outer walls
+            for (int x = baseX; x < baseX + totalWidth; x++) {
+                grid[z][baseY][x] = CELL_WALL;
+                grid[z][baseY + unitDepth - 1][x] = CELL_WALL;
+            }
+            for (int y = baseY; y < baseY + unitDepth; y++) {
+                grid[z][y][baseX] = CELL_WALL;
+                grid[z][y][baseX + totalWidth - 1] = CELL_WALL;
+            }
+            
+            // Interior floor
+            for (int y = baseY + 1; y < baseY + unitDepth - 1; y++) {
+                for (int x = baseX + 1; x < baseX + totalWidth - 1; x++) {
+                    grid[z][y][x] = CELL_FLOOR;
+                }
+            }
+            
+            // Internal walls between units
+            for (int u = 1; u < numUnits; u++) {
+                int wallX = baseX + u * unitWidth;
+                for (int y = baseY; y < baseY + unitDepth; y++) {
+                    grid[z][y][wallX] = CELL_WALL;
                 }
             }
         }
         
-        // Move toward target with some randomness
-        int dx = x2 - x;
-        int dy = y2 - y;
-        
-        if (GetRandomValue(0, 100) < 70) {
-            // Move toward target
-            if (abs(dx) > abs(dy)) {
-                x += (dx > 0) ? 1 : -1;
-            } else if (dy != 0) {
-                y += (dy > 0) ? 1 : -1;
-            }
-        } else {
-            // Random perpendicular movement
-            if (abs(dx) > abs(dy)) {
-                y += GetRandomValue(0, 1) ? 1 : -1;
+        // Ground floor doors for each unit
+        for (int u = 0; u < numUnits; u++) {
+            int doorX = baseX + u * unitWidth + unitWidth / 2;
+            if (doorsNorth) {
+                grid[0][baseY][doorX] = CELL_FLOOR;
             } else {
-                x += GetRandomValue(0, 1) ? 1 : -1;
+                grid[0][baseY + unitDepth - 1][doorX] = CELL_FLOOR;
             }
         }
         
-        // Clamp to bounds
-        if (x < 1) x = 1;
-        if (y < 1) y = 1;
-        if (x >= gridWidth - 1) x = gridWidth - 2;
-        if (y >= gridHeight - 1) y = gridHeight - 2;
+        // Internal staircase (ladder) in each unit
+        for (int u = 0; u < numUnits; u++) {
+            int ladderX = baseX + u * unitWidth + 1;
+            int ladderY = doorsNorth ? (baseY + unitDepth - 2) : (baseY + 1);
+            
+            for (int z = 0; z < numFloors; z++) {
+                grid[z][ladderY][ladderX] = CELL_LADDER;
+            }
+        }
+    } else {
+        // === VERTICAL ORIENTATION (row runs north-south) ===
+        int totalHeight = numUnits * unitWidth;  // unitWidth becomes the height of each unit
+        
+        for (int z = 0; z < numFloors; z++) {
+            // Outer walls
+            for (int y = baseY; y < baseY + totalHeight; y++) {
+                grid[z][y][baseX] = CELL_WALL;
+                grid[z][y][baseX + unitDepth - 1] = CELL_WALL;
+            }
+            for (int x = baseX; x < baseX + unitDepth; x++) {
+                grid[z][baseY][x] = CELL_WALL;
+                grid[z][baseY + totalHeight - 1][x] = CELL_WALL;
+            }
+            
+            // Interior floor
+            for (int y = baseY + 1; y < baseY + totalHeight - 1; y++) {
+                for (int x = baseX + 1; x < baseX + unitDepth - 1; x++) {
+                    grid[z][y][x] = CELL_FLOOR;
+                }
+            }
+            
+            // Internal walls between units (horizontal walls)
+            for (int u = 1; u < numUnits; u++) {
+                int wallY = baseY + u * unitWidth;
+                for (int x = baseX; x < baseX + unitDepth; x++) {
+                    grid[z][wallY][x] = CELL_WALL;
+                }
+            }
+        }
+        
+        // Ground floor doors for each unit (on west or east side)
+        for (int u = 0; u < numUnits; u++) {
+            int doorY = baseY + u * unitWidth + unitWidth / 2;
+            if (doorsNorth) {  // doorsNorth means doors on west side for vertical
+                grid[0][doorY][baseX] = CELL_FLOOR;
+            } else {
+                grid[0][doorY][baseX + unitDepth - 1] = CELL_FLOOR;
+            }
+        }
+        
+        // Internal staircase (ladder) in each unit
+        for (int u = 0; u < numUnits; u++) {
+            int ladderY = baseY + u * unitWidth + 1;
+            int ladderX = doorsNorth ? (baseX + unitDepth - 2) : (baseX + 1);
+            
+            for (int z = 0; z < numFloors; z++) {
+                grid[z][ladderY][ladderX] = CELL_LADDER;
+            }
+        }
     }
 }
 
@@ -1855,65 +2081,153 @@ void GenerateCouncilEstate(void) {
     }
     
     // Scale building count based on grid size
-    int numTowerBlocks = 2 + (gridWidth * gridHeight) / 8000;
-    int numTerraceRows = 3 + (gridWidth * gridHeight) / 5000;
-    
-    if (numTowerBlocks > 6) numTowerBlocks = 6;
-    if (numTerraceRows > 10) numTerraceRows = 10;
-    
-    // Place tower blocks (tall, multi-floor)
-    int towerWidth = 16;
-    int towerDepth = 10;
-    int towerFloors = gridDepth > 3 ? 3 : gridDepth;
+    int numTerraceRows = 4 + (gridWidth * gridHeight) / 6000;
+    if (numTerraceRows > 12) numTerraceRows = 12;
     
     typedef struct { int x, y, w, h; } Rect;
-    Rect placed[20];
+    Rect placed[30];
     int placedCount = 0;
     
-    for (int t = 0; t < numTowerBlocks; t++) {
-        int attempts = 50;
+    // Place ONE massive central tower block that scales with the world
+    // This creates the dominant tower block typical of UK council estates
+    // Gallery adds 2 cells to total footprint
+    int galleryExtra = 2;
+    
+    {
+        // Randomly choose orientation for main tower
+        bool mainVertical = GetRandomValue(0, 1) == 0;
+        
+        // Tower length scales with world size - can be very long (this is the long axis)
+        int maxLength = mainVertical ? gridHeight : gridWidth;
+        int maxTowerLength = (maxLength * 65) / 100;  // Up to 65% of grid dimension
+        int minTowerLength = 40;
+        if (minTowerLength > maxTowerLength) minTowerLength = maxTowerLength;
+        int towerLength = minTowerLength + GetRandomValue(0, maxTowerLength - minTowerLength);
+        
+        // Building depth (perpendicular to gallery, excluding gallery)
+        int buildingDepth = 13 + GetRandomValue(0, 8);  // 13-21 cells
+        int maxDepthAvail = (mainVertical ? gridWidth : gridHeight) / 3;
+        if (buildingDepth > maxDepthAvail) buildingDepth = maxDepthAvail;
+        
+        // Total depth including gallery
+        int totalDepth = buildingDepth + galleryExtra;
+        
+        // Use all z-levels for the main tower
+        int towerFloors = gridDepth;
+        
+        // Actual footprint for collision detection
+        // Horizontal: width=towerLength, height=totalDepth
+        // Vertical: width=totalDepth, height=towerLength
+        int footprintW = mainVertical ? totalDepth : towerLength;
+        int footprintH = mainVertical ? towerLength : totalDepth;
+        
+        // Center the main tower block
+        int tx = (gridWidth - footprintW) / 2;
+        int ty = (gridHeight - footprintH) / 2;
+        if (!mainVertical) {
+            ty -= gridHeight / 6;  // Slightly north of center for horizontal
+        } else {
+            tx -= gridWidth / 6;   // Slightly west of center for vertical
+        }
+        
+        // Clamp to valid positions
+        if (tx < 5) tx = 5;
+        if (ty < 5) ty = 5;
+        if (tx + footprintW > gridWidth - 5) footprintW = gridWidth - tx - 5;
+        if (ty + footprintH > gridHeight - 5) footprintH = gridHeight - ty - 5;
+        
+        // BuildTowerBlock params: width is first param (X size), depth is second (Y size for horiz)
+        // For horizontal: pass (length, totalDepth)
+        // For vertical: pass (totalDepth, length) - but function swaps internally based on vertical flag
+        if (!mainVertical) {
+            BuildTowerBlock(tx, ty, footprintW, footprintH, towerFloors, false);
+        } else {
+            BuildTowerBlock(tx, ty, footprintW, footprintH, towerFloors, true);
+        }
+        placed[placedCount++] = (Rect){tx, ty, footprintW, footprintH};
+    }
+    
+    // Optionally add 1-2 smaller secondary tower blocks if space permits
+    int numSecondaryTowers = (gridWidth > 150 && gridHeight > 150) ? 1 + GetRandomValue(0, 1) : 0;
+    for (int t = 0; t < numSecondaryTowers; t++) {
+        // Randomly choose orientation
+        bool vertical = GetRandomValue(0, 1) == 0;
+        
+        // Secondary towers are smaller
+        int towerLength = 25 + GetRandomValue(0, 20);   // 25-45 cells long
+        int buildingDepth = 10 + GetRandomValue(0, 6);  // 10-16 cells deep (excluding gallery)
+        int towerFloors = gridDepth - GetRandomValue(1, gridDepth / 2);
+        if (towerFloors < 2) towerFloors = 2;
+        
+        int maxLen = vertical ? gridHeight / 3 : gridWidth / 3;
+        int maxDep = (vertical ? gridWidth : gridHeight) / 4;
+        if (towerLength > maxLen) towerLength = maxLen;
+        if (buildingDepth > maxDep) buildingDepth = maxDep;
+        
+        int totalDepth = buildingDepth + galleryExtra;
+        int footprintW = vertical ? totalDepth : towerLength;
+        int footprintH = vertical ? towerLength : totalDepth;
+        
+        int attempts = 100;
         while (attempts-- > 0) {
-            int tx = 4 + GetRandomValue(0, gridWidth - towerWidth - 8);
-            int ty = 4 + GetRandomValue(0, gridHeight - towerDepth - 8);
+            int tx = 5 + GetRandomValue(0, gridWidth - footprintW - 10);
+            int ty = 5 + GetRandomValue(0, gridHeight - footprintH - 10);
             
             // Check overlap with existing buildings
             bool overlaps = false;
             for (int p = 0; p < placedCount; p++) {
-                int margin = 6;  // Space between buildings
-                if (tx < placed[p].x + placed[p].w + margin && tx + towerWidth + margin > placed[p].x &&
-                    ty < placed[p].y + placed[p].h + margin && ty + towerDepth + margin > placed[p].y) {
+                int margin = 10;
+                if (tx < placed[p].x + placed[p].w + margin && tx + footprintW + margin > placed[p].x &&
+                    ty < placed[p].y + placed[p].h + margin && ty + footprintH + margin > placed[p].y) {
                     overlaps = true;
                     break;
                 }
             }
             
             if (!overlaps) {
-                BuildTowerBlock(tx, ty, towerWidth, towerDepth, towerFloors);
-                placed[placedCount++] = (Rect){tx, ty, towerWidth, towerDepth};
+                BuildTowerBlock(tx, ty, footprintW, footprintH, towerFloors, vertical);
+                placed[placedCount++] = (Rect){tx, ty, footprintW, footprintH};
                 break;
             }
         }
     }
     
-    // Place terraced housing rows (single floor, multiple units)
-    int terraceUnitWidth = 4;
-    int terraceUnitDepth = 5;
-    int unitsPerRow = 4 + GetRandomValue(0, 3);
+    // Place terraced housing rows (2-story, multiple units)
+    // These fill in the spaces around the massive tower blocks
+    // Randomly oriented horizontally or vertically
+    int terraceUnitSize = 5;    // Size along the row
+    int terraceUnitDepth = 6;   // Depth perpendicular to row
     
-    for (int r = 0; r < numTerraceRows && placedCount < 20; r++) {
-        int attempts = 50;
-        int rowWidth = unitsPerRow * terraceUnitWidth;
+    for (int r = 0; r < numTerraceRows && placedCount < 30; r++) {
+        // Randomly choose orientation
+        bool vertical = GetRandomValue(0, 1) == 0;
         
+        // Vary the number of units per row
+        int unitsPerRow = 5 + GetRandomValue(0, 5);  // 5-10 units per row
+        int rowLength = unitsPerRow * terraceUnitSize;
+        
+        // Ensure row fits in grid
+        int maxLen = vertical ? gridHeight - 10 : gridWidth - 10;
+        if (rowLength > maxLen) {
+            unitsPerRow = maxLen / terraceUnitSize;
+            rowLength = unitsPerRow * terraceUnitSize;
+        }
+        
+        // Calculate bounding box based on orientation
+        int rowWidth = vertical ? terraceUnitDepth : rowLength;
+        int rowHeight = vertical ? rowLength : terraceUnitDepth;
+        
+        int attempts = 80;
         while (attempts-- > 0) {
-            int rx = 4 + GetRandomValue(0, gridWidth - rowWidth - 8);
-            int ry = 4 + GetRandomValue(0, gridHeight - terraceUnitDepth - 8);
+            int rx = 5 + GetRandomValue(0, gridWidth - rowWidth - 10);
+            int ry = 5 + GetRandomValue(0, gridHeight - rowHeight - 10);
             
             // Check overlap
             bool overlaps = false;
             for (int p = 0; p < placedCount; p++) {
-                int margin = 4;
+                int margin = 5;
                 if (rx < placed[p].x + placed[p].w + margin && rx + rowWidth + margin > placed[p].x &&
-                    ry < placed[p].y + placed[p].h + margin && ry + terraceUnitDepth + margin > placed[p].y) {
+                    ry < placed[p].y + placed[p].h + margin && ry + rowHeight + margin > placed[p].y) {
                     overlaps = true;
                     break;
                 }
@@ -1921,78 +2235,19 @@ void GenerateCouncilEstate(void) {
             
             if (!overlaps) {
                 bool doorsNorth = GetRandomValue(0, 1) == 0;
-                BuildTerraceRow(rx, ry, unitsPerRow, terraceUnitWidth, terraceUnitDepth, doorsNorth);
-                placed[placedCount++] = (Rect){rx, ry, rowWidth, terraceUnitDepth};
-                
-                // Vary next row
-                unitsPerRow = 3 + GetRandomValue(0, 4);
+                BuildTerraceRow(rx, ry, unitsPerRow, terraceUnitSize, terraceUnitDepth, doorsNorth, vertical);
+                placed[placedCount++] = (Rect){rx, ry, rowWidth, rowHeight};
                 break;
             }
         }
     }
     
-    // Add some courtyards (clear rectangular areas)
-    int numCourtyards = 2 + GetRandomValue(0, 2);
-    for (int c = 0; c < numCourtyards; c++) {
-        int cw = 8 + GetRandomValue(0, 6);
-        int ch = 8 + GetRandomValue(0, 6);
-        int cx = 4 + GetRandomValue(0, gridWidth - cw - 8);
-        int cy = 4 + GetRandomValue(0, gridHeight - ch - 8);
-        
-        // Just ensure it's walkable (may overlap buildings, creating interesting spaces)
-        for (int y = cy; y < cy + ch && y < gridHeight; y++) {
-            for (int x = cx; x < cx + cw && x < gridWidth; x++) {
-                if (grid[0][y][x] == CELL_WALL) {
-                    // Only clear ground-floor walls that aren't structural
-                    // Check if it's an outer building wall (has floor on one side)
-                    bool isStructural = false;
-                    if (x > 0 && grid[0][y][x-1] == CELL_FLOOR) isStructural = true;
-                    if (x < gridWidth-1 && grid[0][y][x+1] == CELL_FLOOR) isStructural = true;
-                    if (y > 0 && grid[0][y-1][x] == CELL_FLOOR) isStructural = true;
-                    if (y < gridHeight-1 && grid[0][y+1][x] == CELL_FLOOR) isStructural = true;
-                    
-                    if (!isStructural) {
-                        grid[0][y][x] = CELL_WALKABLE;
-                    }
-                }
-            }
-        }
-    }
-    
-    // Add winding alleyways between buildings
-    for (int i = 0; i < placedCount - 1; i++) {
-        // Connect adjacent buildings with paths
-        int x1 = placed[i].x + placed[i].w / 2;
-        int y1 = placed[i].y + placed[i].h / 2;
-        int x2 = placed[i + 1].x + placed[i + 1].w / 2;
-        int y2 = placed[i + 1].y + placed[i + 1].h / 2;
-        
-        // Find exit points (just outside the buildings)
-        if (x1 < x2) {
-            x1 = placed[i].x + placed[i].w + 1;
-            x2 = placed[i + 1].x - 1;
-        } else {
-            x1 = placed[i].x - 1;
-            x2 = placed[i + 1].x + placed[i + 1].w + 1;
-        }
-        
-        CarvePath(x1, y1, x2, y2, 2);
-    }
-    
-    // Add some random connecting paths
-    for (int p = 0; p < 3; p++) {
-        int x1 = GetRandomValue(5, gridWidth - 5);
-        int y1 = GetRandomValue(5, gridHeight - 5);
-        int x2 = GetRandomValue(5, gridWidth - 5);
-        int y2 = GetRandomValue(5, gridHeight - 5);
-        CarvePath(x1, y1, x2, y2, 2);
-    }
-    
-    // Scatter some debris/obstacles
+    // Scatter trees/debris in open areas (CELL_WALKABLE only, not inside buildings)
+    // This adds visual interest to the green spaces around the estate
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 2) {
-                grid[0][y][x] = CELL_WALL;
+            if (grid[0][y][x] == CELL_WALKABLE && GetRandomValue(0, 100) < 3) {
+                grid[0][y][x] = CELL_WALL;  // Tree or debris
             }
         }
     }
