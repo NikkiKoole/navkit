@@ -15,6 +15,7 @@ bool useStringPulling = true;
 bool endlessMoverMode = false;
 bool useMoverAvoidance = true;
 bool preferDifferentZ = false;
+bool allowFallingFromAvoidance = false;
 bool useKnotFix = true;
 bool useWallRepulsion = true;
 float wallRepulsionStrength = 0.5f;
@@ -36,6 +37,31 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     CellType cell = grid[z][y][x];
     return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+}
+
+// Helper to check if a cell is air (empty space that can be fallen through)
+static inline bool IsCellAirAt(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    return grid[z][y][x] == CELL_AIR;
+}
+
+// Try to make a mover fall to ground. Returns true if mover fell.
+// Searches downward from current z for a walkable cell, stops at walls.
+static bool TryFallToGround(Mover* m, int cellX, int cellY) {
+    int currentZ = (int)m->z;
+    
+    for (int checkZ = currentZ - 1; checkZ >= 0; checkZ--) {
+        CellType belowCell = grid[checkZ][cellY][cellX];
+        if (belowCell == CELL_WALKABLE || belowCell == CELL_FLOOR || belowCell == CELL_LADDER) {
+            m->z = (float)checkZ;
+            m->needsRepath = true;
+            m->fallTimer = 1.0f;
+            return true;
+        } else if (belowCell == CELL_WALL) {
+            break;  // Can't fall through walls
+        }
+    }
+    return false;
 }
 
 void InitMoverSpatialGrid(int worldPixelWidth, int worldPixelHeight) {
@@ -233,32 +259,25 @@ bool HasClearanceInDirection(float x, float y, int z, int dir) {
     return true;
 }
 
-// Compute wall/obstacle repulsion force - pushes mover away from non-walkable cells
-// 
-// NOTE: Currently treats air cells the same as walls - movers are repelled from air
-// as if there's a force field. This works but is physically unintuitive.
-// 
-// FUTURE: Consider allowing movers to be pushed into air and then fall to a lower
-// z-level. This would require:
-// - Detecting when mover enters air cell
-// - Finding the ground level below (first walkable z at that x,y)
-// - Animating/transitioning the fall
-// - Possibly taking fall damage or having a landing state
+// Compute wall repulsion force - pushes mover away from walls only
+// Air cells do NOT repel - movers can be pushed into air and will fall
 Vec2 ComputeWallRepulsion(float x, float y, int z) {
     Vec2 repulsion = {0.0f, 0.0f};
     
     int cellX = (int)(x / CELL_SIZE);
     int cellY = (int)(y / CELL_SIZE);
     
-    // Check 3x3 area around mover for non-walkable cells (walls, air, etc.)
+    // Check 3x3 area around mover for walls only (not air - we allow falling into air)
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             int cx = cellX + dx;
             int cy = cellY + dy;
             
-            // Skip out of bounds (handled by IsCellWalkableAt returning false)
-            // Only care about non-walkable cells
-            if (IsCellWalkableAt(z, cy, cx)) continue;
+            // Skip out of bounds
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
+            
+            // Only repel from walls, not air (movers can fall through air)
+            if (grid[z][cy][cx] != CELL_WALL) continue;
             
             // Wall cell center
             float wallX = cx * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -291,6 +310,11 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
 }
 
 Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance) {
+    // If falling from avoidance is allowed, don't filter - let them fall
+    if (allowFallingFromAvoidance) {
+        return avoidance;
+    }
+    
     Vec2 result = avoidance;
     
     // Check if avoidance pushes in a direction without clearance
@@ -560,14 +584,6 @@ static void AssignNewMoverGoal(Mover* m) {
 
     Point tempPath[MAX_PATH];
     int len = FindPathHPA(start, newGoal, tempPath, MAX_PATH);
-    
-    if (len == 0 && preferDifferentZ) {
-        CellType goalCell = grid[newGoal.z][newGoal.y][newGoal.x];
-        CellType startCell = grid[currentZ][currentY][currentX];
-        printf("PreferDiffZ path failed: start(%d,%d,%d)[%d] -> goal(%d,%d,%d)[%d]\n",
-               currentX, currentY, currentZ, startCell,
-               newGoal.x, newGoal.y, newGoal.z, goalCell);
-    }
 
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
@@ -591,6 +607,21 @@ void UpdateMovers(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
         
+        // Decrement fall timer for visual feedback
+        if (m->fallTimer > 0) {
+            m->fallTimer -= dt;
+        }
+        
+        int currentX = (int)(m->x / CELL_SIZE);
+        int currentY = (int)(m->y / CELL_SIZE);
+        int currentZ = (int)m->z;
+
+        // Check if mover is standing in air - fall to ground (check first, before any other logic)
+        if (IsCellAirAt(currentZ, currentY, currentX)) {
+            TryFallToGround(m, currentX, currentY);
+            continue;
+        }
+        
         // Don't move movers that are waiting for a repath - they'd walk on stale paths
         if (m->needsRepath) continue;
 
@@ -612,11 +643,7 @@ void UpdateMovers(void) {
             }
             continue;
         }
-
-        int currentX = (int)(m->x / CELL_SIZE);
-        int currentY = (int)(m->y / CELL_SIZE);
-        int currentZ = (int)m->z;
-
+        
         // Check if mover is standing on a wall - push to nearest walkable
         if (grid[currentZ][currentY][currentX] == CELL_WALL) {
             int dx[] = {0, 0, -1, 1};
@@ -745,7 +772,7 @@ void UpdateMovers(void) {
                 vy += wallRepel.y * repelScale;
             }
             
-            // Apply movement with optional wall sliding
+            // Apply movement with wall sliding (but allow falling through air)
             float newX = m->x + vx * dt;
             float newY = m->y + vy * dt;
             int mz = (int)m->z;
@@ -754,37 +781,49 @@ void UpdateMovers(void) {
                 int newCellX = (int)(newX / CELL_SIZE);
                 int newCellY = (int)(newY / CELL_SIZE);
                 
-                // Check if new position would be non-walkable (wall, air, out of bounds)
-                bool newPosBlocked = !IsCellWalkableAt(mz, newCellY, newCellX);
+                // Check what's at the new position
+                CellType newCell = CELL_AIR;
+                if (newCellX >= 0 && newCellX < gridWidth && 
+                    newCellY >= 0 && newCellY < gridHeight) {
+                    newCell = grid[mz][newCellY][newCellX];
+                }
                 
-                if (newPosBlocked) {
-                    // Try sliding: move only in X
+                bool isWalkable = (newCell == CELL_WALKABLE || newCell == CELL_FLOOR || newCell == CELL_LADDER);
+                bool isWall = (newCell == CELL_WALL);
+                bool isAir = (newCell == CELL_AIR);
+                
+                if (isWalkable) {
+                    // Normal movement
+                    m->x = newX;
+                    m->y = newY;
+                } else if (isAir) {
+                    // Moving into air - allow it, then fall
+                    m->x = newX;
+                    m->y = newY;
+                    TryFallToGround(m, newCellX, newCellY);
+                } else if (isWall) {
+                    // Wall collision - try sliding
                     int xOnlyCellX = (int)(newX / CELL_SIZE);
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
                     bool xOnlyOk = IsCellWalkableAt(mz, xOnlyCellY, xOnlyCellX);
                     
-                    // Try sliding: move only in Y
                     int yOnlyCellX = (int)(m->x / CELL_SIZE);
                     int yOnlyCellY = (int)(newY / CELL_SIZE);
                     bool yOnlyOk = IsCellWalkableAt(mz, yOnlyCellY, yOnlyCellX);
                     
                     if (xOnlyOk && yOnlyOk) {
-                        // Both work - pick the one more aligned with velocity
                         if (fabsf(vx) > fabsf(vy)) {
                             m->x = newX;
                         } else {
                             m->y = newY;
                         }
                     } else if (xOnlyOk) {
-                        m->x = newX;  // Slide horizontally
+                        m->x = newX;
                     } else if (yOnlyOk) {
-                        m->y = newY;  // Slide vertically
+                        m->y = newY;
                     }
-                    // else: both blocked, don't move
-                } else {
-                    m->x = newX;
-                    m->y = newY;
                 }
+                // Out of bounds - don't move
             } else {
                 m->x = newX;
                 m->y = newY;

@@ -455,6 +455,11 @@ void DrawMovers(void) {
         } else {
             moverColor = GREEN;   // Normal, has valid path
         }
+        
+        // Override color if mover just fell
+        if (m->fallTimer > 0) {
+            moverColor = BLUE;
+        }
 
         // Draw mover as colored rectangle
         float moverSize = size * 0.5f;
@@ -834,6 +839,8 @@ void DrawUI(void) {
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
         y += 22;
         ToggleBool(x, y, "Prefer Diff Z", &preferDifferentZ);
+        y += 22;
+        ToggleBool(x, y, "Allow Falling", &allowFallingFromAvoidance);
         
         // Avoidance subsection
         y += 22;

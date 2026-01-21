@@ -40,6 +40,7 @@ typedef struct {
     // Stuck detection: track if mover is making progress
     float lastX, lastY, lastZ;  // Position at last progress check
     float timeWithoutProgress;  // Time since significant movement
+    float fallTimer;            // Time since last fall (for visual feedback)
 } Mover;
 
 // Stuck detection thresholds
@@ -71,6 +72,7 @@ extern bool useStringPulling;
 extern bool endlessMoverMode;
 extern bool useMoverAvoidance;
 extern bool preferDifferentZ;  // When true, movers prefer goals on different z-levels
+extern bool allowFallingFromAvoidance;  // When true, avoidance can push movers into air (they will fall)
 
 // Core functions
 void InitMover(Mover* m, float x, float y, float z, Point goal, float speed);
