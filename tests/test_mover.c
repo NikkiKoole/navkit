@@ -678,18 +678,16 @@ describe(string_pulling_narrow_gaps) {
         // Run simulation for longer to trigger the bug
         RunTicks(1200);
 
-        // Count stuck yellow movers (needsRepath but not on cooldown)
-        int stuckYellow = 0;
-        for (int i = 0; i < moverCount; i++) {
-            Mover* m = &movers[i];
-            if (m->active && m->needsRepath && m->repathCooldown == 0) {
-                stuckYellow++;
-            }
-        }
-
         // BUG: String pulling creates paths that fail runtime LOS checks.
         // This expect FAILS with stuckYellow > 0, documenting the bug.
         // Uncomment to verify the bug exists, comment out for CI until fixed.
+        // int stuckYellow = 0;
+        // for (int i = 0; i < moverCount; i++) {
+        //     Mover* m = &movers[i];
+        //     if (m->active && m->needsRepath && m->repathCooldown == 0) {
+        //         stuckYellow++;
+        //     }
+        // }
         // expect(stuckYellow == 0);
 
         endlessMoverMode = false;
@@ -932,8 +930,6 @@ describe(mover_falling) {
         InitMoverWithPath(m, startX, startY, 1.0f, goal, 100.0f, testPath, 3);
         moverCount = 1;
         
-        float initialZ = m->z;
-        
         // Run simulation
         RunTicks(60);
         
@@ -1014,8 +1010,6 @@ describe(mover_z_level_collision) {
         Point testPath[] = {{3, 1, 1}, {2, 1, 1}, {1, 1, 1}};
         InitMoverWithPath(m, startX, startY, 1.0f, goal, 100.0f, testPath, 3);
         moverCount = 1;
-        
-        float initialX = m->x;
         
         // Run simulation
         RunTicks(60);
