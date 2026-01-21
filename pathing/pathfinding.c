@@ -396,14 +396,6 @@ static int AddLadderEntrance(int x, int y, int z) {
     return entranceCount++;
 }
 
-// Helper to check if a cell is walkable (CELL_WALKABLE, CELL_FLOOR, or CELL_LADDER)
-static bool IsCellWalkable(int z, int y, int x) {
-    if (z < 0 || z >= gridDepth) return false;
-    if (y < 0 || y >= gridHeight) return false;
-    if (x < 0 || x >= gridWidth) return false;
-    CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
-}
 
 void BuildEntrances(void) {
     entranceCount = 0;
@@ -423,7 +415,7 @@ void BuildEntrances(void) {
                 int runStart = -1;
                 for (int i = 0; i < chunkWidth; i++) {
                     int x = startX + i;
-                    bool open = (IsCellWalkable(z, borderY - 1, x) && IsCellWalkable(z, borderY, x));
+                    bool open = (IsCellWalkableAt(z, borderY - 1, x) && IsCellWalkableAt(z, borderY, x));
                     if (open && runStart < 0) runStart = i;
                     else if (!open && runStart >= 0) {
                         AddEntrancesForRun(startX + runStart, borderY, z, i - runStart, 1, chunk1, chunk2);
@@ -444,7 +436,7 @@ void BuildEntrances(void) {
                 int runStart = -1;
                 for (int i = 0; i < chunkHeight; i++) {
                     int y = startY + i;
-                    bool open = (IsCellWalkable(z, y, borderX - 1) && IsCellWalkable(z, y, borderX));
+                    bool open = (IsCellWalkableAt(z, y, borderX - 1) && IsCellWalkableAt(z, y, borderX));
                     if (open && runStart < 0) runStart = i;
                     else if (!open && runStart >= 0) {
                         AddEntrancesForRun(borderX, startY + runStart, z, i - runStart, 0, chunk1, chunk2);
@@ -534,7 +526,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
+            if (!IsCellWalkableAt(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
@@ -542,7 +534,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
                 // Check bounds before accessing grid for corner-cut check
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
+                if (!IsCellWalkableAt(sz, bestY, adjX) || !IsCellWalkableAt(sz, adjY, bestX))
                     continue;
             }
 
@@ -626,7 +618,7 @@ int AStarChunkMultiTarget(int sx, int sy, int sz,
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
+            if (!IsCellWalkableAt(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
@@ -634,7 +626,7 @@ int AStarChunkMultiTarget(int sx, int sy, int sz,
                 // Check bounds before accessing grid for corner-cut check
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
+                if (!IsCellWalkableAt(sz, bestY, adjX) || !IsCellWalkableAt(sz, adjY, bestX))
                     continue;
             }
 
@@ -821,7 +813,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNK
 
                 for (int i = 0; i < chunkWidth; i++) {
                     int x = startX + i;
-                    bool open = (IsCellWalkable(z, borderY - 1, x) && IsCellWalkable(z, borderY, x));
+                    bool open = (IsCellWalkableAt(z, borderY - 1, x) && IsCellWalkableAt(z, borderY, x));
                     if (open && runStart < 0) runStart = i;
                     else if (!open && runStart >= 0) {
                         int length = i - runStart;
@@ -863,7 +855,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNK
 
                 for (int i = 0; i < chunkHeight; i++) {
                     int y = startY + i;
-                    bool open = (IsCellWalkable(z, y, borderX - 1) && IsCellWalkable(z, y, borderX));
+                    bool open = (IsCellWalkableAt(z, y, borderX - 1) && IsCellWalkableAt(z, y, borderX));
                     if (open && runStart < 0) runStart = i;
                     else if (!open && runStart >= 0) {
                         int length = i - runStart;
@@ -1211,14 +1203,14 @@ void RunAStar(void) {
         // Expand XY neighbors on same z-level
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i], nz = bestZ;
-            if (!IsCellWalkable(nz, ny, nx)) continue;
+            if (!IsCellWalkableAt(nz, ny, nx)) continue;
             if (nodeData[nz][ny][nx].closed) continue;
 
             // For diagonal movement, check that we can actually move diagonally
             // (not cutting corners through walls)
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
-                if (!IsCellWalkable(bestZ, bestY, bestX + dx[i]) || 
-                    !IsCellWalkable(bestZ, bestY + dy[i], bestX))
+                if (!IsCellWalkableAt(bestZ, bestY, bestX + dx[i]) || 
+                    !IsCellWalkableAt(bestZ, bestY + dy[i], bestX))
                     continue;
             }
 
@@ -1377,14 +1369,14 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
         for (int i = 0; i < numDirs; i++) {
             int nx = bestX + dx[i], ny = bestY + dy[i];
             if (nx < minX || nx >= maxX || ny < minY || ny >= maxY) continue;
-            if (!IsCellWalkable(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
+            if (!IsCellWalkableAt(sz, ny, nx) || nodeData[sz][ny][nx].closed) continue;
 
             // Prevent corner cutting for diagonal movement
             if (use8Dir && dx[i] != 0 && dy[i] != 0) {
                 int adjX = bestX + dx[i], adjY = bestY + dy[i];
                 if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight)
                     continue;
-                if (!IsCellWalkable(sz, bestY, adjX) || !IsCellWalkable(sz, adjY, bestX))
+                if (!IsCellWalkableAt(sz, bestY, adjX) || !IsCellWalkableAt(sz, adjY, bestX))
                     continue;
             }
 
@@ -1762,9 +1754,7 @@ void RunHPAStar(void) {
 // ============== JPS Implementation ==============
 
 static bool IsWalkable(int x, int y) {
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    CellType cell = grid[0][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+    return IsCellWalkableAt(0, y, x);
 }
 
 // Jump in a cardinal direction (4-dir or 8-dir)
@@ -1963,9 +1953,7 @@ static const int jpsDy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
 
 // Check if a cell is walkable (bounds-checked)
 static bool JpsIsWalkable(int x, int y) {
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
-    CellType cell = grid[0][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+    return IsCellWalkableAt(0, y, x);
 }
 
 // Check if diagonal move is allowed (no corner cutting)
