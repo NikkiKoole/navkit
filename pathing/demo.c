@@ -23,6 +23,10 @@ bool showGraph = false;
 bool showEntrances = false;
 int currentViewZ = 0;  // Which z-level we're viewing
 
+// Room drawing state (R key to activate, drag to draw)
+bool drawingRoom = false;
+int roomStartX = 0, roomStartY = 0;
+
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -35,7 +39,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 // Terrain selection
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "NarrowGaps", "Towers3D"};
 
 // UI section collapse state
 bool sectionView = false;
@@ -482,6 +486,7 @@ void GenerateCurrentTerrain(void) {
         case 9: GenerateTunneler(); break;
         case 10: GenerateMixMax(); break;
         case 11: InitGridFromAsciiWithChunkSize(narrowGapsMap, 8, 8); break;
+        case 12: GenerateTowers(); break;
     }
 }
 
@@ -507,6 +512,43 @@ void HandleInput(void) {
 
     // Skip grid interactions if UI wants mouse
     if (ui_wants_mouse()) return;
+
+    // Room drawing mode (R key + drag) - check before normal tools
+    if (IsKeyDown(KEY_R)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+        
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            drawingRoom = true;
+            roomStartX = x;
+            roomStartY = y;
+        }
+        
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingRoom) {
+            drawingRoom = false;
+            int x1 = roomStartX < x ? roomStartX : x;
+            int y1 = roomStartY < y ? roomStartY : y;
+            int x2 = roomStartX > x ? roomStartX : x;
+            int y2 = roomStartY > y ? roomStartY : y;
+            
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+            
+            for (int ry = y1; ry <= y2; ry++) {
+                for (int rx = x1; rx <= x2; rx++) {
+                    bool isBorder = (rx == x1 || rx == x2 || ry == y1 || ry == y2);
+                    grid[z][ry][rx] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    MarkChunkDirty(rx, ry);
+                }
+            }
+        }
+        return;  // Skip normal tool interactions while R is held
+    } else {
+        drawingRoom = false;
+    }
 
     // Tool-based interactions
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -581,8 +623,8 @@ void HandleInput(void) {
         }
     }
 
-    // Reset view
-    if (IsKeyPressed(KEY_R)) {
+    // Reset view (C key)
+    if (IsKeyPressed(KEY_C)) {
         zoom = 1.0f;
         offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
         offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
@@ -657,7 +699,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 12, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 13, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();
@@ -839,6 +881,24 @@ int main(void) {
         DrawPath();
         DrawAgents();
         DrawMovers();
+        
+        // Draw room preview while dragging
+        if (drawingRoom && IsKeyDown(KEY_R)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = roomStartX < x ? roomStartX : x;
+            int y1 = roomStartY < y ? roomStartY : y;
+            int x2 = roomStartX > x ? roomStartX : x;
+            int y2 = roomStartY > y ? roomStartY : y;
+            float size = CELL_SIZE * zoom;
+            
+            // Draw preview outline
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, YELLOW);
+        }
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);

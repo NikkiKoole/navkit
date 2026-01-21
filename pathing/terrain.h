@@ -15,6 +15,7 @@ void GenerateCaves(void);         // Cellular automata caves
 void GenerateDrunkard(void);      // Drunkard's walk tunnels
 void GenerateTunneler(void);      // Tunneler algorithm (rooms + corridors)
 void GenerateMixMax(void);        // Tunneler + extra rooms
+void GenerateTowers(void);        // 3D towers with bridges
 
 // Perlin noise utilities
 void InitPerlin(int seed);

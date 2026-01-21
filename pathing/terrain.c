@@ -635,6 +635,183 @@ void GenerateCity(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// 3D Towers with Bridges Generator
+// Creates towers (vertical structures) with bridges connecting them at higher levels
+// ============================================================================
+
+typedef struct {
+    int x, y;       // Tower base position
+    int w, h;       // Tower footprint
+    int height;     // Tower height (z-levels)
+} Tower;
+
+void GenerateTowers(void) {
+    // Clear all levels: z=0 is ground (walkable), z>0 is air
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_WALKABLE;
+        }
+    }
+    for (int z = 1; z < 3; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = CELL_AIR;
+            }
+        }
+    }
+    
+    // Place towers
+    #define MAX_TOWERS 50
+    Tower towers[MAX_TOWERS];
+    int towerCount = 0;
+    
+    int attempts = 200;
+    int targetTowers = (gridWidth * gridHeight) / 200;  // Roughly 1 tower per 200 tiles
+    if (targetTowers < 5) targetTowers = 5;
+    if (targetTowers > MAX_TOWERS) targetTowers = MAX_TOWERS;
+    
+    for (int i = 0; i < attempts && towerCount < targetTowers; i++) {
+        int tw = 3 + GetRandomValue(0, 3);  // Tower size 3-6
+        int th = 3 + GetRandomValue(0, 3);
+        int tx = 2 + GetRandomValue(0, gridWidth - tw - 4);
+        int ty = 2 + GetRandomValue(0, gridHeight - th - 4);
+        int tHeight = 2 + GetRandomValue(0, 1);  // Height 2-3 z-levels
+        
+        // Check for overlap with existing towers (with margin)
+        bool overlaps = false;
+        for (int t = 0; t < towerCount; t++) {
+            Tower* other = &towers[t];
+            int margin = 4;  // Space between towers for bridges
+            if (tx < other->x + other->w + margin && tx + tw + margin > other->x &&
+                ty < other->y + other->h + margin && ty + th + margin > other->y) {
+                overlaps = true;
+                break;
+            }
+        }
+        
+        if (!overlaps) {
+            towers[towerCount++] = (Tower){tx, ty, tw, th, tHeight};
+            
+            // Build the tower: walls on border, floor inside, at all z-levels
+            for (int z = 0; z < tHeight; z++) {
+                for (int py = ty; py < ty + th; py++) {
+                    for (int px = tx; px < tx + tw; px++) {
+                        bool isBorder = (px == tx || px == tx + tw - 1 || 
+                                        py == ty || py == ty + th - 1);
+                        grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    }
+                }
+            }
+            
+            // Add ladder inside tower (connects all levels)
+            int ladderX = tx + tw / 2;
+            int ladderY = ty + th / 2;
+            for (int z = 0; z < tHeight - 1; z++) {
+                grid[z][ladderY][ladderX] = CELL_LADDER;
+            }
+            grid[tHeight - 1][ladderY][ladderX] = CELL_FLOOR;  // Top of ladder is floor
+            
+            // Add door at z=0 (opening in wall)
+            int doorSide = GetRandomValue(0, 3);
+            switch (doorSide) {
+                case 0: grid[0][ty][tx + tw / 2] = CELL_FLOOR; break;          // North
+                case 1: grid[0][ty + th / 2][tx + tw - 1] = CELL_FLOOR; break; // East
+                case 2: grid[0][ty + th - 1][tx + tw / 2] = CELL_FLOOR; break; // South
+                case 3: grid[0][ty + th / 2][tx] = CELL_FLOOR; break;          // West
+            }
+        }
+    }
+    
+    // Connect some towers with bridges at z=1 or z=2
+    for (int i = 0; i < towerCount; i++) {
+        Tower* t1 = &towers[i];
+        if (t1->height < 2) continue;  // Need at least 2 levels for bridge
+        
+        // Try to connect to 1-2 nearby towers
+        int connections = 0;
+        for (int j = 0; j < towerCount && connections < 2; j++) {
+            if (i == j) continue;
+            Tower* t2 = &towers[j];
+            if (t2->height < 2) continue;
+            
+            // Calculate distance
+            int c1x = t1->x + t1->w / 2;
+            int c1y = t1->y + t1->h / 2;
+            int c2x = t2->x + t2->w / 2;
+            int c2y = t2->y + t2->h / 2;
+            int dx = c2x - c1x;
+            int dy = c2y - c1y;
+            int dist = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+            
+            // Only connect nearby towers (manhattan distance 8-20)
+            if (dist < 8 || dist > 20) continue;
+            
+            // Random chance to skip
+            if (GetRandomValue(0, 100) < 50) continue;
+            
+            // Build bridge at z=1 (or z=2 for taller towers)
+            int bridgeZ = (t1->height >= 3 && t2->height >= 3 && GetRandomValue(0, 1)) ? 2 : 1;
+            
+            // Find bridge start and end points (on tower edges)
+            int startX, startY, endX, endY;
+            if ((dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy)) {
+                // Horizontal bridge
+                if (dx > 0) {
+                    startX = t1->x + t1->w - 1;
+                    endX = t2->x;
+                } else {
+                    startX = t1->x;
+                    endX = t2->x + t2->w - 1;
+                }
+                startY = t1->y + t1->h / 2;
+                endY = t2->y + t2->h / 2;
+            } else {
+                // Vertical bridge
+                if (dy > 0) {
+                    startY = t1->y + t1->h - 1;
+                    endY = t2->y;
+                } else {
+                    startY = t1->y;
+                    endY = t2->y + t2->h - 1;
+                }
+                startX = t1->x + t1->w / 2;
+                endX = t2->x + t2->w / 2;
+            }
+            
+            // Carve bridge (simple L-shape)
+            int x = startX, y = startY;
+            
+            // Open the tower walls at bridge connection points
+            grid[bridgeZ][startY][startX] = CELL_FLOOR;
+            grid[bridgeZ][endY][endX] = CELL_FLOOR;
+            
+            // Horizontal segment
+            while (x != endX) {
+                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                    if (grid[bridgeZ][y][x] == CELL_AIR) {
+                        grid[bridgeZ][y][x] = CELL_FLOOR;
+                    }
+                }
+                x += (endX > x) ? 1 : -1;
+            }
+            // Vertical segment  
+            while (y != endY) {
+                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                    if (grid[bridgeZ][y][x] == CELL_AIR) {
+                        grid[bridgeZ][y][x] = CELL_FLOOR;
+                    }
+                }
+                y += (endY > y) ? 1 : -1;
+            }
+            
+            connections++;
+        }
+    }
+    
+    needsRebuild = true;
+}
+
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = chunkWidth * 4;
