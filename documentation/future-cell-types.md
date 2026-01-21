@@ -2,6 +2,27 @@
 
 Ideas for new cell types to make worlds more interesting.
 
+## Current State
+
+**Existing cell types:**
+- `CELL_WALKABLE` - outdoor ground
+- `CELL_WALL` - blocks movement
+- `CELL_LADDER` - connects z-levels
+- `CELL_AIR` - empty space (fall through)
+- `CELL_FLOOR` - indoor walkable
+
+**How walkability works:**
+```c
+IsCellWalkableAt() returns true for: WALKABLE, FLOOR, or LADDER
+```
+
+**Movement cost is hardcoded:**
+```c
+int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+```
+
+---
+
 ## Priority Order
 
 The 6 tiles below create maximum variety with minimum effort:
@@ -20,47 +41,122 @@ These enable:
 
 ---
 
-## Door
+## Implementation Difficulty
+
+| Tile | Difficulty | Why |
+|------|------------|-----|
+| **Fence** | Easy | Just another wall type, add to enum |
+| **Water (deep)** | Easy | Just another blocking type like wall |
+| **Door (static)** | Easy | Two cell types: DOOR_OPEN, DOOR_CLOSED |
+| **Door (dynamic)** | Medium | Need state change + mark chunks dirty for rebuild |
+| **Road/Path** | Medium-Hard | Needs variable movement cost system |
+| **Rubble** | Medium | Same - needs variable movement cost |
+| **Stairs** | Medium | Z-transition logic is ladder-specific, stairs span multiple cells |
+
+---
+
+## Biggest Architectural Change Needed
+
+**Variable movement costs.** Currently hardcoded to 10/14.
+
+To support road (cheaper) and rubble (expensive):
+```c
+// New helper function
+int GetCellMoveCost(CellType cell) {
+    switch (cell) {
+        case CELL_ROAD: return 5;      // Faster
+        case CELL_RUBBLE: return 20;   // Slower
+        default: return 10;            // Normal
+    }
+}
+
+// In pathfinding (many places in pathfinding.c)
+int baseCost = GetCellMoveCost(grid[z][ny][nx]);
+int moveCost = (dx[i] != 0 && dy[i] != 0) ? baseCost * 14 / 10 : baseCost;
+```
+
+This change touches ~6-8 places in pathfinding.c but is straightforward.
+
+---
+
+## Easy Wins (no architecture changes)
+
+### Fence
+```c
+CELL_FENCE  // Treat like CELL_WALL in pathfinding
+```
+- Blocks movement
+- Doesn't block line of sight (LOS isn't in pathfinding anyway)
+- Just visual/semantic difference from wall
+
+### Water (deep)
+```c
+CELL_WATER  // Treat like CELL_WALL in pathfinding
+```
+- Blocks movement completely
+- Creates hard map edges
+- Instant "post-cataclysm" feel
+
+### Door (static version)
+```c
+CELL_DOOR_OPEN    // Add to IsCellWalkableAt() 
+CELL_DOOR_CLOSED  // Treat like CELL_WALL
+```
+- No runtime state changes
+- Terrain generator decides open/closed at generation time
+- Still makes interiors feel intentional
+
+---
+
+## Detailed Tile Notes
+
+### Door
 - A cell type that can be open/closed, affecting pathfinding
 - When closed: blocks movement (like CELL_WALL)
 - When open: allows movement (like CELL_FLOOR)
 - Could have state that changes at runtime, requiring path recalculation
 - Treat as a special wall edge that can connect spaces
 - Instantly makes interiors feel intentional
-- Question: Do you want doors that NPCs can open, or just static open/closed states?
+- **Static version:** Two cell types, no runtime changes
+- **Dynamic version:** Need separate state array or runtime toggle + chunk dirty marking
 
-## Road/Path
+### Road/Path
 - A walkable surface with lower movement cost than grass/dirt
 - Encourages pathfinding to prefer roads when available
 - Gives you a "spine" for navigation
 - Visually distinct from regular CELL_WALKABLE
-- Question: Should this affect pathfinding cost, or just be visual?
+- **Requires:** Variable movement cost system
 
-## Stairs
+### Stairs
 - Different from ladders - gradual slope between z-levels
 - Could span multiple cells horizontally while going up one z-level
 - More realistic for buildings than instant ladders
 - Reads more "urban" and allows wider flows than ladders
-- Question: How many cells should a staircase span? 2-3 cells per z-level?
+- **Challenge:** Current z-transition is ladder-specific (single cell)
+- **Options:** 
+  - Treat as multiple ladder cells in a row
+  - Or special "stair entry/exit" cells that connect
 
-## Rubble
+### Rubble
 - Walkable but with higher movement cost (slow terrain)
 - A "mostly impassable" tile to create broken routes / repairs
 - Good for destroyed buildings, construction sites
-- Question: Should it be passable but slow, or completely blocking like walls?
+- **Requires:** Variable movement cost system
+- **Alternative:** Make it fully blocking (simpler, less interesting)
 
-## Fence
+### Fence
 - Blocks movement but doesn't block line of sight
 - A soft boundary - makes estates/industry feel real
-- Could be jumpable/climbable by some movers?
+- Could be jumpable/climbable by some movers (future feature)
 - Lower than walls visually
-- Question: Just a wall variant, or special behavior?
+- **Easy to add:** Just another wall variant in pathfinding
 
-## Water
+### Water
 - Blocks normal movement - gives hard edges
 - Could have shallow (wadeable, slow) vs deep (impassable)
 - Rivers, ponds, canals - instant "post-cataclysm" feel
-- Question: Any swimming/boat mechanics, or just impassable?
+- **Easy version:** Deep water only, blocks like wall
+- **Advanced version:** Shallow water with movement cost (needs cost system)
 
 ---
 
@@ -91,6 +187,29 @@ Instead of lots of tiles, give each tile connectors:
 - `level`: 0/1 (for ladder/stairs)
 
 One new logical tile (like "road") creates tons of new layouts.
+
+---
+
+## Suggested Implementation Order
+
+### Phase 1: Easy wins (no pathfinding changes)
+1. Add `CELL_FENCE` - blocks movement
+2. Add `CELL_WATER` - blocks movement  
+3. Add `CELL_DOOR_OPEN` / `CELL_DOOR_CLOSED`
+4. Update `IsCellWalkableAt()` to include `CELL_DOOR_OPEN`
+5. Update terrain generators to use new types
+
+### Phase 2: Movement costs
+1. Add `GetCellMoveCost()` function
+2. Update A* in pathfinding.c (~6-8 places)
+3. Update HPA* cost calculations
+4. Update JPS/JPS+ (may need more thought)
+5. Add `CELL_ROAD` and `CELL_RUBBLE`
+
+### Phase 3: Stairs
+1. Design how stairs span cells (2-3 cells per z-level?)
+2. Update z-transition logic
+3. Update terrain generators
 
 ---
 
