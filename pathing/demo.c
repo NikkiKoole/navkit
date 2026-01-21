@@ -304,22 +304,28 @@ void RepathAgents(void) {
 
 void DrawAgents(void) {
     float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
     for (int i = 0; i < agentCount; i++) {
         Agent* a = &agents[i];
         if (!a->active) continue;
 
-        // Draw start (circle)
-        float sx = offset.x + a->start.x * size + size / 2;
-        float sy = offset.y + a->start.y * size + size / 2;
-        DrawCircle((int)sx, (int)sy, size * 0.4f, a->color);
+        // Draw start (circle) - only if on current z-level
+        if (a->start.z == z) {
+            float sx = offset.x + a->start.x * size + size / 2;
+            float sy = offset.y + a->start.y * size + size / 2;
+            DrawCircle((int)sx, (int)sy, size * 0.4f, a->color);
+        }
 
-        // Draw goal (square outline)
-        float gx = offset.x + a->goal.x * size;
-        float gy = offset.y + a->goal.y * size;
-        DrawRectangleLines((int)gx, (int)gy, (int)size, (int)size, a->color);
+        // Draw goal (square outline) - only if on current z-level
+        if (a->goal.z == z) {
+            float gx = offset.x + a->goal.x * size;
+            float gy = offset.y + a->goal.y * size;
+            DrawRectangleLines((int)gx, (int)gy, (int)size, (int)size, a->color);
+        }
 
-        // Draw path
+        // Draw path - only segments on current z-level
         for (int j = 0; j < a->pathLength; j++) {
+            if (a->path[j].z != z) continue;
             float px = offset.x + a->path[j].x * size + size * 0.35f;
             float py = offset.y + a->path[j].y * size + size * 0.35f;
             DrawRectangle((int)px, (int)py, (int)(size * 0.3f), (int)(size * 0.3f), a->color);

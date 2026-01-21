@@ -2380,15 +2380,17 @@ static int GetRandomInt(int min, int max) {
 
 Point GetRandomWalkableCell(void) {
     Point p;
-    p.z = 0;
     int attempts = 0;
     do {
         p.x = GetRandomInt(0, gridWidth - 1);
         p.y = GetRandomInt(0, gridHeight - 1);
+        p.z = GetRandomInt(0, gridDepth - 1);
         attempts++;
-    } while (grid[0][p.y][p.x] != CELL_WALKABLE && attempts < 1000);
-    if (attempts >= 1000) {
-        return (Point){-1, -1, 0};
-    }
-    return p;
+        CellType cell = grid[p.z][p.y][p.x];
+        // Accept walkable, floor, or ladder cells
+        if (cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER) {
+            return p;
+        }
+    } while (attempts < 1000);
+    return (Point){-1, -1, 0};
 }
