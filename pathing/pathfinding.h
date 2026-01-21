@@ -88,7 +88,7 @@ extern bool use8Dir;  // false = 4-directional, true = 8-directional
 
 // Functions
 int Heuristic(int x1, int y1, int x2, int y2);
-void MarkChunkDirty(int cellX, int cellY);
+void MarkChunkDirty(int cellX, int cellY, int cellZ);
 void BuildEntrances(void);
 void BuildGraph(void);
 void RunAStar(void);

@@ -46,17 +46,17 @@ int abstractPathLength = 0;
 #define ENTRANCE_HASH_SIZE 8192  // Power of 2, should be > 2x max entrances
 
 typedef struct {
-    int x, y;       // Position (key)
+    int x, y, z;    // Position (key)
     int index;      // Entrance index (value), -1 if empty
 } EntranceHashEntry;
 
 static EntranceHashEntry entranceHash[ENTRANCE_HASH_SIZE];
 static bool entranceHashBuilt = false;
 
-// Simple hash function for (x, y) coordinates
-static inline int HashPosition(int x, int y) {
-    // Combine x and y with prime multipliers, mask to table size
-    unsigned int h = (unsigned int)(x * 73856093) ^ (unsigned int)(y * 19349663);
+// Simple hash function for (x, y, z) coordinates
+static inline int HashPosition(int x, int y, int z) {
+    // Combine x, y, z with prime multipliers, mask to table size
+    unsigned int h = (unsigned int)(x * 73856093) ^ (unsigned int)(y * 19349663) ^ (unsigned int)(z * 83492791);
     return (int)(h & (ENTRANCE_HASH_SIZE - 1));
 }
 
@@ -72,24 +72,25 @@ static void ClearEntranceHash(void) {
 static void BuildEntranceHash(void) {
     ClearEntranceHash();
     for (int i = 0; i < entranceCount; i++) {
-        int h = HashPosition(entrances[i].x, entrances[i].y);
+        int h = HashPosition(entrances[i].x, entrances[i].y, entrances[i].z);
         // Linear probing for collision resolution
         while (entranceHash[h].index >= 0) {
             h = (h + 1) & (ENTRANCE_HASH_SIZE - 1);
         }
         entranceHash[h].x = entrances[i].x;
         entranceHash[h].y = entrances[i].y;
+        entranceHash[h].z = entrances[i].z;
         entranceHash[h].index = i;
     }
     entranceHashBuilt = true;
 }
 
 // Look up entrance index by position, returns -1 if not found
-static int HashLookupEntrance(int x, int y) {
-    int h = HashPosition(x, y);
+static int HashLookupEntrance(int x, int y, int z) {
+    int h = HashPosition(x, y, z);
     int start = h;
     while (entranceHash[h].index >= 0) {
-        if (entranceHash[h].x == x && entranceHash[h].y == y) {
+        if (entranceHash[h].x == x && entranceHash[h].y == y && entranceHash[h].z == z) {
             return entranceHash[h].index;
         }
         h = (h + 1) & (ENTRANCE_HASH_SIZE - 1);
@@ -366,11 +367,11 @@ static int Heuristic8Dir(int x1, int y1, int x2, int y2) {
     return 10 * maxD + 4 * minD;
 }
 
-void MarkChunkDirty(int cellX, int cellY) {
+void MarkChunkDirty(int cellX, int cellY, int cellZ) {
     int cx = cellX / chunkWidth;
     int cy = cellY / chunkHeight;
-    if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY) {
-        chunkDirty[0][cy][cx] = true;
+    if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY && cellZ >= 0 && cellZ < gridDepth) {
+        chunkDirty[cellZ][cy][cx] = true;
         needsRebuild = true;
         hpaNeedsRebuild = true;
         jpsNeedsRebuild = true;
@@ -763,41 +764,44 @@ void BuildGraph(void) {
 // ============== Incremental Update Functions ==============
 
 // Get the set of chunks affected by dirty chunks (dirty + their neighbors)
-static void GetAffectedChunks(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
-    for (int cy = 0; cy < chunksY; cy++)
-        for (int cx = 0; cx < chunksX; cx++)
-            affectedChunks[cy][cx] = false;
+// Now 3D: checks all z-levels
+static void GetAffectedChunks(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    for (int z = 0; z < gridDepth; z++)
+        for (int cy = 0; cy < chunksY; cy++)
+            for (int cx = 0; cx < chunksX; cx++)
+                affectedChunks[z][cy][cx] = false;
 
-    for (int cy = 0; cy < chunksY; cy++) {
-        for (int cx = 0; cx < chunksX; cx++) {
-            if (chunkDirty[0][cy][cx]) {
-                affectedChunks[cy][cx] = true;
-                // Mark neighbors as affected too (they share borders)
-                if (cy > 0) affectedChunks[cy-1][cx] = true;
-                if (cy < chunksY-1) affectedChunks[cy+1][cx] = true;
-                if (cx > 0) affectedChunks[cy][cx-1] = true;
-                if (cx < chunksX-1) affectedChunks[cy][cx+1] = true;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int cy = 0; cy < chunksY; cy++) {
+            for (int cx = 0; cx < chunksX; cx++) {
+                if (chunkDirty[z][cy][cx]) {
+                    affectedChunks[z][cy][cx] = true;
+                    // Mark XY neighbors as affected too (they share borders)
+                    if (cy > 0) affectedChunks[z][cy-1][cx] = true;
+                    if (cy < chunksY-1) affectedChunks[z][cy+1][cx] = true;
+                    if (cx > 0) affectedChunks[z][cy][cx-1] = true;
+                    if (cx < chunksX-1) affectedChunks[z][cy][cx+1] = true;
+                }
             }
         }
     }
 }
 
-// Check if an entrance touches any affected chunk
-// Note: affectedChunks is 2D (XY only), so we extract XY from 3D chunk IDs
-static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+// Check if an entrance touches any affected chunk (now 3D)
+static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     int chunksPerLevel = chunksX * chunksY;
     int c1 = entrances[entranceIdx].chunk1;
     int c2 = entrances[entranceIdx].chunk2;
-    // Extract XY chunk indices (ignore z component)
-    int xyChunk1 = c1 % chunksPerLevel;
-    int xyChunk2 = c2 % chunksPerLevel;
+    // Extract z, y, x chunk indices
+    int z1 = c1 / chunksPerLevel, xyChunk1 = c1 % chunksPerLevel;
+    int z2 = c2 / chunksPerLevel, xyChunk2 = c2 % chunksPerLevel;
     int cy1 = xyChunk1 / chunksX, cx1 = xyChunk1 % chunksX;
     int cy2 = xyChunk2 / chunksX, cx2 = xyChunk2 % chunksX;
-    return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
+    return affectedChunks[z1][cy1][cx1] || affectedChunks[z2][cy2][cx2];
 }
 
 // Rebuild entrances for affected chunks (simpler approach - no keeping/remapping)
-static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     // Remove entrances that touch any affected chunk
     int newCount = 0;
     for (int i = 0; i < entranceCount; i++) {
@@ -814,7 +818,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNK
         // Horizontal borders (between cy and cy+1)
         for (int cy = 0; cy < chunksY - 1; cy++) {
             for (int cx = 0; cx < chunksX; cx++) {
-                if (!affectedChunks[cy][cx] && !affectedChunks[cy+1][cx]) continue;
+                if (!affectedChunks[z][cy][cx] && !affectedChunks[z][cy+1][cx]) continue;
 
                 int borderY = (cy + 1) * chunkHeight;
                 int startX = cx * chunkWidth;
@@ -856,7 +860,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNK
         // Vertical borders (between cx and cx+1)
         for (int cy = 0; cy < chunksY; cy++) {
             for (int cx = 0; cx < chunksX - 1; cx++) {
-                if (!affectedChunks[cy][cx] && !affectedChunks[cy][cx+1]) continue;
+                if (!affectedChunks[z][cy][cx] && !affectedChunks[z][cy][cx+1]) continue;
 
                 int borderX = (cx + 1) * chunkWidth;
                 int startY = cy * chunkHeight;
@@ -916,22 +920,21 @@ static void SaveOldEntrances(void) {
     }
 }
 
-// Check if an entrance (by new index) touches any affected chunk
-// Note: affectedChunks is 2D (XY only), so we extract XY from 3D chunk IDs
-static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+// Check if an entrance (by new index) touches any affected chunk (now 3D)
+static bool NewEntranceTouchesAffected(int idx, bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     int chunksPerLevel = chunksX * chunksY;
     int c1 = entrances[idx].chunk1;
     int c2 = entrances[idx].chunk2;
-    // Extract XY chunk indices (ignore z component)
-    int xyChunk1 = c1 % chunksPerLevel;
-    int xyChunk2 = c2 % chunksPerLevel;
+    // Extract z, y, x chunk indices
+    int z1 = c1 / chunksPerLevel, xyChunk1 = c1 % chunksPerLevel;
+    int z2 = c2 / chunksPerLevel, xyChunk2 = c2 % chunksPerLevel;
     int cy1 = xyChunk1 / chunksX, cx1 = xyChunk1 % chunksX;
     int cy2 = xyChunk2 / chunksX, cx2 = xyChunk2 % chunksX;
-    return affectedChunks[cy1][cx1] || affectedChunks[cy2][cx2];
+    return affectedChunks[z1][cy1][cx1] || affectedChunks[z2][cy2][cx2];
 }
 
 // Rebuild graph edges - keep edges in unaffected chunks, rebuild affected
-static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
     // Step 0: Build indexes for fast lookup
     // - Hash table: entrance position → index (for old→new mapping)
     // - Chunk index: chunk → list of entrance indices (for Step 3)
@@ -939,7 +942,7 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
     BuildChunkEntranceIndex();
 
     for (int i = 0; i < oldEntranceCount; i++) {
-        oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y);
+        oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y, oldEntrances[i].z);
     }
 
     // Step 1: Keep edges where both entrances don't touch any affected chunk
@@ -991,8 +994,7 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
                 if (numEnts == 0) continue;
 
                 // Skip chunks that don't need processing
-                // Note: affectedChunks is 2D (XY only), same XY affects all z-levels
-                if (!affectedChunks[cy][cx]) {
+                if (!affectedChunks[z][cy][cx]) {
                     // Check if any entrance in this chunk touches an affected chunk
                     bool needsProcessing = false;
                     for (int i = 0; i < numEnts && !needsProcessing; i++) {
@@ -1094,25 +1096,28 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X]
 }
 
 void UpdateDirtyChunks(void) {
-    // Check if any chunks are dirty
+    // Check if any chunks are dirty (across all z-levels)
     bool anyDirty = false;
-    for (int cy = 0; cy < chunksY && !anyDirty; cy++)
-        for (int cx = 0; cx < chunksX && !anyDirty; cx++)
-            if (chunkDirty[0][cy][cx]) anyDirty = true;
+    for (int z = 0; z < gridDepth && !anyDirty; z++)
+        for (int cy = 0; cy < chunksY && !anyDirty; cy++)
+            for (int cx = 0; cx < chunksX && !anyDirty; cx++)
+                if (chunkDirty[z][cy][cx]) anyDirty = true;
 
     if (!anyDirty) return;
 
     double startTime = GetTime();
 
-    // Get affected chunks (dirty + neighbors)
-    bool affectedChunks[MAX_CHUNKS_Y][MAX_CHUNKS_X];
+    // Get affected chunks (dirty + neighbors) - now 3D
+    bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X];
     GetAffectedChunks(affectedChunks);
 
     int dirtyCount = 0, affectedCount = 0;
-    for (int cy = 0; cy < chunksY; cy++) {
-        for (int cx = 0; cx < chunksX; cx++) {
-            if (chunkDirty[0][cy][cx]) dirtyCount++;
-            if (affectedChunks[cy][cx]) affectedCount++;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int cy = 0; cy < chunksY; cy++) {
+            for (int cx = 0; cx < chunksX; cx++) {
+                if (chunkDirty[z][cy][cx]) dirtyCount++;
+                if (affectedChunks[z][cy][cx]) affectedCount++;
+            }
         }
     }
 
@@ -1125,10 +1130,11 @@ void UpdateDirtyChunks(void) {
     // Rebuild edges (keeps edges in unaffected chunks, rebuilds affected)
     RebuildAffectedEdges(affectedChunks);
 
-    // Clear dirty flags
-    for (int cy = 0; cy < chunksY; cy++)
-        for (int cx = 0; cx < chunksX; cx++)
-            chunkDirty[0][cy][cx] = false;
+    // Clear dirty flags (all z-levels)
+    for (int z = 0; z < gridDepth; z++)
+        for (int cy = 0; cy < chunksY; cy++)
+            for (int cx = 0; cx < chunksX; cx++)
+                chunkDirty[z][cy][cx] = false;
     needsRebuild = false;
     hpaNeedsRebuild = false;
 

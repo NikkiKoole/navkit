@@ -29,7 +29,7 @@ describe(grid_initialization) {
 
         // Place a wall and mark dirty
         grid[0][10][10] = CELL_WALL;
-        MarkChunkDirty(10, 10);
+        MarkChunkDirty(10, 10, 0);
 
         int cx = 10 / chunkWidth;
         int cy = 10 / chunkHeight;
@@ -435,9 +435,9 @@ describe(incremental_graph_updates) {
         grid[0][10][10] = CELL_WALL;
         grid[0][10][11] = CELL_WALL;
         grid[0][11][10] = CELL_WALL;
-        MarkChunkDirty(10, 10);
-        MarkChunkDirty(10, 11);
-        MarkChunkDirty(11, 10);
+        MarkChunkDirty(10, 10, 0);
+        MarkChunkDirty(10, 11, 0);
+        MarkChunkDirty(11, 10, 0);
         // Do incremental update
         UpdateDirtyChunks();
         int incrementalEdgeCount = graphEdgeCount;
@@ -472,7 +472,7 @@ describe(incremental_graph_updates) {
 
         // Add wall and update incrementally
         grid[0][chunkHeight / 2][chunkWidth / 2] = CELL_WALL;
-        MarkChunkDirty(chunkWidth / 2, chunkHeight / 2);
+        MarkChunkDirty(chunkWidth / 2, chunkHeight / 2, 0);
         UpdateDirtyChunks();
 
         // Path should still work (wall doesn't block everything)
@@ -493,7 +493,7 @@ describe(incremental_graph_updates) {
             grid[0][borderY - 1][x] = CELL_WALL;
             grid[0][borderY][x] = CELL_WALL;
         }
-        MarkChunkDirty(0, borderY);
+        MarkChunkDirty(0, borderY, 0);
         UpdateDirtyChunks();
 
         // All edge indices should be valid (no dangling references)
@@ -521,7 +521,7 @@ describe(incremental_graph_updates) {
         // Add walls in top-left corner (chunk 0)
         for (int i = 0; i < 10; i++) {
             grid[0][i][i] = CELL_WALL;
-            MarkChunkDirty(i, i);
+            MarkChunkDirty(i, i, 0);
         }
         UpdateDirtyChunks();
 
@@ -735,7 +735,7 @@ describe(incremental_updates) {
 
         // Add a wall and update
         grid[0][chunkHeight + 5][chunkWidth + 5] = CELL_WALL;
-        MarkChunkDirty(chunkWidth + 5, chunkHeight + 5);
+        MarkChunkDirty(chunkWidth + 5, chunkHeight + 5, 0);
         UpdateDirtyChunks();
 
         // Graph should still work (edge count may differ slightly)
@@ -750,7 +750,7 @@ describe(incremental_updates) {
         // Add some walls
         for (int i = 0; i < 5; i++) {
             grid[0][chunkHeight + 10][chunkWidth + i] = CELL_WALL;
-            MarkChunkDirty(chunkWidth + i, chunkHeight + 10);
+            MarkChunkDirty(chunkWidth + i, chunkHeight + 10, 0);
         }
         UpdateDirtyChunks();
 

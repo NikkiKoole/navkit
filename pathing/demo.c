@@ -576,7 +576,7 @@ void HandleInput(void) {
                 for (int rx = x1; rx <= x2; rx++) {
                     bool isBorder = (rx == x1 || rx == x2 || ry == y1 || ry == y2);
                     grid[z][ry][rx] = isBorder ? CELL_WALL : CELL_FLOOR;
-                    MarkChunkDirty(rx, ry);
+                    MarkChunkDirty(rx, ry, z);
                 }
             }
         }
@@ -612,7 +612,7 @@ void HandleInput(void) {
             for (int ry = y1; ry <= y2; ry++) {
                 for (int rx = x1; rx <= x2; rx++) {
                     grid[z][ry][rx] = CELL_FLOOR;
-                    MarkChunkDirty(rx, ry);
+                    MarkChunkDirty(rx, ry, z);
                 }
             }
         }
@@ -629,7 +629,7 @@ void HandleInput(void) {
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
             if (grid[z][y][x] != CELL_LADDER) {
                 grid[z][y][x] = CELL_LADDER;
-                MarkChunkDirty(x, y);
+                MarkChunkDirty(x, y, z);
             }
         }
         return;
@@ -645,7 +645,7 @@ void HandleInput(void) {
                 case 0:  // Draw Wall
                     if (grid[z][y][x] != CELL_WALL) {
                         grid[z][y][x] = CELL_WALL;
-                        MarkChunkDirty(x, y);
+                        MarkChunkDirty(x, y, z);
                         // Mark movers whose path crosses this cell for replanning
                         for (int i = 0; i < moverCount; i++) {
                             Mover* m = &movers[i];
@@ -662,13 +662,13 @@ void HandleInput(void) {
                 case 1:  // Draw Floor
                     if (grid[z][y][x] != CELL_FLOOR) {
                         grid[z][y][x] = CELL_FLOOR;
-                        MarkChunkDirty(x, y);
+                        MarkChunkDirty(x, y, z);
                     }
                     break;
                 case 2:  // Draw Ladder
                     if (grid[z][y][x] != CELL_LADDER) {
                         grid[z][y][x] = CELL_LADDER;
-                        MarkChunkDirty(x, y);
+                        MarkChunkDirty(x, y, z);
                     }
                     break;
                 case 3:  // Erase (air on z>0, grass on z=0)
@@ -676,7 +676,7 @@ void HandleInput(void) {
                         CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
                         if (grid[z][y][x] != eraseType) {
                             grid[z][y][x] = eraseType;
-                            MarkChunkDirty(x, y);
+                            MarkChunkDirty(x, y, z);
                         }
                     }
                     break;
@@ -704,7 +704,7 @@ void HandleInput(void) {
         CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[z][y][x] != eraseType) {
             grid[z][y][x] = eraseType;
-            MarkChunkDirty(x, y);
+            MarkChunkDirty(x, y, z);
         }
     }
 
