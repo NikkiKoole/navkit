@@ -58,7 +58,7 @@ bool sectionMovers = true;
 bool sectionMoverAvoidance = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
-bool sectionDebug = false;
+
 bool sectionProfiler = false;
 bool paused = false;
 
@@ -482,10 +482,20 @@ void DrawMovers(void) {
         // Draw mover as colored rectangle
         float moverSize = size * 0.5f;
         DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, moverColor);
+    }
 
-        // Optionally draw remaining path (only segments on current z-level)
-        if (showMoverPaths && m->pathIndex >= 0) {
+    // Draw mover paths in separate loop for profiling
+    if (showMoverPaths) {
+        PROFILE_BEGIN(MoverPaths);
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (!m->active || m->pathIndex < 0) continue;
+            if ((int)m->z != viewZ) continue;
+
+            float sx = offset.x + m->x * zoom;
+            float sy = offset.y + m->y * zoom;
             Color color = moverRenderData[i].color;
+
             // Line to next waypoint (if on same z)
             Point next = m->path[m->pathIndex];
             if (next.z == viewZ) {
@@ -504,6 +514,7 @@ void DrawMovers(void) {
                 DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 1.0f, Fade(color, 0.4f));
             }
         }
+        PROFILE_END(MoverPaths);
     }
 }
 
@@ -752,7 +763,7 @@ void HandleInput(void) {
 
 void DrawUI(void) {
     ui_begin_frame();
-    float y = 70.0f;
+    float y = 30.0f;
     float x = 10.0f;
 
     // === VIEW ===
@@ -828,6 +839,42 @@ void DrawUI(void) {
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
             offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
         }
+        y += 22;
+        if (PushButton(x, y, "Copy Map ASCII")) {
+            // Copy map to clipboard as ASCII (supports multiple floors)
+            // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
+            // "floor:" = 6, max digits for floor number ~3, "\n" = 1, so ~10 chars per floor header
+            int floorDataSize = gridWidth * gridHeight + gridHeight;  // grid + newlines per floor
+            int bufferSize = gridDepth * (10 + floorDataSize) + 1;
+            char* buffer = malloc(bufferSize);
+            int idx = 0;
+
+            for (int z = 0; z < gridDepth; z++) {
+                // Write floor marker
+                idx += sprintf(buffer + idx, "floor:%d\n", z);
+
+                // Write grid data for this floor
+                for (int row = 0; row < gridHeight; row++) {
+                    for (int col = 0; col < gridWidth; col++) {
+                        char c;
+                        switch (grid[z][row][col]) {
+                            case CELL_WALL:        c = '#'; break;
+                            case CELL_LADDER:      c = 'L'; break;  // Legacy
+                            case CELL_LADDER_UP:   c = '<'; break;
+                            case CELL_LADDER_DOWN: c = '>'; break;
+                            case CELL_LADDER_BOTH: c = 'X'; break;
+                            default:               c = '.'; break;
+                        }
+                        buffer[idx++] = c;
+                    }
+                    buffer[idx++] = '\n';
+                }
+            }
+            buffer[idx] = '\0';
+            SetClipboardText(buffer);
+            free(buffer);
+            TraceLog(LOG_INFO, "Map copied to clipboard (%d floors)", gridDepth);
+        }
     }
     y += 22;
 
@@ -857,7 +904,7 @@ void DrawUI(void) {
 
     // === MOVERS ===
     y += 8;
-    if (SectionHeader(x, y, "Movers", &sectionMovers)) {
+    if (SectionHeader(x, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
         y += 18;
         DraggableIntLog(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
         y += 22;
@@ -922,52 +969,34 @@ void DrawUI(void) {
     }
     y += 22;
 
-    // === DEBUG ===
-    y += 8;
-    if (SectionHeader(x, y, "Debug", &sectionDebug)) {
-        y += 18;
-        if (PushButton(x, y, "Copy Map ASCII")) {
-            // Copy map to clipboard as ASCII (supports multiple floors)
-            // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
-            // "floor:" = 6, max digits for floor number ~3, "\n" = 1, so ~10 chars per floor header
-            int floorDataSize = gridWidth * gridHeight + gridHeight;  // grid + newlines per floor
-            int bufferSize = gridDepth * (10 + floorDataSize) + 1;
-            char* buffer = malloc(bufferSize);
-            int idx = 0;
+}
 
-            for (int z = 0; z < gridDepth; z++) {
-                // Write floor marker
-                idx += sprintf(buffer + idx, "floor:%d\n", z);
-
-                // Write grid data for this floor
-                for (int row = 0; row < gridHeight; row++) {
-                    for (int col = 0; col < gridWidth; col++) {
-                        char c;
-                        switch (grid[z][row][col]) {
-                            case CELL_WALL:        c = '#'; break;
-                            case CELL_LADDER:      c = 'L'; break;  // Legacy
-                            case CELL_LADDER_UP:   c = '<'; break;
-                            case CELL_LADDER_DOWN: c = '>'; break;
-                            case CELL_LADDER_BOTH: c = 'X'; break;
-                            default:               c = '.'; break;
-                        }
-                        buffer[idx++] = c;
-                    }
-                    buffer[idx++] = '\n';
-                }
-            }
-            buffer[idx] = '\0';
-            SetClipboardText(buffer);
-            free(buffer);
-            TraceLog(LOG_INFO, "Map copied to clipboard (%d floors)", gridDepth);
-        }
-    }
-    y += 22;
-
-    // === PROFILER ===
 #if PROFILER_ENABLED
-    y += 8;
-    if (SectionHeader(x, y, "Profiler", &sectionProfiler)) {
+void DrawProfilerPanel(float rightEdge, float y) {
+    float panelW = 220;
+    float x = rightEdge - panelW;
+    Vector2 mouse = GetMousePosition();
+    
+    // Block click-through for entire panel area
+    float panelH = sectionProfiler ? 300 : 20;
+    if (mouse.x >= x && mouse.x < rightEdge && mouse.y >= y && mouse.y < y + panelH) {
+        ui_set_hovered();
+    }
+    
+    // Draw right-aligned header
+    const char* headerText = sectionProfiler ? "[-] Profiler" : "[+] Profiler";
+    int headerWidth = MeasureText(headerText, 14);
+    float headerX = rightEdge - headerWidth;
+    bool hovered = mouse.x >= headerX && mouse.x < headerX + headerWidth + 10 &&
+                   mouse.y >= y && mouse.y < y + 18;
+    
+    DrawTextShadow(headerText, (int)headerX, (int)y, 14, hovered ? YELLOW : GRAY);
+    
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        sectionProfiler = !sectionProfiler;
+    }
+    
+    if (sectionProfiler) {
         y += 18;
         
         // Find max value for scaling bars
@@ -987,7 +1016,6 @@ void DrawUI(void) {
         int numColors = sizeof(sectionColors) / sizeof(sectionColors[0]);
         
         // Check for hover on section labels
-        Vector2 mouse = GetMousePosition();
         int labelHoveredSection = -1;
         int labelStartY = y;  // Remember starting Y for label hover detection
         
@@ -1070,9 +1098,9 @@ void DrawUI(void) {
         
         // Line graph showing history
         y += 10;
-        int graphX = x;
+        int graphW = labelWidth + barMaxWidth;  // Match width of bars above
+        int graphX = x + labelWidth + barMaxWidth - graphW;  // Right-align with bars
         int graphY = y;
-        int graphW = 180;
         int graphH = 60;
         
         // Find max across all history for scaling
@@ -1173,11 +1201,9 @@ void DrawUI(void) {
         // Draw scale label
         DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, WHITE);
         DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, WHITE);
-        
-        y += graphH + 5;
     }
-#endif
 }
+#endif
 
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
@@ -1236,9 +1262,7 @@ int main(void) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         PROFILE_END(DrawCells);
-        PROFILE_BEGIN(DrawChunks);
         DrawChunkBoundaries();
-        PROFILE_END(DrawChunks);
         PROFILE_BEGIN(DrawGraph);
         DrawGraph();
         PROFILE_END(DrawGraph);
@@ -1247,12 +1271,8 @@ int main(void) {
             DrawEntrances();
             PROFILE_END(DrawEntrances);
         }
-        PROFILE_BEGIN(DrawPath);
         DrawPath();
-        PROFILE_END(DrawPath);
-        PROFILE_BEGIN(DrawAgents);
         DrawAgents();
-        PROFILE_END(DrawAgents);
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();
@@ -1298,38 +1318,22 @@ int main(void) {
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), screenWidth - 120, 5, 18, SKYBLUE);
-
-        // Count stuck movers if knot detection is enabled
-        int stuckCount = 0;
-        if (showKnotDetection) {
-            for (int i = 0; i < moverCount; i++) {
-                if (movers[i].active && movers[i].timeNearWaypoint > KNOT_STUCK_TIME) {
-                    stuckCount++;
-                }
-            }
-            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Stuck: %d",
-                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, stuckCount), 5, 25, 16, WHITE);
-        } else {
-            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d",
-                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
-        }
-        if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
-            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
-                     pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
-        } else {
-            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
-        }
-        // Show path stats (updated every 5 seconds)
-        if (pathStatsCount > 0) {
-            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg",
-                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 65, 16, YELLOW);
-        }
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, screenHeight - 20, 18, SKYBLUE);
+        
+#if PROFILER_ENABLED
+        DrawProfilerPanel(screenWidth - 50, 5);
+#endif
 
         // Draw UI
         PROFILE_BEGIN(DrawUI);
         DrawUI();
         PROFILE_END(DrawUI);
+
+        // Status bar at bottom
+        if (pathStatsCount > 0) {
+            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg",
+                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 130, screenHeight - 20, 16, YELLOW);
+        }
 
         EndDrawing();
         PROFILE_END(Render);
