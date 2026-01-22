@@ -945,12 +945,42 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
         }
     }
     
-    // NOTE: Ladder entrances are not rebuilt incrementally yet.
-    // For full ladder support, ladderLinkCount would need to be rebuilt here too.
-    // For now, incremental updates don't affect ladders (which is fine if ladders don't change).
+    // Rebuild ladder links - scan all ladders and rebuild the full list
+    // (Ladder links reference entrance indices which change during rebuild,
+    // so we need to rebuild all ladder links with correct entrance indices)
+    ladderLinkCount = 0;
+    for (int z = 0; z < gridDepth - 1; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                    if (ladderLinkCount < MAX_LADDERS && newCount + 2 <= MAX_ENTRANCES) {
+                        int cx = x / chunkWidth;
+                        int cy = y / chunkHeight;
+                        int chunkLow = z * (chunksX * chunksY) + cy * chunksX + cx;
+                        int chunkHigh = (z + 1) * (chunksX * chunksY) + cy * chunksX + cx;
+                        
+                        int entLow = newCount;
+                        entrances[newCount++] = (Entrance){x, y, z, chunkLow, chunkLow};
+                        int entHigh = newCount;
+                        entrances[newCount++] = (Entrance){x, y, z + 1, chunkHigh, chunkHigh};
+                        
+                        ladderLinks[ladderLinkCount++] = (LadderLink){
+                            .x = x,
+                            .y = y,
+                            .zLow = z,
+                            .zHigh = z + 1,
+                            .entranceLow = entLow,
+                            .entranceHigh = entHigh,
+                            .cost = 10
+                        };
+                    }
+                }
+            }
+        }
+    }
 
     entranceCount = newCount;
-    TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total", keptCount, newCount);
+    TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total (%d ladder links)", keptCount, newCount, ladderLinkCount);
 }
 
 // Storage for old entrances before rebuild (used for edge remapping)
@@ -1132,6 +1162,36 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Add edges for ladder links (cross z-level connections)
+    for (int i = 0; i < ladderLinkCount; i++) {
+        LadderLink* link = &ladderLinks[i];
+        int e1 = link->entranceLow;
+        int e2 = link->entranceHigh;
+        int cost = link->cost;
+        
+        // Check if edge already exists
+        bool exists = false;
+        for (int k = 0; k < adjListCount[e1] && !exists; k++) {
+            int edgeIdx = adjList[e1][k];
+            if (graphEdges[edgeIdx].to == e2) exists = true;
+        }
+        if (exists) continue;
+        
+        if (graphEdgeCount < MAX_EDGES - 1) {
+            int edgeIdx1 = graphEdgeCount;
+            int edgeIdx2 = graphEdgeCount + 1;
+            graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+            graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+            
+            if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                adjList[e1][adjListCount[e1]++] = edgeIdx1;
+            }
+            if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                adjList[e2][adjListCount[e2]++] = edgeIdx2;
             }
         }
     }

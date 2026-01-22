@@ -1861,6 +1861,151 @@ describe(hpa_ladder_pathfinding) {
         expect(astarZTransitions == 1);
         expect(hpaZTransitions == 1);
     }
+
+    it("should find path after ladder added via incremental update") {
+        // Start with a map that has NO ladder - path between floors should fail
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        // Initially no ladder links
+        expect(ladderLinkCount == 0);
+
+        // Try to find path between floors - should fail
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+        RunHPAStar();
+        expect(pathLength == 0);
+
+        // Now add a ladder at (7, 6) on both floors
+        grid[0][6][7] = CELL_LADDER;
+        grid[1][6][7] = CELL_LADDER;
+        MarkChunkDirty(7, 6, 0);
+        MarkChunkDirty(7, 6, 1);
+
+        // Run incremental update
+        UpdateDirtyChunks();
+
+        // Should now have 1 ladder link
+        expect(ladderLinkCount == 1);
+
+        // Path should now succeed
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+        RunHPAStar();
+        expect(pathLength > 0);
+
+        // Path should transition z-levels
+        int zTransitions = 0;
+        for (int i = 0; i < pathLength - 1; i++) {
+            if (path[i].z != path[i+1].z) zTransitions++;
+        }
+        expect(zTransitions == 1);
+    }
+
+    it("should update path when ladder is removed via incremental update") {
+        // Start with a map that has a ladder
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            ".......L........\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        // Initially has 1 ladder link
+        expect(ladderLinkCount == 1);
+
+        // Path between floors should work
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+        RunHPAStar();
+        expect(pathLength > 0);
+
+        // Remove the ladder from floor 0 (break the connection)
+        grid[0][6][7] = CELL_WALKABLE;
+        MarkChunkDirty(7, 6, 0);
+
+        // Run incremental update
+        UpdateDirtyChunks();
+
+        // Should now have 0 ladder links (need ladder on both floors)
+        expect(ladderLinkCount == 0);
+
+        // Path should now fail
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+        RunHPAStar();
+        expect(pathLength == 0);
+    }
 }
 
 // ============== JPS+ 3D LADDER TESTS ==============
