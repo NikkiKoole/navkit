@@ -1111,8 +1111,8 @@ void DrawUI(void) {
             }
         }
         
-        // Draw tooltip for hovered section
-        if (hoveredSection >= 0) {
+        // Draw tooltip for hovered section (only when hovering graph, not label)
+        if (hoveredSection >= 0 && labelHoveredSection < 0) {
             ProfileSection* s = &profilerSections[hoveredSection];
             const char* tooltip = TextFormat("%s: %.2fms", s->name, hoveredValue);
             int tooltipW = MeasureText(tooltip, 14) + 10;
