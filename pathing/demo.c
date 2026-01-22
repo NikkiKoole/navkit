@@ -60,6 +60,7 @@ bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 
 bool sectionProfiler = false;
+bool sectionMemory = false;
 bool paused = false;
 
 // Test map: Narrow gaps (from test_mover.c)
@@ -1021,6 +1022,37 @@ void DrawProfilerPanel(float rightEdge, float y) {
 
     if (sectionProfiler) {
         y += 18;
+
+        // Memory section
+        const char* memHeader = sectionMemory ? "[-] Memory" : "[+] Memory";
+        int memHeaderWidth = MeasureText(memHeader, 14);
+        float memHeaderX = rightEdge - memHeaderWidth;
+        bool memHovered = mouse.x >= memHeaderX && mouse.x < memHeaderX + memHeaderWidth + 10 &&
+                          mouse.y >= y && mouse.y < y + 18;
+        DrawTextShadow(memHeader, (int)memHeaderX, (int)y, 14, memHovered ? YELLOW : GRAY);
+        if (memHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            sectionMemory = !sectionMemory;
+        }
+        y += 18;
+
+        if (sectionMemory) {
+            // Calculate sizes of major static arrays (in KB)
+            size_t gridSize = sizeof(CellType) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t moversSize = sizeof(Mover) * MAX_MOVERS;
+            size_t entrancesSize = sizeof(Entrance) * MAX_ENTRANCES;
+            size_t pathSize = sizeof(Point) * MAX_PATH;
+            size_t edgesSize = sizeof(GraphEdge) * MAX_EDGES;
+            size_t spatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
+            size_t total = gridSize + moversSize + entrancesSize + pathSize + edgesSize + spatialGrid;
+
+            DrawTextShadow(TextFormat("Grid:       %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("Movers:     %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("Entrances:  %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("Path:       %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("Edges:      %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("SpatialGrid:%5.1f KB", spatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("Total:      %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
+        }
 
         // Find max value for scaling bars
         float maxMs = 1.0f;  // Minimum scale of 1ms

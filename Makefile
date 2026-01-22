@@ -2,7 +2,7 @@ CC := clang
 MACOSX_DEPLOYMENT_TARGET ?= 14.0
 export MACOSX_DEPLOYMENT_TARGET
 
-CFLAGS  := -std=c11 -O2 -I. -Wall -Wextra
+CFLAGS  := -std=c11 -O2 -g -I. -Wall -Wextra
 LDFLAGS := $(shell pkg-config --libs raylib)
 
 BINDIR := bin
@@ -55,10 +55,16 @@ crowd: $(BINDIR) $(BINDIR)/crowd
 clean:
 	rm -rf $(BINDIR)
 
+# Debug build - no optimization, all sanitizers
+debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
+debug: LDFLAGS += -fsanitize=address,undefined
+debug: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
+
 # AddressSanitizer build for memory debugging
 asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra
 asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan
+.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan debug
