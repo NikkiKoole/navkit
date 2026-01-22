@@ -952,18 +952,54 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Profiler", &sectionProfiler)) {
         y += 18;
-        // Header row
-        DrawTextShadow("Section      Min     Avg     Max     Last", x, y, 14, GRAY);
-        y += 16;
+        
+        // Find max value for scaling bars
+        float maxMs = 1.0f;  // Minimum scale of 1ms
+        for (int i = 0; i < profilerSectionCount; i++) {
+            float last = (float)ProfileGetLast(i);
+            if (last > maxMs) maxMs = last;
+        }
+        
+        // Bar graph settings
+        int barMaxWidth = 100;
+        int labelWidth = 60;
+        
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
-            DrawTextShadow(TextFormat("%-10s %6.2f  %6.2f  %6.2f  %6.2f",
-                s->name,
-                ProfileGetMin(i),
-                ProfileGetAvg(i),
-                ProfileGetMax(i),
-                ProfileGetLast(i)), x, y, 14, WHITE);
-            y += 16;
+            float last = (float)ProfileGetLast(i);
+            float avg = (float)ProfileGetAvg(i);
+            
+            // Draw label
+            DrawTextShadow(s->name, x, y, 14, WHITE);
+            
+            // Draw bar background
+            int barX = x + labelWidth;
+            DrawRectangle(barX, y + 2, barMaxWidth, 12, (Color){40, 40, 40, 255});
+            
+            // Draw bar (colored by intensity)
+            int barWidth = (int)(last / maxMs * barMaxWidth);
+            if (barWidth < 1 && last > 0) barWidth = 1;
+            
+            // Color: green for low, yellow for medium, red for high (relative to max)
+            float ratio = last / maxMs;
+            Color barColor;
+            if (ratio < 0.3f) {
+                barColor = GREEN;
+            } else if (ratio < 0.6f) {
+                barColor = YELLOW;
+            } else {
+                barColor = (Color){255, 100, 100, 255};  // Light red
+            }
+            DrawRectangle(barX, y + 2, barWidth, 12, barColor);
+            
+            // Draw avg marker line
+            int avgX = barX + (int)(avg / maxMs * barMaxWidth);
+            DrawLine(avgX, y + 1, avgX, y + 14, WHITE);
+            
+            // Draw value
+            DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, GRAY);
+            
+            y += 18;
         }
     }
 #endif
