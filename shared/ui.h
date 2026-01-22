@@ -29,6 +29,9 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
 // Draggable int value - returns true if changed
 bool DraggableInt(float x, float y, const char* label, int* value, float speed, int min, int max);
 
+// Draggable int value with logarithmic scale - good for large ranges (1 to 100000+)
+bool DraggableIntLog(float x, float y, const char* label, int* value, float speed, int min, int max);
+
 // Toggle boolean - click to toggle
 void ToggleBool(float x, float y, const char* label, bool* value);
 
@@ -159,6 +162,53 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
 
     if (dragging && dragTarget == value) {
         accumulator += GetMouseDelta().x * speed * 0.1f;
+        int delta = (int)accumulator;
+        if (delta != 0) {
+            *value += delta;
+            accumulator -= delta;
+        }
+        if (*value < min) *value = min;
+        if (*value > max) *value = max;
+
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            dragging = false;
+            dragTarget = NULL;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool DraggableIntLog(float x, float y, const char* label, int* value, float speed, int min, int max) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %d", label, *value);
+
+    int textWidth = MeasureText(buf, 18);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) g_ui_draggableAnyHovered = true;
+
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    static bool dragging = false;
+    static int* dragTarget = NULL;
+    static float accumulator = 0;
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragging = true;
+        dragTarget = value;
+        accumulator = 0;
+        g_ui_clickConsumed = true;
+    }
+
+    if (dragging && dragTarget == value) {
+        // Logarithmic: drag speed scales with current value
+        // Small values = fine control, large values = fast jumps
+        float scaleFactor = (*value < 10) ? 1.0f : (float)(*value) * 0.1f;
+        accumulator += GetMouseDelta().x * speed * 0.1f * scaleFactor;
         int delta = (int)accumulator;
         if (delta != 0) {
             *value += delta;

@@ -851,7 +851,7 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Movers", &sectionMovers)) {
         y += 18;
-        DraggableInt(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
+        DraggableIntLog(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
         y += 22;
         if (PushButton(x, y, "Spawn Movers")) {
             SpawnMoversDemo(moverCountSetting);
