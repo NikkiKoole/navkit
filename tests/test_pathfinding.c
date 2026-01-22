@@ -2157,6 +2157,142 @@ describe(hpa_ladder_pathfinding) {
         RunHPAStar();
         expect(pathLength > 0);
     }
+
+    it("repeated wall edits should not grow entrance count") {
+        // Bug: drawing walls repeatedly causes entrances to grow unbounded
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        
+        // Add some ladders
+        grid[0][4][4] = CELL_LADDER;
+        grid[1][4][4] = CELL_LADDER;
+        grid[0][12][12] = CELL_LADDER;
+        grid[1][12][12] = CELL_LADDER;
+        
+        BuildEntrances();
+        BuildGraph();
+        
+        int initialEntranceCount = entranceCount;
+        int initialEdgeCount = graphEdgeCount;
+        
+        // Repeatedly add and remove walls (simulating user drawing)
+        for (int i = 0; i < 10; i++) {
+            // Add a wall
+            grid[0][8][8] = CELL_WALL;
+            MarkChunkDirty(8, 8, 0);
+            UpdateDirtyChunks();
+            
+            // Remove the wall
+            grid[0][8][8] = CELL_WALKABLE;
+            MarkChunkDirty(8, 8, 0);
+            UpdateDirtyChunks();
+        }
+        
+        // Entrance count should be stable (not growing)
+        expect(entranceCount == initialEntranceCount);
+        expect(graphEdgeCount == initialEdgeCount);
+    }
+
+    it("repeated wall edits near ladders should not grow entrance count") {
+        // Bug: specifically when ladders are present, entrances leak
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        
+        // Add ladder in same chunk where we'll draw walls
+        grid[0][4][4] = CELL_LADDER;
+        grid[1][4][4] = CELL_LADDER;
+        
+        BuildEntrances();
+        BuildGraph();
+        
+        int initialEntranceCount = entranceCount;
+        int initialLadderCount = ladderLinkCount;
+        
+        // Repeatedly add walls in the same chunk as the ladder
+        for (int i = 0; i < 10; i++) {
+            grid[0][5][5] = CELL_WALL;
+            MarkChunkDirty(5, 5, 0);
+            UpdateDirtyChunks();
+            
+            grid[0][5][5] = CELL_WALKABLE;
+            MarkChunkDirty(5, 5, 0);
+            UpdateDirtyChunks();
+        }
+        
+        // Should not have leaked entrances or ladder links
+        expect(entranceCount == initialEntranceCount);
+        expect(ladderLinkCount == initialLadderCount);
+    }
 }
 
 // ============== JPS+ 3D LADDER TESTS ==============

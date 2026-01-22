@@ -882,6 +882,25 @@ static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_GRI
 
 // Rebuild entrances for affected chunks (simpler approach - no keeping/remapping)
 static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
+    // First pass: if a ladder has ANY of its z-levels in an affected chunk,
+    // mark ALL its z-levels as affected. This ensures both ladder entrances
+    // get filtered out together, preventing duplicates.
+    for (int z = 0; z < gridDepth - 1; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (CanClimbUp(x, y, z)) {
+                    int cx = x / chunkWidth;
+                    int cy = y / chunkHeight;
+                    // If either z-level is affected, mark both as affected
+                    if (affectedChunks[z][cy][cx] || affectedChunks[z + 1][cy][cx]) {
+                        affectedChunks[z][cy][cx] = true;
+                        affectedChunks[z + 1][cy][cx] = true;
+                    }
+                }
+            }
+        }
+    }
+
     // Remove entrances that touch any affected chunk
     int newCount = 0;
     for (int i = 0; i < entranceCount; i++) {
@@ -980,40 +999,73 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
         }
     }
     
-    // Rebuild ladder links - scan all ladders and rebuild the full list
-    // (Ladder links reference entrance indices which change during rebuild,
-    // so we need to rebuild all ladder links with correct entrance indices)
+    // Rebuild ladder links
+    // We need to:
+    // 1. Keep ladder links in unaffected chunks (and remap their entrance indices)
+    // 2. Only rebuild ladder links in affected chunks
+    // 
+    // First pass: count kept ladder entrances and build index remapping
+    // Ladder entrances were already filtered out above if they touched affected chunks.
+    // Now we scan all ladders and only add entrances for those in affected chunks.
+    
     ladderLinkCount = 0;
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (CanClimbUp(x, y, z)) {
-                    if (ladderLinkCount < MAX_LADDERS && newCount + 2 <= MAX_ENTRANCES) {
-                        int cx = x / chunkWidth;
-                        int cy = y / chunkHeight;
-                        int chunkLow = z * (chunksX * chunksY) + cy * chunksX + cx;
-                        int chunkHigh = (z + 1) * (chunksX * chunksY) + cy * chunksX + cx;
+                    int cx = x / chunkWidth;
+                    int cy = y / chunkHeight;
+                    
+                    // Check if this ladder is in an affected chunk
+                    bool ladderAffected = affectedChunks[z][cy][cx] || affectedChunks[z + 1][cy][cx];
+                    
+                    if (ladderAffected) {
+                        // Ladder is in affected chunk - add new entrances
+                        if (ladderLinkCount < MAX_LADDERS && newCount + 2 <= MAX_ENTRANCES) {
+                            int chunkLow = z * (chunksX * chunksY) + cy * chunksX + cx;
+                            int chunkHigh = (z + 1) * (chunksX * chunksY) + cy * chunksX + cx;
+                            
+                            int entLow = newCount;
+                            entrances[newCount++] = (Entrance){x, y, z, chunkLow, chunkLow};
+                            int entHigh = newCount;
+                            entrances[newCount++] = (Entrance){x, y, z + 1, chunkHigh, chunkHigh};
+                            
+                            // Mark both chunks as affected so edges get built for new ladder entrances
+                            affectedChunks[z][cy][cx] = true;
+                            affectedChunks[z + 1][cy][cx] = true;
+                            
+                            ladderLinks[ladderLinkCount++] = (LadderLink){
+                                .x = x,
+                                .y = y,
+                                .zLow = z,
+                                .zHigh = z + 1,
+                                .entranceLow = entLow,
+                                .entranceHigh = entHigh,
+                                .cost = 10
+                            };
+                        }
+                    } else {
+                        // Ladder is in unaffected chunk - find existing entrances
+                        // They were kept during the filter pass, we just need to find their indices
+                        int entLow = -1, entHigh = -1;
+                        for (int i = 0; i < newCount; i++) {
+                            if (entrances[i].x == x && entrances[i].y == y) {
+                                if (entrances[i].z == z) entLow = i;
+                                else if (entrances[i].z == z + 1) entHigh = i;
+                            }
+                        }
                         
-                        int entLow = newCount;
-                        entrances[newCount++] = (Entrance){x, y, z, chunkLow, chunkLow};
-                        int entHigh = newCount;
-                        entrances[newCount++] = (Entrance){x, y, z + 1, chunkHigh, chunkHigh};
-                        
-                        // Mark both chunks as affected so edges get built for new ladder entrances
-                        // This is critical when a ladder on z=1 is added after z=0 - we need
-                        // the z=0 chunk marked as affected to build edges from the new z=0 entrance
-                        affectedChunks[z][cy][cx] = true;
-                        affectedChunks[z + 1][cy][cx] = true;
-                        
-                        ladderLinks[ladderLinkCount++] = (LadderLink){
-                            .x = x,
-                            .y = y,
-                            .zLow = z,
-                            .zHigh = z + 1,
-                            .entranceLow = entLow,
-                            .entranceHigh = entHigh,
-                            .cost = 10
-                        };
+                        if (entLow >= 0 && entHigh >= 0 && ladderLinkCount < MAX_LADDERS) {
+                            ladderLinks[ladderLinkCount++] = (LadderLink){
+                                .x = x,
+                                .y = y,
+                                .zLow = z,
+                                .zHigh = z + 1,
+                                .entranceLow = entLow,
+                                .entranceHigh = entHigh,
+                                .cost = 10
+                            };
+                        }
                     }
                 }
             }
