@@ -114,7 +114,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 50000;
+int moverCountSetting = 10000;
 bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;

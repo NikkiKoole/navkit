@@ -35,6 +35,8 @@ float avoidStrengthOpen = 0.5f;
 float avoidStrengthClosed = 0.0f;
 bool useDirectionalAvoidance = true;
 PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
+bool useRandomizedCooldowns = true;   // Default on for demo perf, tests can disable
+bool useStaggeredUpdates = true;      // Default on for demo perf, tests can disable
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
@@ -597,11 +599,11 @@ static void AssignNewMoverGoal(Mover* m) {
 void UpdateMovers(void) {
     float dt = TICK_DT;
     
-    // Phase 1: LOS checks (staggered - each mover checks every 3 frames)
+    // Phase 1: LOS checks (optionally staggered - each mover checks every 3 frames)
     PROFILE_BEGIN(LOS);
     for (int i = 0; i < moverCount; i++) {
-        // Stagger: each mover checks on a different frame
-        if ((currentTick % 3) != (i % 3)) continue;
+        // Stagger: each mover checks on a different frame (if enabled)
+        if (useStaggeredUpdates && (currentTick % 3) != (i % 3)) continue;
         
         Mover* m = &movers[i];
         if (!m->active || m->needsRepath) continue;
@@ -641,8 +643,8 @@ void UpdateMovers(void) {
                 continue;
             }
             
-            // Stagger: each mover recomputes on a different frame (based on index)
-            if ((currentTick % 3) == (i % 3)) {
+            // Stagger: each mover recomputes on a different frame (based on index, if enabled)
+            if (!useStaggeredUpdates || (currentTick % 3) == (i % 3)) {
                 // Recompute and cache
                 Vec2 avoid = {0, 0};
                 if (useMoverAvoidance) {
@@ -701,8 +703,14 @@ void UpdateMovers(void) {
                 }
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
-                    // No path found, wait with randomized cooldown to avoid synchronized retries
-                    m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
+                    // No path found, wait before retrying
+                    if (useRandomizedCooldowns) {
+                        // Randomize to avoid synchronized retries causing spikes
+                        m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
+                    } else {
+                        // Deterministic for tests
+                        m->repathCooldown = REPATH_COOLDOWN_FRAMES;
+                    }
                 }
             } else {
                 m->active = false;
@@ -917,7 +925,11 @@ void ProcessMoverRepaths(void) {
             // Repath failed - goal may be unreachable, retry after cooldown
             m->pathIndex = -1;
             m->needsRepath = true;  // Keep trying
-            m->repathCooldown = TICK_RATE;  // Wait 1 second before retry
+            if (useRandomizedCooldowns) {
+                m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
+            } else {
+                m->repathCooldown = REPATH_COOLDOWN_FRAMES;
+            }
             repathsThisFrame++;
             continue;
         }

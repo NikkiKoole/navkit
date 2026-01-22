@@ -9,7 +9,7 @@
 #define CELL_SIZE 32
 
 // Mover constants
-#define MAX_MOVERS 50000
+#define MAX_MOVERS 10000
 #define MAX_MOVER_PATH 1024
 #define MOVER_SPEED 100.0f
 #define MAX_REPATHS_PER_FRAME 10
@@ -138,6 +138,10 @@ Vec2 FilterAvoidanceByWalls(float x, float y, int z, Vec2 avoidance);
 extern float avoidStrengthOpen;    // Avoidance strength in open areas
 extern float avoidStrengthClosed;  // Avoidance strength near walls
 extern bool useDirectionalAvoidance;  // Filter avoidance by wall clearance
+
+// Test/debug toggles for deterministic behavior
+extern bool useRandomizedCooldowns;   // When true, repath cooldowns are randomized (avoids sync spikes)
+extern bool useStaggeredUpdates;      // When true, LOS/avoidance are staggered across frames
 
 // Compute avoidance vector for a mover (boids-style separation)
 // Returns a vector pointing away from nearby movers, strength based on proximity

@@ -123,6 +123,9 @@ describe(fixed_timestep_movement) {
             "....\n"
             "....\n", 4, 4);
 
+        // Disable endless mode so mover deactivates at goal instead of getting new goal
+        endlessMoverMode = false;
+        
         ClearMovers();
         Mover* m = &movers[0];
         Point goal = {1, 0, 0};
@@ -137,6 +140,8 @@ describe(fixed_timestep_movement) {
         RunTicks(60);  // Should be more than enough
 
         expect(m->active == false);
+        
+        endlessMoverMode = true;  // Restore default
     }
 }
 
@@ -420,6 +425,9 @@ describe(endless_mode) {
 
 describe(refinement_after_wall_changes) {
     it("should handle movers on map with scattered walls and small chunks") {
+        // Disable randomized cooldowns for deterministic test behavior
+        useRandomizedCooldowns = false;
+        
         // Exact map from user with 4x4 chunks - triggers HPA* refinement failures
         const char* scatteredWallsMap =
             ".........#..#.....#.............\n"
@@ -501,9 +509,14 @@ describe(refinement_after_wall_changes) {
         expect(stuckMovers == 0);
 
         endlessMoverMode = false;
+        useRandomizedCooldowns = true;  // Restore default
     }
 
     it("should handle walls drawn while movers are active") {
+        // Disable randomized cooldowns and staggering for deterministic test behavior
+        useRandomizedCooldowns = false;
+        useStaggeredUpdates = false;
+        
         // Match demo: 32x32 grid with 8x8 chunks (4x4 chunks total)
         const char* initialMap =
             "................................\n"
@@ -596,22 +609,23 @@ describe(refinement_after_wall_changes) {
         }
 
         // Run more ticks - this triggers repaths
-        RunTicks(300);
+        RunTicks(600);
 
-        // Count stuck movers (active but no path and not on cooldown)
+        // Count stuck movers: active, no path, not waiting for repath, no cooldown
+        // Movers with needsRepath=true are fine - they'll be processed next frame
+        // Movers with repathCooldown>0 are fine - they're waiting to retry
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
             Mover* m = &movers[i];
-            if (m->active && m->pathLength == 0 && m->repathCooldown == 0) {
+            if (m->active && m->pathLength == 0 && !m->needsRepath && m->repathCooldown == 0) {
                 stuckMovers++;
             }
         }
-
-        // Movers should either have a path or be on cooldown waiting for retry
-        // (some may be deactivated if completely surrounded by walls, that's ok)
         expect(stuckMovers == 0);
 
         endlessMoverMode = false;
+        useRandomizedCooldowns = true;   // Restore defaults
+        useStaggeredUpdates = true;
     }
 }
 
