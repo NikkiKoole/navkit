@@ -674,8 +674,8 @@ void UpdateMovers(void) {
                 }
                 AssignNewMoverGoal(m);
                 if (m->pathLength == 0) {
-                    // No path found, wait 1 second before trying again
-                    m->repathCooldown = TICK_RATE;
+                    // No path found, wait with randomized cooldown to avoid synchronized retries
+                    m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
                 }
             } else {
                 m->active = false;
