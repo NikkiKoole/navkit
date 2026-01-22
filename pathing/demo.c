@@ -3,6 +3,8 @@
 #include "terrain.h"
 #include "pathfinding.h"
 #include "mover.h"
+#define PROFILER_IMPLEMENTATION
+#include "profiler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -55,6 +57,7 @@ bool sectionMoverAvoidance = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 bool sectionDebug = false;
+bool sectionProfiler = false;
 
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
@@ -942,6 +945,28 @@ void DrawUI(void) {
             TraceLog(LOG_INFO, "Map copied to clipboard (%d floors)", gridDepth);
         }
     }
+    y += 22;
+
+    // === PROFILER ===
+#if PROFILER_ENABLED
+    y += 8;
+    if (SectionHeader(x, y, "Profiler", &sectionProfiler)) {
+        y += 18;
+        // Header row
+        DrawTextShadow("Section      Min     Avg     Max     Last", x, y, 14, GRAY);
+        y += 16;
+        for (int i = 0; i < profilerSectionCount; i++) {
+            ProfileSection* s = &profilerSections[i];
+            DrawTextShadow(TextFormat("%-10s %6.2f  %6.2f  %6.2f  %6.2f",
+                s->name,
+                ProfileGetMin(i),
+                ProfileGetAvg(i),
+                ProfileGetMax(i),
+                ProfileGetLast(i)), x, y, 14, WHITE);
+            y += 16;
+        }
+    }
+#endif
 }
 
 int main(void) {
@@ -982,7 +1007,9 @@ int main(void) {
 
         // Fixed timestep update (Factorio-style: max 1 tick per frame, slowdown if behind)
         if (accumulator >= TICK_DT) {
+            PROFILE_BEGIN(Tick);
             Tick();
+            PROFILE_END(Tick);
             accumulator -= TICK_DT;
 
             // Drain excess - don't try to catch up, just slow down
@@ -991,6 +1018,7 @@ int main(void) {
             }
         }
 
+        PROFILE_BEGIN(Render);
         BeginDrawing();
         ClearBackground(BLACK);
         DrawCellGrid();
@@ -1056,25 +1084,24 @@ int main(void) {
             DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d",
                            entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
         }
-        DrawTextShadow(TextFormat("Tick: Grid %.2fms | Repath %.2fms | Update %.2fms (LOS %.2f, Avoid %.2f, Move %.2f)",
-                       moverGridBuildTimeMs, moverRepathTimeMs, moverUpdateTimeMs,
-                       moverLosTimeMs, moverAvoidTimeMs, moverMoveTimeMs), 5, 45, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
-                     pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 65, 16, WHITE);
+                     pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
         } else {
-            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 65, 16, WHITE);
+            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
         }
         // Show path stats (updated every 5 seconds)
         if (pathStatsCount > 0) {
             DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg",
-                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 85, 16, YELLOW);
+                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 65, 16, YELLOW);
         }
 
         // Draw UI
         DrawUI();
 
         EndDrawing();
+        PROFILE_END(Render);
+        PROFILE_FRAME_END();
     }
     UnloadTexture(texGrass);
     UnloadTexture(texWall);

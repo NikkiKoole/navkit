@@ -100,14 +100,6 @@ typedef struct {
 } MoverSpatialGrid;
 
 extern MoverSpatialGrid moverGrid;
-extern double moverGridBuildTimeMs;  // Last build time in milliseconds
-extern double moverRepathTimeMs;     // Last repath processing time in milliseconds
-extern double moverUpdateTimeMs;     // Last update time in milliseconds
-
-// Breakdown of UpdateMovers time
-extern double moverLosTimeMs;        // Line-of-sight checks
-extern double moverAvoidTimeMs;      // Avoidance computation
-extern double moverMoveTimeMs;       // Movement and wall sliding
 
 void InitMoverSpatialGrid(int worldPixelWidth, int worldPixelHeight);
 void FreeMoverSpatialGrid(void);

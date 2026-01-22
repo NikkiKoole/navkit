@@ -1,3 +1,48 @@
+/*
+ * =============================================================================
+ * PATHFINDING ARCHITECTURE NOTES
+ * =============================================================================
+ *
+ * This file contains multiple pathfinding algorithms:
+ *   - A*      : Basic grid pathfinding, supports variable terrain costs
+ *   - HPA*    : Hierarchical Pathfinding A*, supports variable terrain costs
+ *   - JPS     : Jump Point Search, uniform cost only
+ *   - JPS+    : JPS with preprocessing, uniform cost only
+ *
+ * IMPORTANT: JPS/JPS+ LIMITATIONS
+ * -------------------------------
+ * JPS and JPS+ do NOT support variable cost terrain and likely never will.
+ * They rely on grid symmetry - assuming all walkable cells have identical cost.
+ * This allows them to skip intermediate nodes and jump to decision points.
+ *
+ * With variable costs (road=cheap, mud=expensive), a detour through cheaper
+ * terrain might beat a direct path. JPS would skip that detour entirely,
+ * producing suboptimal or incorrect paths.
+ *
+ * FUTURE DIRECTION
+ * ----------------
+ * Once variable cost terrain is implemented (roads, rubble, mud, shallow water),
+ * JPS/JPS+ become useless for most gameplay scenarios. At that point:
+ *   - Consider removing JPS/JPS+ entirely (~700 lines of code)
+ *   - Or keep only for special cases (uniform-cost arena modes, benchmarks)
+ *
+ * For colony sims / city builders with terrain variety, use A* or HPA*.
+ * HPA* is recommended for large maps as it scales better.
+ *
+ * VARIABLE COST IMPLEMENTATION (TODO)
+ * -----------------------------------
+ * To add variable terrain costs:
+ *   1. Add GetCellMoveCost(CellType cell) function
+ *   2. Update A* in ~6-8 places where moveCost is calculated
+ *   3. Update HPA* graph building to use terrain costs
+ *   4. Disable JPS/JPS+ for maps with variable costs
+ *
+ * See also: documentation/variable-cost-terrain-implications.md
+ *           documentation/future-cell-types.md
+ *
+ * =============================================================================
+ */
+
 #include "pathfinding.h"
 #include "../vendor/raylib.h"
 #include <stdlib.h>

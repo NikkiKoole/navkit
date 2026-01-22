@@ -1,6 +1,7 @@
 #include "mover.h"
 #include "grid.h"
 #include "pathfinding.h"
+#include "profiler.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,21 +28,9 @@ PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
-double moverGridBuildTimeMs = 0.0;
-double moverRepathTimeMs = 0.0;
-double moverUpdateTimeMs = 0.0;
-
-// Breakdown of UpdateMovers time
-double moverLosTimeMs = 0.0;
-double moverAvoidTimeMs = 0.0;
-double moverMoveTimeMs = 0.0;
 
 static inline int clampi(int v, int lo, int hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
-}
-
-static inline double clockToMs(clock_t start) {
-    return (double)(clock() - start) / CLOCKS_PER_SEC * 1000.0;
 }
 
 // Try to make a mover fall to ground. Returns true if mover fell.
@@ -88,8 +77,6 @@ void FreeMoverSpatialGrid(void) {
 void BuildMoverSpatialGrid(void) {
     if (!moverGrid.cellCounts) return;
     
-    clock_t start = clock();
-    
     // Clear counts
     memset(moverGrid.cellCounts, 0, moverGrid.cellCount * sizeof(int));
     
@@ -128,9 +115,6 @@ void BuildMoverSpatialGrid(void) {
         int cellIdx = cy * moverGrid.gridW + cx;
         moverGrid.moverIndices[moverGrid.cellCounts[cellIdx]++] = i;
     }
-    
-    clock_t end = clock();
-    moverGridBuildTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
 }
 
 Vec2 ComputeMoverAvoidance(int moverIndex) {
@@ -604,7 +588,7 @@ void UpdateMovers(void) {
     float dt = TICK_DT;
     
     // Phase 1: LOS checks
-    clock_t phaseStart = clock();
+    PROFILE_BEGIN(LOS);
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active || m->needsRepath) continue;
@@ -625,12 +609,12 @@ void UpdateMovers(void) {
             }
         }
     }
-    moverLosTimeMs = clockToMs(phaseStart);
+    PROFILE_END(LOS);
     
     // Phase 2: Avoidance computation (just compute, don't move yet)
     // We store avoidance vectors temporarily
     static Vec2 avoidVectors[MAX_MOVERS];
-    phaseStart = clock();
+    PROFILE_BEGIN(Avoid);
     if (useMoverAvoidance || useWallRepulsion) {
         for (int i = 0; i < moverCount; i++) {
             Mover* m = &movers[i];
@@ -654,10 +638,10 @@ void UpdateMovers(void) {
             }
         }
     }
-    moverAvoidTimeMs = clockToMs(phaseStart);
+    PROFILE_END(Avoid);
     
     // Phase 3: Movement (all the rest)
-    phaseStart = clock();
+    PROFILE_BEGIN(Move);
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -870,7 +854,7 @@ void UpdateMovers(void) {
             }
         }
     }
-    moverMoveTimeMs = clockToMs(phaseStart);
+    PROFILE_END(Move);
 }
 
 void ProcessMoverRepaths(void) {
@@ -928,17 +912,15 @@ void ProcessMoverRepaths(void) {
 }
 
 void Tick(void) {
-    BuildMoverSpatialGrid();  // Already times itself into moverGridBuildTimeMs
+    PROFILE_BEGIN(Grid);
+    BuildMoverSpatialGrid();
+    PROFILE_END(Grid);
     
-    clock_t start = clock();
+    PROFILE_BEGIN(Repath);
     ProcessMoverRepaths();
-    clock_t end = clock();
-    moverRepathTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+    PROFILE_END(Repath);
     
-    start = clock();
-    UpdateMovers();
-    end = clock();
-    moverUpdateTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+    UpdateMovers();  // Already profiled internally (LOS, Avoid, Move)
     
     currentTick++;
 }
