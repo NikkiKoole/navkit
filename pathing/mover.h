@@ -9,7 +9,7 @@
 #define CELL_SIZE 32
 
 // Mover constants
-#define MAX_MOVERS 10000
+#define MAX_MOVERS 50000
 #define MAX_MOVER_PATH 1024
 #define MOVER_SPEED 100.0f
 #define MAX_REPATHS_PER_FRAME 10
@@ -41,6 +41,8 @@ typedef struct {
     float lastX, lastY, lastZ;  // Position at last progress check
     float timeWithoutProgress;  // Time since significant movement
     float fallTimer;            // Time since last fall (for visual feedback)
+    // Cached avoidance vector (recomputed every N frames)
+    float avoidX, avoidY;
 } Mover;
 
 // Stuck detection thresholds

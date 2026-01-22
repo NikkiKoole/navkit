@@ -8,6 +8,16 @@
 #include <time.h>
 #include <string.h>
 
+// Fast inverse square root (Quake III algorithm)
+static inline float fastInvSqrt(float x) {
+    float xhalf = 0.5f * x;
+    int i = *(int*)&x;
+    i = 0x5f375a86 - (i >> 1);  // Initial guess
+    x = *(float*)&i;
+    x = x * (1.5f - xhalf * x * x);  // Newton-Raphson iteration
+    return x;
+}
+
 // Globals
 Mover movers[MAX_MOVERS];
 int moverCount = 0;
@@ -164,7 +174,7 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
                 
                 if (distSq < 1e-10f || distSq >= radiusSq) continue;
                 
-                float invDist = 1.0f / sqrtf(distSq);
+                float invDist = fastInvSqrt(distSq);
                 float dist = distSq * invDist;
                 
                 // Strength increases quadratically as distance decreases
@@ -273,17 +283,17 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
             
             if (distSq < 1e-10f) continue;
             
-            float dist = sqrtf(distSq);
+            // Only repel within radius (compare squared to avoid sqrt)
+            if (distSq >= WALL_REPULSION_RADIUS * WALL_REPULSION_RADIUS) continue;
             
-            // Only repel within radius
-            if (dist >= WALL_REPULSION_RADIUS) continue;
+            float invDist = fastInvSqrt(distSq);
+            float dist = distSq * invDist;
             
             // Strength increases as mover gets closer (quadratic falloff)
             float t = 1.0f - dist / WALL_REPULSION_RADIUS;
             float strength = t * t;
             
             // Add repulsion (normalized direction * strength)
-            float invDist = 1.0f / dist;
             repulsion.x += dirX * invDist * strength;
             repulsion.y += dirY * invDist * strength;
         }
@@ -587,9 +597,12 @@ static void AssignNewMoverGoal(Mover* m) {
 void UpdateMovers(void) {
     float dt = TICK_DT;
     
-    // Phase 1: LOS checks
+    // Phase 1: LOS checks (staggered - each mover checks every 3 frames)
     PROFILE_BEGIN(LOS);
     for (int i = 0; i < moverCount; i++) {
+        // Stagger: each mover checks on a different frame
+        if ((currentTick % 3) != (i % 3)) continue;
+        
         Mover* m = &movers[i];
         if (!m->active || m->needsRepath) continue;
         if (m->pathIndex < 0 || m->pathLength == 0) continue;
@@ -612,30 +625,44 @@ void UpdateMovers(void) {
     PROFILE_END(LOS);
     
     // Phase 2: Avoidance computation (just compute, don't move yet)
-    // We store avoidance vectors temporarily
+    // Only recompute every 3 frames per mover, staggered by mover index
     static Vec2 avoidVectors[MAX_MOVERS];
     PROFILE_BEGIN(Avoid);
     if (useMoverAvoidance || useWallRepulsion) {
         for (int i = 0; i < moverCount; i++) {
             Mover* m = &movers[i];
-            avoidVectors[i] = (Vec2){0, 0};
-            if (!m->active || m->needsRepath) continue;
-            if (m->pathIndex < 0 || m->pathLength == 0) continue;
             
-            if (useMoverAvoidance) {
-                Vec2 avoid = ComputeMoverAvoidance(i);
-                int moverZ = (int)m->z;
-                if (useDirectionalAvoidance) {
-                    avoid = FilterAvoidanceByWalls(m->x, m->y, moverZ, avoid);
+            if (!m->active || m->needsRepath) {
+                avoidVectors[i] = (Vec2){0, 0};
+                continue;
+            }
+            if (m->pathIndex < 0 || m->pathLength == 0) {
+                avoidVectors[i] = (Vec2){0, 0};
+                continue;
+            }
+            
+            // Stagger: each mover recomputes on a different frame (based on index)
+            if ((currentTick % 3) == (i % 3)) {
+                // Recompute and cache
+                Vec2 avoid = {0, 0};
+                if (useMoverAvoidance) {
+                    avoid = ComputeMoverAvoidance(i);
+                    int moverZ = (int)m->z;
+                    if (useDirectionalAvoidance) {
+                        avoid = FilterAvoidanceByWalls(m->x, m->y, moverZ, avoid);
+                    }
                 }
-                avoidVectors[i].x += avoid.x;
-                avoidVectors[i].y += avoid.y;
+                if (useWallRepulsion) {
+                    Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y, (int)m->z);
+                    avoid.x += wallRepel.x * wallRepulsionStrength;
+                    avoid.y += wallRepel.y * wallRepulsionStrength;
+                }
+                m->avoidX = avoid.x;
+                m->avoidY = avoid.y;
             }
-            if (useWallRepulsion) {
-                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y, (int)m->z);
-                avoidVectors[i].x += wallRepel.x * wallRepulsionStrength;
-                avoidVectors[i].y += wallRepel.y * wallRepulsionStrength;
-            }
+            
+            // Use cached value
+            avoidVectors[i] = (Vec2){m->avoidX, m->avoidY};
         }
     }
     PROFILE_END(Avoid);
@@ -716,7 +743,8 @@ void UpdateMovers(void) {
 
         float dxf = tx - m->x;
         float dyf = ty - m->y;
-        float dist = sqrtf(dxf*dxf + dyf*dyf);
+        float distSq = dxf*dxf + dyf*dyf;
+        float dist = distSq * fastInvSqrt(distSq);
 
         // Waypoint arrival check
         // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)

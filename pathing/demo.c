@@ -114,7 +114,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10000;
+int moverCountSetting = 50000;
 bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
@@ -754,7 +754,7 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
         if (currentViewZ > 0) currentViewZ--;
     }
-    
+
     // Pause toggle (Space)
     if (IsKeyPressed(KEY_SPACE)) {
         paused = !paused;
@@ -976,62 +976,62 @@ void DrawProfilerPanel(float rightEdge, float y) {
     float panelW = 220;
     float x = rightEdge - panelW;
     Vector2 mouse = GetMousePosition();
-    
+
     // Block click-through for entire panel area
     float panelH = sectionProfiler ? 300 : 20;
     if (mouse.x >= x && mouse.x < rightEdge && mouse.y >= y && mouse.y < y + panelH) {
         ui_set_hovered();
     }
-    
+
     // Draw right-aligned header
     const char* headerText = sectionProfiler ? "[-] Profiler" : "[+] Profiler";
     int headerWidth = MeasureText(headerText, 14);
     float headerX = rightEdge - headerWidth;
     bool hovered = mouse.x >= headerX && mouse.x < headerX + headerWidth + 10 &&
                    mouse.y >= y && mouse.y < y + 18;
-    
+
     DrawTextShadow(headerText, (int)headerX, (int)y, 14, hovered ? YELLOW : GRAY);
-    
+
     if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         sectionProfiler = !sectionProfiler;
     }
-    
+
     if (sectionProfiler) {
         y += 18;
-        
+
         // Find max value for scaling bars
         float maxMs = 1.0f;  // Minimum scale of 1ms
         for (int i = 0; i < profilerSectionCount; i++) {
             float last = (float)ProfileGetLast(i);
             if (last > maxMs) maxMs = last;
         }
-        
+
         // Bar graph settings
         int barMaxWidth = 100;
         int labelWidth = 110;
         int indentPerLevel = 12;
-        
+
         // Colors for each section (shared with line graph)
         Color sectionColors[] = {GREEN, YELLOW, ORANGE, SKYBLUE, PINK, PURPLE, RED, LIME};
         int numColors = sizeof(sectionColors) / sizeof(sectionColors[0]);
-        
+
         // Check for hover on section labels
         int labelHoveredSection = -1;
         int labelStartY = y;  // Remember starting Y for label hover detection
-        
+
         int visibleRow = 0;
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
-            
+
             // Skip hidden sections (collapsed ancestors)
             if (ProfileIsHidden(i)) continue;
-            
+
             float last = (float)ProfileGetLast(i);
             float avg = (float)ProfileGetAvg(i);
             Color sectionColor = sectionColors[i % numColors];
             int indent = s->depth * indentPerLevel;
             bool hasChildren = ProfileHasChildren(i);
-            
+
             // Check if mouse is hovering this label row
             int rowY = labelStartY + visibleRow * 18;
             bool hoveringLabel = (mouse.x >= x && mouse.x < x + labelWidth &&
@@ -1047,32 +1047,32 @@ void DrawProfilerPanel(float rightEdge, float y) {
                     }
                 }
             }
-            
+
             // Draw collapse indicator for sections with children
             if (hasChildren) {
                 const char* arrow = s->collapsed ? "+" : "-";
                 Color arrowColor = s->collapsed ? YELLOW : GRAY;
                 DrawTextShadow(arrow, x + indent, y, 14, arrowColor);
             }
-            
+
             // Draw color indicator square (indented based on depth, dimmed if collapsed)
             Color squareColor = sectionColor;
             if (s->collapsed) squareColor = (Color){sectionColor.r/2, sectionColor.g/2, sectionColor.b/2, 255};
             DrawRectangle(x + indent + (hasChildren ? 10 : 0), y + 3, 10, 10, squareColor);
-            
+
             // Draw label (highlight if hovered, indented based on depth, show ... if collapsed)
             Color labelColor = hoveringLabel ? sectionColor : (s->collapsed ? GRAY : WHITE);
             const char* displayName = s->collapsed ? TextFormat("%s ...", s->name) : s->name;
             DrawTextShadow(displayName, x + 14 + indent + (hasChildren ? 10 : 0), y, 14, labelColor);
-            
+
             // Draw bar background
             int barX = x + labelWidth;
             DrawRectangle(barX, y + 2, barMaxWidth, 12, (Color){40, 40, 40, 255});
-            
+
             // Draw bar (colored by intensity)
             int barWidth = (int)(last / maxMs * barMaxWidth);
             if (barWidth < 1 && last > 0) barWidth = 1;
-            
+
             // Color: green for low, yellow for medium, red for high (relative to max)
             float ratio = last / maxMs;
             Color barColor;
@@ -1084,25 +1084,25 @@ void DrawProfilerPanel(float rightEdge, float y) {
                 barColor = (Color){255, 100, 100, 255};  // Light red
             }
             DrawRectangle(barX, y + 2, barWidth, 12, barColor);
-            
+
             // Draw avg marker line
             int avgX = barX + (int)(avg / maxMs * barMaxWidth);
             DrawLine(avgX, y + 1, avgX, y + 14, WHITE);
-            
+
             // Draw value
             DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, WHITE);
-            
+
             y += 18;
             visibleRow++;
         }
-        
+
         // Line graph showing history
         y += 10;
         int graphW = labelWidth + barMaxWidth;  // Match width of bars above
         int graphX = x + labelWidth + barMaxWidth - graphW;  // Right-align with bars
         int graphY = y;
         int graphH = 60;
-        
+
         // Find max across all history for scaling
         float graphMax = 1.0f;
         for (int i = 0; i < profilerSectionCount; i++) {
@@ -1111,21 +1111,21 @@ void DrawProfilerPanel(float rightEdge, float y) {
                 if (s->history[f] > graphMax) graphMax = (float)s->history[f];
             }
         }
-        
+
         // Draw background
         DrawRectangle(graphX, graphY, graphW, graphH, (Color){30, 30, 30, 255});
         DrawRectangleLines(graphX, graphY, graphW, graphH, GRAY);
-        
+
         // Draw horizontal guide lines
         for (int i = 1; i < 4; i++) {
             int lineY = graphY + (graphH * i / 4);
             DrawLine(graphX, lineY, graphX + graphW, lineY, (Color){50, 50, 50, 255});
         }
-        
+
         // Check if mouse is in graph area
         bool mouseInGraph = (mouse.x >= graphX && mouse.x < graphX + graphW &&
                              mouse.y >= graphY && mouse.y < graphY + graphH);
-        
+
         // Find which section is closest to mouse (if hovering on graph)
         // Or use labelHoveredSection if hovering on a label
         int hoveredSection = labelHoveredSection;
@@ -1135,17 +1135,17 @@ void DrawProfilerPanel(float rightEdge, float y) {
             int mouseFrame = (int)((mouse.x - graphX) * PROFILER_HISTORY_FRAMES / graphW);
             if (mouseFrame < 0) mouseFrame = 0;
             if (mouseFrame >= PROFILER_HISTORY_FRAMES) mouseFrame = PROFILER_HISTORY_FRAMES - 1;
-            
+
             float minDist = 999999.0f;
             for (int i = 0; i < profilerSectionCount; i++) {
                 ProfileSection* s = &profilerSections[i];
                 if (s->historyCount <= mouseFrame) continue;
-                
+
                 int idx = (s->historyIndex + mouseFrame) % PROFILER_HISTORY_FRAMES;
                 float val = (float)s->history[idx];
                 int valY = graphY + graphH - (int)(val / graphMax * graphH);
                 float dist = fabsf(mouse.y - valY);
-                
+
                 if (dist < minDist && dist < 15) {  // Within 15 pixels
                     minDist = dist;
                     hoveredSection = i;
@@ -1153,36 +1153,36 @@ void DrawProfilerPanel(float rightEdge, float y) {
                 }
             }
         }
-        
+
         // Draw lines for each section
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
             if (s->historyCount < 2) continue;
-            
+
             Color col = sectionColors[i % numColors];
-            
+
             // Dim non-hovered sections when hovering
             if (hoveredSection >= 0 && hoveredSection != i) {
                 col.a = 60;
             }
-            
+
             for (int f = 0; f < s->historyCount - 1; f++) {
                 // Read from oldest to newest
                 int idx0 = (s->historyIndex + f) % PROFILER_HISTORY_FRAMES;
                 int idx1 = (s->historyIndex + f + 1) % PROFILER_HISTORY_FRAMES;
-                
+
                 float v0 = (float)s->history[idx0];
                 float v1 = (float)s->history[idx1];
-                
+
                 int x0 = graphX + (f * graphW / PROFILER_HISTORY_FRAMES);
                 int x1 = graphX + ((f + 1) * graphW / PROFILER_HISTORY_FRAMES);
                 int y0 = graphY + graphH - (int)(v0 / graphMax * graphH);
                 int y1 = graphY + graphH - (int)(v1 / graphMax * graphH);
-                
+
                 DrawLine(x0, y0, x1, y1, col);
             }
         }
-        
+
         // Draw tooltip for hovered section (only when hovering graph, not label)
         if (hoveredSection >= 0 && labelHoveredSection < 0) {
             ProfileSection* s = &profilerSections[hoveredSection];
@@ -1190,14 +1190,14 @@ void DrawProfilerPanel(float rightEdge, float y) {
             int tooltipW = MeasureText(tooltip, 14) + 10;
             int tooltipX = (int)mouse.x + 10;
             int tooltipY = (int)mouse.y - 20;
-            
+
             // Keep tooltip in screen
             if (tooltipX + tooltipW > graphX + graphW) tooltipX = (int)mouse.x - tooltipW - 5;
-            
+
             DrawRectangle(tooltipX - 2, tooltipY - 2, tooltipW, 18, (Color){20, 20, 20, 230});
             DrawTextShadow(tooltip, tooltipX, tooltipY, 14, sectionColors[hoveredSection % numColors]);
         }
-        
+
         // Draw scale label
         DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, WHITE);
         DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, WHITE);
@@ -1319,7 +1319,7 @@ int main(void) {
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, screenHeight - 20, 18, SKYBLUE);
-        
+
 #if PROFILER_ENABLED
         DrawProfilerPanel(screenWidth - 50, 5);
 #endif

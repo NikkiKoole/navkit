@@ -1483,6 +1483,141 @@ describe(sparse_level_pathfinding) {
     }
 }
 
+describe(staggered_updates) {
+    it("movers should still reach goals with staggered LOS and avoidance") {
+        // Test that staggered updates (every 3 frames) don't break goal completion
+        InitGridFromAsciiWithChunkSize(
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n", 8, 8);
+        
+        BuildEntrances();
+        BuildGraph();
+        InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+        
+        // Spawn 100 movers with paths across the map
+        ClearMovers();
+        int spawned = 0;
+        for (int i = 0; i < 100; i++) {
+            Point start = {i % 8, i / 8, 0};
+            Point goal = {31 - (i % 8), 15 - (i / 8), 0};
+            
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+            
+            if (pathLength > 0) {
+                Mover* m = &movers[moverCount];
+                float sx = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float sy = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, sx, sy, 0.0f, goal, 100.0f, path, pathLength);
+                moverCount++;
+                spawned++;
+            }
+        }
+        
+        // Run for enough ticks to complete (32 cells at 100 speed = ~10 seconds = 600 ticks)
+        endlessMoverMode = false;  // Don't assign new goals
+        for (int tick = 0; tick < 1000; tick++) {
+            Tick();
+        }
+        
+        // Count how many reached their goal
+        int reached = 0;
+        for (int i = 0; i < moverCount; i++) {
+            if (!movers[i].active) reached++;  // Inactive means reached goal
+        }
+        
+        // At least 90% should reach their goals
+        float completionRate = (float)reached / spawned;
+        expect(completionRate >= 0.9f);
+    }
+    
+    it("movers should not get stuck in walls with staggered LOS") {
+        // Maze-like map to stress test wall detection
+        InitGridFromAsciiWithChunkSize(
+            "................................\n"
+            ".######.######.######.######.#.\n"
+            "................................\n"
+            ".#.######.######.######.######.\n"
+            "................................\n"
+            ".######.######.######.######.#.\n"
+            "................................\n"
+            ".#.######.######.######.######.\n"
+            "................................\n"
+            ".######.######.######.######.#.\n"
+            "................................\n"
+            ".#.######.######.######.######.\n"
+            "................................\n"
+            ".######.######.######.######.#.\n"
+            "................................\n"
+            "................................\n", 8, 8);
+        
+        BuildEntrances();
+        BuildGraph();
+        InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+        
+        // Spawn movers that need to navigate the maze
+        ClearMovers();
+        int spawned = 0;
+        for (int i = 0; i < 20; i++) {
+            Point start = {0, i % 16, 0};
+            Point goal = {31, 15 - (i % 16), 0};
+            
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+            
+            if (pathLength > 0) {
+                Mover* m = &movers[moverCount];
+                float sx = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float sy = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, sx, sy, 0.0f, goal, 100.0f, path, pathLength);
+                moverCount++;
+                spawned++;
+            }
+        }
+        
+        endlessMoverMode = false;
+        for (int tick = 0; tick < 2000; tick++) {
+            Tick();
+            
+            // Check no mover is inside a wall
+            for (int i = 0; i < moverCount; i++) {
+                Mover* m = &movers[i];
+                if (!m->active) continue;
+                int cx = (int)(m->x / CELL_SIZE);
+                int cy = (int)(m->y / CELL_SIZE);
+                int cz = (int)m->z;
+                if (cx >= 0 && cx < gridWidth && cy >= 0 && cy < gridHeight) {
+                    expect(grid[cz][cy][cx] != CELL_WALL);
+                }
+            }
+        }
+        
+        // Most should complete
+        int reached = 0;
+        for (int i = 0; i < moverCount; i++) {
+            if (!movers[i].active) reached++;
+        }
+        float completionRate = (float)reached / spawned;
+        expect(completionRate >= 0.8f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1508,5 +1643,6 @@ int main(int argc, char* argv[]) {
     test(mover_z_level_collision);
     test(mover_ladder_transitions);
     test(sparse_level_pathfinding);
+    test(staggered_updates);
     return summary();
 }
