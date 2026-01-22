@@ -327,7 +327,8 @@ static inline int PackCoord(int x, int y) { return x + y * MAX_GRID_WIDTH; }
 static inline int UnpackX(int packed) { return packed % MAX_GRID_WIDTH; }
 static inline int UnpackY(int packed) { return packed / MAX_GRID_WIDTH; }
 
-// Current z-level for chunk heap operations (set before using heap)
+// Z-level for chunk heap operations. Safe to use single z because AStarChunk
+// calls only operate within a single z-level (chunk-local pathfinding).
 static int chunkHeapZ = 0;
 
 static void ChunkHeapInit(void) {

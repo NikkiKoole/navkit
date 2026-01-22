@@ -161,7 +161,7 @@ We experimented with ORCA but removed it because:
 │  Pathfinding      │  Local Avoidance            │
 │  - A* ✓           │  - Separation ✓             │
 │  - HPA* ✓         │  - Steering behaviors ✓     │
-│  - JPS ✓          │  - Social navigation        │
+│  - JPS/JPS+ ✓     │  - Social navigation        │
 │  - Flow Fields    │                             │
 ├───────────────────┴─────────────────────────────┤
 │  Movement Layer                                 │
