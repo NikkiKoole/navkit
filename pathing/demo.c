@@ -1077,7 +1077,7 @@ void DrawUI(void) {
                 if (dist < minDist && dist < 15) {  // Within 15 pixels
                     minDist = dist;
                     hoveredSection = i;
-                    hoveredValue = val;
+                    hoveredValue = (float)ProfileGetAvg(i);
                 }
             }
         }
