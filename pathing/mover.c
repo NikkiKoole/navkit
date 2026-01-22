@@ -873,11 +873,6 @@ void ProcessMoverRepaths(void) {
         int currentY = (int)(m->y / CELL_SIZE);
         int currentZ = (int)m->z;
 
-        // HPA* needs dirty chunks updated before pathfinding
-        if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
-            UpdateDirtyChunks();
-        }
-
         Point start = {currentX, currentY, currentZ};
         Point tempPath[MAX_PATH];
         int len = FindPath(moverPathAlgorithm, start, m->goal, tempPath, MAX_PATH);
@@ -912,6 +907,11 @@ void ProcessMoverRepaths(void) {
 }
 
 void Tick(void) {
+    // Update HPA* graph if any chunks are dirty (do this first, before any pathfinding)
+    if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
+        UpdateDirtyChunks();
+    }
+    
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();
     PROFILE_END(Grid);

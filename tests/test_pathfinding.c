@@ -2006,6 +2006,157 @@ describe(hpa_ladder_pathfinding) {
         RunHPAStar();
         expect(pathLength == 0);
     }
+
+    it("should work when ladder added one piece at a time with ticks between") {
+        // Start with z=0 walkable, z=1 as air (like the demo)
+        InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+        gridDepth = 2;
+        // z=0 is walkable (from init), z=1 is air
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                grid[1][y][x] = CELL_AIR;
+        
+        BuildEntrances();
+        BuildGraph();
+        
+        // Mover starts on z=0, wants to go to z=1 (like preferDiffZ)
+        Point start = {5, 5, 0};
+        Point goal = {11, 11, 1};  // This is currently CELL_AIR
+        
+        // Path should fail - goal is air
+        startPos = start;
+        goalPos = goal;
+        RunHPAStar();
+        expect(pathLength == 0);
+        
+        // Add ladder on z=0 first
+        grid[0][10][10] = CELL_LADDER;
+        MarkChunkDirty(10, 10, 0);
+        UpdateDirtyChunks();
+        
+        // No ladder link yet (only on one floor)
+        expect(ladderLinkCount == 0);
+        
+        // Path still fails
+        RunHPAStar();
+        expect(pathLength == 0);
+        
+        // Now add ladder on z=1
+        grid[1][10][10] = CELL_LADDER;
+        MarkChunkDirty(10, 10, 1);
+        
+        // Add floor on z=1 around the ladder
+        for (int fx = 6; fx <= 12; fx++) {
+            if (fx == 10) continue;  // Don't overwrite ladder
+            grid[1][10][fx] = CELL_FLOOR;
+            MarkChunkDirty(fx, 10, 1);
+        }
+        grid[1][11][10] = CELL_FLOOR;
+        grid[1][11][11] = CELL_FLOOR;  // This is the goal cell
+        grid[1][9][10] = CELL_FLOOR;
+        MarkChunkDirty(10, 11, 1);
+        MarkChunkDirty(11, 11, 1);
+        MarkChunkDirty(10, 9, 1);
+        
+        UpdateDirtyChunks();
+        
+        // Now we should have a ladder link
+        expect(ladderLinkCount == 1);
+        
+        // Ladder entrance on z=0 should have edges to other z=0 entrances
+        int ladderEntLow = ladderLinks[0].entranceLow;
+        int edgesFromLow = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            if (graphEdges[i].from == ladderEntLow) edgesFromLow++;
+        }
+        expect(edgesFromLow > 1);  // Should have edges to z=0 entrances + ladder link
+        
+        // Try to find path - goal is now CELL_FLOOR
+        startPos = start;
+        goalPos = goal;
+        RunHPAStar();
+        
+        // Path should succeed and go from z=0 to z=1
+        expect(pathLength > 0);
+        expect(path[pathLength - 1].z == 0);  // Start on z=0
+        expect(path[0].z == 1);                // End on z=1
+    }
+
+    it("incremental ladder update should match full rebuild") {
+        // Start with no ladder
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+        BuildEntrances();
+        BuildGraph();
+
+        // Add ladder on both floors
+        grid[0][6][7] = CELL_LADDER;
+        grid[1][6][7] = CELL_LADDER;
+        MarkChunkDirty(7, 6, 0);
+        MarkChunkDirty(7, 6, 1);
+
+        // Run incremental update
+        UpdateDirtyChunks();
+
+        // Save incremental results
+        int incLadderCount = ladderLinkCount;
+        LadderLink incLadder = ladderLinks[0];
+
+        // Now do a full rebuild
+        BuildEntrances();
+        BuildGraph();
+
+        // Compare results
+        expect(ladderLinkCount == incLadderCount);
+        expect(ladderLinkCount == 1);
+        
+        // Ladder link should have same position
+        expect(ladderLinks[0].x == incLadder.x);
+        expect(ladderLinks[0].y == incLadder.y);
+        expect(ladderLinks[0].zLow == incLadder.zLow);
+        expect(ladderLinks[0].zHigh == incLadder.zHigh);
+
+        // Both should find the same path
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){15, 15, 1};
+        RunHPAStar();
+        expect(pathLength > 0);
+    }
 }
 
 // ============== JPS+ 3D LADDER TESTS ==============

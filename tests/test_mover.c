@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <math.h>
 
+// Stub profiler functions for tests
+void ProfileBegin(const char* name) { (void)name; }
+void ProfileEnd(const char* name) { (void)name; }
+
 describe(mover_initialization) {
     it("should initialize mover with correct position and goal") {
         InitGridFromAsciiWithChunkSize(
@@ -158,7 +162,7 @@ describe(wall_collision) {
 
         // Place wall on mover's current cell
         grid[0][1][1] = CELL_WALL;
-        MarkChunkDirty(1, 1);
+        MarkChunkDirty(1, 1, 0);
 
         // Run tick - mover should be pushed to adjacent walkable cell
         Tick();
@@ -222,7 +226,7 @@ describe(line_of_sight_repath) {
 
         // Place wall between start and goal
         grid[0][0][3] = CELL_WALL;
-        MarkChunkDirty(3, 0);
+        MarkChunkDirty(3, 0, 0);
 
         Tick();
 
@@ -585,7 +589,7 @@ describe(refinement_after_wall_changes) {
             int wy = wallPositions[i][1];
             if (wx < gridWidth && wy < gridHeight) {
                 grid[0][wy][wx] = CELL_WALL;
-                MarkChunkDirty(wx, wy);
+                MarkChunkDirty(wx, wy, 0);
             }
             // Run a few ticks between each wall (simulates drawing at ~60fps)
             RunTicks(2);

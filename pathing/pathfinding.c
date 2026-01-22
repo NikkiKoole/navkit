@@ -964,6 +964,12 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                         int entHigh = newCount;
                         entrances[newCount++] = (Entrance){x, y, z + 1, chunkHigh, chunkHigh};
                         
+                        // Mark both chunks as affected so edges get built for new ladder entrances
+                        // This is critical when a ladder on z=1 is added after z=0 - we need
+                        // the z=0 chunk marked as affected to build edges from the new z=0 entrance
+                        affectedChunks[z][cy][cx] = true;
+                        affectedChunks[z + 1][cy][cx] = true;
+                        
                         ladderLinks[ladderLinkCount++] = (LadderLink){
                             .x = x,
                             .y = y,
@@ -980,7 +986,8 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
     }
 
     entranceCount = newCount;
-    TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total (%d ladder links)", keptCount, newCount, ladderLinkCount);
+    TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total (%d ladder links)", 
+             keptCount, newCount, ladderLinkCount);
 }
 
 // Storage for old entrances before rebuild (used for edge remapping)
