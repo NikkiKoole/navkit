@@ -1310,15 +1310,6 @@ void UpdateDirtyChunks(void) {
     bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X];
     GetAffectedChunks(affectedChunks);
 
-    int dirtyCount = 0, affectedCount = 0;
-    for (int z = 0; z < gridDepth; z++) {
-        for (int cy = 0; cy < chunksY; cy++) {
-            for (int cx = 0; cx < chunksX; cx++) {
-                if (chunkDirty[z][cy][cx]) dirtyCount++;
-                if (affectedChunks[z][cy][cx]) affectedCount++;
-            }
-        }
-    }
 
     // Save old entrances for edge remapping
     SaveOldEntrances();

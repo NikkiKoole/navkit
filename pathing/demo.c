@@ -1253,6 +1253,8 @@ int main(void) {
             for (int x = 0; x < gridWidth; x++)
                 grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    BuildEntrances();
+    BuildGraph();
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
@@ -1290,9 +1292,7 @@ int main(void) {
         DrawGraph();
         PROFILE_END(DrawGraph);
         if (showEntrances) {
-            PROFILE_BEGIN(DrawEntrances);
             DrawEntrances();
-            PROFILE_END(DrawEntrances);
         }
         DrawPath();
         DrawAgents();

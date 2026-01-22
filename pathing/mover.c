@@ -129,6 +129,8 @@ void BuildMoverSpatialGrid(void) {
     }
 }
 
+
+
 Vec2 ComputeMoverAvoidance(int moverIndex) {
     Vec2 avoidance = {0.0f, 0.0f};
     

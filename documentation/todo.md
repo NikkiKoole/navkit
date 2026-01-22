@@ -22,6 +22,14 @@ Small remaining items and future improvements.
 - [ ] **Path Caching**: Cache recent paths with LRU eviction
 - [ ] **Parallel Pathfinding**: Thread-local node data for concurrent queries
 
+### Blocked Movers Handling
+When walls are drawn that block movers or their goals, movers become stuck (orange). Options to handle this:
+- [ ] **Report Only**: Show "N movers blocked" in status bar
+- [ ] **Auto New Goals**: Blocked movers automatically get new reachable goals
+- [ ] **Stop & Idle**: Blocked movers become idle (gray), button to reassign
+- [ ] **Region Islands**: Track connected regions, only assign goals within same region
+- [ ] **Report + Button**: Show count + "Reassign Blocked" button (recommended)
+
 ### Social/Crowd Features
 - [ ] **Queuing**: Orderly lines at bottlenecks
 - [ ] **Yielding**: Agents give way to each other
