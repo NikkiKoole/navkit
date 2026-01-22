@@ -58,6 +58,7 @@ bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 bool sectionDebug = false;
 bool sectionProfiler = false;
+bool paused = false;
 
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
@@ -734,6 +735,11 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_LEFT_BRACKET)) {
         if (currentViewZ > 0) currentViewZ--;
     }
+    
+    // Pause toggle (Space)
+    if (IsKeyPressed(KEY_SPACE)) {
+        paused = !paused;
+    }
 }
 
 void DrawUI(void) {
@@ -1172,7 +1178,7 @@ int main(void) {
         UpdatePathStats();
 
         // Fixed timestep update (Factorio-style: max 1 tick per frame, slowdown if behind)
-        if (accumulator >= TICK_DT) {
+        if (!paused && accumulator >= TICK_DT) {
             PROFILE_BEGIN(Tick);
             Tick();
             PROFILE_END(Tick);
@@ -1267,7 +1273,7 @@ int main(void) {
 
         EndDrawing();
         PROFILE_END(Render);
-        PROFILE_FRAME_END();
+        if (!paused) PROFILE_FRAME_END();
     }
     UnloadTexture(texGrass);
     UnloadTexture(texWall);
