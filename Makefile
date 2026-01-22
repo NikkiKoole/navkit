@@ -52,6 +52,12 @@ path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 
+# Texture atlas generator
+atlas_gen_SRC := tools/atlas_gen.c
+atlas: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
+	./$(BINDIR)/atlas_gen
+
 clean:
 	rm -rf $(BINDIR)
 
@@ -67,4 +73,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan debug
+.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan debug atlas

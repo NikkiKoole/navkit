@@ -1,0 +1,12 @@
+{
+  "lsp": {
+    "clangd": {
+      "binary": {
+        "arguments": ["--query-driver=/**"]
+      }
+    }
+  },
+  "file_types": {
+    "C": ["h"]
+  }
+}

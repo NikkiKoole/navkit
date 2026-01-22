@@ -11,18 +11,13 @@
 
 #define UI_IMPLEMENTATION
 #include "../shared/ui.h"
+#include "../assets/atlas.h"
 
 #define MAX_AGENTS  50
 
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
-Texture2D texGrass;
-Texture2D texWall;
-Texture2D texAir;
-Texture2D texLadder;
-Texture2D texLadderUp;
-Texture2D texLadderDown;
-Texture2D texFloor;
+Texture2D atlas;
 bool showGraph = false;
 bool showEntrances = false;
 int currentViewZ = 0;  // Which z-level we're viewing
@@ -130,22 +125,21 @@ typedef struct {
 } MoverRenderData;
 MoverRenderData moverRenderData[MAX_MOVERS];
 
-static Texture2D* GetCellTexture(CellType cell) {
+static int GetCellSprite(CellType cell) {
     switch (cell) {
-        case CELL_WALKABLE:     return &texGrass;
-        case CELL_WALL:         return &texWall;
-        case CELL_LADDER:       return &texLadder;  // Legacy: same as BOTH
-        case CELL_LADDER_BOTH:  return &texLadder;
-        case CELL_LADDER_UP:    return &texLadderUp;
-        case CELL_LADDER_DOWN:  return &texLadderDown;
-        case CELL_FLOOR:        return &texFloor;
-        case CELL_AIR:          return &texAir;
+        case CELL_WALKABLE:     return SPRITE_grass;
+        case CELL_WALL:         return SPRITE_wall;
+        case CELL_LADDER:       return SPRITE_ladder;  // Legacy: same as BOTH
+        case CELL_LADDER_BOTH:  return SPRITE_ladder;
+        case CELL_LADDER_UP:    return SPRITE_ladder_up;
+        case CELL_LADDER_DOWN:  return SPRITE_ladder_down;
+        case CELL_FLOOR:        return SPRITE_floor;
+        case CELL_AIR:          return SPRITE_air;
     }
-    return &texGrass;
+    return SPRITE_grass;
 }
 
 void DrawCellGrid(void) {
-    Rectangle src = {0, 0, 16, 16};
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -178,7 +172,8 @@ void DrawCellGrid(void) {
                 CellType cell = grid[zBelow][y][x];
                 if (cell == CELL_AIR) continue;  // Don't draw air from below
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                DrawTexturePro(*GetCellTexture(cell), src, dest, (Vector2){0,0}, 0, tint);
+                Rectangle src = AtlasGetRect(GetCellSprite(cell));
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
     }
@@ -187,7 +182,8 @@ void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawTexturePro(*GetCellTexture(grid[z][y][x]), src, dest, (Vector2){0,0}, 0, WHITE);
+            Rectangle src = AtlasGetRect(GetCellSprite(grid[z][y][x]));
+            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
         }
     }
 }
@@ -1263,13 +1259,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
-    texGrass = LoadTexture("assets/img/grass.png");
-    texWall = LoadTexture("assets/img/wall.png");
-    texAir = LoadTexture("assets/img/air.png");
-    texLadder = LoadTexture("assets/img/ladder.png");
-    texLadderUp = LoadTexture("assets/img/ladder-up.png");
-    texLadderDown = LoadTexture("assets/img/ladder-down.png");
-    texFloor = LoadTexture("assets/img/floor.png");
+    atlas = LoadTexture(ATLAS_PATH);
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
     SetTargetFPS(60);
@@ -1396,8 +1386,7 @@ int main(void) {
         PROFILE_END(Render);
         if (!paused) PROFILE_FRAME_END();
     }
-    UnloadTexture(texGrass);
-    UnloadTexture(texWall);
+    UnloadTexture(atlas);
     UnloadFont(comicFont);
     CloseWindow();
     return 0;
