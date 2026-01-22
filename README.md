@@ -7,41 +7,33 @@
 ╚═╝  ╚═══╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚═╝   ╚═╝   
 ```
 
-A fast, minimal navigation stack for 2D games. Pathfinding + steering + crowd simulation in C.
+~~2D~~ 3D navigation and movement for games. C + raylib.
 
-## Features
+## Structure
 
-### Pathfinding (`/pathing`)
+| Directory | Description |
+|-----------|-------------|
+| `/pathing` | Grid pathfinding (A*, HPA*, JPS), movers, wall handling, terrain |
+| `/steering` | Steering behaviors, flocking, social force model |
+| `/crowd-experiment` | Crowd simulation testbed |
+| `/tools` | Atlas generator |
+| `/documentation` | Design docs |
 
-- **A*, HPA*, JPS** algorithms
-- **Movers** with path following, avoidance, and auto-replanning
-- **Wall handling** - repulsion + sliding to prevent clipping
-- **Stuck detection** - auto-repath when agents can't progress
-- Incremental chunk updates, string pulling, 60Hz fixed timestep
-
-### Steering (`/steering`)
-
-- **28+ behaviors** - seek, flee, arrive, pursuit, wander, flocking, etc.
-- **Social Force Model**, **Context Steering**, **IDM traffic**
-- **47 demo scenarios** - evacuation, convoy, predator/prey, murmuration
-
-### Crowd Simulation (`/crowd-experiment`)
-
-- **1000+ agents at 60 FPS** using spatial hashing
-- Boids separation, stuck recovery, Y-sorted 2.5D rendering
-
-## Build & Run
+## Build
 
 ```bash
-make              # requires raylib
-./bin/path        # pathfinding demo
-./bin/steer       # steering behaviors
-./bin/crowd       # crowd simulation
+make          # builds path, steer, crowd
+make atlas    # builds and runs texture atlas generator
+make test     # runs all tests
+make debug    # debug build with sanitizers
 ```
 
-## Documentation
+## Run
 
-See `/documentation` for detailed design docs:
-- `overview.md` - system architecture
-- `steering.md` - all 28+ steering behaviors
-- `roadmap.md` - what's done, what's planned
+```bash
+./bin/path    # pathfinding demo
+./bin/steer   # steering demo
+./bin/crowd   # crowd demo
+```
+
+Requires raylib.
