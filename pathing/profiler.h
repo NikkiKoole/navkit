@@ -8,7 +8,7 @@
 #define PROFILER_ENABLED 1
 
 #define PROFILER_MAX_SECTIONS 32
-#define PROFILER_HISTORY_FRAMES 60
+#define PROFILER_HISTORY_FRAMES 120
 
 typedef struct {
     const char* name;

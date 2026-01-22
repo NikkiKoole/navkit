@@ -962,15 +962,23 @@ void DrawUI(void) {
         
         // Bar graph settings
         int barMaxWidth = 100;
-        int labelWidth = 60;
+        int labelWidth = 70;
+        
+        // Colors for each section (shared with line graph)
+        Color sectionColors[] = {GREEN, YELLOW, ORANGE, SKYBLUE, PINK, PURPLE, RED, LIME};
+        int numColors = sizeof(sectionColors) / sizeof(sectionColors[0]);
         
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
             float last = (float)ProfileGetLast(i);
             float avg = (float)ProfileGetAvg(i);
+            Color sectionColor = sectionColors[i % numColors];
+            
+            // Draw color indicator square
+            DrawRectangle(x, y + 3, 10, 10, sectionColor);
             
             // Draw label
-            DrawTextShadow(s->name, x, y, 14, WHITE);
+            DrawTextShadow(s->name, x + 14, y, 14, WHITE);
             
             // Draw bar background
             int barX = x + labelWidth;
@@ -1001,6 +1009,114 @@ void DrawUI(void) {
             
             y += 18;
         }
+        
+        // Line graph showing history
+        y += 10;
+        int graphX = x;
+        int graphY = y;
+        int graphW = 180;
+        int graphH = 60;
+        
+        // Find max across all history for scaling
+        float graphMax = 1.0f;
+        for (int i = 0; i < profilerSectionCount; i++) {
+            ProfileSection* s = &profilerSections[i];
+            for (int f = 0; f < s->historyCount; f++) {
+                if (s->history[f] > graphMax) graphMax = (float)s->history[f];
+            }
+        }
+        
+        // Draw background
+        DrawRectangle(graphX, graphY, graphW, graphH, (Color){30, 30, 30, 255});
+        DrawRectangleLines(graphX, graphY, graphW, graphH, GRAY);
+        
+        // Draw horizontal guide lines
+        for (int i = 1; i < 4; i++) {
+            int lineY = graphY + (graphH * i / 4);
+            DrawLine(graphX, lineY, graphX + graphW, lineY, (Color){50, 50, 50, 255});
+        }
+        
+        // Check if mouse is in graph area
+        Vector2 mouse = GetMousePosition();
+        bool mouseInGraph = (mouse.x >= graphX && mouse.x < graphX + graphW &&
+                             mouse.y >= graphY && mouse.y < graphY + graphH);
+        
+        // Find which section is closest to mouse (if hovering)
+        int hoveredSection = -1;
+        float hoveredValue = 0;
+        if (mouseInGraph) {
+            // Figure out which frame the mouse is over
+            int mouseFrame = (int)((mouse.x - graphX) * PROFILER_HISTORY_FRAMES / graphW);
+            if (mouseFrame < 0) mouseFrame = 0;
+            if (mouseFrame >= PROFILER_HISTORY_FRAMES) mouseFrame = PROFILER_HISTORY_FRAMES - 1;
+            
+            float minDist = 999999.0f;
+            for (int i = 0; i < profilerSectionCount; i++) {
+                ProfileSection* s = &profilerSections[i];
+                if (s->historyCount <= mouseFrame) continue;
+                
+                int idx = (s->historyIndex + mouseFrame) % PROFILER_HISTORY_FRAMES;
+                float val = (float)s->history[idx];
+                int valY = graphY + graphH - (int)(val / graphMax * graphH);
+                float dist = fabsf(mouse.y - valY);
+                
+                if (dist < minDist && dist < 15) {  // Within 15 pixels
+                    minDist = dist;
+                    hoveredSection = i;
+                    hoveredValue = val;
+                }
+            }
+        }
+        
+        // Draw lines for each section
+        for (int i = 0; i < profilerSectionCount; i++) {
+            ProfileSection* s = &profilerSections[i];
+            if (s->historyCount < 2) continue;
+            
+            Color col = sectionColors[i % numColors];
+            
+            // Dim non-hovered sections when hovering
+            if (hoveredSection >= 0 && hoveredSection != i) {
+                col.a = 60;
+            }
+            
+            for (int f = 0; f < s->historyCount - 1; f++) {
+                // Read from oldest to newest
+                int idx0 = (s->historyIndex + f) % PROFILER_HISTORY_FRAMES;
+                int idx1 = (s->historyIndex + f + 1) % PROFILER_HISTORY_FRAMES;
+                
+                float v0 = (float)s->history[idx0];
+                float v1 = (float)s->history[idx1];
+                
+                int x0 = graphX + (f * graphW / PROFILER_HISTORY_FRAMES);
+                int x1 = graphX + ((f + 1) * graphW / PROFILER_HISTORY_FRAMES);
+                int y0 = graphY + graphH - (int)(v0 / graphMax * graphH);
+                int y1 = graphY + graphH - (int)(v1 / graphMax * graphH);
+                
+                DrawLine(x0, y0, x1, y1, col);
+            }
+        }
+        
+        // Draw tooltip for hovered section
+        if (hoveredSection >= 0) {
+            ProfileSection* s = &profilerSections[hoveredSection];
+            const char* tooltip = TextFormat("%s: %.2fms", s->name, hoveredValue);
+            int tooltipW = MeasureText(tooltip, 14) + 10;
+            int tooltipX = (int)mouse.x + 10;
+            int tooltipY = (int)mouse.y - 20;
+            
+            // Keep tooltip in screen
+            if (tooltipX + tooltipW > graphX + graphW) tooltipX = (int)mouse.x - tooltipW - 5;
+            
+            DrawRectangle(tooltipX - 2, tooltipY - 2, tooltipW, 18, (Color){20, 20, 20, 230});
+            DrawTextShadow(tooltip, tooltipX, tooltipY, 14, sectionColors[hoveredSection % numColors]);
+        }
+        
+        // Draw scale label
+        DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, GRAY);
+        DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, GRAY);
+        
+        y += graphH + 5;
     }
 #endif
 }
