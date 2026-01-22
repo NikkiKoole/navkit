@@ -20,6 +20,12 @@ bool ui_wants_mouse(void);
 // Call at start of UI drawing to reset flags
 void ui_begin_frame(void);
 
+// Mark mouse click as consumed (blocks click-through to game world)
+void ui_consume_click(void);
+
+// Mark custom UI element as hovered (blocks click-through next frame)
+void ui_set_hovered(void);
+
 // Draw text with shadow
 void DrawTextShadow(const char* text, int x, int y, int size, Color col);
 
@@ -57,6 +63,7 @@ static bool g_ui_toggleAnyHovered = false;
 static bool g_ui_buttonAnyHovered = false;
 static bool g_ui_cycleAnyHovered = false;
 static bool g_ui_clickConsumed = false;  // Set when UI consumes a click
+static bool g_ui_customHovered = false;  // For custom UI elements (like profiler)
 
 void ui_init(Font* font) {
     g_ui_font = font;
@@ -75,7 +82,7 @@ void ui_update(void) {
 
 bool ui_wants_mouse(void) {
     return g_ui_clickConsumed || g_ui_draggableAnyHovered || g_ui_toggleAnyHovered ||
-           g_ui_buttonAnyHovered || g_ui_cycleAnyHovered;
+           g_ui_buttonAnyHovered || g_ui_cycleAnyHovered || g_ui_customHovered;
 }
 
 void ui_begin_frame(void) {
@@ -84,6 +91,15 @@ void ui_begin_frame(void) {
     g_ui_buttonAnyHovered = false;
     g_ui_cycleAnyHovered = false;
     g_ui_clickConsumed = false;
+    g_ui_customHovered = false;
+}
+
+void ui_consume_click(void) {
+    g_ui_clickConsumed = true;
+}
+
+void ui_set_hovered(void) {
+    g_ui_customHovered = true;
 }
 
 void DrawTextShadow(const char* text, int x, int y, int size, Color col) {

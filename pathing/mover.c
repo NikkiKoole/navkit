@@ -1,7 +1,7 @@
 #include "mover.h"
 #include "grid.h"
 #include "pathfinding.h"
-#include "profiler.h"
+#include "../shared/profiler.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,9 +13,9 @@ Mover movers[MAX_MOVERS];
 int moverCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
-bool endlessMoverMode = false;
+bool endlessMoverMode = true;
 bool useMoverAvoidance = true;
-bool preferDifferentZ = false;
+bool preferDifferentZ = true;
 bool allowFallingFromAvoidance = false;
 bool useKnotFix = true;
 bool useWallRepulsion = true;

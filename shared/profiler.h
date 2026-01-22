@@ -18,6 +18,9 @@ typedef struct {
     int historyIndex;
     int historyCount;  // How many frames of data we have (up to PROFILER_HISTORY_FRAMES)
     bool active;       // Currently being measured
+    int depth;         // Hierarchy depth (0 = root, 1 = child, etc.)
+    int parent;        // Index of parent section (-1 if root)
+    bool collapsed;    // If true, children are hidden in UI
 } ProfileSection;
 
 #if PROFILER_ENABLED
@@ -35,6 +38,8 @@ double ProfileGetMin(int sectionIndex);
 double ProfileGetMax(int sectionIndex);
 double ProfileGetAvg(int sectionIndex);
 double ProfileGetLast(int sectionIndex);
+bool ProfileIsHidden(int sectionIndex);  // Returns true if any ancestor is collapsed
+bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has children
 
 #define PROFILE_BEGIN(name) ProfileBegin(#name)
 #define PROFILE_END(name) ProfileEnd(#name)
@@ -59,8 +64,10 @@ double ProfileGetLast(int sectionIndex);
 
 ProfileSection profilerSections[PROFILER_MAX_SECTIONS];
 int profilerSectionCount = 0;
+static int profilerCurrentDepth = 0;
+static int profilerParentStack[PROFILER_MAX_SECTIONS];  // Stack of parent indices
 
-static int ProfileFindOrCreate(const char* name) {
+static int ProfileFindOrCreate(const char* name, int depth, int parent) {
     // Find existing section
     for (int i = 0; i < profilerSectionCount; i++) {
         if (profilerSections[i].name == name) {  // Pointer comparison (string literals)
@@ -76,6 +83,9 @@ static int ProfileFindOrCreate(const char* name) {
         profilerSections[idx].historyIndex = 0;
         profilerSections[idx].historyCount = 0;
         profilerSections[idx].active = false;
+        profilerSections[idx].depth = depth;
+        profilerSections[idx].parent = parent;
+        profilerSections[idx].collapsed = false;
         for (int i = 0; i < PROFILER_HISTORY_FRAMES; i++) {
             profilerSections[idx].history[i] = 0.0;
         }
@@ -85,20 +95,24 @@ static int ProfileFindOrCreate(const char* name) {
 }
 
 void ProfileBegin(const char* name) {
-    int idx = ProfileFindOrCreate(name);
+    int parent = (profilerCurrentDepth > 0) ? profilerParentStack[profilerCurrentDepth - 1] : -1;
+    int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent);
     if (idx >= 0) {
         profilerSections[idx].startTime = clock();
         profilerSections[idx].active = true;
+        profilerParentStack[profilerCurrentDepth] = idx;
+        profilerCurrentDepth++;
     }
 }
 
 void ProfileEnd(const char* name) {
-    int idx = ProfileFindOrCreate(name);
+    int idx = ProfileFindOrCreate(name, 0, -1);  // depth/parent don't matter for lookup
     if (idx >= 0 && profilerSections[idx].active) {
         clock_t end = clock();
         double ms = (double)(end - profilerSections[idx].startTime) / CLOCKS_PER_SEC * 1000.0;
         profilerSections[idx].lastTimeMs = ms;
         profilerSections[idx].active = false;
+        if (profilerCurrentDepth > 0) profilerCurrentDepth--;
     }
 }
 
@@ -163,6 +177,26 @@ double ProfileGetLast(int sectionIndex) {
     // Get the most recently written value
     int lastIdx = (s->historyIndex - 1 + PROFILER_HISTORY_FRAMES) % PROFILER_HISTORY_FRAMES;
     return s->history[lastIdx];
+}
+
+bool ProfileIsHidden(int sectionIndex) {
+    if (sectionIndex < 0 || sectionIndex >= profilerSectionCount) return false;
+    // Walk up parent chain, if any ancestor is collapsed, this section is hidden
+    int parent = profilerSections[sectionIndex].parent;
+    while (parent >= 0) {
+        if (profilerSections[parent].collapsed) return true;
+        parent = profilerSections[parent].parent;
+    }
+    return false;
+}
+
+bool ProfileHasChildren(int sectionIndex) {
+    if (sectionIndex < 0 || sectionIndex >= profilerSectionCount) return false;
+    // Check if any section has this as parent
+    for (int i = 0; i < profilerSectionCount; i++) {
+        if (profilerSections[i].parent == sectionIndex) return true;
+    }
+    return false;
 }
 
 #endif // PROFILER_ENABLED

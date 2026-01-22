@@ -4,7 +4,7 @@
 #include "pathfinding.h"
 #include "mover.h"
 #define PROFILER_IMPLEMENTATION
-#include "profiler.h"
+#include "../shared/profiler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -979,7 +979,8 @@ void DrawUI(void) {
         
         // Bar graph settings
         int barMaxWidth = 100;
-        int labelWidth = 70;
+        int labelWidth = 110;
+        int indentPerLevel = 12;
         
         // Colors for each section (shared with line graph)
         Color sectionColors[] = {GREEN, YELLOW, ORANGE, SKYBLUE, PINK, PURPLE, RED, LIME};
@@ -990,26 +991,51 @@ void DrawUI(void) {
         int labelHoveredSection = -1;
         int labelStartY = y;  // Remember starting Y for label hover detection
         
+        int visibleRow = 0;
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
+            
+            // Skip hidden sections (collapsed ancestors)
+            if (ProfileIsHidden(i)) continue;
+            
             float last = (float)ProfileGetLast(i);
             float avg = (float)ProfileGetAvg(i);
             Color sectionColor = sectionColors[i % numColors];
+            int indent = s->depth * indentPerLevel;
+            bool hasChildren = ProfileHasChildren(i);
             
             // Check if mouse is hovering this label row
-            int rowY = labelStartY + i * 18;
+            int rowY = labelStartY + visibleRow * 18;
             bool hoveringLabel = (mouse.x >= x && mouse.x < x + labelWidth &&
                                   mouse.y >= rowY && mouse.y < rowY + 18);
             if (hoveringLabel) {
                 labelHoveredSection = i;
+                // Block click-through when hovering collapsible items
+                if (hasChildren) {
+                    ui_set_hovered();
+                    // Click to toggle collapse
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        s->collapsed = !s->collapsed;
+                    }
+                }
             }
             
-            // Draw color indicator square
-            DrawRectangle(x, y + 3, 10, 10, sectionColor);
+            // Draw collapse indicator for sections with children
+            if (hasChildren) {
+                const char* arrow = s->collapsed ? "+" : "-";
+                Color arrowColor = s->collapsed ? YELLOW : GRAY;
+                DrawTextShadow(arrow, x + indent, y, 14, arrowColor);
+            }
             
-            // Draw label (highlight if hovered)
-            Color labelColor = hoveringLabel ? sectionColor : WHITE;
-            DrawTextShadow(s->name, x + 14, y, 14, labelColor);
+            // Draw color indicator square (indented based on depth, dimmed if collapsed)
+            Color squareColor = sectionColor;
+            if (s->collapsed) squareColor = (Color){sectionColor.r/2, sectionColor.g/2, sectionColor.b/2, 255};
+            DrawRectangle(x + indent + (hasChildren ? 10 : 0), y + 3, 10, 10, squareColor);
+            
+            // Draw label (highlight if hovered, indented based on depth, show ... if collapsed)
+            Color labelColor = hoveringLabel ? sectionColor : (s->collapsed ? GRAY : WHITE);
+            const char* displayName = s->collapsed ? TextFormat("%s ...", s->name) : s->name;
+            DrawTextShadow(displayName, x + 14 + indent + (hasChildren ? 10 : 0), y, 14, labelColor);
             
             // Draw bar background
             int barX = x + labelWidth;
@@ -1039,6 +1065,7 @@ void DrawUI(void) {
             DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, WHITE);
             
             y += 18;
+            visibleRow++;
         }
         
         // Line graph showing history
@@ -1206,13 +1233,31 @@ int main(void) {
         PROFILE_BEGIN(Render);
         BeginDrawing();
         ClearBackground(BLACK);
+        PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
+        PROFILE_END(DrawCells);
+        PROFILE_BEGIN(DrawChunks);
         DrawChunkBoundaries();
+        PROFILE_END(DrawChunks);
+        PROFILE_BEGIN(DrawGraph);
         DrawGraph();
-        if (showEntrances) DrawEntrances();
+        PROFILE_END(DrawGraph);
+        if (showEntrances) {
+            PROFILE_BEGIN(DrawEntrances);
+            DrawEntrances();
+            PROFILE_END(DrawEntrances);
+        }
+        PROFILE_BEGIN(DrawPath);
         DrawPath();
+        PROFILE_END(DrawPath);
+        PROFILE_BEGIN(DrawAgents);
         DrawAgents();
-        if (showMovers) DrawMovers();
+        PROFILE_END(DrawAgents);
+        if (showMovers) {
+            PROFILE_BEGIN(DrawMovers);
+            DrawMovers();
+            PROFILE_END(DrawMovers);
+        }
 
         // Draw room preview while dragging
         if (drawingRoom && IsKeyDown(KEY_R)) {
@@ -1282,7 +1327,9 @@ int main(void) {
         }
 
         // Draw UI
+        PROFILE_BEGIN(DrawUI);
         DrawUI();
+        PROFILE_END(DrawUI);
 
         EndDrawing();
         PROFILE_END(Render);
