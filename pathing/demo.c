@@ -1127,8 +1127,8 @@ void DrawUI(void) {
         }
         
         // Draw scale label
-        DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, GRAY);
-        DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, GRAY);
+        DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, WHITE);
+        DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, WHITE);
         
         y += graphH + 5;
     }
