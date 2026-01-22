@@ -851,7 +851,7 @@ void DrawUI(void) {
 
             for (int z = 0; z < gridDepth; z++) {
                 // Write floor marker
-                idx += sprintf(buffer + idx, "floor:%d\n", z);
+                idx += snprintf(buffer + idx, bufferSize - idx, "floor:%d\n", z);
 
                 // Write grid data for this floor
                 for (int row = 0; row < gridHeight; row++) {

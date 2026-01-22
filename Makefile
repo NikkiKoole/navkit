@@ -55,4 +55,10 @@ crowd: $(BINDIR) $(BINDIR)/crowd
 clean:
 	rm -rf $(BINDIR)
 
-.PHONY: all clean test test_pathing test_mover test_steering path steer crowd
+# AddressSanitizer build for memory debugging
+asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra
+asan: LDFLAGS += -fsanitize=address
+asan: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
+
+.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan

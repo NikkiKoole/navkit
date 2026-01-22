@@ -1285,9 +1285,7 @@ void UpdateDirtyChunks(void) {
     needsRebuild = false;
     hpaNeedsRebuild = false;
 
-    double elapsed = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "Incremental update: %d dirty, %d affected chunks in %.2fms",
-             dirtyCount, affectedCount, elapsed);
+    (void)startTime;  // Unused now
 }
 
 // 3D heuristic - includes z-level difference
