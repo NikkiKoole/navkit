@@ -109,6 +109,7 @@ int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
 int moverCountSetting = 10000;
+bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
@@ -798,6 +799,12 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
             InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            gridDepth = 3;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             BuildEntrances();
             BuildGraph();
@@ -844,6 +851,8 @@ void DrawUI(void) {
         if (PushButton(x, y, "Clear Movers")) {
             ClearMovers();
         }
+        y += 22;
+        ToggleBool(x, y, "Show Movers", &showMovers);
         y += 22;
         ToggleBool(x, y, "Show Paths", &showMoverPaths);
         y += 22;
@@ -901,19 +910,36 @@ void DrawUI(void) {
     if (SectionHeader(x, y, "Debug", &sectionDebug)) {
         y += 18;
         if (PushButton(x, y, "Copy Map ASCII")) {
-            // Copy map to clipboard as ASCII
-            char* buffer = malloc(gridWidth * gridHeight + gridHeight + 1);
+            // Copy map to clipboard as ASCII (supports multiple floors)
+            // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
+            // "floor:" = 6, max digits for floor number ~3, "\n" = 1, so ~10 chars per floor header
+            int floorDataSize = gridWidth * gridHeight + gridHeight;  // grid + newlines per floor
+            int bufferSize = gridDepth * (10 + floorDataSize) + 1;
+            char* buffer = malloc(bufferSize);
             int idx = 0;
-            for (int row = 0; row < gridHeight; row++) {
-                for (int col = 0; col < gridWidth; col++) {
-                    buffer[idx++] = (grid[0][row][col] == CELL_WALL) ? '#' : '.';
+
+            for (int z = 0; z < gridDepth; z++) {
+                // Write floor marker
+                idx += sprintf(buffer + idx, "floor:%d\n", z);
+
+                // Write grid data for this floor
+                for (int row = 0; row < gridHeight; row++) {
+                    for (int col = 0; col < gridWidth; col++) {
+                        char c;
+                        switch (grid[z][row][col]) {
+                            case CELL_WALL:   c = '#'; break;
+                            case CELL_LADDER: c = 'L'; break;
+                            default:          c = '.'; break;
+                        }
+                        buffer[idx++] = c;
+                    }
+                    buffer[idx++] = '\n';
                 }
-                buffer[idx++] = '\n';
             }
             buffer[idx] = '\0';
             SetClipboardText(buffer);
             free(buffer);
-            TraceLog(LOG_INFO, "Map copied to clipboard");
+            TraceLog(LOG_INFO, "Map copied to clipboard (%d floors)", gridDepth);
         }
     }
 }
@@ -973,7 +999,7 @@ int main(void) {
         if (showEntrances) DrawEntrances();
         DrawPath();
         DrawAgents();
-        DrawMovers();
+        if (showMovers) DrawMovers();
 
         // Draw room preview while dragging
         if (drawingRoom && IsKeyDown(KEY_R)) {
@@ -1024,22 +1050,25 @@ int main(void) {
                     stuckCount++;
                 }
             }
-            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Stuck: %d | Grid: %.3fms",
-                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, stuckCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
+            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Stuck: %d",
+                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, stuckCount), 5, 25, 16, WHITE);
         } else {
-            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d | Grid: %.3fms",
-                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount, moverGridBuildTimeMs), 5, 25, 16, WHITE);
+            DrawTextShadow(TextFormat("Entrances: %d | Edges: %d | Agents: %d | Movers: %d/%d",
+                           entranceCount, graphEdgeCount, agentCount, CountActiveMovers(), moverCount), 5, 25, 16, WHITE);
         }
+        DrawTextShadow(TextFormat("Tick: Grid %.2fms | Repath %.2fms | Update %.2fms (LOS %.2f, Avoid %.2f, Move %.2f)",
+                       moverGridBuildTimeMs, moverRepathTimeMs, moverUpdateTimeMs,
+                       moverLosTimeMs, moverAvoidTimeMs, moverMoveTimeMs), 5, 45, 16, WHITE);
         if (pathAlgorithm == 1 && hpaAbstractTime > 0) {
             DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms (abstract: %.2fms, refine: %.2fms)",
-                     pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 45, 16, WHITE);
+                     pathLength, nodesExplored, lastPathTime, hpaAbstractTime, hpaRefinementTime), 5, 65, 16, WHITE);
         } else {
-            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 45, 16, WHITE);
+            DrawTextShadow(TextFormat("Path: %d | Explored: %d | Time: %.2fms", pathLength, nodesExplored, lastPathTime), 5, 65, 16, WHITE);
         }
         // Show path stats (updated every 5 seconds)
         if (pathStatsCount > 0) {
-            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg", 
-                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 65, 16, YELLOW);
+            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg",
+                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 5, 85, 16, YELLOW);
         }
 
         // Draw UI

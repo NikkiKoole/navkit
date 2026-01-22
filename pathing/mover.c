@@ -28,9 +28,20 @@ PathAlgorithm moverPathAlgorithm = PATH_ALGO_HPA;  // Default to HPA*
 // Spatial grid
 MoverSpatialGrid moverGrid = {0};
 double moverGridBuildTimeMs = 0.0;
+double moverRepathTimeMs = 0.0;
+double moverUpdateTimeMs = 0.0;
+
+// Breakdown of UpdateMovers time
+double moverLosTimeMs = 0.0;
+double moverAvoidTimeMs = 0.0;
+double moverMoveTimeMs = 0.0;
 
 static inline int clampi(int v, int lo, int hi) {
     return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
+static inline double clockToMs(clock_t start) {
+    return (double)(clock() - start) / CLOCKS_PER_SEC * 1000.0;
 }
 
 // Try to make a mover fall to ground. Returns true if mover fell.
@@ -591,6 +602,62 @@ static void AssignNewMoverGoal(Mover* m) {
 
 void UpdateMovers(void) {
     float dt = TICK_DT;
+    
+    // Phase 1: LOS checks
+    clock_t phaseStart = clock();
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active || m->needsRepath) continue;
+        if (m->pathIndex < 0 || m->pathLength == 0) continue;
+        
+        int currentX = (int)(m->x / CELL_SIZE);
+        int currentY = (int)(m->y / CELL_SIZE);
+        int currentZ = (int)m->z;
+        
+        // Skip movers in air or on walls (handled in phase 3)
+        if (IsCellAirAt(currentZ, currentY, currentX)) continue;
+        if (grid[currentZ][currentY][currentX] == CELL_WALL) continue;
+        
+        Point target = m->path[m->pathIndex];
+        if (target.z == currentZ) {
+            if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
+                m->needsRepath = true;
+            }
+        }
+    }
+    moverLosTimeMs = clockToMs(phaseStart);
+    
+    // Phase 2: Avoidance computation (just compute, don't move yet)
+    // We store avoidance vectors temporarily
+    static Vec2 avoidVectors[MAX_MOVERS];
+    phaseStart = clock();
+    if (useMoverAvoidance || useWallRepulsion) {
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            avoidVectors[i] = (Vec2){0, 0};
+            if (!m->active || m->needsRepath) continue;
+            if (m->pathIndex < 0 || m->pathLength == 0) continue;
+            
+            if (useMoverAvoidance) {
+                Vec2 avoid = ComputeMoverAvoidance(i);
+                int moverZ = (int)m->z;
+                if (useDirectionalAvoidance) {
+                    avoid = FilterAvoidanceByWalls(m->x, m->y, moverZ, avoid);
+                }
+                avoidVectors[i].x += avoid.x;
+                avoidVectors[i].y += avoid.y;
+            }
+            if (useWallRepulsion) {
+                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y, (int)m->z);
+                avoidVectors[i].x += wallRepel.x * wallRepulsionStrength;
+                avoidVectors[i].y += wallRepel.y * wallRepulsionStrength;
+            }
+        }
+    }
+    moverAvoidTimeMs = clockToMs(phaseStart);
+    
+    // Phase 3: Movement (all the rest)
+    phaseStart = clock();
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -656,17 +723,9 @@ void UpdateMovers(void) {
         }
 
         Point target = m->path[m->pathIndex];
-
-        // Check line-of-sight to next waypoint (lenient - also checks from neighbors)
-        // This detects when a wall is placed across the mover's path
-        // For z-level transitions (ladders), skip LOS check - we trust the pathfinder
-        // and the ladder may not be "visible" on our current z-level
-        if (target.z == currentZ) {
-            if (!HasLineOfSightLenient(currentX, currentY, target.x, target.y, currentZ)) {
-                m->needsRepath = true;
-                continue;
-            }
-        }
+        
+        // Skip if marked for repath (by LOS check in phase 1, or wall-push above)
+        if (m->needsRepath) continue;
 
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -720,49 +779,18 @@ void UpdateMovers(void) {
             float vx = dxf * invDist * m->speed;
             float vy = dyf * invDist * m->speed;
             
-            // Add avoidance if enabled
-            if (useMoverAvoidance) {
-                Vec2 avoid = ComputeMoverAvoidance(i);
-                int moverZ = (int)m->z;
+            // Apply precomputed avoidance from phase 2
+            if (useMoverAvoidance || useWallRepulsion) {
+                float avoidScale = m->speed * avoidStrengthOpen;
                 
-                if (useDirectionalAvoidance) {
-                    // Filter avoidance by directional wall clearance
-                    avoid = FilterAvoidanceByWalls(m->x, m->y, moverZ, avoid);
-                    float avoidScale = m->speed * avoidStrengthOpen;
-                    
-                    // Knot fix: reduce avoidance near waypoint so mover can reach it
-                    if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
-                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);  // 0 at waypoint, 1 at edge
-                        avoidScale *= t * t;  // Quadratic falloff
-                    }
-                    
-                    vx += avoid.x * avoidScale;
-                    vy += avoid.y * avoidScale;
-                } else {
-                    // Original open/closed area check
-                    bool inOpen = IsMoverInOpenArea(m->x, m->y, moverZ);
-                    float strength = inOpen ? avoidStrengthOpen : avoidStrengthClosed;
-                    float avoidScale = m->speed * strength;
-                    
-                    // Knot fix: reduce avoidance near waypoint so mover can reach it
-                    if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
-                        float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);  // 0 at waypoint, 1 at edge
-                        avoidScale *= t * t;  // Quadratic falloff
-                    }
-                    
-                    if (avoidScale > 0.0f) {
-                        vx += avoid.x * avoidScale;
-                        vy += avoid.y * avoidScale;
-                    }
+                // Knot fix: reduce avoidance near waypoint so mover can reach it
+                if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
+                    float t = dist / (KNOT_FIX_ARRIVAL_RADIUS * 2.0f);
+                    avoidScale *= t * t;
                 }
-            }
-            
-            // Add wall repulsion if enabled
-            if (useWallRepulsion) {
-                Vec2 wallRepel = ComputeWallRepulsion(m->x, m->y, (int)m->z);
-                float repelScale = m->speed * wallRepulsionStrength;
-                vx += wallRepel.x * repelScale;
-                vy += wallRepel.y * repelScale;
+                
+                vx += avoidVectors[i].x * avoidScale;
+                vy += avoidVectors[i].y * avoidScale;
             }
             
             // Apply movement with wall sliding (but allow falling through air)
@@ -842,6 +870,7 @@ void UpdateMovers(void) {
             }
         }
     }
+    moverMoveTimeMs = clockToMs(phaseStart);
 }
 
 void ProcessMoverRepaths(void) {
@@ -899,9 +928,18 @@ void ProcessMoverRepaths(void) {
 }
 
 void Tick(void) {
-    BuildMoverSpatialGrid();
+    BuildMoverSpatialGrid();  // Already times itself into moverGridBuildTimeMs
+    
+    clock_t start = clock();
     ProcessMoverRepaths();
+    clock_t end = clock();
+    moverRepathTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+    
+    start = clock();
     UpdateMovers();
+    end = clock();
+    moverUpdateTimeMs = (double)(end - start) / CLOCKS_PER_SEC * 1000.0;
+    
     currentTick++;
 }
 
