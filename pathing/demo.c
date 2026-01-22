@@ -968,17 +968,31 @@ void DrawUI(void) {
         Color sectionColors[] = {GREEN, YELLOW, ORANGE, SKYBLUE, PINK, PURPLE, RED, LIME};
         int numColors = sizeof(sectionColors) / sizeof(sectionColors[0]);
         
+        // Check for hover on section labels
+        Vector2 mouse = GetMousePosition();
+        int labelHoveredSection = -1;
+        int labelStartY = y;  // Remember starting Y for label hover detection
+        
         for (int i = 0; i < profilerSectionCount; i++) {
             ProfileSection* s = &profilerSections[i];
             float last = (float)ProfileGetLast(i);
             float avg = (float)ProfileGetAvg(i);
             Color sectionColor = sectionColors[i % numColors];
             
+            // Check if mouse is hovering this label row
+            int rowY = labelStartY + i * 18;
+            bool hoveringLabel = (mouse.x >= x && mouse.x < x + labelWidth &&
+                                  mouse.y >= rowY && mouse.y < rowY + 18);
+            if (hoveringLabel) {
+                labelHoveredSection = i;
+            }
+            
             // Draw color indicator square
             DrawRectangle(x, y + 3, 10, 10, sectionColor);
             
-            // Draw label
-            DrawTextShadow(s->name, x + 14, y, 14, WHITE);
+            // Draw label (highlight if hovered)
+            Color labelColor = hoveringLabel ? sectionColor : WHITE;
+            DrawTextShadow(s->name, x + 14, y, 14, labelColor);
             
             // Draw bar background
             int barX = x + labelWidth;
@@ -1037,14 +1051,14 @@ void DrawUI(void) {
         }
         
         // Check if mouse is in graph area
-        Vector2 mouse = GetMousePosition();
         bool mouseInGraph = (mouse.x >= graphX && mouse.x < graphX + graphW &&
                              mouse.y >= graphY && mouse.y < graphY + graphH);
         
-        // Find which section is closest to mouse (if hovering)
-        int hoveredSection = -1;
+        // Find which section is closest to mouse (if hovering on graph)
+        // Or use labelHoveredSection if hovering on a label
+        int hoveredSection = labelHoveredSection;
         float hoveredValue = 0;
-        if (mouseInGraph) {
+        if (mouseInGraph && labelHoveredSection < 0) {
             // Figure out which frame the mouse is over
             int mouseFrame = (int)((mouse.x - graphX) * PROFILER_HISTORY_FRAMES / graphW);
             if (mouseFrame < 0) mouseFrame = 0;
