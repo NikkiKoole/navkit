@@ -1019,7 +1019,7 @@ void DrawUI(void) {
             DrawLine(avgX, y + 1, avgX, y + 14, WHITE);
             
             // Draw value
-            DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, GRAY);
+            DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, WHITE);
             
             y += 18;
         }
