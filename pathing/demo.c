@@ -121,6 +121,7 @@ bool showNeighborCounts = false;
 bool showOpenArea = false;
 bool showKnotDetection = false;  // Highlight movers stuck near waypoints
 bool showStuckDetection = false; // Highlight movers not making progress
+bool cullDrawing = true;  // Toggle view frustum culling
 
 // Extended mover struct for rendering (adds Color)
 typedef struct {
@@ -147,12 +148,32 @@ void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        // Clamp to grid bounds
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
     // Draw layer below with transparency (if viewing z > 0)
     if (z > 0) {
         Color tint = (Color){255, 255, 255, 128};
         int zBelow = z - 1;
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
                 CellType cell = grid[zBelow][y][x];
                 if (cell == CELL_AIR) continue;  // Don't draw air from below
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
@@ -162,8 +183,8 @@ void DrawCellGrid(void) {
     }
 
     // Draw current layer
-    for (int y = 0; y < gridHeight; y++) {
-        for (int x = 0; x < gridWidth; x++) {
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             DrawTexturePro(*GetCellTexture(grid[z][y][x]), src, dest, (Vector2){0,0}, 0, WHITE);
         }
@@ -772,6 +793,8 @@ void DrawUI(void) {
         ToggleBool(x, y, "Show Graph", &showGraph);
         y += 22;
         ToggleBool(x, y, "Show Entrances", &showEntrances);
+        y += 22;
+        ToggleBool(x, y, "Cull Drawing", &cullDrawing);
     }
     y += 22;
 
@@ -1335,7 +1358,9 @@ int main(void) {
                      pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 130, screenHeight - 20, 16, YELLOW);
         }
 
+        PROFILE_BEGIN(EndDraw);
         EndDrawing();
+        PROFILE_END(EndDraw);
         PROFILE_END(Render);
         if (!paused) PROFILE_FRAME_END();
     }
