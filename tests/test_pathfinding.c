@@ -2607,6 +2607,346 @@ describe(jps_plus_vs_astar_consistency) {
     }
 }
 
+// ============== LADDER PLACEMENT AND ERASE TESTS ==============
+// Legend: U = LADDER_UP, D = LADDER_DOWN, B = LADDER_BOTH
+
+describe(ladder_placement) {
+    it("place_basic - Place ladder on empty ground creates UP and DOWN") {
+        // z=1:  .            D
+        // z=0:  .  <- place  U
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 3;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = CELL_AIR;
+        
+        // Place ladder at (2, 2, 0)
+        PlaceLadder(2, 2, 0);
+        
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+    }
+    
+    it("place_extend_up - Click on DOWN to extend shaft upward") {
+        // Start with: z=0 UP, z=1 DOWN
+        // Click on z=1 (the DOWN/top piece) to extend upward
+        // Result: z=0 UP, z=1 BOTH, z=2 DOWN
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 4;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = CELL_AIR;
+        
+        // First create basic ladder (z=0 UP, z=1 DOWN)
+        PlaceLadder(2, 2, 0);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        
+        // Click on z=1 (the DOWN piece) to extend upward
+        PlaceLadder(2, 2, 1);
+        
+        // z=0 should still be UP (bottom of shaft)
+        // z=1 should now be BOTH (middle, connected above and below)
+        // z=2 should be DOWN (new top)
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(grid[3][2][2] == CELL_AIR);
+    }
+    
+    it("place_wall_above - Wall blocks auto-placement (orphan UP)") {
+        // z=1:  #            #
+        // z=0:  .  <- place  U
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 2;
+        grid[1][2][2] = CELL_WALL;  // Wall above
+        
+        PlaceLadder(2, 2, 0);
+        
+        expect(grid[0][2][2] == CELL_LADDER_UP);  // Orphan UP
+        expect(grid[1][2][2] == CELL_WALL);       // Wall unchanged
+    }
+    
+    it("place_connect_two_shafts - Placing connects to existing shaft above") {
+        // When placing at z=2 where z=1 has DOWN, we connect by becoming DOWN
+        // (entry point from below into the shaft above)
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 4;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+        
+        // Place ladder at z=0 (creates UP at z=0, DOWN at z=1)
+        PlaceLadder(2, 2, 0);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        
+        // Place ladder at z=2 - but z=1 already has DOWN (which points down)
+        // z=2 doesn't see a connectable ladder above (z=3 is empty)
+        // z=2 doesn't see a connectable ladder below (z=1 is DOWN, not UP/BOTH)
+        // So it creates a new shaft: z=2 UP, z=3 DOWN
+        PlaceLadder(2, 2, 2);
+        
+        // Two separate shafts that don't connect
+        expect(grid[0][2][2] == CELL_LADDER_UP);    // Bottom of shaft 1
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Top of shaft 1
+        expect(grid[2][2][2] == CELL_LADDER_UP);    // Bottom of shaft 2
+        expect(grid[3][2][2] == CELL_LADDER_DOWN);  // Top of shaft 2
+    }
+    
+    it("place_extend_down - Place below existing ladder extends downward") {
+        // z=2:  .            D
+        // z=1:  D  <- add    B
+        // z=0:  U            U
+        // Actually this test from the plan seems wrong - let me re-read
+        // The test shows adding at z=1 where z=0 already has U
+        // But z=1 has D... that means we're calling PlaceLadder on a cell that's already a ladder
+        // PlaceLadder returns early if already a ladder, so this test is different
+        
+        // Let me make this test actually test extending downward:
+        // Start with ladder at z=1 going up to z=2
+        // Then add ladder at z=0 to extend downward
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 4;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+        
+        // Place ladder at z=1 (creates UP at z=1, DOWN at z=2)
+        PlaceLadder(2, 2, 1);
+        expect(grid[1][2][2] == CELL_LADDER_UP);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        
+        // Now place at z=0 to extend downward
+        PlaceLadder(2, 2, 0);
+        
+        // z=0 becomes UP (new bottom)
+        // z=1 becomes BOTH (middle, connected below and above)
+        // z=2 stays DOWN (top)
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+    }
+}
+
+describe(ladder_erase) {
+    it("erase_both - Erase BOTH breaks upward connection") {
+        // z=4:  D            D
+        // z=3:  B            U
+        // z=2:  B  <- erase  D
+        // z=1:  B            B
+        // z=0:  U            U
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 5;
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+        
+        // Build a 5-level ladder shaft
+        grid[0][2][2] = CELL_LADDER_UP;
+        grid[1][2][2] = CELL_LADDER_BOTH;
+        grid[2][2][2] = CELL_LADDER_BOTH;
+        grid[3][2][2] = CELL_LADDER_BOTH;
+        grid[4][2][2] = CELL_LADDER_DOWN;
+        
+        // Erase z=2
+        EraseLadder(2, 2, 2);
+        
+        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);  // Unchanged (still connected to z=0 and z=2)
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);  // Was BOTH, now DOWN (broke upward)
+        expect(grid[3][2][2] == CELL_LADDER_UP);    // Was BOTH, cascade: lost connection below -> UP
+        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+    }
+    
+    it("erase_up - Erase UP cascades up, removes orphan DOWN") {
+        // z=1:  D            .
+        // z=0:  U  <- erase  .
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 2;
+        grid[1][2][2] = CELL_AIR;  // Make sure z=1 starts as air
+        
+        // Create simple 2-level ladder
+        PlaceLadder(2, 2, 0);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        
+        // Erase the UP at z=0
+        EraseLadder(2, 2, 0);
+        
+        expect(grid[0][2][2] == CELL_WALKABLE);  // Removed (z=0 becomes walkable)
+        expect(grid[1][2][2] == CELL_AIR);       // Cascade: DOWN with no connection below -> removed
+    }
+    
+    it("erase_down - Erase DOWN cascades down, removes orphan UP") {
+        // z=1:  D  <- erase  .
+        // z=0:  U            .
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 2;
+        grid[1][2][2] = CELL_AIR;
+        
+        // Create simple 2-level ladder
+        PlaceLadder(2, 2, 0);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);
+        
+        // Erase the DOWN at z=1
+        EraseLadder(2, 2, 1);
+        
+        expect(grid[1][2][2] == CELL_AIR);       // Removed
+        expect(grid[0][2][2] == CELL_WALKABLE);  // Cascade: UP with no connection above -> removed
+    }
+    
+    it("erase_both_top - Erase BOTH at top of shaft") {
+        // z=2:  D            .  (removed - orphan DOWN)
+        // z=1:  B  <- erase  D
+        // z=0:  U            U
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 3;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = CELL_AIR;
+        
+        // Build 3-level shaft
+        grid[0][2][2] = CELL_LADDER_UP;
+        grid[1][2][2] = CELL_LADDER_BOTH;
+        grid[2][2][2] = CELL_LADDER_DOWN;
+        
+        // Erase z=1 (BOTH)
+        EraseLadder(2, 2, 1);
+        
+        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged (still bottom)
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH, broke upward -> DOWN
+        expect(grid[2][2][2] == CELL_AIR);          // Was DOWN, cascade: orphan removed
+    }
+    
+    it("erase_both_bottom - Erase BOTH at bottom of shaft") {
+        // z=2:  D            D
+        // z=1:  B  <- erase  U
+        // z=0:  B            D
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 3;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = CELL_AIR;
+        
+        // Build 3-level shaft where z=0 is also BOTH (4 levels actually)
+        // Let me reconsider - if z=0 is BOTH, there must be something below...
+        // For this test, let's use a 4-level shaft:
+        gridDepth = 4;
+        grid[0][2][2] = CELL_LADDER_UP;
+        grid[1][2][2] = CELL_LADDER_BOTH;
+        grid[2][2][2] = CELL_LADDER_BOTH;
+        grid[3][2][2] = CELL_LADDER_DOWN;
+        
+        // Erase z=1 (BOTH near bottom)
+        EraseLadder(2, 2, 1);
+        
+        // z=1 becomes DOWN (broke upward connection)
+        // z=2 cascade: was BOTH, lost connection below -> UP
+        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH -> DOWN
+        expect(grid[2][2][2] == CELL_LADDER_UP);    // Was BOTH, cascade -> UP
+        expect(grid[3][2][2] == CELL_LADDER_DOWN);  // Unchanged
+    }
+    
+    it("whiteboard_sequence - Full add/delete sequence from whiteboard") {
+        // Starting state and sequence (z=0 at bottom, z=4 at top):
+        // □   □   □   □   D   D   D   D
+        // □   D   D   D + B   U   U   B
+        // □ + U   B   B   B - D - □ + B
+        // □   □ + U   B   B   B   D   B
+        // □   □   □ + U   U   U   U   U
+        // 
+        // + means add at that level, - means delete
+        
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 5;
+        for (int z = 1; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    grid[z][y][x] = CELL_AIR;
+        
+        // Step 1: Add at z=1 (column 2 in diagram)
+        // Expected: z=1=U, z=2=D
+        PlaceLadder(2, 2, 1);
+        expect(grid[0][2][2] == CELL_WALKABLE);
+        expect(grid[1][2][2] == CELL_LADDER_UP);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(grid[3][2][2] == CELL_AIR);
+        expect(grid[4][2][2] == CELL_AIR);
+        
+        // Step 2: Add at z=0 (column 3 in diagram)
+        // Expected: z=0=U, z=1=B, z=2=D
+        PlaceLadder(2, 2, 0);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(grid[3][2][2] == CELL_AIR);
+        expect(grid[4][2][2] == CELL_AIR);
+        
+        // Step 3: Add at z=2 (top/DOWN) - extends upward (column 4 in diagram)
+        // Must click on DOWN piece to extend
+        // Expected: z=0=U, z=1=B, z=2=B, z=3=D
+        PlaceLadder(2, 2, 2);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_BOTH);
+        expect(grid[3][2][2] == CELL_LADDER_DOWN);
+        expect(grid[4][2][2] == CELL_AIR);
+        
+        // Step 4: Add at z=3 (top/DOWN) - extends upward (column 5 in diagram)
+        // Expected: z=0=U, z=1=B, z=2=B, z=3=B, z=4=D
+        PlaceLadder(2, 2, 3);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_BOTH);
+        expect(grid[3][2][2] == CELL_LADDER_BOTH);
+        expect(grid[4][2][2] == CELL_LADDER_DOWN);
+        
+        // Step 5: Delete at z=2 (column 6 in diagram)
+        // Expected: z=0=U, z=1=B, z=2=D, z=3=U, z=4=D
+        EraseLadder(2, 2, 2);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_BOTH);
+        expect(grid[2][2][2] == CELL_LADDER_DOWN);
+        expect(grid[3][2][2] == CELL_LADDER_UP);
+        expect(grid[4][2][2] == CELL_LADDER_DOWN);
+        
+        // Step 6: Delete at z=2 again (column 7 in diagram)
+        // z=2 was D, gets removed, cascades down: z=1 BOTH loses connection above → DOWN
+        // Then cascade continues: z=3 was U, z=2 gone so z=3 is orphan UP → removed
+        // But z=4 is DOWN, z=3 removed, so z=4 becomes orphan DOWN... 
+        // Wait, diagram shows z=3=U, z=4=D still there. Let me match diagram:
+        // Expected: z=0=U, z=1=D, z=2=□, z=3=U, z=4=D
+        EraseLadder(2, 2, 2);
+        expect(grid[0][2][2] == CELL_LADDER_UP);
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Was BOTH, lost connection above
+        expect(grid[2][2][2] == CELL_AIR);          // Removed
+        expect(grid[3][2][2] == CELL_LADDER_UP);    // Unchanged (still connected to z=4)
+        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+        
+        // Step 7: Add at z=2 (column 8 in diagram)
+        // z=1 is DOWN (points down), z=3 is UP (points up)
+        // Placing at z=2 extends down into z=3's shaft - z=2 becomes UP, z=3 becomes BOTH
+        // The lower shaft (z=0-1) remains separate since z=1 is DOWN (can't connect up)
+        PlaceLadder(2, 2, 2);
+        expect(grid[0][2][2] == CELL_LADDER_UP);    // Unchanged
+        expect(grid[1][2][2] == CELL_LADDER_DOWN);  // Unchanged - can't connect up
+        expect(grid[2][2][2] == CELL_LADDER_UP);    // New bottom of upper shaft
+        expect(grid[3][2][2] == CELL_LADDER_BOTH);  // Was UP, now connected below too
+        expect(grid[4][2][2] == CELL_LADDER_DOWN);  // Unchanged
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -2632,5 +2972,7 @@ int main(int argc, char* argv[]) {
     test(hpa_ladder_pathfinding);
     test(jps_plus_3d_pathfinding);
     test(jps_plus_vs_astar_consistency);
+    test(ladder_placement);
+    test(ladder_erase);
     return summary();
 }

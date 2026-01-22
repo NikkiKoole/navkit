@@ -740,8 +740,8 @@ void UpdateMovers(void) {
                 // Changing z-level - use the waypoint's coordinates (not mover's position)
                 // The pathfinder guaranteed this waypoint is a ladder cell
                 int cellZ = (int)m->z;
-                if (grid[cellZ][target.y][target.x] == CELL_LADDER && 
-                    grid[target.z][target.y][target.x] == CELL_LADDER) {
+                if (IsLadderCell(grid[cellZ][target.y][target.x]) && 
+                    IsLadderCell(grid[target.z][target.y][target.x])) {
                     m->z = (float)target.z;
                     // Snap to ladder cell center for clean transition
                     m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -794,7 +794,7 @@ void UpdateMovers(void) {
                 if (!canMove && targetIsLadderTransition) {
                     // Moving toward a ladder on different z-level
                     // Allow if the cell is a ladder on the target z-level
-                    canMove = (grid[target.z][newCellY][newCellX] == CELL_LADDER);
+                    canMove = IsLadderCell(grid[target.z][newCellY][newCellX]);
                 }
                 
                 if (canMove) {

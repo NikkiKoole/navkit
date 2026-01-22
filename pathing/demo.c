@@ -20,6 +20,8 @@ Texture2D texGrass;
 Texture2D texWall;
 Texture2D texAir;
 Texture2D texLadder;
+Texture2D texLadderUp;
+Texture2D texLadderDown;
 Texture2D texFloor;
 bool showGraph = false;
 bool showEntrances = false;
@@ -128,11 +130,14 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 
 static Texture2D* GetCellTexture(CellType cell) {
     switch (cell) {
-        case CELL_WALKABLE: return &texGrass;
-        case CELL_WALL:     return &texWall;
-        case CELL_LADDER:   return &texLadder;
-        case CELL_FLOOR:    return &texFloor;
-        case CELL_AIR:      return &texAir;
+        case CELL_WALKABLE:     return &texGrass;
+        case CELL_WALL:         return &texWall;
+        case CELL_LADDER:       return &texLadder;  // Legacy: same as BOTH
+        case CELL_LADDER_BOTH:  return &texLadder;
+        case CELL_LADDER_UP:    return &texLadderUp;
+        case CELL_LADDER_DOWN:  return &texLadderDown;
+        case CELL_FLOOR:        return &texFloor;
+        case CELL_AIR:          return &texAir;
     }
     return &texGrass;
 }
@@ -628,15 +633,13 @@ void HandleInput(void) {
     }
 
     // Ladder drawing shortcut (L key + click/drag)
+    // Uses PlaceLadder for auto-connection behavior
     if (IsKeyDown(KEY_L) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-            if (grid[z][y][x] != CELL_LADDER) {
-                grid[z][y][x] = CELL_LADDER;
-                MarkChunkDirty(x, y, z);
-            }
+            PlaceLadder(x, y, z);
         }
         return;
     }
@@ -671,14 +674,13 @@ void HandleInput(void) {
                         MarkChunkDirty(x, y, z);
                     }
                     break;
-                case 2:  // Draw Ladder
-                    if (grid[z][y][x] != CELL_LADDER) {
-                        grid[z][y][x] = CELL_LADDER;
-                        MarkChunkDirty(x, y, z);
-                    }
+                case 2:  // Draw Ladder (auto-connects with level above)
+                    PlaceLadder(x, y, z);
                     break;
-                case 3:  // Erase (air on z>0, grass on z=0)
-                    {
+                case 3:  // Erase (handles ladder cascade, air on z>0, grass on z=0)
+                    if (IsLadderCell(grid[z][y][x])) {
+                        EraseLadder(x, y, z);
+                    } else {
                         CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
                         if (grid[z][y][x] != eraseType) {
                             grid[z][y][x] = eraseType;
@@ -687,13 +689,13 @@ void HandleInput(void) {
                     }
                     break;
                 case 4:  // Set Start
-                    if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
+                    if (IsCellWalkableAt(z, y, x)) {
                         startPos = (Point){x, y, z};
                         pathLength = 0;
                     }
                     break;
                 case 5:  // Set Goal
-                    if (grid[z][y][x] == CELL_WALKABLE || grid[z][y][x] == CELL_LADDER || grid[z][y][x] == CELL_FLOOR) {
+                    if (IsCellWalkableAt(z, y, x)) {
                         goalPos = (Point){x, y, z};
                         pathLength = 0;
                     }
@@ -702,15 +704,21 @@ void HandleInput(void) {
         }
     }
 
-    // Right-click erases (convenience shortcut)
+    // Right-click erases (convenience shortcut, handles ladder cascade)
     if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
-        CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
-        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight && grid[z][y][x] != eraseType) {
-            grid[z][y][x] = eraseType;
-            MarkChunkDirty(x, y, z);
+        if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+            if (IsLadderCell(grid[z][y][x])) {
+                EraseLadder(x, y, z);
+            } else {
+                CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                if (grid[z][y][x] != eraseType) {
+                    grid[z][y][x] = eraseType;
+                    MarkChunkDirty(x, y, z);
+                }
+            }
         }
     }
 
@@ -808,7 +816,7 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
             InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-            gridDepth = 3;
+            gridDepth = 6;
             // Set z>0 to air (z=0 already walkable from init)
             for (int z = 1; z < gridDepth; z++)
                 for (int gy = 0; gy < gridHeight; gy++)
@@ -936,9 +944,12 @@ void DrawUI(void) {
                     for (int col = 0; col < gridWidth; col++) {
                         char c;
                         switch (grid[z][row][col]) {
-                            case CELL_WALL:   c = '#'; break;
-                            case CELL_LADDER: c = 'L'; break;
-                            default:          c = '.'; break;
+                            case CELL_WALL:        c = '#'; break;
+                            case CELL_LADDER:      c = 'L'; break;  // Legacy
+                            case CELL_LADDER_UP:   c = '<'; break;
+                            case CELL_LADDER_DOWN: c = '>'; break;
+                            case CELL_LADDER_BOTH: c = 'X'; break;
+                            default:               c = '.'; break;
                         }
                         buffer[idx++] = c;
                     }
@@ -1148,6 +1159,8 @@ int main(void) {
     texWall = LoadTexture("assets/img/wall.png");
     texAir = LoadTexture("assets/img/air.png");
     texLadder = LoadTexture("assets/img/ladder.png");
+    texLadderUp = LoadTexture("assets/img/ladder-up.png");
+    texLadderDown = LoadTexture("assets/img/ladder-down.png");
     texFloor = LoadTexture("assets/img/floor.png");
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);

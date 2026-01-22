@@ -22,15 +22,30 @@ extern int chunksY;
 #define MAX_CHUNKS_X (MAX_GRID_WIDTH / 8)   // minimum chunk size of 8
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
-typedef enum { CELL_WALKABLE, CELL_WALL, CELL_LADDER, CELL_AIR, CELL_FLOOR } CellType;
+typedef enum { 
+    CELL_WALKABLE, 
+    CELL_WALL, 
+    CELL_LADDER,       // Legacy: alias for CELL_LADDER_BOTH
+    CELL_AIR, 
+    CELL_FLOOR,
+    CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
+    CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
+    CELL_LADDER_BOTH   // Middle of ladder - can go both directions
+} CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
-// Helper to check if a cell is walkable (includes floor and ladder)
+// Helper to check if a cell is any ladder type
+static inline bool IsLadderCell(CellType cell) {
+    return cell == CELL_LADDER || cell == CELL_LADDER_UP || 
+           cell == CELL_LADDER_DOWN || cell == CELL_LADDER_BOTH;
+}
+
+// Helper to check if a cell is walkable (includes floor and all ladder types)
 static inline bool IsCellWalkableAt(int z, int y, int x) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || cell == CELL_LADDER;
+    return cell == CELL_WALKABLE || cell == CELL_FLOOR || IsLadderCell(cell);
 }
 
 // Helper to check if a cell is air (empty space that can be fallen through)
@@ -63,5 +78,16 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH);
 // '.' = walkable, '#' = wall, 'L' = ladder, newlines separate rows
 // Returns 1 on success, 0 on failure
 int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH);
+
+// Ladder placement with auto-connection
+// Places a ladder at (x,y,z) and auto-connects to level above
+void PlaceLadder(int x, int y, int z);
+
+// Ladder erasure with cascade
+// Erases/downgrades ladder at (x,y,z) and cascades changes
+void EraseLadder(int x, int y, int z);
+
+// Recalculate ladder types in a column based on neighbors
+void RecalculateLadderColumn(int x, int y);
 
 #endif // GRID_H

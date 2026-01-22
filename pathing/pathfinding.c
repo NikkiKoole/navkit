@@ -49,6 +49,41 @@
 
 #define COST_INF 999999
 
+// =============================================================================
+// Ladder Connection Helpers
+// =============================================================================
+// Use new ladder cell types: CELL_LADDER_UP, CELL_LADDER_DOWN, CELL_LADDER_BOTH
+// A valid ladder connection requires matching ends:
+//   - Lower cell must have LADDER_UP or LADDER_BOTH (can go up)
+//   - Upper cell must have LADDER_DOWN or LADDER_BOTH (can come down)
+
+// Can transition UP from z to z+1?
+static inline bool CanClimbUp(int x, int y, int z) {
+    if (z + 1 >= gridDepth) return false;
+    CellType low = grid[z][y][x];
+    CellType high = grid[z+1][y][x];
+    // Legacy CELL_LADDER acts like LADDER_BOTH
+    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
+    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
+    return lowCanUp && highCanDown;
+}
+
+// Can transition DOWN from z to z-1?
+static inline bool CanClimbDown(int x, int y, int z) {
+    if (z - 1 < 0) return false;
+    CellType high = grid[z][y][x];
+    CellType low = grid[z-1][y][x];
+    // Legacy CELL_LADDER acts like LADDER_BOTH
+    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
+    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
+    return highCanDown && lowCanUp;
+}
+
+// Check if there's any valid ladder connection at this position (either direction)
+static inline bool HasLadderConnection(int x, int y, int z) {
+    return CanClimbUp(x, y, z) || CanClimbDown(x, y, z);
+}
+
 // State
 Entrance entrances[MAX_ENTRANCES];
 int entranceCount = 0;
@@ -507,11 +542,11 @@ void BuildEntrances(void) {
     }
     
     // Detect ladders and create ladder links
-    // A ladder link connects two z-levels where both have CELL_LADDER at the same (x,y)
+    // A ladder link connects two z-levels using CanClimbUp helper
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                if (CanClimbUp(x, y, z)) {
                     // Found a ladder connection between z and z+1
                     if (ladderLinkCount < MAX_LADDERS) {
                         // Create entrances on both z-levels for this ladder
@@ -952,7 +987,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                if (CanClimbUp(x, y, z)) {
                     if (ladderLinkCount < MAX_LADDERS && newCount + 2 <= MAX_ENTRANCES) {
                         int cx = x / chunkWidth;
                         int cy = y / chunkHeight;
@@ -1358,37 +1393,35 @@ void RunAStar(void) {
         }
         
         // Expand Z neighbors (ladder connections)
-        if (grid[bestZ][bestY][bestX] == CELL_LADDER) {
-            // Try going up (z+1)
+        // Try going up (z+1)
+        if (CanClimbUp(bestX, bestY, bestZ)) {
             int nz = bestZ + 1;
-            if (nz < gridDepth && grid[nz][bestY][bestX] == CELL_LADDER) {
-                if (!nodeData[nz][bestY][bestX].closed) {
-                    int moveCost = 10;  // Same cost as cardinal move
-                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                    if (ng < nodeData[nz][bestY][bestX].g) {
-                        nodeData[nz][bestY][bestX].g = ng;
-                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                        nodeData[nz][bestY][bestX].parentX = bestX;
-                        nodeData[nz][bestY][bestX].parentY = bestY;
-                        nodeData[nz][bestY][bestX].parentZ = bestZ;
-                        nodeData[nz][bestY][bestX].open = true;
-                    }
+            if (!nodeData[nz][bestY][bestX].closed) {
+                int moveCost = 10;  // Same cost as cardinal move
+                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                if (ng < nodeData[nz][bestY][bestX].g) {
+                    nodeData[nz][bestY][bestX].g = ng;
+                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                    nodeData[nz][bestY][bestX].parentX = bestX;
+                    nodeData[nz][bestY][bestX].parentY = bestY;
+                    nodeData[nz][bestY][bestX].parentZ = bestZ;
+                    nodeData[nz][bestY][bestX].open = true;
                 }
             }
-            // Try going down (z-1)
-            nz = bestZ - 1;
-            if (nz >= 0 && grid[nz][bestY][bestX] == CELL_LADDER) {
-                if (!nodeData[nz][bestY][bestX].closed) {
-                    int moveCost = 10;
-                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                    if (ng < nodeData[nz][bestY][bestX].g) {
-                        nodeData[nz][bestY][bestX].g = ng;
-                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                        nodeData[nz][bestY][bestX].parentX = bestX;
-                        nodeData[nz][bestY][bestX].parentY = bestY;
-                        nodeData[nz][bestY][bestX].parentZ = bestZ;
-                        nodeData[nz][bestY][bestX].open = true;
-                    }
+        }
+        // Try going down (z-1)
+        if (CanClimbDown(bestX, bestY, bestZ)) {
+            int nz = bestZ - 1;
+            if (!nodeData[nz][bestY][bestX].closed) {
+                int moveCost = 10;
+                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                if (ng < nodeData[nz][bestY][bestX].g) {
+                    nodeData[nz][bestY][bestX].g = ng;
+                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                    nodeData[nz][bestY][bestX].parentX = bestX;
+                    nodeData[nz][bestY][bestX].parentY = bestY;
+                    nodeData[nz][bestY][bestX].parentZ = bestZ;
+                    nodeData[nz][bestY][bestX].open = true;
                 }
             }
         }
@@ -1973,10 +2006,10 @@ static bool JpsIsWalkable3D(int x, int y, int z) {
     return IsCellWalkableAt(z, y, x);
 }
 
-// Check if cell is a ladder (forced jump point for 3D JPS)
+// Check if cell has a ladder connection (forced jump point for 3D JPS)
 static bool JpsIsLadder(int x, int y, int z) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    return grid[z][y][x] == CELL_LADDER;
+    return HasLadderConnection(x, y, z);
 }
 
 // Jump in a cardinal direction (4-dir or 8-dir) with z-level support
@@ -2171,37 +2204,35 @@ void RunJPS(void) {
         }
 
         // Expand Z neighbors (ladder connections) - same as A* 3D
-        if (grid[bestZ][bestY][bestX] == CELL_LADDER) {
-            // Try going up (z+1)
+        // Try going up (z+1)
+        if (CanClimbUp(bestX, bestY, bestZ)) {
             int nz = bestZ + 1;
-            if (nz < gridDepth && grid[nz][bestY][bestX] == CELL_LADDER) {
-                if (!nodeData[nz][bestY][bestX].closed) {
-                    int moveCost = 10;  // Same cost as cardinal move
-                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                    if (ng < nodeData[nz][bestY][bestX].g) {
-                        nodeData[nz][bestY][bestX].g = ng;
-                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                        nodeData[nz][bestY][bestX].parentX = bestX;
-                        nodeData[nz][bestY][bestX].parentY = bestY;
-                        nodeData[nz][bestY][bestX].parentZ = bestZ;
-                        nodeData[nz][bestY][bestX].open = true;
-                    }
+            if (!nodeData[nz][bestY][bestX].closed) {
+                int moveCost = 10;  // Same cost as cardinal move
+                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                if (ng < nodeData[nz][bestY][bestX].g) {
+                    nodeData[nz][bestY][bestX].g = ng;
+                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                    nodeData[nz][bestY][bestX].parentX = bestX;
+                    nodeData[nz][bestY][bestX].parentY = bestY;
+                    nodeData[nz][bestY][bestX].parentZ = bestZ;
+                    nodeData[nz][bestY][bestX].open = true;
                 }
             }
-            // Try going down (z-1)
-            nz = bestZ - 1;
-            if (nz >= 0 && grid[nz][bestY][bestX] == CELL_LADDER) {
-                if (!nodeData[nz][bestY][bestX].closed) {
-                    int moveCost = 10;
-                    int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
-                    if (ng < nodeData[nz][bestY][bestX].g) {
-                        nodeData[nz][bestY][bestX].g = ng;
-                        nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
-                        nodeData[nz][bestY][bestX].parentX = bestX;
-                        nodeData[nz][bestY][bestX].parentY = bestY;
-                        nodeData[nz][bestY][bestX].parentZ = bestZ;
-                        nodeData[nz][bestY][bestX].open = true;
-                    }
+        }
+        // Try going down (z-1)
+        if (CanClimbDown(bestX, bestY, bestZ)) {
+            int nz = bestZ - 1;
+            if (!nodeData[nz][bestY][bestX].closed) {
+                int moveCost = 10;
+                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                if (ng < nodeData[nz][bestY][bestX].g) {
+                    nodeData[nz][bestY][bestX].g = ng;
+                    nodeData[nz][bestY][bestX].f = ng + Heuristic3D(bestX, bestY, nz, goalPos.x, goalPos.y, goalPos.z);
+                    nodeData[nz][bestY][bestX].parentX = bestX;
+                    nodeData[nz][bestY][bestX].parentY = bestY;
+                    nodeData[nz][bestY][bestX].parentZ = bestZ;
+                    nodeData[nz][bestY][bestX].open = true;
                 }
             }
         }
@@ -2234,10 +2265,10 @@ static bool JpsPlusIsWalkable(int x, int y, int z) {
     return IsCellWalkableAt(z, y, x);
 }
 
-// Check if cell is a ladder (forced stop for JPS+ precomputation)
+// Check if cell has a ladder connection (forced stop for JPS+ precomputation)
 static bool JpsPlusIsLadder(int x, int y, int z) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    return grid[z][y][x] == CELL_LADDER;
+    return HasLadderConnection(x, y, z);
 }
 
 // Check if diagonal move is allowed (no corner cutting)
@@ -2712,12 +2743,12 @@ void BuildJpsLadderGraph(void) {
     }
     
     // Step 1: Scan grid for ladder pairs and create endpoints
-    // A ladder connects z and z+1 where both have CELL_LADDER at same (x,y)
+    // A ladder connects z and z+1 using CanClimbUp helper
     int ladderIndex = 0;
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_LADDER && grid[z + 1][y][x] == CELL_LADDER) {
+                if (CanClimbUp(x, y, z)) {
                     // Found a ladder - create two endpoints
                     if (g->endpointCount + 2 > MAX_LADDER_ENDPOINTS) {
                         TraceLog(LOG_WARNING, "JPS+ ladder graph: too many endpoints");

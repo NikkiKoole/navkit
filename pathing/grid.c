@@ -1,5 +1,7 @@
 #include "grid.h"
+#include "pathfinding.h"
 #include <string.h>
+#include <stdio.h>
 
 CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
@@ -101,6 +103,155 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
     return 1;
 }
 
+// ============== LADDER PLACEMENT/ERASURE ==============
+
+// Forward declarations for cascade functions
+static void CascadeBreakDown(int x, int y, int z);
+static void CascadeBreakUp(int x, int y, int z);
+
+static bool CanReceiveFromBelow(CellType c) {
+    return c == CELL_LADDER_DOWN || c == CELL_LADDER_BOTH || c == CELL_LADDER;
+}
+
+static bool CanReceiveFromAbove(CellType c) {
+    return c == CELL_LADDER_UP || c == CELL_LADDER_BOTH || c == CELL_LADDER;
+}
+
+static bool IsEmptyCell(CellType c) {
+    return c == CELL_AIR || c == CELL_WALKABLE || c == CELL_FLOOR;
+}
+
+void RecalculateLadderColumn(int x, int y) {
+    for (int z = 0; z < gridDepth; z++) {
+        if (!IsLadderCell(grid[z][y][x])) continue;
+        
+        bool up = (z + 1 < gridDepth) && CanReceiveFromBelow(grid[z+1][y][x]);
+        bool down = (z > 0) && CanReceiveFromAbove(grid[z-1][y][x]);
+        
+        CellType newType = up ? (down ? CELL_LADDER_BOTH : CELL_LADDER_UP) 
+                              : (down ? CELL_LADDER_DOWN : CELL_LADDER_UP);
+        
+        if (grid[z][y][x] != newType) {
+            grid[z][y][x] = newType;
+            MarkChunkDirty(x, y, z);
+        }
+    }
+}
+
+void PlaceLadder(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    
+    CellType current = grid[z][y][x];
+    if (current == CELL_WALL) return;
+    
+    // If already a ladder, only extend if clicking on the TOP piece (DOWN)
+    if (IsLadderCell(current)) {
+        if (current == CELL_LADDER_DOWN && z + 1 < gridDepth && IsEmptyCell(grid[z+1][y][x])) {
+            grid[z + 1][y][x] = CELL_LADDER_DOWN;
+            MarkChunkDirty(x, y, z + 1);
+            RecalculateLadderColumn(x, y);
+        }
+        return;
+    }
+    
+    CellType above = (z + 1 < gridDepth) ? grid[z+1][y][x] : CELL_WALL;
+    CellType below = (z > 0) ? grid[z-1][y][x] : CELL_WALL;
+    
+    bool connectAbove = CanReceiveFromBelow(above);
+    bool connectBelow = CanReceiveFromAbove(below);
+    bool extendDown = (above == CELL_LADDER_UP);
+    
+    if (connectAbove && connectBelow) {
+        grid[z][y][x] = CELL_LADDER_BOTH;
+    } else if (connectAbove) {
+        grid[z][y][x] = CELL_LADDER_DOWN;
+    } else if (extendDown) {
+        grid[z][y][x] = CELL_LADDER_UP;
+    } else if (connectBelow) {
+        grid[z][y][x] = CELL_LADDER_UP;
+        if (z + 1 < gridDepth && IsEmptyCell(above)) {
+            grid[z+1][y][x] = CELL_LADDER_DOWN;
+            MarkChunkDirty(x, y, z+1);
+        }
+    } else {
+        // New shaft - UP here, DOWN above if room
+        grid[z][y][x] = CELL_LADDER_UP;
+        if (z + 1 < gridDepth && IsEmptyCell(above)) {
+            grid[z+1][y][x] = CELL_LADDER_DOWN;
+            MarkChunkDirty(x, y, z+1);
+        }
+        MarkChunkDirty(x, y, z);
+        return;  // Don't recalculate - would incorrectly merge separate shafts
+    }
+    MarkChunkDirty(x, y, z);
+    RecalculateLadderColumn(x, y);
+}
+
+// Called when the cell below lost its upward connection
+static void CascadeBreakDown(int x, int y, int z) {
+    if (z < 0 || z >= gridDepth) return;
+    CellType cell = grid[z][y][x];
+    if (!IsLadderCell(cell)) return;
+    
+    MarkChunkDirty(x, y, z);
+    
+    if (cell == CELL_LADDER_BOTH) {
+        // Lost connection below: BOTH → UP
+        grid[z][y][x] = CELL_LADDER_UP;
+    } else if (cell == CELL_LADDER_DOWN) {
+        // DOWN with no connection below: remove and cascade up
+        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        CascadeBreakDown(x, y, z + 1);
+    }
+    // UP stays UP (still has its upward connection)
+}
+
+// Called when the cell above lost its downward connection
+static void CascadeBreakUp(int x, int y, int z) {
+    if (z < 0 || z >= gridDepth) return;
+    CellType cell = grid[z][y][x];
+    if (!IsLadderCell(cell)) return;
+    
+    MarkChunkDirty(x, y, z);
+    
+    if (cell == CELL_LADDER_BOTH) {
+        // Lost connection above: BOTH → DOWN
+        grid[z][y][x] = CELL_LADDER_DOWN;
+    } else if (cell == CELL_LADDER_UP) {
+        // UP with no connection above: remove and cascade down
+        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        CascadeBreakUp(x, y, z - 1);
+    }
+    // DOWN stays DOWN (still has its downward connection)
+}
+
+void EraseLadder(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    
+    CellType cell = grid[z][y][x];
+    if (!IsLadderCell(cell)) return;
+    
+    MarkChunkDirty(x, y, z);
+    
+    if (cell == CELL_LADDER_BOTH) {
+        // Break upward connection: BOTH → DOWN
+        grid[z][y][x] = CELL_LADDER_DOWN;
+        // Cascade upward: break the cell above's downward connection
+        CascadeBreakDown(x, y, z + 1);
+        
+    } else if (cell == CELL_LADDER_UP) {
+        // Remove completely, cascade upward
+        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        CascadeBreakDown(x, y, z + 1);
+        
+    } else if (cell == CELL_LADDER_DOWN) {
+        // Remove completely, cascade downward
+        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        CascadeBreakUp(x, y, z - 1);
+    }
+}
+
 int InitGridFromAscii(const char* ascii) {
     return InitGridFromAsciiWithChunkSize(ascii, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
 }
@@ -197,7 +348,13 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
                 if (*p == '#') {
                     grid[currentFloor][y][x] = CELL_WALL;
                 } else if (*p == 'L') {
-                    grid[currentFloor][y][x] = CELL_LADDER;
+                    grid[currentFloor][y][x] = CELL_LADDER;  // Legacy
+                } else if (*p == '<') {
+                    grid[currentFloor][y][x] = CELL_LADDER_UP;
+                } else if (*p == '>') {
+                    grid[currentFloor][y][x] = CELL_LADDER_DOWN;
+                } else if (*p == 'X') {
+                    grid[currentFloor][y][x] = CELL_LADDER_BOTH;
                 } else {
                     grid[currentFloor][y][x] = CELL_WALKABLE;
                 }
