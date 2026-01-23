@@ -1,5 +1,7 @@
 # Roadmap
 
+**Status: COMPLETED/ARCHIVED** - Layers 1-3 done, remaining items moved to todo.md
+
 Components to add to the navigation system.
 
 ---
@@ -10,25 +12,25 @@ These must be implemented in order - each layer builds on the previous.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  LAYER 4: Social Navigation                                     │
+│  LAYER 4: Social Navigation                      ⏳ IN TODO     │
 │  Queuing, yielding, lane preference, following                  │
 │  Requires: steering behaviors + obstacles + pathfinding         │
 ├─────────────────────────────────────────────────────────────────┤
-│  LAYER 3: Pathfinding Integration                               │
+│  LAYER 3: Pathfinding Integration                ✓ DONE         │
 │  Path following behavior, path smoothing, dynamic replanning    │
 │  Requires: steering behaviors + obstacles                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  LAYER 2: Static Obstacles & Walls                              │
+│  LAYER 2: Static Obstacles & Walls               ✓ DONE         │
 │  Wall representation, obstacle shapes, ray casting, wall slide  │
 │  Requires: steering behaviors                                   │
 ├─────────────────────────────────────────────────────────────────┤
-│  LAYER 1: Full Steering Behaviors                    ✓ DONE     │
+│  LAYER 1: Full Steering Behaviors                ✓ DONE         │
 │  All Craig Reynolds behaviors implemented                       │
 │  See steering/steering.h for full API                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Layer 1: Full Steering Behaviors ✓
+### Layer 1: Full Steering Behaviors - DONE
 
 **Individual Behaviors:**
 - [x] **Seek** - move toward a target position
@@ -68,78 +70,74 @@ These must be implemented in order - each layer builds on the previous.
 **Files:** `steering/steering.h`, `steering/steering.c`
 **Demo:** `make steer` then press 1-9, 0, Q, W, E for scenarios
 
-### Layer 2: Static Obstacles & Walls
+### Layer 2: Static Obstacles & Walls - DONE
 - [x] **Wall representation** - line segments (Wall struct)
 - [x] **Obstacle shapes** - circles (CircleObstacle struct)
-- [ ] **Spatial queries** - "what obstacles are near me?"
 - [x] **Ray casting** - line-of-sight, wall detection ahead
 - [x] **Obstacle avoidance steering** - feeler rays or force fields
 - [x] **Wall sliding** - slide along walls rather than stopping
 - [x] **Wall repulsion** - push movers away from walls
 
-### Layer 3: Pathfinding Integration
+Note: Spatial queries ("what obstacles are near me?") moved to todo.md as "Spatial Queries Layer"
+
+### Layer 3: Pathfinding Integration - DONE
 - [x] **Path following behavior** - smoothly traverse waypoints
 - [x] **Path smoothing** - string-pulling, remove unnecessary waypoints
 - [x] **Dynamic replanning** - request new path when blocked (LOS check)
 
-### Layer 4: Social Navigation
+### Layer 4: Social Navigation - MOVED TO TODO
 - [ ] **Queuing** - orderly lines at bottlenecks
 - [ ] **Yielding** - agents give way to each other
 - [ ] **Lane preference** - keep-right/left for counter-flow
 - [x] **Following** - agents follow others (Leader Following)
 - [ ] **Personal space** - context-dependent spacing
 
-See [social-navigation.md](social-navigation.md) for detailed design.
-
 ---
 
-# Other Components (no strict order)
+# Other Components - Status
 
-## Flow Fields / Vector Fields
+## Flow Fields / Vector Fields - MOVED TO TODO
 - Pre-computed direction maps for mass unit movement toward a single target
 - Much more efficient than individual pathfinding when many units share a goal
-- Used in RTS games (Supreme Commander, StarCraft 2)
 
-## Navigation Mesh (NavMesh)
+## Navigation Mesh (NavMesh) - NOT NEEDED
 - Polygon-based walkable areas instead of grid cells
-- More memory efficient for large open spaces
-- Better for 3D or irregular terrain
-- Pairs well with HPA* for hierarchical queries
+- Decision: Grid-based approach sufficient for current needs
 
-## Mover Collision Avoidance — DONE
+## Mover Collision Avoidance - DONE
 Implemented in `pathing/mover.c`:
 - Boids-style separation (spatial grid for neighbor lookup)
 - Wall repulsion and wall sliding
 - Knot fix (larger waypoint arrival + reduced avoidance near waypoints)
 - Stuck detection with auto-repath
 
-## ~~ORCA/RVO~~ — REMOVED
+## ~~ORCA/RVO~~ - REMOVED
 We experimented with ORCA but removed it because:
 - Linear programming solver produces jerky velocity changes
 - Falls back to heuristics when constraints become infeasible
 - Agents appear to "teleport" their velocity direction
 
-## Formation System
+## Formation System - MOVED TO TODO
 - Units moving in formation (wedge, line, box)
 - Leader-follower patterns
 - Formation pathfinding (the formation as a single entity)
 
-## Spatial Queries Layer
+## Spatial Queries Layer - MOVED TO TODO
 - Unified interface for "find nearest X" queries
 - K-nearest neighbors, range queries, ray/line-of-sight
 - Currently have bucket grids; could add quadtrees, R-trees, or BVH
 
-## Terrain Cost / Influence Maps
+## Terrain Cost / Influence Maps - MOVED TO TODO
 - Variable movement costs (mud slows, roads speed up)
 - Threat/danger maps for tactical AI
 - Heat maps showing congestion
 
-## Multi-layer Navigation
+## Multi-layer Navigation - MOVED TO TODO
 - Bridges, tunnels, multi-floor buildings
 - Teleporters, ladders, jump pads
 - Each layer has its own navmesh/grid with connections
 
-## Debug Visualization Tools
+## Debug Visualization Tools - DONE
 - Path visualization (implemented)
 - Velocity vectors, avoidance radii
 - Spatial grid overlay
@@ -155,18 +153,18 @@ We experimented with ORCA but removed it because:
 ├─────────────────────────────────────────────────┤
 │  Spatial Index    │  World Representation       │
 │  - Bucket Grid ✓  │  - Grid ✓                   │
-│  - Quadtree       │  - NavMesh                  │
-│  - BVH            │  - Flow Fields              │
+│  - Quadtree       │  - NavMesh (not needed)     │
+│  - BVH            │  - Flow Fields (in todo)    │
 ├───────────────────┼─────────────────────────────┤
 │  Pathfinding      │  Local Avoidance            │
 │  - A* ✓           │  - Separation ✓             │
 │  - HPA* ✓         │  - Steering behaviors ✓     │
-│  - JPS/JPS+ ✓     │  - Social navigation        │
+│  - JPS/JPS+ ✓     │  - Social navigation (todo) │
 │  - Flow Fields    │                             │
 ├───────────────────┴─────────────────────────────┤
 │  Movement Layer                                 │
-│  - Path smoothing                               │
-│  - Formations                                   │
+│  - Path smoothing ✓                             │
+│  - Formations (in todo)                         │
 │  - Animation integration                        │
 └─────────────────────────────────────────────────┘
 ```

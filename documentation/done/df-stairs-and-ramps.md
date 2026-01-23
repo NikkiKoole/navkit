@@ -1,5 +1,7 @@
 # Plan: DF-Style Stairs and Ramps
 
+**Status: ARCHIVED** - Design doc for Directional ladders and Ramps (both in todo.md). Contains detailed implementation plan.
+
 ## Goal
 Add Dwarf Fortress-style vertical movement: directional stairs (up-only, down-only, bidirectional) and ramps, with least resistance path.
 

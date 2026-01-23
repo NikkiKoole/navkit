@@ -1,5 +1,7 @@
 # Pathfinding Code Refactoring Notes
 
+**Status: ARCHIVED** - Refactoring suggestions. Key items covered in todo.md under "Refactoring" (~200 lines saved). This doc has detailed locations and code examples.
+
 Code review focusing on DRY, KISS, and SOLID principles. These are suggestions for cleanup - the functionality is correct and should not be changed.
 
 ---

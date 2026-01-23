@@ -10,6 +10,26 @@ This creates smooth, physically-plausible motion because agents can't instantly 
 
 ---
 
+## Two Agent Models
+
+The library provides two distinct agent types:
+
+**Boid (Classic Reynolds)**
+- Velocity-based: facing direction = atan2(vel.y, vel.x)
+- No explicit orientation - agents always face where they're moving
+- Turn sharpness emerges from maxForce and maxSpeed
+- Use for: flocking, crowds, simple AI
+
+**Vehicle (Curvature-Limited)**
+- Explicit heading independent of motion direction
+- Turn rate and acceleration constraints
+- Can face a direction while stationary or moving differently
+- Use for: cars, spaceships, tanks, anything needing independent orientation
+
+Behaviors like Face and LookWhereYoureGoing require explicit orientation and are only available for Vehicle.
+
+---
+
 ## Implemented Behaviors
 
 ### Individual Behaviors
@@ -17,6 +37,7 @@ This creates smooth, physically-plausible motion because agents can't instantly 
 |----------|-------------|
 | `steering_seek()` | Move toward target position |
 | `steering_flee()` | Move away from target position |
+| `steering_departure()` | Flee with deceleration as agent gets farther (opposite of arrive) |
 | `steering_arrive()` | Seek with smooth deceleration |
 | `steering_pursuit()` | Chase moving target (predicts position) |
 | `steering_evasion()` | Flee from moving target |
@@ -119,6 +140,7 @@ Hard collision handling (call after `steering_apply`).
 | `steering_resolve_obstacle_collision()` | Push out of circles |
 | `steering_resolve_wall_collision()` | Push out of walls |
 | `steering_resolve_agent_collision()` | Push agents apart |
+| `steering_resolve_agent_collision_elastic()` | Push agents apart with restitution (bounciness) |
 
 ### Combination Helpers
 | Function | Description |

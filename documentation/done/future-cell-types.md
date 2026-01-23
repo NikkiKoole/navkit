@@ -1,5 +1,7 @@
 # Future Cell Types
 
+**Status: ARCHIVED** - Key items extracted to todo.md (Easy cell types, Variable movement costs, Directional ladders, Ramps, Multi-cell stairs)
+
 Ideas for new cell types to make worlds more interesting.
 
 ## Current State

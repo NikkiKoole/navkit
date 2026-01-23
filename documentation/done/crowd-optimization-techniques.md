@@ -1,5 +1,7 @@
 # Crowd Simulation Optimization Techniques
 
+**Status: ARCHIVED** - Reference doc. Done: View frustum culling (grid), Staggered updates. Todo items extracted to todo.md (mover culling, prefix sums, periodic sorting, Y-band sorting).
+
 Reference document based on `crowd-experiment/demo.c` implementations.
 
 ## 1. Spatial Grid with Prefix Sums (Bucket Grid)

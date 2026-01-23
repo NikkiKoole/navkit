@@ -1,4 +1,10 @@
-String Pulling with Variable Cost Terrain
+# Variable Cost Terrain Implications
+
+**Status: ARCHIVED** - Reference doc for when Variable movement costs (in todo.md) is implemented. Key insight: JPS/JPS+ don't support variable costs, must fall back to A*.
+
+---
+
+## String Pulling with Variable Cost Terrain
 String pulling (the Funnel Algorithm) finds the shortest Euclidean path through a corridor of polygons. With variable cost terrain, the shortest distance isn't necessarily the cheapest cost—and standard string pulling breaks.
 
 The Standard Workflow

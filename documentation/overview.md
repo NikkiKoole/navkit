@@ -1,80 +1,129 @@
-# Overview
+# NavKit Pathing
 
-This is a **game AI/agent simulation system** built with **raylib** (a C game development library). It has two main components:
+A 3D grid-based pathfinding system with multiple algorithms, mover simulation, and an interactive demo built with raylib.
 
-## 1. Pathing System (`/pathing`)
+## Overview
 
-A sophisticated **pathfinding framework** with multiple algorithms and mover simulation.
+The pathing system provides four pathfinding algorithms (A*, HPA*, JPS, JPS+) operating on a chunked 3D grid. Movers are agents that follow computed paths with avoidance, wall sliding, and stuck detection. The demo lets you experiment with all of these features interactively.
 
-### Pathfinding Algorithms
-- **A\*** - Classic grid-based pathfinding with 4-dir or 8-dir movement
-- **HPA\*** - Hierarchical approach: chunks, entrances, abstract graph, local refinement
-- **JPS** - Jump Point Search, optimized A* that skips empty areas
-- **JPS+** - JPS with precomputed jump distances
+## Grid System
 
-### Grid Features
-- Chunked grid system (configurable sizes up to 512x512)
-- Multiple terrain generators (sparse, city, perlin, maze, dungeon, caves, etc.)
-- Incremental updates - only dirty chunks rebuilt when terrain changes
+The world is represented as a 3D grid of cells, organized into chunks for efficient incremental updates.
 
-### Mover System
-Movers are agents that follow paths with realistic behavior:
+### Cell Types
 
-- **Path following** with string pulling optimization
-- **Mover avoidance** - boids-style separation from neighbors
-- **Wall handling**:
-  - Wall repulsion (push away before collision)
-  - Wall sliding (slide along walls)
-- **Knot fix** - prevents movers getting stuck at shared waypoints
-- **Stuck detection** - auto-repath when no progress made
-- **Automatic replanning** when path is blocked (LOS check)
-- 60Hz fixed timestep simulation
+- **WALKABLE** — Open ground that movers can traverse
+- **WALL** — Impassable obstacle
+- **FLOOR** — Walkable surface on upper z-levels
+- **AIR** — Empty space (non-walkable, used above floors)
+- **LADDER** — Vertical connection between z-levels
+- **LADDER_UP / LADDER_DOWN / LADDER_BOTH** — Directional ladder variants
 
-### Demo Controls (Movers section)
-- **Avoidance**: Enable/disable mover separation
-- **Directional**: Filter avoidance by wall clearance
-- **Walls**: Repulsion, sliding, knot fix toggles
-- **Debug Views**: Visualize neighbors, open areas, knots, stuck movers
+### Chunked Architecture
 
-## 2. Steering/Crowd Simulation (`/steering`)
+The grid divides into 32×32 chunks. When terrain changes, only affected chunks are marked dirty and rebuilt. This keeps pathfinding data current without full rebuilds.
 
-A **large-scale agent crowd simulation** (100,000 agents!) with:
+## Pathfinding Algorithms
 
-- **28+ steering behaviors** - seek, flee, arrive, pursuit, wander, flocking, etc.
-- **Boids-style separation** - agents avoid each other using spatial queries
-- **Bucketed spatial grid** - fast neighbor lookups using prefix sums
-- **Y-sorting for 2.5D rendering** - correct draw order
-- **Context steering** - interest/danger maps for intelligent navigation
-- **Social Force Model** - physics-based crowd simulation
-- **Vehicle behaviors** - pure pursuit, stanley controller, IDM
+### A*
 
-See `steering.md` for full behavior reference.
+Standard grid-based A* with 8-directional movement. Explores neighbors using a priority queue ordered by f = g + h. Works well for small to medium maps.
 
-## Architecture
+### HPA* (Hierarchical Pathfinding A*)
+
+Builds an abstract graph from chunk entrances. Pathfinding happens in two phases: first on the abstract graph to find which chunks to traverse, then locally within each chunk. Scales better to large maps than plain A*.
+
+### JPS (Jump Point Search)
+
+Optimized A* that exploits grid structure. Instead of exploring every neighbor, it jumps in straight lines until hitting walls or forced neighbors. Significantly reduces nodes explored on open maps.
+
+### JPS+ (Precomputed JPS)
+
+Precomputes jump distances for every cell in all 8 directions. Runtime pathfinding becomes a series of lookups rather than scans. The fastest algorithm for static maps.
+
+### 3D Pathfinding with Ladders
+
+JPS+ supports multi-level pathfinding through a ladder graph. The system:
+1. Scans the grid for ladder connections between z-levels
+2. Computes all-pairs shortest paths between ladder endpoints using Floyd-Warshall
+3. At query time, connects start/goal to nearby ladder endpoints and finds the best route through the graph
+4. Stitches together 2D path segments with ladder transitions
+
+## Mover System
+
+Movers are agents that follow paths with realistic movement behavior.
+
+### Path Following
+
+Movers advance through waypoints toward their goal. String pulling optimization allows movers to skip intermediate waypoints when they have line-of-sight to later ones.
+
+### Avoidance
+
+Movers maintain separation from each other using a spatial grid with prefix sums for O(1) neighbor queries. Configurable options include:
+- Avoidance radius
+- Directional filtering (ignore movers behind walls)
+- Avoidance strength
+
+### Wall Handling
+
+- **Wall repulsion** — Gradual force pushing movers away from walls before collision
+- **Wall sliding** — Movers slide along walls rather than stopping
+- **Knot fix** — Prevents movers from bunching up at shared waypoints
+
+### Stuck Detection
+
+If a mover makes no progress for a configurable duration, it triggers replanning. The system also checks line-of-sight to the next waypoint and replans if blocked.
+
+## Terrain Generators
+
+The demo includes 13 procedural terrain generators:
+
+| Generator | Description |
+|-----------|-------------|
+| Labyrinth3D | Multi-floor maze with connecting ladders |
+| Spiral3D | Spiraling ramp structure |
+| DungeonRooms | Connected rectangular rooms |
+| Caves | Organic cave-like terrain |
+| Towers | Vertical tower structures with ladder cores |
+| GalleryFlat | Open areas with pillars |
+| OfficeBuilding | Multi-story building with stairwells and corridors |
+| Castle | Walled castle with towers, courtyard, and wall walks |
+| CouncilEstate | UK-style estate with tower blocks and terraced housing |
+| Mixed | Procedural mix of city and open terrain zones |
+
+Each generator places appropriate ladders to connect floors, enabling full 3D navigation.
+
+## Code Structure
 
 ```
-navkit/
-├── pathing/           # Pathfinding + movers
-│   ├── grid.c/h       # Grid representation
-│   ├── pathfinding.c/h # A*, HPA*, JPS algorithms
-│   ├── mover.c/h      # Mover simulation with avoidance
-│   ├── terrain.c/h    # Map generators
-│   └── demo.c         # Interactive demo
-│
-├── steering/          # Steering behaviors library
-│   ├── steering.c/h   # 28+ behaviors
-│   └── demo.c         # Behavior showcase
-│
-├── crowd-experiment/  # Large-scale crowd test
-│
-└── documentation/     # Design docs and plans
+pathing/
+├── grid.c/h          # Grid representation, cell types, chunk management
+├── pathfinding.c/h   # A*, HPA*, JPS, JPS+ implementations (~3100 lines)
+├── mover.c/h         # Mover simulation, avoidance, path following (~1000 lines)
+├── terrain.c/h       # Terrain generators (~2300 lines)
+└── demo.c            # Interactive raylib demo
 ```
 
-## Running the Demos
+Total: approximately 7,000 lines of C with no dependencies beyond raylib.
+
+## Running the Demo
 
 ```bash
-make           # Build all
-./bin/path     # Pathfinding demo with movers
-./bin/steer    # Steering behaviors showcase
-./bin/crowd    # Large crowd simulation
+make
+./bin/path
 ```
+
+### Demo Controls
+
+- **Left click** — Set goal for all movers
+- **Right click** — Paint/erase walls
+- **Number keys** — Switch pathfinding algorithm
+- **Sidebar** — Toggle avoidance, wall handling, debug visualization
+- **Spawn controls** — Add/remove movers
+
+The demo visualizes paths, explored nodes, chunk boundaries, and mover state in real-time.
+
+## See Also
+
+- [todo.md](todo.md) - Planned features and improvements
+- [done/](done/) - Archived design docs for implemented features
