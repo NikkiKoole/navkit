@@ -5,7 +5,7 @@
 #include "items.h"
 
 #define MAX_STOCKPILES 64
-#define MAX_STOCKPILE_SIZE 16  // max width/height
+#define MAX_STOCKPILE_SIZE 32  // max width/height
 #define MAX_STACK_SIZE 10      // max items per slot
 
 typedef struct {
@@ -13,6 +13,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[3];  // indexed by ItemType (RED, GREEN, BLUE)
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];     // which cells are active (for non-rectangular shapes)
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];      // item index per tile, -1 = empty
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // mover index per tile, -1 = none
     // Stacking support
@@ -42,6 +43,10 @@ extern int stockpileCount;
 void ClearStockpiles(void);
 int CreateStockpile(int x, int y, int z, int width, int height);
 void DeleteStockpile(int index);
+void AddStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2);
+void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2);
+bool IsStockpileCellActive(int stockpileIdx, int worldX, int worldY);
+int GetStockpileActiveCellCount(int stockpileIdx);
 
 // Filters
 void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed);

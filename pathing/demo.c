@@ -41,6 +41,11 @@ int roomStartX = 0, roomStartY = 0;
 bool drawingFloor = false;
 int floorStartX = 0, floorStartY = 0;
 
+// Stockpile drawing state (S key to activate, left-drag to draw, right-drag to erase)
+bool drawingStockpile = false;
+bool erasingStockpile = false;
+int stockpileStartX = 0, stockpileStartY = 0;
+
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -70,6 +75,7 @@ bool sectionMemory = false;
 bool sectionJobs = true;
 bool paused = false;
 bool showItems = true;
+bool showHelpPanel = false;
 
 // Stockpile hover state
 int hoveredStockpile = -1;  // Index of stockpile under mouse, -1 if none
@@ -678,6 +684,9 @@ void DrawStockpiles(void) {
         // Draw each tile of the stockpile
         for (int dy = 0; dy < sp->height; dy++) {
             for (int dx = 0; dx < sp->width; dx++) {
+                int slotIdx = dy * sp->width + dx;
+                if (!sp->cells[slotIdx]) continue;  // skip inactive cells
+
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
 
@@ -688,8 +697,14 @@ void DrawStockpiles(void) {
                 Rectangle dest = { sx, sy, size, size };
                 DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
 
+                // Highlight hovered stockpile with pulsing green overlay
+                if (i == hoveredStockpile) {
+                    float pulse = (sinf(GetTime() * 4.0f) + 1.0f) * 0.5f;  // 0 to 1
+                    unsigned char alpha = (unsigned char)(40 + pulse * 60);  // 40-100 alpha
+                    DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){100, 255, 100, alpha});
+                }
+
                 // Draw stacked items in this slot
-                int slotIdx = dy * sp->width + dx;
                 int count = sp->slotCounts[slotIdx];
                 if (count > 0) {
                     ItemType type = sp->slotTypes[slotIdx];
@@ -782,13 +797,17 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     Stockpile* sp = &stockpiles[spIdx];
     if (!sp->active) return;
 
-    // Count items and capacity
+    // Count items and capacity (only active cells)
     int totalItems = 0;
     int totalSlots = sp->width * sp->height;
+    int activeCells = 0;
     for (int i = 0; i < totalSlots; i++) {
-        totalItems += sp->slotCounts[i];
+        if (sp->cells[i]) {
+            activeCells++;
+            totalItems += sp->slotCounts[i];
+        }
     }
-    int maxCapacity = totalSlots * sp->maxStackSize;
+    int maxCapacity = activeCells * sp->maxStackSize;
 
     // Get hovered cell info within stockpile
     int cellX = (int)mouseGrid.x;
@@ -799,20 +818,23 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int cellCount = (slotIdx >= 0 && slotIdx < totalSlots) ? sp->slotCounts[slotIdx] : 0;
 
     // Build tooltip text
+    const char* titleText = TextFormat("Stockpile #%d", spIdx);
     const char* priorityText = TextFormat("Priority: %d", sp->priority);
     const char* stackText = TextFormat("Stack size: %d", sp->maxStackSize);
-    const char* storageText = TextFormat("Storage: %d/%d (%d slots)", totalItems, maxCapacity, totalSlots);
+    const char* storageText = TextFormat("Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
     const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     const char* helpText = "+/- priority, [/] stack, R/G/B filter";
 
     // Measure text
+    int w0 = MeasureText(titleText, 14);
     int w1 = MeasureText(priorityText, 14);
     int w2 = MeasureText(stackText, 14);
     int w3 = MeasureText(storageText, 14);
     int w4 = MeasureText(cellText, 14);
     int w5 = MeasureText("Filters: R G B", 14);
     int w6 = MeasureText(helpText, 12);
-    int maxW = w1;
+    int maxW = w0;
+    if (w1 > maxW) maxW = w1;
     if (w2 > maxW) maxW = w2;
     if (w3 > maxW) maxW = w3;
     if (w4 > maxW) maxW = w4;
@@ -821,7 +843,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 
     int padding = 6;
     int boxW = maxW + padding * 2;
-    int boxH = 14 * 5 + 12 + padding * 2 + 10;  // 6 lines + padding + spacing
+    int boxH = 14 * 6 + 12 + padding * 2 + 10;  // 7 lines + padding + spacing
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -835,6 +857,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 
     // Draw text
     int y = ty + padding;
+    DrawTextShadow(titleText, tx + padding, y, 14, YELLOW);
+    y += 16;
+
     DrawTextShadow(priorityText, tx + padding, y, 14, WHITE);
     y += 16;
 
@@ -1220,6 +1245,97 @@ void HandleInput(void) {
         return;  // Skip normal tool interactions while F is held
     } else {
         drawingFloor = false;
+    }
+
+    // Stockpile drawing mode (S key + left-drag to draw, right-drag to erase)
+    if (IsKeyDown(KEY_S)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        // Left mouse - draw stockpile
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            drawingStockpile = true;
+            stockpileStartX = x;
+            stockpileStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingStockpile) {
+            drawingStockpile = false;
+            int x1 = stockpileStartX < x ? stockpileStartX : x;
+            int y1 = stockpileStartY < y ? stockpileStartY : y;
+            int x2 = stockpileStartX > x ? stockpileStartX : x;
+            int y2 = stockpileStartY > y ? stockpileStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int width = x2 - x1 + 1;
+            int height = y2 - y1 + 1;
+
+            // Clamp to MAX_STOCKPILE_SIZE
+            if (width > MAX_STOCKPILE_SIZE) width = MAX_STOCKPILE_SIZE;
+            if (height > MAX_STOCKPILE_SIZE) height = MAX_STOCKPILE_SIZE;
+
+            if (width > 0 && height > 0) {
+                // Remove overlapping cells from existing stockpiles first
+                for (int i = 0; i < MAX_STOCKPILES; i++) {
+                    if (!stockpiles[i].active || stockpiles[i].z != z) continue;
+                    RemoveStockpileCells(i, x1, y1, x2, y2);
+                }
+
+                int idx = CreateStockpile(x1, y1, z, width, height);
+                if (idx >= 0) {
+                    AddMessage(TextFormat("Created stockpile %d (%dx%d)", idx, width, height), GREEN);
+                } else {
+                    AddMessage(TextFormat("Failed to create stockpile (max %d)", MAX_STOCKPILES), RED);
+                }
+            }
+        }
+
+        // Right mouse - erase stockpiles in area
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            erasingStockpile = true;
+            stockpileStartX = x;
+            stockpileStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && erasingStockpile) {
+            erasingStockpile = false;
+            int x1 = stockpileStartX < x ? stockpileStartX : x;
+            int y1 = stockpileStartY < y ? stockpileStartY : y;
+            int x2 = stockpileStartX > x ? stockpileStartX : x;
+            int y2 = stockpileStartY > y ? stockpileStartY : y;
+
+            // Remove cells from any stockpiles that overlap with the erase area
+            int erasedCells = 0;
+            for (int i = MAX_STOCKPILES - 1; i >= 0; i--) {
+                if (!stockpiles[i].active || stockpiles[i].z != z) continue;
+
+                int sx1 = stockpiles[i].x;
+                int sy1 = stockpiles[i].y;
+                int sx2 = sx1 + stockpiles[i].width - 1;
+                int sy2 = sy1 + stockpiles[i].height - 1;
+
+                // Check overlap
+                if (x1 <= sx2 && x2 >= sx1 && y1 <= sy2 && y2 >= sy1) {
+                    int beforeCount = GetStockpileActiveCellCount(i);
+                    RemoveStockpileCells(i, x1, y1, x2, y2);
+                    int afterCount = GetStockpileActiveCellCount(i);
+                    erasedCells += beforeCount - afterCount;
+                }
+            }
+            if (erasedCells > 0) {
+                AddMessage(TextFormat("Erased %d cell%s", erasedCells, erasedCells > 1 ? "s" : ""), ORANGE);
+            }
+        }
+
+        return;  // Skip normal tool interactions while S is held
+    } else {
+        drawingStockpile = false;
+        erasingStockpile = false;
     }
 
     // Ladder drawing shortcut (L key + click/drag)
@@ -2040,9 +2156,72 @@ int main(void) {
             DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, BROWN);
         }
 
+        // Draw stockpile preview while dragging (S key)
+        if (IsKeyDown(KEY_S) && (drawingStockpile || erasingStockpile)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = stockpileStartX < x ? stockpileStartX : x;
+            int y1 = stockpileStartY < y ? stockpileStartY : y;
+            int x2 = stockpileStartX > x ? stockpileStartX : x;
+            int y2 = stockpileStartY > y ? stockpileStartY : y;
+            float size = CELL_SIZE * zoom;
+
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+
+            if (drawingStockpile) {
+                // Green for creating stockpile
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){0, 200, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
+            } else {
+                // Red for erasing stockpiles
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+            }
+        }
+
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, screenHeight - 20, 18, SKYBLUE);
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, screenHeight - 20, 18, SKYBLUE);
+
+        // Help button (?) in bottom-left corner
+        Rectangle helpBtn = {5, screenHeight - 22, 20, 20};
+        bool helpHovered = CheckCollisionPointRec(GetMousePosition(), helpBtn);
+        DrawRectangleRec(helpBtn, helpHovered ? DARKGRAY : (Color){40, 40, 40, 255});
+        DrawRectangleLinesEx(helpBtn, 1, GRAY);
+        DrawTextShadow("?", 11, screenHeight - 20, 18, helpHovered ? WHITE : LIGHTGRAY);
+        if (helpHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            showHelpPanel = !showHelpPanel;
+        }
+
+        // Help panel with keyboard shortcuts
+        if (showHelpPanel) {
+            const char* shortcuts[] = {
+                "R + drag      Draw room (walls + floor)",
+                "F + drag      Draw floor",
+                "L + drag      Draw ladder",
+                "S + L-drag    Draw stockpile",
+                "S + R-drag    Erase stockpile",
+                "< / >         Change Z level",
+                "Space         Pause/Resume",
+                "Scroll        Zoom in/out",
+                "Middle-drag   Pan view",
+            };
+            int shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
+            int panelW = 260;
+            int panelH = 20 + shortcutCount * 18 + 10;
+            int panelX = 5;
+            int panelY = screenHeight - 28 - panelH;
+
+            DrawRectangle(panelX, panelY, panelW, panelH, (Color){30, 30, 30, 240});
+            DrawRectangleLinesEx((Rectangle){panelX, panelY, panelW, panelH}, 1, GRAY);
+            DrawTextShadow("Keyboard Shortcuts", panelX + 8, panelY + 5, 14, WHITE);
+            for (int i = 0; i < shortcutCount; i++) {
+                DrawTextShadow(shortcuts[i], panelX + 8, panelY + 22 + i * 18, 12, LIGHTGRAY);
+            }
+        }
 
 #if PROFILER_ENABLED
         DrawProfilerPanel(screenWidth - 50, 5);

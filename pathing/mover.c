@@ -954,17 +954,20 @@ void ProcessMoverRepaths(void) {
         if (m->pathLength == 0) {
             // Repath failed - check if goal cell itself is now a wall
             if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x)) {
-                // Goal is unwalkable (wall placed on it) - pick a new random goal
-                Point oldGoal = m->goal;
-                AssignNewMoverGoal(m);
-                if (m->pathLength > 0) {
-                    AddMessage(TextFormat("Mover %d: goal (%d,%d) became wall, reassigned",
-                                          i, oldGoal.x, oldGoal.y), ORANGE);
-                    m->needsRepath = false;
-                    repathsThisFrame++;
-                    continue;
+                // Goal is unwalkable (wall placed on it)
+                // Only assign new random goal if mover has no job - otherwise let job system handle it
+                if (m->jobState == JOB_IDLE) {
+                    Point oldGoal = m->goal;
+                    AssignNewMoverGoal(m);
+                    if (m->pathLength > 0) {
+                        AddMessage(TextFormat("Mover %d: goal (%d,%d) became wall, reassigned",
+                                              i, oldGoal.x, oldGoal.y), ORANGE);
+                        m->needsRepath = false;
+                        repathsThisFrame++;
+                        continue;
+                    }
                 }
-                // New goal also unreachable - fall through to retry logic
+                // Mover has job or new goal unreachable - fall through to retry logic
             }
             
             // Goal is still walkable but path blocked - retry after cooldown

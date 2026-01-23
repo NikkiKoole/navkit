@@ -35,6 +35,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             // Initialize slots as empty
             int totalSlots = sp->width * sp->height;
             for (int s = 0; s < totalSlots; s++) {
+                sp->cells[s] = true;    // all cells active initially
                 sp->slots[s] = -1;      // no item
                 sp->reservedBy[s] = -1; // not reserved
                 sp->slotCounts[s] = 0;  // no items stacked
@@ -57,6 +58,91 @@ void DeleteStockpile(int index) {
         stockpiles[index].active = false;
         stockpileCount--;
     }
+}
+
+void AddStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return;
+    
+    for (int wy = y1; wy <= y2; wy++) {
+        for (int wx = x1; wx <= x2; wx++) {
+            int lx = wx - sp->x;
+            int ly = wy - sp->y;
+            if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) continue;
+            int idx = ly * sp->width + lx;
+            sp->cells[idx] = true;
+        }
+    }
+}
+
+void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return;
+    
+    for (int wy = y1; wy <= y2; wy++) {
+        for (int wx = x1; wx <= x2; wx++) {
+            int lx = wx - sp->x;
+            int ly = wy - sp->y;
+            if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) continue;
+            int idx = ly * sp->width + lx;
+            if (!sp->cells[idx]) continue;  // already inactive
+            
+            // Drop any items in this slot to the ground
+            if (sp->slotCounts[idx] > 0) {
+                // Find items at this tile and set them to ground state
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    if (!items[i].active) continue;
+                    if (items[i].state != ITEM_IN_STOCKPILE) continue;
+                    int itemTileX = (int)(items[i].x / CELL_SIZE);
+                    int itemTileY = (int)(items[i].y / CELL_SIZE);
+                    int itemZ = (int)items[i].z;
+                    if (itemTileX == wx && itemTileY == wy && itemZ == sp->z) {
+                        items[i].state = ITEM_ON_GROUND;
+                    }
+                }
+            }
+            
+            sp->cells[idx] = false;
+            // Clear slot data
+            sp->slots[idx] = -1;
+            sp->reservedBy[idx] = -1;
+            sp->slotCounts[idx] = 0;
+            sp->slotTypes[idx] = -1;
+        }
+    }
+    
+    // Check if stockpile is now empty - if so, delete it
+    if (GetStockpileActiveCellCount(stockpileIdx) == 0) {
+        DeleteStockpile(stockpileIdx);
+    }
+}
+
+bool IsStockpileCellActive(int stockpileIdx, int worldX, int worldY) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return false;
+    
+    int lx = worldX - sp->x;
+    int ly = worldY - sp->y;
+    if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) return false;
+    
+    int idx = ly * sp->width + lx;
+    return sp->cells[idx];
+}
+
+int GetStockpileActiveCellCount(int stockpileIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return 0;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return 0;
+    
+    int count = 0;
+    int totalSlots = sp->width * sp->height;
+    for (int s = 0; s < totalSlots; s++) {
+        if (sp->cells[s]) count++;
+    }
+    return count;
 }
 
 void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed) {
@@ -90,6 +176,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
     for (int ly = 0; ly < sp->height; ly++) {
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
+            if (!sp->cells[idx]) continue;            // skip inactive cells
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
             
             // Skip if there's a ground item on this tile (needs to be cleared/absorbed first)
@@ -110,6 +197,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
     for (int ly = 0; ly < sp->height; ly++) {
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
+            if (!sp->cells[idx]) continue;            // skip inactive cells
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
             
             // Skip if there's a ground item on this tile (needs to be cleared/absorbed first)
@@ -202,6 +290,12 @@ bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx) {
         
         if (gx >= sp->x && gx < sp->x + sp->width &&
             gy >= sp->y && gy < sp->y + sp->height) {
+            // Check if this specific cell is active
+            int lx = gx - sp->x;
+            int ly = gy - sp->y;
+            int idx = ly * sp->width + lx;
+            if (!sp->cells[idx]) continue;
+            
             if (outStockpileIdx) *outStockpileIdx = i;
             return true;
         }
@@ -436,6 +530,9 @@ int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
         // Check each tile in this stockpile
         for (int ly = 0; ly < sp->height; ly++) {
             for (int lx = 0; lx < sp->width; lx++) {
+                int idx = ly * sp->width + lx;
+                if (!sp->cells[idx]) continue;  // skip inactive cells
+                
                 int tileX = sp->x + lx;
                 int tileY = sp->y + ly;
                 

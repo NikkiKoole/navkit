@@ -16,6 +16,7 @@
 #define DROP_RADIUS (CELL_SIZE * 0.75f)    // Same as pickup - covers whole cell reliably
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 #define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
+#define MAX_JOBS_PER_FRAME 5  // Limit job assignments per frame to prevent spikes
 
 // Radius search for finding idle movers near items (in pixels)
 #define MOVER_SEARCH_RADIUS (CELL_SIZE * 50)  // Search 50 tiles around item for idle mover
@@ -295,8 +296,19 @@ void AssignJobs(void) {
     
     // PRIORITY 2a: Stockpile-centric - for each stockpile, find nearby items
     // This is efficient when you have few stockpiles and many items
+    // TODO: Performance issue - when many items are clustered together, we still get
+    // large spikes (100-300ms) even with early exits. Needs further investigation.
+    // The issue may be in FindStockpileForItem, the spatial grid iteration, or TryAssignItemToMover.
     PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem_StockpileCentric);
-    if (idleMoverCount > 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+    // Early check: refresh typeHasStockpile cache and skip if no slots available
+    bool anyTypeHasSlotSP = false;
+    for (int t = 0; t < 3; t++) {
+        int slotX, slotY;
+        typeHasStockpile[t] = (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0);
+        if (typeHasStockpile[t]) anyTypeHasSlotSP = true;
+    }
+
+    if (idleMoverCount > 0 && anyTypeHasSlotSP && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
         for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
             Stockpile* sp = &stockpiles[spIdx];
             if (!sp->active) continue;
@@ -304,6 +316,7 @@ void AssignJobs(void) {
             // Check each item type this stockpile accepts
             for (int t = 0; t < 3 && idleMoverCount > 0; t++) {
                 if (!sp->allowedTypes[t]) continue;
+                if (!typeHasStockpile[t]) continue;  // Skip if no stockpile has slots for this type
                 
                 // Find a free slot for this type in this stockpile
                 int slotX, slotY;
@@ -369,7 +382,9 @@ void AssignJobs(void) {
     // PRIORITY 2b: Item-centric fallback - for remaining items without nearby stockpiles
     // This catches items that weren't near any stockpile in the search above
     PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem_ItemCentric);
-    if (idleMoverCount > 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+    // Early exit: reuse the stockpile cache from stockpile-centric (anyTypeHasSlotSP)
+    // No need to call FindStockpileForItem again - if stockpile-centric found no slots, neither will we
+    if (idleMoverCount > 0 && anyTypeHasSlotSP && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
         int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
         
         for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
@@ -497,6 +512,9 @@ void JobsTick(void) {
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
                 // Set cooldown on item so we don't immediately retry
                 SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+                TraceLog(LOG_WARNING, "JOB: Mover %d STUCK! Mover(%.1f,%.1f,%d) goal(%d,%d,%d) item(%d,%d,%d) pathLen=%d timeStuck=%.1f",
+                    i, m->x, m->y, (int)m->z, m->goal.x, m->goal.y, m->goal.z,
+                    itemCellX, itemCellY, itemCellZ, m->pathLength, m->timeWithoutProgress);
                 AddMessage(TextFormat("Mover %d: item unreachable, job cancelled", i), ORANGE);
                 CancelJob(m, i);
                 continue;

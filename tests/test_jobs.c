@@ -3406,6 +3406,171 @@ static void RunBenchmarks(void) {
     printf("\n");
 }
 
+/*
+ * Cell-based stockpile operations tests
+ * 
+ * Tests for non-rectangular stockpiles:
+ * - Removing cells from stockpiles
+ * - New stockpiles claiming cells from existing ones
+ * - Items dropped to ground when cells are erased
+ * - Stockpile auto-deletion when all cells removed
+ */
+
+describe(stockpile_cell_operations) {
+    it("should track active cells in a stockpile") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 3);
+        expect(spIdx >= 0);
+        
+        // All 9 cells should be active
+        expect(GetStockpileActiveCellCount(spIdx) == 9);
+        
+        // Check individual cells
+        expect(IsStockpileCellActive(spIdx, 5, 5) == true);
+        expect(IsStockpileCellActive(spIdx, 6, 6) == true);
+        expect(IsStockpileCellActive(spIdx, 7, 7) == true);
+        
+        // Outside bounds should be false
+        expect(IsStockpileCellActive(spIdx, 4, 5) == false);
+        expect(IsStockpileCellActive(spIdx, 8, 5) == false);
+    }
+    
+    it("should remove cells from a stockpile") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 3);
+        expect(GetStockpileActiveCellCount(spIdx) == 9);
+        
+        // Remove middle cell
+        RemoveStockpileCells(spIdx, 6, 6, 6, 6);
+        
+        expect(GetStockpileActiveCellCount(spIdx) == 8);
+        expect(IsStockpileCellActive(spIdx, 6, 6) == false);
+        expect(IsStockpileCellActive(spIdx, 5, 5) == true);  // corners still active
+        expect(IsStockpileCellActive(spIdx, 7, 7) == true);
+    }
+    
+    it("should remove a row of cells") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 3);
+        
+        // Remove bottom row (y=7)
+        RemoveStockpileCells(spIdx, 5, 7, 7, 7);
+        
+        expect(GetStockpileActiveCellCount(spIdx) == 6);
+        expect(IsStockpileCellActive(spIdx, 5, 7) == false);
+        expect(IsStockpileCellActive(spIdx, 6, 7) == false);
+        expect(IsStockpileCellActive(spIdx, 7, 7) == false);
+        expect(IsStockpileCellActive(spIdx, 5, 5) == true);  // top row still active
+    }
+    
+    it("should auto-delete stockpile when all cells removed") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 2, 2);
+        expect(stockpiles[spIdx].active == true);
+        expect(stockpileCount == 1);
+        
+        // Remove all cells
+        RemoveStockpileCells(spIdx, 5, 5, 6, 6);
+        
+        expect(stockpiles[spIdx].active == false);
+        expect(stockpileCount == 0);
+    }
+    
+    it("should not find free slot in removed cell") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 1);  // 3 cells wide, 1 tall
+        
+        // Remove middle cell
+        RemoveStockpileCells(spIdx, 6, 5, 6, 5);
+        
+        // Should still find slots in remaining cells
+        int slotX, slotY;
+        bool found = FindFreeStockpileSlot(spIdx, ITEM_RED, &slotX, &slotY);
+        expect(found == true);
+        expect(slotX != 6);  // should not be the removed cell
+    }
+    
+    it("should drop items to ground when cell is erased") {
+        ClearStockpiles();
+        ClearItems();
+        InitItemSpatialGrid(100, 100, 4);
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 3);
+        
+        // Spawn an item and place it in stockpile
+        float itemX = 6 * CELL_SIZE + CELL_SIZE / 2;
+        float itemY = 6 * CELL_SIZE + CELL_SIZE / 2;
+        int itemIdx = SpawnItem(itemX, itemY, 0, ITEM_RED);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        
+        // Set slot data
+        int lx = 1, ly = 1;  // local coords for (6,6)
+        int slotIdx = ly * stockpiles[spIdx].width + lx;
+        stockpiles[spIdx].slotCounts[slotIdx] = 1;
+        stockpiles[spIdx].slotTypes[slotIdx] = ITEM_RED;
+        stockpiles[spIdx].slots[slotIdx] = itemIdx;
+        
+        // Erase the cell with the item
+        RemoveStockpileCells(spIdx, 6, 6, 6, 6);
+        
+        // Item should now be on ground
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+        expect(items[itemIdx].active == true);
+        
+        FreeItemSpatialGrid();
+    }
+    
+    it("should allow new stockpile to claim cells from existing one") {
+        ClearStockpiles();
+        
+        // Create first stockpile at (5,5) size 4x4
+        int sp1 = CreateStockpile(5, 5, 0, 4, 4);
+        expect(GetStockpileActiveCellCount(sp1) == 16);
+        
+        // Create second stockpile overlapping at (7,7) size 3x3
+        // First remove cells from sp1 (simulating what demo.c does)
+        RemoveStockpileCells(sp1, 7, 7, 9, 9);
+        int sp2 = CreateStockpile(7, 7, 0, 3, 3);
+        
+        // sp1 should have lost 4 cells (the 2x2 overlap area within its bounds)
+        expect(GetStockpileActiveCellCount(sp1) == 12);
+        
+        // sp2 should have all 9 cells
+        expect(GetStockpileActiveCellCount(sp2) == 9);
+        
+        // Overlapping area should belong to sp2, not sp1
+        expect(IsStockpileCellActive(sp1, 7, 7) == false);
+        expect(IsStockpileCellActive(sp1, 8, 8) == false);
+        expect(IsStockpileCellActive(sp2, 7, 7) == true);
+        expect(IsStockpileCellActive(sp2, 8, 8) == true);
+    }
+    
+    it("should not consider removed cells as part of stockpile for position check") {
+        ClearStockpiles();
+        
+        int spIdx = CreateStockpile(5, 5, 0, 3, 3);
+        
+        // Position in middle cell is in stockpile
+        float midX = 6 * CELL_SIZE + CELL_SIZE / 2;
+        float midY = 6 * CELL_SIZE + CELL_SIZE / 2;
+        int foundSp = -1;
+        expect(IsPositionInStockpile(midX, midY, 0, &foundSp) == true);
+        expect(foundSp == spIdx);
+        
+        // Remove middle cell
+        RemoveStockpileCells(spIdx, 6, 6, 6, 6);
+        
+        // Position should no longer be in stockpile
+        foundSp = -1;
+        expect(IsPositionInStockpile(midX, midY, 0, &foundSp) == false);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose, -b for benchmarks
     bool verbose = false;
@@ -3458,6 +3623,9 @@ int main(int argc, char* argv[]) {
     
     // Item spatial grid (optimization)
     test(item_spatial_grid);
+    
+    // Cell-based stockpile operations
+    test(stockpile_cell_operations);
     
     return summary();
 }
