@@ -1306,6 +1306,7 @@ void DrawUI(void) {
                     for (int gx = 0; gx < gridWidth; gx++)
                         grid[z][gy][gx] = CELL_AIR;
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();
             BuildGraph();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -1321,6 +1322,7 @@ void DrawUI(void) {
                     for (int gx = 0; gx < gridWidth; gx++)
                         grid[z][gy][gx] = CELL_AIR;
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();
             BuildGraph();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -1552,15 +1554,17 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t entrancesSize = sizeof(Entrance) * MAX_ENTRANCES;
             size_t pathSize = sizeof(Point) * MAX_PATH;
             size_t edgesSize = sizeof(GraphEdge) * MAX_EDGES;
-            size_t spatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
-            size_t total = gridSize + moversSize + entrancesSize + pathSize + edgesSize + spatialGrid;
+            size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
+            size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
+            size_t total = gridSize + moversSize + entrancesSize + pathSize + edgesSize + moverSpatialGrid + itemSpatialGrid;
 
             DrawTextShadow(TextFormat("Grid:       %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("Movers:     %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("Entrances:  %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("Path:       %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("Edges:      %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("SpatialGrid:%5.1f KB", spatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("MoverGrid:  %5.1f KB", moverSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("ItemGrid:   %5.1f KB", itemSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("Total:      %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
         }
 
