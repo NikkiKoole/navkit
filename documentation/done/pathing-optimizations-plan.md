@@ -2,6 +2,8 @@
 
 This document outlines planned optimizations for the pathing subsystem, mapped to patterns from [game-mechanics-optimizations](https://github.com/raduacg/game-mechanics-optimizations).
 
+**Last updated:** January 2025
+
 ---
 
 ## Overview
@@ -10,10 +12,70 @@ The pathing system handles movers, items, stockpiles, and job assignment. Curren
 
 ### Current State
 - `MoverSpatialGrid` - ✅ Well-implemented for mover-mover queries
-- `ItemSpatialGrid` - ✅ Implemented but underutilized
-- Idle mover cache - ✅ Already avoids full mover scans
+- `ItemSpatialGrid` - ✅ Implemented and utilized for FindNearestUnreservedItem
+- `itemHighWaterMark` - ✅ Avoids full MAX_ITEMS iteration
+- Idle mover cache - ✅ Avoids full mover scans in job assignment
 - Stockpile slot searches - ❌ Brute force nested loops
-- Item state filtering - ❌ Full array scans
+- Item state filtering - ❌ Full array scans (but tested, not worth optimizing)
+
+---
+
+## Completed Optimizations
+
+### ✅ 1.1 ItemsTick - highWaterMark Pattern
+| | |
+|---|---|
+| **Commit** | `3ecbd74` |
+| **Pattern** | Sparse Data Structure |
+| **Change** | Track `itemHighWaterMark` (highest index + 1 ever active), iterate only to that point |
+| **Benchmark** | 2-190x speedup depending on item count vs MAX_ITEMS |
+
+### ✅ 1.2 BuildItemSpatialGrid - Same Fix
+| | |
+|---|---|
+| **Commit** | `3ecbd74` |
+| **Change** | Uses `itemHighWaterMark` instead of MAX_ITEMS |
+
+### ✅ 2.1 FindNearestUnreservedItem → Spatial Query ⭐
+| | |
+|---|---|
+| **Commit** | `334e2f7` |
+| **Pattern** | Spatial Partitioning |
+| **Change** | Expanding radius search (10, 25, 50, 100 tiles) using ItemSpatialGrid |
+| **Benchmark** | 24-72x speedup |
+
+### ✅ Idle Mover Cache (Not in original plan)
+| | |
+|---|---|
+| **Commit** | `4d657f0` |
+| **Pattern** | Object Pooling / State Lists |
+| **Change** | Maintain list of idle movers, avoid scanning all movers for job assignment |
+
+---
+
+## Tested But Not Worth It
+
+These optimizations were implemented and benchmarked, but **reverted** because they added code complexity without measurable performance gains in realistic scenarios.
+
+### ❌ 3.1 Stockpiled Item List for Re-haul Jobs
+| | |
+|---|---|
+| **Pattern** | Dirty Flags / State Lists |
+| **Proposed** | Maintain separate list of items in stockpiles for faster re-haul job scanning |
+| **Result** | Benchmarks showed ~1.0-1.2x "improvement" (within noise) |
+| **Why not worth it** | Re-haul jobs are relatively rare. The overhead of maintaining the list (add/remove on every stockpile state change) exceeded the savings from faster iteration. The existing `itemHighWaterMark` optimization already reduced the scan from MAX_ITEMS to actual item count, which was sufficient. |
+| **Lines saved** | ~70 lines of complexity avoided |
+
+### ❌ 4.1 Free Slot Tracking per Stockpile
+| | |
+|---|---|
+| **Pattern** | Object Pooling / Free Lists |
+| **Proposed** | Track `freeSlotCount` per stockpile, skip full stockpiles in O(1) |
+| **Result** | Negligible benchmark improvement |
+| **Why not worth it** | With typical stockpile counts (< 100) and sizes (< 256 slots), the brute force scan is already fast. The bookkeeping overhead (updating counts on every reserve/release/stack change) added complexity without measurable benefit. Would only matter with thousands of stockpiles. |
+| **Lines saved** | ~90 lines of complexity avoided |
+
+**Lesson learned:** Profile before optimizing. The "obvious" O(n) → O(1) improvements don't always matter when n is small or the operation is infrequent.
 
 ---
 
