@@ -997,13 +997,15 @@ void HandleInput(void) {
                 SetStockpileMaxStackSize(hoveredStockpile, newSize);
                 AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE);
             }
+            return;  // Don't trigger Z-layer change
         }
         if (IsKeyPressed(KEY_LEFT_BRACKET)) {
             int newSize = sp->maxStackSize - 1;
             if (newSize >= 1) {
                 SetStockpileMaxStackSize(hoveredStockpile, newSize);
-                AddMessage(TextFormat("Stack size: %d (excess ejected)", sp->maxStackSize), ORANGE);
+                AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE);
             }
+            return;  // Don't trigger Z-layer change
         }
 
         // Filter toggles: R/G/B keys
@@ -1214,18 +1216,11 @@ void HandleInput(void) {
         offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
     }
 
-    // Z-level switching (< > like Dwarf Fortress, or [ ])
-    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    if (IsKeyPressed(KEY_PERIOD) && shift) {  // >
+    // Z-level switching (, and . keys)
+    if (IsKeyPressed(KEY_PERIOD)) {  // .
         if (currentViewZ < gridDepth - 1) currentViewZ++;
     }
-    if (IsKeyPressed(KEY_COMMA) && shift) {  // <
-        if (currentViewZ > 0) currentViewZ--;
-    }
-    if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-        if (currentViewZ < gridDepth - 1) currentViewZ++;
-    }
-    if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+    if (IsKeyPressed(KEY_COMMA)) {  // ,
         if (currentViewZ > 0) currentViewZ--;
     }
 
