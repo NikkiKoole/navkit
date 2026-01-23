@@ -1,6 +1,6 @@
 // Texture Atlas Generator
-// Scans assets/textures/ for PNG files and packs them into a single atlas
-// Outputs: assets/textures/atlas.png and assets/textures/atlas.h
+// Scans assets/textures/ and assets/textures8x8/ for PNG files and packs them into atlases
+// Outputs: assets/atlas16x16.png, assets/atlas16x16.h, assets/atlas8x8.png, assets/atlas8x8.h
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,13 +28,15 @@ static void sanitize_name(const char *filename, char *out) {
     out[len < 63 ? len : 63] = '\0';
 }
 
-int main(void) {
-    const char *textureDir = "assets/textures";
-    const char *outputPng = "assets/atlas.png";
-    const char *outputHeader = "assets/atlas.h";
-
+// Generate atlas from a texture directory
+// Returns 0 on success, 1 on error
+static int generate_atlas(const char *textureDir, const char *outputPng, 
+                          const char *outputHeader, const char *atlasPathMacro,
+                          const char *headerGuard, const char *spritePrefix) {
     SpriteEntry sprites[MAX_SPRITES];
     int spriteCount = 0;
+
+    printf("\n=== Generating atlas from %s ===\n", textureDir);
 
     // Scan directory for PNG files
     DIR *dir = opendir(textureDir);
@@ -48,10 +50,10 @@ int main(void) {
         const char *name = entry->d_name;
         size_t len = strlen(name);
         
-        // Skip non-PNG files and the atlas itself
+        // Skip non-PNG files and any atlas files
         if (len < 5) continue;
         if (strcmp(name + len - 4, ".png") != 0) continue;
-        if (strcmp(name, "atlas.png") == 0) continue;
+        if (strncmp(name, "atlas", 5) == 0) continue;
 
         // Load image
         char path[256];
@@ -72,8 +74,8 @@ int main(void) {
     closedir(dir);
 
     if (spriteCount == 0) {
-        fprintf(stderr, "Error: No PNG files found in %s\n", textureDir);
-        return 1;
+        fprintf(stderr, "Warning: No PNG files found in %s, skipping\n", textureDir);
+        return 0;  // Not an error, just skip
     }
 
     // Calculate atlas dimensions (simple row packing)
@@ -102,7 +104,7 @@ int main(void) {
     }
     atlasHeight += rowHeight;
 
-    printf("\nAtlas size: %dx%d\n", atlasWidth, atlasHeight);
+    printf("Atlas size: %dx%d\n", atlasWidth, atlasHeight);
 
     // Create atlas image (transparent background)
     Image atlas = GenImageColor(atlasWidth, atlasHeight, BLANK);
@@ -131,24 +133,24 @@ int main(void) {
 
     fprintf(header, "// Auto-generated texture atlas header\n");
     fprintf(header, "// Do not edit manually - regenerate with: make atlas\n\n");
-    fprintf(header, "#ifndef ATLAS_H\n");
-    fprintf(header, "#define ATLAS_H\n\n");
+    fprintf(header, "#ifndef %s\n", headerGuard);
+    fprintf(header, "#define %s\n\n", headerGuard);
     fprintf(header, "#include \"vendor/raylib.h\"\n\n");
-    fprintf(header, "#define ATLAS_PATH \"assets/atlas.png\"\n\n");
+    fprintf(header, "#define %s \"%s\"\n\n", atlasPathMacro, outputPng);
     
     fprintf(header, "typedef struct {\n");
     fprintf(header, "    const char *name;\n");
     fprintf(header, "    Rectangle rect;  // x, y, width, height in atlas\n");
-    fprintf(header, "} AtlasSprite;\n\n");
+    fprintf(header, "} %sSprite;\n\n", spritePrefix);
 
     fprintf(header, "enum {\n");
     for (int i = 0; i < spriteCount; i++) {
-        fprintf(header, "    SPRITE_%s,\n", sprites[i].name);
+        fprintf(header, "    %s_%s,\n", spritePrefix, sprites[i].name);
     }
-    fprintf(header, "    SPRITE_COUNT\n");
+    fprintf(header, "    %s_COUNT\n", spritePrefix);
     fprintf(header, "};\n\n");
 
-    fprintf(header, "static const AtlasSprite ATLAS_SPRITES[SPRITE_COUNT] = {\n");
+    fprintf(header, "static const %sSprite %s_SPRITES[%s_COUNT] = {\n", spritePrefix, spritePrefix, spritePrefix);
     for (int i = 0; i < spriteCount; i++) {
         SpriteEntry *s = &sprites[i];
         fprintf(header, "    { \"%s\", { %d, %d, %d, %d } },\n",
@@ -157,11 +159,11 @@ int main(void) {
     fprintf(header, "};\n\n");
 
     fprintf(header, "// Helper: get sprite rectangle by enum\n");
-    fprintf(header, "static inline Rectangle AtlasGetRect(int spriteId) {\n");
-    fprintf(header, "    return ATLAS_SPRITES[spriteId].rect;\n");
+    fprintf(header, "static inline Rectangle %sGetRect(int spriteId) {\n", spritePrefix);
+    fprintf(header, "    return %s_SPRITES[spriteId].rect;\n", spritePrefix);
     fprintf(header, "}\n\n");
 
-    fprintf(header, "#endif // ATLAS_H\n");
+    fprintf(header, "#endif // %s\n", headerGuard);
     fclose(header);
 
     printf("Exported: %s\n", outputHeader);
@@ -172,6 +174,32 @@ int main(void) {
         UnloadImage(sprites[i].image);
     }
 
-    printf("\nDone! %d sprites packed into atlas.\n", spriteCount);
+    printf("Done! %d sprites packed into atlas.\n", spriteCount);
     return 0;
+}
+
+int main(void) {
+    int result = 0;
+
+    // Generate main atlas (16x16 textures)
+    result |= generate_atlas(
+        "assets/textures",
+        "assets/atlas16x16.png",
+        "assets/atlas16x16.h",
+        "ATLAS16X16_PATH",
+        "ATLAS16X16_H",
+        "SPRITE16X16"
+    );
+
+    // Generate 8x8 atlas
+    result |= generate_atlas(
+        "assets/textures8x8",
+        "assets/atlas8x8.png",
+        "assets/atlas8x8.h",
+        "ATLAS8X8_PATH",
+        "ATLAS8X8_H",
+        "SPRITE8X8"
+    );
+
+    return result;
 }

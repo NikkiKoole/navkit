@@ -6,9 +6,9 @@
 #include "stockpiles.h"
 #include <math.h>
 
-// Distance thresholds
-#define PICKUP_RADIUS 24.0f  // Large enough to cover same-cell edge cases
-#define DROP_RADIUS 16.0f
+// Distance thresholds (relative to CELL_SIZE)
+#define PICKUP_RADIUS (CELL_SIZE * 0.75f)  // Large enough to cover same-cell edge cases
+#define DROP_RADIUS (CELL_SIZE * 0.5f)
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 #define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
 

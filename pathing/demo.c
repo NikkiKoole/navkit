@@ -14,7 +14,7 @@
 
 #define UI_IMPLEMENTATION
 #include "../shared/ui.h"
-#include "../assets/atlas.h"
+#include "../assets/atlas16x16.h"
 
 #define MAX_AGENTS  50
 
@@ -139,16 +139,16 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 
 static int GetCellSprite(CellType cell) {
     switch (cell) {
-        case CELL_WALKABLE:     return SPRITE_grass;
-        case CELL_WALL:         return SPRITE_wall;
-        case CELL_LADDER:       return SPRITE_ladder;  // Legacy: same as BOTH
-        case CELL_LADDER_BOTH:  return SPRITE_ladder;
-        case CELL_LADDER_UP:    return SPRITE_ladder_up;
-        case CELL_LADDER_DOWN:  return SPRITE_ladder_down;
-        case CELL_FLOOR:        return SPRITE_floor;
-        case CELL_AIR:          return SPRITE_air;
+        case CELL_WALKABLE:     return SPRITE16X16_grass;
+        case CELL_WALL:         return SPRITE16X16_wall;
+        case CELL_LADDER:       return SPRITE16X16_ladder;  // Legacy: same as BOTH
+        case CELL_LADDER_BOTH:  return SPRITE16X16_ladder;
+        case CELL_LADDER_UP:    return SPRITE16X16_ladder_up;
+        case CELL_LADDER_DOWN:  return SPRITE16X16_ladder_down;
+        case CELL_FLOOR:        return SPRITE16X16_floor;
+        case CELL_AIR:          return SPRITE16X16_air;
     }
-    return SPRITE_grass;
+    return SPRITE16X16_grass;
 }
 
 void DrawCellGrid(void) {
@@ -184,7 +184,7 @@ void DrawCellGrid(void) {
                 CellType cell = grid[zBelow][y][x];
                 if (cell == CELL_AIR) continue;  // Don't draw air from below
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = AtlasGetRect(GetCellSprite(cell));
+                Rectangle src = SPRITE16X16GetRect(GetCellSprite(cell));
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -194,7 +194,7 @@ void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            Rectangle src = AtlasGetRect(GetCellSprite(grid[z][y][x]));
+            Rectangle src = SPRITE16X16GetRect(GetCellSprite(grid[z][y][x]));
             DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
         }
     }
@@ -560,7 +560,7 @@ void DrawMovers(void) {
 
         // Draw mover as head sprite with color tint
         float moverSize = size * 0.75f;
-        Rectangle src = AtlasGetRect(SPRITE_head);
+        Rectangle src = SPRITE16X16GetRect(SPRITE16X16_head);
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
         
@@ -569,13 +569,13 @@ void DrawMovers(void) {
             Item* item = &items[m->carryingItem];
             int sprite;
             switch (item->type) {
-                case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-                case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-                case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-                default:         sprite = SPRITE_apple;       break;
+                case ITEM_RED:   sprite = SPRITE16X16_crate_red;   break;
+                case ITEM_GREEN: sprite = SPRITE16X16_crate_green; break;
+                case ITEM_BLUE:  sprite = SPRITE16X16_crate_blue;  break;
+                default:         sprite = SPRITE16X16_apple;       break;
             }
             float itemSize = size * 0.4f;
-            Rectangle itemSrc = AtlasGetRect(sprite);
+            Rectangle itemSrc = SPRITE16X16GetRect(sprite);
             Rectangle itemDest = { sx - itemSize/2, sy - moverSize/2 - itemSize * 0.5f, itemSize, itemSize };
             DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
         }
@@ -633,14 +633,14 @@ void DrawItems(void) {
         // Choose sprite based on item type
         int sprite;
         switch (item->type) {
-            case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-            case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-            case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-            default:         sprite = SPRITE_apple;       break;
+            case ITEM_RED:   sprite = SPRITE16X16_crate_red;   break;
+            case ITEM_GREEN: sprite = SPRITE16X16_crate_green; break;
+            case ITEM_BLUE:  sprite = SPRITE16X16_crate_blue;  break;
+            default:         sprite = SPRITE16X16_apple;       break;
         }
         
         float itemSize = size * 0.5f;
-        Rectangle src = AtlasGetRect(sprite);
+        Rectangle src = SPRITE16X16GetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
 
         // Tint reserved items slightly darker
@@ -669,7 +669,7 @@ void DrawStockpiles(void) {
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
 
-                Rectangle src = AtlasGetRect(SPRITE_stockpile);
+                Rectangle src = SPRITE16X16GetRect(SPRITE16X16_stockpile);
                 Rectangle dest = { sx, sy, size, size };
                 DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
                 
@@ -680,10 +680,10 @@ void DrawStockpiles(void) {
                     ItemType type = sp->slotTypes[slotIdx];
                     int sprite;
                     switch (type) {
-                        case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-                        case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-                        case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-                        default:         sprite = SPRITE_apple;       break;
+                        case ITEM_RED:   sprite = SPRITE16X16_crate_red;   break;
+                        case ITEM_GREEN: sprite = SPRITE16X16_crate_green; break;
+                        case ITEM_BLUE:  sprite = SPRITE16X16_crate_blue;  break;
+                        default:         sprite = SPRITE16X16_apple;       break;
                     }
                     
                     // Draw up to 5 visible items with small offsets
@@ -694,7 +694,7 @@ void DrawStockpiles(void) {
                     for (int s = 0; s < visibleCount; s++) {
                         float itemX = sx + size * 0.5f - itemSize * 0.5f + s * stackOffset;
                         float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset * 0.5f;
-                        Rectangle srcItem = AtlasGetRect(sprite);
+                        Rectangle srcItem = SPRITE16X16GetRect(sprite);
                         Rectangle destItem = { itemX, itemY, itemSize, itemSize };
                         DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
                     }
@@ -1756,7 +1756,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
-    atlas = LoadTexture(ATLAS_PATH);
+    atlas = LoadTexture(ATLAS16X16_PATH);
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);  // Crisp pixels, no bleeding
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);

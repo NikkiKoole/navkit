@@ -1,37 +1,37 @@
 // Auto-generated texture atlas header
 // Do not edit manually - regenerate with: make atlas
 
-#ifndef ATLAS_H
-#define ATLAS_H
+#ifndef ATLAS16X16_H
+#define ATLAS16X16_H
 
 #include "vendor/raylib.h"
 
-#define ATLAS_PATH "assets/atlas.png"
+#define ATLAS16X16_PATH "assets/atlas16x16.png"
 
 typedef struct {
     const char *name;
     Rectangle rect;  // x, y, width, height in atlas
-} AtlasSprite;
+} SPRITE16X16Sprite;
 
 enum {
-    SPRITE_carpet,
-    SPRITE_crate_blue,
-    SPRITE_air,
-    SPRITE_ladder,
-    SPRITE_apple,
-    SPRITE_grass,
-    SPRITE_ladder_up,
-    SPRITE_head,
-    SPRITE_wall,
-    SPRITE_stockpile,
-    SPRITE_floor,
-    SPRITE_ladder_down,
-    SPRITE_crate_green,
-    SPRITE_crate_red,
-    SPRITE_COUNT
+    SPRITE16X16_carpet,
+    SPRITE16X16_crate_blue,
+    SPRITE16X16_air,
+    SPRITE16X16_ladder,
+    SPRITE16X16_apple,
+    SPRITE16X16_grass,
+    SPRITE16X16_ladder_up,
+    SPRITE16X16_head,
+    SPRITE16X16_wall,
+    SPRITE16X16_stockpile,
+    SPRITE16X16_floor,
+    SPRITE16X16_ladder_down,
+    SPRITE16X16_crate_green,
+    SPRITE16X16_crate_red,
+    SPRITE16X16_COUNT
 };
 
-static const AtlasSprite ATLAS_SPRITES[SPRITE_COUNT] = {
+static const SPRITE16X16Sprite SPRITE16X16_SPRITES[SPRITE16X16_COUNT] = {
     { "carpet", { 0, 0, 16, 16 } },
     { "crate_blue", { 17, 0, 16, 16 } },
     { "air", { 34, 0, 16, 16 } },
@@ -49,8 +49,8 @@ static const AtlasSprite ATLAS_SPRITES[SPRITE_COUNT] = {
 };
 
 // Helper: get sprite rectangle by enum
-static inline Rectangle AtlasGetRect(int spriteId) {
-    return ATLAS_SPRITES[spriteId].rect;
+static inline Rectangle SPRITE16X16GetRect(int spriteId) {
+    return SPRITE16X16_SPRITES[spriteId].rect;
 }
 
-#endif // ATLAS_H
+#endif // ATLAS16X16_H
