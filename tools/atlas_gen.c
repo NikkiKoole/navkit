@@ -1,6 +1,6 @@
 // Texture Atlas Generator
 // Scans assets/textures/ and assets/textures8x8/ for PNG files and packs them into atlases
-// Outputs: assets/atlas16x16.png, assets/atlas16x16.h, assets/atlas8x8.png, assets/atlas8x8.h
+// Outputs: assets/atlas16x16.png/h, assets/atlas8x8.png/h, and assets/atlas.h (selector)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,10 +29,12 @@ static void sanitize_name(const char *filename, char *out) {
 }
 
 // Generate atlas from a texture directory
-// Returns 0 on success, 1 on error
+// Returns number of sprites on success, -1 on error
+// If outNames is not NULL, fills it with sprite names (caller must provide array of MAX_SPRITES char[64])
 static int generate_atlas(const char *textureDir, const char *outputPng, 
                           const char *outputHeader, const char *atlasPathMacro,
-                          const char *headerGuard, const char *spritePrefix) {
+                          const char *headerGuard, const char *spritePrefix,
+                          char outNames[][64]) {
     SpriteEntry sprites[MAX_SPRITES];
     int spriteCount = 0;
 
@@ -42,7 +44,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     DIR *dir = opendir(textureDir);
     if (!dir) {
         fprintf(stderr, "Error: Cannot open directory %s\n", textureDir);
-        return 1;
+        return -1;
     }
 
     struct dirent *entry;
@@ -75,7 +77,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
 
     if (spriteCount == 0) {
         fprintf(stderr, "Warning: No PNG files found in %s, skipping\n", textureDir);
-        return 0;  // Not an error, just skip
+        return 0;
     }
 
     // Calculate atlas dimensions (simple row packing)
@@ -128,7 +130,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     FILE *header = fopen(outputHeader, "w");
     if (!header) {
         fprintf(stderr, "Error: Cannot create %s\n", outputHeader);
-        return 1;
+        return -1;
     }
 
     fprintf(header, "// Auto-generated texture atlas header\n");
@@ -168,6 +170,14 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
 
     printf("Exported: %s\n", outputHeader);
 
+    // Copy sprite names to output if requested
+    if (outNames) {
+        for (int i = 0; i < spriteCount; i++) {
+            strncpy(outNames[i], sprites[i].name, 63);
+            outNames[i][63] = '\0';
+        }
+    }
+
     // Cleanup
     UnloadImage(atlas);
     for (int i = 0; i < spriteCount; i++) {
@@ -175,31 +185,87 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     }
 
     printf("Done! %d sprites packed into atlas.\n", spriteCount);
+    return spriteCount;
+}
+
+// Generate the unified atlas.h selector header
+static int generate_selector_header(const char *outputPath, char names[][64], int nameCount) {
+    FILE *f = fopen(outputPath, "w");
+    if (!f) {
+        fprintf(stderr, "Error: Cannot create %s\n", outputPath);
+        return 1;
+    }
+
+    fprintf(f, "// Atlas selector - choose tile size at compile time\n");
+    fprintf(f, "// Auto-generated - do not edit manually, regenerate with: make atlas\n");
+    fprintf(f, "// Usage: compile with -DTILE_SIZE=8 or -DTILE_SIZE=16 (default: 16)\n\n");
+    fprintf(f, "#ifndef ATLAS_H\n");
+    fprintf(f, "#define ATLAS_H\n\n");
+    fprintf(f, "#ifndef TILE_SIZE\n");
+    fprintf(f, "#define TILE_SIZE 8\n");
+    fprintf(f, "#endif\n\n");
+    
+    fprintf(f, "#if TILE_SIZE == 8\n");
+    fprintf(f, "    #include \"atlas8x8.h\"\n");
+    fprintf(f, "    #define ATLAS_PATH ATLAS8X8_PATH\n");
+    for (int i = 0; i < nameCount; i++) {
+        fprintf(f, "    #define SPRITE_%s SPRITE8X8_%s\n", names[i], names[i]);
+    }
+    fprintf(f, "    #define SpriteGetRect SPRITE8X8GetRect\n");
+    
+    fprintf(f, "#elif TILE_SIZE == 16\n");
+    fprintf(f, "    #include \"atlas16x16.h\"\n");
+    fprintf(f, "    #define ATLAS_PATH ATLAS16X16_PATH\n");
+    for (int i = 0; i < nameCount; i++) {
+        fprintf(f, "    #define SPRITE_%s SPRITE16X16_%s\n", names[i], names[i]);
+    }
+    fprintf(f, "    #define SpriteGetRect SPRITE16X16GetRect\n");
+    
+    fprintf(f, "#else\n");
+    fprintf(f, "    #error \"TILE_SIZE must be 8 or 16\"\n");
+    fprintf(f, "#endif\n\n");
+    fprintf(f, "#endif // ATLAS_H\n");
+    
+    fclose(f);
+    printf("\nExported: %s\n", outputPath);
     return 0;
 }
 
 int main(void) {
     int result = 0;
+    
+    // Store sprite names from 16x16 atlas (use as reference for selector)
+    static char spriteNames[MAX_SPRITES][64];
+    int spriteCount = 0;
 
     // Generate main atlas (16x16 textures)
-    result |= generate_atlas(
+    spriteCount = generate_atlas(
         "assets/textures",
         "assets/atlas16x16.png",
         "assets/atlas16x16.h",
         "ATLAS16X16_PATH",
         "ATLAS16X16_H",
-        "SPRITE16X16"
+        "SPRITE16X16",
+        spriteNames
     );
+    if (spriteCount < 0) result = 1;
 
     // Generate 8x8 atlas
-    result |= generate_atlas(
+    int count8 = generate_atlas(
         "assets/textures8x8",
         "assets/atlas8x8.png",
         "assets/atlas8x8.h",
         "ATLAS8X8_PATH",
         "ATLAS8X8_H",
-        "SPRITE8X8"
+        "SPRITE8X8",
+        NULL  // Don't need names, assume same as 16x16
     );
+    if (count8 < 0) result = 1;
+
+    // Generate unified selector header
+    if (spriteCount > 0) {
+        result |= generate_selector_header("assets/atlas.h", spriteNames, spriteCount);
+    }
 
     return result;
 }

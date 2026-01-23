@@ -8,7 +8,7 @@
 
 // Distance thresholds (relative to CELL_SIZE)
 #define PICKUP_RADIUS (CELL_SIZE * 0.75f)  // Large enough to cover same-cell edge cases
-#define DROP_RADIUS (CELL_SIZE * 0.5f)
+#define DROP_RADIUS (CELL_SIZE * 0.75f)    // Same as pickup - covers whole cell reliably
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 #define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
 

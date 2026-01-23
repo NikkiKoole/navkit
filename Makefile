@@ -21,7 +21,7 @@ test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pat
 test_steering_SRC := tests/test_steering.c steering/steering.c
 test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c
 
-all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS))
+all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8 $(BINDIR)/path16
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
@@ -64,6 +64,14 @@ atlas: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
+# Build with 8x8 tiles
+path8 $(BINDIR)/path8: $(BINDIR)
+	$(CC) $(CFLAGS) -DTILE_SIZE=8 -o $(BINDIR)/path8 $(path_SRC) $(LDFLAGS)
+
+# Build with 16x16 tiles
+path16 $(BINDIR)/path16: $(BINDIR)
+	$(CC) $(CFLAGS) -DTILE_SIZE=16 -o $(BINDIR)/path16 $(path_SRC) $(LDFLAGS)
+
 clean:
 	rm -rf $(BINDIR)
 
@@ -79,4 +87,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas
+.PHONY: all clean test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas path8 path16
