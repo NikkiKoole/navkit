@@ -489,7 +489,7 @@ void DrawMovers(void) {
         } else if (m->needsRepath) {
             moverColor = YELLOW;  // Needs repath
         } else {
-            moverColor = GREEN;   // Normal, has valid path
+            moverColor = WHITE;   // Normal, has valid path
         }
 
         // Override color if mover just fell
@@ -497,9 +497,11 @@ void DrawMovers(void) {
             moverColor = BLUE;
         }
 
-        // Draw mover as colored rectangle
-        float moverSize = size * 0.5f;
-        DrawRectangle((int)(sx - moverSize/2), (int)(sy - moverSize/2), (int)moverSize, (int)moverSize, moverColor);
+        // Draw mover as head sprite with color tint
+        float moverSize = size * 0.75f;
+        Rectangle src = AtlasGetRect(SPRITE_head);
+        Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
     }
 
     // Draw mover paths in separate loop for profiling
