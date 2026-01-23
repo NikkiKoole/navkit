@@ -42,7 +42,8 @@ bool ReserveItem(int itemIndex, int moverIndex);
 void ReleaseItemReservation(int itemIndex);
 
 // Queries
-int FindNearestUnreservedItem(float x, float y, float z);
+int FindNearestUnreservedItem(float x, float y, float z);  // Uses spatial grid
+int FindNearestUnreservedItemNaive(float x, float y, float z);  // O(MAX_ITEMS) brute force
 
 // Cooldown management
 void ItemsTick(float dt);

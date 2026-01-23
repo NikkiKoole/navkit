@@ -64,13 +64,20 @@ void ReleaseItemReservation(int itemIndex) {
     }
 }
 
-int FindNearestUnreservedItem(float x, float y, float z) {
+// Forward declarations for spatial grid iteration (defined later in file)
+typedef bool (*ItemRadiusIterator)(int itemIdx, float distSq, void* userData);
+static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
+                                ItemRadiusIterator iterator, void* userData);
+
+// Naive O(MAX_ITEMS) implementation - scans all items
+int FindNearestUnreservedItemNaive(float x, float y, float z) {
     int nearest = -1;
     float nearestDistSq = 1e30f;
     
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (!items[i].active) continue;
         if (items[i].reservedBy != -1) continue;  // skip reserved
+        if (items[i].state != ITEM_ON_GROUND) continue;
         
         float dx = items[i].x - x;
         float dy = items[i].y - y;
@@ -84,6 +91,73 @@ int FindNearestUnreservedItem(float x, float y, float z) {
     }
     
     return nearest;
+}
+
+// Callback context for spatial nearest-item search
+typedef struct {
+    float searchX, searchY;
+    int nearestIdx;
+    float nearestDistSq;
+} NearestUnreservedContext;
+
+static bool NearestUnreservedIterator(int itemIdx, float distSq, void* userData) {
+    (void)distSq;  // We recalculate with actual position for accuracy
+    NearestUnreservedContext* ctx = (NearestUnreservedContext*)userData;
+    
+    if (items[itemIdx].reservedBy != -1) return true;  // skip reserved, continue
+    
+    float dx = items[itemIdx].x - ctx->searchX;
+    float dy = items[itemIdx].y - ctx->searchY;
+    float d = dx * dx + dy * dy;
+    
+    if (d < ctx->nearestDistSq) {
+        ctx->nearestDistSq = d;
+        ctx->nearestIdx = itemIdx;
+    }
+    return true;  // continue searching all in radius
+}
+
+// Optimized implementation using spatial grid with expanding radius
+int FindNearestUnreservedItem(float x, float y, float z) {
+    // Fall back to naive if spatial grid not built
+    if (!itemGrid.cellCounts || itemGrid.groundItemCount == 0) {
+        return FindNearestUnreservedItemNaive(x, y, z);
+    }
+    
+    int tileX = (int)(x / CELL_SIZE);
+    int tileY = (int)(y / CELL_SIZE);
+    int tileZ = (int)z;
+    
+    NearestUnreservedContext ctx = {
+        .searchX = x,
+        .searchY = y,
+        .nearestIdx = -1,
+        .nearestDistSq = 1e30f
+    };
+    
+    // Expanding radius search: try small radius first, expand if needed
+    int radii[] = {5, 15, 30, 60, 120};
+    int numRadii = sizeof(radii) / sizeof(radii[0]);
+    
+    for (int r = 0; r < numRadii; r++) {
+        IterateItemsInRadius(tileX, tileY, tileZ, radii[r], NearestUnreservedIterator, &ctx);
+        
+        if (ctx.nearestIdx >= 0) {
+            // Found something - but need to check if there could be closer items
+            // at the edge of our search radius. If nearest is well within radius, we're done.
+            float nearestDist = ctx.nearestDistSq;
+            float radiusDistSq = (float)(radii[r] * radii[r] * CELL_SIZE * CELL_SIZE);
+            
+            // If nearest item is closer than 70% of search radius, it's definitely the nearest
+            if (nearestDist < radiusDistSq * 0.5f) {
+                return ctx.nearestIdx;
+            }
+            // Otherwise expand to next radius to be sure
+        }
+    }
+    
+    // Return whatever we found (or -1 if nothing)
+    return ctx.nearestIdx;
 }
 
 void ItemsTick(float dt) {
@@ -133,11 +207,9 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
     return -1;
 }
 
-// Callback return value: true to continue iteration, false to stop early
-typedef bool (*ItemRadiusIterator)(int itemIdx, float distSq, void* userData);
-
 // Common spatial grid radius iteration - calls iterator for each valid ground item in radius
 // Returns number of items visited (or partial count if stopped early)
+// (ItemRadiusIterator typedef is forward-declared above)
 static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
                                 ItemRadiusIterator iterator, void* userData) {
     if (!itemGrid.cellCounts) return 0;
