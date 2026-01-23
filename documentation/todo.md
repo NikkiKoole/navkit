@@ -7,7 +7,7 @@ Small remaining items and future improvements.
 ## Prioritized TODO
 
 ### Quick Wins (small, high value)
-- [ ] **Blocked movers handling** - notification done, but movers stay blocked. Need to decide what they should do (see discussion below)
+- [x] **Blocked movers handling** - DONE. Movers pick new goal when goal becomes wall. Jobs cancel immediately when item/stockpile blocked. On-screen messages for all cases.
 - [ ] **Easy cell types** - add CELL_FENCE, CELL_WATER, CELL_DOOR_OPEN/CLOSED (no pathfinding changes needed)
 
 ### Short-term (meaningful improvements)
