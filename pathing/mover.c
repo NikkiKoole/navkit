@@ -532,6 +532,9 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->lastY = y;
     m->lastZ = z;
     m->timeWithoutProgress = 0.0f;
+    // Job system fields
+    m->jobState = JOB_IDLE;
+    m->targetItem = -1;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen) {

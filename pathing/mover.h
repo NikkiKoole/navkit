@@ -5,6 +5,13 @@
 #include "pathfinding.h"
 #include <stdbool.h>
 
+// Job states for movers (defined here to avoid circular dependency with jobs.h)
+typedef enum {
+    JOB_IDLE,
+    JOB_MOVING_TO_ITEM,
+    // Future: JOB_PICKING_UP, JOB_MOVING_TO_STOCKPILE, JOB_DROPPING
+} JobState;
+
 // Cell size in pixels (for position calculations)
 #define CELL_SIZE 32
 
@@ -43,6 +50,9 @@ typedef struct {
     float fallTimer;            // Time since last fall (for visual feedback)
     // Cached avoidance vector (recomputed every N frames)
     float avoidX, avoidY;
+    // Job system fields
+    JobState jobState;
+    int targetItem;  // item index, -1 = none
 } Mover;
 
 // Stuck detection thresholds

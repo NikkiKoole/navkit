@@ -19,6 +19,7 @@ path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathf
 test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
 test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c
 test_steering_SRC := tests/test_steering.c steering/steering.c
+test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS))
 
@@ -44,8 +45,13 @@ test_steering: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_steering
 
+# Jobs test
+test_jobs: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_jobs
+
 # Run all tests
-test: test_pathing test_mover test_steering
+test: test_pathing test_mover test_steering test_jobs
 
 # Aliases for convenience (make path, make steer, make crowd)
 path: $(BINDIR) $(BINDIR)/path
@@ -73,4 +79,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean test test_pathing test_mover test_steering path steer crowd asan debug atlas
+.PHONY: all clean test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas
