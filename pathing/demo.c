@@ -77,6 +77,10 @@ int hoveredStockpile = -1;  // Index of stockpile under mouse, -1 if none
 // Mover hover state (only when paused)
 int hoveredMover = -1;  // Index of mover under mouse, -1 if none
 
+// Item hover state (only when paused)
+int hoveredItemCell[16];  // Item indices at hovered cell (max 16)
+int hoveredItemCount = 0;  // Number of items at hovered cell
+
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
     "........#.......#.......#.......\n"
@@ -773,7 +777,7 @@ int GetStockpileAtGrid(int gx, int gy, int gz) {
 }
 
 // Draw stockpile tooltip at mouse position
-void DrawStockpileTooltip(int spIdx, Vector2 mouse) {
+void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (spIdx < 0 || spIdx >= MAX_STOCKPILES) return;
     Stockpile* sp = &stockpiles[spIdx];
     if (!sp->active) return;
@@ -786,27 +790,38 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse) {
     }
     int maxCapacity = totalSlots * sp->maxStackSize;
 
+    // Get hovered cell info within stockpile
+    int cellX = (int)mouseGrid.x;
+    int cellY = (int)mouseGrid.y;
+    int localX = cellX - sp->x;
+    int localY = cellY - sp->y;
+    int slotIdx = localY * sp->width + localX;
+    int cellCount = (slotIdx >= 0 && slotIdx < totalSlots) ? sp->slotCounts[slotIdx] : 0;
+
     // Build tooltip text
     const char* priorityText = TextFormat("Priority: %d", sp->priority);
     const char* stackText = TextFormat("Stack size: %d", sp->maxStackSize);
     const char* storageText = TextFormat("Storage: %d/%d (%d slots)", totalItems, maxCapacity, totalSlots);
+    const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     const char* helpText = "+/- priority, [/] stack, R/G/B filter";
 
     // Measure text
     int w1 = MeasureText(priorityText, 14);
     int w2 = MeasureText(stackText, 14);
     int w3 = MeasureText(storageText, 14);
-    int w4 = MeasureText("Filters: R G B", 14);
-    int w5 = MeasureText(helpText, 12);
+    int w4 = MeasureText(cellText, 14);
+    int w5 = MeasureText("Filters: R G B", 14);
+    int w6 = MeasureText(helpText, 12);
     int maxW = w1;
     if (w2 > maxW) maxW = w2;
     if (w3 > maxW) maxW = w3;
     if (w4 > maxW) maxW = w4;
     if (w5 > maxW) maxW = w5;
+    if (w6 > maxW) maxW = w6;
 
     int padding = 6;
     int boxW = maxW + padding * 2;
-    int boxH = 14 * 4 + 12 + padding * 2 + 10;  // 5 lines + padding + spacing
+    int boxH = 14 * 5 + 12 + padding * 2 + 10;  // 6 lines + padding + spacing
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -829,6 +844,11 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse) {
     // Storage line - red if overfull
     bool overfull = totalItems > maxCapacity;
     DrawTextShadow(storageText, tx + padding, y, 14, overfull ? RED : WHITE);
+    y += 16;
+
+    // Cell info - highlight if cell is full
+    bool cellFull = cellCount >= sp->maxStackSize;
+    DrawTextShadow(cellText, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
     y += 16;
 
     // Draw filters with color coding
@@ -935,6 +955,80 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawTextShadow(line6, tx + padding, y, 14, m->targetStockpile >= 0 ? WHITE : GRAY);
 }
 
+// Get items at a grid cell, returns count and fills outItems array (max 16)
+int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems) {
+    int count = 0;
+    for (int i = 0; i < MAX_ITEMS && count < maxItems; i++) {
+        if (!items[i].active) continue;
+        int ix = (int)(items[i].x / CELL_SIZE);
+        int iy = (int)(items[i].y / CELL_SIZE);
+        int iz = (int)(items[i].z);
+        if (ix == cellX && iy == cellY && iz == cellZ) {
+            outItems[count++] = i;
+        }
+    }
+    return count;
+}
+
+// Draw item tooltip (only shown when paused)
+void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
+    if (itemCount <= 0) return;
+
+    const char* typeNames[] = {"Red", "Green", "Blue"};
+    const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
+
+    // Build tooltip lines
+    char lines[17][64];  // Header + up to 16 items
+    snprintf(lines[0], sizeof(lines[0]), "Cell (%d,%d): %d item%s", cellX, cellY, itemCount, itemCount == 1 ? "" : "s");
+    
+    int lineCount = 1;
+    for (int i = 0; i < itemCount && lineCount < 17; i++) {
+        int idx = itemIndices[i];
+        Item* item = &items[idx];
+        const char* typeName = (item->type >= 0 && item->type < 3) ? typeNames[item->type] : "?";
+        const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
+        lineCount++;
+    }
+
+    // Measure max width
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip near mouse, keep on screen
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){40, 30, 20, 220});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){150, 100, 50, 255});
+
+    // Draw text
+    int y = ty + padding;
+    DrawTextShadow(lines[0], tx + padding, y, 14, YELLOW);
+    y += lineH;
+
+    for (int i = 1; i < lineCount; i++) {
+        int idx = itemIndices[i - 1];
+        Color col = WHITE;
+        if (items[idx].type == ITEM_RED) col = RED;
+        else if (items[idx].type == ITEM_GREEN) col = GREEN;
+        else if (items[idx].type == ITEM_BLUE) col = (Color){100, 150, 255, 255};
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
 void GenerateCurrentTerrain(void) {
     TraceLog(LOG_INFO, "Generating terrain: %s", terrainNames[currentTerrain]);
     switch (currentTerrain) {
@@ -970,6 +1064,15 @@ void HandleInput(void) {
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, currentViewZ);
     } else {
         hoveredMover = -1;
+    }
+
+    // Update item hover state (only when paused)
+    if (paused) {
+        int cellX = (int)mouseGrid.x;
+        int cellY = (int)mouseGrid.y;
+        hoveredItemCount = GetItemsAtCell(cellX, cellY, currentViewZ, hoveredItemCell, 16);
+    } else {
+        hoveredItemCount = 0;
     }
 
     // Stockpile editing controls (when hovering)
@@ -1955,12 +2058,18 @@ int main(void) {
 
         // Draw stockpile tooltip when hovering
         if (hoveredStockpile >= 0) {
-            DrawStockpileTooltip(hoveredStockpile, GetMousePosition());
+            DrawStockpileTooltip(hoveredStockpile, GetMousePosition(), ScreenToGrid(GetMousePosition()));
         }
 
         // Draw mover tooltip when hovering (only when paused)
         if (hoveredMover >= 0) {
             DrawMoverTooltip(hoveredMover, GetMousePosition());
+        }
+
+        // Draw item tooltip when hovering (only when paused, and no mover/stockpile tooltip)
+        if (hoveredItemCount > 0 && hoveredMover < 0 && hoveredStockpile < 0) {
+            Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
+            DrawItemTooltip(hoveredItemCell, hoveredItemCount, GetMousePosition(), (int)mouseGrid.x, (int)mouseGrid.y);
         }
 
         PROFILE_BEGIN(EndDraw);
