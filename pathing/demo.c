@@ -730,8 +730,8 @@ void DrawStockpiles(void) {
 static void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
     int attempts = 100;
     while (attempts-- > 0) {
-        int gx = rand() % (gridWidth - 3);
-        int gy = rand() % (gridHeight - 3);
+        int gx = GetRandomValue(0, gridWidth - 4);
+        int gy = GetRandomValue(0, gridHeight - 4);
         bool valid = true;
         for (int dy = 0; dy < 3 && valid; dy++)
             for (int dx = 0; dx < 3 && valid; dx++)
@@ -1472,12 +1472,12 @@ void DrawUI(void) {
                 // Find a random walkable cell on current z-level
                 int attempts = 100;
                 while (attempts-- > 0) {
-                    int gx = rand() % gridWidth;
-                    int gy = rand() % gridHeight;
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
                     if (IsCellWalkableAt(currentViewZ, gy, gx)) {
                         float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
                         float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        ItemType type = rand() % 3;  // ITEM_RED, ITEM_GREEN, or ITEM_BLUE
+                        ItemType type = GetRandomValue(0, 2);  // ITEM_RED, ITEM_GREEN, or ITEM_BLUE
                         SpawnItem(px, py, (float)currentViewZ, type);
                         break;
                     }

@@ -4,10 +4,9 @@
 #include "items.h"
 #include "jobs.h"
 #include "../shared/profiler.h"
+#include "../vendor/raylib.h"
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
 
 // Fast inverse square root (Quake III algorithm)
@@ -731,7 +730,7 @@ void UpdateMovers(void) {
                     // No path found, wait before retrying
                     if (useRandomizedCooldowns) {
                         // Randomize to avoid synchronized retries causing spikes
-                        m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
+                        m->repathCooldown = TICK_RATE + GetRandomValue(0, TICK_RATE - 1);
                     } else {
                         // Deterministic for tests
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
@@ -761,7 +760,7 @@ void UpdateMovers(void) {
             }
             if (!pushed) {
                 m->active = false;
-                printf("WARNING: Mover %d deactivated: stuck in wall with no escape\n", i);
+                TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in wall with no escape", i);
             }
             m->needsRepath = true;
             continue;
@@ -956,7 +955,7 @@ void ProcessMoverRepaths(void) {
             m->pathIndex = -1;
             m->needsRepath = true;  // Keep trying
             if (useRandomizedCooldowns) {
-                m->repathCooldown = TICK_RATE + (rand() % TICK_RATE);
+                m->repathCooldown = TICK_RATE + GetRandomValue(0, TICK_RATE - 1);
             } else {
                 m->repathCooldown = REPATH_COOLDOWN_FRAMES;
             }

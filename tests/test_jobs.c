@@ -7,7 +7,6 @@
 #include "../pathing/items.h"
 #include "../pathing/jobs.h"
 #include "../pathing/stockpiles.h"
-#include <stdlib.h>
 #include <math.h>
 
 // Stub profiler functions for tests
@@ -1863,9 +1862,9 @@ describe(stockpile_max_stack_size) {
         int stockpileX = spPtr->x + targetSlotX;
         int stockpileY = spPtr->y + targetSlotY;
         
-        // Seed rand with a value that will produce a different goal than (6,1)
+        // Seed random with a value that will produce a different goal than (6,1)
         // The bug is that AssignNewMoverGoal gets called and changes the goal to random point
-        srand(12345);
+        SetRandomSeed(12345);
         m->pathLength = 0;
         m->pathIndex = -1;
         m->repathCooldown = 0;
@@ -2121,7 +2120,7 @@ describe(stockpile_max_stack_size) {
         }
         
         // Stockpile B - empty, destination for excess
-        int spB = CreateStockpile(6, 2, 0, 1, 1);
+        (void)CreateStockpile(6, 2, 0, 1, 1);
         
         // Reduce A's max stack to 2 - now overfull by 3
         SetStockpileMaxStackSize(spA, 2);
@@ -2510,8 +2509,8 @@ describe(stockpile_ground_item_blocking) {
         // Green item on RED stockpile tile (needs clearing)
         int foreignItem = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
         
-        // Another green item far away (regular haul)
-        int regularItem = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        // Another green item far away (regular haul) - not used in test but creates scenario
+        (void)SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
         
         // Run just enough to see which item gets picked first
         AssignJobs();

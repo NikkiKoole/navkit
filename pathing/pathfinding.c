@@ -3115,32 +3115,16 @@ int FindPath3D_JpsPlus(Point start, Point goal, Point* outPath, int maxLen) {
     return len;
 }
 
-// Random utilities using stdlib for portability
-static unsigned int randomSeed = 1;
-static bool seedInitialized = false;
-
 void SeedRandom(unsigned int seed) {
-    srand(seed);
-    randomSeed = seed;
-    seedInitialized = true;
-}
-
-static int GetRandomInt(int min, int max) {
-    if (!seedInitialized) {
-        // Auto-seed with time on first use if not explicitly seeded
-        srand((unsigned int)GetTime() * 1000);
-        seedInitialized = true;
-    }
-    if (min > max) { int t = min; min = max; max = t; }
-    return min + rand() % (max - min + 1);
+    SetRandomSeed(seed);
 }
 
 Point GetRandomWalkableCell(void) {
     Point p;
     for (int attempts = 0; attempts < 1000; attempts++) {
-        p.x = GetRandomInt(0, gridWidth - 1);
-        p.y = GetRandomInt(0, gridHeight - 1);
-        p.z = GetRandomInt(0, gridDepth - 1);
+        p.x = GetRandomValue(0, gridWidth - 1);
+        p.y = GetRandomValue(0, gridHeight - 1);
+        p.z = GetRandomValue(0, gridDepth - 1);
         if (IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }
@@ -3151,9 +3135,9 @@ Point GetRandomWalkableCell(void) {
 Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     Point p;
     for (int attempts = 0; attempts < 1000; attempts++) {
-        p.x = GetRandomInt(0, gridWidth - 1);
-        p.y = GetRandomInt(0, gridHeight - 1);
-        p.z = GetRandomInt(0, gridDepth - 1);
+        p.x = GetRandomValue(0, gridWidth - 1);
+        p.y = GetRandomValue(0, gridHeight - 1);
+        p.z = GetRandomValue(0, gridDepth - 1);
         if (p.z != excludeZ && IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }

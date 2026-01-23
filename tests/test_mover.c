@@ -1155,8 +1155,8 @@ describe(mover_ladder_transitions) {
 
         // Find walkable start on z=0
         for (int attempts = 0; attempts < 1000 && start.x < 0; attempts++) {
-            int x = rand() % gridWidth;
-            int y = rand() % gridHeight;
+            int x = GetRandomValue(0, gridWidth - 1);
+            int y = GetRandomValue(0, gridHeight - 1);
             if (IsCellWalkableAt(0, y, x)) {
                 start = (Point){x, y, 0};
             }
@@ -1164,8 +1164,8 @@ describe(mover_ladder_transitions) {
 
         // Find walkable goal on z=1
         for (int attempts = 0; attempts < 1000 && goal.x < 0; attempts++) {
-            int x = rand() % gridWidth;
-            int y = rand() % gridHeight;
+            int x = GetRandomValue(0, gridWidth - 1);
+            int y = GetRandomValue(0, gridHeight - 1);
             if (IsCellWalkableAt(1, y, x)) {
                 goal = (Point){x, y, 1};
             }

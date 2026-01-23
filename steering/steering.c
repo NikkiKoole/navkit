@@ -1,6 +1,7 @@
 #include "steering.h"
+#include "../vendor/raylib.h"
 #include <math.h>
-#include <stdlib.h>
+#include <stddef.h>
 
 // ============================================================================
 // Default Constants
@@ -83,7 +84,7 @@ static inline float clamp(float value, float min, float max) {
 }
 
 static float randf(float min, float max) {
-    return min + (max - min) * ((float)rand() / (float)RAND_MAX);
+    return min + (max - min) * (GetRandomValue(0, 10000) / 10000.0f);
 }
 
 SteeringOutput steering_zero(void) {

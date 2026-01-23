@@ -20,7 +20,6 @@
 #define UI_IMPLEMENTATION
 #include "../shared/ui.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 
 #define SCREEN_WIDTH 1280
@@ -1841,7 +1840,7 @@ static void RemoveAgents(int count) {
 }
 
 static float randf(float min, float max) {
-    return min + (max - min) * ((float)rand() / (float)RAND_MAX);
+    return min + (max - min) * (GetRandomValue(0, 10000) / 10000.0f);
 }
 
 static void InitAgent(Boid* agent, Vector2 pos) {
