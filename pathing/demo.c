@@ -1572,21 +1572,22 @@ void DrawProfilerPanel(float rightEdge, float y) {
         int renderOrder[PROFILER_MAX_SECTIONS];
         int renderCount = 0;
         
-        // Recursive helper to add section and its children
-        // First pass: add all root sections (parent == -1) and their descendants
+        // Add section and all its descendants recursively (depth-first)
         for (int i = 0; i < profilerSectionCount; i++) {
             if (profilerSections[i].parent == -1) {
-                // Add this root section
-                renderOrder[renderCount++] = i;
-                // Add all descendants (sections with this as ancestor)
-                for (int j = 0; j < profilerSectionCount; j++) {
-                    if (profilerSections[j].parent == i) {
-                        renderOrder[renderCount++] = j;
-                        // Add grandchildren (depth 2)
-                        for (int k = 0; k < profilerSectionCount; k++) {
-                            if (profilerSections[k].parent == j) {
-                                renderOrder[renderCount++] = k;
-                            }
+                // Use a stack to avoid actual recursion
+                int stack[PROFILER_MAX_SECTIONS];
+                int stackSize = 1;
+                stack[0] = i;
+                
+                while (stackSize > 0) {
+                    int current = stack[--stackSize];
+                    renderOrder[renderCount++] = current;
+                    
+                    // Push children in reverse order so they come out in forward order
+                    for (int j = profilerSectionCount - 1; j >= 0; j--) {
+                        if (profilerSections[j].parent == current) {
+                            stack[stackSize++] = j;
                         }
                     }
                 }

@@ -105,7 +105,9 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
 }
 
 static inline int clampi_item(int v, int lo, int hi) {
-    return (v < lo) ? lo : (v > hi) ? hi : v;
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
 }
 
 int FindGroundItemAtTile(int tileX, int tileY, int z) {
@@ -131,15 +133,19 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
     return -1;
 }
 
-int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
-                       ItemNeighborCallback callback, void* userData) {
+// Callback return value: true to continue iteration, false to stop early
+typedef bool (*ItemRadiusIterator)(int itemIdx, float distSq, void* userData);
+
+// Common spatial grid radius iteration - calls iterator for each valid ground item in radius
+// Returns number of items visited (or partial count if stopped early)
+static int IterateItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
+                                ItemRadiusIterator iterator, void* userData) {
     if (!itemGrid.cellCounts) return 0;
     if (z < 0 || z >= itemGrid.gridD) return 0;
     
-    int found = 0;
+    int visited = 0;
     float radiusSq = (float)(radiusTiles * radiusTiles);
     
-    // Compute cell range to search
     int minTx = clampi_item(tileX - radiusTiles, 0, itemGrid.gridW - 1);
     int maxTx = clampi_item(tileX + radiusTiles, 0, itemGrid.gridW - 1);
     int minTy = clampi_item(tileY - radiusTiles, 0, itemGrid.gridH - 1);
@@ -155,10 +161,8 @@ int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
                 int itemIdx = itemGrid.itemIndices[t];
                 Item* item = &items[itemIdx];
                 
-                // Double-check item is still valid
                 if (!item->active || item->state != ITEM_ON_GROUND) continue;
                 
-                // Calculate distance in tiles
                 int itemTileX = (int)(item->x / CELL_SIZE);
                 int itemTileY = (int)(item->y / CELL_SIZE);
                 float dx = (float)(itemTileX - tileX);
@@ -166,62 +170,60 @@ int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
                 float distSq = dx * dx + dy * dy;
                 
                 if (distSq <= radiusSq) {
-                    if (callback) {
-                        callback(itemIdx, distSq, userData);
+                    visited++;
+                    if (!iterator(itemIdx, distSq, userData)) {
+                        return visited;
                     }
-                    found++;
                 }
             }
         }
     }
     
-    return found;
+    return visited;
+}
+
+// Iterator for QueryItemsInRadius - always continues, calls user callback
+typedef struct {
+    ItemNeighborCallback callback;
+    void* userData;
+} QueryContext;
+
+static bool QueryIterator(int itemIdx, float distSq, void* userData) {
+    QueryContext* ctx = (QueryContext*)userData;
+    if (ctx->callback) {
+        ctx->callback(itemIdx, distSq, ctx->userData);
+    }
+    return true;
+}
+
+int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
+                       ItemNeighborCallback callback, void* userData) {
+    QueryContext ctx = { .callback = callback, .userData = userData };
+    return IterateItemsInRadius(tileX, tileY, z, radiusTiles, QueryIterator, &ctx);
+}
+
+// Iterator for FindFirstItemInRadius - stops when filter matches
+typedef struct {
+    ItemFilterFunc filter;
+    void* userData;
+    int foundIdx;
+} FindFirstContext;
+
+static bool FindFirstIterator(int itemIdx, float distSq, void* userData) {
+    (void)distSq;
+    FindFirstContext* ctx = (FindFirstContext*)userData;
+    if (ctx->filter(itemIdx, ctx->userData)) {
+        ctx->foundIdx = itemIdx;
+        return false;
+    }
+    return true;
 }
 
 int FindFirstItemInRadius(int tileX, int tileY, int z, int radiusTiles,
                           ItemFilterFunc filter, void* userData) {
-    if (!itemGrid.cellCounts) return -1;
-    if (z < 0 || z >= itemGrid.gridD) return -1;
-    
-    float radiusSq = (float)(radiusTiles * radiusTiles);
-    
-    // Compute cell range to search
-    int minTx = clampi_item(tileX - radiusTiles, 0, itemGrid.gridW - 1);
-    int maxTx = clampi_item(tileX + radiusTiles, 0, itemGrid.gridW - 1);
-    int minTy = clampi_item(tileY - radiusTiles, 0, itemGrid.gridH - 1);
-    int maxTy = clampi_item(tileY + radiusTiles, 0, itemGrid.gridH - 1);
-    
-    for (int ty = minTy; ty <= maxTy; ty++) {
-        for (int tx = minTx; tx <= maxTx; tx++) {
-            int cellIdx = z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-            int start = itemGrid.cellStarts[cellIdx];
-            int end = itemGrid.cellStarts[cellIdx + 1];
-            
-            for (int t = start; t < end; t++) {
-                int itemIdx = itemGrid.itemIndices[t];
-                Item* item = &items[itemIdx];
-                
-                // Double-check item is still valid
-                if (!item->active || item->state != ITEM_ON_GROUND) continue;
-                
-                // Calculate distance in tiles
-                int itemTileX = (int)(item->x / CELL_SIZE);
-                int itemTileY = (int)(item->y / CELL_SIZE);
-                float dx = (float)(itemTileX - tileX);
-                float dy = (float)(itemTileY - tileY);
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq <= radiusSq) {
-                    // Check if item passes the filter
-                    if (filter(itemIdx, userData)) {
-                        return itemIdx;  // Found one! Return immediately
-                    }
-                }
-            }
-        }
-    }
-    
-    return -1;  // Nothing found
+    FindFirstContext ctx = { .filter = filter, .userData = userData, .foundIdx = -1 };
+    IterateItemsInRadius(tileX, tileY, z, radiusTiles, FindFirstIterator, &ctx);
+    return ctx.foundIdx;
 }
 
 // =============================================================================
