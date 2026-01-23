@@ -954,8 +954,11 @@ void ProcessMoverRepaths(void) {
             // Repath failed - check if goal cell itself is now a wall
             if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x)) {
                 // Goal is unwalkable (wall placed on it) - pick a new random goal
+                Point oldGoal = m->goal;
                 AssignNewMoverGoal(m);
                 if (m->pathLength > 0) {
+                    TraceLog(LOG_INFO, "Mover %d: goal (%d,%d) became wall, reassigned to (%d,%d)",
+                             i, oldGoal.x, oldGoal.y, m->goal.x, m->goal.y);
                     m->needsRepath = false;
                     repathsThisFrame++;
                     continue;
