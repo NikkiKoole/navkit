@@ -10,6 +10,7 @@ typedef enum {
     JOB_IDLE,
     JOB_MOVING_TO_ITEM,
     JOB_MOVING_TO_STOCKPILE,
+    JOB_MOVING_TO_DROP,  // Clearing: carrying item away from stockpile to drop on ground
 } JobState;
 
 // Cell size in pixels (for position calculations)

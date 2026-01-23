@@ -520,7 +520,7 @@ void JobsTick(void) {
                         m->targetSlotY = moverTileY;
                     }
                     
-                    m->jobState = JOB_MOVING_TO_STOCKPILE;  // Reuse this state for safe-drop
+                    m->jobState = JOB_MOVING_TO_DROP;
                     m->goal.x = m->targetSlotX;
                     m->goal.y = m->targetSlotY;
                     m->goal.z = (int)m->z;
@@ -537,7 +537,6 @@ void JobsTick(void) {
         }
         else if (m->jobState == JOB_MOVING_TO_STOCKPILE) {
             int itemIdx = m->carryingItem;
-            bool isSafeDrop = (m->targetStockpile < 0);
             
             // Check if still carrying
             if (itemIdx < 0 || !items[itemIdx].active) {
@@ -545,14 +544,14 @@ void JobsTick(void) {
                 continue;
             }
             
-            // Check if stockpile still valid (skip for safe-drop jobs)
-            if (!isSafeDrop && !stockpiles[m->targetStockpile].active) {
+            // Check if stockpile still valid
+            if (!stockpiles[m->targetStockpile].active) {
                 CancelJob(m, i);
                 continue;
             }
             
-            // Check if stockpile still accepts this item type (skip for safe-drop jobs)
-            if (!isSafeDrop && !StockpileAcceptsType(m->targetStockpile, items[itemIdx].type)) {
+            // Check if stockpile still accepts this item type
+            if (!StockpileAcceptsType(m->targetStockpile, items[itemIdx].type)) {
                 CancelJob(m, i);
                 continue;
             }
@@ -578,22 +577,61 @@ void JobsTick(void) {
             if (distSq < DROP_RADIUS * DROP_RADIUS) {
                 Item* item = &items[itemIdx];
                 
-                if (isSafeDrop) {
-                    // Safe-drop: just drop on ground
-                    item->state = ITEM_ON_GROUND;
-                    item->x = targetX;
-                    item->y = targetY;
-                    item->reservedBy = -1;
-                } else {
-                    // Normal drop: place in stockpile
-                    item->state = ITEM_IN_STOCKPILE;
-                    item->x = targetX;
-                    item->y = targetY;
-                    item->reservedBy = -1;
-                    
-                    // Mark slot as occupied
-                    PlaceItemInStockpile(m->targetStockpile, m->targetSlotX, m->targetSlotY, itemIdx);
-                }
+                // Place in stockpile
+                item->state = ITEM_IN_STOCKPILE;
+                item->x = targetX;
+                item->y = targetY;
+                item->reservedBy = -1;
+                
+                // Mark slot as occupied
+                PlaceItemInStockpile(m->targetStockpile, m->targetSlotX, m->targetSlotY, itemIdx);
+                
+                // Job complete
+                m->jobState = JOB_IDLE;
+                m->carryingItem = -1;
+                m->targetStockpile = -1;
+                m->targetSlotX = -1;
+                m->targetSlotY = -1;
+                
+                // Add mover back to idle list
+                AddMoverToIdleList(i);
+            }
+        }
+        else if (m->jobState == JOB_MOVING_TO_DROP) {
+            int itemIdx = m->carryingItem;
+            
+            // Check if still carrying
+            if (itemIdx < 0 || !items[itemIdx].active) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if stuck (no path and not making progress)
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Update carried item position to follow mover
+            items[itemIdx].x = m->x;
+            items[itemIdx].y = m->y;
+            items[itemIdx].z = m->z;
+            
+            // Check if arrived at drop location
+            float targetX = m->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = m->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = m->x - targetX;
+            float dy = m->y - targetY;
+            float distSq = dx*dx + dy*dy;
+            
+            if (distSq < DROP_RADIUS * DROP_RADIUS) {
+                Item* item = &items[itemIdx];
+                
+                // Drop on ground
+                item->state = ITEM_ON_GROUND;
+                item->x = targetX;
+                item->y = targetY;
+                item->reservedBy = -1;
                 
                 // Job complete
                 m->jobState = JOB_IDLE;

@@ -2574,6 +2574,237 @@ describe(stockpile_ground_item_blocking) {
 
 /*
  * =============================================================================
+ * JOB_MOVING_TO_DROP Tests
+ * Tests for the clear/safe-drop job state (separate from JOB_MOVING_TO_STOCKPILE)
+ * =============================================================================
+ */
+
+describe(clear_job_state) {
+    it("should use JOB_MOVING_TO_DROP when clearing foreign item with no destination") {
+        // Green item on red stockpile, no green stockpile exists
+        // Mover should enter JOB_MOVING_TO_DROP state (not JOB_MOVING_TO_STOCKPILE)
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near stockpile
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5) - only red allowed
+        int spRed = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // NO green stockpile exists
+        
+        // Green item on RED stockpile tile - needs clearing, nowhere to go
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run until mover picks up and starts carrying
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (m->carryingItem == itemIdx) break;
+        }
+        
+        expect(m->carryingItem == itemIdx);
+        // Should be in JOB_MOVING_TO_DROP, not JOB_MOVING_TO_STOCKPILE
+        expect(m->jobState == JOB_MOVING_TO_DROP);
+        // targetStockpile should be -1 (no destination stockpile)
+        expect(m->targetStockpile == -1);
+    }
+    
+    it("should use JOB_MOVING_TO_STOCKPILE when clearing to another stockpile") {
+        // Green item on red stockpile, green stockpile exists
+        // Mover should use JOB_MOVING_TO_STOCKPILE (has a destination)
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near stockpile
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5)
+        int spRed = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // Green stockpile at (8,8) - destination exists
+        int spGreen = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spGreen, ITEM_GREEN, true);
+        
+        // Green item on RED stockpile tile
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run until mover picks up and starts carrying
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (m->carryingItem == itemIdx) break;
+        }
+        
+        expect(m->carryingItem == itemIdx);
+        // Should be in JOB_MOVING_TO_STOCKPILE (has destination)
+        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        // targetStockpile should be the green stockpile
+        expect(m->targetStockpile == spGreen);
+    }
+    
+    it("should complete JOB_MOVING_TO_DROP and drop item on ground") {
+        // Full cycle: pick up foreign item, drop outside stockpile
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near stockpile
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5) - 2x2
+        int spRed = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // Green item on RED stockpile tile
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run full simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_ON_GROUND && m->jobState == JOB_IDLE) break;
+        }
+        
+        // Item should be on ground
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+        expect(items[itemIdx].active == true);
+        
+        // Item should NOT be on the stockpile anymore
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        bool onStockpile = (itemTileX >= 5 && itemTileX < 7 && itemTileY >= 5 && itemTileY < 7);
+        expect(onStockpile == false);
+        
+        // Mover should be idle
+        expect(m->jobState == JOB_IDLE);
+        expect(m->carryingItem == -1);
+    }
+    
+    it("should cancel JOB_MOVING_TO_DROP if item disappears") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile
+        int spRed = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // Green item on red stockpile
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run until mover is in JOB_MOVING_TO_DROP
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (m->jobState == JOB_MOVING_TO_DROP) break;
+        }
+        
+        expect(m->jobState == JOB_MOVING_TO_DROP);
+        expect(m->carryingItem == itemIdx);
+        
+        // Delete the item while being carried
+        DeleteItem(itemIdx);
+        
+        // Run a few more ticks
+        for (int i = 0; i < 30; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Mover should be idle (job cancelled)
+        expect(m->jobState == JOB_IDLE);
+        expect(m->carryingItem == -1);
+    }
+}
+
+/*
+ * =============================================================================
  * ItemSpatialGrid Tests
  * Tests for spatial indexing of items (TDD - written before implementation)
  * =============================================================================
@@ -3055,6 +3286,9 @@ int main(int argc, char* argv[]) {
     
     // Ground item blocking (new feature)
     test(stockpile_ground_item_blocking);
+
+    // Clear job state (JOB_MOVING_TO_DROP)
+    test(clear_job_state);
     
     // Item spatial grid (optimization)
     test(item_spatial_grid);
