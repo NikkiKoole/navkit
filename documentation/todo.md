@@ -30,7 +30,7 @@ Small remaining items and future improvements.
   - [ ] Architecture refactor (Job pool, WorkGivers) - optional but recommended before construction
   - [ ] Construction (blueprints, material delivery, chained jobs)
   - [ ] Simple crafting (workshops, recipes)
-- [ ] **Containers** - Portable storage (chests, barrels, wagons). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
+- [ ] **Containers** - Portable storage (chests, barrels, wagons, bin, box). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
 
 ### Larger efforts (build on queuing)
 - [ ] **Elevators (full sim)** - moving elevator with state, queuing, capacity, wait times (requires queuing)
@@ -89,6 +89,7 @@ Want me to add a note about this flow field / pheromone overlap to the todo or c
 ## See Also (Design Docs)
 
 - [jobs-roadmap.md](jobs-roadmap.md) - Jobs system expansion (mining, construction, crafting, architecture refactor)
+- [logistics-influences.md](logistics-influences.md) - Research on Factorio, belt games, SimTower influences
 - [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim with 2.5D views (detailed phases)
 - [elevators.md](elevators.md) - Full elevator simulation design
 - [done/convo-jobs.md](done/convo-jobs.md) - Jobs/Hauling system design conversation (completed)
