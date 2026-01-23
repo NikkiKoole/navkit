@@ -104,6 +104,10 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
     }
 }
 
+static inline int clampi_item(int v, int lo, int hi) {
+    return (v < lo) ? lo : (v > hi) ? hi : v;
+}
+
 int FindGroundItemAtTile(int tileX, int tileY, int z) {
     // Use spatial grid for O(1) lookup if grid has been built with items
     // (groundItemCount > 0 means BuildItemSpatialGrid was called after items existed)
@@ -127,15 +131,106 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
     return -1;
 }
 
+int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
+                       ItemNeighborCallback callback, void* userData) {
+    if (!itemGrid.cellCounts) return 0;
+    if (z < 0 || z >= itemGrid.gridD) return 0;
+    
+    int found = 0;
+    float radiusSq = (float)(radiusTiles * radiusTiles);
+    
+    // Compute cell range to search
+    int minTx = clampi_item(tileX - radiusTiles, 0, itemGrid.gridW - 1);
+    int maxTx = clampi_item(tileX + radiusTiles, 0, itemGrid.gridW - 1);
+    int minTy = clampi_item(tileY - radiusTiles, 0, itemGrid.gridH - 1);
+    int maxTy = clampi_item(tileY + radiusTiles, 0, itemGrid.gridH - 1);
+    
+    for (int ty = minTy; ty <= maxTy; ty++) {
+        for (int tx = minTx; tx <= maxTx; tx++) {
+            int cellIdx = z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+            int start = itemGrid.cellStarts[cellIdx];
+            int end = itemGrid.cellStarts[cellIdx + 1];
+            
+            for (int t = start; t < end; t++) {
+                int itemIdx = itemGrid.itemIndices[t];
+                Item* item = &items[itemIdx];
+                
+                // Double-check item is still valid
+                if (!item->active || item->state != ITEM_ON_GROUND) continue;
+                
+                // Calculate distance in tiles
+                int itemTileX = (int)(item->x / CELL_SIZE);
+                int itemTileY = (int)(item->y / CELL_SIZE);
+                float dx = (float)(itemTileX - tileX);
+                float dy = (float)(itemTileY - tileY);
+                float distSq = dx * dx + dy * dy;
+                
+                if (distSq <= radiusSq) {
+                    if (callback) {
+                        callback(itemIdx, distSq, userData);
+                    }
+                    found++;
+                }
+            }
+        }
+    }
+    
+    return found;
+}
+
+int FindFirstItemInRadius(int tileX, int tileY, int z, int radiusTiles,
+                          ItemFilterFunc filter, void* userData) {
+    if (!itemGrid.cellCounts) return -1;
+    if (z < 0 || z >= itemGrid.gridD) return -1;
+    
+    float radiusSq = (float)(radiusTiles * radiusTiles);
+    
+    // Compute cell range to search
+    int minTx = clampi_item(tileX - radiusTiles, 0, itemGrid.gridW - 1);
+    int maxTx = clampi_item(tileX + radiusTiles, 0, itemGrid.gridW - 1);
+    int minTy = clampi_item(tileY - radiusTiles, 0, itemGrid.gridH - 1);
+    int maxTy = clampi_item(tileY + radiusTiles, 0, itemGrid.gridH - 1);
+    
+    for (int ty = minTy; ty <= maxTy; ty++) {
+        for (int tx = minTx; tx <= maxTx; tx++) {
+            int cellIdx = z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+            int start = itemGrid.cellStarts[cellIdx];
+            int end = itemGrid.cellStarts[cellIdx + 1];
+            
+            for (int t = start; t < end; t++) {
+                int itemIdx = itemGrid.itemIndices[t];
+                Item* item = &items[itemIdx];
+                
+                // Double-check item is still valid
+                if (!item->active || item->state != ITEM_ON_GROUND) continue;
+                
+                // Calculate distance in tiles
+                int itemTileX = (int)(item->x / CELL_SIZE);
+                int itemTileY = (int)(item->y / CELL_SIZE);
+                float dx = (float)(itemTileX - tileX);
+                float dy = (float)(itemTileY - tileY);
+                float distSq = dx * dx + dy * dy;
+                
+                if (distSq <= radiusSq) {
+                    // Check if item passes the filter
+                    if (filter(itemIdx, userData)) {
+                        return itemIdx;  // Found one! Return immediately
+                    }
+                }
+            }
+        }
+    }
+    
+    return -1;  // Nothing found
+}
+
 // =============================================================================
 // ItemSpatialGrid Implementation
 // =============================================================================
 
 ItemSpatialGrid itemGrid = {0};
 
-static inline int clampi_item(int v, int lo, int hi) {
-    return (v < lo) ? lo : (v > hi) ? hi : v;
-}
+// Defined earlier, before QueryItemsInRadius
 
 void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth) {
     FreeItemSpatialGrid();

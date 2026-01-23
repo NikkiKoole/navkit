@@ -10,6 +10,8 @@
 // Stub profiler functions for tests
 void ProfileBegin(const char* name) { (void)name; }
 void ProfileEnd(const char* name) { (void)name; }
+void ProfileAccumBegin(const char* name) { (void)name; }
+void ProfileAccumEnd(const char* name) { (void)name; }
 
 describe(mover_initialization) {
     it("should initialize mover with correct position and goal") {

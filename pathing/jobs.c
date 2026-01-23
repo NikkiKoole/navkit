@@ -5,14 +5,104 @@
 #include "pathfinding.h"
 #include "stockpiles.h"
 #include "../shared/profiler.h"
+#include "../vendor/raylib.h"
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Distance thresholds (relative to CELL_SIZE)
 #define PICKUP_RADIUS (CELL_SIZE * 0.75f)  // Large enough to cover same-cell edge cases
 #define DROP_RADIUS (CELL_SIZE * 0.75f)    // Same as pickup - covers whole cell reliably
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 #define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
+
+// Radius search for finding idle movers near items (in pixels)
+#define MOVER_SEARCH_RADIUS (CELL_SIZE * 50)  // Search 50 tiles around item for idle mover
+
+// =============================================================================
+// Idle Mover Cache
+// =============================================================================
+
+int* idleMoverList = NULL;
+int idleMoverCount = 0;
+bool* moverIsInIdleList = NULL;
+static int idleMoverCapacity = 0;
+
+void InitJobSystem(int maxMovers) {
+    FreeJobSystem();
+    idleMoverCapacity = maxMovers;
+    idleMoverList = (int*)malloc(maxMovers * sizeof(int));
+    moverIsInIdleList = (bool*)calloc(maxMovers, sizeof(bool));
+    idleMoverCount = 0;
+}
+
+void FreeJobSystem(void) {
+    free(idleMoverList);
+    free(moverIsInIdleList);
+    idleMoverList = NULL;
+    moverIsInIdleList = NULL;
+    idleMoverCount = 0;
+    idleMoverCapacity = 0;
+}
+
+void AddMoverToIdleList(int moverIdx) {
+    if (!moverIsInIdleList || moverIdx < 0 || moverIdx >= idleMoverCapacity) return;
+    if (moverIsInIdleList[moverIdx]) return;  // Already in list
+    
+    idleMoverList[idleMoverCount++] = moverIdx;
+    moverIsInIdleList[moverIdx] = true;
+}
+
+void RemoveMoverFromIdleList(int moverIdx) {
+    if (!moverIsInIdleList || moverIdx < 0 || moverIdx >= idleMoverCapacity) return;
+    if (!moverIsInIdleList[moverIdx]) return;  // Not in list
+    
+    // Find and remove (swap with last element for O(1) removal)
+    for (int i = 0; i < idleMoverCount; i++) {
+        if (idleMoverList[i] == moverIdx) {
+            idleMoverList[i] = idleMoverList[idleMoverCount - 1];
+            idleMoverCount--;
+            break;
+        }
+    }
+    moverIsInIdleList[moverIdx] = false;
+}
+
+void RebuildIdleMoverList(void) {
+    if (!moverIsInIdleList) return;
+    
+    idleMoverCount = 0;
+    memset(moverIsInIdleList, 0, idleMoverCapacity * sizeof(bool));
+    
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active && movers[i].jobState == JOB_IDLE) {
+            idleMoverList[idleMoverCount++] = i;
+            moverIsInIdleList[i] = true;
+        }
+    }
+}
+
+// =============================================================================
+// Mover Search Callback (find nearest idle mover to an item)
+// =============================================================================
+
+typedef struct {
+    float itemX, itemY;
+    int bestMoverIdx;
+    float bestDistSq;
+} IdleMoverSearchContext;
+
+static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) {
+    IdleMoverSearchContext* ctx = (IdleMoverSearchContext*)userData;
+    
+    // Skip if not in idle list (already has a job or not active)
+    if (!moverIsInIdleList || !moverIsInIdleList[moverIdx]) return;
+    
+    if (distSq < ctx->bestDistSq) {
+        ctx->bestDistSq = distSq;
+        ctx->bestMoverIdx = moverIdx;
+    }
+}
 
 // Helper: clear item from source stockpile slot when re-hauling
 static void ClearSourceStockpileSlot(Item* item) {
@@ -62,224 +152,220 @@ static void CancelJob(Mover* m, int moverIdx) {
     m->targetStockpile = -1;
     m->targetSlotX = -1;
     m->targetSlotY = -1;
+    
+    // Add back to idle list
+    AddMoverToIdleList(moverIdx);
+}
+
+// Helper: Try to assign a job for a specific item to a nearby idle mover
+// Returns true if assignment succeeded, false otherwise
+static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, bool safeDrop) {
+    Item* item = &items[itemIdx];
+    
+    int moverIdx = -1;
+    
+    // Use MoverSpatialGrid if available and built (has indexed movers)
+    if (moverGrid.cellCounts && moverGrid.cellStarts[moverGrid.cellCount] > 0) {
+        IdleMoverSearchContext ctx = {
+            .itemX = item->x,
+            .itemY = item->y,
+            .bestMoverIdx = -1,
+            .bestDistSq = 1e30f
+        };
+        
+        QueryMoverNeighbors(item->x, item->y, MOVER_SEARCH_RADIUS, -1, IdleMoverSearchCallback, &ctx);
+        moverIdx = ctx.bestMoverIdx;
+    } else {
+        // Fallback: find first idle mover (for tests without spatial grid)
+        float bestDistSq = 1e30f;
+        for (int i = 0; i < idleMoverCount; i++) {
+            int idx = idleMoverList[i];
+            float dx = movers[idx].x - item->x;
+            float dy = movers[idx].y - item->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                moverIdx = idx;
+            }
+        }
+    }
+    
+    if (moverIdx < 0) return false;  // No idle mover found
+    Mover* m = &movers[moverIdx];
+    
+    // Reserve item
+    if (!ReserveItem(itemIdx, moverIdx)) return false;
+    
+    // Reserve stockpile slot (unless safeDrop)
+    if (!safeDrop) {
+        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx)) {
+            ReleaseItemReservation(itemIdx);
+            return false;
+        }
+    }
+    
+    // Quick reachability check
+    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    
+    PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
+    
+    if (tempLen == 0) {
+        // Can't reach - release reservations
+        ReleaseItemReservation(itemIdx);
+        if (!safeDrop) {
+            ReleaseStockpileSlot(spIdx, slotX, slotY);
+        }
+        SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        return false;
+    }
+    
+    // Assign job to mover
+    m->targetItem = itemIdx;
+    m->targetStockpile = spIdx;
+    m->targetSlotX = safeDrop ? -1 : slotX;
+    m->targetSlotY = safeDrop ? -1 : slotY;
+    m->jobState = JOB_MOVING_TO_ITEM;
+    m->goal = itemCell;
+    m->needsRepath = true;
+    
+    // Remove mover from idle list
+    RemoveMoverFromIdleList(moverIdx);
+    
+    return true;
 }
 
 void AssignJobs(void) {
-    for (int i = 0; i < moverCount; i++) {
-        Mover* m = &movers[i];
-        if (!m->active) continue;
-        if (m->jobState != JOB_IDLE) continue;
-        
-        int itemIdx = -1;
-        float nearestDistSq = 1e30f;
-        int stockpileForItem = -1;
-        bool isAbsorbJob = false;
-        bool isClearJob = false;
-        
-        // PRIORITY 1: Find ground items on stockpile tiles that need absorbing or clearing
-        PROFILE_ACCUM_BEGIN(Jobs_FindStockpileItem);
+    // Rebuild idle mover list if not initialized
+    if (!moverIsInIdleList) {
+        InitJobSystem(MAX_MOVERS);
+    }
+    
+    // Rebuild idle list each frame (fast O(moverCount) scan)
+    // This ensures correctness after movers spawn/despawn
+    RebuildIdleMoverList();
+    
+    // Early exit: no idle movers means no work to do
+    if (idleMoverCount == 0) return;
+    
+    // Cache which item types have available stockpiles
+    bool typeHasStockpile[3] = {false, false, false};
+    for (int t = 0; t < 3; t++) {
+        int slotX, slotY;
+        if (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0) {
+            typeHasStockpile[t] = true;
+        }
+    }
+    
+    // PRIORITY 1: Handle ground items on stockpile tiles (absorb/clear jobs)
+    PROFILE_ACCUM_BEGIN(Jobs_FindStockpileItem);
+    while (idleMoverCount > 0) {
         int spOnItem = -1;
         bool absorb = false;
-        int stockpileItemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
-        PROFILE_ACCUM_END(Jobs_FindStockpileItem);
+        int itemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
         
-        if (stockpileItemIdx >= 0 && items[stockpileItemIdx].unreachableCooldown <= 0.0f) {
-            if (absorb) {
-                // Absorb job: item matches stockpile filter, just pick up and place in same tile
-                isAbsorbJob = true;
-                itemIdx = stockpileItemIdx;
-                stockpileForItem = spOnItem;
-            } else {
-                // Clear job: item doesn't match, need to find another destination or safe-drop
-                isClearJob = true;
-                itemIdx = stockpileItemIdx;
-                // stockpileForItem will be determined below (find destination for this item type)
-            }
-        }
+        if (itemIdx < 0 || items[itemIdx].unreachableCooldown > 0.0f) break;
         
-        // PRIORITY 2: Find normal ground items to haul (only if no absorb/clear job)
-        // Uses spatial grid to iterate only ground items instead of all MAX_ITEMS
-        PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem);
-        if (itemIdx < 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-            // Iterate through all cells containing ground items
-            int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
-            for (int t = 0; t < totalIndexed; t++) {
-                int j = itemGrid.itemIndices[t];
-                Item* item = &items[j];
-                
-                if (!item->active) continue;
-                if (item->reservedBy != -1) continue;
-                if (item->state != ITEM_ON_GROUND) continue;
-                if (item->unreachableCooldown > 0.0f) continue;
-                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
-                
-                // Check if there's a stockpile that accepts this item type
-                int slotX, slotY;
-                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
-                if (spIdx < 0) continue;  // no valid destination
-                
-                float dx = item->x - m->x;
-                float dy = item->y - m->y;
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq;
-                    itemIdx = j;
-                }
-            }
-        } else if (itemIdx < 0) {
-            // Fallback: scan all items if grid not available
-            for (int j = 0; j < MAX_ITEMS; j++) {
-                if (!items[j].active) continue;
-                if (items[j].reservedBy != -1) continue;
-                if (items[j].state != ITEM_ON_GROUND) continue;
-                if (items[j].unreachableCooldown > 0.0f) continue;
-                if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;
-                
-                int slotX, slotY;
-                int spIdx = FindStockpileForItem(items[j].type, &slotX, &slotY);
-                if (spIdx < 0) continue;
-                
-                float dx = items[j].x - m->x;
-                float dy = items[j].y - m->y;
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq;
-                    itemIdx = j;
-                }
-            }
-        }
-        PROFILE_ACCUM_END(Jobs_FindGroundItem);
+        int slotX, slotY, spIdx;
+        bool safeDrop = false;
         
-        // If no ground item found, try to find an item to re-haul:
-        // 1. Items in overfull slots (priority - must move these)
-        // 2. Items in low-priority stockpiles (optional optimization)
-        PROFILE_ACCUM_BEGIN(Jobs_FindRehaulItem);
-        if (itemIdx < 0) {
-            for (int j = 0; j < MAX_ITEMS; j++) {
-                if (!items[j].active) continue;
-                if (items[j].reservedBy != -1) continue;
-                if (items[j].state != ITEM_IN_STOCKPILE) continue;
-                
-                // Find which stockpile this item is in
-                int currentSp = -1;
-                if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
-                if (currentSp < 0) continue;
-                
-                int itemSlotX = (int)(items[j].x / CELL_SIZE);
-                int itemSlotY = (int)(items[j].y / CELL_SIZE);
-                
-                // Check if slot is overfull OR if there's a higher-priority stockpile
-                int destSlotX, destSlotY;
-                int destSp = -1;
-                
-                if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
-                    // Overfull: find any stockpile with room
-                    destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
-                } else {
-                    // Not overfull: only move to higher priority
-                    destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
-                }
-                
-                if (destSp < 0) continue;  // no destination available
-                
-                float dx = items[j].x - m->x;
-                float dy = items[j].y - m->y;
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < nearestDistSq) {
-                    nearestDistSq = distSq;
-                    itemIdx = j;
-                }
-            }
-        }
-        PROFILE_ACCUM_END(Jobs_FindRehaulItem);
-        
-        if (itemIdx < 0) continue;  // no item to haul or re-haul
-        
-        // Find stockpile for this item
-        PROFILE_ACCUM_BEGIN(Jobs_FindDestination);
-        int slotX, slotY;
-        int spIdx;
-        bool safeDrop = false;  // true if we should safe-drop (clear job with no destination)
-        
-        if (isAbsorbJob) {
-            // Absorb job: destination is the same tile the item is already on
-            spIdx = stockpileForItem;
+        if (absorb) {
+            // Absorb: destination is same tile
+            spIdx = spOnItem;
             slotX = (int)(items[itemIdx].x / CELL_SIZE);
             slotY = (int)(items[itemIdx].y / CELL_SIZE);
-        } else if (isClearJob) {
-            // Clear job: find a stockpile that accepts this item type
+        } else {
+            // Clear: find destination or safe-drop
             spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
             if (spIdx < 0) {
-                // No valid destination - we'll safe-drop outside the stockpile
                 safeDrop = true;
-                spIdx = -1;
             }
-        } else if (items[itemIdx].state == ITEM_IN_STOCKPILE) {
-            // Re-haul: check if overfull or moving to higher priority
+        }
+        
+        if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
+            // Couldn't assign - mark item and move on
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindStockpileItem);
+    
+    // PRIORITY 2: Iterate ground items and assign to nearby idle movers
+    PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem);
+    if (idleMoverCount > 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+        
+        for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
+            int itemIdx = itemGrid.itemIndices[t];
+            Item* item = &items[itemIdx];
+            
+            // Skip invalid items
+            if (!item->active) continue;
+            if (item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if (!typeHasStockpile[item->type]) continue;
+            if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+            
+            // Find stockpile for this item
+            int slotX, slotY;
+            int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+            if (spIdx < 0) continue;
+            
+            TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
+        }
+    } else if (idleMoverCount > 0) {
+        // Fallback: linear scan when spatial grid not built (tests)
+        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+            Item* item = &items[j];
+            if (!item->active) continue;
+            if (item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if (!typeHasStockpile[item->type]) continue;
+            if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+            
+            int slotX, slotY;
+            int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+            if (spIdx < 0) continue;
+            
+            TryAssignItemToMover(j, spIdx, slotX, slotY, false);
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindGroundItem);
+    
+    // PRIORITY 3: Re-haul items from overfull/low-priority stockpiles
+    PROFILE_ACCUM_BEGIN(Jobs_FindRehaulItem);
+    if (idleMoverCount > 0) {
+        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+            if (!items[j].active) continue;
+            if (items[j].reservedBy != -1) continue;
+            if (items[j].state != ITEM_IN_STOCKPILE) continue;
+            
             int currentSp = -1;
-            IsPositionInStockpile(items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z, &currentSp);
-            int itemSlotX = (int)(items[itemIdx].x / CELL_SIZE);
-            int itemSlotY = (int)(items[itemIdx].y / CELL_SIZE);
+            if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
+            if (currentSp < 0) continue;
+            
+            int itemSlotX = (int)(items[j].x / CELL_SIZE);
+            int itemSlotY = (int)(items[j].y / CELL_SIZE);
+            
+            int destSlotX, destSlotY;
+            int destSp = -1;
             
             if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
-                spIdx = FindStockpileForOverfullItem(itemIdx, currentSp, &slotX, &slotY);
+                destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
             } else {
-                spIdx = FindHigherPriorityStockpile(itemIdx, currentSp, &slotX, &slotY);
+                destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
             }
-        } else {
-            // Normal haul: find any accepting stockpile
-            spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
+            
+            if (destSp < 0) continue;
+            
+            TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false);
         }
-        PROFILE_ACCUM_END(Jobs_FindDestination);
-        
-        if (spIdx < 0 && !safeDrop) continue;  // no valid destination
-        
-        // Reserve item
-        if (!ReserveItem(itemIdx, i)) continue;
-        
-        // Reserve stockpile slot (unless safeDrop - no destination)
-        if (!safeDrop) {
-            if (!ReserveStockpileSlot(spIdx, slotX, slotY, i)) {
-                ReleaseItemReservation(itemIdx);
-                continue;
-            }
-        }
-        
-        // Set goal to item position and check if reachable before assigning
-        Item* item = &items[itemIdx];
-        Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
-        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
-        
-        // Quick reachability check - try to find a path using current algorithm
-        PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
-        Point tempPath[MAX_PATH];
-        int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-        PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
-        
-        if (tempLen == 0) {
-            // Can't reach item - release reservations and set cooldown
-            ReleaseItemReservation(itemIdx);
-            if (!safeDrop) {
-                ReleaseStockpileSlot(spIdx, slotX, slotY);
-            }
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            continue;
-        }
-        
-        // Set mover state
-        m->targetItem = itemIdx;
-        m->targetStockpile = spIdx;  // -1 for safeDrop
-        m->targetSlotX = safeDrop ? -1 : slotX;
-        m->targetSlotY = safeDrop ? -1 : slotY;
-        m->jobState = JOB_MOVING_TO_ITEM;
-        
-        // Set goal to item position and trigger pathfinding
-        m->goal = itemCell;
-        m->needsRepath = true;
     }
+    PROFILE_ACCUM_END(Jobs_FindRehaulItem);
 }
 
 void JobsTick(void) {
@@ -441,6 +527,9 @@ void JobsTick(void) {
                 m->targetStockpile = -1;
                 m->targetSlotX = -1;
                 m->targetSlotY = -1;
+                
+                // Add mover back to idle list
+                AddMoverToIdleList(i);
             }
         }
     }

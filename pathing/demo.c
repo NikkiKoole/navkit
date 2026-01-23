@@ -1568,6 +1568,31 @@ void DrawProfilerPanel(float rightEdge, float y) {
             DrawTextShadow(TextFormat("Total:      %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
         }
 
+        // Build hierarchical render order (parents before children, children grouped under parent)
+        int renderOrder[PROFILER_MAX_SECTIONS];
+        int renderCount = 0;
+        
+        // Recursive helper to add section and its children
+        // First pass: add all root sections (parent == -1) and their descendants
+        for (int i = 0; i < profilerSectionCount; i++) {
+            if (profilerSections[i].parent == -1) {
+                // Add this root section
+                renderOrder[renderCount++] = i;
+                // Add all descendants (sections with this as ancestor)
+                for (int j = 0; j < profilerSectionCount; j++) {
+                    if (profilerSections[j].parent == i) {
+                        renderOrder[renderCount++] = j;
+                        // Add grandchildren (depth 2)
+                        for (int k = 0; k < profilerSectionCount; k++) {
+                            if (profilerSections[k].parent == j) {
+                                renderOrder[renderCount++] = k;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Find max value for scaling bars
         float maxMs = 1.0f;  // Minimum scale of 1ms
         for (int i = 0; i < profilerSectionCount; i++) {
@@ -1589,7 +1614,8 @@ void DrawProfilerPanel(float rightEdge, float y) {
         int labelStartY = y;  // Remember starting Y for label hover detection
 
         int visibleRow = 0;
-        for (int i = 0; i < profilerSectionCount; i++) {
+        for (int r = 0; r < renderCount; r++) {
+            int i = renderOrder[r];
             ProfileSection* s = &profilerSections[i];
 
             // Skip hidden sections (collapsed ancestors)

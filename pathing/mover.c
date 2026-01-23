@@ -2,6 +2,7 @@
 #include "grid.h"
 #include "pathfinding.h"
 #include "items.h"
+#include "jobs.h"
 #include "../shared/profiler.h"
 #include <math.h>
 #include <stdio.h>
@@ -562,6 +563,8 @@ void ClearMovers(void) {
     if (gridWidth > 0 && gridHeight > 0) {
         InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     }
+    // Initialize job system idle mover cache
+    InitJobSystem(MAX_MOVERS);
 }
 
 int CountActiveMovers(void) {

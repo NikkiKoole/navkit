@@ -27,7 +27,7 @@ typedef struct {
     float unreachableCooldown; // seconds until retry (0 = can try now)
 } Item;
 
-#define MAX_ITEMS 1024
+#define MAX_ITEMS 25000
 
 extern Item items[MAX_ITEMS];
 extern int itemCount;
@@ -72,5 +72,18 @@ void BuildItemSpatialGrid(void);
 
 // Query: returns item index at tile, or -1 if none
 int QueryItemAtTile(int tileX, int tileY, int z);
+
+// Query: calls callback for each ground item within radius (in tiles) of (tileX, tileY)
+// Returns number of items found
+typedef void (*ItemNeighborCallback)(int itemIndex, float distSq, void* userData);
+int QueryItemsInRadius(int tileX, int tileY, int z, int radiusTiles,
+                       ItemNeighborCallback callback, void* userData);
+
+// Query: find first valid item in radius matching filter criteria
+// Returns item index or -1 if none found. Much faster than finding "nearest".
+// filterFunc returns true if item is valid for this search
+typedef bool (*ItemFilterFunc)(int itemIndex, void* userData);
+int FindFirstItemInRadius(int tileX, int tileY, int z, int radiusTiles,
+                          ItemFilterFunc filter, void* userData);
 
 #endif
