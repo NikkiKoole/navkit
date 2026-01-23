@@ -5,6 +5,7 @@
 #include "pathfinding.h"
 #include "stockpiles.h"
 #include <math.h>
+#include <stdlib.h>
 
 // Distance thresholds (relative to CELL_SIZE)
 #define PICKUP_RADIUS (CELL_SIZE * 0.75f)  // Large enough to cover same-cell edge cases
@@ -63,34 +64,60 @@ static void CancelJob(Mover* m, int moverIdx) {
 }
 
 void AssignJobs(void) {
+    // Only assign one job per tick to reduce CPU load
+    // Movers will get jobs on subsequent ticks
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
         if (m->jobState != JOB_IDLE) continue;
         
-        // Find nearest unreserved item that's on the ground (not already stored)
         int itemIdx = -1;
         float nearestDistSq = 1e30f;
+        int stockpileForItem = -1;
+        bool isAbsorbJob = false;
+        bool isClearJob = false;
         
-        for (int j = 0; j < MAX_ITEMS; j++) {
-            if (!items[j].active) continue;
-            if (items[j].reservedBy != -1) continue;
-            if (items[j].state != ITEM_ON_GROUND) continue;  // skip carried/stored items
-            if (items[j].unreachableCooldown > 0.0f) continue;  // skip items on cooldown
-            if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;  // skip items outside gather zones
-            
-            // Check if there's a stockpile that accepts this item type
-            int slotX, slotY;
-            int spIdx = FindStockpileForItem(items[j].type, &slotX, &slotY);
-            if (spIdx < 0) continue;  // no valid destination
-            
-            float dx = items[j].x - m->x;
-            float dy = items[j].y - m->y;
-            float distSq = dx*dx + dy*dy;
-            
-            if (distSq < nearestDistSq) {
-                nearestDistSq = distSq;
-                itemIdx = j;
+        // PRIORITY 1: Find ground items on stockpile tiles that need absorbing or clearing
+        int spOnItem = -1;
+        bool absorb = false;
+        int stockpileItemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
+        
+        if (stockpileItemIdx >= 0 && items[stockpileItemIdx].unreachableCooldown <= 0.0f) {
+            if (absorb) {
+                // Absorb job: item matches stockpile filter, just pick up and place in same tile
+                isAbsorbJob = true;
+                itemIdx = stockpileItemIdx;
+                stockpileForItem = spOnItem;
+            } else {
+                // Clear job: item doesn't match, need to find another destination or safe-drop
+                isClearJob = true;
+                itemIdx = stockpileItemIdx;
+                // stockpileForItem will be determined below (find destination for this item type)
+            }
+        }
+        
+        // PRIORITY 2: Find normal ground items to haul (only if no absorb/clear job)
+        if (itemIdx < 0) {
+            for (int j = 0; j < MAX_ITEMS; j++) {
+                if (!items[j].active) continue;
+                if (items[j].reservedBy != -1) continue;
+                if (items[j].state != ITEM_ON_GROUND) continue;  // skip carried/stored items
+                if (items[j].unreachableCooldown > 0.0f) continue;  // skip items on cooldown
+                if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;  // skip items outside gather zones
+                
+                // Check if there's a stockpile that accepts this item type
+                int slotX, slotY;
+                int spIdx = FindStockpileForItem(items[j].type, &slotX, &slotY);
+                if (spIdx < 0) continue;  // no valid destination
+                
+                float dx = items[j].x - m->x;
+                float dy = items[j].y - m->y;
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < nearestDistSq) {
+                    nearestDistSq = distSq;
+                    itemIdx = j;
+                }
             }
         }
         
@@ -141,8 +168,22 @@ void AssignJobs(void) {
         // Find stockpile for this item
         int slotX, slotY;
         int spIdx;
+        bool safeDrop = false;  // true if we should safe-drop (clear job with no destination)
         
-        if (items[itemIdx].state == ITEM_IN_STOCKPILE) {
+        if (isAbsorbJob) {
+            // Absorb job: destination is the same tile the item is already on
+            spIdx = stockpileForItem;
+            slotX = (int)(items[itemIdx].x / CELL_SIZE);
+            slotY = (int)(items[itemIdx].y / CELL_SIZE);
+        } else if (isClearJob) {
+            // Clear job: find a stockpile that accepts this item type
+            spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
+            if (spIdx < 0) {
+                // No valid destination - we'll safe-drop outside the stockpile
+                safeDrop = true;
+                spIdx = -1;
+            }
+        } else if (items[itemIdx].state == ITEM_IN_STOCKPILE) {
             // Re-haul: check if overfull or moving to higher priority
             int currentSp = -1;
             IsPositionInStockpile(items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z, &currentSp);
@@ -159,13 +200,17 @@ void AssignJobs(void) {
             spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
         }
         
-        if (spIdx < 0) continue;  // no valid destination
+        if (spIdx < 0 && !safeDrop) continue;  // no valid destination
         
-        // Reserve both item and stockpile slot
+        // Reserve item
         if (!ReserveItem(itemIdx, i)) continue;
-        if (!ReserveStockpileSlot(spIdx, slotX, slotY, i)) {
-            ReleaseItemReservation(itemIdx);
-            continue;
+        
+        // Reserve stockpile slot (unless safeDrop - no destination)
+        if (!safeDrop) {
+            if (!ReserveStockpileSlot(spIdx, slotX, slotY, i)) {
+                ReleaseItemReservation(itemIdx);
+                continue;
+            }
         }
         
         // Set goal to item position and check if reachable before assigning
@@ -180,21 +225,26 @@ void AssignJobs(void) {
         if (tempLen == 0) {
             // Can't reach item - release reservations and set cooldown
             ReleaseItemReservation(itemIdx);
-            ReleaseStockpileSlot(spIdx, slotX, slotY);
+            if (!safeDrop) {
+                ReleaseStockpileSlot(spIdx, slotX, slotY);
+            }
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             continue;
         }
         
         // Set mover state
         m->targetItem = itemIdx;
-        m->targetStockpile = spIdx;
-        m->targetSlotX = slotX;
-        m->targetSlotY = slotY;
+        m->targetStockpile = spIdx;  // -1 for safeDrop
+        m->targetSlotX = safeDrop ? -1 : slotX;
+        m->targetSlotY = safeDrop ? -1 : slotY;
         m->jobState = JOB_MOVING_TO_ITEM;
         
         // Set goal to item position and trigger pathfinding
         m->goal = itemCell;
         m->needsRepath = true;
+        
+        // Only assign one job per tick to spread CPU load
+        return;
     }
 }
 
@@ -212,8 +262,8 @@ void JobsTick(void) {
                 continue;
             }
             
-            // Check if stockpile still valid
-            if (m->targetStockpile < 0 || !stockpiles[m->targetStockpile].active) {
+            // Check if stockpile still valid (unless it's a safe-drop job with targetStockpile == -1)
+            if (m->targetStockpile >= 0 && !stockpiles[m->targetStockpile].active) {
                 CancelJob(m, i);
                 continue;
             }
@@ -241,16 +291,59 @@ void JobsTick(void) {
                 m->carryingItem = itemIdx;
                 m->targetItem = -1;
                 
-                // Now go to stockpile
-                m->jobState = JOB_MOVING_TO_STOCKPILE;
-                m->goal.x = m->targetSlotX;
-                m->goal.y = m->targetSlotY;
-                m->goal.z = stockpiles[m->targetStockpile].z;
-                m->needsRepath = true;
+                if (m->targetStockpile < 0) {
+                    // Safe-drop job: find a passable tile outside any stockpile
+                    // For now, just drop at current position (will be refined)
+                    // The item needs to be dropped outside the stockpile it was on
+                    int moverTileX = (int)(m->x / CELL_SIZE);
+                    int moverTileY = (int)(m->y / CELL_SIZE);
+                    
+                    // Search for a nearby passable tile not on any stockpile
+                    bool foundDrop = false;
+                    for (int radius = 1; radius <= 5 && !foundDrop; radius++) {
+                        for (int dy2 = -radius; dy2 <= radius && !foundDrop; dy2++) {
+                            for (int dx2 = -radius; dx2 <= radius && !foundDrop; dx2++) {
+                                if (abs(dx2) != radius && abs(dy2) != radius) continue; // only check perimeter
+                                int checkX = moverTileX + dx2;
+                                int checkY = moverTileY + dy2;
+                                if (checkX < 0 || checkY < 0) continue;
+                                if (!IsCellWalkableAt((int)m->z, checkY, checkX)) continue;
+                                int tempSpIdx;
+                                if (IsPositionInStockpile(checkX * CELL_SIZE + CELL_SIZE * 0.5f, 
+                                                          checkY * CELL_SIZE + CELL_SIZE * 0.5f, 
+                                                          (int)m->z, &tempSpIdx)) continue;
+                                // Found a valid drop spot
+                                m->targetSlotX = checkX;
+                                m->targetSlotY = checkY;
+                                foundDrop = true;
+                            }
+                        }
+                    }
+                    
+                    if (!foundDrop) {
+                        // Couldn't find a spot, just drop at feet
+                        m->targetSlotX = moverTileX;
+                        m->targetSlotY = moverTileY;
+                    }
+                    
+                    m->jobState = JOB_MOVING_TO_STOCKPILE;  // Reuse this state for safe-drop
+                    m->goal.x = m->targetSlotX;
+                    m->goal.y = m->targetSlotY;
+                    m->goal.z = (int)m->z;
+                    m->needsRepath = true;
+                } else {
+                    // Normal haul: go to stockpile
+                    m->jobState = JOB_MOVING_TO_STOCKPILE;
+                    m->goal.x = m->targetSlotX;
+                    m->goal.y = m->targetSlotY;
+                    m->goal.z = stockpiles[m->targetStockpile].z;
+                    m->needsRepath = true;
+                }
             }
         }
         else if (m->jobState == JOB_MOVING_TO_STOCKPILE) {
             int itemIdx = m->carryingItem;
+            bool isSafeDrop = (m->targetStockpile < 0);
             
             // Check if still carrying
             if (itemIdx < 0 || !items[itemIdx].active) {
@@ -258,14 +351,14 @@ void JobsTick(void) {
                 continue;
             }
             
-            // Check if stockpile still valid
-            if (m->targetStockpile < 0 || !stockpiles[m->targetStockpile].active) {
+            // Check if stockpile still valid (skip for safe-drop jobs)
+            if (!isSafeDrop && !stockpiles[m->targetStockpile].active) {
                 CancelJob(m, i);
                 continue;
             }
             
-            // Check if stockpile still accepts this item type (filter may have changed)
-            if (!StockpileAcceptsType(m->targetStockpile, items[itemIdx].type)) {
+            // Check if stockpile still accepts this item type (skip for safe-drop jobs)
+            if (!isSafeDrop && !StockpileAcceptsType(m->targetStockpile, items[itemIdx].type)) {
                 CancelJob(m, i);
                 continue;
             }
@@ -281,7 +374,7 @@ void JobsTick(void) {
             items[itemIdx].y = m->y;
             items[itemIdx].z = m->z;
             
-            // Check if arrived at stockpile slot
+            // Check if arrived at target slot
             float targetX = m->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
             float targetY = m->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
             float dx = m->x - targetX;
@@ -289,15 +382,24 @@ void JobsTick(void) {
             float distSq = dx*dx + dy*dy;
             
             if (distSq < DROP_RADIUS * DROP_RADIUS) {
-                // Drop the item in the stockpile
                 Item* item = &items[itemIdx];
-                item->state = ITEM_IN_STOCKPILE;
-                item->x = targetX;
-                item->y = targetY;
-                item->reservedBy = -1;
                 
-                // Mark slot as occupied
-                PlaceItemInStockpile(m->targetStockpile, m->targetSlotX, m->targetSlotY, itemIdx);
+                if (isSafeDrop) {
+                    // Safe-drop: just drop on ground
+                    item->state = ITEM_ON_GROUND;
+                    item->x = targetX;
+                    item->y = targetY;
+                    item->reservedBy = -1;
+                } else {
+                    // Normal drop: place in stockpile
+                    item->state = ITEM_IN_STOCKPILE;
+                    item->x = targetX;
+                    item->y = targetY;
+                    item->reservedBy = -1;
+                    
+                    // Mark slot as occupied
+                    PlaceItemInStockpile(m->targetStockpile, m->targetSlotX, m->targetSlotY, itemIdx);
+                }
                 
                 // Job complete
                 m->jobState = JOB_IDLE;

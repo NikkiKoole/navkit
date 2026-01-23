@@ -2229,6 +2229,348 @@ describe(stockpile_max_stack_size) {
     }
 }
 
+describe(stockpile_ground_item_blocking) {
+    it("should not use slot with foreign ground item on it") {
+        // A green item on a red-only stockpile tile should block that slot
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Stockpile with 2 tiles at (5,5) and (6,5), allows RED only
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileFilter(spIdx, ITEM_GREEN, false);
+        
+        // Green item on ground at first stockpile tile (5,5) - this is "foreign"
+        SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Try to find a free slot for red
+        int slotX, slotY;
+        bool found = FindFreeStockpileSlot(spIdx, ITEM_RED, &slotX, &slotY);
+        
+        // Should find the second slot (6,5), not the first (blocked by green item)
+        expect(found == true);
+        expect(slotX == 6);
+        expect(slotY == 5);
+    }
+    
+    it("should not use slot with matching ground item on it until absorbed") {
+        // A red item on ground at a red stockpile tile should also block
+        // (it needs to be "absorbed" first via the absorb job)
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Stockpile with 2 tiles, allows RED
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Red item on ground at first stockpile tile (5,5) - matching but still on ground
+        SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Try to find a free slot for red
+        int slotX, slotY;
+        bool found = FindFreeStockpileSlot(spIdx, ITEM_RED, &slotX, &slotY);
+        
+        // Should find the second slot (6,5), not the first (blocked by ground item)
+        expect(found == true);
+        expect(slotX == 6);
+        expect(slotY == 5);
+    }
+    
+    it("should absorb matching ground item on stockpile tile") {
+        // Mover should pick up a red item on a red stockpile and place it "properly"
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile at (5,5), allows RED
+        int spIdx = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Red item on ground at stockpile tile - needs to be "absorbed"
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should now be IN_STOCKPILE (not ON_GROUND)
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Item should still be at same tile
+        expect((int)(items[itemIdx].x / CELL_SIZE) == 5);
+        expect((int)(items[itemIdx].y / CELL_SIZE) == 5);
+        
+        // Stockpile slot should have count of 1
+        expect(GetStockpileSlotCount(spIdx, 5, 5) == 1);
+    }
+    
+    it("should clear foreign ground item from stockpile tile to another stockpile") {
+        // Green item on red stockpile should be hauled to green stockpile
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5)
+        int spRed = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // Green stockpile at (8,8)
+        int spGreen = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spGreen, ITEM_RED, false);
+        SetStockpileFilter(spGreen, ITEM_GREEN, true);
+        
+        // Green item on ground at RED stockpile tile - needs to be cleared
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be in the GREEN stockpile
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        expect((int)(items[itemIdx].x / CELL_SIZE) == 8);
+        expect((int)(items[itemIdx].y / CELL_SIZE) == 8);
+    }
+    
+    it("should safe-drop foreign item outside stockpile when no valid destination") {
+        // Green item on red stockpile, but no green stockpile exists
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5) - only red allowed
+        int spRed = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // NO green stockpile exists
+        
+        // Green item on ground at RED stockpile tile - needs to be cleared but nowhere to go
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Item should be ON_GROUND but NOT on the stockpile tile anymore
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+        expect(items[itemIdx].active == true);
+        
+        // Item should NOT be on the stockpile (safe-dropped outside)
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        bool onStockpile = (itemTileX >= 5 && itemTileX < 7 && itemTileY >= 5 && itemTileY < 7);
+        expect(onStockpile == false);
+        
+        // Mover should be idle
+        expect(m->jobState == JOB_IDLE);
+    }
+    
+    it("should prioritize clearing stockpile tiles over regular hauling") {
+        // With both a foreign item on stockpile AND a regular ground item,
+        // the clearing job should be done first
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near the stockpile
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile at (5,5)
+        int spRed = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_GREEN, false);
+        
+        // Green stockpile at (8,8)
+        int spGreen = CreateStockpile(8, 8, 0, 2, 1);
+        SetStockpileFilter(spGreen, ITEM_RED, false);
+        SetStockpileFilter(spGreen, ITEM_GREEN, true);
+        
+        // Green item on RED stockpile tile (needs clearing)
+        int foreignItem = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Another green item far away (regular haul)
+        int regularItem = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run just enough to see which item gets picked first
+        AssignJobs();
+        
+        // Mover should target the foreign item (clearing job) first
+        expect(m->targetItem == foreignItem);
+    }
+    
+    it("should not haul matching item away from its stockpile") {
+        // Red item on red stockpile should be absorbed, not hauled to a different red stockpile
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Red stockpile A at (5,5)
+        int spA = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spA, ITEM_RED, true);
+        
+        // Red stockpile B at (8,8)
+        int spB = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spB, ITEM_RED, true);
+        (void)spB; // suppress unused warning
+        
+        // Red item on ground at stockpile A
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be absorbed into stockpile A (same tile), not hauled to B
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        expect((int)(items[itemIdx].x / CELL_SIZE) == 5);
+        expect((int)(items[itemIdx].y / CELL_SIZE) == 5);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -2265,6 +2607,9 @@ int main(int argc, char* argv[]) {
     test(stacking_merging);
     test(stockpile_priority);
     test(stockpile_max_stack_size);
+    
+    // Ground item blocking (new feature)
+    test(stockpile_ground_item_blocking);
     
     return summary();
 }

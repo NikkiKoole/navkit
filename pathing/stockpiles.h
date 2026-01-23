@@ -79,4 +79,11 @@ void SetStockpilePriority(int stockpileIdx, int priority);
 int GetStockpilePriority(int stockpileIdx);
 int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSlotX, int* outSlotY);
 
+// Ground item clearing from stockpile tiles
+// Find a ground item on any stockpile tile that needs absorbing (matches filter) or clearing (doesn't match)
+// Returns item index, or -1 if none found
+// Sets outIsAbsorb to true if item matches stockpile filter (absorb job), false if foreign (clear job)
+// Sets outStockpileIdx to the stockpile the item is on
+int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb);
+
 #endif

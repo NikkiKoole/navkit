@@ -1,5 +1,6 @@
 #include "stockpiles.h"
 #include "mover.h"
+#include "items.h"
 
 Stockpile stockpiles[MAX_STOCKPILES];
 int stockpileCount = 0;
@@ -90,10 +91,16 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
+            
+            // Skip if there's a ground item on this tile (needs to be cleared/absorbed first)
+            int tileX = sp->x + lx;
+            int tileY = sp->y + ly;
+            if (FindGroundItemAtTile(tileX, tileY, sp->z) >= 0) continue;
+            
             if (sp->slotTypes[idx] == type && sp->slotCounts[idx] > 0 && sp->slotCounts[idx] < sp->maxStackSize) {
                 // Found partial stack of same type
-                *outX = sp->x + lx;
-                *outY = sp->y + ly;
+                *outX = tileX;
+                *outY = tileY;
                 return true;
             }
         }
@@ -104,10 +111,16 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
+            
+            // Skip if there's a ground item on this tile (needs to be cleared/absorbed first)
+            int tileX = sp->x + lx;
+            int tileY = sp->y + ly;
+            if (FindGroundItemAtTile(tileX, tileY, sp->z) >= 0) continue;
+            
             if (sp->slotCounts[idx] == 0 && sp->slots[idx] == -1) {
                 // Found empty slot
-                *outX = sp->x + lx;
-                *outY = sp->y + ly;
+                *outX = tileX;
+                *outY = tileY;
                 return true;
             }
         }
@@ -408,4 +421,40 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
         *outSlotY = bestSlotY;
     }
     return bestIdx;
+}
+
+// =============================================================================
+// Ground item clearing from stockpile tiles
+// =============================================================================
+
+int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
+    // Scan all stockpiles for ground items on their tiles
+    for (int spIdx = 0; spIdx < MAX_STOCKPILES; spIdx++) {
+        if (!stockpiles[spIdx].active) continue;
+        Stockpile* sp = &stockpiles[spIdx];
+        
+        // Check each tile in this stockpile
+        for (int ly = 0; ly < sp->height; ly++) {
+            for (int lx = 0; lx < sp->width; lx++) {
+                int tileX = sp->x + lx;
+                int tileY = sp->y + ly;
+                
+                int itemIdx = FindGroundItemAtTile(tileX, tileY, sp->z);
+                if (itemIdx < 0) continue;
+                
+                // Found a ground item on this stockpile tile
+                // Check if it's already reserved
+                if (items[itemIdx].reservedBy != -1) continue;
+                
+                // Check if item matches stockpile filter
+                bool matches = sp->allowedTypes[items[itemIdx].type];
+                
+                *outStockpileIdx = spIdx;
+                *outIsAbsorb = matches;
+                return itemIdx;
+            }
+        }
+    }
+    
+    return -1;  // no ground items on stockpile tiles
 }

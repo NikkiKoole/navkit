@@ -1,4 +1,5 @@
 #include "items.h"
+#include "mover.h"  // for CELL_SIZE
 #include <math.h>
 
 Item items[MAX_ITEMS];
@@ -93,4 +94,20 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
     if (itemIndex >= 0 && itemIndex < MAX_ITEMS && items[itemIndex].active) {
         items[itemIndex].unreachableCooldown = cooldown;
     }
+}
+
+int FindGroundItemAtTile(int tileX, int tileY, int z) {
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (!items[i].active) continue;
+        if (items[i].state != ITEM_ON_GROUND) continue;
+        if ((int)items[i].z != z) continue;
+        
+        int itemTileX = (int)(items[i].x / CELL_SIZE);
+        int itemTileY = (int)(items[i].y / CELL_SIZE);
+        
+        if (itemTileX == tileX && itemTileY == tileY) {
+            return i;
+        }
+    }
+    return -1;
 }

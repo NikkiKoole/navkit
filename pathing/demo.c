@@ -1831,9 +1831,16 @@ int main(void) {
         if (!paused && accumulator >= TICK_DT) {
             PROFILE_BEGIN(Tick);
             Tick();
-            AssignJobs();
-            JobsTick();
             PROFILE_END(Tick);
+            PROFILE_BEGIN(ItemsTick);
+            ItemsTick(TICK_DT);
+            PROFILE_END(ItemsTick);
+            PROFILE_BEGIN(AssignJobs);
+            AssignJobs();
+            PROFILE_END(AssignJobs);
+            PROFILE_BEGIN(JobsTick);
+            JobsTick();
+            PROFILE_END(JobsTick);
             accumulator -= TICK_DT;
 
             // Drain excess - don't try to catch up, just slow down

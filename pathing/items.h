@@ -48,4 +48,8 @@ int FindNearestUnreservedItem(float x, float y, float z);
 void ItemsTick(float dt);
 void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 
+// Ground item queries for stockpile blocking
+// Returns the index of a ground item at the given tile, or -1 if none
+int FindGroundItemAtTile(int tileX, int tileY, int z);
+
 #endif
