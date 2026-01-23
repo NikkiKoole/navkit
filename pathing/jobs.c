@@ -472,6 +472,8 @@ void JobsTick(void) {
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
                 // Set cooldown on item so we don't immediately retry
                 SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+                TraceLog(LOG_INFO, "Mover %d: item at (%.0f,%.0f) unreachable, job cancelled",
+                         i, items[itemIdx].x, items[itemIdx].y);
                 CancelJob(m, i);
                 continue;
             }
@@ -564,6 +566,8 @@ void JobsTick(void) {
             
             // Check if stuck (no path and not making progress)
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                TraceLog(LOG_INFO, "Mover %d: stockpile at (%d,%d) unreachable, job cancelled",
+                         i, m->targetSlotX, m->targetSlotY);
                 CancelJob(m, i);
                 continue;
             }
@@ -614,6 +618,8 @@ void JobsTick(void) {
             
             // Check if stuck (no path and not making progress)
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                TraceLog(LOG_INFO, "Mover %d: drop location (%d,%d) unreachable, job cancelled",
+                         i, m->targetSlotX, m->targetSlotY);
                 CancelJob(m, i);
                 continue;
             }
