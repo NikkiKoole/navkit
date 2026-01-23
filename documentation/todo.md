@@ -7,11 +7,10 @@ Small remaining items and future improvements.
 ## Prioritized TODO
 
 ### Quick Wins (small, high value)
-- [ ] **Blocked movers handling** - show count + reassign button
+- [ ] **Blocked movers handling** - notification done, but movers stay blocked. Need to decide what they should do (see discussion below)
 - [ ] **Easy cell types** - add CELL_FENCE, CELL_WATER, CELL_DOOR_OPEN/CLOSED (no pathfinding changes needed)
 
 ### Short-term (meaningful improvements)
-- [ ] **Directional ladders** - LADDER_UP, LADDER_DOWN, LADDER_BOTH (~80 lines, enables one-way vertical flow)
 - [ ] **Variable movement costs** - road (cheap), rubble/mud (expensive) - NOTE: disables JPS/JPS+
 
 ### Medium-term (new capabilities)

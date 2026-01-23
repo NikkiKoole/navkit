@@ -42,8 +42,8 @@ void DrawTextShadow(const char* text, int x, int y, int size, Color col);
 // Add a message to the stack (newest at bottom, older shift up)
 void AddMessage(const char* text, Color color);
 
-// Update message timers (call once per frame with delta time)
-void UpdateMessages(float dt);
+// Update message timers (call once per frame with delta time, paused=true freezes messages)
+void UpdateMessages(float dt, bool paused);
 
 // Draw messages at bottom of screen (call during drawing)
 void DrawMessages(int screenWidth, int screenHeight);
@@ -129,6 +129,16 @@ void DrawTextShadow(const char* text, int x, int y, int size, Color col) {
     } else {
         DrawText(text, x + 1, y + 1, size, BLACK);
         DrawText(text, x, y, size, col);
+    }
+}
+
+// Measure text width using the UI font (matches DrawTextShadow)
+int MeasureTextUI(const char* text, int size) {
+    if (g_ui_font && g_ui_font->texture.id > 0) {
+        Vector2 measure = MeasureTextEx(*g_ui_font, text, (float)size, 1);
+        return (int)measure.x;
+    } else {
+        return MeasureText(text, size);
     }
 }
 
@@ -375,7 +385,8 @@ void AddMessage(const char* text, Color color) {
     msg->active = true;
 }
 
-void UpdateMessages(float dt) {
+void UpdateMessages(float dt, bool paused) {
+    if (paused) return;  // Freeze messages when paused
     for (int i = 0; i < MSG_MAX_MESSAGES; i++) {
         if (g_messages[i].active) {
             g_messages[i].timeLeft -= dt;
@@ -387,9 +398,10 @@ void UpdateMessages(float dt) {
 }
 
 void DrawMessages(int screenWidth, int screenHeight) {
-    // Count active messages and find max alpha (for backdrop fade)
+    // Count active messages, find max alpha and max text width
     int activeCount = 0;
     float maxAlpha = 0.0f;
+    int maxTextWidth = 0;
     for (int i = 0; i < MSG_MAX_MESSAGES; i++) {
         if (g_messages[i].active) {
             activeCount++;
@@ -398,15 +410,17 @@ void DrawMessages(int screenWidth, int screenHeight) {
                 alpha = g_messages[i].timeLeft / MSG_FADE_TIME;
             }
             if (alpha > maxAlpha) maxAlpha = alpha;
+            int textWidth = MeasureTextUI(g_messages[i].text, 16);
+            if (textWidth > maxTextWidth) maxTextWidth = textWidth;
         }
     }
     
     if (activeCount == 0) return;
     
-    // Message area: right 30% of screen, aligned to bottom
-    int panelWidth = screenWidth * 0.30f;
-    int panelX = screenWidth - panelWidth;
+    // Message area: sized to fit content, aligned to bottom-right
     int padding = 8;
+    int panelWidth = maxTextWidth + padding * 2;
+    int panelX = screenWidth - panelWidth;
     int panelHeight = activeCount * MSG_LINE_HEIGHT + padding * 2;
     int panelY = screenHeight - panelHeight;
     
@@ -430,8 +444,10 @@ void DrawMessages(int screenWidth, int screenHeight) {
         Color col = msg->color;
         col.a = (unsigned char)(alpha * 255);
         
-        // Left-aligned within panel
-        int x = panelX + padding;
+        // Right-aligned within panel, clamped to panel left edge
+        int textWidth = MeasureTextUI(msg->text, 16);
+        int x = screenWidth - textWidth - padding;
+        if (x < panelX + padding) x = panelX + padding;
         
         DrawTextShadow(msg->text, x, y, 16, col);
         y -= MSG_LINE_HEIGHT;
