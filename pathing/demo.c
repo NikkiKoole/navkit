@@ -573,8 +573,8 @@ void HandleInput(void) {
     if (wheel != 0) {
         Vector2 mw = ScreenToGrid(GetMousePosition());
         zoom += wheel * 0.1f;
-        if (zoom < 0.2f) zoom = 0.2f;
-        if (zoom > 3.0f) zoom = 3.0f;
+        if (zoom < 0.1f) zoom = 0.1f;
+        if (zoom > 5.0f) zoom = 5.0f;
         float size = CELL_SIZE * zoom;
         offset.x = GetMousePosition().x - mw.x * size;
         offset.y = GetMousePosition().y - mw.y * size;
@@ -1262,6 +1262,7 @@ int main(void) {
     int screenWidth = 1280, screenHeight = 800;
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     atlas = LoadTexture(ATLAS_PATH);
+    SetTextureFilter(atlas, TEXTURE_FILTER_POINT);  // Crisp pixels, no bleeding
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
     SetTargetFPS(60);

@@ -15,27 +15,35 @@ typedef struct {
 
 enum {
     SPRITE_carpet,
+    SPRITE_crate_blue,
     SPRITE_air,
     SPRITE_ladder,
+    SPRITE_apple,
     SPRITE_grass,
     SPRITE_ladder_up,
     SPRITE_head,
     SPRITE_wall,
     SPRITE_floor,
     SPRITE_ladder_down,
+    SPRITE_crate_green,
+    SPRITE_crate_red,
     SPRITE_COUNT
 };
 
 static const AtlasSprite ATLAS_SPRITES[SPRITE_COUNT] = {
     { "carpet", { 0, 0, 16, 16 } },
-    { "air", { 17, 0, 16, 16 } },
-    { "ladder", { 34, 0, 16, 16 } },
-    { "grass", { 51, 0, 16, 16 } },
-    { "ladder_up", { 68, 0, 16, 16 } },
-    { "head", { 85, 0, 16, 16 } },
-    { "wall", { 102, 0, 16, 16 } },
-    { "floor", { 119, 0, 16, 16 } },
-    { "ladder_down", { 136, 0, 16, 16 } },
+    { "crate_blue", { 17, 0, 16, 16 } },
+    { "air", { 34, 0, 16, 16 } },
+    { "ladder", { 51, 0, 16, 16 } },
+    { "apple", { 68, 0, 16, 16 } },
+    { "grass", { 85, 0, 16, 16 } },
+    { "ladder_up", { 102, 0, 16, 16 } },
+    { "head", { 119, 0, 16, 16 } },
+    { "wall", { 136, 0, 16, 16 } },
+    { "floor", { 153, 0, 16, 16 } },
+    { "ladder_down", { 170, 0, 16, 16 } },
+    { "crate_green", { 187, 0, 16, 16 } },
+    { "crate_red", { 204, 0, 16, 16 } },
 };
 
 // Helper: get sprite rectangle by enum
