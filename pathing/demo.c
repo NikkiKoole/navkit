@@ -1293,9 +1293,18 @@ int main(void) {
         ui_update();
         HandleInput();
         UpdatePathStats();
-        if (pathStatsUpdated && pathStatsCount > 0) {
-            AddMessage(TextFormat("Paths: %d, %.1fms total, %.3fms avg", 
-                pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), YELLOW);
+        if (pathStatsUpdated) {
+            // Count blocked movers (active but no valid path)
+            int blockedCount = 0;
+            for (int i = 0; i < moverCount; i++) {
+                if (movers[i].active && movers[i].pathLength == 0) {
+                    blockedCount++;
+                }
+            }
+            if (blockedCount > 0) {
+                AddMessage(TextFormat("%d mover%s blocked", blockedCount, blockedCount == 1 ? "" : "s"), ORANGE);
+            }
+            
             pathStatsUpdated = false;
         }
         UpdateMessages(frameTime);
