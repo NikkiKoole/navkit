@@ -3,6 +3,8 @@
 #include "terrain.h"
 #include "pathfinding.h"
 #include "mover.h"
+#include "items.h"
+#include "jobs.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
@@ -56,7 +58,9 @@ bool sectionMoverDebug = false;
 
 bool sectionProfiler = false;
 bool sectionMemory = false;
+bool sectionJobs = false;
 bool paused = false;
+bool showItems = true;
 
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
@@ -111,6 +115,7 @@ int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
 int moverCountSetting = 10000;
+int itemCountSetting = 10;
 bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
@@ -535,6 +540,32 @@ void DrawMovers(void) {
             }
         }
         PROFILE_END(MoverPaths);
+    }
+}
+
+void DrawItems(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+
+        // Only draw items on the current z-level
+        if ((int)item->z != viewZ) continue;
+
+        // Screen position
+        float sx = offset.x + item->x * zoom;
+        float sy = offset.y + item->y * zoom;
+
+        // Draw apple sprite
+        float itemSize = size * 0.5f;
+        Rectangle src = AtlasGetRect(SPRITE_apple);
+        Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
+        
+        // Tint reserved items slightly darker
+        Color tint = (item->reservedBy >= 0) ? GRAY : WHITE;
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
     }
 }
 
@@ -992,6 +1023,38 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === JOBS ===
+    y += 8;
+    if (SectionHeader(x, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
+        y += 18;
+        DraggableIntLog(x, y, "Count", &itemCountSetting, 1.0f, 1, MAX_ITEMS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Items")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                // Find a random walkable cell on current z-level
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = rand() % gridWidth;
+                    int gy = rand() % gridHeight;
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        ItemType type = rand() % 3;  // ITEM_RED, ITEM_GREEN, or ITEM_BLUE
+                        SpawnItem(px, py, (float)currentViewZ, type);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Clear Items")) {
+            ClearItems();
+        }
+        y += 22;
+        ToggleBool(x, y, "Show Items", &showItems);
+    }
+    y += 22;
+
 }
 
 #if PROFILER_ENABLED
@@ -1315,6 +1378,8 @@ int main(void) {
         if (!paused && accumulator >= TICK_DT) {
             PROFILE_BEGIN(Tick);
             Tick();
+            AssignJobs();
+            JobsTick();
             PROFILE_END(Tick);
             accumulator -= TICK_DT;
 
@@ -1339,6 +1404,9 @@ int main(void) {
         }
         DrawPath();
         DrawAgents();
+        if (showItems) {
+            DrawItems();
+        }
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();
