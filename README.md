@@ -22,10 +22,28 @@
 ## Build
 
 ```bash
-make          # builds path, steer, crowd
-make atlas    # builds and runs texture atlas generator
-make test     # runs all tests
-make debug    # debug build with sanitizers
+make                        # builds path, steer, crowd, path8
+make test                   # runs all tests
+make debug                  # debug build with sanitizers
+make clean                  # removes bin/
+```
+
+### Atlas
+
+```bash
+make atlas                  # generates 8x8 atlas only (default)
+make atlas GENERATE_16X16=1 # generates both 8x8 and 16x16 atlases with validation
+make clean-atlas            # removes all generated atlas files
+make clean-atlas atlas      # clean rebuild of atlas
+```
+
+To change the default, edit `GENERATE_16X16 ?= 0` in the Makefile.
+
+### Tile size variants
+
+```bash
+make path8                  # build with 8x8 tiles (included in default build)
+make path16                 # build with 16x16 tiles
 ```
 
 ## Run

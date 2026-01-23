@@ -583,8 +583,9 @@ void DrawMovers(void) {
                 default:         sprite = SPRITE_apple;       break;
             }
             float itemSize = size * ITEM_SIZE_CARRIED;
+            float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;  // 20% overlap with head
             Rectangle itemSrc = SpriteGetRect(sprite);
-            Rectangle itemDest = { sx - itemSize/2, sy - moverSize/2 - itemSize + moverSize * 0.2f, itemSize, itemSize };
+            Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
             DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
         }
     }

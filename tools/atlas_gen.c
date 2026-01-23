@@ -188,6 +188,14 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     return spriteCount;
 }
 
+// Check if a sprite name exists in an array of names
+static bool sprite_exists(const char *name, char names[][64], int count) {
+    for (int i = 0; i < count; i++) {
+        if (strcmp(name, names[i]) == 0) return true;
+    }
+    return false;
+}
+
 // Generate the unified atlas.h selector header
 static int generate_selector_header(const char *outputPath, char names[][64], int nameCount) {
     FILE *f = fopen(outputPath, "w");
@@ -231,26 +239,32 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
     return 0;
 }
 
+// Configuration (passed from Makefile, defaults to 0)
+#ifndef GENERATE_16X16
+#define GENERATE_16X16 0
+#endif
+
 int main(void) {
     int result = 0;
     
-    // Store sprite names from 16x16 atlas (use as reference for selector)
     static char spriteNames[MAX_SPRITES][64];
     int spriteCount = 0;
 
-    // Generate main atlas (16x16 textures)
-    spriteCount = generate_atlas(
-        "assets/textures",
-        "assets/atlas16x16.png",
-        "assets/atlas16x16.h",
-        "ATLAS16X16_PATH",
-        "ATLAS16X16_H",
-        "SPRITE16X16",
-        spriteNames
-    );
-    if (spriteCount < 0) result = 1;
+    // Generate 16x16 atlas (optional)
+    if (GENERATE_16X16) {
+        spriteCount = generate_atlas(
+            "assets/textures",
+            "assets/atlas16x16.png",
+            "assets/atlas16x16.h",
+            "ATLAS16X16_PATH",
+            "ATLAS16X16_H",
+            "SPRITE16X16",
+            spriteNames
+        );
+        if (spriteCount < 0) result = 1;
+    }
 
-    // Generate 8x8 atlas and collect its sprite names for comparison
+    // Generate 8x8 atlas
     static char spriteNames8[MAX_SPRITES][64];
     int count8 = generate_atlas(
         "assets/textures8x8",
@@ -263,35 +277,20 @@ int main(void) {
     );
     if (count8 < 0) result = 1;
 
-    // Check that both atlases have the same sprites
-    if (spriteCount > 0 && count8 > 0) {
+    // Validate both atlases have matching sprites (only when both are generated)
+    if (GENERATE_16X16 && spriteCount > 0 && count8 > 0) {
         if (spriteCount != count8) {
             fprintf(stderr, "\nERROR: Sprite count mismatch! 16x16 has %d sprites, 8x8 has %d sprites\n", spriteCount, count8);
             result = 1;
         } else {
-            // Check each sprite name matches
             for (int i = 0; i < spriteCount; i++) {
-                bool found = false;
-                for (int j = 0; j < count8; j++) {
-                    if (strcmp(spriteNames[i], spriteNames8[j]) == 0) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
+                if (!sprite_exists(spriteNames[i], spriteNames8, count8)) {
                     fprintf(stderr, "\nERROR: Sprite '%s' exists in 16x16 but not in 8x8\n", spriteNames[i]);
                     result = 1;
                 }
             }
             for (int i = 0; i < count8; i++) {
-                bool found = false;
-                for (int j = 0; j < spriteCount; j++) {
-                    if (strcmp(spriteNames8[i], spriteNames[j]) == 0) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
+                if (!sprite_exists(spriteNames8[i], spriteNames, spriteCount)) {
                     fprintf(stderr, "\nERROR: Sprite '%s' exists in 8x8 but not in 16x16\n", spriteNames8[i]);
                     result = 1;
                 }
@@ -302,9 +301,11 @@ int main(void) {
         }
     }
 
-    // Generate unified selector header
-    if (spriteCount > 0 && result == 0) {
-        result |= generate_selector_header("assets/atlas.h", spriteNames, spriteCount);
+    // Generate unified selector header (use 8x8 names when 16x16 is disabled)
+    char (*names)[64] = GENERATE_16X16 ? spriteNames : spriteNames8;
+    int nameCount = GENERATE_16X16 ? spriteCount : count8;
+    if (nameCount > 0 && result == 0) {
+        result |= generate_selector_header("assets/atlas.h", names, nameCount);
     }
 
     return result;

@@ -2,6 +2,9 @@ CC := clang
 MACOSX_DEPLOYMENT_TARGET ?= 14.0
 export MACOSX_DEPLOYMENT_TARGET
 
+# Set to 1 to generate 16x16 atlas, 0 for 8x8 only
+GENERATE_16X16 ?= 0
+
 CFLAGS  := -std=c11 -O2 -g -I. -Wall -Wextra
 LDFLAGS := $(shell pkg-config --libs raylib)
 
@@ -21,7 +24,7 @@ test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pat
 test_steering_SRC := tests/test_steering.c steering/steering.c
 test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c
 
-all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8 $(BINDIR)/path16
+all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
@@ -61,7 +64,7 @@ crowd: $(BINDIR) $(BINDIR)/crowd
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
 atlas: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
+	$(CC) $(CFLAGS) -DGENERATE_16X16=$(GENERATE_16X16) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
 # Build with 8x8 tiles
@@ -75,6 +78,9 @@ path16 $(BINDIR)/path16: $(BINDIR)
 clean:
 	rm -rf $(BINDIR)
 
+clean-atlas:
+	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png
+
 # Debug build - no optimization, all sanitizers
 debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
 debug: LDFLAGS += -fsanitize=address,undefined
@@ -87,4 +93,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas path8 path16
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas path8 path16
