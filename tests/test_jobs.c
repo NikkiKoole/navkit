@@ -2951,6 +2951,62 @@ static void RunBenchmarks(void) {
     }
     
     printf("\n");
+    
+    // Benchmark: ItemsTick (high water mark optimization)
+    printf("--- ItemsTick (highWaterMark optimization) ---\n");
+    
+    for (int c = 0; c < numCounts; c++) {
+        int targetCount = itemCounts[c];
+        ClearItems();
+        
+        // Spawn items randomly across the grid
+        SetRandomSeed(12345);
+        for (int i = 0; i < targetCount; i++) {
+            float x = GetRandomValue(0, 99) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float y = GetRandomValue(0, 99) * CELL_SIZE + CELL_SIZE * 0.5f;
+            int idx = SpawnItem(x, y, 0.0f, GetRandomValue(0, 2));
+            // Set some cooldowns so there's work to do
+            if (idx >= 0 && (i % 3) == 0) {
+                items[idx].unreachableCooldown = 5.0f;
+            }
+        }
+        
+        int numIterations = 10000;
+        float dt = 1.0f / 60.0f;
+        
+        // Benchmark NAIVE
+        volatile float naiveAccum = 0;
+        double naiveStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            ItemsTickNaive(dt);
+            naiveAccum += items[0].unreachableCooldown;  // Prevent optimization
+        }
+        double naiveTime = (GetBenchTime() - naiveStart) * 1000.0;
+        (void)naiveAccum;
+        
+        // Reset cooldowns for optimized test
+        for (int i = 0; i < targetCount; i++) {
+            if ((i % 3) == 0) {
+                items[i].unreachableCooldown = 5.0f;
+            }
+        }
+        
+        // Benchmark OPTIMIZED (highWaterMark)
+        volatile float optAccum = 0;
+        double optStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            ItemsTick(dt);
+            optAccum += items[0].unreachableCooldown;  // Prevent optimization
+        }
+        double optTime = (GetBenchTime() - optStart) * 1000.0;
+        (void)optAccum;
+        
+        double speedup = (optTime > 0.001) ? naiveTime / optTime : 0;
+        printf("  %5d items (hwm=%5d): Naive=%8.3fms  Optimized=%8.3fms  Speedup=%6.1fx\n",
+               targetCount, itemHighWaterMark, naiveTime, optTime, speedup);
+    }
+    
+    printf("\n");
 }
 
 int main(int argc, char* argv[]) {

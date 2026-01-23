@@ -7,14 +7,16 @@
 
 Item items[MAX_ITEMS];
 int itemCount = 0;
+int itemHighWaterMark = 0;  // Highest index + 1 ever active
 
 void ClearItems(void) {
-    for (int i = 0; i < MAX_ITEMS; i++) {
+    for (int i = 0; i < itemHighWaterMark; i++) {  // Only clear up to high water mark
         items[i].active = false;
         items[i].reservedBy = -1;
         items[i].unreachableCooldown = 0.0f;
     }
     itemCount = 0;
+    itemHighWaterMark = 0;
     
     // Initialize spatial grid if grid dimensions are set
     if (gridWidth > 0 && gridHeight > 0 && gridDepth > 0) {
@@ -35,6 +37,9 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].reservedBy = -1;
             items[i].unreachableCooldown = 0.0f;
             itemCount++;
+            if (i + 1 > itemHighWaterMark) {
+                itemHighWaterMark = i + 1;
+            }
             return i;
         }
     }
@@ -160,8 +165,22 @@ int FindNearestUnreservedItem(float x, float y, float z) {
     return ctx.nearestIdx;
 }
 
-void ItemsTick(float dt) {
+// Naive O(MAX_ITEMS) implementation - iterates entire array
+void ItemsTickNaive(float dt) {
     for (int i = 0; i < MAX_ITEMS; i++) {
+        if (!items[i].active) continue;
+        if (items[i].unreachableCooldown > 0.0f) {
+            items[i].unreachableCooldown -= dt;
+            if (items[i].unreachableCooldown < 0.0f) {
+                items[i].unreachableCooldown = 0.0f;
+            }
+        }
+    }
+}
+
+// Optimized - only iterates up to high water mark
+void ItemsTick(float dt) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].unreachableCooldown > 0.0f) {
             items[i].unreachableCooldown -= dt;
@@ -333,7 +352,8 @@ void FreeItemSpatialGrid(void) {
     itemGrid.groundItemCount = 0;
 }
 
-void BuildItemSpatialGrid(void) {
+// Naive O(MAX_ITEMS) implementation - iterates entire array twice
+void BuildItemSpatialGridNaive(void) {
     if (!itemGrid.cellCounts) return;
     
     // Phase 1: Clear counts
@@ -371,6 +391,61 @@ void BuildItemSpatialGrid(void) {
     
     // Phase 5: Scatter item indices into cells
     for (int i = 0; i < MAX_ITEMS; i++) {
+        if (!items[i].active) continue;
+        if (items[i].state != ITEM_ON_GROUND) continue;
+        
+        int tx = (int)(items[i].x / CELL_SIZE);
+        int ty = (int)(items[i].y / CELL_SIZE);
+        int tz = (int)items[i].z;
+        
+        tx = clampi_item(tx, 0, itemGrid.gridW - 1);
+        ty = clampi_item(ty, 0, itemGrid.gridH - 1);
+        tz = clampi_item(tz, 0, itemGrid.gridD - 1);
+        
+        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+        itemGrid.itemIndices[itemGrid.cellCounts[cellIdx]++] = i;
+    }
+}
+
+// Optimized - only iterates up to itemHighWaterMark
+void BuildItemSpatialGrid(void) {
+    if (!itemGrid.cellCounts) return;
+    
+    // Phase 1: Clear counts
+    memset(itemGrid.cellCounts, 0, itemGrid.cellCount * sizeof(int));
+    itemGrid.groundItemCount = 0;
+    
+    // Phase 2: Count ground items per cell (optimized range)
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].state != ITEM_ON_GROUND) continue;
+        
+        int tx = (int)(items[i].x / CELL_SIZE);
+        int ty = (int)(items[i].y / CELL_SIZE);
+        int tz = (int)items[i].z;
+        
+        tx = clampi_item(tx, 0, itemGrid.gridW - 1);
+        ty = clampi_item(ty, 0, itemGrid.gridH - 1);
+        tz = clampi_item(tz, 0, itemGrid.gridD - 1);
+        
+        int cellIdx = tz * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+        itemGrid.cellCounts[cellIdx]++;
+        itemGrid.groundItemCount++;
+    }
+    
+    // Phase 3: Build prefix sum
+    itemGrid.cellStarts[0] = 0;
+    for (int c = 0; c < itemGrid.cellCount; c++) {
+        itemGrid.cellStarts[c + 1] = itemGrid.cellStarts[c] + itemGrid.cellCounts[c];
+    }
+    
+    // Phase 4: Reset counts to use as write cursors
+    for (int c = 0; c < itemGrid.cellCount; c++) {
+        itemGrid.cellCounts[c] = itemGrid.cellStarts[c];
+    }
+    
+    // Phase 5: Scatter item indices into cells (optimized range)
+    for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
         

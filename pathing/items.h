@@ -31,6 +31,7 @@ typedef struct {
 
 extern Item items[MAX_ITEMS];
 extern int itemCount;
+extern int itemHighWaterMark;  // Highest index + 1 that has ever been active (for iteration optimization)
 
 // Core functions
 void ClearItems(void);
@@ -46,7 +47,8 @@ int FindNearestUnreservedItem(float x, float y, float z);  // Uses spatial grid
 int FindNearestUnreservedItemNaive(float x, float y, float z);  // O(MAX_ITEMS) brute force
 
 // Cooldown management
-void ItemsTick(float dt);
+void ItemsTick(float dt);              // Optimized - iterates to itemHighWaterMark
+void ItemsTickNaive(float dt);         // O(MAX_ITEMS) brute force
 void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 
 // Ground item queries for stockpile blocking
@@ -69,7 +71,8 @@ extern ItemSpatialGrid itemGrid;
 // Spatial grid functions
 void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth);
 void FreeItemSpatialGrid(void);
-void BuildItemSpatialGrid(void);
+void BuildItemSpatialGrid(void);           // Optimized - iterates to itemHighWaterMark
+void BuildItemSpatialGridNaive(void);      // O(MAX_ITEMS) brute force
 
 // Query: returns item index at tile, or -1 if none
 int QueryItemAtTile(int tileX, int tileY, int z);
