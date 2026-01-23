@@ -9,7 +9,7 @@
 typedef enum {
     JOB_IDLE,
     JOB_MOVING_TO_ITEM,
-    // Future: JOB_PICKING_UP, JOB_MOVING_TO_STOCKPILE, JOB_DROPPING
+    JOB_MOVING_TO_STOCKPILE,
 } JobState;
 
 // Cell size in pixels (for position calculations)
@@ -52,7 +52,11 @@ typedef struct {
     float avoidX, avoidY;
     // Job system fields
     JobState jobState;
-    int targetItem;  // item index, -1 = none
+    int targetItem;      // item index we're going to pick up, -1 = none
+    int carryingItem;    // item index we're carrying, -1 = none
+    int targetStockpile; // stockpile index we're delivering to, -1 = none
+    int targetSlotX;     // stockpile slot coordinates
+    int targetSlotY;
 } Mover;
 
 // Stuck detection thresholds

@@ -20,6 +20,7 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].y = y;
             items[i].z = z;
             items[i].type = type;
+            items[i].state = ITEM_ON_GROUND;
             items[i].active = true;
             items[i].reservedBy = -1;
             itemCount++;

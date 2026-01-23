@@ -10,10 +10,18 @@ typedef enum {
     ITEM_BLUE
 } ItemType;
 
-// Item struct - minimal for Phase 0
+// Item state
+typedef enum {
+    ITEM_ON_GROUND,
+    ITEM_CARRIED,
+    ITEM_IN_STOCKPILE
+} ItemState;
+
+// Item struct
 typedef struct {
     float x, y, z;
     ItemType type;
+    ItemState state;
     bool active;
     int reservedBy;  // mover index, -1 = none
 } Item;
