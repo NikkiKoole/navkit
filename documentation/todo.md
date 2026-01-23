@@ -24,6 +24,12 @@ Small remaining items and future improvements.
   - Stockpile priority with re-hauling, gather zones
   - Unreachable item cooldown, safe-drop on cancellation
   - Debug tooltips (stockpile hover, mover hover when paused)
+- [ ] **Jobs next phase** - See [jobs-roadmap.md](jobs-roadmap.md) for full plan
+  - [ ] Stockpile/gather zone UI (draw, remove, configure)
+  - [ ] Mining/digging (designations, terrain modification)
+  - [ ] Architecture refactor (Job pool, WorkGivers) - optional but recommended before construction
+  - [ ] Construction (blueprints, material delivery, chained jobs)
+  - [ ] Simple crafting (workshops, recipes)
 - [ ] **Containers** - Portable storage (chests, barrels, wagons). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
 
 ### Larger efforts (build on queuing)
@@ -82,7 +88,9 @@ Want me to add a note about this flow field / pheromone overlap to the todo or c
 
 ## See Also (Design Docs)
 
+- [jobs-roadmap.md](jobs-roadmap.md) - Jobs system expansion (mining, construction, crafting, architecture refactor)
 - [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim with 2.5D views (detailed phases)
 - [elevators.md](elevators.md) - Full elevator simulation design
 - [done/convo-jobs.md](done/convo-jobs.md) - Jobs/Hauling system design conversation (completed)
 - [done/hauling-next.md](done/hauling-next.md) - Hauling features checklist (completed)
+- [done/pathing-optimizations-plan.md](done/pathing-optimizations-plan.md) - Pathing optimizations (mostly done)
