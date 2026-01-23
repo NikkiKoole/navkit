@@ -4,6 +4,7 @@
 #include "grid.h"
 #include "pathfinding.h"
 #include "stockpiles.h"
+#include "../shared/profiler.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -64,8 +65,6 @@ static void CancelJob(Mover* m, int moverIdx) {
 }
 
 void AssignJobs(void) {
-    // Only assign one job per tick to reduce CPU load
-    // Movers will get jobs on subsequent ticks
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -78,9 +77,11 @@ void AssignJobs(void) {
         bool isClearJob = false;
         
         // PRIORITY 1: Find ground items on stockpile tiles that need absorbing or clearing
+        PROFILE_ACCUM_BEGIN(Jobs_FindStockpileItem);
         int spOnItem = -1;
         bool absorb = false;
         int stockpileItemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
+        PROFILE_ACCUM_END(Jobs_FindStockpileItem);
         
         if (stockpileItemIdx >= 0 && items[stockpileItemIdx].unreachableCooldown <= 0.0f) {
             if (absorb) {
@@ -97,6 +98,7 @@ void AssignJobs(void) {
         }
         
         // PRIORITY 2: Find normal ground items to haul (only if no absorb/clear job)
+        PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem);
         if (itemIdx < 0) {
             for (int j = 0; j < MAX_ITEMS; j++) {
                 if (!items[j].active) continue;
@@ -120,10 +122,12 @@ void AssignJobs(void) {
                 }
             }
         }
+        PROFILE_ACCUM_END(Jobs_FindGroundItem);
         
         // If no ground item found, try to find an item to re-haul:
         // 1. Items in overfull slots (priority - must move these)
         // 2. Items in low-priority stockpiles (optional optimization)
+        PROFILE_ACCUM_BEGIN(Jobs_FindRehaulItem);
         if (itemIdx < 0) {
             for (int j = 0; j < MAX_ITEMS; j++) {
                 if (!items[j].active) continue;
@@ -162,10 +166,12 @@ void AssignJobs(void) {
                 }
             }
         }
+        PROFILE_ACCUM_END(Jobs_FindRehaulItem);
         
         if (itemIdx < 0) continue;  // no item to haul or re-haul
         
         // Find stockpile for this item
+        PROFILE_ACCUM_BEGIN(Jobs_FindDestination);
         int slotX, slotY;
         int spIdx;
         bool safeDrop = false;  // true if we should safe-drop (clear job with no destination)
@@ -199,6 +205,7 @@ void AssignJobs(void) {
             // Normal haul: find any accepting stockpile
             spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
         }
+        PROFILE_ACCUM_END(Jobs_FindDestination);
         
         if (spIdx < 0 && !safeDrop) continue;  // no valid destination
         
@@ -219,8 +226,10 @@ void AssignJobs(void) {
         Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
         
         // Quick reachability check - try to find a path using current algorithm
+        PROFILE_ACCUM_BEGIN(Jobs_ReachabilityCheck);
         Point tempPath[MAX_PATH];
         int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+        PROFILE_ACCUM_END(Jobs_ReachabilityCheck);
         
         if (tempLen == 0) {
             // Can't reach item - release reservations and set cooldown
@@ -242,9 +251,6 @@ void AssignJobs(void) {
         // Set goal to item position and trigger pathfinding
         m->goal = itemCell;
         m->needsRepath = true;
-        
-        // Only assign one job per tick to spread CPU load
-        return;
     }
 }
 

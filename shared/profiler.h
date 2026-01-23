@@ -14,10 +14,12 @@ typedef struct {
     const char* name;
     clock_t startTime;
     double lastTimeMs;
+    double accumTimeMs;  // Accumulated time for sections called multiple times per frame
     double history[PROFILER_HISTORY_FRAMES];
     int historyIndex;
     int historyCount;  // How many frames of data we have (up to PROFILER_HISTORY_FRAMES)
     bool active;       // Currently being measured
+    bool accumulating; // If true, accumulates multiple calls per frame
     int depth;         // Hierarchy depth (0 = root, 1 = child, etc.)
     int parent;        // Index of parent section (-1 if root)
     bool collapsed;    // If true, children are hidden in UI
@@ -31,6 +33,8 @@ extern int profilerSectionCount;
 
 void ProfileBegin(const char* name);
 void ProfileEnd(const char* name);
+void ProfileAccumBegin(const char* name);
+void ProfileAccumEnd(const char* name);
 void ProfileFrameEnd(void);
 void ProfileReset(void);
 
@@ -43,6 +47,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 
 #define PROFILE_BEGIN(name) ProfileBegin(#name)
 #define PROFILE_END(name) ProfileEnd(#name)
+#define PROFILE_ACCUM_BEGIN(name) ProfileAccumBegin(#name)
+#define PROFILE_ACCUM_END(name) ProfileAccumEnd(#name)
 #define PROFILE_FRAME_END() ProfileFrameEnd()
 
 #else
@@ -50,6 +56,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 // No-ops when profiler is disabled at compile time
 #define PROFILE_BEGIN(name) ((void)0)
 #define PROFILE_END(name) ((void)0)
+#define PROFILE_ACCUM_BEGIN(name) ((void)0)
+#define PROFILE_ACCUM_END(name) ((void)0)
 #define PROFILE_FRAME_END() ((void)0)
 
 #endif
@@ -67,7 +75,7 @@ int profilerSectionCount = 0;
 static int profilerCurrentDepth = 0;
 static int profilerParentStack[PROFILER_MAX_SECTIONS];  // Stack of parent indices
 
-static int ProfileFindOrCreate(const char* name, int depth, int parent) {
+static int ProfileFindOrCreate(const char* name, int depth, int parent, bool accumulating) {
     // Find existing section
     for (int i = 0; i < profilerSectionCount; i++) {
         if (profilerSections[i].name == name) {  // Pointer comparison (string literals)
@@ -80,9 +88,11 @@ static int ProfileFindOrCreate(const char* name, int depth, int parent) {
         profilerSections[idx].name = name;
         profilerSections[idx].startTime = 0;
         profilerSections[idx].lastTimeMs = 0.0;
+        profilerSections[idx].accumTimeMs = 0.0;
         profilerSections[idx].historyIndex = 0;
         profilerSections[idx].historyCount = 0;
         profilerSections[idx].active = false;
+        profilerSections[idx].accumulating = accumulating;
         profilerSections[idx].depth = depth;
         profilerSections[idx].parent = parent;
         profilerSections[idx].collapsed = false;
@@ -96,7 +106,7 @@ static int ProfileFindOrCreate(const char* name, int depth, int parent) {
 
 void ProfileBegin(const char* name) {
     int parent = (profilerCurrentDepth > 0) ? profilerParentStack[profilerCurrentDepth - 1] : -1;
-    int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent);
+    int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent, false);
     if (idx >= 0) {
         profilerSections[idx].startTime = clock();
         profilerSections[idx].active = true;
@@ -106,7 +116,7 @@ void ProfileBegin(const char* name) {
 }
 
 void ProfileEnd(const char* name) {
-    int idx = ProfileFindOrCreate(name, 0, -1);  // depth/parent don't matter for lookup
+    int idx = ProfileFindOrCreate(name, 0, -1, false);  // depth/parent don't matter for lookup
     if (idx >= 0 && profilerSections[idx].active) {
         clock_t end = clock();
         double ms = (double)(end - profilerSections[idx].startTime) / CLOCKS_PER_SEC * 1000.0;
@@ -116,16 +126,39 @@ void ProfileEnd(const char* name) {
     }
 }
 
+void ProfileAccumBegin(const char* name) {
+    int parent = (profilerCurrentDepth > 0) ? profilerParentStack[profilerCurrentDepth - 1] : -1;
+    int idx = ProfileFindOrCreate(name, profilerCurrentDepth, parent, true);
+    if (idx >= 0) {
+        profilerSections[idx].startTime = clock();
+        profilerSections[idx].active = true;
+        // Don't push to parent stack - accum sections don't affect hierarchy during measurement
+    }
+}
+
+void ProfileAccumEnd(const char* name) {
+    int idx = ProfileFindOrCreate(name, 0, -1, true);  // depth/parent don't matter for lookup
+    if (idx >= 0 && profilerSections[idx].active) {
+        clock_t end = clock();
+        double ms = (double)(end - profilerSections[idx].startTime) / CLOCKS_PER_SEC * 1000.0;
+        profilerSections[idx].accumTimeMs += ms;  // Accumulate instead of replace
+        profilerSections[idx].active = false;
+    }
+}
+
 void ProfileFrameEnd(void) {
-    // Store lastTimeMs into history for each section
+    // Store lastTimeMs (or accumTimeMs) into history for each section
     for (int i = 0; i < profilerSectionCount; i++) {
         ProfileSection* s = &profilerSections[i];
-        s->history[s->historyIndex] = s->lastTimeMs;
+        // Use accumulated time for accum sections, lastTimeMs for regular sections
+        double timeToStore = s->accumulating ? s->accumTimeMs : s->lastTimeMs;
+        s->history[s->historyIndex] = timeToStore;
         s->historyIndex = (s->historyIndex + 1) % PROFILER_HISTORY_FRAMES;
         if (s->historyCount < PROFILER_HISTORY_FRAMES) {
             s->historyCount++;
         }
-        s->lastTimeMs = 0.0;  // Reset for next frame
+        s->lastTimeMs = 0.0;    // Reset for next frame
+        s->accumTimeMs = 0.0;   // Reset accumulator for next frame
     }
 }
 
