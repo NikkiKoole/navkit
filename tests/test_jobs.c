@@ -1116,6 +1116,88 @@ describe(dynamic_obstacles) {
         expect(items[itemIdx].active == true);
         expect(items[itemIdx].state == ITEM_ON_GROUND || items[itemIdx].state == ITEM_CARRIED);
     }
+
+    it("should cancel job immediately when wall placed on item") {
+        // Scenario: mover assigned to pick up item, wall drawn on item's cell
+        // Expected: job cancels immediately (not wait 3 seconds)
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover at left
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at right
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(9, 2, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        AssignJobs();
+        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(m->targetItem == itemIdx);
+        
+        // Place wall ON the item's cell
+        grid[0][2][8] = CELL_WALL;
+        
+        // Run just ONE tick - job should cancel immediately
+        JobsTick();
+        
+        // Job should be cancelled immediately (not wait 3 seconds)
+        expect(m->jobState == JOB_IDLE);
+        expect(m->targetItem == -1);
+        expect(items[itemIdx].reservedBy == -1);
+    }
+
+    it("should not assign job to item on wall") {
+        // Scenario: item exists on a wall cell, should not be assigned
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover ready to work
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item on a cell that IS a wall
+        grid[0][2][8] = CELL_WALL;
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(9, 2, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        (void)spIdx;
+        
+        AssignJobs();
+        
+        // Mover should NOT be assigned to the item on a wall
+        expect(m->jobState == JOB_IDLE);
+        expect(items[itemIdx].reservedBy == -1);
+    }
 }
 
 describe(stockpile_expansion) {

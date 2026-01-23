@@ -384,6 +384,12 @@ void AssignJobs(void) {
             if (!typeHasStockpile[item->type]) continue;
             if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
             
+            // Skip items on walls (can't be picked up)
+            int cellX = (int)(item->x / CELL_SIZE);
+            int cellY = (int)(item->y / CELL_SIZE);
+            int cellZ = (int)(item->z);
+            if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+            
             // Find stockpile for this item
             int slotX, slotY;
             int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
@@ -401,6 +407,12 @@ void AssignJobs(void) {
             if (item->unreachableCooldown > 0.0f) continue;
             if (!typeHasStockpile[item->type]) continue;
             if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+            
+            // Skip items on walls (can't be picked up)
+            int cellX = (int)(item->x / CELL_SIZE);
+            int cellY = (int)(item->y / CELL_SIZE);
+            int cellZ = (int)(item->z);
+            if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
             
             int slotX, slotY;
             int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
@@ -469,6 +481,18 @@ void JobsTick(void) {
                 continue;
             }
             
+            // Check if item's cell became a wall - cancel immediately
+            Item* item = &items[itemIdx];
+            int itemCellX = (int)(item->x / CELL_SIZE);
+            int itemCellY = (int)(item->y / CELL_SIZE);
+            int itemCellZ = (int)(item->z);
+            if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+                AddMessage(TextFormat("Mover %d: item blocked by wall, job cancelled", i), ORANGE);
+                CancelJob(m, i);
+                continue;
+            }
+            
             // Check if stuck (no path and not making progress) - item is unreachable
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
                 // Set cooldown on item so we don't immediately retry
@@ -479,7 +503,6 @@ void JobsTick(void) {
             }
             
             // Check if arrived at item
-            Item* item = &items[itemIdx];
             float dx = m->x - item->x;
             float dy = m->y - item->y;
             float distSq = dx*dx + dy*dy;
