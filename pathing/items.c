@@ -8,6 +8,7 @@ void ClearItems(void) {
     for (int i = 0; i < MAX_ITEMS; i++) {
         items[i].active = false;
         items[i].reservedBy = -1;
+        items[i].unreachableCooldown = 0.0f;
     }
     itemCount = 0;
 }
@@ -23,6 +24,7 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].state = ITEM_ON_GROUND;
             items[i].active = true;
             items[i].reservedBy = -1;
+            items[i].unreachableCooldown = 0.0f;
             itemCount++;
             return i;
         }
@@ -73,4 +75,22 @@ int FindNearestUnreservedItem(float x, float y, float z) {
     }
     
     return nearest;
+}
+
+void ItemsTick(float dt) {
+    for (int i = 0; i < MAX_ITEMS; i++) {
+        if (!items[i].active) continue;
+        if (items[i].unreachableCooldown > 0.0f) {
+            items[i].unreachableCooldown -= dt;
+            if (items[i].unreachableCooldown < 0.0f) {
+                items[i].unreachableCooldown = 0.0f;
+            }
+        }
+    }
+}
+
+void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
+    if (itemIndex >= 0 && itemIndex < MAX_ITEMS && items[itemIndex].active) {
+        items[itemIndex].unreachableCooldown = cooldown;
+    }
 }

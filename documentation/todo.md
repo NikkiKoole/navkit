@@ -18,12 +18,13 @@ Small remaining items and future improvements.
 - [ ] **Multi-cell stairs** - horizontal offset while changing z-level (enter at one x,y, exit at different x,y)
 - [ ] **Queuing system** - orderly waiting at bottlenecks (ladders, doors, narrow passages). Prerequisite for elevators and other social navigation features.
 - [ ] **Refactoring** - dedupe heap implementations, direction arrays, entrance building (~200 lines saved)
-- [ ] **Jobs/Hauling system** - Settlers/DF-style item hauling to stockpiles. See `convo-jobs.md` for full design.
-  - Phase 0: Item spawn + single pickup (no stockpiles, item just vanishes)
-  - Phase 1: Extend Mover with `MoverState` and reservation fields
-  - Phase 2: Item system (type, position, state, reservedBy)
-  - Phase 3: Stockpile system (tiles, filters, slots, reservations)
-  - Phase 4: Job assignment + state machine integration
+- [x] **Jobs/Hauling system** - DONE. Settlers/DF-style item hauling to stockpiles (46 tests).
+  - Items with types (R/G/B), stockpiles with filters, reservation system
+  - Stacking/merging, per-stockpile stack limits, overfull handling
+  - Stockpile priority with re-hauling, gather zones
+  - Unreachable item cooldown, safe-drop on cancellation
+  - Debug tooltips (stockpile hover, mover hover when paused)
+- [ ] **Containers** - Portable storage (chests, barrels, wagons). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
 
 ### Larger efforts (build on queuing)
 - [ ] **Elevators (full sim)** - moving elevator with state, queuing, capacity, wait times (requires queuing)
@@ -83,4 +84,5 @@ Want me to add a note about this flow field / pheromone overlap to the todo or c
 
 - [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim with 2.5D views (detailed phases)
 - [elevators.md](elevators.md) - Full elevator simulation design
-- [convo-jobs.md](convo-jobs.md) - Jobs/Hauling system design conversation
+- [done/convo-jobs.md](done/convo-jobs.md) - Jobs/Hauling system design conversation (completed)
+- [done/hauling-next.md](done/hauling-next.md) - Hauling features checklist (completed)

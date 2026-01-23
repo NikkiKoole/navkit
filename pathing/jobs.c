@@ -7,9 +7,28 @@
 #include <math.h>
 
 // Distance thresholds
-#define PICKUP_RADIUS 16.0f
+#define PICKUP_RADIUS 24.0f  // Large enough to cover same-cell edge cases
 #define DROP_RADIUS 16.0f
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
+#define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
+
+// Helper: clear item from source stockpile slot when re-hauling
+static void ClearSourceStockpileSlot(Item* item) {
+    int sourceSp = -1;
+    if (!IsPositionInStockpile(item->x, item->y, (int)item->z, &sourceSp) || sourceSp < 0) return;
+    
+    int lx = (int)(item->x / CELL_SIZE) - stockpiles[sourceSp].x;
+    int ly = (int)(item->y / CELL_SIZE) - stockpiles[sourceSp].y;
+    if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
+    
+    int idx = ly * stockpiles[sourceSp].width + lx;
+    stockpiles[sourceSp].slotCounts[idx]--;
+    if (stockpiles[sourceSp].slotCounts[idx] <= 0) {
+        stockpiles[sourceSp].slots[idx] = -1;
+        stockpiles[sourceSp].slotTypes[idx] = -1;
+        stockpiles[sourceSp].slotCounts[idx] = 0;
+    }
+}
 
 // Helper: cancel job and release all reservations
 static void CancelJob(Mover* m, int moverIdx) {
@@ -57,6 +76,8 @@ void AssignJobs(void) {
             if (!items[j].active) continue;
             if (items[j].reservedBy != -1) continue;
             if (items[j].state != ITEM_ON_GROUND) continue;  // skip carried/stored items
+            if (items[j].unreachableCooldown > 0.0f) continue;  // skip items on cooldown
+            if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;  // skip items outside gather zones
             
             // Check if there's a stockpile that accepts this item type
             int slotX, slotY;
@@ -73,12 +94,72 @@ void AssignJobs(void) {
             }
         }
         
-        if (itemIdx < 0) continue;  // no item to haul
+        // If no ground item found, try to find an item to re-haul:
+        // 1. Items in overfull slots (priority - must move these)
+        // 2. Items in low-priority stockpiles (optional optimization)
+        if (itemIdx < 0) {
+            for (int j = 0; j < MAX_ITEMS; j++) {
+                if (!items[j].active) continue;
+                if (items[j].reservedBy != -1) continue;
+                if (items[j].state != ITEM_IN_STOCKPILE) continue;
+                
+                // Find which stockpile this item is in
+                int currentSp = -1;
+                if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
+                if (currentSp < 0) continue;
+                
+                int itemSlotX = (int)(items[j].x / CELL_SIZE);
+                int itemSlotY = (int)(items[j].y / CELL_SIZE);
+                
+                // Check if slot is overfull OR if there's a higher-priority stockpile
+                int destSlotX, destSlotY;
+                int destSp = -1;
+                
+                if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+                    // Overfull: find any stockpile with room
+                    destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+                } else {
+                    // Not overfull: only move to higher priority
+                    destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
+                }
+                
+                if (destSp < 0) continue;  // no destination available
+                
+                float dx = items[j].x - m->x;
+                float dy = items[j].y - m->y;
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < nearestDistSq) {
+                    nearestDistSq = distSq;
+                    itemIdx = j;
+                }
+            }
+        }
+        
+        if (itemIdx < 0) continue;  // no item to haul or re-haul
         
         // Find stockpile for this item
         int slotX, slotY;
-        int spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
-        if (spIdx < 0) continue;  // shouldn't happen, but safety check
+        int spIdx;
+        
+        if (items[itemIdx].state == ITEM_IN_STOCKPILE) {
+            // Re-haul: check if overfull or moving to higher priority
+            int currentSp = -1;
+            IsPositionInStockpile(items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z, &currentSp);
+            int itemSlotX = (int)(items[itemIdx].x / CELL_SIZE);
+            int itemSlotY = (int)(items[itemIdx].y / CELL_SIZE);
+            
+            if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+                spIdx = FindStockpileForOverfullItem(itemIdx, currentSp, &slotX, &slotY);
+            } else {
+                spIdx = FindHigherPriorityStockpile(itemIdx, currentSp, &slotX, &slotY);
+            }
+        } else {
+            // Normal haul: find any accepting stockpile
+            spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
+        }
+        
+        if (spIdx < 0) continue;  // no valid destination
         
         // Reserve both item and stockpile slot
         if (!ReserveItem(itemIdx, i)) continue;
@@ -86,6 +167,32 @@ void AssignJobs(void) {
             ReleaseItemReservation(itemIdx);
             continue;
         }
+        
+        // Set goal to item position and check if reachable before assigning
+        Item* item = &items[itemIdx];
+        Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+        
+        // Quick reachability check - try to find a path
+        startPos = moverCell;
+        goalPos = itemCell;
+        RunAStar();
+        
+        if (pathLength == 0) {
+            // Can't reach item - release reservations and set cooldown
+            ReleaseItemReservation(itemIdx);
+            ReleaseStockpileSlot(spIdx, slotX, slotY);
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            // Clear global path state
+            startPos = (Point){-1, -1, 0};
+            goalPos = (Point){-1, -1, 0};
+            continue;
+        }
+        
+        // Clear global path state (mover will repath itself)
+        startPos = (Point){-1, -1, 0};
+        goalPos = (Point){-1, -1, 0};
+        pathLength = 0;
         
         // Set mover state
         m->targetItem = itemIdx;
@@ -95,10 +202,7 @@ void AssignJobs(void) {
         m->jobState = JOB_MOVING_TO_ITEM;
         
         // Set goal to item position and trigger pathfinding
-        Item* item = &items[itemIdx];
-        m->goal.x = (int)(item->x / CELL_SIZE);
-        m->goal.y = (int)(item->y / CELL_SIZE);
-        m->goal.z = (int)item->z;
+        m->goal = itemCell;
         m->needsRepath = true;
     }
 }
@@ -123,8 +227,10 @@ void JobsTick(void) {
                 continue;
             }
             
-            // Check if stuck (no path and not making progress)
+            // Check if stuck (no path and not making progress) - item is unreachable
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                // Set cooldown on item so we don't immediately retry
+                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
                 CancelJob(m, i);
                 continue;
             }
@@ -136,7 +242,10 @@ void JobsTick(void) {
             float distSq = dx*dx + dy*dy;
             
             if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // Pick up the item
+                // Pick up the item (if re-hauling, clear the source slot first)
+                if (item->state == ITEM_IN_STOCKPILE) {
+                    ClearSourceStockpileSlot(item);
+                }
                 item->state = ITEM_CARRIED;
                 m->carryingItem = itemIdx;
                 m->targetItem = -1;

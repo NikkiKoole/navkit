@@ -159,21 +159,23 @@ describe(mover_job_state) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n", 8, 4);
         
         ClearMovers();
         ClearItems();
         ClearStockpiles();
         
+        // Mover at (1,1)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
-        InitMover(m, 16.0f, 16.0f, 0.0f, goal, 100.0f);
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        int itemIdx = SpawnItem(200.0f, 200.0f, 0.0f, ITEM_RED);
+        // Item at (6,2) - within the grid
+        int itemIdx = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
         // Need a stockpile for job assignment to work
-        int spIdx = CreateStockpile(1, 1, 0, 1, 1);
+        int spIdx = CreateStockpile(3, 2, 0, 1, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
         AssignJobs();  // should assign item to idle mover
@@ -292,15 +294,17 @@ describe(reservation_safety) {
         ClearItems();
         ClearStockpiles();
         
+        // Mover at (1,1)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
-        InitMover(m, 16.0f, 16.0f, 0.0f, goal, 100.0f);
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        int itemIdx = SpawnItem(200.0f, 200.0f, 0.0f, ITEM_RED);
+        // Item at (8,2) - within grid
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
         // Need stockpile
-        int spIdx = CreateStockpile(8, 2, 0, 1, 1);
+        int spIdx = CreateStockpile(5, 2, 0, 1, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
         AssignJobs();
@@ -635,6 +639,7 @@ describe(haul_happy_path) {
 describe(stockpile_capacity) {
     it("should stop hauling when stockpile is full") {
         // Test 3 from convo-jobs.md
+        // With stacking, we need to pre-fill the slot to 9/10 so only 1 more item fits
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -663,9 +668,10 @@ describe(stockpile_capacity) {
         int item1 = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         int item2 = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 7 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
-        // Stockpile with only 1 tile
+        // Stockpile with only 1 tile, pre-filled to 9 items (only 1 more fits)
         int spIdx = CreateStockpile(2, 2, 0, 1, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 9);  // 9/10 full
         
         // Run simulation
         for (int i = 0; i < 2000; i++) {
@@ -750,14 +756,8 @@ describe(multi_agent_hauling) {
             expect(items[itemIdxs[i]].state == ITEM_IN_STOCKPILE);
         }
         
-        // No two items should be at the same position
-        for (int i = 0; i < 3; i++) {
-            for (int j = i + 1; j < 3; j++) {
-                bool samePos = (int)(items[itemIdxs[i]].x / CELL_SIZE) == (int)(items[itemIdxs[j]].x / CELL_SIZE) &&
-                               (int)(items[itemIdxs[i]].y / CELL_SIZE) == (int)(items[itemIdxs[j]].y / CELL_SIZE);
-                expect(samePos == false);
-            }
-        }
+        // With stacking enabled, items CAN be at the same position (stacked)
+        // Just verify all items are stored (checked above)
     }
 }
 
@@ -1167,6 +1167,7 @@ describe(stress_test) {
         // Run simulation
         for (int i = 0; i < 10000; i++) {
             Tick();
+            ItemsTick(TICK_DT);  // Decrement unreachable cooldowns
             AssignJobs();
             JobsTick();
             
@@ -1191,17 +1192,1037 @@ describe(stress_test) {
             expect(movers[i].carryingItem == -1);
         }
         
-        // No items at same position (no collisions)
-        for (int i = 0; i < 9; i++) {
-            for (int j = i + 1; j < 9; j++) {
-                int xi = (int)(items[itemIdxs[i]].x / CELL_SIZE);
-                int yi = (int)(items[itemIdxs[i]].y / CELL_SIZE);
-                int xj = (int)(items[itemIdxs[j]].x / CELL_SIZE);
-                int yj = (int)(items[itemIdxs[j]].y / CELL_SIZE);
-                bool samePos = (xi == xj && yi == yj);
-                expect(samePos == false);
+        // With stacking enabled, items CAN be at the same position (stacked)
+        // Just verify all items are stored and movers are idle (checked above)
+    }
+}
+
+/*
+ * =============================================================================
+ * FUTURE FEATURES - Tests for hauling-next.md
+ * These tests are expected to FAIL until the features are implemented.
+ * =============================================================================
+ */
+
+describe(unreachable_item_cooldown) {
+    it("should not spam-retry unreachable items every tick") {
+        // Test 8 from convo-jobs.md
+        // Setup: walled pocket with item inside, agent outside
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..####....\n"
+            "..#..#....\n"
+            "..####....\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover outside the pocket
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item inside walled pocket (unreachable)
+        int itemIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        // Stockpile outside
+        int spIdx = CreateStockpile(7, 7, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Run for a while
+        int assignAttempts = 0;
+        for (int i = 0; i < 300; i++) {  // 5 seconds at 60Hz
+            Tick();
+            ItemsTick(TICK_DT);  // Decrement cooldowns
+            
+            // Track how many times we try to assign this item
+            if (m->jobState == JOB_IDLE) {
+                AssignJobs();
+                if (m->jobState == JOB_MOVING_TO_ITEM && m->targetItem == itemIdx) {
+                    assignAttempts++;
+                }
+            }
+            JobsTick();
+        }
+        
+        // Agent should end idle (can't reach item)
+        expect(m->jobState == JOB_IDLE);
+        
+        // Item should still be on ground
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+        
+        // Should NOT have tried to assign this item many times
+        // With cooldown, should be at most a few attempts (initial + maybe 1 retry)
+        // Without cooldown, would be ~300 attempts
+        expect(assignAttempts < 10);
+        
+        // Item should have a cooldown set
+        expect(items[itemIdx].unreachableCooldown > 0.0f);
+    }
+    
+    it("should retry unreachable item after cooldown expires") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..####....\n"
+            "..#..#....\n"
+            "..####....\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item inside walled pocket
+        int itemIdx = SpawnItem(3.5f * CELL_SIZE, 3.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        int spIdx = CreateStockpile(7, 7, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Try to assign - should fail and set cooldown
+        AssignJobs();
+        JobsTick();
+        
+        // Manually set a short cooldown for testing (simulating time passed)
+        items[itemIdx].unreachableCooldown = 0.1f;
+        
+        // Run a few more ticks to expire the cooldown
+        for (int i = 0; i < 10; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Now open a path by removing a wall
+        grid[0][3][2] = CELL_WALKABLE;  // Open the left wall
+        MarkChunkDirty(2, 3, 0);
+        
+        // Set cooldown to 0 to allow retry
+        items[itemIdx].unreachableCooldown = 0.0f;
+        
+        // Run simulation - item should now be hauled
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+    }
+}
+
+describe(gather_zones) {
+    it("should only haul items from within gather zones") {
+        // Test 10 from convo-jobs.md
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item inside gather zone (will be hauled)
+        int insideIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Item outside gather zone (should NOT be hauled)
+        int outsideIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Create gather zone covering only (2,2) to (5,5)
+        CreateGatherZone(2, 2, 0, 4, 4);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(7, 1, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Run simulation
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Only the inside item should be hauled
+        expect(items[insideIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[outsideIdx].state == ITEM_ON_GROUND);
+    }
+    
+    it("should haul all items when no gather zones exist") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();  // No gather zones
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Two items at different locations
+        int item1 = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int item2 = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Stockpile with 2 slots
+        int spIdx = CreateStockpile(5, 1, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Run simulation
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (items[item1].state == ITEM_IN_STOCKPILE && items[item2].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Both items should be hauled (no gather zone restriction)
+        expect(items[item1].state == ITEM_IN_STOCKPILE);
+        expect(items[item2].state == ITEM_IN_STOCKPILE);
+    }
+}
+
+describe(stacking_merging) {
+    it("should merge items into existing partial stacks") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with 1 tile that already has 3 red items stacked
+        int spIdx = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 3);  // Pre-fill with 3 items
+        
+        // New red item to haul
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be merged into existing stack
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Stack should now have 4 items
+        int stackCount = GetStockpileSlotCount(spIdx, 5, 5);
+        expect(stackCount == 4);
+    }
+    
+    it("should not merge different item types into same stack") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with 2 tiles, first has red stack
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 3);  // Slot (5,5) has 3 red
+        
+        // Green item to haul
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Green should go to the second slot (6,5), not merge with red
+        int redCount = GetStockpileSlotCount(spIdx, 5, 5);
+        int greenCount = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(redCount == 3);   // Red stack unchanged
+        expect(greenCount == 1); // Green in separate slot
+    }
+    
+    it("should use new slot when stack is full") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with 2 tiles, first slot is full (10/10)
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 10);  // Full stack (assuming max is 10)
+        
+        // New red item
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Should go to second slot since first is full
+        int slot1Count = GetStockpileSlotCount(spIdx, 5, 5);
+        int slot2Count = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(slot1Count == 10);  // First slot still full
+        expect(slot2Count == 1);   // New item in second slot
+    }
+}
+
+describe(stockpile_priority) {
+    it("should re-haul items from low to high priority stockpile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Low priority stockpile (dump zone) at (2,2)
+        int spLow = CreateStockpile(2, 2, 0, 1, 1);
+        SetStockpileFilter(spLow, ITEM_RED, true);
+        SetStockpilePriority(spLow, 1);  // Low priority
+        
+        // High priority stockpile (proper storage) at (8,8)
+        int spHigh = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spHigh, ITEM_RED, true);
+        SetStockpilePriority(spHigh, 5);  // High priority
+        
+        // Item on ground
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // First, item should be hauled to nearest stockpile (low priority)
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        // Should be in low-priority first (closer/first available)
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        expect(itemTileX == 2);
+        expect(itemTileY == 2);
+        
+        // Continue running - mover should re-haul to high priority
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Item should now be in high-priority stockpile
+        itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        expect(itemTileX == 8);
+        expect(itemTileY == 8);
+    }
+    
+    it("should not re-haul if already in highest priority stockpile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // High priority stockpile
+        int spHigh = CreateStockpile(2, 2, 0, 1, 1);
+        SetStockpileFilter(spHigh, ITEM_RED, true);
+        SetStockpilePriority(spHigh, 5);
+        
+        // Lower priority stockpile (empty)
+        int spLow = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spLow, ITEM_RED, true);
+        SetStockpilePriority(spLow, 1);
+        
+        // Item on ground near high-priority stockpile
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Haul to high-priority
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        
+        // Record position
+        int origX = itemTileX;
+        int origY = itemTileY;
+        
+        // Run more ticks - item should NOT move to lower priority
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Item should still be at same position (not re-hauled to worse storage)
+        itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        expect(itemTileX == origX);
+        expect(itemTileY == origY);
+    }
+    
+    it("should not re-haul between equal priority stockpiles") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Two stockpiles with same priority
+        int sp1 = CreateStockpile(2, 2, 0, 1, 1);
+        SetStockpileFilter(sp1, ITEM_RED, true);
+        SetStockpilePriority(sp1, 3);
+        
+        int sp2 = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(sp2, ITEM_RED, true);
+        SetStockpilePriority(sp2, 3);  // Same priority
+        
+        // Item on ground
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Haul to first stockpile
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Record position
+        int origX = (int)(items[itemIdx].x / CELL_SIZE);
+        int origY = (int)(items[itemIdx].y / CELL_SIZE);
+        
+        // Run more ticks
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Item should not have moved (no re-haul between equal priorities)
+        int newX = (int)(items[itemIdx].x / CELL_SIZE);
+        int newY = (int)(items[itemIdx].y / CELL_SIZE);
+        expect(newX == origX);
+        expect(newY == origY);
+    }
+}
+
+describe(stockpile_max_stack_size) {
+    it("should not let endless mover mode hijack mover carrying item") {
+        // Bug: mover in JOB_MOVING_TO_STOCKPILE loses path, endless mover mode
+        // assigns random goal but mover keeps carrying item and wanders aimlessly
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        
+        // Enable endless mover mode (like in the demo)
+        extern bool endlessMoverMode;
+        bool oldEndlessMode = endlessMoverMode;
+        endlessMoverMode = true;
+        
+        // Mover at left
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, 1.5f * CELL_SIZE, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile at right - RED only
+        int sp = CreateStockpile(6, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SetStockpileFilter(sp, ITEM_GREEN, false);
+        SetStockpileFilter(sp, ITEM_BLUE, false);
+        
+        // Item near mover
+        int item = SpawnItem(2.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        // Run until mover picks up item
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            if (m->carryingItem == item) break;
+        }
+        expect(m->carryingItem == item);
+        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        
+        // Clear path to simulate losing it (like when wall is drawn)
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        
+        // Record the job's target stockpile slot and current goal
+        int targetSlotX = m->targetSlotX;
+        int targetSlotY = m->targetSlotY;
+        int targetStockpile = m->targetStockpile;
+        Point goalBefore = m->goal;
+        
+        // Clear any repath cooldown so endless mover mode will act immediately
+        m->repathCooldown = 0;
+        
+        // Ensure mover is active and has no path (trigger the endless mover branch)
+        m->active = true;
+        expect(m->pathLength == 0);
+        expect(m->pathIndex < 0);
+        
+        // Run a single Tick - this is where the bug manifests:
+        // endless mover mode calls AssignNewMoverGoal() which sets m->goal to random point
+        Tick();
+        
+        // BUG CHECK: After Tick, if mover was hijacked, m->goal will have changed
+        // to some random cell (not the stockpile target)
+        Stockpile* spPtr = &stockpiles[targetStockpile];
+        int stockpileX = spPtr->x + targetSlotX;
+        int stockpileY = spPtr->y + targetSlotY;
+        
+        // Seed rand with a value that will produce a different goal than (6,1)
+        // The bug is that AssignNewMoverGoal gets called and changes the goal to random point
+        srand(12345);
+        m->pathLength = 0;
+        m->pathIndex = -1;
+        m->repathCooldown = 0;
+        Tick();
+        
+        // BUG: After Tick, the mover's goal changed to a random point (0,3) 
+        // instead of staying at the stockpile (6,1)
+        // The fix should prevent AssignNewMoverGoal from being called when mover has a job
+        expect(m->goal.x == goalBefore.x);  // Should still be 6
+        expect(m->goal.y == goalBefore.y);  // Should still be 1
+        (void)stockpileX; (void)stockpileY; (void)spPtr; // suppress unused warnings
+        
+        // Continue running
+        for (int i = 0; i < 120; i++) {
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            Tick();
+        }
+        
+        // Mover should NOT be wandering with item - either delivered or dropped
+        // If still carrying, should still be in JOB_MOVING_TO_STOCKPILE (not hijacked)
+        if (m->carryingItem >= 0) {
+            expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        }
+        
+        // Run longer to let job complete or cancel
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            if (items[item].state == ITEM_IN_STOCKPILE) break;
+            if (items[item].state == ITEM_ON_GROUND && m->jobState == JOB_IDLE) break;
+        }
+        
+        // Item should be either in stockpile or dropped on ground (not carried aimlessly)
+        bool delivered = items[item].state == ITEM_IN_STOCKPILE;
+        bool dropped = items[item].state == ITEM_ON_GROUND && m->carryingItem == -1;
+        expect(delivered || dropped);
+        
+        endlessMoverMode = oldEndlessMode;
+    }
+    
+    it("should re-acquire slot after path blocked while carrying") {
+        // Bug: mover carrying item, wall drawn, can't find slot even with space
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        
+        // Mover at left
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, 1.5f * CELL_SIZE, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile at right - RED only
+        int sp = CreateStockpile(6, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SetStockpileFilter(sp, ITEM_GREEN, false);
+        SetStockpileFilter(sp, ITEM_BLUE, false);
+        
+        // Item near mover
+        int item = SpawnItem(2.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        // Run until mover picks up item
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            if (m->carryingItem == item) break;
+        }
+        expect(m->carryingItem == item);
+        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        
+        // Draw a wall blocking the path (temporarily)
+        grid[0][1][4] = CELL_WALL;
+        MarkChunkDirty(4, 1, 0);
+        
+        // Run a bit with wall
+        for (int i = 0; i < 60; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Remove the wall
+        grid[0][1][4] = CELL_FLOOR;
+        MarkChunkDirty(4, 1, 0);
+        
+        // Run until item is delivered
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            if (items[item].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be in stockpile
+        expect(items[item].state == ITEM_IN_STOCKPILE);
+        expect(m->jobState == JOB_IDLE);
+        expect(m->carryingItem == -1);
+    }
+    
+    it("should stack items in partially filled slots") {
+        // Reproduce bug: mover can't find slot even though there's stack space
+        // 8x8 grid
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        
+        // Mover at top-left
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // 3x3 stockpile for RED items only (9 slots, max 7 per slot = 63 capacity)
+        int sp = CreateStockpile(3, 3, 0, 3, 3);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SetStockpileFilter(sp, ITEM_GREEN, false);
+        SetStockpileFilter(sp, ITEM_BLUE, false);
+        SetStockpileMaxStackSize(sp, 7);
+        
+        // Pre-fill all 9 slots with 1-2 items each (partially filled)
+        for (int ly = 0; ly < 3; ly++) {
+            for (int lx = 0; lx < 3; lx++) {
+                SetStockpileSlotCount(sp, lx, ly, ITEM_RED, 2);
+                // Spawn actual items in the slots
+                float slotX = (3 + lx + 0.5f) * CELL_SIZE;
+                float slotY = (3 + ly + 0.5f) * CELL_SIZE;
+                for (int n = 0; n < 2; n++) {
+                    int id = SpawnItem(slotX, slotY, 0.0f, ITEM_RED);
+                    items[id].state = ITEM_IN_STOCKPILE;
+                }
             }
         }
+        // Total: 18 items in 9 slots, capacity is 63
+        
+        // Spawn one more RED item on the ground
+        int newItem = SpawnItem(1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        // Run simulation - mover should pick up and stack the item
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+            
+            if (items[newItem].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be in stockpile (stacked with existing items)
+        expect(items[newItem].state == ITEM_IN_STOCKPILE);
+        expect(m->jobState == JOB_IDLE);
+    }
+    
+    it("should respect per-stockpile max stack size") {
+        // 8x4 grid
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover at top-left
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with maxStackSize = 2
+        int sp = CreateStockpile(3, 2, 0, 1, 1);
+        SetStockpileMaxStackSize(sp, 2);
+        expect(GetStockpileMaxStackSize(sp) == 2);
+        
+        // Pre-fill slot with 2 items (at max)
+        SetStockpileSlotCount(sp, 0, 0, ITEM_RED, 2);
+        
+        // Spawn a 3rd item on ground
+        int item = SpawnItem(1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, ITEM_RED);
+        
+        // Run simulation - should NOT pick up because stockpile is full
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Item should still be on ground (no room in stockpile)
+        expect(items[item].state == ITEM_ON_GROUND);
+        expect(m->jobState == JOB_IDLE);
+    }
+    
+    it("should re-haul excess items from overfull slots to other stockpiles") {
+        // 8x4 grid
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile A with 5 items, will become overfull
+        int spA = CreateStockpile(2, 2, 0, 1, 1);
+        SetStockpileSlotCount(spA, 0, 0, ITEM_RED, 5);
+        float slotAx = (2 + 0.5f) * CELL_SIZE;
+        float slotAy = (2 + 0.5f) * CELL_SIZE;
+        int itemIds[5];
+        for (int i = 0; i < 5; i++) {
+            itemIds[i] = SpawnItem(slotAx, slotAy, 0.0f, ITEM_RED);
+            items[itemIds[i]].state = ITEM_IN_STOCKPILE;
+        }
+        
+        // Stockpile B - empty, destination for excess
+        int spB = CreateStockpile(6, 2, 0, 1, 1);
+        
+        // Reduce A's max stack to 2 - now overfull by 3
+        SetStockpileMaxStackSize(spA, 2);
+        
+        // Run simulation - movers should re-haul 3 excess items to B
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            ItemsTick(TICK_DT);
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Count items in each stockpile
+        int inA = 0, inB = 0;
+        for (int i = 0; i < 5; i++) {
+            int slotX = (int)(items[itemIds[i]].x / CELL_SIZE);
+            if (slotX == 2) inA++;
+            if (slotX == 6) inB++;
+        }
+        
+        expect(inA == 2);  // only max stack size remains
+        expect(inB == 3);  // excess moved here
+        expect(GetStockpileSlotCount(spA, 2, 2) == 2);
+    }
+    
+    it("should allow overfull slots when max stack size is reduced") {
+        // 8x4 grid
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Stockpile with default max (10)
+        int sp = CreateStockpile(3, 2, 0, 1, 1);
+        
+        // Pre-fill slot with 5 items
+        SetStockpileSlotCount(sp, 0, 0, ITEM_RED, 5);
+        
+        // Spawn 5 items in stockpile (to track)
+        int itemIds[5];
+        float slotX = (3 + 0.5f) * CELL_SIZE;
+        float slotY = (2 + 0.5f) * CELL_SIZE;
+        for (int i = 0; i < 5; i++) {
+            itemIds[i] = SpawnItem(slotX, slotY, 0.0f, ITEM_RED);
+            items[itemIds[i]].state = ITEM_IN_STOCKPILE;
+        }
+        
+        // Reduce max stack size to 2 - items should stay (overfull allowed)
+        SetStockpileMaxStackSize(sp, 2);
+        
+        // All items should still be in stockpile (no ejection)
+        int inStockpile = 0;
+        for (int i = 0; i < 5; i++) {
+            if (items[itemIds[i]].state == ITEM_IN_STOCKPILE) inStockpile++;
+        }
+        
+        expect(inStockpile == 5);   // all items remain
+        expect(GetStockpileSlotCount(sp, 3, 2) == 5);  // slot count unchanged
+        expect(GetStockpileMaxStackSize(sp) == 2);     // but max is now 2
+    }
+    
+    it("should not eject items when max stack size is increased") {
+        // 8x4 grid
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Stockpile starting with max = 3
+        int sp = CreateStockpile(3, 2, 0, 1, 1);
+        SetStockpileMaxStackSize(sp, 3);
+        
+        // Pre-fill slot with 3 items (at max)
+        SetStockpileSlotCount(sp, 0, 0, ITEM_RED, 3);
+        
+        // Spawn items in stockpile
+        float slotX = (3 + 0.5f) * CELL_SIZE;
+        float slotY = (2 + 0.5f) * CELL_SIZE;
+        for (int i = 0; i < 3; i++) {
+            int id = SpawnItem(slotX, slotY, 0.0f, ITEM_RED);
+            items[id].state = ITEM_IN_STOCKPILE;
+        }
+        
+        // Increase max stack size to 10 - no items should be ejected
+        SetStockpileMaxStackSize(sp, 10);
+        
+        // All items should still be in stockpile
+        int inStockpile = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (items[i].active && items[i].state == ITEM_IN_STOCKPILE) inStockpile++;
+        }
+        
+        expect(inStockpile == 3);
+        expect(GetStockpileSlotCount(sp, 3, 2) == 3);
     }
 }
 
@@ -1234,5 +2255,13 @@ int main(int argc, char* argv[]) {
     test(dynamic_obstacles);
     test(stockpile_expansion);
     test(stress_test);
+    
+    // Future features (hauling-next.md) - expected to fail until implemented
+    test(unreachable_item_cooldown);
+    test(gather_zones);
+    test(stacking_merging);
+    test(stockpile_priority);
+    test(stockpile_max_stack_size);
+    
     return summary();
 }

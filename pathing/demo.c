@@ -63,6 +63,12 @@ bool sectionJobs = true;
 bool paused = false;
 bool showItems = true;
 
+// Stockpile hover state
+int hoveredStockpile = -1;  // Index of stockpile under mouse, -1 if none
+
+// Mover hover state (only when paused)
+int hoveredMover = -1;  // Index of mover under mouse, -1 if none
+
 // Test map: Narrow gaps (from test_mover.c)
 const char* narrowGapsMap =
     "........#.......#.......#.......\n"
@@ -666,7 +672,56 @@ void DrawStockpiles(void) {
                 Rectangle src = AtlasGetRect(SPRITE_stockpile);
                 Rectangle dest = { sx, sy, size, size };
                 DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
+                
+                // Draw stacked items in this slot
+                int slotIdx = dy * sp->width + dx;
+                int count = sp->slotCounts[slotIdx];
+                if (count > 0) {
+                    ItemType type = sp->slotTypes[slotIdx];
+                    int sprite;
+                    switch (type) {
+                        case ITEM_RED:   sprite = SPRITE_crate_red;   break;
+                        case ITEM_GREEN: sprite = SPRITE_crate_green; break;
+                        case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
+                        default:         sprite = SPRITE_apple;       break;
+                    }
+                    
+                    // Draw up to 5 visible items with small offsets
+                    int visibleCount = count > 5 ? 5 : count;
+                    float itemSize = size * 0.5f;
+                    float stackOffset = size * 0.06f;  // Small x offset per item
+                    
+                    for (int s = 0; s < visibleCount; s++) {
+                        float itemX = sx + size * 0.5f - itemSize * 0.5f + s * stackOffset;
+                        float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset * 0.5f;
+                        Rectangle srcItem = AtlasGetRect(sprite);
+                        Rectangle destItem = { itemX, itemY, itemSize, itemSize };
+                        DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
+                    }
+                }
             }
+        }
+    }
+}
+
+// Helper: spawn a 3x3 stockpile with specified type filters
+static void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
+    int attempts = 100;
+    while (attempts-- > 0) {
+        int gx = rand() % (gridWidth - 3);
+        int gy = rand() % (gridHeight - 3);
+        bool valid = true;
+        for (int dy = 0; dy < 3 && valid; dy++)
+            for (int dx = 0; dx < 3 && valid; dx++)
+                if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
+        if (valid) {
+            int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
+            if (spIdx >= 0) {
+                SetStockpileFilter(spIdx, ITEM_RED, allowRed);
+                SetStockpileFilter(spIdx, ITEM_GREEN, allowGreen);
+                SetStockpileFilter(spIdx, ITEM_BLUE, allowBlue);
+            }
+            break;
         }
     }
 }
@@ -674,6 +729,188 @@ void DrawStockpiles(void) {
 Vector2 ScreenToGrid(Vector2 screen) {
     float size = CELL_SIZE * zoom;
     return (Vector2){(screen.x - offset.x) / size, (screen.y - offset.y) / size};
+}
+
+Vector2 ScreenToWorld(Vector2 screen) {
+    // Convert screen coords to world coords (pixels, not grid cells)
+    return (Vector2){(screen.x - offset.x) / zoom, (screen.y - offset.y) / zoom};
+}
+
+// Find stockpile at grid position, returns index or -1 if none
+int GetStockpileAtGrid(int gx, int gy, int gz) {
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        Stockpile* sp = &stockpiles[i];
+        if (!sp->active) continue;
+        if (sp->z != gz) continue;
+        if (gx >= sp->x && gx < sp->x + sp->width &&
+            gy >= sp->y && gy < sp->y + sp->height) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Draw stockpile tooltip at mouse position
+void DrawStockpileTooltip(int spIdx, Vector2 mouse) {
+    if (spIdx < 0 || spIdx >= MAX_STOCKPILES) return;
+    Stockpile* sp = &stockpiles[spIdx];
+    if (!sp->active) return;
+    
+    // Count items and capacity
+    int totalItems = 0;
+    int totalSlots = sp->width * sp->height;
+    for (int i = 0; i < totalSlots; i++) {
+        totalItems += sp->slotCounts[i];
+    }
+    int maxCapacity = totalSlots * sp->maxStackSize;
+    
+    // Build tooltip text
+    const char* priorityText = TextFormat("Priority: %d", sp->priority);
+    const char* stackText = TextFormat("Stack size: %d", sp->maxStackSize);
+    const char* storageText = TextFormat("Storage: %d/%d (%d slots)", totalItems, maxCapacity, totalSlots);
+    const char* helpText = "+/- priority, [/] stack, R/G/B filter";
+    
+    // Measure text
+    int w1 = MeasureText(priorityText, 14);
+    int w2 = MeasureText(stackText, 14);
+    int w3 = MeasureText(storageText, 14);
+    int w4 = MeasureText("Filters: R G B", 14);
+    int w5 = MeasureText(helpText, 12);
+    int maxW = w1;
+    if (w2 > maxW) maxW = w2;
+    if (w3 > maxW) maxW = w3;
+    if (w4 > maxW) maxW = w4;
+    if (w5 > maxW) maxW = w5;
+    
+    int padding = 6;
+    int boxW = maxW + padding * 2;
+    int boxH = 14 * 4 + 12 + padding * 2 + 10;  // 5 lines + padding + spacing
+    
+    // Position tooltip near mouse, keep on screen
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+    
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 20, 220});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
+    
+    // Draw text
+    int y = ty + padding;
+    DrawTextShadow(priorityText, tx + padding, y, 14, WHITE);
+    y += 16;
+    
+    DrawTextShadow(stackText, tx + padding, y, 14, WHITE);
+    y += 16;
+    
+    // Storage line - red if overfull
+    bool overfull = totalItems > maxCapacity;
+    DrawTextShadow(storageText, tx + padding, y, 14, overfull ? RED : WHITE);
+    y += 16;
+    
+    // Draw filters with color coding
+    int fx = tx + padding;
+    DrawTextShadow("Filters: ", fx, y, 14, WHITE);
+    fx += MeasureText("Filters: ", 14);
+    DrawTextShadow(sp->allowedTypes[ITEM_RED] ? "R" : "-", fx, y, 14, 
+        sp->allowedTypes[ITEM_RED] ? RED : DARKGRAY);
+    fx += MeasureText("R", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_GREEN] ? "G" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_GREEN] ? GREEN : DARKGRAY);
+    fx += MeasureText("G", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_BLUE] ? "B" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_BLUE] ? BLUE : DARKGRAY);
+    y += 18;
+    
+    DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
+}
+
+// Get mover index at world position (within radius), or -1 if none
+int GetMoverAtWorldPos(float wx, float wy, int wz) {
+    float bestDist = 999999.0f;
+    int bestIdx = -1;
+    float radius = CELL_SIZE * 0.6f;  // Click radius
+    
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        if ((int)m->z != wz) continue;
+        
+        float dx = m->x - wx;
+        float dy = m->y - wy;
+        float dist = sqrtf(dx*dx + dy*dy);
+        if (dist < radius && dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+// Draw mover debug tooltip (only shown when paused)
+void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
+    if (moverIdx < 0 || moverIdx >= moverCount) return;
+    Mover* m = &movers[moverIdx];
+    if (!m->active) return;
+    
+    // Job state names
+    const char* jobStateNames[] = {"IDLE", "MOVING_TO_ITEM", "MOVING_TO_STOCKPILE"};
+    const char* jobStateName = (m->jobState >= 0 && m->jobState <= 2) ? jobStateNames[m->jobState] : "?";
+    
+    // Build tooltip lines
+    char line1[64], line2[64], line3[64], line4[64], line5[64], line6[64];
+    snprintf(line1, sizeof(line1), "Mover #%d", moverIdx);
+    snprintf(line2, sizeof(line2), "Pos: (%.1f, %.1f, %.0f)", m->x, m->y, m->z);
+    snprintf(line3, sizeof(line3), "Job: %s", jobStateName);
+    snprintf(line4, sizeof(line4), "Carrying: %s", m->carryingItem >= 0 ? TextFormat("#%d", m->carryingItem) : "none");
+    snprintf(line5, sizeof(line5), "Path: %d/%d, Goal: (%d,%d)", 
+        m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y);
+    snprintf(line6, sizeof(line6), "Target SP: %d, Slot: (%d,%d)", 
+        m->targetStockpile, m->targetSlotX, m->targetSlotY);
+    
+    // Measure text widths
+    int w1 = MeasureText(line1, 14);
+    int w2 = MeasureText(line2, 14);
+    int w3 = MeasureText(line3, 14);
+    int w4 = MeasureText(line4, 14);
+    int w5 = MeasureText(line5, 14);
+    int w6 = MeasureText(line6, 14);
+    int maxW = w1;
+    if (w2 > maxW) maxW = w2;
+    if (w3 > maxW) maxW = w3;
+    if (w4 > maxW) maxW = w4;
+    if (w5 > maxW) maxW = w5;
+    if (w6 > maxW) maxW = w6;
+    
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * 6 + padding * 2;
+    
+    // Position tooltip near mouse, keep on screen
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+    
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 40, 220});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
+    
+    // Draw text
+    int y = ty + padding;
+    DrawTextShadow(line1, tx + padding, y, 14, YELLOW);
+    y += lineH;
+    DrawTextShadow(line2, tx + padding, y, 14, WHITE);
+    y += lineH;
+    DrawTextShadow(line3, tx + padding, y, 14, m->jobState == JOB_IDLE ? GRAY : GREEN);
+    y += lineH;
+    DrawTextShadow(line4, tx + padding, y, 14, m->carryingItem >= 0 ? ORANGE : GRAY);
+    y += lineH;
+    DrawTextShadow(line5, tx + padding, y, 14, m->pathLength > 0 ? WHITE : RED);
+    y += lineH;
+    DrawTextShadow(line6, tx + padding, y, 14, m->targetStockpile >= 0 ? WHITE : GRAY);
 }
 
 void GenerateCurrentTerrain(void) {
@@ -701,6 +938,68 @@ void GenerateCurrentTerrain(void) {
 }
 
 void HandleInput(void) {
+    // Update stockpile hover state
+    Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
+    hoveredStockpile = GetStockpileAtGrid((int)mouseGrid.x, (int)mouseGrid.y, currentViewZ);
+    
+    // Update mover hover state (only when paused, for debugging)
+    if (paused) {
+        Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
+        hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, currentViewZ);
+    } else {
+        hoveredMover = -1;
+    }
+    
+    // Stockpile editing controls (when hovering)
+    if (hoveredStockpile >= 0) {
+        Stockpile* sp = &stockpiles[hoveredStockpile];
+        
+        // Priority: +/- or =/- keys
+        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) {
+            if (sp->priority < 9) {
+                sp->priority++;
+                AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE);
+            }
+        }
+        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) {
+            if (sp->priority > 1) {
+                sp->priority--;
+                AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE);
+            }
+        }
+        
+        // Stack size: [ / ] keys
+        if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
+            int newSize = sp->maxStackSize + 1;
+            if (newSize <= MAX_STACK_SIZE) {
+                SetStockpileMaxStackSize(hoveredStockpile, newSize);
+                AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE);
+            }
+        }
+        if (IsKeyPressed(KEY_LEFT_BRACKET)) {
+            int newSize = sp->maxStackSize - 1;
+            if (newSize >= 1) {
+                SetStockpileMaxStackSize(hoveredStockpile, newSize);
+                AddMessage(TextFormat("Stack size: %d (excess ejected)", sp->maxStackSize), ORANGE);
+            }
+        }
+        
+        // Filter toggles: R/G/B keys
+        if (IsKeyPressed(KEY_R)) {
+            sp->allowedTypes[ITEM_RED] = !sp->allowedTypes[ITEM_RED];
+            AddMessage(TextFormat("Red filter: %s", sp->allowedTypes[ITEM_RED] ? "ON" : "OFF"), RED);
+            return;  // Don't trigger room drawing
+        }
+        if (IsKeyPressed(KEY_G)) {
+            sp->allowedTypes[ITEM_GREEN] = !sp->allowedTypes[ITEM_GREEN];
+            AddMessage(TextFormat("Green filter: %s", sp->allowedTypes[ITEM_GREEN] ? "ON" : "OFF"), GREEN);
+        }
+        if (IsKeyPressed(KEY_B)) {
+            sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE];
+            AddMessage(TextFormat("Blue filter: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE);
+        }
+    }
+    
     // Zoom with mouse wheel
     float wheel = GetMouseWheelMove();
     if (wheel != 0) {
@@ -1173,90 +1472,13 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Items", &showItems);
         y += 22;
-        if (PushButton(x, y, "Stockpile: All")) {
-            // Find a random 3x3 walkable area on current z-level
-            int attempts = 100;
-            while (attempts-- > 0) {
-                int gx = rand() % (gridWidth - 3);
-                int gy = rand() % (gridHeight - 3);
-                bool valid = true;
-                for (int dy = 0; dy < 3 && valid; dy++)
-                    for (int dx = 0; dx < 3 && valid; dx++)
-                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
-                if (valid) {
-                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
-                    if (spIdx >= 0) {
-                        SetStockpileFilter(spIdx, ITEM_RED, true);
-                        SetStockpileFilter(spIdx, ITEM_GREEN, true);
-                        SetStockpileFilter(spIdx, ITEM_BLUE, true);
-                    }
-                    break;
-                }
-            }
-        }
+        if (PushButton(x, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
         y += 22;
-        if (PushButton(x, y, "Stockpile: Red")) {
-            int attempts = 100;
-            while (attempts-- > 0) {
-                int gx = rand() % (gridWidth - 3);
-                int gy = rand() % (gridHeight - 3);
-                bool valid = true;
-                for (int dy = 0; dy < 3 && valid; dy++)
-                    for (int dx = 0; dx < 3 && valid; dx++)
-                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
-                if (valid) {
-                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
-                    if (spIdx >= 0) {
-                        SetStockpileFilter(spIdx, ITEM_RED, true);
-                        SetStockpileFilter(spIdx, ITEM_GREEN, false);
-                        SetStockpileFilter(spIdx, ITEM_BLUE, false);
-                    }
-                    break;
-                }
-            }
-        }
+        if (PushButton(x, y, "Stockpile: Red"))   SpawnStockpileWithFilters(true, false, false);
         y += 22;
-        if (PushButton(x, y, "Stockpile: Green")) {
-            int attempts = 100;
-            while (attempts-- > 0) {
-                int gx = rand() % (gridWidth - 3);
-                int gy = rand() % (gridHeight - 3);
-                bool valid = true;
-                for (int dy = 0; dy < 3 && valid; dy++)
-                    for (int dx = 0; dx < 3 && valid; dx++)
-                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
-                if (valid) {
-                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
-                    if (spIdx >= 0) {
-                        SetStockpileFilter(spIdx, ITEM_RED, false);
-                        SetStockpileFilter(spIdx, ITEM_GREEN, true);
-                        SetStockpileFilter(spIdx, ITEM_BLUE, false);
-                    }
-                    break;
-                }
-            }
-        }
+        if (PushButton(x, y, "Stockpile: Green")) SpawnStockpileWithFilters(false, true, false);
         y += 22;
-        if (PushButton(x, y, "Stockpile: Blue")) {
-            int attempts = 100;
-            while (attempts-- > 0) {
-                int gx = rand() % (gridWidth - 3);
-                int gy = rand() % (gridHeight - 3);
-                bool valid = true;
-                for (int dy = 0; dy < 3 && valid; dy++)
-                    for (int dx = 0; dx < 3 && valid; dx++)
-                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
-                if (valid) {
-                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
-                    if (spIdx >= 0) {
-                        SetStockpileFilter(spIdx, ITEM_RED, false);
-                        SetStockpileFilter(spIdx, ITEM_GREEN, false);
-                        SetStockpileFilter(spIdx, ITEM_BLUE, true);
-                    }
-                    break;
-                }
-            }
-        }
+        if (PushButton(x, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
         y += 22;
         if (PushButton(x, y, "Clear Stockpiles")) {
             ClearStockpiles();
@@ -1675,6 +1897,16 @@ int main(void) {
 
         // Draw message stack
         DrawMessages(screenWidth, screenHeight);
+        
+        // Draw stockpile tooltip when hovering
+        if (hoveredStockpile >= 0) {
+            DrawStockpileTooltip(hoveredStockpile, GetMousePosition());
+        }
+        
+        // Draw mover tooltip when hovering (only when paused)
+        if (hoveredMover >= 0) {
+            DrawMoverTooltip(hoveredMover, GetMousePosition());
+        }
 
         PROFILE_BEGIN(EndDraw);
         EndDrawing();

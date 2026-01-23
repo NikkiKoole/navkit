@@ -704,8 +704,20 @@ void UpdateMovers(void) {
 
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
-            if (endlessMoverMode) {
-                // Wait for cooldown before trying a new goal
+            // Track stuck time for movers with jobs but no path
+            // This allows job stuck detection to work (it checks timeWithoutProgress > JOB_STUCK_TIME)
+            if (m->jobState != JOB_IDLE) {
+                m->timeWithoutProgress += dt;
+                // Trigger periodic repaths while stuck
+                if (m->timeWithoutProgress > STUCK_REPATH_TIME && 
+                    fmodf(m->timeWithoutProgress, STUCK_REPATH_TIME) < dt) {
+                    m->needsRepath = true;
+                }
+            }
+            
+            if (endlessMoverMode && m->jobState == JOB_IDLE) {
+                // Only assign random goals to movers without jobs
+                // (movers with jobs should use repath logic instead)
                 if (m->repathCooldown > 0) {
                     m->repathCooldown--;
                     continue;
@@ -721,7 +733,8 @@ void UpdateMovers(void) {
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
                     }
                 }
-            } else {
+            } else if (m->jobState == JOB_IDLE) {
+                // Only deactivate if not on a job
                 m->active = false;
             }
             continue;
@@ -890,9 +903,13 @@ void UpdateMovers(void) {
                 m->timeWithoutProgress += dt;
                 
                 // If stuck too long, trigger repath
-                if (m->timeWithoutProgress > STUCK_REPATH_TIME) {
+                // Note: we don't reset timeWithoutProgress here - it gets reset only
+                // when the mover actually makes progress. This allows job stuck
+                // detection to work properly (it checks timeWithoutProgress > JOB_STUCK_TIME).
+                if (m->timeWithoutProgress > STUCK_REPATH_TIME && 
+                    fmodf(m->timeWithoutProgress, STUCK_REPATH_TIME) < dt) {
+                    // Trigger repath periodically while stuck (every STUCK_REPATH_TIME seconds)
                     m->needsRepath = true;
-                    m->timeWithoutProgress = 0.0f;
                     m->lastX = m->x;
                     m->lastY = m->y;
                 }

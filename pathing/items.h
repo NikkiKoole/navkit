@@ -23,7 +23,8 @@ typedef struct {
     ItemType type;
     ItemState state;
     bool active;
-    int reservedBy;  // mover index, -1 = none
+    int reservedBy;           // mover index, -1 = none
+    float unreachableCooldown; // seconds until retry (0 = can try now)
 } Item;
 
 #define MAX_ITEMS 1024
@@ -42,5 +43,9 @@ void ReleaseItemReservation(int itemIndex);
 
 // Queries
 int FindNearestUnreservedItem(float x, float y, float z);
+
+// Cooldown management
+void ItemsTick(float dt);
+void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 
 #endif
