@@ -1,5 +1,5 @@
 CompileFlags:
   Add:
-    - -std=c11
     - -xc
+    - -std=c11
     - -I/Users/nikkikoole/Projects/navkit

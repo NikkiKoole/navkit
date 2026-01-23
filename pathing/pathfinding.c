@@ -110,6 +110,7 @@ static double statsLastReportTime = 0.0;
 int pathStatsCount = 0;          // Paths computed since last report
 double pathStatsTotalMs = 0.0;   // Total ms spent on paths since last report
 double pathStatsAvgMs = 0.0;     // Average ms per path
+bool pathStatsUpdated = false;   // Flag set when stats are updated
 Point startPos = {-1, -1, 0};
 Point goalPos = {-1, -1, 0};
 AStarNode nodeData[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -2019,6 +2020,7 @@ void UpdatePathStats(void) {
         pathStatsCount = statsPathCount;
         pathStatsTotalMs = statsTotalTime;
         pathStatsAvgMs = (statsPathCount > 0) ? (statsTotalTime / statsPathCount) : 0.0;
+        pathStatsUpdated = true;  // Signal that new stats are available
         
         // Reset for next period
         statsPathCount = 0;

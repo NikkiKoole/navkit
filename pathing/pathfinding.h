@@ -64,6 +64,7 @@ extern double hpaRefinementTime;  // Time for path refinement (local A*)
 extern int pathStatsCount;        // Paths computed in last 5 second period
 extern double pathStatsTotalMs;   // Total ms spent on paths in last period
 extern double pathStatsAvgMs;     // Average ms per path
+extern bool pathStatsUpdated;     // True when stats were just updated (reset after reading)
 void UpdatePathStats(void);       // Call every frame
 void ResetPathStats(void);        // Call when switching algorithms
 extern Point startPos;

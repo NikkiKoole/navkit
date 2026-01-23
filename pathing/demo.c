@@ -845,6 +845,7 @@ void DrawUI(void) {
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             BuildEntrances();
             BuildGraph();
+            AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
         }
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
@@ -1292,6 +1293,12 @@ int main(void) {
         ui_update();
         HandleInput();
         UpdatePathStats();
+        if (pathStatsUpdated && pathStatsCount > 0) {
+            AddMessage(TextFormat("Paths: %d, %.1fms total, %.3fms avg", 
+                pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), YELLOW);
+            pathStatsUpdated = false;
+        }
+        UpdateMessages(frameTime);
 
         // Fixed timestep update (Factorio-style: max 1 tick per frame, slowdown if behind)
         if (!paused && accumulator >= TICK_DT) {
@@ -1377,11 +1384,8 @@ int main(void) {
         DrawUI();
         PROFILE_END(DrawUI);
 
-        // Status bar at bottom
-        if (pathStatsCount > 0) {
-            DrawTextShadow(TextFormat("Last 5s: %d paths, %.1fms total, %.3fms avg",
-                     pathStatsCount, pathStatsTotalMs, pathStatsAvgMs), 130, screenHeight - 20, 16, YELLOW);
-        }
+        // Draw message stack
+        DrawMessages(screenWidth, screenHeight);
 
         PROFILE_BEGIN(EndDraw);
         EndDrawing();

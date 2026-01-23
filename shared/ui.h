@@ -29,6 +29,25 @@ void ui_set_hovered(void);
 // Draw text with shadow
 void DrawTextShadow(const char* text, int x, int y, int size, Color col);
 
+// ============================================================================
+// MESSAGE SYSTEM (Stack & Fade)
+// ============================================================================
+
+#define MSG_MAX_MESSAGES 5
+#define MSG_MAX_LENGTH 128
+#define MSG_LIFETIME 4.0f      // seconds before fade starts
+#define MSG_FADE_TIME 1.0f     // seconds to fade out
+#define MSG_LINE_HEIGHT 20     // pixels between messages
+
+// Add a message to the stack (newest at bottom, older shift up)
+void AddMessage(const char* text, Color color);
+
+// Update message timers (call once per frame with delta time)
+void UpdateMessages(float dt);
+
+// Draw messages at bottom of screen (call during drawing)
+void DrawMessages(int screenWidth, int screenHeight);
+
 // Draggable float value - returns true if changed
 bool DraggableFloat(float x, float y, const char* label, float* value, float speed, float min, float max);
 
@@ -327,6 +346,96 @@ bool SectionHeader(float x, float y, const char* label, bool* open) {
     }
 
     return *open;
+}
+
+// ============================================================================
+// MESSAGE SYSTEM IMPLEMENTATION
+// ============================================================================
+
+typedef struct {
+    char text[MSG_MAX_LENGTH];
+    Color color;
+    float timeLeft;
+    bool active;
+} UIMessage;
+
+static UIMessage g_messages[MSG_MAX_MESSAGES] = {0};
+
+void AddMessage(const char* text, Color color) {
+    // Shift all messages up (oldest at index 0 gets pushed out)
+    for (int i = 0; i < MSG_MAX_MESSAGES - 1; i++) {
+        g_messages[i] = g_messages[i + 1];
+    }
+    
+    // Add new message at bottom
+    UIMessage* msg = &g_messages[MSG_MAX_MESSAGES - 1];
+    snprintf(msg->text, MSG_MAX_LENGTH, "%s", text);
+    msg->color = color;
+    msg->timeLeft = MSG_LIFETIME + MSG_FADE_TIME;
+    msg->active = true;
+}
+
+void UpdateMessages(float dt) {
+    for (int i = 0; i < MSG_MAX_MESSAGES; i++) {
+        if (g_messages[i].active) {
+            g_messages[i].timeLeft -= dt;
+            if (g_messages[i].timeLeft <= 0) {
+                g_messages[i].active = false;
+            }
+        }
+    }
+}
+
+void DrawMessages(int screenWidth, int screenHeight) {
+    // Count active messages and find max alpha (for backdrop fade)
+    int activeCount = 0;
+    float maxAlpha = 0.0f;
+    for (int i = 0; i < MSG_MAX_MESSAGES; i++) {
+        if (g_messages[i].active) {
+            activeCount++;
+            float alpha = 1.0f;
+            if (g_messages[i].timeLeft < MSG_FADE_TIME) {
+                alpha = g_messages[i].timeLeft / MSG_FADE_TIME;
+            }
+            if (alpha > maxAlpha) maxAlpha = alpha;
+        }
+    }
+    
+    if (activeCount == 0) return;
+    
+    // Message area: right 30% of screen, aligned to bottom
+    int panelWidth = screenWidth * 0.30f;
+    int panelX = screenWidth - panelWidth;
+    int padding = 8;
+    int panelHeight = activeCount * MSG_LINE_HEIGHT + padding * 2;
+    int panelY = screenHeight - panelHeight;
+    
+    // Draw backdrop
+    Color backdrop = {0, 0, 0, (unsigned char)(maxAlpha * 128)};
+    DrawRectangle(panelX, panelY, panelWidth, panelHeight, backdrop);
+    
+    // Draw messages (oldest to newest, bottom-aligned)
+    int y = panelY + panelHeight - padding - MSG_LINE_HEIGHT;
+    for (int i = MSG_MAX_MESSAGES - 1; i >= 0; i--) {
+        UIMessage* msg = &g_messages[i];
+        if (!msg->active) continue;
+        
+        // Calculate alpha for fade
+        float alpha = 1.0f;
+        if (msg->timeLeft < MSG_FADE_TIME) {
+            alpha = msg->timeLeft / MSG_FADE_TIME;
+        }
+        
+        // Apply alpha to color
+        Color col = msg->color;
+        col.a = (unsigned char)(alpha * 255);
+        
+        // Left-aligned within panel
+        int x = panelX + padding;
+        
+        DrawTextShadow(msg->text, x, y, 16, col);
+        y -= MSG_LINE_HEIGHT;
+    }
 }
 
 #endif // UI_IMPLEMENTATION
