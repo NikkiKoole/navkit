@@ -5,6 +5,7 @@
 #include "mover.h"
 #include "items.h"
 #include "jobs.h"
+#include "stockpiles.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
@@ -569,6 +570,34 @@ void DrawItems(void) {
     }
 }
 
+void DrawStockpiles(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        Stockpile* sp = &stockpiles[i];
+        if (!sp->active) continue;
+
+        // Only draw stockpiles on the current z-level
+        if (sp->z != viewZ) continue;
+
+        // Draw each tile of the stockpile
+        for (int dy = 0; dy < sp->height; dy++) {
+            for (int dx = 0; dx < sp->width; dx++) {
+                int gx = sp->x + dx;
+                int gy = sp->y + dy;
+
+                float sx = offset.x + gx * size;
+                float sy = offset.y + gy * size;
+
+                Rectangle src = AtlasGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
+            }
+        }
+    }
+}
+
 Vector2 ScreenToGrid(Vector2 screen) {
     float size = CELL_SIZE * zoom;
     return (Vector2){(screen.x - offset.x) / size, (screen.y - offset.y) / size};
@@ -1052,6 +1081,39 @@ void DrawUI(void) {
         }
         y += 22;
         ToggleBool(x, y, "Show Items", &showItems);
+        y += 22;
+        if (PushButton(x, y, "Spawn Stockpile")) {
+            // Find a random 3x3 walkable area on current z-level
+            int attempts = 100;
+            while (attempts-- > 0) {
+                int gx = rand() % (gridWidth - 3);
+                int gy = rand() % (gridHeight - 3);
+                
+                // Check all 9 tiles are walkable
+                bool valid = true;
+                for (int dy = 0; dy < 3 && valid; dy++) {
+                    for (int dx = 0; dx < 3 && valid; dx++) {
+                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) {
+                            valid = false;
+                        }
+                    }
+                }
+                
+                if (valid) {
+                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
+                    if (spIdx >= 0) {
+                        SetStockpileFilter(spIdx, ITEM_RED, true);
+                        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+                        SetStockpileFilter(spIdx, ITEM_BLUE, true);
+                    }
+                    break;
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Clear Stockpiles")) {
+            ClearStockpiles();
+        }
     }
     y += 22;
 
@@ -1395,6 +1457,7 @@ int main(void) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         PROFILE_END(DrawCells);
+        DrawStockpiles();
         DrawChunkBoundaries();
         PROFILE_BEGIN(DrawGraph);
         DrawGraph();

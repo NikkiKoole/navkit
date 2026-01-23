@@ -9,6 +9,7 @@
 // Distance thresholds
 #define PICKUP_RADIUS 16.0f
 #define DROP_RADIUS 16.0f
+#define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 
 // Helper: cancel job and release all reservations
 static void CancelJob(Mover* m, int moverIdx) {
@@ -122,6 +123,12 @@ void JobsTick(void) {
                 continue;
             }
             
+            // Check if stuck (no path and not making progress)
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                CancelJob(m, i);
+                continue;
+            }
+            
             // Check if arrived at item
             Item* item = &items[itemIdx];
             float dx = m->x - item->x;
@@ -153,6 +160,18 @@ void JobsTick(void) {
             
             // Check if stockpile still valid
             if (m->targetStockpile < 0 || !stockpiles[m->targetStockpile].active) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if stockpile still accepts this item type (filter may have changed)
+            if (!StockpileAcceptsType(m->targetStockpile, items[itemIdx].type)) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if stuck (no path and not making progress)
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
                 CancelJob(m, i);
                 continue;
             }

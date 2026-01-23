@@ -23,6 +23,7 @@ enum {
     SPRITE_ladder_up,
     SPRITE_head,
     SPRITE_wall,
+    SPRITE_stockpile,
     SPRITE_floor,
     SPRITE_ladder_down,
     SPRITE_crate_green,
@@ -40,10 +41,11 @@ static const AtlasSprite ATLAS_SPRITES[SPRITE_COUNT] = {
     { "ladder_up", { 102, 0, 16, 16 } },
     { "head", { 119, 0, 16, 16 } },
     { "wall", { 136, 0, 16, 16 } },
-    { "floor", { 153, 0, 16, 16 } },
-    { "ladder_down", { 170, 0, 16, 16 } },
-    { "crate_green", { 187, 0, 16, 16 } },
-    { "crate_red", { 204, 0, 16, 16 } },
+    { "stockpile", { 153, 0, 16, 16 } },
+    { "floor", { 170, 0, 16, 16 } },
+    { "ladder_down", { 187, 0, 16, 16 } },
+    { "crate_green", { 204, 0, 16, 16 } },
+    { "crate_red", { 221, 0, 16, 16 } },
 };
 
 // Helper: get sprite rectangle by enum
