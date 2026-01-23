@@ -114,7 +114,7 @@ Agent agents[MAX_AGENTS];
 int agentCount = 0;
 
 // Mover UI settings (movers themselves are in mover.c)
-int moverCountSetting = 10000;
+int moverCountSetting = 10;
 int itemCountSetting = 10;
 bool showMovers = true;
 bool showMoverPaths = false;
@@ -562,7 +562,7 @@ void DrawItems(void) {
         float itemSize = size * 0.5f;
         Rectangle src = AtlasGetRect(SPRITE_apple);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
-        
+
         // Tint reserved items slightly darker
         Color tint = (item->reservedBy >= 0) ? GRAY : WHITE;
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
@@ -1368,7 +1368,7 @@ int main(void) {
                 if (blockedCount > 0) {
                     AddMessage(TextFormat("%d mover%s blocked", blockedCount, blockedCount == 1 ? "" : "s"), ORANGE);
                 }
-                
+
                 pathStatsUpdated = false;
             }
         }

@@ -294,6 +294,110 @@ describe(reservation_safety) {
     }
 }
 
+describe(post_job_behavior) {
+    it("should pick up next item if available after completing a job") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Mover at (1,1), two items nearby
+        float moverX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float moverY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, moverX, moverY, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Spawn two items
+        float item1X = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float item1Y = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float item2X = 4 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float item2Y = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        SpawnItem(item1X, item1Y, 0.0f, ITEM_RED);
+        int item2Idx = SpawnItem(item2X, item2Y, 0.0f, ITEM_GREEN);
+        
+        expect(itemCount == 2);
+        
+        // Run until first item picked up
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (itemCount == 1) break;
+        }
+        
+        expect(itemCount == 1);
+        
+        // Mover should now be going for the second item
+        // Give it a few ticks to get assigned
+        for (int i = 0; i < 10; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(m->targetItem == item2Idx);
+    }
+
+    it("should resume wandering when no more items exist") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        endlessMoverMode = true;
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Mover at (1,1), one item nearby
+        float moverX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float moverY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, moverX, moverY, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Run until item picked up
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (itemCount == 0) break;
+        }
+        
+        expect(itemCount == 0);
+        expect(m->jobState == JOB_IDLE);
+        
+        // Run a few more ticks - mover should get a new path (wandering)
+        for (int i = 0; i < 30; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Mover should have a path now (not stuck with pathLength == 0)
+        expect(m->pathLength > 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -309,5 +413,6 @@ int main(int argc, char* argv[]) {
     test(mover_job_state);
     test(pickup_behavior);
     test(reservation_safety);
+    test(post_job_behavior);
     return summary();
 }
