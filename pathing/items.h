@@ -52,4 +52,25 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 // Returns the index of a ground item at the given tile, or -1 if none
 int FindGroundItemAtTile(int tileX, int tileY, int z);
 
+// Spatial grid for O(1) item lookups (tile-based, includes z-level)
+typedef struct {
+    int* cellCounts;    // Number of ground items per cell
+    int* cellStarts;    // Prefix sum: start index for each cell in itemIndices
+    int* itemIndices;   // Item indices sorted by cell (only ON_GROUND items)
+    int gridW, gridH;   // Grid dimensions in tiles
+    int gridD;          // Grid depth (z-levels)
+    int cellCount;      // Total cells (gridW * gridH * gridD)
+    int groundItemCount; // Number of ON_GROUND items in the grid
+} ItemSpatialGrid;
+
+extern ItemSpatialGrid itemGrid;
+
+// Spatial grid functions
+void InitItemSpatialGrid(int tileWidth, int tileHeight, int depth);
+void FreeItemSpatialGrid(void);
+void BuildItemSpatialGrid(void);
+
+// Query: returns item index at tile, or -1 if none
+int QueryItemAtTile(int tileX, int tileY, int z);
+
 #endif

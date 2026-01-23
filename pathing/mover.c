@@ -1,6 +1,7 @@
 #include "mover.h"
 #include "grid.h"
 #include "pathfinding.h"
+#include "items.h"
 #include "../shared/profiler.h"
 #include <math.h>
 #include <stdio.h>
@@ -980,6 +981,7 @@ void Tick(void) {
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();
+    BuildItemSpatialGrid();
     PROFILE_END(Grid);
     
     PROFILE_BEGIN(Repath);

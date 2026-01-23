@@ -98,19 +98,47 @@ void AssignJobs(void) {
         }
         
         // PRIORITY 2: Find normal ground items to haul (only if no absorb/clear job)
+        // Uses spatial grid to iterate only ground items instead of all MAX_ITEMS
         PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem);
-        if (itemIdx < 0) {
-            for (int j = 0; j < MAX_ITEMS; j++) {
-                if (!items[j].active) continue;
-                if (items[j].reservedBy != -1) continue;
-                if (items[j].state != ITEM_ON_GROUND) continue;  // skip carried/stored items
-                if (items[j].unreachableCooldown > 0.0f) continue;  // skip items on cooldown
-                if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;  // skip items outside gather zones
+        if (itemIdx < 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+            // Iterate through all cells containing ground items
+            int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+            for (int t = 0; t < totalIndexed; t++) {
+                int j = itemGrid.itemIndices[t];
+                Item* item = &items[j];
+                
+                if (!item->active) continue;
+                if (item->reservedBy != -1) continue;
+                if (item->state != ITEM_ON_GROUND) continue;
+                if (item->unreachableCooldown > 0.0f) continue;
+                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
                 
                 // Check if there's a stockpile that accepts this item type
                 int slotX, slotY;
-                int spIdx = FindStockpileForItem(items[j].type, &slotX, &slotY);
+                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
                 if (spIdx < 0) continue;  // no valid destination
+                
+                float dx = item->x - m->x;
+                float dy = item->y - m->y;
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < nearestDistSq) {
+                    nearestDistSq = distSq;
+                    itemIdx = j;
+                }
+            }
+        } else if (itemIdx < 0) {
+            // Fallback: scan all items if grid not available
+            for (int j = 0; j < MAX_ITEMS; j++) {
+                if (!items[j].active) continue;
+                if (items[j].reservedBy != -1) continue;
+                if (items[j].state != ITEM_ON_GROUND) continue;
+                if (items[j].unreachableCooldown > 0.0f) continue;
+                if (!IsItemInGatherZone(items[j].x, items[j].y, (int)items[j].z)) continue;
+                
+                int slotX, slotY;
+                int spIdx = FindStockpileForItem(items[j].type, &slotX, &slotY);
+                if (spIdx < 0) continue;
                 
                 float dx = items[j].x - m->x;
                 float dy = items[j].y - m->y;

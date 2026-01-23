@@ -13,6 +13,8 @@
 // Stub profiler functions for tests
 void ProfileBegin(const char* name) { (void)name; }
 void ProfileEnd(const char* name) { (void)name; }
+void ProfileAccumBegin(const char* name) { (void)name; }
+void ProfileAccumEnd(const char* name) { (void)name; }
 
 /*
  * Phase 0 Tests: Item spawn + single pickup
@@ -2571,6 +2573,186 @@ describe(stockpile_ground_item_blocking) {
     }
 }
 
+/*
+ * =============================================================================
+ * ItemSpatialGrid Tests
+ * Tests for spatial indexing of items (TDD - written before implementation)
+ * =============================================================================
+ */
+
+describe(item_spatial_grid) {
+    it("should find item at correct tile after build") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn item at tile (5, 3)
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Build the spatial grid
+        BuildItemSpatialGrid();
+        
+        // Query the tile - should find the item
+        int found = QueryItemAtTile(5, 3, 0);
+        expect(found == itemIdx);
+    }
+    
+    it("should return -1 for empty tile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // No items spawned
+        BuildItemSpatialGrid();
+        
+        // Query any tile - should return -1
+        int found = QueryItemAtTile(5, 3, 0);
+        expect(found == -1);
+    }
+    
+    it("should not index carried items") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn item and set state to CARRIED
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        items[itemIdx].state = ITEM_CARRIED;
+        
+        BuildItemSpatialGrid();
+        
+        // Should not find carried item
+        int found = QueryItemAtTile(5, 3, 0);
+        expect(found == -1);
+    }
+    
+    it("should not index stockpiled items") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn item and set state to IN_STOCKPILE
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        
+        BuildItemSpatialGrid();
+        
+        // Should not find stockpiled item
+        int found = QueryItemAtTile(5, 3, 0);
+        expect(found == -1);
+    }
+    
+    it("should handle multiple items at same tile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn two items at same tile
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int item1 = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        int item2 = SpawnItem(itemX + 1.0f, itemY + 1.0f, 0.0f, ITEM_GREEN);  // Same tile, slightly different pos
+        
+        BuildItemSpatialGrid();
+        
+        // Should find one of them (either is valid)
+        int found = QueryItemAtTile(5, 3, 0);
+        expect(found == item1 || found == item2);
+    }
+    
+    it("should handle items on different z-levels") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn items at same x,y but different z
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemZ0 = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        int itemZ1 = SpawnItem(itemX, itemY, 1.0f, ITEM_GREEN);
+        
+        BuildItemSpatialGrid();
+        
+        // Query z=0 should find itemZ0
+        int foundZ0 = QueryItemAtTile(5, 3, 0);
+        expect(foundZ0 == itemZ0);
+        
+        // Query z=1 should find itemZ1
+        int foundZ1 = QueryItemAtTile(5, 3, 1);
+        expect(foundZ1 == itemZ1);
+    }
+    
+    it("should track groundItemCount correctly") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        ClearMovers();
+        ClearItems();
+        
+        // Spawn 3 ground items, 1 carried, 1 stockpiled
+        SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_RED);
+        SpawnItem(2 * CELL_SIZE, 2 * CELL_SIZE, 0.0f, ITEM_GREEN);
+        SpawnItem(3 * CELL_SIZE, 3 * CELL_SIZE, 0.0f, ITEM_BLUE);
+        
+        int carried = SpawnItem(4 * CELL_SIZE, 4 * CELL_SIZE, 0.0f, ITEM_RED);
+        items[carried].state = ITEM_CARRIED;
+        
+        int stockpiled = SpawnItem(5 * CELL_SIZE, 4 * CELL_SIZE, 0.0f, ITEM_RED);
+        items[stockpiled].state = ITEM_IN_STOCKPILE;
+        
+        BuildItemSpatialGrid();
+        
+        // Should only count ground items
+        expect(itemGrid.groundItemCount == 3);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -2610,6 +2792,9 @@ int main(int argc, char* argv[]) {
     
     // Ground item blocking (new feature)
     test(stockpile_ground_item_blocking);
+    
+    // Item spatial grid (optimization)
+    test(item_spatial_grid);
     
     return summary();
 }
