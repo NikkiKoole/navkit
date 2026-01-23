@@ -90,6 +90,7 @@ Want me to add a note about this flow field / pheromone overlap to the todo or c
 
 - [jobs-roadmap.md](jobs-roadmap.md) - Jobs system expansion (mining, construction, crafting, architecture refactor)
 - [logistics-influences.md](logistics-influences.md) - Research on Factorio, belt games, SimTower influences
+- [next-steps-analysis.md](next-steps-analysis.md) - External review validating our roadmap + mechanics to steal
 - [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim with 2.5D views (detailed phases)
 - [elevators.md](elevators.md) - Full elevator simulation design
 - [done/convo-jobs.md](done/convo-jobs.md) - Jobs/Hauling system design conversation (completed)

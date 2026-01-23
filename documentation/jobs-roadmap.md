@@ -274,10 +274,31 @@ After creating a stockpile, player needs to configure:
 - Which item types allowed (checkboxes)
 - Priority level (1-5 slider or buttons)
 - Max stack size (optional, per-stockpile override)
+- **Target count** (optional): "Try to keep N items here" — creates demand-driven hauling
 
 **UI options:**
 - Click stockpile to open config panel
 - Or: all stockpiles share global filter until customized
+
+### 1.4 Requester Stockpiles (Simple Automation)
+
+A stockpile with a **target count** becomes a "requester" that generates hauling jobs to maintain that amount:
+
+```c
+typedef struct {
+    // ... existing stockpile fields ...
+    int targetCount;        // -1 = no target (normal behavior)
+                            // >= 0 = try to maintain this many items
+} Stockpile;
+```
+
+**Example:** Stockpile near forge set to "keep 30 coal"
+- Haulers automatically refill when count drops below target
+- Feels like Factorio logistics without belts/bots
+
+**Implementation:** In `AssignJobs()`, check stockpiles with `targetCount >= 0` and `currentCount < targetCount`, generate haul jobs from lower-priority sources.
+
+This is simpler than full Work Orders but provides powerful automation feel.
 
 ---
 
@@ -553,9 +574,33 @@ typedef struct {
 } Stockpile;
 ```
 
-### 4.5 Work Orders (Advanced, Future)
+### 4.5 Bill Modes (RimWorld-style)
 
-Dwarf Fortress "manager" style:
+Bills at workshops with different execution modes:
+
+```c
+typedef enum {
+    BILL_DO_X_TIMES,        // Make exactly N, then stop
+    BILL_DO_UNTIL_X,        // Make until stockpile has X (check before each craft)
+    BILL_DO_FOREVER,        // Repeat indefinitely
+    BILL_PAUSED,            // Suspended, skip this bill
+} BillMode;
+
+typedef struct {
+    int recipeIdx;
+    BillMode mode;
+    int targetCount;            // For DO_X_TIMES or DO_UNTIL_X
+    int completedCount;         // Progress for DO_X_TIMES
+    int ingredientSearchRadius; // How far to look for inputs (tiles)
+    bool suspended;
+} Bill;
+```
+
+**"Do until X" is powerful:** Workshop checks stockpile count before starting each craft. If target met, skips to next bill. Feels like automation without complex work orders.
+
+### 4.6 Work Orders (Advanced, Future)
+
+Dwarf Fortress "manager" style - conditional automation:
 
 ```c
 typedef struct {
@@ -634,6 +679,57 @@ FARM_READY
     ▼
 FARM_EMPTY (or FARM_TILLED if auto-replant)
 ```
+
+---
+
+## Phase 6: Zone Activities (Cataclysm DDA-style)
+
+Currently our zones (gather zones, stockpiles) are passive filters. Zone Activities make zones **generate jobs**.
+
+### 6.1 Zone Types that Generate Jobs
+
+```c
+typedef enum {
+    ZONE_GATHER,            // Existing: filter where items can be hauled FROM
+    ZONE_STOCKPILE,         // Existing: where items are stored
+    ZONE_UNSORTED,          // NEW: items here get sorted to appropriate stockpiles
+    ZONE_DUMP,              // NEW: drop unwanted items here
+    ZONE_WORK_AREA,         // NEW: movers assigned here do nearby jobs first
+} ZoneType;
+```
+
+### 6.2 Autosort Zone
+
+**Player action:** Mark an "Unsorted" zone + several typed stockpiles
+**System behavior:** Items in Unsorted zone automatically get hauled to matching stockpiles
+**Win condition:** Dump loot somewhere → organized base without micromanagement
+
+```c
+typedef struct {
+    int x, y, z;
+    int width, height;
+    ZoneType type;
+    bool active;
+    
+    // For ZONE_UNSORTED:
+    bool autoSort;          // Generate sorting jobs for items here
+} Zone;
+```
+
+### 6.3 Work Area Zones
+
+Assign movers to prefer jobs within a zone:
+- "Miners work the north tunnel"
+- "Haulers prioritize the workshop area"
+
+```c
+typedef struct {
+    // ... existing mover fields ...
+    int preferredZone;      // -1 = no preference, else zone index
+} Mover;
+```
+
+Jobs within preferred zone get distance bonus in job scoring.
 
 ---
 
