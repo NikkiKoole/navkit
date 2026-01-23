@@ -292,8 +292,82 @@ void AssignJobs(void) {
     }
     PROFILE_ACCUM_END(Jobs_FindStockpileItem);
     
-    // PRIORITY 2: Iterate ground items and assign to nearby idle movers
-    PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem);
+    // PRIORITY 2a: Stockpile-centric - for each stockpile, find nearby items
+    // This is efficient when you have few stockpiles and many items
+    PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem_StockpileCentric);
+    if (idleMoverCount > 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+            Stockpile* sp = &stockpiles[spIdx];
+            if (!sp->active) continue;
+            
+            // Check each item type this stockpile accepts
+            for (int t = 0; t < 3 && idleMoverCount > 0; t++) {
+                if (!sp->allowedTypes[t]) continue;
+                
+                // Find a free slot for this type in this stockpile
+                int slotX, slotY;
+                if (!FindFreeStockpileSlot(spIdx, (ItemType)t, &slotX, &slotY)) continue;
+                
+                // Search for items near the stockpile center
+                int centerTileX = sp->x + sp->width / 2;
+                int centerTileY = sp->y + sp->height / 2;
+                
+                // Use expanding radius to find closest items first
+                int radii[] = {10, 25, 50, 100};
+                int numRadii = sizeof(radii) / sizeof(radii[0]);
+                
+                for (int r = 0; r < numRadii && idleMoverCount > 0; r++) {
+                    int radius = radii[r];
+                    
+                    // Iterate items in this radius
+                    int minTx = centerTileX - radius;
+                    int maxTx = centerTileX + radius;
+                    int minTy = centerTileY - radius;
+                    int maxTy = centerTileY + radius;
+                    
+                    // Clamp to grid bounds
+                    if (minTx < 0) minTx = 0;
+                    if (minTy < 0) minTy = 0;
+                    if (maxTx >= itemGrid.gridW) maxTx = itemGrid.gridW - 1;
+                    if (maxTy >= itemGrid.gridH) maxTy = itemGrid.gridH - 1;
+                    
+                    bool foundItem = false;
+                    for (int ty = minTy; ty <= maxTy && idleMoverCount > 0 && !foundItem; ty++) {
+                        for (int tx = minTx; tx <= maxTx && idleMoverCount > 0 && !foundItem; tx++) {
+                            int cellIdx = sp->z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+                            int start = itemGrid.cellStarts[cellIdx];
+                            int end = itemGrid.cellStarts[cellIdx + 1];
+                            
+                            for (int i = start; i < end && idleMoverCount > 0; i++) {
+                                int itemIdx = itemGrid.itemIndices[i];
+                                Item* item = &items[itemIdx];
+                                
+                                if (!item->active) continue;
+                                if (item->reservedBy != -1) continue;
+                                if (item->state != ITEM_ON_GROUND) continue;
+                                if (item->type != (ItemType)t) continue;
+                                if (item->unreachableCooldown > 0.0f) continue;
+                                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+                                
+                                // Try to assign this item to this stockpile slot
+                                if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
+                                    foundItem = true;
+                                    break;  // Move to next slot/type
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (foundItem) break;  // Found one, try next slot
+                }
+            }
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindGroundItem_StockpileCentric);
+    
+    // PRIORITY 2b: Item-centric fallback - for remaining items without nearby stockpiles
+    // This catches items that weren't near any stockpile in the search above
+    PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem_ItemCentric);
     if (idleMoverCount > 0 && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
         int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
         
@@ -334,7 +408,7 @@ void AssignJobs(void) {
             TryAssignItemToMover(j, spIdx, slotX, slotY, false);
         }
     }
-    PROFILE_ACCUM_END(Jobs_FindGroundItem);
+    PROFILE_ACCUM_END(Jobs_FindGroundItem_ItemCentric);
     
     // PRIORITY 3: Re-haul items from overfull/low-priority stockpiles
     PROFILE_ACCUM_BEGIN(Jobs_FindRehaulItem);
