@@ -951,7 +951,19 @@ void ProcessMoverRepaths(void) {
         }
 
         if (m->pathLength == 0) {
-            // Repath failed - goal may be unreachable, retry after cooldown
+            // Repath failed - check if goal cell itself is now a wall
+            if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x)) {
+                // Goal is unwalkable (wall placed on it) - pick a new random goal
+                AssignNewMoverGoal(m);
+                if (m->pathLength > 0) {
+                    m->needsRepath = false;
+                    repathsThisFrame++;
+                    continue;
+                }
+                // New goal also unreachable - fall through to retry logic
+            }
+            
+            // Goal is still walkable but path blocked - retry after cooldown
             m->pathIndex = -1;
             m->needsRepath = true;  // Keep trying
             if (useRandomizedCooldowns) {

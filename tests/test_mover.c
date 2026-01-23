@@ -425,6 +425,93 @@ describe(endless_mode) {
     }
 }
 
+describe(blocked_mover_handling) {
+    it("should pick new goal when goal cell becomes a wall") {
+        // Mover heading to (6,0), we place a wall there - goal is now unreachable forever
+        // Mover should pick a new random goal instead of staying blocked
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        gridDepth = 1;  // Single z-level for this test
+
+        PathAlgorithm savedAlgo = moverPathAlgorithm;
+        moverPathAlgorithm = PATH_ALGO_ASTAR;  // Use A* for simplicity
+        useRandomizedCooldowns = false;  // Deterministic cooldowns
+        SeedRandom(12345);  // Deterministic random goals
+
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {6, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {6, 0, 0}};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+
+        // Place wall ON the goal cell - goal is now unwalkable
+        grid[0][0][6] = CELL_WALL;
+        MarkChunkDirty(6, 0, 0);
+
+        // Trigger repath
+        m->needsRepath = true;
+
+        // Run enough ticks for repath cooldown and processing
+        RunTicks(REPATH_COOLDOWN_FRAMES + 10);
+
+        // Mover should have picked a NEW goal (not stuck on the walled goal)
+        expect(m->goal.x != 6 || m->goal.y != 0);
+        // And should have a valid path (not blocked)
+        expect(m->pathLength > 0);
+
+        moverPathAlgorithm = savedAlgo;  // Restore
+        useRandomizedCooldowns = true;
+    }
+
+    it("should stay blocked when path is blocked but goal is still walkable") {
+        // Mover heading to (6,0), wall placed at (3,0) blocks the path
+        // Goal is still walkable, so mover should stay blocked (wait for path to clear)
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "########\n"  // Wall row prevents going around
+            "........\n"
+            "........\n", 4, 4);
+        gridDepth = 1;  // Single z-level for this test
+
+        PathAlgorithm savedAlgo = moverPathAlgorithm;
+        moverPathAlgorithm = PATH_ALGO_ASTAR;  // Use A* for simplicity
+        useRandomizedCooldowns = false;
+
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {6, 0, 0};
+        Point testPath[] = {{0, 0, 0}, {6, 0, 0}};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+
+        // Place wall blocking the PATH (not the goal)
+        grid[0][0][3] = CELL_WALL;
+        MarkChunkDirty(3, 0, 0);
+
+        // Trigger repath
+        m->needsRepath = true;
+
+        // Run enough ticks for repath cooldown and processing
+        RunTicks(REPATH_COOLDOWN_FRAMES + 10);
+
+        // Goal should remain the SAME (6,0) - mover waits for path to clear
+        expect(m->goal.x == 6 && m->goal.y == 0);
+        // Path should be empty (blocked)
+        expect(m->pathLength == 0);
+
+        moverPathAlgorithm = savedAlgo;  // Restore
+        useRandomizedCooldowns = true;
+    }
+}
+
 describe(refinement_after_wall_changes) {
     it("should handle movers on map with scattered walls and small chunks") {
         // Disable randomized cooldowns for deterministic test behavior
@@ -1651,6 +1738,7 @@ int main(int argc, char* argv[]) {
     test(tick_counter);
     test(count_active_movers);
     test(endless_mode);
+    test(blocked_mover_handling);
     test(refinement_after_wall_changes);
     test(string_pulling_narrow_gaps);
     test(chunk_boundary_paths);
