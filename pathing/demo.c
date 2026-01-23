@@ -52,14 +52,14 @@ bool sectionView = false;
 bool sectionPathfinding = false;
 bool sectionMapEditing = true;
 bool sectionAgents = false;
-bool sectionMovers = true;
+bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 
 bool sectionProfiler = false;
 bool sectionMemory = false;
-bool sectionJobs = false;
+bool sectionJobs = true;
 bool paused = false;
 bool showItems = true;
 
@@ -369,6 +369,55 @@ void DrawAgents(void) {
 
 // ============== MOVERS ==============
 
+void AddMoversDemo(int count) {
+    // Sync mover algorithm with UI selection
+    moverPathAlgorithm = (PathAlgorithm)pathAlgorithm;
+
+    // Ensure HPA* graph is built if using HPA*
+    if (pathAlgorithm == 1 && graphEdgeCount == 0) {
+        BuildEntrances();
+        BuildGraph();
+    }
+
+    for (int i = 0; i < count && moverCount < MAX_MOVERS; i++) {
+        Mover* m = &movers[moverCount];
+
+        Point start = GetRandomWalkableCell();
+        Point goal = GetRandomWalkableCell();
+
+        float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float z = (float)start.z;
+        float speed = MOVER_SPEED + GetRandomValue(-30, 30);
+
+        startPos = start;
+        goalPos = goal;
+        switch (pathAlgorithm) {
+            case 0: RunAStar(); break;
+            case 1: RunHPAStar(); break;
+            case 2: RunJPS(); break;
+            case 3: RunJpsPlus(); break;
+        }
+
+        if (pathLength > 0) {
+            InitMoverWithPath(m, x, y, z, goal, speed, path, pathLength);
+            if (useStringPulling && m->pathLength > 2) {
+                StringPullPath(m->path, &m->pathLength);
+                m->pathIndex = m->pathLength - 1;
+            }
+        } else {
+            InitMover(m, x, y, z, goal, speed);
+        }
+
+        moverRenderData[moverCount].color = GetRandomColor();
+        moverCount++;
+    }
+
+    startPos = (Point){-1, -1, 0};
+    goalPos = (Point){-1, -1, 0};
+    pathLength = 0;
+}
+
 void SpawnMoversDemo(int count) {
     double startTime = GetTime();
 
@@ -508,6 +557,22 @@ void DrawMovers(void) {
         Rectangle src = AtlasGetRect(SPRITE_head);
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
+        
+        // Draw carried item above mover's head
+        if (m->carryingItem >= 0 && items[m->carryingItem].active) {
+            Item* item = &items[m->carryingItem];
+            int sprite;
+            switch (item->type) {
+                case ITEM_RED:   sprite = SPRITE_crate_red;   break;
+                case ITEM_GREEN: sprite = SPRITE_crate_green; break;
+                case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
+                default:         sprite = SPRITE_apple;       break;
+            }
+            float itemSize = size * 0.4f;
+            Rectangle itemSrc = AtlasGetRect(sprite);
+            Rectangle itemDest = { sx - itemSize/2, sy - moverSize/2 - itemSize * 0.5f, itemSize, itemSize };
+            DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
+        }
     }
 
     // Draw mover paths in separate loop for profiling
@@ -559,9 +624,17 @@ void DrawItems(void) {
         float sx = offset.x + item->x * zoom;
         float sy = offset.y + item->y * zoom;
 
-        // Draw apple sprite
+        // Choose sprite based on item type
+        int sprite;
+        switch (item->type) {
+            case ITEM_RED:   sprite = SPRITE_crate_red;   break;
+            case ITEM_GREEN: sprite = SPRITE_crate_green; break;
+            case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
+            default:         sprite = SPRITE_apple;       break;
+        }
+        
         float itemSize = size * 0.5f;
-        Rectangle src = AtlasGetRect(SPRITE_apple);
+        Rectangle src = AtlasGetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
 
         // Tint reserved items slightly darker
@@ -923,6 +996,21 @@ void DrawUI(void) {
             offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
         }
         y += 22;
+        if (PushButton(x, y, "Big Grid (256x256)")) {
+            InitGridWithSizeAndChunkSize(256, 256, 16, 16);
+            gridDepth = 3;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            BuildEntrances();
+            BuildGraph();
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
         if (PushButton(x, y, "Copy Map ASCII")) {
             // Copy map to clipboard as ASCII (supports multiple floors)
             // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
@@ -987,6 +1075,9 @@ void DrawUI(void) {
 
     // === MOVERS ===
     y += 8;
+    if (PushButton(x + 150, y, "+")) {
+        AddMoversDemo(moverCountSetting);
+    }
     if (SectionHeader(x, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
         y += 18;
         DraggableIntLog(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
@@ -1082,28 +1173,84 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Items", &showItems);
         y += 22;
-        if (PushButton(x, y, "Spawn Stockpile")) {
+        if (PushButton(x, y, "Stockpile: All")) {
             // Find a random 3x3 walkable area on current z-level
             int attempts = 100;
             while (attempts-- > 0) {
                 int gx = rand() % (gridWidth - 3);
                 int gy = rand() % (gridHeight - 3);
-                
-                // Check all 9 tiles are walkable
                 bool valid = true;
-                for (int dy = 0; dy < 3 && valid; dy++) {
-                    for (int dx = 0; dx < 3 && valid; dx++) {
-                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) {
-                            valid = false;
-                        }
-                    }
-                }
-                
+                for (int dy = 0; dy < 3 && valid; dy++)
+                    for (int dx = 0; dx < 3 && valid; dx++)
+                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
                 if (valid) {
                     int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
                     if (spIdx >= 0) {
                         SetStockpileFilter(spIdx, ITEM_RED, true);
                         SetStockpileFilter(spIdx, ITEM_GREEN, true);
+                        SetStockpileFilter(spIdx, ITEM_BLUE, true);
+                    }
+                    break;
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Red")) {
+            int attempts = 100;
+            while (attempts-- > 0) {
+                int gx = rand() % (gridWidth - 3);
+                int gy = rand() % (gridHeight - 3);
+                bool valid = true;
+                for (int dy = 0; dy < 3 && valid; dy++)
+                    for (int dx = 0; dx < 3 && valid; dx++)
+                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
+                if (valid) {
+                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
+                    if (spIdx >= 0) {
+                        SetStockpileFilter(spIdx, ITEM_RED, true);
+                        SetStockpileFilter(spIdx, ITEM_GREEN, false);
+                        SetStockpileFilter(spIdx, ITEM_BLUE, false);
+                    }
+                    break;
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Green")) {
+            int attempts = 100;
+            while (attempts-- > 0) {
+                int gx = rand() % (gridWidth - 3);
+                int gy = rand() % (gridHeight - 3);
+                bool valid = true;
+                for (int dy = 0; dy < 3 && valid; dy++)
+                    for (int dx = 0; dx < 3 && valid; dx++)
+                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
+                if (valid) {
+                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
+                    if (spIdx >= 0) {
+                        SetStockpileFilter(spIdx, ITEM_RED, false);
+                        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+                        SetStockpileFilter(spIdx, ITEM_BLUE, false);
+                    }
+                    break;
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Blue")) {
+            int attempts = 100;
+            while (attempts-- > 0) {
+                int gx = rand() % (gridWidth - 3);
+                int gy = rand() % (gridHeight - 3);
+                bool valid = true;
+                for (int dy = 0; dy < 3 && valid; dy++)
+                    for (int dx = 0; dx < 3 && valid; dx++)
+                        if (!IsCellWalkableAt(currentViewZ, gy + dy, gx + dx)) valid = false;
+                if (valid) {
+                    int spIdx = CreateStockpile(gx, gy, currentViewZ, 3, 3);
+                    if (spIdx >= 0) {
+                        SetStockpileFilter(spIdx, ITEM_RED, false);
+                        SetStockpileFilter(spIdx, ITEM_GREEN, false);
                         SetStockpileFilter(spIdx, ITEM_BLUE, true);
                     }
                     break;
@@ -1393,8 +1540,8 @@ int main(void) {
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;  // Default to 8-dir
-    InitGridWithSizeAndChunkSize(256, 256, 16, 16);  // 256x256 grid, 16x16 chunks
-    gridDepth = 3;  // Use 3 z-levels
+    InitGridWithSizeAndChunkSize(32, 32, 8, 8);  // 32x32 grid, 8x8 chunks
+    gridDepth = 6;
     // Initialize z=0 as walkable (ground), z>0 as air
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
