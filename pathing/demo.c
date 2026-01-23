@@ -19,9 +19,9 @@
 #define MAX_AGENTS  50
 
 // Item rendering sizes (fraction of CELL_SIZE)
-#define ITEM_SIZE_GROUND    0.5f
-#define ITEM_SIZE_CARRIED   0.4f
-#define ITEM_SIZE_STOCKPILE 0.5f
+#define ITEM_SIZE_GROUND    0.6f
+#define ITEM_SIZE_CARRIED   0.5f
+#define ITEM_SIZE_STOCKPILE 0.6f
 
 // Mover rendering
 #define MOVER_SIZE          0.75f
@@ -584,7 +584,7 @@ void DrawMovers(void) {
             }
             float itemSize = size * ITEM_SIZE_CARRIED;
             Rectangle itemSrc = SpriteGetRect(sprite);
-            Rectangle itemDest = { sx - itemSize/2, sy - moverSize/2 - itemSize/2, itemSize, itemSize };
+            Rectangle itemDest = { sx - itemSize/2, sy - moverSize/2 - itemSize + moverSize * 0.2f, itemSize, itemSize };
             DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
         }
     }

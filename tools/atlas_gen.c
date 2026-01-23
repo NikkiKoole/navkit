@@ -250,7 +250,8 @@ int main(void) {
     );
     if (spriteCount < 0) result = 1;
 
-    // Generate 8x8 atlas
+    // Generate 8x8 atlas and collect its sprite names for comparison
+    static char spriteNames8[MAX_SPRITES][64];
     int count8 = generate_atlas(
         "assets/textures8x8",
         "assets/atlas8x8.png",
@@ -258,12 +259,51 @@ int main(void) {
         "ATLAS8X8_PATH",
         "ATLAS8X8_H",
         "SPRITE8X8",
-        NULL  // Don't need names, assume same as 16x16
+        spriteNames8
     );
     if (count8 < 0) result = 1;
 
+    // Check that both atlases have the same sprites
+    if (spriteCount > 0 && count8 > 0) {
+        if (spriteCount != count8) {
+            fprintf(stderr, "\nERROR: Sprite count mismatch! 16x16 has %d sprites, 8x8 has %d sprites\n", spriteCount, count8);
+            result = 1;
+        } else {
+            // Check each sprite name matches
+            for (int i = 0; i < spriteCount; i++) {
+                bool found = false;
+                for (int j = 0; j < count8; j++) {
+                    if (strcmp(spriteNames[i], spriteNames8[j]) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    fprintf(stderr, "\nERROR: Sprite '%s' exists in 16x16 but not in 8x8\n", spriteNames[i]);
+                    result = 1;
+                }
+            }
+            for (int i = 0; i < count8; i++) {
+                bool found = false;
+                for (int j = 0; j < spriteCount; j++) {
+                    if (strcmp(spriteNames8[i], spriteNames[j]) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    fprintf(stderr, "\nERROR: Sprite '%s' exists in 8x8 but not in 16x16\n", spriteNames8[i]);
+                    result = 1;
+                }
+            }
+            if (result == 0) {
+                printf("\nSprite check passed: both atlases have the same %d sprites\n", spriteCount);
+            }
+        }
+    }
+
     // Generate unified selector header
-    if (spriteCount > 0) {
+    if (spriteCount > 0 && result == 0) {
         result |= generate_selector_header("assets/atlas.h", spriteNames, spriteCount);
     }
 
