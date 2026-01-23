@@ -428,7 +428,13 @@ void AssignJobs(void) {
             int destSlotX, destSlotY;
             int destSp = -1;
             
-            if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+            // Check if item is no longer allowed by current stockpile (filter changed)
+            bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
+            
+            if (noLongerAllowed) {
+                // Find any stockpile that accepts this item type
+                destSp = FindStockpileForItem(items[j].type, &destSlotX, &destSlotY);
+            } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
                 destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
             } else {
                 destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);

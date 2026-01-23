@@ -894,6 +894,87 @@ describe(haul_cancellation) {
 }
 
 describe(filter_change_mid_haul) {
+    it("should re-haul stored item when stockpile filter changes to disallow its type") {
+        // Bug: Items already in stockpile should be moved when filter changes
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // RGB stockpile at (5,5) - accepts all types initially
+        int spRGB = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spRGB, ITEM_RED, true);
+        SetStockpileFilter(spRGB, ITEM_GREEN, true);
+        SetStockpileFilter(spRGB, ITEM_BLUE, true);
+        
+        // Green-only stockpile at (8,8)
+        int spGreen = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spGreen, ITEM_RED, false);
+        SetStockpileFilter(spGreen, ITEM_GREEN, true);
+        SetStockpileFilter(spGreen, ITEM_BLUE, false);
+        
+        // Spawn green item near RGB stockpile
+        int greenItem = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        
+        // Let mover haul green item to RGB stockpile
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[greenItem].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Green item should be in RGB stockpile
+        expect(items[greenItem].state == ITEM_IN_STOCKPILE);
+        int itemTileX = (int)(items[greenItem].x / CELL_SIZE);
+        int itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+        expect(itemTileX == 5);
+        expect(itemTileY == 5);
+        expect(m->jobState == JOB_IDLE);
+        
+        // Now change RGB stockpile to RED-only (green no longer allowed)
+        SetStockpileFilter(spRGB, ITEM_GREEN, false);
+        SetStockpileFilter(spRGB, ITEM_BLUE, false);
+        
+        // Run simulation - green item should be moved to green stockpile
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if item moved to green stockpile
+            itemTileX = (int)(items[greenItem].x / CELL_SIZE);
+            itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+            if (itemTileX == 8 && itemTileY == 8) break;
+        }
+        
+        // Green item should now be in green stockpile
+        expect(items[greenItem].state == ITEM_IN_STOCKPILE);
+        itemTileX = (int)(items[greenItem].x / CELL_SIZE);
+        itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+        expect(itemTileX == 8);
+        expect(itemTileY == 8);
+    }
+    
     it("should safe-drop when stockpile filter changes to disallow item while carrying") {
         // Test 6 from convo-jobs.md
         InitGridFromAsciiWithChunkSize(
