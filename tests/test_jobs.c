@@ -15,6 +15,9 @@ void ProfileEnd(const char* name) { (void)name; }
 void ProfileAccumBegin(const char* name) { (void)name; }
 void ProfileAccumEnd(const char* name) { (void)name; }
 
+// Stub UI functions for tests
+void AddMessage(const char* text, Color color) { (void)text; (void)color; }
+
 /*
  * Phase 0 Tests: Item spawn + single pickup
  * 

@@ -4,6 +4,7 @@
 #include "items.h"
 #include "jobs.h"
 #include "../shared/profiler.h"
+#include "../shared/ui.h"
 #include "../vendor/raylib.h"
 #include <math.h>
 #include <stdlib.h>
@@ -957,8 +958,8 @@ void ProcessMoverRepaths(void) {
                 Point oldGoal = m->goal;
                 AssignNewMoverGoal(m);
                 if (m->pathLength > 0) {
-                    TraceLog(LOG_INFO, "Mover %d: goal (%d,%d) became wall, reassigned to (%d,%d)",
-                             i, oldGoal.x, oldGoal.y, m->goal.x, m->goal.y);
+                    AddMessage(TextFormat("Mover %d: goal (%d,%d) became wall, reassigned",
+                                          i, oldGoal.x, oldGoal.y), ORANGE);
                     m->needsRepath = false;
                     repathsThisFrame++;
                     continue;

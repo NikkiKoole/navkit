@@ -13,6 +13,9 @@ void ProfileEnd(const char* name) { (void)name; }
 void ProfileAccumBegin(const char* name) { (void)name; }
 void ProfileAccumEnd(const char* name) { (void)name; }
 
+// Stub UI functions for tests
+void AddMessage(const char* text, Color color) { (void)text; (void)color; }
+
 describe(mover_initialization) {
     it("should initialize mover with correct position and goal") {
         InitGridFromAsciiWithChunkSize(
