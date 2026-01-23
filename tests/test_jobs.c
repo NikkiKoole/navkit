@@ -161,6 +161,9 @@ describe(mover_job_state) {
             "........\n"
             "........\n", 8, 4);
         
+        // Use A* for tests (doesn't require HPA graph building)
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
         ClearMovers();
         ClearItems();
         ClearStockpiles();

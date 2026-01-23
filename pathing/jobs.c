@@ -173,26 +173,17 @@ void AssignJobs(void) {
         Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
         Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
         
-        // Quick reachability check - try to find a path
-        startPos = moverCell;
-        goalPos = itemCell;
-        RunAStar();
+        // Quick reachability check - try to find a path using current algorithm
+        Point tempPath[MAX_PATH];
+        int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
         
-        if (pathLength == 0) {
+        if (tempLen == 0) {
             // Can't reach item - release reservations and set cooldown
             ReleaseItemReservation(itemIdx);
             ReleaseStockpileSlot(spIdx, slotX, slotY);
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-            // Clear global path state
-            startPos = (Point){-1, -1, 0};
-            goalPos = (Point){-1, -1, 0};
             continue;
         }
-        
-        // Clear global path state (mover will repath itself)
-        startPos = (Point){-1, -1, 0};
-        goalPos = (Point){-1, -1, 0};
-        pathLength = 0;
         
         // Set mover state
         m->targetItem = itemIdx;
