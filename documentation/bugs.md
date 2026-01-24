@@ -1,4 +1,4 @@
-- # bug1 [ ] MOVIN-TO_ITEM STUCKNESS
+- # bug1 [?] MOVIN-TO_ITEM STUCKNESS
  - Dont really knwo how to reproduce yet, but sometimes movers get 'stuck' in a moving-to-item statse, the object the want can be right next to them.
  - my guess is it thinks it has arrived, or something, or the radius to reach is not big enough, maybe it should show some info about those sort of things in the mover hover popup? might help debuging it further.
  claudes answer:  Would you like me to:
@@ -12,6 +12,8 @@
   
   ok i have a screenshot, and disbaling the knot fix, did infact gett the guy working, i have a screenshot in 
   /Users/nikkikoole/Projects/navkit/documentation/bugs screenshot/outofrange.png
+
+  **Attempted fix (commit `c97a457`):** Added "final approach" phase - when path exhausted but within 2 cells of item, trigger repath to item cell. Needs confirmation that bug is actually fixed.
 
 - # bug2 [ ] items not being picked up
   -  after clearing movers and respawnig, the xisting items are not being picked up anymore,
