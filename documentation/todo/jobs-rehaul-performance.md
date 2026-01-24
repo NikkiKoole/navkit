@@ -1,6 +1,22 @@
 # Jobs Rehaul Performance Investigation
 
-## Problem
+## Completed Optimizations
+
+### hasGroundItem Cache (commits `165b846`, `3ba0158`)
+
+**Problem:** `FindFreeStockpileSlot()` called `FindGroundItemAtTile()` for every slot it checked. With many stockpile tiles and items, this became O(tiles × items) per assignment attempt - **79% of frame time** in pathological cases.
+
+**Solution:** Added `hasGroundItem[slot]` bool array to Stockpile struct.
+- `RebuildStockpileGroundItemCache()` does a full rebuild once per frame at start of `AssignJobs()`
+- `SpawnItem()` marks cache incrementally for immediate correctness
+- `FindFreeStockpileSlot()` now does O(1) bool check instead of O(items) lookup
+- `FindGroundItemOnStockpile()` skips tiles entirely when cache shows no ground item
+
+**Result:** Steady-state with 500 items, 200 movers, 2 stockpiles - rendering is now the top cost instead of job assignment.
+
+---
+
+## Remaining Problem
 When stockpile filters change (e.g., red stockpile no longer accepts red items), `AssignJobs` becomes slow because it scans all stockpiled items every frame to check if they need rehauling.
 
 ## Benchmark Results
