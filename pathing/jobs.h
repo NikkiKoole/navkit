@@ -113,6 +113,7 @@ void RebuildIdleMoverList(void);  // Full rebuild (e.g., after ClearMovers)
 void AssignJobs(void);           // Match idle movers with available items (currently uses Legacy)
 void AssignJobsLegacy(void);     // Item-centric with inline optimizations (fast)
 void AssignJobsWorkGivers(void); // Mover-centric using WorkGivers (slower, for comparison)
+void AssignJobsHybrid(void);     // Hybrid: item-centric for hauling, mover-centric for sparse jobs
 void JobsTick(void);             // Update job state machines using per-type drivers
 
 // =============================================================================

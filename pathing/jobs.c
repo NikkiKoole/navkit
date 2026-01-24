@@ -1108,6 +1108,295 @@ void AssignJobsWorkGivers(void) {
 }
 
 // =============================================================================
+// AssignJobsHybrid - Best of both: item-centric for hauling, mover-centric for sparse
+// =============================================================================
+// 
+// The key insight: hauling dominates job count (hundreds of items) while
+// mining/building targets are sparse (tens of designations/blueprints).
+// 
+// - Item-centric for hauling: O(items) - iterate items, find nearest mover
+// - Mover-centric for sparse: O(movers × targets) - but targets << items
+//
+// This achieves similar performance to Legacy while using WorkGiver functions.
+
+void AssignJobsHybrid(void) {
+    // Initialize job system if needed
+    if (!moverIsInIdleList) {
+        InitJobSystem(MAX_MOVERS);
+    }
+    
+    // Rebuild idle list each frame
+    RebuildIdleMoverList();
+    
+    // Early exit: no idle movers means no work to do
+    if (idleMoverCount == 0) return;
+    
+    // Rebuild caches once per frame (same as legacy)
+    RebuildStockpileGroundItemCache();
+    RebuildStockpileFreeSlotCounts();
+    
+    // Cache which item types have available stockpiles (shared across all hauling)
+    bool typeHasStockpile[ITEM_TYPE_COUNT] = {false};
+    bool anyTypeHasSlot = false;
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        int slotX, slotY;
+        if (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0) {
+            typeHasStockpile[t] = true;
+            anyTypeHasSlot = true;
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 1: Stockpile maintenance (absorb/clear) - ITEM-CENTRIC
+    // Items on stockpile tiles must be handled first
+    // =========================================================================
+    while (idleMoverCount > 0) {
+        int spOnItem = -1;
+        bool absorb = false;
+        int itemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
+        
+        if (itemIdx < 0 || items[itemIdx].unreachableCooldown > 0.0f) break;
+        
+        int slotX, slotY, spIdx;
+        bool safeDrop = false;
+        
+        if (absorb) {
+            spIdx = spOnItem;
+            slotX = (int)(items[itemIdx].x / CELL_SIZE);
+            slotY = (int)(items[itemIdx].y / CELL_SIZE);
+        } else {
+            spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
+            if (spIdx < 0) safeDrop = true;
+        }
+        
+        if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 2a: Stockpile-centric hauling - search items near each stockpile
+    // This is more efficient because items are assigned to nearby stockpiles
+    // =========================================================================
+    if (idleMoverCount > 0 && anyTypeHasSlot && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+            Stockpile* sp = &stockpiles[spIdx];
+            if (!sp->active) continue;
+            
+            // Check each item type this stockpile accepts
+            for (int t = 0; t < ITEM_TYPE_COUNT && idleMoverCount > 0; t++) {
+                if (!sp->allowedTypes[t]) continue;
+                if (!typeHasStockpile[t]) continue;
+                
+                // Find a free slot for this type in this stockpile
+                int slotX, slotY;
+                if (!FindFreeStockpileSlot(spIdx, (ItemType)t, &slotX, &slotY)) continue;
+                
+                // Search for items near the stockpile center
+                int centerTileX = sp->x + sp->width / 2;
+                int centerTileY = sp->y + sp->height / 2;
+                
+                // Use expanding radius to find closest items first
+                int radii[] = {10, 25, 50, 100};
+                int numRadii = sizeof(radii) / sizeof(radii[0]);
+                
+                for (int r = 0; r < numRadii && idleMoverCount > 0; r++) {
+                    int radius = radii[r];
+                    
+                    int minTx = centerTileX - radius;
+                    int maxTx = centerTileX + radius;
+                    int minTy = centerTileY - radius;
+                    int maxTy = centerTileY + radius;
+                    
+                    if (minTx < 0) minTx = 0;
+                    if (minTy < 0) minTy = 0;
+                    if (maxTx >= itemGrid.gridW) maxTx = itemGrid.gridW - 1;
+                    if (maxTy >= itemGrid.gridH) maxTy = itemGrid.gridH - 1;
+                    
+                    bool foundItem = false;
+                    for (int ty = minTy; ty <= maxTy && idleMoverCount > 0 && !foundItem; ty++) {
+                        for (int tx = minTx; tx <= maxTx && idleMoverCount > 0 && !foundItem; tx++) {
+                            int cellIdx = sp->z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+                            int start = itemGrid.cellStarts[cellIdx];
+                            int end = itemGrid.cellStarts[cellIdx + 1];
+                            
+                            for (int i = start; i < end && idleMoverCount > 0; i++) {
+                                int itemIdx = itemGrid.itemIndices[i];
+                                Item* item = &items[itemIdx];
+                                
+                                if (!item->active) continue;
+                                if (item->reservedBy != -1) continue;
+                                if (item->state != ITEM_ON_GROUND) continue;
+                                if (item->type != (ItemType)t) continue;
+                                if (item->unreachableCooldown > 0.0f) continue;
+                                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+                                
+                                if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
+                                    foundItem = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (foundItem) break;
+                }
+            }
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 2b: Item-centric fallback - for items not near any stockpile
+    // =========================================================================
+    if (idleMoverCount > 0 && anyTypeHasSlot) {
+        if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+            int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+            
+            for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
+                int itemIdx = itemGrid.itemIndices[t];
+                Item* item = &items[itemIdx];
+                
+                if (!item->active) continue;
+                if (item->reservedBy != -1) continue;
+                if (item->state != ITEM_ON_GROUND) continue;
+                if (item->unreachableCooldown > 0.0f) continue;
+                if (!typeHasStockpile[item->type]) continue;
+                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+                
+                int cellX = (int)(item->x / CELL_SIZE);
+                int cellY = (int)(item->y / CELL_SIZE);
+                int cellZ = (int)(item->z);
+                if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+                
+                int slotX, slotY;
+                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+                if (spIdx < 0) continue;
+                
+                TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
+            }
+        } else {
+            // Fallback: linear scan
+            for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+                Item* item = &items[j];
+                if (!item->active) continue;
+                if (item->reservedBy != -1) continue;
+                if (item->state != ITEM_ON_GROUND) continue;
+                if (item->unreachableCooldown > 0.0f) continue;
+                if (!typeHasStockpile[item->type]) continue;
+                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+                
+                int cellX = (int)(item->x / CELL_SIZE);
+                int cellY = (int)(item->y / CELL_SIZE);
+                int cellZ = (int)(item->z);
+                if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+                
+                int slotX, slotY;
+                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+                if (spIdx < 0) continue;
+                
+                TryAssignItemToMover(j, spIdx, slotX, slotY, false);
+            }
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 3: Re-haul from overfull/low-priority stockpiles - ITEM-CENTRIC
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+            if (!items[j].active) continue;
+            if (items[j].reservedBy != -1) continue;
+            if (items[j].state != ITEM_IN_STOCKPILE) continue;
+            
+            int currentSp = -1;
+            if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
+            if (currentSp < 0) continue;
+            
+            int itemSlotX = (int)(items[j].x / CELL_SIZE);
+            int itemSlotY = (int)(items[j].y / CELL_SIZE);
+            
+            int destSlotX, destSlotY;
+            int destSp = -1;
+            
+            bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
+            
+            if (noLongerAllowed) {
+                destSp = FindStockpileForItem(items[j].type, &destSlotX, &destSlotY);
+            } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+                destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+            } else {
+                destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
+            }
+            
+            if (destSp < 0) continue;
+            
+            TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false);
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 4-6: Mining, BlueprintHaul, Build - MOVER-CENTRIC
+    // These have sparse targets so mover-centric is acceptable
+    // Skip entirely if no sparse targets exist (performance optimization)
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        // Quick check: any dig designations?
+        bool hasDigWork = false;
+        for (int z = 0; z < gridDepth && !hasDigWork; z++) {
+            for (int y = 0; y < gridHeight && !hasDigWork; y++) {
+                for (int x = 0; x < gridWidth && !hasDigWork; x++) {
+                    Designation* d = GetDesignation(x, y, z);
+                    if (d && d->type == DESIGNATION_DIG && d->assignedMover == -1) {
+                        hasDigWork = true;
+                    }
+                }
+            }
+        }
+        
+        // Quick check: any blueprints needing materials or building?
+        bool hasBlueprintWork = false;
+        for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
+            Blueprint* bp = &blueprints[bpIdx];
+            if (!bp->active) continue;
+            if (bp->state == BLUEPRINT_AWAITING_MATERIALS && bp->reservedItem < 0) {
+                hasBlueprintWork = true;
+            } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
+                hasBlueprintWork = true;
+            }
+        }
+        
+        // Only iterate movers if there's sparse work to do
+        if (hasDigWork || hasBlueprintWork) {
+            // Copy idle list since WorkGivers modify it
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+            
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                
+                // Skip if already assigned by hauling above
+                if (!moverIsInIdleList[moverIdx]) continue;
+                
+                // Try sparse-target WorkGivers only (skip hauling WorkGivers)
+                int jobId = -1;
+                if (hasDigWork) {
+                    jobId = WorkGiver_Mining(moverIdx);
+                }
+                if (jobId < 0 && hasBlueprintWork) {
+                    jobId = WorkGiver_BlueprintHaul(moverIdx);
+                    if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
+                }
+                
+                (void)jobId;
+            }
+            
+            free(idleCopy);
+        }
+    }
+}
+
+// =============================================================================
 // AssignJobs - Main entry point (uses legacy for performance)
 // =============================================================================
 

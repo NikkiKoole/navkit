@@ -1,95 +1,228 @@
-# Jobs Rehaul Performance Investigation
+# WorkGiver Performance Optimization
 
-## Completed Optimizations
+## Current Status
 
-### hasGroundItem Cache (commits `165b846`, `3ba0158`)
+We have three `AssignJobs` variants:
 
-**Problem:** `FindFreeStockpileSlot()` called `FindGroundItemAtTile()` for every slot it checked. With many stockpile tiles and items, this became O(tiles × items) per assignment attempt - **79% of frame time** in pathological cases.
+| Variant | Speed | Used In Production | Notes |
+|---------|-------|-------------------|-------|
+| `AssignJobsLegacy()` | Fast | **Yes** (via `AssignJobs()`) | Item-centric, inline job creation |
+| `AssignJobsHybrid()` | Fast | No (available) | Item-centric hauling + WorkGivers for sparse jobs |
+| `AssignJobsWorkGivers()` | Slow | No (for testing) | Mover-centric, uses all WorkGivers |
 
-**Solution:** Added `hasGroundItem[slot]` bool array to Stockpile struct.
-- `RebuildStockpileGroundItemCache()` does a full rebuild once per frame at start of `AssignJobs()`
-- `SpawnItem()` marks cache incrementally for immediate correctness
-- `FindFreeStockpileSlot()` now does O(1) bool check instead of O(items) lookup
-- `FindGroundItemOnStockpile()` skips tiles entirely when cache shows no ground item
+**Benchmark results (500 items):**
+```
+           Legacy      WorkGivers    Hybrid
+10 mov     ~256ms      ~422ms        ~48ms   (Hybrid 5x faster!)
+50 mov     ~50ms       ~2100ms       ~49ms   (equal)
+100 mov    ~48ms       ~4200ms       ~49ms   (equal)
+```
 
-**Result:** Steady-state with 500 items, 200 movers, 2 stockpiles - rendering is now the top cost instead of job assignment.
+## The Problem (WorkGivers)
+
+`AssignJobsWorkGivers()` is 40-100x slower than Legacy due to iteration order:
+
+- **Legacy/Hybrid (fast):** Item-centric - O(items)
+  ```
+  for each item:
+      find nearest idle mover via spatial grid (O(1))
+      assign job
+  ```
+
+- **WorkGivers (slow):** Mover-centric - O(movers × items)
+  ```
+  for each mover:
+      for each WorkGiver:
+          search all items to find best job
+  ```
+
+With 100 movers and 500 items, WorkGivers do 50,000 item checks per WorkGiver type.
 
 ---
 
-## Known Issues
+## Option 1: Hybrid Iteration (Recommended)
 
-### 1. Deadlock when swapping filters on full stockpiles
-**Repro:** Two full stockpiles (red and blue). Swap their filters (red→blue, blue→red). Nothing happens - items don't get rehauled.
+Keep WorkGivers but use the right iteration order for each job type:
 
-**Cause:** Both stockpiles are full. To move a red item out of the (now blue) stockpile, we need a free slot in a red stockpile. But the red stockpile is also full of blue items that need to move out. Classic deadlock - no empty cell to start the swap.
+```c
+void AssignJobsHybrid(void) {
+    // Item-centric for hauling (most jobs, many items)
+    for each ground item:
+        find nearest capable idle mover via spatial grid
+        WorkGiver_Haul or WorkGiver_StockpileMaintenance creates job
+    
+    for each stockpile slot needing rehaul:
+        find nearest capable idle mover
+        WorkGiver_Rehaul creates job
+    
+    // Mover-centric only for sparse targets (few designations/blueprints)
+    for each idle mover:
+        WorkGiver_Mining(mover)      // few dig designations
+        WorkGiver_BlueprintHaul(mover)
+        WorkGiver_Build(mover)
+}
+```
 
-**Possible fix:** Temporary "swap buffer" - allow one item to be dropped to ground to break the deadlock. Or detect this case and force a safe-drop.
+**Why this works:**
+- Hauling dominates job count (hundreds of ground items)
+- Mining/building targets are sparse (tens of designations)
+- Item-centric for bulk, mover-centric for sparse = best of both
 
-### 2. ~~FindFreeStockpileSlot still expensive when stockpiles are full~~ FIXED (commit `205dfc7`)
-**Repro:** Many items on ground, but all stockpiles are full (no room). Profiler shows:
-- `AssignJobs` → `FindStockpileForItem` → `FindFreeStockpileSlot` taking 35%+ of frame time
-
-**Cause:** For each ground item, we call `FindStockpileForItem` which scans all stockpiles calling `FindFreeStockpileSlot` on each. Even though slots are full, we still iterate all tiles checking for free slots.
-
-**Fix:** Added `freeSlotCount` per stockpile, rebuilt once per frame via `RebuildStockpileFreeSlotCounts()`. `FindStockpileForItem` now skips stockpiles with `freeSlotCount <= 0`.
+**Complexity:** Medium - restructure iteration but keep WorkGiver functions.
 
 ---
 
-## Remaining Problem (filter change rehaul storm)
-When stockpile filters change (e.g., red stockpile no longer accepts red items), `AssignJobs` becomes slow because it scans all stockpiled items every frame to check if they need rehauling.
+## Option 2: Shared Job Queue
 
-## Benchmark Results
-With 256 items in 3 stockpiles, 50 movers:
-- Steady state: ~350ms for 100 iterations (~3.5ms/frame)
-- After filter change: ~30,000ms for 100 iterations (~300ms/frame) - **89x slower**
+WorkGivers produce candidate jobs instead of assigning directly:
 
-## Root Cause
-The rehaul loop in `AssignJobs` (PRIORITY 3) iterates through all items every frame:
-1. For each stockpiled item, checks `StockpileAcceptsType()` 
-2. If no longer allowed, calls `FindStockpileForItem()` to find new home
-3. Calls `TryAssignItemToMover()` which does pathfinding
+```c
+void AssignJobsQueued(void) {
+    JobCandidate candidates[MAX_CANDIDATES];
+    int count = 0;
+    
+    // Phase 1: All WorkGivers emit candidates (item-centric)
+    for each item:
+        emit HaulJob candidate with (mover, item, priority, distance)
+    for each designation:
+        emit MiningJob candidate
+    for each blueprint:
+        emit BuildJob candidate
+    
+    // Phase 2: Sort and assign
+    sort candidates by priority (descending), then distance (ascending)
+    for each candidate:
+        if mover still idle && target still available:
+            assign job
+}
+```
 
-With 80 items needing rehaul and 50 movers, that's 50 pathfinding calls per frame.
+**Pros:**
+- Clean separation of "find work" and "assign work"
+- Global priority ordering across job types
+- Easy to add priority weights
 
-## Attempted Optimizations (reverted - didn't help this case)
-1. **freeSlotCount cache per stockpile** - Early exit when stockpile is full
-2. **Max priority cache** - Early exit in `FindHigherPriorityStockpile` when already at max
+**Cons:**
+- Memory allocation for candidate queue
+- Two-pass algorithm
+- More complex than hybrid
 
-These didn't help because:
-- Stockpiles weren't full (60% capacity)
-- All stockpiles had same priority
+**Complexity:** High
 
-## Ideas for Future Optimization (Simple Language)
+---
 
-### 1. Dirty Marking (don't check everything every frame)
-**Current:** Every frame, look at ALL items asking "do you need to move?"
-**Better:** When a filter changes, mark only those affected items. Next frame, only check marked items.
-*Like a to-do list instead of checking every item in your house every day.*
+## Option 3: Keep Legacy for Assignment
 
-### 2. Connectivity Regions (cheap "can reach?" check)
-**Current:** To know if mover can reach an item, run full pathfinding (expensive).
-**Better:** Pre-compute "zones". If mover is in zone 1 and item is in zone 2 with no connection, instantly say "unreachable".
-*Like knowing "the bridge is out" without driving there to check.*
-*(Already in jobs-roadmap.md Phase 2)*
+Accept that item-centric assignment is fundamentally faster:
 
-### 3. WorkGivers (split the giant function)
-**Current:** One giant `AssignJobs()` does everything - clearing, hauling, rehauling, all mixed together.
-**Better:** Separate modules: `WorkGiver_Haul`, `WorkGiver_Rehaul`, `WorkGiver_Mine`, etc. Each one independent.
-*Easier to optimize individually, easier to add new job types.*
-*(Already in jobs-roadmap.md Phase 4)*
+```c
+void AssignJobs(void) {
+    AssignJobsLegacy();  // Item-centric, battle-tested, fast
+}
 
-### 4. Job Pool (jobs exist separately from movers)
-**Current:** Jobs only exist when assigned to a mover. Mover holds all job data.
-**Better:** Jobs exist in a list waiting to be done. Movers grab from the list.
-*Like a job board - jobs are posted, workers pick them up.*
-*(Already in jobs-roadmap.md Phase 4)*
+// WorkGivers remain as:
+// - Unit tests for job creation logic
+// - Reference implementation
+// - Special cases (manual job assignment)
+```
 
-### 5. Throttle rehaul checks
-Only check for priority/overfull rehaul every N frames, not every single frame.
+**Pros:**
+- Already working and fast
+- No new code to maintain
+- WorkGivers still available for testing
 
-### 6. Skip pathfinding on assignment
-Let movers discover unreachable items themselves (already have stuck detection) instead of checking upfront.
+**Cons:**
+- Two systems to understand
+- WorkGiver modularity unused in production
 
-## Files Involved
-- `pathing/jobs.c`: `AssignJobs()`, PRIORITY 3 section (Jobs_FindRehaulItem)
-- `pathing/stockpiles.c`: `FindStockpileForItem()`, `FindHigherPriorityStockpile()`
+**Complexity:** None (current state)
+
+---
+
+## Option 4: Spatial Caching for WorkGivers
+
+Make WorkGivers fast by caching spatial queries:
+
+```c
+// Pre-build once per tick
+SpatialCache itemsByType[ITEM_TYPE_COUNT];
+SpatialCache idleMoversByCapability[CAP_COUNT];
+
+void WorkGiver_Haul(Mover* m) {
+    // O(1) lookup: nearest item this mover can haul
+    Item* item = SpatialNearest(itemsByType[ANY], m->x, m->y, m->capabilities);
+    ...
+}
+```
+
+**Pros:**
+- Keeps mover-centric WorkGiver API
+- O(1) lookups after cache build
+
+**Cons:**
+- Complex cache invalidation
+- Cache rebuild cost per tick
+- Still slower than item-centric for hauling
+
+**Complexity:** High
+
+---
+
+## Current Architecture
+
+### What's IN USE (production)
+
+**Job Execution:**
+- `JobsTick()` runs Job Drivers for all active jobs
+- Job Drivers: `RunJob_Haul`, `RunJob_Clear`, `RunJob_Dig`, `RunJob_HaulToBlueprint`, `RunJob_Build`
+- All job state lives in `Job` struct, referenced by `mover.currentJobId`
+
+**Job Assignment:**
+- `AssignJobs()` delegates to `AssignJobsLegacy()` (item-centric, fast)
+- Creates `Job` structs inline without calling WorkGiver functions
+
+### What EXISTS but is NOT used in production
+
+**WorkGiver Functions:**
+- `WorkGiver_Haul()`, `WorkGiver_Rehaul()`, `WorkGiver_StockpileMaintenance()` - hauling jobs
+- `WorkGiver_Mining()`, `WorkGiver_BlueprintHaul()`, `WorkGiver_Build()` - sparse jobs
+
+These are mover-centric: given a mover, find work for it. They work correctly but are slower for hauling because hauling has many targets (items).
+
+**AssignJobsHybrid():**
+- Uses item-centric iteration for hauling (inline, like Legacy)
+- Uses WorkGivers only for sparse jobs (mining, building)
+- Performance matches Legacy
+- Could replace Legacy if we want cleaner WorkGiver usage for sparse jobs
+
+---
+
+## Future Improvement Ideas
+
+### Use WorkGivers for targeted job assignment
+
+Currently we never call `WorkGiver_Haul()` in production. But there's a use case:
+
+**Scenario:** A mover just finished a job and is now idle. Instead of waiting for next `AssignJobs()` tick, we could immediately call:
+```c
+// Mover just became idle - find work immediately
+int jobId = WorkGiver_Haul(moverIdx);
+if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
+// etc.
+```
+
+This would give instant job assignment for individual movers. The WorkGiver functions are designed for exactly this - they're just slow when called for ALL movers in a loop.
+
+### Optimize WorkGiver_Haul for single-mover use
+
+Current `WorkGiver_Haul` rebuilds caches every call. For single-mover use, we could:
+1. Pass pre-built caches as parameters
+2. Or have a "light" version that assumes caches are fresh
+
+---
+
+## Files
+
+- `pathing/jobs.c` - All three AssignJobs variants, all WorkGivers, all Job Drivers
+- `pathing/jobs.h` - Public declarations
+- `tests/test_jobs.c` - 120 tests + benchmarks (`./bin/test_jobs -b`)

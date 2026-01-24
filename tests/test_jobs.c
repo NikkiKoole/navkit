@@ -3766,9 +3766,29 @@ static void RunBenchmarks(void) {
         double wgTime = (GetBenchTime() - wgStart) * 1000.0;
         (void)wgSum;
         
-        double ratio = (legacyTime > 0.001) ? wgTime / legacyTime : 0;
-        printf("  %3d movers: Legacy=%.3fms  WorkGivers=%.3fms  (%.1fx slower)\n",
-               targetMovers, legacyTime, wgTime, ratio);
+        // Benchmark: Hybrid (item-centric for hauling, mover-centric for sparse)
+        volatile int hybridSum = 0;
+        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
+        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
+        ClearJobs();
+        
+        double hybridStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            for (int m = 0; m < targetMovers; m++) {
+                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
+                movers[m].currentJobId = -1;
+            }
+            for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
+            AssignJobsHybrid();
+            hybridSum += idleMoverCount;
+        }
+        double hybridTime = (GetBenchTime() - hybridStart) * 1000.0;
+        (void)hybridSum;
+        
+        double wgRatio = (legacyTime > 0.001) ? wgTime / legacyTime : 0;
+        double hybridRatio = (legacyTime > 0.001) ? hybridTime / legacyTime : 0;
+        printf("  %3d movers: Legacy=%.3fms  WorkGivers=%.3fms (%.1fx)  Hybrid=%.3fms (%.1fx)\n",
+               targetMovers, legacyTime, wgTime, wgRatio, hybridTime, hybridRatio);
     }
     
     FreeItemSpatialGrid();
