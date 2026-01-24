@@ -24,11 +24,36 @@ These didn't help because:
 - Stockpiles weren't full (60% capacity)
 - All stockpiles had same priority
 
-## Ideas for Future Optimization
-1. **Dirty marking**: When filter changes, mark affected items as "needs rehaul check" instead of scanning all items every frame
-2. **Throttle rehaul checks**: Only check for rehaul every N frames, not every frame
-3. **Batch assignments**: Assign jobs in batches rather than one-at-a-time with full slot search each time
-4. **Skip pathfinding on assignment**: Let movers discover unreachable items themselves (already have stuck detection)
+## Ideas for Future Optimization (Simple Language)
+
+### 1. Dirty Marking (don't check everything every frame)
+**Current:** Every frame, look at ALL items asking "do you need to move?"
+**Better:** When a filter changes, mark only those affected items. Next frame, only check marked items.
+*Like a to-do list instead of checking every item in your house every day.*
+
+### 2. Connectivity Regions (cheap "can reach?" check)
+**Current:** To know if mover can reach an item, run full pathfinding (expensive).
+**Better:** Pre-compute "zones". If mover is in zone 1 and item is in zone 2 with no connection, instantly say "unreachable".
+*Like knowing "the bridge is out" without driving there to check.*
+*(Already in jobs-roadmap.md Phase 2)*
+
+### 3. WorkGivers (split the giant function)
+**Current:** One giant `AssignJobs()` does everything - clearing, hauling, rehauling, all mixed together.
+**Better:** Separate modules: `WorkGiver_Haul`, `WorkGiver_Rehaul`, `WorkGiver_Mine`, etc. Each one independent.
+*Easier to optimize individually, easier to add new job types.*
+*(Already in jobs-roadmap.md Phase 4)*
+
+### 4. Job Pool (jobs exist separately from movers)
+**Current:** Jobs only exist when assigned to a mover. Mover holds all job data.
+**Better:** Jobs exist in a list waiting to be done. Movers grab from the list.
+*Like a job board - jobs are posted, workers pick them up.*
+*(Already in jobs-roadmap.md Phase 4)*
+
+### 5. Throttle rehaul checks
+Only check for priority/overfull rehaul every N frames, not every single frame.
+
+### 6. Skip pathfinding on assignment
+Let movers discover unreachable items themselves (already have stuck detection) instead of checking upfront.
 
 ## Files Involved
 - `pathing/jobs.c`: `AssignJobs()`, PRIORITY 3 section (Jobs_FindRehaulItem)

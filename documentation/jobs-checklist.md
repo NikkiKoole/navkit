@@ -5,7 +5,7 @@ Prioritized steps to expand the jobs system beyond hauling.
 ---
 
 ## Phase 1: UI for Existing Systems
-- [ ] Draw/remove stockpiles (click-drag rectangles)
+- [x] Draw/remove stockpiles (click-drag rectangles)
 - [ ] Draw/remove gather zones
 - [ ] Stockpile config panel (filters, priority, stack size)
 - [ ] Requester stockpiles - "keep N items here" mode
@@ -13,6 +13,7 @@ Prioritized steps to expand the jobs system beyond hauling.
 ## Phase 2: Robustness
 - [ ] Reservation timeouts (auto-release orphaned reservations)
 - [ ] Connectivity regions (cheap reachability check before pathfinding)
+- [ ] **Performance fixes** - see [todo/jobs-rehaul-performance.md](todo/jobs-rehaul-performance.md)
 
 ## Phase 3: Mining
 - [ ] Designation system (player marks tiles for work)
