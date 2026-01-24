@@ -2,18 +2,51 @@
 
 Research and planning document for expanding the navkit job system beyond hauling.
 
+---
+
+## Status Summary (January 2026)
+
+### What's Working
+We followed **Option C (Hybrid)** from the original plan: added mining and construction with the current architecture, accepting that code may need rewriting later. This validated the gameplay loop quickly.
+
+**Completed:**
+- Mining: Designations, JOB_MOVING_TO_DIG, JOB_DIGGING, terrain modification, ITEM_ORANGE spawning
+- Construction: Blueprints, JOB_HAULING_TO_BLUEPRINT, JOB_MOVING_TO_BUILD, JOB_BUILDING
+- Full loop works: Mine wall → Orange block spawns → Haul to stockpile → Use for building walls
+
+**Current Pain Points (as predicted):**
+- Job data still embedded in Mover struct (many fields added)
+- `AssignJobs()` has grown with more priority passes
+- `JobsTick()` is a large switch statement with many states
+- **Hauler/builder separation**: Same mover does both haul and build (no profession system)
+
+### Next Step: Architecture Refactor
+
+The system works but is approaching the complexity threshold. Before adding crafting/farming, we should do the refactor:
+
+1. **Job Pool** - Move job data out of Mover into separate `Job` structs
+2. **Job Drivers** - Per-type step functions instead of giant switch
+3. **WorkGivers** - Modular job producers instead of monolithic `AssignJobs()`
+4. **Mover Capabilities** - Simple flags or priorities for which movers do which jobs
+
+This refactor would properly solve the hauler/builder separation issue and make adding new job types clean.
+
+---
+
 ## Current State (What We Have)
 
 ### Implemented Features
 - **Hauling** - Movers pick up ground items and deliver to stockpiles
-- **Stockpile filters** - Each stockpile can accept/reject item types (red, green, blue)
+- **Stockpile filters** - Each stockpile can accept/reject item types (red, green, blue, orange)
 - **Stockpile priorities** - Higher priority stockpiles pull items from lower priority ones (re-haul)
 - **Stockpile stacking** - Multiple items per slot, configurable max stack size
 - **Gather zones** - Restrict hauling to items within designated areas
 - **Clear jobs** - Remove wrong-type items from stockpiles (JOB_MOVING_TO_DROP)
 - **Absorb jobs** - Pick up matching ground items on stockpile tiles and "absorb" them
 - **Spatial grids** - O(1) lookups for movers and items
-- **Unreachable cooldowns** - Don't spam-retry unreachable items
+- **Unreachable cooldowns** - Don't spam-retry unreachable items/designations
+- **Mining** - Designate walls, movers dig them out, spawns ITEM_ORANGE
+- **Construction** - Place blueprints, movers haul materials and build walls
 
 ### Current Job States
 ```c
@@ -21,7 +54,12 @@ typedef enum {
     JOB_IDLE,
     JOB_MOVING_TO_ITEM,
     JOB_MOVING_TO_STOCKPILE,
-    JOB_MOVING_TO_DROP,  // Clear job: carrying item away to drop on ground
+    JOB_MOVING_TO_DROP,
+    JOB_MOVING_TO_DIG,
+    JOB_DIGGING,
+    JOB_HAULING_TO_BLUEPRINT,
+    JOB_MOVING_TO_BUILD,
+    JOB_BUILDING,
 } JobState;
 ```
 
@@ -29,9 +67,20 @@ typedef enum {
 ```c
 typedef enum {
     ITEM_ON_GROUND,
-    ITEM_BEING_CARRIED,
+    ITEM_CARRIED,
     ITEM_IN_STOCKPILE,
 } ItemState;
+```
+
+### Current Item Types
+```c
+typedef enum {
+    ITEM_RED,
+    ITEM_GREEN,
+    ITEM_BLUE,
+    ITEM_ORANGE,      // Stone blocks from mining, required for building
+    ITEM_TYPE_COUNT,
+} ItemType;
 ```
 
 ### Current Architecture Pain Points
@@ -997,10 +1046,11 @@ Track key decisions as we make them:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| TBD  | Refactor first vs feature first? | |
-| TBD  | Overlapping stockpiles behavior? | |
+| Jan 2026 | Option C: Add features first, refactor later | Validated gameplay loop quickly with mining + construction |
+| Jan 2026 | ITEM_ORANGE required for building | Creates meaningful resource loop: mine → haul → build |
+| Jan 2026 | No profession bandaid hack | Would add complexity fighting against priority system; wait for real refactor |
 | TBD  | Per-mover vs global job priority? | |
-| TBD  | Job data in Mover vs separate Job pool? | |
+| TBD  | Job data in Mover vs separate Job pool? | Leaning toward separate pool - current approach doesn't scale |
 
 ---
 
