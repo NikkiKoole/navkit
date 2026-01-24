@@ -19,6 +19,120 @@ void ProfileAccumEnd(const char* name) { (void)name; }
 // Stub UI functions for tests
 void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
+// Helper functions to check mover job state (replaces m->jobState checks)
+static bool MoverIsIdle(Mover* m) {
+    return m->currentJobId < 0;
+}
+
+static bool MoverHasHaulJob(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_HAUL;
+}
+
+static bool MoverHasClearJob(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_CLEAR;
+}
+
+static bool MoverHasDigJob(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_DIG;
+}
+
+static bool MoverHasBuildJob(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_BUILD;
+}
+
+static bool MoverHasHaulToBlueprintJob(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    return job && job->active && job->type == JOBTYPE_HAUL_TO_BLUEPRINT;
+}
+
+static bool MoverIsMovingToPickup(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return false;
+    return (job->type == JOBTYPE_HAUL || job->type == JOBTYPE_CLEAR || job->type == JOBTYPE_HAUL_TO_BLUEPRINT) 
+           && job->step == STEP_MOVING_TO_PICKUP;
+}
+
+static bool MoverIsCarrying(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return false;
+    return (job->type == JOBTYPE_HAUL || job->type == JOBTYPE_CLEAR || job->type == JOBTYPE_HAUL_TO_BLUEPRINT) 
+           && job->step == STEP_CARRYING;
+}
+
+static bool MoverIsDigging(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return false;
+    return job->type == JOBTYPE_DIG && job->step == STEP_WORKING;
+}
+
+static bool MoverIsBuilding(Mover* m) {
+    if (m->currentJobId < 0) return false;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return false;
+    return job->type == JOBTYPE_BUILD && job->step == STEP_WORKING;
+}
+
+static int MoverGetTargetItem(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetItem;
+}
+
+static int MoverGetCarryingItem(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->carryingItem;
+}
+
+static int MoverGetTargetStockpile(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetStockpile;
+}
+
+static int MoverGetTargetBlueprint(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetBlueprint;
+}
+
+static int MoverGetTargetDigX(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetDigX;
+}
+
+static int MoverGetTargetDigY(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetDigY;
+}
+
+static int MoverGetTargetDigZ(Mover* m) {
+    if (m->currentJobId < 0) return -1;
+    Job* job = GetJob(m->currentJobId);
+    if (!job || !job->active) return -1;
+    return job->targetDigZ;
+}
+
 /*
  * Phase 0 Tests: Item spawn + single pickup
  * 
@@ -155,8 +269,8 @@ describe(mover_job_state) {
         InitMover(m, 16.0f, 16.0f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetItem(m) == -1);
     }
 
     it("should assign item to idle mover") {
@@ -188,8 +302,8 @@ describe(mover_job_state) {
         
         AssignJobs();  // should assign item to idle mover
         
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
-        expect(m->targetItem == itemIdx);
+        expect(MoverIsMovingToPickup(m));
+        expect(MoverGetTargetItem(m) == itemIdx);
         expect(items[itemIdx].reservedBy == 0);
     }
 }
@@ -232,7 +346,7 @@ describe(pickup_behavior) {
         
         AssignJobs();
         
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(MoverIsMovingToPickup(m));
         expect(items[itemIdx].active == true);
         
         // Run simulation until item is in stockpile (or timeout)
@@ -245,8 +359,8 @@ describe(pickup_behavior) {
         
         // Item should be in stockpile
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
     }
 }
 
@@ -284,8 +398,8 @@ describe(reservation_safety) {
         
         // Only one mover should have the item
         int claimCount = 0;
-        if (m0->targetItem == itemIdx) claimCount++;
-        if (m1->targetItem == itemIdx) claimCount++;
+        if (MoverGetTargetItem(m0) == itemIdx) claimCount++;
+        if (MoverGetTargetItem(m1) == itemIdx) claimCount++;
         
         expect(claimCount == 1);
         expect(items[itemIdx].reservedBy >= 0);
@@ -316,7 +430,7 @@ describe(reservation_safety) {
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
         AssignJobs();
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(MoverIsMovingToPickup(m));
         
         // Externally delete the item (simulates someone else taking it)
         DeleteItem(itemIdx);
@@ -327,8 +441,8 @@ describe(reservation_safety) {
             JobsTick();
         }
         
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetItem(m) == -1);
     }
 }
 
@@ -398,8 +512,8 @@ describe(post_job_behavior) {
             JobsTick();
         }
         
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
-        expect(m->targetItem == item2Idx);
+        expect(MoverIsMovingToPickup(m));
+        expect(MoverGetTargetItem(m) == item2Idx);
     }
 
     it("should resume wandering when no more items exist") {
@@ -446,7 +560,7 @@ describe(post_job_behavior) {
         }
         
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         
         // Run a few more ticks - mover should get a new path (wandering)
         for (int i = 0; i < 30; i++) {
@@ -577,8 +691,8 @@ describe(haul_happy_path) {
         expect((int)(items[itemIdx].y / CELL_SIZE) == 2);
         
         // Mover should be idle
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetItem(m) == -1);
     }
 
     it("should respect stockpile type filters") {
@@ -701,8 +815,8 @@ describe(stockpile_capacity) {
         expect(groundCount == 1);
         
         // Mover should be idle (not stuck carrying)
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
     }
 }
 
@@ -810,7 +924,7 @@ describe(haul_cancellation) {
             JobsTick();
         }
         
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(MoverIsMovingToPickup(m));
         
         // Delete item mid-haul
         DeleteItem(itemIdx);
@@ -823,8 +937,8 @@ describe(haul_cancellation) {
         }
         
         // Mover should be idle
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetItem(m) == -1);
         
         // Stockpile slot should be unreserved (can find a free slot)
         int slotX, slotY;
@@ -870,11 +984,11 @@ describe(haul_cancellation) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->jobState == JOB_MOVING_TO_STOCKPILE) break;
+            if (MoverIsCarrying(m)) break;
         }
         
-        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
-        expect(m->carryingItem == itemIdx);
+        expect(MoverIsCarrying(m));
+        expect(MoverGetCarryingItem(m) == itemIdx);
         expect(items[itemIdx].state == ITEM_CARRIED);
         
         // Delete stockpile while carrying
@@ -888,8 +1002,8 @@ describe(haul_cancellation) {
         }
         
         // Mover should have safe-dropped the item
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
         
         // Item should be back on ground (not vanished, not stuck as "carried")
         expect(items[itemIdx].state == ITEM_ON_GROUND);
@@ -953,7 +1067,7 @@ describe(filter_change_mid_haul) {
         int itemTileY = (int)(items[greenItem].y / CELL_SIZE);
         expect(itemTileX == 5);
         expect(itemTileY == 5);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         
         // Now change RGB stockpile to RED-only (green no longer allowed)
         SetStockpileFilter(spRGB, ITEM_GREEN, false);
@@ -1017,11 +1131,11 @@ describe(filter_change_mid_haul) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->jobState == JOB_MOVING_TO_STOCKPILE) break;
+            if (MoverIsCarrying(m)) break;
         }
         
-        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
-        expect(m->carryingItem == itemIdx);
+        expect(MoverIsCarrying(m));
+        expect(MoverGetCarryingItem(m) == itemIdx);
         
         // Change filter to disallow red while carrying
         SetStockpileFilter(spIdx, ITEM_RED, false);
@@ -1034,8 +1148,8 @@ describe(filter_change_mid_haul) {
         }
         
         // Mover should have safe-dropped the item
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
         
         // Item should be back on ground
         expect(items[itemIdx].state == ITEM_ON_GROUND);
@@ -1078,7 +1192,7 @@ describe(dynamic_obstacles) {
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
         AssignJobs();
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(MoverIsMovingToPickup(m));
         
         // Let mover start moving
         for (int i = 0; i < 50; i++) {
@@ -1108,9 +1222,9 @@ describe(dynamic_obstacles) {
         // Either it found a way around, gave up, or is still trying to repath
         // The key invariant: it's not in a broken state (crash/deadlock)
         // Note: MOVING_TO_ITEM with pathLength=0 is valid - mover is waiting to repath
-        bool validState = (m->jobState == JOB_IDLE) || 
-                          (m->jobState == JOB_MOVING_TO_ITEM) ||
-                          (m->jobState == JOB_MOVING_TO_STOCKPILE);
+        bool validState = (MoverIsIdle(m)) || 
+                          (MoverIsMovingToPickup(m)) ||
+                          (MoverIsCarrying(m));
         expect(validState == true);
         
         // Also verify the item wasn't corrupted
@@ -1148,8 +1262,8 @@ describe(dynamic_obstacles) {
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
         AssignJobs();
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
-        expect(m->targetItem == itemIdx);
+        expect(MoverIsMovingToPickup(m));
+        expect(MoverGetTargetItem(m) == itemIdx);
         
         // Place wall ON the item's cell
         grid[0][2][8] = CELL_WALL;
@@ -1158,8 +1272,8 @@ describe(dynamic_obstacles) {
         JobsTick();
         
         // Job should be cancelled immediately (not wait 3 seconds)
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetItem(m) == -1);
         expect(items[itemIdx].reservedBy == -1);
     }
 
@@ -1196,7 +1310,7 @@ describe(dynamic_obstacles) {
         AssignJobs();
         
         // Mover should NOT be assigned to the item on a wall
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         expect(items[itemIdx].reservedBy == -1);
     }
 }
@@ -1243,7 +1357,7 @@ describe(stockpile_expansion) {
             JobsTick();
             
             if (items[item1].state == ITEM_IN_STOCKPILE || items[item2].state == ITEM_IN_STOCKPILE) {
-                if (m->jobState == JOB_IDLE) break;
+                if (MoverIsIdle(m)) break;
             }
         }
         
@@ -1252,7 +1366,7 @@ describe(stockpile_expansion) {
         if (items[item1].state == ITEM_IN_STOCKPILE) storedCount++;
         if (items[item2].state == ITEM_IN_STOCKPILE) storedCount++;
         expect(storedCount == 1);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         
         // Now expand stockpile by creating a second one (simulating expansion)
         int spIdx2 = CreateStockpile(3, 2, 0, 1, 1);
@@ -1359,8 +1473,8 @@ describe(stress_test) {
         
         // All movers should be idle (not stuck carrying)
         for (int i = 0; i < 3; i++) {
-            expect(movers[i].jobState == JOB_IDLE);
-            expect(movers[i].carryingItem == -1);
+            expect(MoverIsIdle(&movers[i]));
+            expect(MoverGetCarryingItem(&movers[i]) == -1);
         }
         
         // With stacking enabled, items CAN be at the same position (stacked)
@@ -1417,9 +1531,9 @@ describe(unreachable_item_cooldown) {
             ItemsTick(TICK_DT);  // Decrement cooldowns
             
             // Track how many times we try to assign this item
-            if (m->jobState == JOB_IDLE) {
+            if (MoverIsIdle(m)) {
                 AssignJobs();
-                if (m->jobState == JOB_MOVING_TO_ITEM && m->targetItem == itemIdx) {
+                if (MoverIsMovingToPickup(m) && MoverGetTargetItem(m) == itemIdx) {
                     assignAttempts++;
                 }
             }
@@ -1427,7 +1541,7 @@ describe(unreachable_item_cooldown) {
         }
         
         // Agent should end idle (can't reach item)
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         
         // Item should still be on ground
         expect(items[itemIdx].state == ITEM_ON_GROUND);
@@ -1996,19 +2110,20 @@ describe(stockpile_max_stack_size) {
             ItemsTick(TICK_DT);
             AssignJobs();
             JobsTick();
-            if (m->carryingItem == item) break;
+            if (MoverGetCarryingItem(m) == item) break;
         }
-        expect(m->carryingItem == item);
-        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        expect(MoverGetCarryingItem(m) == item);
+        expect(MoverIsCarrying(m));
         
         // Clear path to simulate losing it (like when wall is drawn)
         m->pathLength = 0;
         m->pathIndex = -1;
         
         // Record the job's target stockpile slot and current goal
-        int targetSlotX = m->targetSlotX;
-        int targetSlotY = m->targetSlotY;
-        int targetStockpile = m->targetStockpile;
+        Job* job = GetJob(m->currentJobId);
+        int targetSlotX = job->targetSlotX;
+        int targetSlotY = job->targetSlotY;
+        int targetStockpile = job->targetStockpile;
         Point goalBefore = m->goal;
         
         // Clear any repath cooldown so endless mover mode will act immediately
@@ -2054,8 +2169,8 @@ describe(stockpile_max_stack_size) {
         
         // Mover should NOT be wandering with item - either delivered or dropped
         // If still carrying, should still be in JOB_MOVING_TO_STOCKPILE (not hijacked)
-        if (m->carryingItem >= 0) {
-            expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        if (MoverGetCarryingItem(m) >= 0) {
+            expect(MoverIsCarrying(m));
         }
         
         // Run longer to let job complete or cancel
@@ -2065,12 +2180,12 @@ describe(stockpile_max_stack_size) {
             AssignJobs();
             JobsTick();
             if (items[item].state == ITEM_IN_STOCKPILE) break;
-            if (items[item].state == ITEM_ON_GROUND && m->jobState == JOB_IDLE) break;
+            if (items[item].state == ITEM_ON_GROUND && MoverIsIdle(m)) break;
         }
         
         // Item should be either in stockpile or dropped on ground (not carried aimlessly)
         bool delivered = items[item].state == ITEM_IN_STOCKPILE;
-        bool dropped = items[item].state == ITEM_ON_GROUND && m->carryingItem == -1;
+        bool dropped = items[item].state == ITEM_ON_GROUND && MoverGetCarryingItem(m) == -1;
         expect(delivered || dropped);
         
         endlessMoverMode = oldEndlessMode;
@@ -2111,10 +2226,10 @@ describe(stockpile_max_stack_size) {
             ItemsTick(TICK_DT);
             AssignJobs();
             JobsTick();
-            if (m->carryingItem == item) break;
+            if (MoverGetCarryingItem(m) == item) break;
         }
-        expect(m->carryingItem == item);
-        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        expect(MoverGetCarryingItem(m) == item);
+        expect(MoverIsCarrying(m));
         
         // Draw a wall blocking the path (temporarily)
         grid[0][1][4] = CELL_WALL;
@@ -2143,8 +2258,8 @@ describe(stockpile_max_stack_size) {
         
         // Item should be in stockpile
         expect(items[item].state == ITEM_IN_STOCKPILE);
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
     }
     
     it("should stack items in partially filled slots") {
@@ -2209,7 +2324,7 @@ describe(stockpile_max_stack_size) {
         
         // Item should be in stockpile (stacked with existing items)
         expect(items[newItem].state == ITEM_IN_STOCKPILE);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
     
     it("should respect per-stockpile max stack size") {
@@ -2252,7 +2367,7 @@ describe(stockpile_max_stack_size) {
         
         // Item should still be on ground (no room in stockpile)
         expect(items[item].state == ITEM_ON_GROUND);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
     
     it("should re-haul excess items from overfull slots to other stockpiles") {
@@ -2633,7 +2748,7 @@ describe(stockpile_ground_item_blocking) {
         expect(onStockpile == false);
         
         // Mover should be idle
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
     
     it("should prioritize clearing stockpile tiles over regular hauling") {
@@ -2683,7 +2798,7 @@ describe(stockpile_ground_item_blocking) {
         AssignJobs();
         
         // Mover should target the foreign item (clearing job) first
-        expect(m->targetItem == foreignItem);
+        expect(MoverGetTargetItem(m) == foreignItem);
     }
     
     it("should not haul matching item away from its stockpile") {
@@ -2789,14 +2904,14 @@ describe(clear_job_state) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->carryingItem == itemIdx) break;
+            if (MoverGetCarryingItem(m) == itemIdx) break;
         }
         
-        expect(m->carryingItem == itemIdx);
+        expect(MoverGetCarryingItem(m) == itemIdx);
         // Should be in JOB_MOVING_TO_DROP, not JOB_MOVING_TO_STOCKPILE
-        expect(m->jobState == JOB_MOVING_TO_DROP);
+        expect(MoverHasClearJob(m) && MoverIsCarrying(m));
         // targetStockpile should be -1 (no destination stockpile)
-        expect(m->targetStockpile == -1);
+        expect(MoverGetTargetStockpile(m) == -1);
     }
     
     it("should use JOB_MOVING_TO_STOCKPILE when clearing to another stockpile") {
@@ -2843,14 +2958,14 @@ describe(clear_job_state) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->carryingItem == itemIdx) break;
+            if (MoverGetCarryingItem(m) == itemIdx) break;
         }
         
-        expect(m->carryingItem == itemIdx);
+        expect(MoverGetCarryingItem(m) == itemIdx);
         // Should be in JOB_MOVING_TO_STOCKPILE (has destination)
-        expect(m->jobState == JOB_MOVING_TO_STOCKPILE);
+        expect(MoverIsCarrying(m));
         // targetStockpile should be the green stockpile
-        expect(m->targetStockpile == spGreen);
+        expect(MoverGetTargetStockpile(m) == spGreen);
     }
     
     it("should complete JOB_MOVING_TO_DROP and drop item on ground") {
@@ -2892,7 +3007,7 @@ describe(clear_job_state) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (items[itemIdx].state == ITEM_ON_GROUND && m->jobState == JOB_IDLE) break;
+            if (items[itemIdx].state == ITEM_ON_GROUND && MoverIsIdle(m)) break;
         }
         
         // Item should be on ground
@@ -2906,8 +3021,8 @@ describe(clear_job_state) {
         expect(onStockpile == false);
         
         // Mover should be idle
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
     }
     
     it("should cancel JOB_MOVING_TO_DROP if item disappears") {
@@ -2948,11 +3063,11 @@ describe(clear_job_state) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->jobState == JOB_MOVING_TO_DROP) break;
+            if (MoverHasClearJob(m) && MoverIsCarrying(m)) break;
         }
         
-        expect(m->jobState == JOB_MOVING_TO_DROP);
-        expect(m->carryingItem == itemIdx);
+        expect(MoverHasClearJob(m) && MoverIsCarrying(m));
+        expect(MoverGetCarryingItem(m) == itemIdx);
         
         // Delete the item while being carried
         DeleteItem(itemIdx);
@@ -2965,8 +3080,8 @@ describe(clear_job_state) {
         }
         
         // Mover should be idle (job cancelled)
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
     }
 }
 
@@ -3497,7 +3612,6 @@ static void RunBenchmarks(void) {
             Mover* m = &movers[moverCount];
             Point goal = {50, 50, 0};
             InitMover(m, mx, my, 0, goal, 100.0f);
-            m->jobState = JOB_IDLE;
             moverCount++;
         }
         
@@ -3510,16 +3624,17 @@ static void RunBenchmarks(void) {
         double steadyStart = GetBenchTime();
         for (int iter = 0; iter < numIterations; iter++) {
             AssignJobs();
-            steadySum += movers[0].jobState;
+            steadySum += movers[0].currentJobId;
         }
         double steadyTime = (GetBenchTime() - steadyStart) * 1000.0;
         (void)steadySum;
         
         // Reset movers to idle
         for (int i = 0; i < targetMovers; i++) {
-            movers[i].jobState = JOB_IDLE;
-            movers[i].targetItem = -1;
-            movers[i].targetStockpile = -1;
+            if (movers[i].currentJobId >= 0) {
+                ReleaseJob(movers[i].currentJobId);
+            }
+            movers[i].currentJobId = -1;
         }
         // Release all item reservations
         for (int i = 0; i < MAX_ITEMS; i++) {
@@ -3538,9 +3653,11 @@ static void RunBenchmarks(void) {
         for (int iter = 0; iter < numIterations; iter++) {
             // Reset movers to idle each iteration (simulates movers finishing jobs)
             for (int m = 0; m < targetMovers; m++) {
-                movers[m].jobState = JOB_IDLE;
-                movers[m].targetItem = -1;
-                movers[m].targetStockpile = -1;
+                // Release any existing job
+                if (movers[m].currentJobId >= 0) {
+                    ReleaseJob(movers[m].currentJobId);
+                }
+                movers[m].currentJobId = -1;
             }
             // Release all reservations using proper functions (updates freeSlotCount)
             for (int i = 0; i < 256; i++) {
@@ -3553,7 +3670,7 @@ static void RunBenchmarks(void) {
             }
             
             AssignJobs();
-            rehaulSum += movers[0].jobState;
+            rehaulSum += movers[0].currentJobId;
         }
         double rehaulTime = (GetBenchTime() - rehaulStart) * 1000.0;
         (void)rehaulSum;
@@ -3814,9 +3931,6 @@ describe(mining_job_assignment) {
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Designate wall at (1,1) - has adjacent floor at (0,1) and (1,0)
@@ -3826,10 +3940,10 @@ describe(mining_job_assignment) {
         AssignJobs();
         
         // Mover should be assigned to dig
-        expect(m->jobState == JOB_MOVING_TO_DIG);
-        expect(m->targetDigX == 1);
-        expect(m->targetDigY == 1);
-        expect(m->targetDigZ == 0);
+        expect(MoverHasDigJob(m));
+        expect(MoverGetTargetDigX(m) == 1);
+        expect(MoverGetTargetDigY(m) == 1);
+        expect(MoverGetTargetDigZ(m) == 0);
         
         // Designation should be reserved
         Designation* d = GetDesignation(1, 1, 0);
@@ -3860,9 +3974,6 @@ describe(mining_job_assignment) {
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Designate wall at (2,2) - surrounded by walls, no adjacent floor
@@ -3872,7 +3983,7 @@ describe(mining_job_assignment) {
         AssignJobs();
         
         // Mover should remain idle (can't reach any adjacent tile)
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
 }
 
@@ -3896,9 +4007,6 @@ describe(mining_job_execution) {
         Mover* m = &movers[0];
         Point goal = {0, 1, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Wall at (1,1)
@@ -3924,7 +4032,7 @@ describe(mining_job_execution) {
         expect(completed == true);
         expect(grid[0][1][1] == CELL_FLOOR);
         expect(HasDigDesignation(1, 1, 0) == false);
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
     
     it("should spawn orange block when dig completes") {
@@ -3946,9 +4054,6 @@ describe(mining_job_execution) {
         Mover* m = &movers[0];
         Point goal = {0, 1, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Wall at (1,1)
@@ -4009,16 +4114,13 @@ describe(mining_job_execution) {
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Designate and assign
         DesignateDig(1, 1, 0);
         AssignJobs();
         
-        expect(m->jobState == JOB_MOVING_TO_DIG);
+        expect(MoverHasDigJob(m));
         
         // Cancel designation while mover is en route
         CancelDesignation(1, 1, 0);
@@ -4028,8 +4130,8 @@ describe(mining_job_execution) {
         JobsTick();
         
         // Mover should be back to idle
-        expect(m->jobState == JOB_IDLE);
-        expect(m->targetDigX == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetTargetDigX(m) == -1);
     }
     
     it("should cancel dig job if wall is removed by other means") {
@@ -4051,16 +4153,13 @@ describe(mining_job_execution) {
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Designate and assign
         DesignateDig(1, 1, 0);
         AssignJobs();
         
-        expect(m->jobState == JOB_MOVING_TO_DIG);
+        expect(MoverHasDigJob(m));
         
         // Player removes wall manually (simulating editor action)
         grid[0][1][1] = CELL_FLOOR;
@@ -4070,7 +4169,7 @@ describe(mining_job_execution) {
         JobsTick();
         
         // Mover should be back to idle, designation should be cleared
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         expect(HasDigDesignation(1, 1, 0) == false);
     }
 }
@@ -4098,9 +4197,6 @@ describe(mining_multiple_designations) {
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        m->targetDigX = -1;
-        m->targetDigY = -1;
-        m->targetDigZ = -1;
         moverCount = 1;
         
         // Designate 3 isolated walls (each has adjacent floor)
@@ -4234,9 +4330,9 @@ describe(building_haul_job) {
         AssignJobs();
         
         // Mover should be assigned to haul the item
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
-        expect(m->targetItem == itemIdx);
-        expect(m->targetBlueprint == bpIdx);
+        expect(MoverIsMovingToPickup(m));
+        expect(MoverGetTargetItem(m) == itemIdx);
+        expect(MoverGetTargetBlueprint(m) == bpIdx);
         expect(blueprints[bpIdx].reservedItem == itemIdx);
     }
     
@@ -4268,7 +4364,7 @@ describe(building_haul_job) {
         AssignJobs();
         
         // Mover should remain idle
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
         expect(blueprints[bpIdx].reservedItem == -1);
     }
 }
@@ -4298,9 +4394,10 @@ describe(building_job_execution) {
         
         // Item at (1,1) - must be ITEM_ORANGE for building walls
         int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        (void)itemIdx;  // Used only in setup
         
         // Blueprint at (3,3) - will become a wall
-        int bpIdx = CreateBuildBlueprint(3, 3, 0);
+        CreateBuildBlueprint(3, 3, 0);
         
         // Run simulation until build completes
         // Hauler picks up item, delivers to blueprint, then builder builds
@@ -4322,7 +4419,7 @@ describe(building_job_execution) {
         expect(items[itemIdx].active == false);
         
         // Mover should be idle
-        expect(m->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m));
     }
     
     it("should cancel haul job when blueprint is cancelled") {
@@ -4355,16 +4452,16 @@ describe(building_job_execution) {
         
         // Start hauling
         AssignJobs();
-        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(MoverIsMovingToPickup(m));
         
         // Run a few ticks to pick up item
         for (int i = 0; i < 500; i++) {
             Tick();
             JobsTick();
-            if (m->jobState == JOB_HAULING_TO_BLUEPRINT) break;
+            if (MoverHasHaulToBlueprintJob(m) && MoverIsCarrying(m)) break;
         }
         
-        expect(m->carryingItem == itemIdx);
+        expect(MoverGetCarryingItem(m) == itemIdx);
         
         // Cancel the blueprint while hauler is en route
         CancelBlueprint(bpIdx);
@@ -4374,12 +4471,12 @@ describe(building_job_execution) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (m->jobState == JOB_IDLE && m->carryingItem == -1) break;
+            if (MoverIsIdle(m) && MoverGetCarryingItem(m) == -1) break;
         }
         
         // Mover should have dropped item and be idle
-        expect(m->jobState == JOB_IDLE);
-        expect(m->carryingItem == -1);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
         
         // Item should be on ground (not deleted)
         expect(items[itemIdx].active == true);
@@ -4434,11 +4531,11 @@ describe(building_two_movers) {
             JobsTick();
             
             // Track who does what
-            if (m1->jobState == JOB_MOVING_TO_ITEM || m1->jobState == JOB_HAULING_TO_BLUEPRINT) {
+            if (MoverIsMovingToPickup(m1) || (MoverHasHaulToBlueprintJob(m1) && MoverIsCarrying(m1))) {
                 haulerFound = true;
                 haulerIdx = 0;
             }
-            if (m2->jobState == JOB_MOVING_TO_ITEM || m2->jobState == JOB_HAULING_TO_BLUEPRINT) {
+            if (MoverIsMovingToPickup(m2) || (MoverHasHaulToBlueprintJob(m2) && MoverIsCarrying(m2))) {
                 haulerFound = true;
                 haulerIdx = 1;
             }
@@ -4457,11 +4554,982 @@ describe(building_two_movers) {
         expect(builderFound == true);
         
         // Both movers should be idle at the end
-        expect(m1->jobState == JOB_IDLE);
-        expect(m2->jobState == JOB_IDLE);
+        expect(MoverIsIdle(m1));
+        expect(MoverIsIdle(m2));
         
         // Suppress unused variable warning
         (void)haulerIdx;
+    }
+}
+
+/*
+ * =============================================================================
+ * JOB POOL TESTS (Phase 1 of Jobs Refactor)
+ * 
+ * These tests verify the new Job pool system:
+ * - Jobs can be created and tracked separately from Movers
+ * - Jobs store all necessary target data
+ * - Jobs can be released and reused (free list)
+ * - Performance: O(1) allocation/deallocation
+ * =============================================================================
+ */
+
+describe(job_pool) {
+    it("should create a job and return valid job id") {
+        // Initialize job system
+        ClearJobs();
+        
+        // Create a haul job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        
+        // Should return valid index
+        expect(jobId >= 0);
+        expect(jobId < MAX_JOBS);
+        
+        // Job should be active
+        Job* job = GetJob(jobId);
+        expect(job != NULL);
+        expect(job->active == true);
+        expect(job->type == JOBTYPE_HAUL);
+    }
+    
+    it("should assign job to mover via currentJobId") {
+        // Setup minimal world
+        InitGridFromAsciiWithChunkSize(
+            "....\n"
+            "....\n", 4, 4);
+        ClearMovers();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Mover should start with no job
+        expect(m->currentJobId == -1);
+        
+        // Create and assign a job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        m->currentJobId = jobId;
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        
+        // Verify assignment
+        expect(m->currentJobId == jobId);
+        expect(job->assignedMover == 0);
+    }
+    
+    it("should release job when completed") {
+        ClearJobs();
+        
+        // Create a job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        expect(GetJob(jobId)->active == true);
+        
+        // Release the job
+        ReleaseJob(jobId);
+        
+        // Job should no longer be active
+        expect(GetJob(jobId)->active == false);
+    }
+    
+    it("should track job type correctly") {
+        ClearJobs();
+        
+        int haulJob = CreateJob(JOBTYPE_HAUL);
+        int digJob = CreateJob(JOBTYPE_DIG);
+        int buildJob = CreateJob(JOBTYPE_BUILD);
+        int clearJob = CreateJob(JOBTYPE_CLEAR);
+        
+        expect(GetJob(haulJob)->type == JOBTYPE_HAUL);
+        expect(GetJob(digJob)->type == JOBTYPE_DIG);
+        expect(GetJob(buildJob)->type == JOBTYPE_BUILD);
+        expect(GetJob(clearJob)->type == JOBTYPE_CLEAR);
+    }
+    
+    it("should store target data for haul job") {
+        ClearJobs();
+        
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        
+        // Set haul targets
+        job->targetItem = 5;
+        job->targetStockpile = 2;
+        job->targetSlotX = 3;
+        job->targetSlotY = 4;
+        
+        // Verify targets stored correctly
+        expect(job->targetItem == 5);
+        expect(job->targetStockpile == 2);
+        expect(job->targetSlotX == 3);
+        expect(job->targetSlotY == 4);
+    }
+    
+    it("should store target data for dig job") {
+        ClearJobs();
+        
+        int jobId = CreateJob(JOBTYPE_DIG);
+        Job* job = GetJob(jobId);
+        
+        // Set dig targets
+        job->targetDigX = 10;
+        job->targetDigY = 20;
+        job->targetDigZ = 0;
+        
+        // Verify targets stored correctly
+        expect(job->targetDigX == 10);
+        expect(job->targetDigY == 20);
+        expect(job->targetDigZ == 0);
+    }
+    
+    it("should store target data for build job") {
+        ClearJobs();
+        
+        int jobId = CreateJob(JOBTYPE_BUILD);
+        Job* job = GetJob(jobId);
+        
+        // Set build targets
+        job->targetBlueprint = 7;
+        job->progress = 0.5f;
+        
+        // Verify targets stored correctly
+        expect(job->targetBlueprint == 7);
+        expect(job->progress == 0.5f);
+    }
+    
+    it("should reuse released job slots via free list") {
+        ClearJobs();
+        
+        // Create 3 jobs
+        int job1 = CreateJob(JOBTYPE_HAUL);
+        int job2 = CreateJob(JOBTYPE_DIG);
+        int job3 = CreateJob(JOBTYPE_BUILD);
+        
+        // Release middle job
+        ReleaseJob(job2);
+        
+        // Create new job - should reuse job2's slot
+        int job4 = CreateJob(JOBTYPE_HAUL);
+        
+        // job4 should have reused job2's index (free list)
+        expect(job4 == job2);
+        
+        // Original jobs still work
+        expect(GetJob(job1)->type == JOBTYPE_HAUL);
+        expect(GetJob(job3)->type == JOBTYPE_BUILD);
+        expect(GetJob(job4)->type == JOBTYPE_HAUL);
+    }
+    
+    it("should track active job count correctly") {
+        ClearJobs();
+        
+        expect(activeJobCount == 0);
+        
+        int job1 = CreateJob(JOBTYPE_HAUL);
+        expect(activeJobCount == 1);
+        
+        int job2 = CreateJob(JOBTYPE_DIG);
+        expect(activeJobCount == 2);
+        
+        ReleaseJob(job1);
+        expect(activeJobCount == 1);
+        
+        ReleaseJob(job2);
+        expect(activeJobCount == 0);
+    }
+    
+    it("CreateJob should be O(1) not O(n)") {
+        ClearJobs();
+        
+        // Create many jobs
+        double startTime = GetTime();
+        for (int i = 0; i < 1000; i++) {
+            CreateJob(JOBTYPE_HAUL);
+        }
+        double createTime = GetTime() - startTime;
+        
+        // Release all and recreate (should use free list)
+        for (int i = 0; i < 1000; i++) {
+            ReleaseJob(i);
+        }
+        
+        startTime = GetTime();
+        for (int i = 0; i < 1000; i++) {
+            CreateJob(JOBTYPE_HAUL);
+        }
+        double reuseTime = GetTime() - startTime;
+        
+        // Both should be very fast (< 100ms for 1000 ops - generous for CI)
+        // This verifies O(1) behavior (not O(n) which would be much slower)
+        expect(createTime < 0.1);
+        expect(reuseTime < 0.1);
+        
+        // Reuse time should not be dramatically slower than create time
+        // (if it were O(n) scan, reuse would be much slower)
+        // Allow generous variance for timing noise
+        expect(reuseTime < createTime + 0.1);
+    }
+}
+
+/*
+ * =============================================================================
+ * JOB DRIVER TESTS (Phase 2 of Jobs Refactor)
+ * 
+ * These tests verify that Job Drivers correctly execute jobs:
+ * - Each job type has its own driver function
+ * - Drivers handle the full job lifecycle (start -> progress -> complete)
+ * - Drivers properly release resources on completion/failure
+ * =============================================================================
+ */
+
+describe(job_drivers) {
+    it("should complete haul job via driver: pickup -> carry -> deliver") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        ClearJobs();
+        
+        // Create mover at (1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create stockpile at (5,1) - 2x2
+        int sp = CreateStockpile(5, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        
+        // Create item at (3,1)
+        int itemIdx = SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_RED);
+        
+        // Create a haul job using the new Job pool
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->targetStockpile = sp;
+        job->targetSlotX = 5;
+        job->targetSlotY = 1;
+        job->assignedMover = 0;
+        
+        // Assign job to mover
+        m->currentJobId = jobId;
+        
+        // Reserve item and slot
+        ReserveItem(itemIdx, 0);
+        ReserveStockpileSlot(sp, 5, 1, 0);
+        
+        // Run simulation using the new driver system
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            JobsTickWithDrivers();  // New function using drivers
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Verify haul completed
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        expect(m->currentJobId == -1);  // Job should be released
+        expect(GetJob(jobId)->active == false);
+    }
+    
+    it("should complete dig job via driver: move to adjacent -> dig -> done") {
+        // Setup world with a wall to dig
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover at (1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate wall at (3,1) for digging
+        DesignateDig(3, 1, 0);
+        
+        // Create a dig job using the new Job pool
+        int jobId = CreateJob(JOBTYPE_DIG);
+        Job* job = GetJob(jobId);
+        job->targetDigX = 3;
+        job->targetDigY = 1;
+        job->targetDigZ = 0;
+        job->assignedMover = 0;
+        
+        // Assign job to mover
+        m->currentJobId = jobId;
+        
+        // Reserve designation
+        Designation* d = GetDesignation(3, 1, 0);
+        d->assignedMover = 0;
+        
+        // Run simulation using the new driver system
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            JobsTickWithDrivers();
+            if (grid[0][1][3] == CELL_FLOOR) break;
+        }
+        
+        // Verify dig completed - wall is now floor
+        expect(grid[0][1][3] == CELL_FLOOR);
+        expect(m->currentJobId == -1);
+        expect(GetJob(jobId)->active == false);
+    }
+    
+    it("should complete build job via driver: move to blueprint -> build -> done") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();  // Also clears blueprints
+        ClearJobs();
+        
+        // Create mover at (1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create blueprint at (4,1) - already has materials delivered
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        blueprints[bpIdx].deliveredMaterials = 1;
+        
+        // Create a build job using the new Job pool
+        int jobId = CreateJob(JOBTYPE_BUILD);
+        Job* job = GetJob(jobId);
+        job->targetBlueprint = bpIdx;
+        job->assignedMover = 0;
+        job->progress = 0.0f;
+        
+        // Assign job to mover
+        m->currentJobId = jobId;
+        blueprints[bpIdx].assignedBuilder = 0;
+        blueprints[bpIdx].state = BLUEPRINT_BUILDING;
+        
+        // Run simulation using the new driver system
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            JobsTickWithDrivers();
+            if (grid[0][1][4] == CELL_WALL) break;
+        }
+        
+        // Verify build completed - floor is now wall
+        expect(grid[0][1][4] == CELL_WALL);
+        expect(m->currentJobId == -1);
+        expect(GetJob(jobId)->active == false);
+    }
+    
+    it("should cancel job and release reservations on failure") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create stockpile
+        int sp = CreateStockpile(5, 1, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        
+        // Create item
+        int itemIdx = SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_RED);
+        
+        // Create haul job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->targetStockpile = sp;
+        job->targetSlotX = 5;
+        job->targetSlotY = 1;
+        job->assignedMover = 0;
+        m->currentJobId = jobId;
+        
+        // Reserve item and slot
+        ReserveItem(itemIdx, 0);
+        ReserveStockpileSlot(sp, 5, 1, 0);
+        
+        // Delete the item mid-job (simulate failure)
+        DeleteItem(itemIdx);
+        
+        // Run one tick - driver should detect failure and cancel
+        Tick();
+        JobsTickWithDrivers();
+        
+        // Job should be cancelled, reservations released
+        expect(m->currentJobId == -1);
+        expect(GetJob(jobId)->active == false);
+        // Slot should be released (check reservation)
+        expect(stockpiles[sp].reservedBy[0] == -1);
+    }
+    
+    it("should return mover to idle when job completes") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "....\n"
+            "....\n", 4, 4);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create stockpile right next to mover
+        int sp = CreateStockpile(1, 0, 0, 1, 1);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        
+        // Create item at mover's position (instant pickup)
+        int itemIdx = SpawnItem(CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Create haul job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->targetItem = itemIdx;
+        job->targetStockpile = sp;
+        job->targetSlotX = 1;
+        job->targetSlotY = 0;
+        job->assignedMover = 0;
+        m->currentJobId = jobId;
+        
+        ReserveItem(itemIdx, 0);
+        ReserveStockpileSlot(sp, 1, 0, 0);
+        
+        // Mover should not be in idle list while working
+        RemoveMoverFromIdleList(0);
+        expect(moverIsInIdleList[0] == false);
+        
+        // Run until job completes
+        for (int i = 0; i < 300; i++) {
+            Tick();
+            JobsTickWithDrivers();
+            if (m->currentJobId == -1) break;
+        }
+        
+        // Mover should be back in idle list
+        expect(m->currentJobId == -1);
+        expect(moverIsInIdleList[0] == true);
+    }
+}
+
+/*
+ * =============================================================================
+ * MOVER CAPABILITIES TESTS (Phase 3 of Jobs Refactor)
+ * 
+ * These tests verify that movers can be assigned different capabilities:
+ * - Hauler-only movers only do haul jobs
+ * - Builder-only movers only do build jobs
+ * - Miner-only movers only do dig jobs
+ * - Movers with all capabilities can do all jobs
+ * =============================================================================
+ */
+
+describe(mover_capabilities) {
+    it("should not assign haul job to mover with canHaul=false") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create mover with canHaul=false
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = false;
+        m->capabilities.canMine = true;
+        m->capabilities.canBuild = true;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create stockpile and item
+        int sp = CreateStockpile(5, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Try to assign jobs
+        AssignJobs();
+        
+        // Mover should NOT have a haul job
+        expect(MoverIsIdle(m));
+        expect(m->currentJobId == -1);
+    }
+    
+    it("should not assign dig job to mover with canMine=false") {
+        // Setup world with wall
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create mover with canMine=false
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = true;
+        m->capabilities.canMine = false;
+        m->capabilities.canBuild = true;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Designate wall for digging
+        DesignateDig(3, 1, 0);
+        
+        // Try to assign jobs
+        AssignJobs();
+        
+        // Mover should NOT have a dig job
+        expect(MoverIsIdle(m));
+        expect(m->currentJobId == -1);
+    }
+    
+    it("should not assign build job to mover with canBuild=false") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create mover with canBuild=false
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = true;
+        m->capabilities.canMine = true;
+        m->capabilities.canBuild = false;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create blueprint ready to build
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        blueprints[bpIdx].deliveredMaterials = 1;
+        
+        // Try to assign jobs
+        AssignJobs();
+        
+        // Mover should NOT have a build job
+        expect(MoverIsIdle(m) || !MoverHasBuildJob(m));
+    }
+    
+    it("should assign haul job to hauler-only mover") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create hauler-only mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = true;
+        m->capabilities.canMine = false;
+        m->capabilities.canBuild = false;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create stockpile and item
+        int sp = CreateStockpile(5, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Try to assign jobs
+        AssignJobs();
+        
+        // Mover SHOULD have a haul job
+        expect(MoverIsMovingToPickup(m));
+    }
+    
+    it("should assign build job to builder-only mover") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create builder-only mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = false;
+        m->capabilities.canMine = false;
+        m->capabilities.canBuild = true;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create blueprint ready to build
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        blueprints[bpIdx].deliveredMaterials = 1;
+        
+        // Try to assign jobs
+        AssignJobs();
+        
+        // Mover SHOULD have a build job
+        expect(MoverHasBuildJob(m));
+    }
+    
+    it("hauler delivering material should NOT pick up build job if canBuild=false") {
+        // This tests the key scenario: a hauler delivers material but shouldn't build
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+        RebuildIdleMoverList();
+        
+        // Create hauler-only mover
+        Mover* hauler = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(hauler, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        hauler->capabilities.canHaul = true;
+        hauler->capabilities.canMine = false;
+        hauler->capabilities.canBuild = false;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create blueprint awaiting materials
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        
+        // Spawn an orange item (building material)
+        int itemIdx = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_ORANGE);
+        (void)itemIdx;  // Suppress unused warning
+        
+        // Run until material is delivered
+        for (int i = 0; i < 600; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD) break;
+        }
+        
+        // Material should be delivered
+        expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
+        
+        // Run a few more ticks
+        for (int i = 0; i < 60; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Hauler should NOT have picked up the build job (canBuild=false)
+        expect(!MoverHasBuildJob(hauler));
+        expect(!MoverIsBuilding(hauler));
+    }
+}
+
+/*
+ * =============================================================================
+ * WORKGIVERS TESTS (Phase 4 of Jobs Refactor)
+ * 
+ * These tests verify the modular WorkGiver system that produces jobs:
+ * - Each WorkGiver is a function that tries to create a job for a mover
+ * - WorkGivers are called in priority order
+ * - The system replaces the monolithic AssignJobs() priority sections
+ * =============================================================================
+ */
+
+describe(workgivers) {
+    it("should find haul jobs via WorkGiver_Haul") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create stockpile and item
+        int sp = CreateStockpile(5, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Call WorkGiver_Haul directly
+        int jobId = WorkGiver_Haul(0);
+        
+        // Should create a job
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_HAUL);
+        expect(job->assignedMover == 0);
+    }
+    
+    it("should find dig jobs via WorkGiver_Mining") {
+        // Setup world with wall
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Designate wall for digging
+        DesignateDig(3, 1, 0);
+        
+        // Call WorkGiver_Mining directly
+        int jobId = WorkGiver_Mining(0);
+        
+        // Should create a job
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_DIG);
+        expect(job->assignedMover == 0);
+        expect(job->targetDigX == 3);
+        expect(job->targetDigY == 1);
+    }
+    
+    it("should find build jobs via WorkGiver_Build") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create blueprint ready to build
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        blueprints[bpIdx].deliveredMaterials = 1;
+        
+        // Call WorkGiver_Build directly
+        int jobId = WorkGiver_Build(0);
+        
+        // Should create a job
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_BUILD);
+        expect(job->assignedMover == 0);
+        expect(job->targetBlueprint == bpIdx);
+    }
+    
+    it("should find blueprint haul jobs via WorkGiver_BlueprintHaul") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create blueprint awaiting materials
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+        
+        // Spawn an orange item (building material)
+        SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_ORANGE);
+        
+        // Call WorkGiver_BlueprintHaul directly
+        int jobId = WorkGiver_BlueprintHaul(0);
+        
+        // Should create a job
+        expect(jobId >= 0);
+        Job* job = GetJob(jobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_HAUL_TO_BLUEPRINT);
+        expect(job->assignedMover == 0);
+        expect(job->targetBlueprint == bpIdx);
+    }
+    
+    it("should respect priority order via AssignJobsWithWorkGivers") {
+        // Setup world with both dig designation and haul opportunity
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover with all capabilities
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create stockpile and haul item
+        int sp = CreateStockpile(6, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_RED, true);
+        SpawnItem(CELL_SIZE * 5.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Also create dig designation (higher priority than haul)
+        DesignateDig(3, 1, 0);
+        
+        // Call AssignJobsWithWorkGivers
+        AssignJobsWithWorkGivers();
+        
+        // Mover should have a DIG job (higher priority than haul)
+        expect(m->currentJobId >= 0);
+        Job* job = GetJob(m->currentJobId);
+        expect(job != NULL);
+        expect(job->type == JOBTYPE_DIG);
+    }
+    
+    it("should check capabilities before assigning via workgiver") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover that can NOT mine
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canMine = false;
+        moverCount = 1;
+        RebuildIdleMoverList();
+        
+        // Create dig designation
+        DesignateDig(3, 1, 0);
+        
+        // Call WorkGiver_Mining - should fail because mover can't mine
+        int jobId = WorkGiver_Mining(0);
+        
+        // Should NOT create a job
+        expect(jobId == -1);
+        expect(m->currentJobId == -1);
     }
 }
 
@@ -4532,6 +5600,18 @@ int main(int argc, char* argv[]) {
     test(building_haul_job);
     test(building_job_execution);
     test(building_two_movers);
+    
+    // Job pool tests (Phase 1 of Jobs Refactor)
+    test(job_pool);
+    
+    // Job driver tests (Phase 2 of Jobs Refactor)
+    test(job_drivers);
+    
+    // Mover capabilities tests (Phase 3 of Jobs Refactor)
+    test(mover_capabilities);
+    
+    // WorkGivers tests (Phase 4 of Jobs Refactor)
+    test(workgivers);
     
     return summary();
 }

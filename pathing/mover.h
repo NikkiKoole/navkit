@@ -5,19 +5,6 @@
 #include "pathfinding.h"
 #include <stdbool.h>
 
-// Job states for movers (defined here to avoid circular dependency with jobs.h)
-typedef enum {
-    JOB_IDLE,
-    JOB_MOVING_TO_ITEM,
-    JOB_MOVING_TO_STOCKPILE,
-    JOB_MOVING_TO_DROP,           // Clearing: carrying item away from stockpile to drop on ground
-    JOB_MOVING_TO_DIG,            // Walking to adjacent cell to mine
-    JOB_DIGGING,                  // At mining location, doing work
-    JOB_HAULING_TO_BLUEPRINT,     // Carrying material to blueprint location
-    JOB_MOVING_TO_BUILD,          // Walking to blueprint to construct
-    JOB_BUILDING,                 // At blueprint location, constructing
-} JobState;
-
 // Cell size in pixels (for position calculations)
 #define CELL_SIZE 32
 
@@ -37,8 +24,15 @@ typedef enum {
 #define TICK_RATE 60
 #define TICK_DT (1.0f / TICK_RATE)
 
-// Mover struct (no Color - that's raylib specific, for rendering only)
+// Mover capabilities - determines what job types a mover can do
 typedef struct {
+    bool canHaul;       // Can pick up and deliver items
+    bool canMine;       // Can dig/mine walls
+    bool canBuild;      // Can construct blueprints
+} MoverCapabilities;
+
+// Mover struct (no Color - that's raylib specific, for rendering only)
+typedef struct Mover {
     float x, y, z;              // z for future multi-level support (always 0 for now)
     Point goal;
     Point path[MAX_MOVER_PATH];
@@ -56,20 +50,10 @@ typedef struct {
     float fallTimer;            // Time since last fall (for visual feedback)
     // Cached avoidance vector (recomputed every N frames)
     float avoidX, avoidY;
-    // Job system fields
-    JobState jobState;
-    int targetItem;      // item index we're going to pick up, -1 = none
-    int carryingItem;    // item index we're carrying, -1 = none
-    int targetStockpile; // stockpile index we're delivering to, -1 = none
-    int targetSlotX;     // stockpile slot coordinates
-    int targetSlotY;
-    // Mining job fields
-    int targetDigX;      // designation tile to dig
-    int targetDigY;
-    int targetDigZ;
-    // Building job fields
-    int targetBlueprint; // blueprint index we're hauling to or building, -1 = none
-    float buildProgress; // progress on current build (0.0 to BUILD_WORK_TIME)
+    // Job system
+    int currentJobId;    // Job pool index, -1 = no job (idle)
+    // Capabilities
+    MoverCapabilities capabilities;
 } Mover;
 
 // Stuck detection thresholds

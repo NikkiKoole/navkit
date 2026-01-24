@@ -534,18 +534,12 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->lastY = y;
     m->lastZ = z;
     m->timeWithoutProgress = 0.0f;
-    // Job system fields
-    m->jobState = JOB_IDLE;
-    m->targetItem = -1;
-    m->carryingItem = -1;
-    m->targetStockpile = -1;
-    m->targetSlotX = -1;
-    m->targetSlotY = -1;
-    m->targetDigX = -1;
-    m->targetDigY = -1;
-    m->targetDigZ = -1;
-    m->targetBlueprint = -1;
-    m->buildProgress = 0.0f;
+    // Job system
+    m->currentJobId = -1;
+    // Capabilities - default to all enabled
+    m->capabilities.canHaul = true;
+    m->capabilities.canMine = true;
+    m->capabilities.canBuild = true;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen) {
@@ -715,7 +709,7 @@ void UpdateMovers(void) {
         if (m->pathIndex < 0 || m->pathLength == 0) {
             // Track stuck time for movers with jobs but no path
             // This allows job stuck detection to work (it checks timeWithoutProgress > JOB_STUCK_TIME)
-            if (m->jobState != JOB_IDLE) {
+            if (m->currentJobId >= 0) {
                 m->timeWithoutProgress += dt;
                 // Trigger periodic repaths while stuck
                 if (m->timeWithoutProgress > STUCK_REPATH_TIME && 
@@ -724,7 +718,7 @@ void UpdateMovers(void) {
                 }
             }
             
-            if (endlessMoverMode && m->jobState == JOB_IDLE) {
+            if (endlessMoverMode && m->currentJobId < 0) {
                 // Only assign random goals to movers without jobs
                 // (movers with jobs should use repath logic instead)
                 if (m->repathCooldown > 0) {
@@ -742,7 +736,7 @@ void UpdateMovers(void) {
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
                     }
                 }
-            } else if (m->jobState == JOB_IDLE) {
+            } else if (m->currentJobId < 0) {
                 // Only deactivate if not on a job
                 m->active = false;
             }
@@ -961,7 +955,7 @@ void ProcessMoverRepaths(void) {
             if (!IsCellWalkableAt(m->goal.z, m->goal.y, m->goal.x)) {
                 // Goal is unwalkable (wall placed on it)
                 // Only assign new random goal if mover has no job - otherwise let job system handle it
-                if (m->jobState == JOB_IDLE) {
+                if (m->currentJobId < 0) {
                     Point oldGoal = m->goal;
                     AssignNewMoverGoal(m);
                     if (m->pathLength > 0) {
