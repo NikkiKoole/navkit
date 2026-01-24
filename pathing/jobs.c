@@ -257,6 +257,10 @@ void AssignJobs(void) {
     // This enables O(1) checks in FindFreeStockpileSlot instead of O(items) per slot
     RebuildStockpileGroundItemCache();
     
+    // Rebuild free slot counts (O(stockpiles × slots), once per frame)
+    // This enables O(1) "is stockpile full?" check in FindStockpileForItem
+    RebuildStockpileFreeSlotCounts();
+    
     // Cache which item types have available stockpiles
     bool typeHasStockpile[3] = {false, false, false};
     for (int t = 0; t < 3; t++) {

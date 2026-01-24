@@ -79,6 +79,31 @@ void RebuildStockpileGroundItemCache(void) {
         MarkStockpileGroundItem(items[i].x, items[i].y, (int)items[i].z, true);
     }
 }
+
+// Rebuild free slot counts for all stockpiles
+// A slot is "free" if: active cell, not reserved, not full, no ground item blocking
+void RebuildStockpileFreeSlotCounts(void) {
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        if (!stockpiles[i].active) continue;
+        Stockpile* sp = &stockpiles[i];
+        
+        int freeCount = 0;
+        for (int ly = 0; ly < sp->height; ly++) {
+            for (int lx = 0; lx < sp->width; lx++) {
+                int idx = ly * sp->width + lx;
+                if (!sp->cells[idx]) continue;            // inactive cell
+                if (sp->reservedBy[idx] != -1) continue;  // reserved
+                if (sp->hasGroundItem[idx]) continue;     // ground item blocking
+                // Check if slot has room (empty or partial stack)
+                if (sp->slotCounts[idx] < sp->maxStackSize) {
+                    freeCount++;
+                }
+            }
+        }
+        sp->freeSlotCount = freeCount;
+    }
+}
+
 int CreateStockpile(int x, int y, int z, int width, int height) {
     // Find first inactive slot
     for (int i = 0; i < MAX_STOCKPILES; i++) {
@@ -325,6 +350,7 @@ int FindStockpileForItem(ItemType type, int* outSlotX, int* outSlotY) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         if (!stockpiles[i].allowedTypes[type]) continue;
+        if (stockpiles[i].freeSlotCount <= 0) continue;  // O(1) early exit if full
         
         int slotX, slotY;
         if (FindFreeStockpileSlot(i, type, &slotX, &slotY)) {
