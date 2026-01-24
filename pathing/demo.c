@@ -680,7 +680,7 @@ void DrawItems(void) {
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
 
         // Tint reserved items slightly darker
-        Color tint = (item->reservedBy >= 0) ? GRAY : WHITE;
+        Color tint = (item->reservedBy >= 0) ? (Color) { 200, 200, 200, 255 } : WHITE;
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
     }
 }
@@ -745,16 +745,6 @@ void DrawStockpiles(void) {
                         Rectangle destItem = { itemX, itemY, itemSize, itemSize };
                         DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
                     }
-
-                    // for (int pos = 0; pos < visibleCount; pos++) {
-                    //     float itemX = sx + size * 0.5f - itemSize * 0.5f - pos * stackOffset;
-                    //     float itemY = sy + size * 0.5f - itemSize * 0.5f - pos * stackOffset;
-
-                    //     Rectangle srcItem = SpriteGetRect(sprite);
-                    //     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
-                    //     DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
-                    // }
-
                 }
             }
         }
@@ -1017,11 +1007,11 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 
     // Get job info from Job struct
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
-    
+
     // Job type names
     const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "DIG", "HAUL_TO_BP", "BUILD"};
     const char* jobTypeName = job ? (job->type < 6 ? jobTypeNames[job->type] : "?") : "IDLE";
-    
+
     // Extract job data
     int carryingItem = job ? job->carryingItem : -1;
     int targetStockpile = job ? job->targetStockpile : -1;
@@ -1051,9 +1041,9 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         float dx = m->x - item->x;
         float dy = m->y - item->y;
         float dist = sqrtf(dx*dx + dy*dy);
-        snprintf(line7, sizeof(line7), "Item #%d at (%.1f,%.1f) dist=%.1f", 
+        snprintf(line7, sizeof(line7), "Item #%d at (%.1f,%.1f) dist=%.1f",
             targetItem, item->x, item->y, dist);
-        snprintf(line8, sizeof(line8), "Pickup radius: %.1f %s", 
+        snprintf(line8, sizeof(line8), "Pickup radius: %.1f %s",
             pickupRadius, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
         numLines = 8;
     }
@@ -1104,7 +1094,7 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawTextShadow(line5, tx + padding, y, 14, m->pathLength > 0 ? WHITE : RED);
     y += lineH;
     DrawTextShadow(line6, tx + padding, y, 14, targetStockpile >= 0 ? WHITE : GRAY);
-    
+
     // Debug lines for moving-to-item state
     if (numLines == 8 && targetItem >= 0 && items[targetItem].active) {
         y += lineH;
@@ -1815,6 +1805,22 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Small Grid (32x32)")) {
             InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            gridDepth = 6;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+            BuildEntrances();
+            BuildGraph();
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
+        if (PushButton(x, y, "Medium Grid (64x64)")) {
+            InitGridWithSizeAndChunkSize(64, 64, 8, 8);
             gridDepth = 6;
             // Set z>0 to air (z=0 already walkable from init)
             for (int z = 1; z < gridDepth; z++)

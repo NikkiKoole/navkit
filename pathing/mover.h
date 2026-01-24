@@ -11,7 +11,7 @@
 // Mover constants
 #define MAX_MOVERS 10000
 #define MAX_MOVER_PATH 1024
-#define MOVER_SPEED 100.0f
+#define MOVER_SPEED 200.0f
 #define MAX_REPATHS_PER_FRAME 10
 #define REPATH_COOLDOWN_FRAMES 30
 
