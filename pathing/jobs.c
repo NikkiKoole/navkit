@@ -16,8 +16,6 @@
 #define DROP_RADIUS (CELL_SIZE * 0.75f)    // Same as pickup - covers whole cell reliably
 #define JOB_STUCK_TIME 3.0f  // Cancel job if stuck for this long
 #define UNREACHABLE_COOLDOWN 5.0f  // Seconds before retrying unreachable item
-#define MAX_JOBS_PER_FRAME 5  // Limit job assignments per frame to prevent spikes
-
 // Radius search for finding idle movers near items (in pixels)
 #define MOVER_SEARCH_RADIUS (CELL_SIZE * 50)  // Search 50 tiles around item for idle mover
 
