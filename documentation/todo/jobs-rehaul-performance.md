@@ -179,15 +179,17 @@ void WorkGiver_Haul(Mover* m) {
 
 **Job Assignment:**
 - `AssignJobs()` delegates to `AssignJobsLegacy()` (item-centric, fast)
-- Creates `Job` structs inline without calling WorkGiver functions
+- Creates `Job` structs **inline** without calling WorkGiver functions
 
 ### What EXISTS but is NOT used in production
 
-**WorkGiver Functions:**
+**WorkGiver Functions (dead code when using Legacy):**
 - `WorkGiver_Haul()`, `WorkGiver_Rehaul()`, `WorkGiver_StockpileMaintenance()` - hauling jobs
 - `WorkGiver_Mining()`, `WorkGiver_BlueprintHaul()`, `WorkGiver_Build()` - sparse jobs
 
 These are mover-centric: given a mover, find work for it. They work correctly but are slower for hauling because hauling has many targets (items).
+
+If you stick with `AssignJobsLegacy()`, the WorkGiver code is essentially dead code that only runs in tests/benchmarks.
 
 **AssignJobsHybrid():**
 - Uses item-centric iteration for hauling (inline, like Legacy)
@@ -195,23 +197,72 @@ These are mover-centric: given a mover, find work for it. They work correctly bu
 - Performance matches Legacy
 - Could replace Legacy if we want cleaner WorkGiver usage for sparse jobs
 
+## Why WorkGivers Are Slower
+
+**Item-centric (Legacy):**
+```c
+for each item:                         // 500 items
+    find nearest idle mover            // O(1) with spatial grid
+    create job
+// Total: ~500 operations
+```
+
+**Mover-centric (WorkGivers):**
+```c
+for each mover:                        // 100 movers
+    WorkGiver_Haul(mover):
+        for each item:                 // 500 items
+            is this item valid?
+            is it closer than best?
+        create job for best item
+// Total: 100 × 500 = 50,000 operations
+```
+
+Plus each WorkGiver rebuilds caches on every call.
+
+**The fundamental issue:**
+- Item-centric: "Here's an item, who's closest?" → One search per item
+- Mover-centric: "Here's a mover, what's best for them?" → Search ALL items per mover
+
+With 100 movers and 500 items: 500 vs 50,000 comparisons.
+
 ---
 
 ## Future Improvement Ideas
 
-### Use WorkGivers for targeted job assignment
+### Split into two parts
 
-Currently we never call `WorkGiver_Haul()` in production. But there's a use case:
+**Part 1: Batch Assignment (current)**
+- Runs every tick via `AssignJobs()`
+- Item-centric, handles bulk hauling work
+- Keep as optimized as possible
 
-**Scenario:** A mover just finished a job and is now idle. Instead of waiting for next `AssignJobs()` tick, we could immediately call:
+**Part 2: Single-Mover Assignment (new idea)**
+- Runs when a mover becomes idle mid-tick (after completing a job)
+- Mover-centric is fine here - it's ONE mover, not 100
+- Call WorkGivers directly for instant reassignment
+
 ```c
-// Mover just became idle - find work immediately
-int jobId = WorkGiver_Haul(moverIdx);
-if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
-// etc.
+// In JobsTick, when a job completes:
+if (result == JOBRUN_DONE) {
+    ReleaseJob(m->currentJobId);
+    m->currentJobId = -1;
+    
+    // NEW: Try to immediately assign next job
+    int jobId = WorkGiver_Haul(moverIdx);
+    if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
+    // etc.
+    
+    if (jobId < 0) {
+        AddMoverToIdleList(moverIdx);  // Only idle if no work found
+    }
+}
 ```
 
-This would give instant job assignment for individual movers. The WorkGiver functions are designed for exactly this - they're just slow when called for ALL movers in a loop.
+This way:
+- Batch assignment stays fast (item-centric)
+- Individual movers get instant reassignment (WorkGivers finally useful!)
+- WorkGivers have a purpose beyond "slow alternative for benchmarking"
 
 ### Optimize WorkGiver_Haul for single-mover use
 
