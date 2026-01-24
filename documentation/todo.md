@@ -89,6 +89,9 @@ Want me to add a note about this flow field / pheromone overlap to the todo or c
 ## See Also (Design Docs)
 
 - [jobs-roadmap.md](jobs-roadmap.md) - Jobs system expansion (mining, construction, crafting, architecture refactor)
+- [needs-vs-jobs.md](needs-vs-jobs.md) - Separating individual needs (eating, sleeping) from colony jobs (future)
+- [vision.md](vision.md) - What this game is and isn't (tone, influences, aesthetic)
+- [entropy.md](entropy.md) - Decay, growth, maintenance loops, seasons, water flow
 - [logistics-influences.md](logistics-influences.md) - Research on Factorio, belt games, SimTower influences
 - [next-steps-analysis.md](next-steps-analysis.md) - External review validating our roadmap + mechanics to steal
 - [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim with 2.5D views (detailed phases)
