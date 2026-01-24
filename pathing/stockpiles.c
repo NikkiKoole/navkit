@@ -240,7 +240,7 @@ void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed) {
 bool StockpileAcceptsType(int stockpileIdx, ItemType type) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
     if (!stockpiles[stockpileIdx].active) return false;
-    if (type < 0 || type > 2) return false;
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return false;
     
     return stockpiles[stockpileIdx].allowedTypes[type];
 }
