@@ -25,13 +25,13 @@
 
 **Possible fix:** Temporary "swap buffer" - allow one item to be dropped to ground to break the deadlock. Or detect this case and force a safe-drop.
 
-### 2. FindFreeStockpileSlot still expensive when stockpiles are full
+### 2. ~~FindFreeStockpileSlot still expensive when stockpiles are full~~ FIXED (commit `205dfc7`)
 **Repro:** Many items on ground, but all stockpiles are full (no room). Profiler shows:
 - `AssignJobs` → `FindStockpileForItem` → `FindFreeStockpileSlot` taking 35%+ of frame time
 
 **Cause:** For each ground item, we call `FindStockpileForItem` which scans all stockpiles calling `FindFreeStockpileSlot` on each. Even though slots are full, we still iterate all tiles checking for free slots.
 
-**Possible fix:** Cache "stockpile has free slots" flag per stockpile. Update when slots are reserved/released. Early exit in `FindStockpileForItem` if stockpile has no free slots.
+**Fix:** Added `freeSlotCount` per stockpile, rebuilt once per frame via `RebuildStockpileFreeSlotCounts()`. `FindStockpileForItem` now skips stockpiles with `freeSlotCount <= 0`.
 
 ---
 
