@@ -589,6 +589,7 @@ int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
             for (int lx = 0; lx < sp->width; lx++) {
                 int idx = ly * sp->width + lx;
                 if (!sp->cells[idx]) continue;  // skip inactive cells
+                if (!sp->hasGroundItem[idx]) continue;  // O(1) cache check - skip if no ground item
                 
                 int tileX = sp->x + lx;
                 int tileY = sp->y + ly;
