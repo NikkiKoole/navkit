@@ -7,29 +7,57 @@ Research and planning document for expanding the navkit job system beyond haulin
 ## Status Summary (January 2026)
 
 ### What's Working
-We followed **Option C (Hybrid)** from the original plan: added mining and construction with the current architecture, accepting that code may need rewriting later. This validated the gameplay loop quickly.
+We followed **Option C (Hybrid)** from the original plan: added mining and construction with the current architecture, then did the architecture refactor.
 
-**Completed:**
-- Mining: Designations, JOB_MOVING_TO_DIG, JOB_DIGGING, terrain modification, ITEM_ORANGE spawning
-- Construction: Blueprints, JOB_HAULING_TO_BLUEPRINT, JOB_MOVING_TO_BUILD, JOB_BUILDING
+**Completed Features:**
+- Mining: Designations, dig jobs, terrain modification, ITEM_ORANGE spawning
+- Construction: Blueprints, material hauling, build jobs
 - Full loop works: Mine wall → Orange block spawns → Haul to stockpile → Use for building walls
 
-**Current Pain Points (as predicted):**
-- Job data still embedded in Mover struct (many fields added)
-- `AssignJobs()` has grown with more priority passes
-- `JobsTick()` is a large switch statement with many states
-- **Hauler/builder separation**: Same mover does both haul and build (no profession system)
+### Architecture Refactor: What Worked vs What Didn't
 
-### Next Step: Architecture Refactor
+We attempted the full refactor from Phase 0. Here's how it went:
 
-The system works but is approaching the complexity threshold. Before adding crafting/farming, we should do the refactor:
+| Component | Roadmap Vision | Reality | Status |
+|-----------|---------------|---------|--------|
+| Job Pool | `Job` structs, `mover.currentJobId` | Works great | ✓ IN USE |
+| Job Drivers | Per-type step functions | Works great | ✓ IN USE |
+| WorkGivers | Modular job producers replacing `AssignJobs()` | 40-100x slower for hauling | ✗ NOT USED |
+| Mover Capabilities | `canHaul`, `canMine`, `canBuild` flags | Works great | ✓ IN USE |
 
-1. **Job Pool** - Move job data out of Mover into separate `Job` structs
-2. **Job Drivers** - Per-type step functions instead of giant switch
-3. **WorkGivers** - Modular job producers instead of monolithic `AssignJobs()`
-4. **Mover Capabilities** - Simple flags or priorities for which movers do which jobs
+**What succeeded:**
+- Job data moved out of Mover into `Job` structs
+- `JobsTick()` is now clean (driver lookup table, not giant switch)
+- Hauler/builder separation works via MoverCapabilities
+- Adding new job types is now easy (just add a driver)
 
-This refactor would properly solve the hauler/builder separation issue and make adding new job types clean.
+**What didn't pan out:**
+The roadmap envisioned `AssignJobs()` calling WorkGivers in priority order:
+```c
+// What the roadmap envisioned:
+void AssignJobs(void) {
+    for each idle mover:
+        for each WorkGiver in priority order:
+            if (WorkGiver finds job) break;
+}
+```
+
+This is exactly what `AssignJobsWorkGivers()` does — and it's **40-100x slower** than the original code. The problem is iteration order:
+
+- **Item-centric (fast):** For each item, find nearest mover → O(items)
+- **Mover-centric (slow):** For each mover, search all items → O(movers × items)
+
+With 100 movers and 500 items: 500 vs 50,000 comparisons.
+
+**Current state:**
+- `AssignJobs()` still uses `AssignJobsLegacy()` (item-centric, inline job creation)
+- WorkGiver functions exist but are not called in production
+- See `documentation/todo/jobs-rehaul-performance.md` for details and future ideas
+
+### Pain Points Resolved
+- ~~Job data embedded in Mover~~ → Now in Job pool
+- ~~JobsTick() is giant switch~~ → Now uses Job Drivers
+- ~~Hauler/builder separation~~ → Now uses MoverCapabilities
 
 ---
 
