@@ -3686,6 +3686,93 @@ static void RunBenchmarks(void) {
     
     FreeItemSpatialGrid();
     printf("\n");
+    
+    // Benchmark: AssignJobsLegacy vs AssignJobsWorkGivers
+    printf("--- AssignJobsLegacy vs AssignJobsWorkGivers ---\n");
+    
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    InitItemSpatialGrid(100, 100, 4);
+    
+    // Setup: stockpile + scattered items
+    int sp = CreateStockpile(80, 80, 0, 10, 10);
+    SetStockpileFilter(sp, ITEM_RED, true);
+    
+    // Spawn items across the grid
+    SetRandomSeed(54321);
+    for (int i = 0; i < 500; i++) {
+        float x = GetRandomValue(5, 70) * CELL_SIZE + CELL_SIZE * 0.5f;
+        float y = GetRandomValue(5, 70) * CELL_SIZE + CELL_SIZE * 0.5f;
+        SpawnItem(x, y, 0.0f, ITEM_RED);
+    }
+    BuildItemSpatialGrid();
+    
+    // Create movers
+    int moverTestCounts[] = {10, 50, 100};
+    int numMoverTests = 3;
+    
+    for (int mc = 0; mc < numMoverTests; mc++) {
+        int targetMovers = moverTestCounts[mc];
+        ClearMovers();
+        ClearJobs();
+        
+        for (int i = 0; i < targetMovers; i++) {
+            float mx = GetRandomValue(10, 60) * CELL_SIZE + CELL_SIZE * 0.5f;
+            float my = GetRandomValue(10, 60) * CELL_SIZE + CELL_SIZE * 0.5f;
+            Mover* m = &movers[moverCount];
+            Point goal = {(int)(mx/CELL_SIZE), (int)(my/CELL_SIZE), 0};
+            InitMover(m, mx, my, 0, goal, 100.0f);
+            moverCount++;
+        }
+        
+        int numIterations = 100;
+        
+        // Benchmark: Legacy (item-centric, fast)
+        volatile int legacySum = 0;
+        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
+        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
+        ClearJobs();
+        
+        double legacyStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            for (int m = 0; m < targetMovers; m++) {
+                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
+                movers[m].currentJobId = -1;
+            }
+            for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
+            AssignJobsLegacy();
+            legacySum += idleMoverCount;
+        }
+        double legacyTime = (GetBenchTime() - legacyStart) * 1000.0;
+        (void)legacySum;
+        
+        // Benchmark: WorkGivers (mover-centric, slower)
+        volatile int wgSum = 0;
+        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
+        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
+        ClearJobs();
+        
+        double wgStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            for (int m = 0; m < targetMovers; m++) {
+                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
+                movers[m].currentJobId = -1;
+            }
+            for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
+            AssignJobsWorkGivers();
+            wgSum += idleMoverCount;
+        }
+        double wgTime = (GetBenchTime() - wgStart) * 1000.0;
+        (void)wgSum;
+        
+        double ratio = (legacyTime > 0.001) ? wgTime / legacyTime : 0;
+        printf("  %3d movers: Legacy=%.3fms  WorkGivers=%.3fms  (%.1fx slower)\n",
+               targetMovers, legacyTime, wgTime, ratio);
+    }
+    
+    FreeItemSpatialGrid();
+    printf("\n");
 }
 
 /*
@@ -4826,14 +4913,18 @@ describe(job_drivers) {
         // Assign job to mover
         m->currentJobId = jobId;
         
+        // Set mover goal to item location
+        m->goal = (Point){3, 1, 0};
+        m->needsRepath = true;
+        
         // Reserve item and slot
         ReserveItem(itemIdx, 0);
         ReserveStockpileSlot(sp, 5, 1, 0);
         
-        // Run simulation using the new driver system
+        // Run simulation
         for (int i = 0; i < 600; i++) {
             Tick();
-            JobsTickWithDrivers();  // New function using drivers
+            JobsTick();
             if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
         }
         
@@ -4877,14 +4968,18 @@ describe(job_drivers) {
         // Assign job to mover
         m->currentJobId = jobId;
         
+        // Set mover goal to adjacent tile (2,1 is adjacent to wall at 3,1)
+        m->goal = (Point){2, 1, 0};
+        m->needsRepath = true;
+        
         // Reserve designation
         Designation* d = GetDesignation(3, 1, 0);
         d->assignedMover = 0;
         
-        // Run simulation using the new driver system
+        // Run simulation
         for (int i = 0; i < 600; i++) {
             Tick();
-            JobsTickWithDrivers();
+            JobsTick();
             if (grid[0][1][3] == CELL_FLOOR) break;
         }
         
@@ -4931,10 +5026,14 @@ describe(job_drivers) {
         blueprints[bpIdx].assignedBuilder = 0;
         blueprints[bpIdx].state = BLUEPRINT_BUILDING;
         
+        // Set mover goal to blueprint location
+        m->goal = (Point){4, 1, 0};
+        m->needsRepath = true;
+        
         // Run simulation using the new driver system
         for (int i = 0; i < 600; i++) {
             Tick();
-            JobsTickWithDrivers();
+            JobsTick();
             if (grid[0][1][4] == CELL_WALL) break;
         }
         
@@ -4989,7 +5088,7 @@ describe(job_drivers) {
         
         // Run one tick - driver should detect failure and cancel
         Tick();
-        JobsTickWithDrivers();
+        JobsTick();
         
         // Job should be cancelled, reservations released
         expect(m->currentJobId == -1);
@@ -5037,6 +5136,10 @@ describe(job_drivers) {
         ReserveItem(itemIdx, 0);
         ReserveStockpileSlot(sp, 1, 0, 0);
         
+        // Set mover goal to item location (same as mover position for instant pickup)
+        m->goal = (Point){0, 0, 0};
+        m->needsRepath = true;
+        
         // Mover should not be in idle list while working
         RemoveMoverFromIdleList(0);
         expect(moverIsInIdleList[0] == false);
@@ -5044,7 +5147,7 @@ describe(job_drivers) {
         // Run until job completes
         for (int i = 0; i < 300; i++) {
             Tick();
-            JobsTickWithDrivers();
+            JobsTick();
             if (m->currentJobId == -1) break;
         }
         
@@ -5461,7 +5564,7 @@ describe(workgivers) {
         expect(job->targetBlueprint == bpIdx);
     }
     
-    it("should respect priority order via AssignJobsWithWorkGivers") {
+    it("should respect priority order: haul before mining") {
         // Setup world with both dig designation and haul opportunity
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5487,17 +5590,17 @@ describe(workgivers) {
         SetStockpileFilter(sp, ITEM_RED, true);
         SpawnItem(CELL_SIZE * 5.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
-        // Also create dig designation (higher priority than haul)
+        // Also create dig designation (lower priority than haul in AssignJobs)
         DesignateDig(3, 1, 0);
         
-        // Call AssignJobsWithWorkGivers
-        AssignJobsWithWorkGivers();
+        // Call AssignJobs - haul has higher priority than mining
+        AssignJobs();
         
-        // Mover should have a DIG job (higher priority than haul)
+        // Mover should have a HAUL job (higher priority than dig)
         expect(m->currentJobId >= 0);
         Job* job = GetJob(m->currentJobId);
         expect(job != NULL);
-        expect(job->type == JOBTYPE_DIG);
+        expect(job->type == JOBTYPE_HAUL);
     }
     
     it("should check capabilities before assigning via workgiver") {

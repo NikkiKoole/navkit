@@ -594,8 +594,10 @@ void DrawMovers(void) {
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
 
         // Draw carried item above mover's head
-        if (m->carryingItem >= 0 && items[m->carryingItem].active) {
-            Item* item = &items[m->carryingItem];
+        Job* moverJob = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+        int carryingItem = moverJob ? moverJob->carryingItem : -1;
+        if (carryingItem >= 0 && items[carryingItem].active) {
+            Item* item = &items[carryingItem];
             int sprite;
             switch (item->type) {
                 case ITEM_RED:    sprite = SPRITE_crate_red;    break;
@@ -1013,9 +1015,20 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     Mover* m = &movers[moverIdx];
     if (!m->active) return;
 
-    // Job state names
-    const char* jobStateNames[] = {"IDLE", "MOVING_TO_ITEM", "MOVING_TO_STOCKPILE", "MOVING_TO_DROP"};
-    const char* jobStateName = (m->jobState >= 0 && m->jobState <= 3) ? jobStateNames[m->jobState] : "?";
+    // Get job info from Job struct
+    Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+    
+    // Job type names
+    const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "DIG", "HAUL_TO_BP", "BUILD"};
+    const char* jobTypeName = job ? (job->type < 6 ? jobTypeNames[job->type] : "?") : "IDLE";
+    
+    // Extract job data
+    int carryingItem = job ? job->carryingItem : -1;
+    int targetStockpile = job ? job->targetStockpile : -1;
+    int targetSlotX = job ? job->targetSlotX : -1;
+    int targetSlotY = job ? job->targetSlotY : -1;
+    int targetItem = job ? job->targetItem : -1;
+    int jobStep = job ? job->step : 0;
 
     // Build tooltip lines
     char line1[64], line2[64], line3[64], line4[64], line5[64], line6[64];
@@ -1023,23 +1036,23 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     char line8[64] = "";  // Debug: pickup radius info
     snprintf(line1, sizeof(line1), "Mover #%d", moverIdx);
     snprintf(line2, sizeof(line2), "Pos: (%.1f, %.1f, %.0f)", m->x, m->y, m->z);
-    snprintf(line3, sizeof(line3), "Job: %s", jobStateName);
-    snprintf(line4, sizeof(line4), "Carrying: %s", m->carryingItem >= 0 ? TextFormat("#%d", m->carryingItem) : "none");
+    snprintf(line3, sizeof(line3), "Job: %s (step %d)", jobTypeName, jobStep);
+    snprintf(line4, sizeof(line4), "Carrying: %s", carryingItem >= 0 ? TextFormat("#%d", carryingItem) : "none");
     snprintf(line5, sizeof(line5), "Path: %d/%d, Goal: (%d,%d)",
         m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y);
     snprintf(line6, sizeof(line6), "Target SP: %d, Slot: (%d,%d)",
-        m->targetStockpile, m->targetSlotX, m->targetSlotY);
+        targetStockpile, targetSlotX, targetSlotY);
 
-    // Debug info when moving to item
+    // Debug info when moving to item (step 0 of haul/clear/haul_to_bp jobs)
     int numLines = 6;
     float pickupRadius = CELL_SIZE * 0.75f;
-    if (m->jobState == JOB_MOVING_TO_ITEM && m->targetItem >= 0 && items[m->targetItem].active) {
-        Item* item = &items[m->targetItem];
+    if (job && jobStep == 0 && targetItem >= 0 && items[targetItem].active) {
+        Item* item = &items[targetItem];
         float dx = m->x - item->x;
         float dy = m->y - item->y;
         float dist = sqrtf(dx*dx + dy*dy);
         snprintf(line7, sizeof(line7), "Item #%d at (%.1f,%.1f) dist=%.1f", 
-            m->targetItem, item->x, item->y, dist);
+            targetItem, item->x, item->y, dist);
         snprintf(line8, sizeof(line8), "Pickup radius: %.1f %s", 
             pickupRadius, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
         numLines = 8;
@@ -1084,22 +1097,22 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     y += lineH;
     DrawTextShadow(line2, tx + padding, y, 14, WHITE);
     y += lineH;
-    DrawTextShadow(line3, tx + padding, y, 14, m->jobState == JOB_IDLE ? GRAY : GREEN);
+    DrawTextShadow(line3, tx + padding, y, 14, !job ? GRAY : GREEN);
     y += lineH;
-    DrawTextShadow(line4, tx + padding, y, 14, m->carryingItem >= 0 ? ORANGE : GRAY);
+    DrawTextShadow(line4, tx + padding, y, 14, carryingItem >= 0 ? ORANGE : GRAY);
     y += lineH;
     DrawTextShadow(line5, tx + padding, y, 14, m->pathLength > 0 ? WHITE : RED);
     y += lineH;
-    DrawTextShadow(line6, tx + padding, y, 14, m->targetStockpile >= 0 ? WHITE : GRAY);
+    DrawTextShadow(line6, tx + padding, y, 14, targetStockpile >= 0 ? WHITE : GRAY);
     
     // Debug lines for moving-to-item state
-    if (numLines == 8) {
+    if (numLines == 8 && targetItem >= 0 && items[targetItem].active) {
         y += lineH;
         DrawTextShadow(line7, tx + padding, y, 14, SKYBLUE);
         y += lineH;
         // Color based on whether in range
-        float dx = m->x - items[m->targetItem].x;
-        float dy = m->y - items[m->targetItem].y;
+        float dx = m->x - items[targetItem].x;
+        float dy = m->y - items[targetItem].y;
         float dist = sqrtf(dx*dx + dy*dy);
         DrawTextShadow(line8, tx + padding, y, 14, dist < pickupRadius ? GREEN : RED);
     }

@@ -188,68 +188,8 @@ Job* GetJob(int jobId) {
 // Job Drivers (Phase 2)
 // =============================================================================
 
-// Helper: Cancel a job using the new Job pool system
-static void CancelJobNew(Job* job, Mover* m, int moverIdx) {
-    // Release item reservation
-    if (job->targetItem >= 0 && job->targetItem < MAX_ITEMS) {
-        ReleaseItemReservation(job->targetItem);
-    }
-    
-    // Release stockpile slot reservation
-    if (job->targetStockpile >= 0 && job->targetSlotX >= 0 && job->targetSlotY >= 0) {
-        ReleaseStockpileSlot(job->targetStockpile, job->targetSlotX, job->targetSlotY);
-    }
-    
-    // Safe-drop carried item
-    if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-        Item* item = &items[job->carryingItem];
-        item->state = ITEM_ON_GROUND;
-        item->x = m->x;
-        item->y = m->y;
-        item->z = m->z;
-        item->reservedBy = -1;
-    }
-    
-    // Release dig designation
-    if (job->targetDigX >= 0 && job->targetDigY >= 0 && job->targetDigZ >= 0) {
-        Designation* d = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-        if (d && d->assignedMover == moverIdx) {
-            d->assignedMover = -1;
-            d->progress = 0.0f;
-        }
-    }
-    
-    // Release blueprint reservation
-    if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
-        Blueprint* bp = &blueprints[job->targetBlueprint];
-        if (bp->active) {
-            if (bp->assignedBuilder == moverIdx) {
-                bp->assignedBuilder = -1;
-                bp->state = BLUEPRINT_READY_TO_BUILD;
-                bp->progress = 0.0f;
-            }
-        }
-    }
-    
-    // Reset mover
-    m->currentJobId = -1;
-    
-    // Add to idle list
-    AddMoverToIdleList(moverIdx);
-}
-
-// Helper: Complete a job successfully
-static void CompleteJobNew(Job* job, Mover* m, int moverIdx) {
-    // Release the job
-    int jobId = (int)(job - jobs);  // Calculate job index
-    ReleaseJob(jobId);
-    
-    // Reset mover
-    m->currentJobId = -1;
-    
-    // Add to idle list
-    AddMoverToIdleList(moverIdx);
-}
+// Forward declaration for helper function used by drivers
+static void ClearSourceStockpileSlot(Item* item);
 
 // Haul job driver: pick up item -> carry to stockpile -> drop
 JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
@@ -285,9 +225,15 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
         
         // Set goal to item if not already moving there
-        if (mover->pathLength == 0) {
+        if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
+        }
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
         }
         
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
@@ -342,6 +288,11 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
         
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+        
         // Update carried item position
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
@@ -376,14 +327,136 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
-// Clear job driver: pick up item -> carry to safe drop location
+// Clear job driver: pick up item -> carry to safe drop location outside stockpile
 JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
-    // Similar to haul but drops on ground instead of stockpile
-    // For now, reuse haul logic with minor modifications
     (void)dt;
-    (void)job;
-    (void)moverPtr;
-    // TODO: Implement when needed
+    Mover* mover = (Mover*)moverPtr;
+    
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+        
+        // Check if item still exists
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+        
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)(item->z);
+        
+        // Check if item's cell became a wall
+        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+        
+        float dx = mover->x - item->x;
+        float dy = mover->y - item->y;
+        float distSq = dx*dx + dy*dy;
+        
+        // Final approach
+        if (mover->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+        
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Pick up the item
+            if (item->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(item);
+            }
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+            
+            // Find drop location outside stockpile
+            int moverTileX = (int)(mover->x / CELL_SIZE);
+            int moverTileY = (int)(mover->y / CELL_SIZE);
+            
+            bool foundDrop = false;
+            for (int radius = 1; radius <= 5 && !foundDrop; radius++) {
+                for (int dy2 = -radius; dy2 <= radius && !foundDrop; dy2++) {
+                    for (int dx2 = -radius; dx2 <= radius && !foundDrop; dx2++) {
+                        if (abs(dx2) != radius && abs(dy2) != radius) continue;
+                        int checkX = moverTileX + dx2;
+                        int checkY = moverTileY + dy2;
+                        if (checkX < 0 || checkY < 0) continue;
+                        if (checkX >= gridWidth || checkY >= gridHeight) continue;
+                        if (!IsCellWalkableAt((int)mover->z, checkY, checkX)) continue;
+                        
+                        int tempSpIdx;
+                        if (IsPositionInStockpile(checkX * CELL_SIZE + CELL_SIZE * 0.5f, 
+                                                  checkY * CELL_SIZE + CELL_SIZE * 0.5f, 
+                                                  (int)mover->z, &tempSpIdx)) continue;
+                        job->targetSlotX = checkX;
+                        job->targetSlotY = checkY;
+                        foundDrop = true;
+                    }
+                }
+            }
+            
+            if (!foundDrop) {
+                job->targetSlotX = moverTileX;
+                job->targetSlotY = moverTileY;
+            }
+            
+            mover->goal.x = job->targetSlotX;
+            mover->goal.y = job->targetSlotY;
+            mover->goal.z = (int)mover->z;
+            mover->needsRepath = true;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+        
+        // Check if still carrying
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+        
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+        
+        // Check if arrived at drop location
+        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - targetX;
+        float dy = mover->y - targetY;
+        float distSq = dx*dx + dy*dy;
+        
+        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+            Item* item = &items[itemIdx];
+            
+            // Drop on ground
+            item->state = ITEM_ON_GROUND;
+            item->x = targetX;
+            item->y = targetY;
+            item->reservedBy = -1;
+            
+            job->carryingItem = -1;
+            return JOBRUN_DONE;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    
     return JOBRUN_FAIL;
 }
 
@@ -438,6 +511,13 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
         
         bool correctZ = (int)mover->z == job->targetDigZ;
         
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            Designation* desig = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
+            if (desig) desig->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+        
         if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
             job->step = STEP_WORKING;
         }
@@ -461,12 +541,122 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
-// Haul to blueprint job driver
+// Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
-    (void)job;
-    (void)moverPtr;
-    // TODO: Implement when needed
+    Mover* mover = (Mover*)moverPtr;
+    
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+        
+        // Check if item still exists
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+        
+        // Check if blueprint still exists
+        int bpIdx = job->targetBlueprint;
+        if (bpIdx < 0 || !blueprints[bpIdx].active) {
+            return JOBRUN_FAIL;
+        }
+        
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)(item->z);
+        
+        // Check if item's cell became a wall
+        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+        
+        float dx = mover->x - item->x;
+        float dy = mover->y - item->y;
+        float distSq = dx*dx + dy*dy;
+        
+        // Final approach
+        if (mover->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+        
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Pick up the item
+            if (item->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(item);
+            }
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+            
+            // Set goal to blueprint
+            Blueprint* bp = &blueprints[bpIdx];
+            mover->goal.x = bp->x;
+            mover->goal.y = bp->y;
+            mover->goal.z = bp->z;
+            mover->needsRepath = true;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+        int bpIdx = job->targetBlueprint;
+        
+        // Check if still carrying
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+        
+        // Check if blueprint still exists
+        if (bpIdx < 0 || !blueprints[bpIdx].active) {
+            // Blueprint cancelled - drop item on ground
+            items[itemIdx].state = ITEM_ON_GROUND;
+            items[itemIdx].x = mover->x;
+            items[itemIdx].y = mover->y;
+            items[itemIdx].z = mover->z;
+            items[itemIdx].reservedBy = -1;
+            job->carryingItem = -1;
+            return JOBRUN_DONE;  // Job is "done" in the sense that we handled it gracefully
+        }
+        
+        Blueprint* bp = &blueprints[bpIdx];
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+        
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+        
+        // Check if arrived at blueprint
+        float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - targetX;
+        float dy = mover->y - targetY;
+        float distSq = dx*dx + dy*dy;
+        
+        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+            // Deliver material to blueprint
+            DeliverMaterialToBlueprint(bpIdx, itemIdx);
+            job->carryingItem = -1;
+            return JOBRUN_DONE;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    
     return JOBRUN_FAIL;
 }
 
@@ -496,6 +686,11 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
         float dx = mover->x - targetX;
         float dy = mover->y - targetY;
         float distSq = dx*dx + dy*dy;
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
         
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
             job->step = STEP_WORKING;
@@ -536,8 +731,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_BUILD] = RunJob_Build,
 };
 
-// New tick function using job drivers
-void JobsTickWithDrivers(void) {
+// Forward declaration for CancelJob (defined later in file)
+static void CancelJob(Mover* m, int moverIdx);
+
+// Tick function - runs job drivers for active jobs
+void JobsTick(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
         if (!m->active) continue;
@@ -552,20 +750,22 @@ void JobsTickWithDrivers(void) {
         
         JobDriver driver = jobDrivers[job->type];
         if (!driver) {
-            // No driver for this job type - cancel
-            CancelJobNew(job, m, i);
-            ReleaseJob(m->currentJobId);
+            // No driver for this job type - cancel and release
+            CancelJob(m, i);
             continue;
         }
         
         JobRunResult result = driver(job, m, TICK_DT);
         
         if (result == JOBRUN_DONE) {
-            CompleteJobNew(job, m, i);
+            // Job completed successfully - release job and return mover to idle
+            ReleaseJob(m->currentJobId);
+            m->currentJobId = -1;
+            AddMoverToIdleList(i);
         }
         else if (result == JOBRUN_FAIL) {
-            CancelJobNew(job, m, i);
-            ReleaseJob((int)(job - jobs));
+            // Job failed - cancel releases all reservations
+            CancelJob(m, i);
         }
         // JOBRUN_RUNNING - continue next tick
     }
@@ -840,7 +1040,86 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
     return true;
 }
 
+// =============================================================================
+// AssignJobsWorkGivers - WorkGiver-based job assignment (slower, for comparison)
+// =============================================================================
+// 
+// This is a mover-centric approach: for each idle mover, try WorkGivers in priority
+// order. Currently slower than AssignJobsLegacy due to:
+// - Each WorkGiver rebuilds caches (typeHasStockpile)
+// - Mover-centric iteration is O(movers × items) vs item-centric O(items)
+// - No early exit when all movers assigned
+//
+// Future optimization: share caches between WorkGivers, use item-centric iteration
+// for hauling while keeping mover-centric for sparse jobs (mining, building).
+
+void AssignJobsWorkGivers(void) {
+    // Initialize job system if needed
+    if (!moverIsInIdleList) {
+        InitJobSystem(MAX_MOVERS);
+    }
+    
+    // Rebuild idle list each frame
+    RebuildIdleMoverList();
+    
+    // Early exit: no idle movers means no work to do
+    if (idleMoverCount == 0) return;
+    
+    // Rebuild caches once per frame (same as legacy)
+    RebuildStockpileGroundItemCache();
+    RebuildStockpileFreeSlotCounts();
+    
+    // Copy idle mover list since WorkGivers modify it via RemoveMoverFromIdleList
+    int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+    int idleCopyCount = idleMoverCount;
+    memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+    
+    // Process each idle mover
+    for (int i = 0; i < idleCopyCount; i++) {
+        int moverIdx = idleCopy[i];
+        
+        // Skip if mover was already assigned by a previous WorkGiver
+        if (!moverIsInIdleList[moverIdx]) continue;
+        
+        // Try WorkGivers in priority order (matches AssignJobsLegacy priority)
+        // Priority 1: Stockpile maintenance (absorb/clear) - highest
+        int jobId = WorkGiver_StockpileMaintenance(moverIdx);
+        
+        // Priority 2: Haul (ground items to stockpiles)
+        if (jobId < 0) jobId = WorkGiver_Haul(moverIdx);
+        
+        // Priority 3: Rehaul (overfull/low-priority transfers)
+        if (jobId < 0) jobId = WorkGiver_Rehaul(moverIdx);
+        
+        // Priority 4: Mining (dig designations)
+        if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
+        
+        // Priority 5: Blueprint haul (materials to blueprints)
+        if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
+        
+        // Priority 6: Build (construct at blueprints) - lowest
+        if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
+        
+        // jobId >= 0 means job was assigned, mover removed from idle list
+        (void)jobId;  // Suppress unused warning
+    }
+    
+    free(idleCopy);
+}
+
+// =============================================================================
+// AssignJobs - Main entry point (uses legacy for performance)
+// =============================================================================
+
 void AssignJobs(void) {
+    AssignJobsLegacy();
+}
+
+// =============================================================================
+// AssignJobsLegacy - Original optimized implementation (for benchmarking)
+// =============================================================================
+
+void AssignJobsLegacy(void) {
     // Rebuild idle mover list if not initialized
     if (!moverIsInIdleList) {
         InitJobSystem(MAX_MOVERS);
@@ -1340,532 +1619,6 @@ void AssignJobs(void) {
     PROFILE_ACCUM_END(Jobs_FindBuildJob);
 }
 
-void JobsTick(void) {
-    for (int i = 0; i < moverCount; i++) {
-        Mover* m = &movers[i];
-        if (!m->active) continue;
-        
-        // Skip movers without jobs
-        if (m->currentJobId < 0) continue;
-        
-        Job* job = GetJob(m->currentJobId);
-        if (!job || !job->active) {
-            m->currentJobId = -1;
-            AddMoverToIdleList(i);
-            continue;
-        }
-        
-        // HAUL job: pick up item -> carry to stockpile
-        if (job->type == JOBTYPE_HAUL && job->step == STEP_MOVING_TO_PICKUP) {
-            int itemIdx = job->targetItem;
-            
-            // Check if item still exists
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stockpile still valid
-            if (job->targetStockpile >= 0 && !stockpiles[job->targetStockpile].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if item's cell became a wall - cancel immediately
-            Item* item = &items[itemIdx];
-            int itemCellX = (int)(item->x / CELL_SIZE);
-            int itemCellY = (int)(item->y / CELL_SIZE);
-            int itemCellZ = (int)(item->z);
-            if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                AddMessage(TextFormat("Mover %d: item blocked by wall, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if arrived at item
-            float dx = m->x - item->x;
-            float dy = m->y - item->y;
-            float distSq = dx*dx + dy*dy;
-            
-            // Final approach: if path exhausted but close to item, move directly toward it
-            if (m->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
-                m->goal = (Point){itemCellX, itemCellY, itemCellZ};
-                m->needsRepath = true;
-            }
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                TraceLog(LOG_WARNING, "JOB: Mover %d STUCK! Mover(%.1f,%.1f,%d) goal(%d,%d,%d) item(%d,%d,%d) pathLen=%d timeStuck=%.1f",
-                    i, m->x, m->y, (int)m->z, m->goal.x, m->goal.y, m->goal.z,
-                    itemCellX, itemCellY, itemCellZ, m->pathLength, m->timeWithoutProgress);
-                AddMessage(TextFormat("Mover %d: item unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // Pick up the item
-                if (item->state == ITEM_IN_STOCKPILE) {
-                    ClearSourceStockpileSlot(item);
-                }
-                item->state = ITEM_CARRIED;
-                job->carryingItem = itemIdx;
-                job->targetItem = -1;
-                job->step = STEP_CARRYING;
-                
-                // Set goal to stockpile slot
-                m->goal.x = job->targetSlotX;
-                m->goal.y = job->targetSlotY;
-                m->goal.z = stockpiles[job->targetStockpile].z;
-                m->needsRepath = true;
-            }
-        }
-        else if (job->type == JOBTYPE_HAUL && job->step == STEP_CARRYING) {
-            int itemIdx = job->carryingItem;
-            
-            // Check if still carrying
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stockpile still valid
-            if (!stockpiles[job->targetStockpile].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stockpile still accepts this item type
-            if (!StockpileAcceptsType(job->targetStockpile, items[itemIdx].type)) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                AddMessage(TextFormat("Mover %d: stockpile unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Update carried item position
-            items[itemIdx].x = m->x;
-            items[itemIdx].y = m->y;
-            items[itemIdx].z = m->z;
-            
-            // Check if arrived at target slot
-            float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-            float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx*dx + dy*dy;
-            
-            if (distSq < DROP_RADIUS * DROP_RADIUS) {
-                Item* item = &items[itemIdx];
-                
-                // Place in stockpile
-                item->state = ITEM_IN_STOCKPILE;
-                item->x = targetX;
-                item->y = targetY;
-                item->reservedBy = -1;
-                
-                // Mark slot as occupied
-                PlaceItemInStockpile(job->targetStockpile, job->targetSlotX, job->targetSlotY, itemIdx);
-                
-                // Job complete
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-            }
-        }
-        // CLEAR job: pick up item -> drop on ground outside stockpile
-        else if (job->type == JOBTYPE_CLEAR && job->step == STEP_MOVING_TO_PICKUP) {
-            int itemIdx = job->targetItem;
-            
-            // Check if item still exists
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if item's cell became a wall
-            Item* item = &items[itemIdx];
-            int itemCellX = (int)(item->x / CELL_SIZE);
-            int itemCellY = (int)(item->y / CELL_SIZE);
-            int itemCellZ = (int)(item->z);
-            if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                AddMessage(TextFormat("Mover %d: item blocked by wall, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            float dx = m->x - item->x;
-            float dy = m->y - item->y;
-            float distSq = dx*dx + dy*dy;
-            
-            if (m->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
-                m->goal = (Point){itemCellX, itemCellY, itemCellZ};
-                m->needsRepath = true;
-            }
-            
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                AddMessage(TextFormat("Mover %d: item unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // Pick up the item
-                if (item->state == ITEM_IN_STOCKPILE) {
-                    ClearSourceStockpileSlot(item);
-                }
-                item->state = ITEM_CARRIED;
-                job->carryingItem = itemIdx;
-                job->targetItem = -1;
-                job->step = STEP_CARRYING;
-                
-                // Find drop location outside stockpile
-                int moverTileX = (int)(m->x / CELL_SIZE);
-                int moverTileY = (int)(m->y / CELL_SIZE);
-                
-                bool foundDrop = false;
-                for (int radius = 1; radius <= 5 && !foundDrop; radius++) {
-                    for (int dy2 = -radius; dy2 <= radius && !foundDrop; dy2++) {
-                        for (int dx2 = -radius; dx2 <= radius && !foundDrop; dx2++) {
-                            if (abs(dx2) != radius && abs(dy2) != radius) continue;
-                            int checkX = moverTileX + dx2;
-                            int checkY = moverTileY + dy2;
-                            if (checkX < 0 || checkY < 0) continue;
-                            if (!IsCellWalkableAt((int)m->z, checkY, checkX)) continue;
-                            int tempSpIdx;
-                            if (IsPositionInStockpile(checkX * CELL_SIZE + CELL_SIZE * 0.5f, 
-                                                      checkY * CELL_SIZE + CELL_SIZE * 0.5f, 
-                                                      (int)m->z, &tempSpIdx)) continue;
-                            job->targetSlotX = checkX;
-                            job->targetSlotY = checkY;
-                            foundDrop = true;
-                        }
-                    }
-                }
-                
-                if (!foundDrop) {
-                    job->targetSlotX = moverTileX;
-                    job->targetSlotY = moverTileY;
-                }
-                
-                m->goal.x = job->targetSlotX;
-                m->goal.y = job->targetSlotY;
-                m->goal.z = (int)m->z;
-                m->needsRepath = true;
-            }
-        }
-        else if (job->type == JOBTYPE_CLEAR && job->step == STEP_CARRYING) {
-            int itemIdx = job->carryingItem;
-            
-            // Check if still carrying
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                AddMessage(TextFormat("Mover %d: drop location unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Update carried item position
-            items[itemIdx].x = m->x;
-            items[itemIdx].y = m->y;
-            items[itemIdx].z = m->z;
-            
-            // Check if arrived at drop location
-            float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-            float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx*dx + dy*dy;
-            
-            if (distSq < DROP_RADIUS * DROP_RADIUS) {
-                Item* item = &items[itemIdx];
-                
-                // Drop on ground
-                item->state = ITEM_ON_GROUND;
-                item->x = targetX;
-                item->y = targetY;
-                item->reservedBy = -1;
-                
-                // Job complete
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-            }
-        }
-        // DIG job: move to adjacent tile -> dig wall
-        else if (job->type == JOBTYPE_DIG && job->step == STEP_MOVING_TO_WORK) {
-            // Check if designation still exists
-            Designation* d = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-            if (!d || d->type != DESIGNATION_DIG) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if the wall was already dug
-            if (grid[job->targetDigZ][job->targetDigY][job->targetDigX] != CELL_WALL) {
-                CancelDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                AddMessage(TextFormat("Mover %d: dig site unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if arrived at adjacent tile
-            float goalX = m->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
-            float goalY = m->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = m->x - goalX;
-            float dy = m->y - goalY;
-            float distSq = dx*dx + dy*dy;
-            
-            bool correctZ = (int)m->z == job->targetDigZ;
-            int goalDistX = abs(m->goal.x - job->targetDigX);
-            int goalDistY = abs(m->goal.y - job->targetDigY);
-            bool goalIsAdjacent = (goalDistX == 1 && goalDistY == 0) || (goalDistX == 0 && goalDistY == 1);
-            
-            if (correctZ && goalIsAdjacent && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                job->step = STEP_WORKING;
-            }
-        }
-        else if (job->type == JOBTYPE_DIG && job->step == STEP_WORKING) {
-            // Check if designation still exists
-            Designation* d = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-            if (!d || d->type != DESIGNATION_DIG) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if the wall was already dug
-            if (grid[job->targetDigZ][job->targetDigY][job->targetDigX] != CELL_WALL) {
-                CancelDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Progress digging
-            d->progress += TICK_DT / DIG_WORK_TIME;
-            
-            if (d->progress >= 1.0f) {
-                // Dig complete!
-                CompleteDigDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-                AddMessage(TextFormat("Mover %d: finished digging at (%d,%d)", i, job->targetDigX, job->targetDigY), GREEN);
-                
-                // Job complete
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-            }
-        }
-        // HAUL_TO_BLUEPRINT job: pick up item -> carry to blueprint
-        else if (job->type == JOBTYPE_HAUL_TO_BLUEPRINT && job->step == STEP_MOVING_TO_PICKUP) {
-            int itemIdx = job->targetItem;
-            
-            // Check if item still exists
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if blueprint still exists
-            int bpIdx = job->targetBlueprint;
-            if (bpIdx < 0 || !blueprints[bpIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            Item* item = &items[itemIdx];
-            int itemCellX = (int)(item->x / CELL_SIZE);
-            int itemCellY = (int)(item->y / CELL_SIZE);
-            int itemCellZ = (int)(item->z);
-            
-            if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                AddMessage(TextFormat("Mover %d: item blocked by wall, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            float dx = m->x - item->x;
-            float dy = m->y - item->y;
-            float distSq = dx*dx + dy*dy;
-            
-            if (m->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
-                m->goal = (Point){itemCellX, itemCellY, itemCellZ};
-                m->needsRepath = true;
-            }
-            
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-                AddMessage(TextFormat("Mover %d: item unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // Pick up the item
-                if (item->state == ITEM_IN_STOCKPILE) {
-                    ClearSourceStockpileSlot(item);
-                }
-                item->state = ITEM_CARRIED;
-                job->carryingItem = itemIdx;
-                job->targetItem = -1;
-                job->step = STEP_CARRYING;
-                
-                // Set goal to blueprint
-                Blueprint* bp = &blueprints[bpIdx];
-                m->goal.x = bp->x;
-                m->goal.y = bp->y;
-                m->goal.z = bp->z;
-                m->needsRepath = true;
-            }
-        }
-        else if (job->type == JOBTYPE_HAUL_TO_BLUEPRINT && job->step == STEP_CARRYING) {
-            int itemIdx = job->carryingItem;
-            int bpIdx = job->targetBlueprint;
-            
-            // Check if still carrying
-            if (itemIdx < 0 || !items[itemIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if blueprint still exists
-            if (bpIdx < 0 || !blueprints[bpIdx].active) {
-                // Blueprint cancelled - drop item on ground
-                items[itemIdx].state = ITEM_ON_GROUND;
-                items[itemIdx].x = m->x;
-                items[itemIdx].y = m->y;
-                items[itemIdx].z = m->z;
-                items[itemIdx].reservedBy = -1;
-                
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-                continue;
-            }
-            
-            Blueprint* bp = &blueprints[bpIdx];
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                AddMessage(TextFormat("Mover %d: blueprint unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Update carried item position
-            items[itemIdx].x = m->x;
-            items[itemIdx].y = m->y;
-            items[itemIdx].z = m->z;
-            
-            // Check if arrived at blueprint
-            float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
-            float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx*dx + dy*dy;
-            
-            if (distSq < DROP_RADIUS * DROP_RADIUS) {
-                // Deliver material to blueprint
-                DeliverMaterialToBlueprint(bpIdx, itemIdx);
-                AddMessage(TextFormat("Mover %d: delivered material to blueprint at (%d,%d)", i, bp->x, bp->y), GREEN);
-                
-                // Job complete
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-            }
-        }
-        // BUILD job: move to blueprint -> construct
-        else if (job->type == JOBTYPE_BUILD && job->step == STEP_MOVING_TO_WORK) {
-            int bpIdx = job->targetBlueprint;
-            
-            // Check if blueprint still exists
-            if (bpIdx < 0 || !blueprints[bpIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            Blueprint* bp = &blueprints[bpIdx];
-            
-            // Check if blueprint was cancelled or already built
-            if (bp->state != BLUEPRINT_BUILDING || bp->assignedBuilder != i) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if stuck
-            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
-                AddMessage(TextFormat("Mover %d: build site unreachable, job cancelled", i), ORANGE);
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Check if arrived at blueprint
-            float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
-            float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = m->x - targetX;
-            float dy = m->y - targetY;
-            float distSq = dx*dx + dy*dy;
-            
-            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // Arrived, start building
-                job->step = STEP_WORKING;
-                job->progress = 0.0f;
-            }
-        }
-        else if (job->type == JOBTYPE_BUILD && job->step == STEP_WORKING) {
-            int bpIdx = job->targetBlueprint;
-            
-            // Check if blueprint still exists
-            if (bpIdx < 0 || !blueprints[bpIdx].active) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            Blueprint* bp = &blueprints[bpIdx];
-            
-            // Check if blueprint was cancelled
-            if (bp->assignedBuilder != i) {
-                CancelJob(m, i);
-                continue;
-            }
-            
-            // Progress building
-            job->progress += TICK_DT;
-            bp->progress = job->progress / BUILD_WORK_TIME;
-            
-            if (job->progress >= BUILD_WORK_TIME) {
-                // Build complete!
-                CompleteBlueprint(bpIdx);
-                AddMessage(TextFormat("Mover %d: finished building at (%d,%d)", i, bp->x, bp->y), GREEN);
-                
-                // Job complete
-                ReleaseJob(m->currentJobId);
-                m->currentJobId = -1;
-                AddMoverToIdleList(i);
-            }
-        }
-    }
-}
 
 // =============================================================================
 // WorkGivers (Phase 4 of Jobs Refactor)
@@ -1873,6 +1626,31 @@ void JobsTick(void) {
 
 // WorkGiver_Haul: Find a ground item to haul to a stockpile
 // Returns job ID if successful, -1 if no job available
+// Filter context for WorkGiver_Haul spatial search
+typedef struct {
+    bool* typeHasStockpile;  // Pointer to array
+} HaulFilterContext;
+
+static bool HaulItemFilter(int itemIdx, void* userData) {
+    HaulFilterContext* ctx = (HaulFilterContext*)userData;
+    Item* item = &items[itemIdx];
+    
+    if (!item->active) return false;
+    if (item->reservedBy != -1) return false;
+    if (item->state != ITEM_ON_GROUND) return false;
+    if (item->unreachableCooldown > 0.0f) return false;
+    if (!ctx->typeHasStockpile[item->type]) return false;
+    if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
+    
+    // Skip items on walls
+    int cellX = (int)(item->x / CELL_SIZE);
+    int cellY = (int)(item->y / CELL_SIZE);
+    int cellZ = (int)(item->z);
+    if (!IsCellWalkableAt(cellZ, cellY, cellX)) return false;
+    
+    return true;
+}
+
 int WorkGiver_Haul(int moverIdx) {
     Mover* m = &movers[moverIdx];
     
@@ -1892,31 +1670,49 @@ int WorkGiver_Haul(int moverIdx) {
     
     if (!anyTypeHasSlot) return -1;
     
-    // Find nearest ground item that can be hauled
-    int bestItemIdx = -1;
-    float bestDistSq = 1e30f;
+    int moverTileX = (int)(m->x / CELL_SIZE);
+    int moverTileY = (int)(m->y / CELL_SIZE);
+    int moverZ = (int)m->z;
     
-    for (int j = 0; j < MAX_ITEMS; j++) {
-        Item* item = &items[j];
-        if (!item->active) continue;
-        if (item->reservedBy != -1) continue;
-        if (item->state != ITEM_ON_GROUND) continue;
-        if (item->unreachableCooldown > 0.0f) continue;
-        if (!typeHasStockpile[item->type]) continue;
-        if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+    int bestItemIdx = -1;
+    
+    // Use spatial grid with expanding radius if available
+    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        HaulFilterContext ctx = { .typeHasStockpile = typeHasStockpile };
         
-        // Skip items on walls
-        int cellX = (int)(item->x / CELL_SIZE);
-        int cellY = (int)(item->y / CELL_SIZE);
-        int cellZ = (int)(item->z);
-        if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+        // Expanding radius search - find closest items first
+        int radii[] = {10, 25, 50, 100};
+        int numRadii = sizeof(radii) / sizeof(radii[0]);
         
-        float dx = item->x - m->x;
-        float dy = item->y - m->y;
-        float distSq = dx * dx + dy * dy;
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestItemIdx = j;
+        for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {
+            bestItemIdx = FindFirstItemInRadius(moverTileX, moverTileY, moverZ, radii[r],
+                                                HaulItemFilter, &ctx);
+        }
+    } else {
+        // Fallback: linear scan when spatial grid not built (for tests)
+        float bestDistSq = 1e30f;
+        for (int j = 0; j < MAX_ITEMS; j++) {
+            Item* item = &items[j];
+            if (!item->active) continue;
+            if (item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if (!typeHasStockpile[item->type]) continue;
+            if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+            
+            // Skip items on walls
+            int cellX = (int)(item->x / CELL_SIZE);
+            int cellY = (int)(item->y / CELL_SIZE);
+            int cellZ = (int)(item->z);
+            if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+            
+            float dx = item->x - m->x;
+            float dy = item->y - m->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestItemIdx = j;
+            }
         }
     }
     
@@ -1961,6 +1757,213 @@ int WorkGiver_Haul(int moverIdx) {
     job->targetStockpile = spIdx;
     job->targetSlotX = slotX;
     job->targetSlotY = slotY;
+    job->step = 0;  // STEP_MOVING_TO_PICKUP
+    
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = itemCell;
+    m->needsRepath = true;
+    
+    RemoveMoverFromIdleList(moverIdx);
+    
+    return jobId;
+}
+
+// WorkGiver_StockpileMaintenance: Handle ground items on stockpile tiles (absorb/clear)
+// This is the highest priority - items on stockpile tiles must be absorbed or cleared
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_StockpileMaintenance(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    
+    // Check capability
+    if (!m->capabilities.canHaul) return -1;
+    
+    // Find a ground item on a stockpile tile
+    int spOnItem = -1;
+    bool absorb = false;
+    int itemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
+    
+    if (itemIdx < 0) return -1;
+    if (items[itemIdx].unreachableCooldown > 0.0f) return -1;
+    
+    Item* item = &items[itemIdx];
+    
+    int slotX, slotY, spIdx;
+    bool safeDrop = false;
+    
+    if (absorb) {
+        // Absorb: destination is same tile (item matches stockpile filter)
+        spIdx = spOnItem;
+        slotX = (int)(item->x / CELL_SIZE);
+        slotY = (int)(item->y / CELL_SIZE);
+    } else {
+        // Clear: find destination stockpile or safe-drop location
+        spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+        if (spIdx < 0) {
+            safeDrop = true;  // No stockpile accepts this type, safe-drop it
+        }
+    }
+    
+    // Reserve item
+    if (!ReserveItem(itemIdx, moverIdx)) return -1;
+    
+    // Reserve stockpile slot (unless safeDrop)
+    if (!safeDrop) {
+        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx)) {
+            ReleaseItemReservation(itemIdx);
+            return -1;
+        }
+    }
+    
+    // Check reachability
+    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    
+    if (tempLen == 0) {
+        // Can't reach - release reservations and set cooldown
+        ReleaseItemReservation(itemIdx);
+        if (!safeDrop) {
+            ReleaseStockpileSlot(spIdx, slotX, slotY);
+        }
+        SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
+    
+    // Create job
+    int jobId = CreateJob(safeDrop ? JOBTYPE_CLEAR : JOBTYPE_HAUL);
+    if (jobId < 0) {
+        ReleaseItemReservation(itemIdx);
+        if (!safeDrop) {
+            ReleaseStockpileSlot(spIdx, slotX, slotY);
+        }
+        return -1;
+    }
+    
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = itemIdx;
+    job->targetStockpile = spIdx;
+    job->targetSlotX = safeDrop ? -1 : slotX;
+    job->targetSlotY = safeDrop ? -1 : slotY;
+    job->step = 0;  // STEP_MOVING_TO_PICKUP
+    
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = itemCell;
+    m->needsRepath = true;
+    
+    RemoveMoverFromIdleList(moverIdx);
+    
+    return jobId;
+}
+
+// WorkGiver_Rehaul: Re-haul items from overfull/low-priority stockpiles
+// Handles: filter changes (item no longer allowed), overfull slots, higher priority transfers
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_Rehaul(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    
+    // Check capability
+    if (!m->capabilities.canHaul) return -1;
+    
+    int moverZ = (int)m->z;
+    
+    // Find an item in a stockpile that needs re-hauling
+    int bestItemIdx = -1;
+    int bestDestSp = -1;
+    int bestDestSlotX = -1, bestDestSlotY = -1;
+    float bestDistSq = 1e30f;
+    
+    for (int j = 0; j < MAX_ITEMS; j++) {
+        if (!items[j].active) continue;
+        if (items[j].reservedBy != -1) continue;
+        if (items[j].state != ITEM_IN_STOCKPILE) continue;
+        if ((int)items[j].z != moverZ) continue;  // Same z-level for now
+        
+        int currentSp = -1;
+        if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
+        if (currentSp < 0) continue;
+        
+        int itemSlotX = (int)(items[j].x / CELL_SIZE);
+        int itemSlotY = (int)(items[j].y / CELL_SIZE);
+        
+        int destSlotX, destSlotY;
+        int destSp = -1;
+        
+        // Check if item is no longer allowed by current stockpile (filter changed)
+        bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
+        
+        if (noLongerAllowed) {
+            // Find any stockpile that accepts this item type
+            destSp = FindStockpileForItem(items[j].type, &destSlotX, &destSlotY);
+        } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+            destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+        } else {
+            destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
+        }
+        
+        if (destSp < 0) continue;
+        
+        // Calculate distance to item
+        float dx = items[j].x - m->x;
+        float dy = items[j].y - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestItemIdx = j;
+            bestDestSp = destSp;
+            bestDestSlotX = destSlotX;
+            bestDestSlotY = destSlotY;
+        }
+    }
+    
+    if (bestItemIdx < 0) return -1;
+    
+    Item* item = &items[bestItemIdx];
+    
+    // Reserve item
+    if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
+    
+    // Reserve destination stockpile slot
+    if (!ReserveStockpileSlot(bestDestSp, bestDestSlotX, bestDestSlotY, moverIdx)) {
+        ReleaseItemReservation(bestItemIdx);
+        return -1;
+    }
+    
+    // Check reachability BEFORE clearing source slot
+    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    
+    if (tempLen == 0) {
+        ReleaseItemReservation(bestItemIdx);
+        ReleaseStockpileSlot(bestDestSp, bestDestSlotX, bestDestSlotY);
+        return -1;
+    }
+    
+    // NOTE: Don't call ClearSourceStockpileSlot here - RunJob_Haul handles it
+    // when the item is actually picked up. This avoids double-decrementing.
+    
+    // Create job
+    int jobId = CreateJob(JOBTYPE_HAUL);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestItemIdx);
+        ReleaseStockpileSlot(bestDestSp, bestDestSlotX, bestDestSlotY);
+        return -1;
+    }
+    
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestItemIdx;
+    job->targetStockpile = bestDestSp;
+    job->targetSlotX = bestDestSlotX;
+    job->targetSlotY = bestDestSlotY;
     job->step = 0;  // STEP_MOVING_TO_PICKUP
     
     // Update mover
@@ -2145,6 +2148,20 @@ int WorkGiver_Build(int moverIdx) {
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint
 // Returns job ID if successful, -1 if no job available
+// Filter for blueprint haul items (ITEM_ORANGE only)
+static bool BlueprintHaulItemFilter(int itemIdx, void* userData) {
+    (void)userData;
+    Item* item = &items[itemIdx];
+    
+    if (!item->active) return false;
+    if (item->type != ITEM_ORANGE) return false;  // Only orange blocks for building
+    if (item->reservedBy != -1) return false;
+    if (item->state != ITEM_ON_GROUND) return false;  // Spatial grid only has ground items
+    if (item->unreachableCooldown > 0.0f) return false;
+    
+    return true;
+}
+
 int WorkGiver_BlueprintHaul(int moverIdx) {
     Mover* m = &movers[moverIdx];
     
@@ -2153,40 +2170,79 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find blueprint needing materials
-    int bestBpIdx = -1;
-    int bestItemIdx = -1;
-    float bestDistSq = 1e30f;
-    
+    // First check if any blueprint needs materials on this z-level
+    bool anyBlueprintNeedsMaterials = false;
     for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
         Blueprint* bp = &blueprints[bpIdx];
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
-        if (bp->reservedItem >= 0) continue;  // Already has an item reserved
-        if (bp->z != moverZ) continue;  // Same z-level for now
+        if (bp->reservedItem >= 0) continue;
+        if (bp->z != moverZ) continue;
+        anyBlueprintNeedsMaterials = true;
+        break;
+    }
+    if (!anyBlueprintNeedsMaterials) return -1;
+    
+    int moverTileX = (int)(m->x / CELL_SIZE);
+    int moverTileY = (int)(m->y / CELL_SIZE);
+    
+    // Find nearest ITEM_ORANGE
+    int bestItemIdx = -1;
+    float bestDistSq = 1e30f;
+    
+    // Try spatial grid first for ground items
+    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        int radii[] = {10, 25, 50, 100};
+        int numRadii = sizeof(radii) / sizeof(radii[0]);
         
-        // Find an available orange item for this blueprint
-        for (int j = 0; j < MAX_ITEMS; j++) {
-            Item* item = &items[j];
-            if (!item->active) continue;
-            if (item->type != ITEM_ORANGE) continue;  // Only orange blocks for building
-            if (item->reservedBy != -1) continue;
-            if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
-            if (item->unreachableCooldown > 0.0f) continue;
-            
-            float dx = item->x - m->x;
-            float dy = item->y - m->y;
-            float distSq = dx * dx + dy * dy;
-            
-            if (distSq < bestDistSq) {
-                bestDistSq = distSq;
-                bestBpIdx = bpIdx;
-                bestItemIdx = j;
-            }
+        for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {
+            bestItemIdx = FindFirstItemInRadius(moverTileX, moverTileY, moverZ, radii[r],
+                                                BlueprintHaulItemFilter, NULL);
+        }
+        
+        // Get distance for found item
+        if (bestItemIdx >= 0) {
+            float dx = items[bestItemIdx].x - m->x;
+            float dy = items[bestItemIdx].y - m->y;
+            bestDistSq = dx * dx + dy * dy;
         }
     }
     
-    if (bestBpIdx < 0 || bestItemIdx < 0) return -1;
+    // Linear scan for all ITEM_ORANGE (fallback for tests, plus checks stockpile items)
+    for (int j = 0; j < MAX_ITEMS; j++) {
+        Item* item = &items[j];
+        if (!item->active) continue;
+        if (item->type != ITEM_ORANGE) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != moverZ) continue;
+        
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestItemIdx = j;
+        }
+    }
+    
+    if (bestItemIdx < 0) return -1;
+    
+    // Now find any blueprint that needs materials (simple linear scan - blueprints are sparse)
+    int bestBpIdx = -1;
+    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+        Blueprint* bp = &blueprints[bpIdx];
+        if (!bp->active) continue;
+        if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
+        if (bp->reservedItem >= 0) continue;
+        if (bp->z != moverZ) continue;
+        bestBpIdx = bpIdx;
+        break;  // Take first available
+    }
+    
+    if (bestBpIdx < 0) return -1;
     
     Item* item = &items[bestItemIdx];
     Blueprint* bp = &blueprints[bestBpIdx];
@@ -2232,58 +2288,4 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     RemoveMoverFromIdleList(moverIdx);
     
     return jobId;
-}
-
-// Priority order for workgivers (lower number = higher priority)
-#define WORKGIVER_PRIORITY_MINING         1
-#define WORKGIVER_PRIORITY_BLUEPRINT_HAUL 2
-#define WORKGIVER_PRIORITY_BUILD          3
-#define WORKGIVER_PRIORITY_HAUL           4
-
-// AssignJobsWithWorkGivers: New job assignment using modular WorkGivers
-void AssignJobsWithWorkGivers(void) {
-    // Rebuild idle mover list if not initialized
-    if (!moverIsInIdleList) {
-        InitJobSystem(MAX_MOVERS);
-    }
-    
-    // Rebuild idle list each frame
-    RebuildIdleMoverList();
-    
-    // Early exit: no idle movers means no work to do
-    if (idleMoverCount == 0) return;
-    
-    // Rebuild caches for stockpiles
-    RebuildStockpileGroundItemCache();
-    RebuildStockpileFreeSlotCounts();
-    
-    // Process each idle mover
-    // Note: We iterate over a copy of the list since workgivers modify it
-    int idleCount = idleMoverCount;
-    int* idleCopy = (int*)malloc(idleCount * sizeof(int));
-    memcpy(idleCopy, idleMoverList, idleCount * sizeof(int));
-    
-    for (int i = 0; i < idleCount; i++) {
-        int moverIdx = idleCopy[i];
-        
-        // Skip if mover is no longer idle (assigned by previous workgiver)
-        if (!moverIsInIdleList[moverIdx]) continue;
-        
-        // Try workgivers in priority order
-        int jobId = -1;
-        
-        // Priority 1: Mining
-        if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
-        
-        // Priority 2: Blueprint haul
-        if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
-        
-        // Priority 3: Build
-        if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
-        
-        // Priority 4: Haul
-        if (jobId < 0) jobId = WorkGiver_Haul(moverIdx);
-    }
-    
-    free(idleCopy);
 }

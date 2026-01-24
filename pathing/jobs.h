@@ -93,8 +93,7 @@ JobRunResult RunJob_Dig(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 
-// New tick function using job drivers (runs alongside legacy JobsTick during migration)
-void JobsTickWithDrivers(void);
+
 
 // Idle mover cache - maintained incrementally instead of scanning all movers
 extern int* idleMoverList;      // Array of mover indices that are idle
@@ -111,8 +110,10 @@ void RemoveMoverFromIdleList(int moverIdx);
 void RebuildIdleMoverList(void);  // Full rebuild (e.g., after ClearMovers)
 
 // Core functions
-void AssignJobs(void);   // Match idle movers with available items
-void JobsTick(void);     // Update job state machines (check arrivals, handle failures)
+void AssignJobs(void);           // Match idle movers with available items (currently uses Legacy)
+void AssignJobsLegacy(void);     // Item-centric with inline optimizations (fast)
+void AssignJobsWorkGivers(void); // Mover-centric using WorkGivers (slower, for comparison)
+void JobsTick(void);             // Update job state machines using per-type drivers
 
 // =============================================================================
 // WorkGivers (Phase 4 of Jobs Refactor)
@@ -121,12 +122,18 @@ void JobsTick(void);     // Update job state machines (check arrivals, handle fa
 // WorkGiver functions - each tries to create a job for a specific mover
 // Returns job ID if successful, -1 if no job available
 // These check capabilities internally
-int WorkGiver_Haul(int moverIdx);           // Find ground item to haul to stockpile
-int WorkGiver_Mining(int moverIdx);         // Find dig designation to work on
-int WorkGiver_Build(int moverIdx);          // Find blueprint to build
-int WorkGiver_BlueprintHaul(int moverIdx);  // Find material to haul to blueprint
-
-// New AssignJobs using WorkGiver system (runs alongside legacy during migration)
-void AssignJobsWithWorkGivers(void);
+// Priority order (high to low):
+//   1. StockpileMaintenance - absorb/clear ground items on stockpile tiles
+//   2. Haul - ground items to stockpiles
+//   3. Rehaul - transfer from overfull/low-priority stockpiles
+//   4. Mining - dig designations
+//   5. BlueprintHaul - materials to blueprints
+//   6. Build - construct at blueprints
+int WorkGiver_StockpileMaintenance(int moverIdx);
+int WorkGiver_Haul(int moverIdx);
+int WorkGiver_Rehaul(int moverIdx);
+int WorkGiver_Mining(int moverIdx);
+int WorkGiver_BlueprintHaul(int moverIdx);
+int WorkGiver_Build(int moverIdx);
 
 #endif

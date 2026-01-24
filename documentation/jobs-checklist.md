@@ -33,13 +33,29 @@ Prioritized steps to expand the jobs system beyond hauling.
 - [x] Material delivery to blueprints
 - [x] Require ITEM_ORANGE for building walls
 - [x] Visual feedback (blue/green/yellow tinted stockpile pattern)
-- [ ] Hauler/builder separation (currently same mover does both)
+- [x] Hauler/builder separation (via MoverCapabilities)
 
-## Phase 5: Architecture Refactor
-- [ ] Job pool separate from Mover (mover.currentJobId)
-- [ ] Job Drivers (per-type step functions)
-- [ ] WorkGivers (modular job producers)
-- [ ] Mover capabilities/professions system
+## Phase 5: Architecture Refactor ✓
+- [x] Job pool separate from Mover (mover.currentJobId)
+- [x] Job Drivers (per-type step functions: RunJob_Haul, RunJob_Dig, RunJob_Build, etc.) - **IN USE**
+- [x] WorkGivers (modular job producers: WorkGiver_Haul, WorkGiver_Mining, etc.) - exist but slower
+- [x] Mover capabilities/professions system (canHaul, canMine, canBuild) - **IN USE**
+
+### Current Architecture Status
+**Job Execution (NEW - in use):**
+- `JobsTick()` uses Job Drivers (`RunJob_Haul`, `RunJob_Clear`, `RunJob_Dig`, `RunJob_HaulToBlueprint`, `RunJob_Build`)
+- Job Pool with `jobs[]` array, O(1) allocation via free list
+- `mover.currentJobId` references job in pool
+
+**Job Assignment:**
+- `AssignJobs()` currently delegates to `AssignJobsLegacy()` (item-centric, fast)
+- `AssignJobsWorkGivers()` exists but is ~40-100x slower (mover-centric approach)
+- WorkGivers available for individual testing: `WorkGiver_Haul`, `WorkGiver_Mining`, `WorkGiver_Build`, `WorkGiver_BlueprintHaul`, `WorkGiver_StockpileMaintenance`, `WorkGiver_Rehaul`
+
+**Performance Issue:**
+- WorkGiver approach is mover-centric: O(movers × items)
+- Legacy approach is item-centric: O(items) with spatial grid optimization
+- Future work: optimize WorkGivers or keep using legacy for assignment
 
 ## Phase 6: Crafting
 - [ ] Workshop system with recipes
