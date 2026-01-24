@@ -1,6 +1,7 @@
 #include "stockpiles.h"
 #include "mover.h"
 #include "items.h"
+#include <string.h>
 
 Stockpile stockpiles[MAX_STOCKPILES];
 int stockpileCount = 0;
@@ -64,18 +65,14 @@ void RebuildStockpileGroundItemCache(void) {
     // Clear all flags
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
-        Stockpile* sp = &stockpiles[i];
-        int totalSlots = sp->width * sp->height;
-        for (int s = 0; s < totalSlots; s++) {
-            sp->hasGroundItem[s] = false;
-        }
+        int totalSlots = stockpiles[i].width * stockpiles[i].height;
+        memset(stockpiles[i].hasGroundItem, 0, totalSlots * sizeof(bool));
     }
     
     // Mark slots that have ground items
     for (int i = 0; i < MAX_ITEMS; i++) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
-        
         MarkStockpileGroundItem(items[i].x, items[i].y, (int)items[i].z, true);
     }
 }
@@ -88,16 +85,13 @@ void RebuildStockpileFreeSlotCounts(void) {
         Stockpile* sp = &stockpiles[i];
         
         int freeCount = 0;
-        for (int ly = 0; ly < sp->height; ly++) {
-            for (int lx = 0; lx < sp->width; lx++) {
-                int idx = ly * sp->width + lx;
-                if (!sp->cells[idx]) continue;            // inactive cell
-                if (sp->reservedBy[idx] != -1) continue;  // reserved
-                if (sp->hasGroundItem[idx]) continue;     // ground item blocking
-                // Check if slot has room (empty or partial stack)
-                if (sp->slotCounts[idx] < sp->maxStackSize) {
-                    freeCount++;
-                }
+        int totalSlots = sp->width * sp->height;
+        for (int s = 0; s < totalSlots; s++) {
+            if (!sp->cells[s]) continue;            // inactive cell
+            if (sp->reservedBy[s] != -1) continue;  // reserved
+            if (sp->hasGroundItem[s]) continue;     // ground item blocking
+            if (sp->slotCounts[s] < sp->maxStackSize) {
+                freeCount++;
             }
         }
         sp->freeSlotCount = freeCount;
