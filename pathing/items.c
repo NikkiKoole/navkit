@@ -1,6 +1,7 @@
 #include "items.h"
 #include "mover.h"  // for CELL_SIZE
 #include "grid.h"   // for gridWidth, gridHeight, gridDepth
+#include "stockpiles.h"  // for MarkStockpileGroundItem
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +41,8 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             if (i + 1 > itemHighWaterMark) {
                 itemHighWaterMark = i + 1;
             }
+            // Update stockpile ground item cache
+            MarkStockpileGroundItem(x, y, (int)z, true);
             return i;
         }
     }

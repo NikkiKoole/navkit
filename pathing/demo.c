@@ -922,11 +922,13 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     if (!m->active) return;
 
     // Job state names
-    const char* jobStateNames[] = {"IDLE", "MOVING_TO_ITEM", "MOVING_TO_STOCKPILE"};
-    const char* jobStateName = (m->jobState >= 0 && m->jobState <= 2) ? jobStateNames[m->jobState] : "?";
+    const char* jobStateNames[] = {"IDLE", "MOVING_TO_ITEM", "MOVING_TO_STOCKPILE", "MOVING_TO_DROP"};
+    const char* jobStateName = (m->jobState >= 0 && m->jobState <= 3) ? jobStateNames[m->jobState] : "?";
 
     // Build tooltip lines
     char line1[64], line2[64], line3[64], line4[64], line5[64], line6[64];
+    char line7[64] = "";  // Debug: distance to target item
+    char line8[64] = "";  // Debug: pickup radius info
     snprintf(line1, sizeof(line1), "Mover #%d", moverIdx);
     snprintf(line2, sizeof(line2), "Pos: (%.1f, %.1f, %.0f)", m->x, m->y, m->z);
     snprintf(line3, sizeof(line3), "Job: %s", jobStateName);
@@ -936,6 +938,21 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     snprintf(line6, sizeof(line6), "Target SP: %d, Slot: (%d,%d)",
         m->targetStockpile, m->targetSlotX, m->targetSlotY);
 
+    // Debug info when moving to item
+    int numLines = 6;
+    float pickupRadius = CELL_SIZE * 0.75f;
+    if (m->jobState == JOB_MOVING_TO_ITEM && m->targetItem >= 0 && items[m->targetItem].active) {
+        Item* item = &items[m->targetItem];
+        float dx = m->x - item->x;
+        float dy = m->y - item->y;
+        float dist = sqrtf(dx*dx + dy*dy);
+        snprintf(line7, sizeof(line7), "Item #%d at (%.1f,%.1f) dist=%.1f", 
+            m->targetItem, item->x, item->y, dist);
+        snprintf(line8, sizeof(line8), "Pickup radius: %.1f %s", 
+            pickupRadius, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
+        numLines = 8;
+    }
+
     // Measure text widths
     int w1 = MeasureText(line1, 14);
     int w2 = MeasureText(line2, 14);
@@ -943,17 +960,21 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     int w4 = MeasureText(line4, 14);
     int w5 = MeasureText(line5, 14);
     int w6 = MeasureText(line6, 14);
+    int w7 = MeasureText(line7, 14);
+    int w8 = MeasureText(line8, 14);
     int maxW = w1;
     if (w2 > maxW) maxW = w2;
     if (w3 > maxW) maxW = w3;
     if (w4 > maxW) maxW = w4;
     if (w5 > maxW) maxW = w5;
     if (w6 > maxW) maxW = w6;
+    if (w7 > maxW) maxW = w7;
+    if (w8 > maxW) maxW = w8;
 
     int padding = 6;
     int lineH = 16;
     int boxW = maxW + padding * 2;
-    int boxH = lineH * 6 + padding * 2;
+    int boxH = lineH * numLines + padding * 2;
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -978,6 +999,18 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawTextShadow(line5, tx + padding, y, 14, m->pathLength > 0 ? WHITE : RED);
     y += lineH;
     DrawTextShadow(line6, tx + padding, y, 14, m->targetStockpile >= 0 ? WHITE : GRAY);
+    
+    // Debug lines for moving-to-item state
+    if (numLines == 8) {
+        y += lineH;
+        DrawTextShadow(line7, tx + padding, y, 14, SKYBLUE);
+        y += lineH;
+        // Color based on whether in range
+        float dx = m->x - items[m->targetItem].x;
+        float dy = m->y - items[m->targetItem].y;
+        float dist = sqrtf(dx*dx + dy*dy);
+        DrawTextShadow(line8, tx + padding, y, 14, dist < pickupRadius ? GREEN : RED);
+    }
 }
 
 // Get items at a grid cell, returns count and fills outItems array (max 16)
@@ -1005,7 +1038,7 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     // Build tooltip lines
     char lines[17][64];  // Header + up to 16 items
     snprintf(lines[0], sizeof(lines[0]), "Cell (%d,%d): %d item%s", cellX, cellY, itemCount, itemCount == 1 ? "" : "s");
-    
+
     int lineCount = 1;
     for (int i = 0; i < itemCount && lineCount < 17; i++) {
         int idx = itemIndices[i];
@@ -1704,6 +1737,54 @@ void DrawUI(void) {
             }
         }
         y += 22;
+        if (PushButton(x, y, "Spawn Red")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_RED);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Spawn Green")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_GREEN);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Spawn Blue")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_BLUE);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
         if (PushButton(x, y, "Clear Items")) {
             ClearItems();
         }
@@ -1790,7 +1871,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
         // Build hierarchical render order (parents before children, children grouped under parent)
         int renderOrder[PROFILER_MAX_SECTIONS];
         int renderCount = 0;
-        
+
         // Add section and all its descendants recursively (depth-first)
         for (int i = 0; i < profilerSectionCount; i++) {
             if (profilerSections[i].parent == -1) {
@@ -1798,11 +1879,11 @@ void DrawProfilerPanel(float rightEdge, float y) {
                 int stack[PROFILER_MAX_SECTIONS];
                 int stackSize = 1;
                 stack[0] = i;
-                
+
                 while (stackSize > 0) {
                     int current = stack[--stackSize];
                     renderOrder[renderCount++] = current;
-                    
+
                     // Push children in reverse order so they come out in forward order
                     for (int j = profilerSectionCount - 1; j >= 0; j--) {
                         if (profilerSections[j].parent == current) {

@@ -22,6 +22,8 @@ typedef struct {
     int maxStackSize;      // per-stockpile stack limit (1-MAX_STACK_SIZE, default MAX_STACK_SIZE)
     // Priority support
     int priority;          // higher = better storage (1-9, default 5)
+    // Ground item cache (avoids expensive FindGroundItemAtTile calls)
+    bool hasGroundItem[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // true if ground item on this slot
 } Stockpile;
 
 // Gather zones
@@ -90,5 +92,9 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
 // Sets outIsAbsorb to true if item matches stockpile filter (absorb job), false if foreign (clear job)
 // Sets outStockpileIdx to the stockpile the item is on
 int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb);
+
+// Ground item cache - call when items land on or leave stockpile tiles
+void MarkStockpileGroundItem(float x, float y, int z, bool hasItem);
+void RebuildStockpileGroundItemCache(void);  // full rebuild from item positions
 
 #endif

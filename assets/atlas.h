@@ -15,6 +15,7 @@
     #define SPRITE_carpet SPRITE8X8_carpet
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_air SPRITE8X8_air
+    #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_apple SPRITE8X8_apple
     #define SPRITE_grass SPRITE8X8_grass
@@ -24,6 +25,7 @@
     #define SPRITE_stockpile SPRITE8X8_stockpile
     #define SPRITE_floor SPRITE8X8_floor
     #define SPRITE_ladder_down SPRITE8X8_ladder_down
+    #define SPRITE_rock_floor SPRITE8X8_rock_floor
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_crate_red SPRITE8X8_crate_red
     #define SpriteGetRect SPRITE8X8GetRect
@@ -33,6 +35,7 @@
     #define SPRITE_carpet SPRITE16X16_carpet
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_air SPRITE16X16_air
+    #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_apple SPRITE16X16_apple
     #define SPRITE_grass SPRITE16X16_grass
@@ -42,6 +45,7 @@
     #define SPRITE_stockpile SPRITE16X16_stockpile
     #define SPRITE_floor SPRITE16X16_floor
     #define SPRITE_ladder_down SPRITE16X16_ladder_down
+    #define SPRITE_rock_floor SPRITE16X16_rock_floor
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_crate_red SPRITE16X16_crate_red
     #define SpriteGetRect SPRITE16X16GetRect

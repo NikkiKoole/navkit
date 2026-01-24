@@ -253,6 +253,10 @@ void AssignJobs(void) {
     // Early exit: no idle movers means no work to do
     if (idleMoverCount == 0) return;
     
+    // Rebuild ground item cache for stockpiles (O(stockpiles + items), once per frame)
+    // This enables O(1) checks in FindFreeStockpileSlot instead of O(items) per slot
+    RebuildStockpileGroundItemCache();
+    
     // Cache which item types have available stockpiles
     bool typeHasStockpile[3] = {false, false, false};
     for (int t = 0; t < 3; t++) {
