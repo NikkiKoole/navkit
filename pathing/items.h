@@ -7,7 +7,9 @@
 typedef enum {
     ITEM_RED,
     ITEM_GREEN,
-    ITEM_BLUE
+    ITEM_BLUE,
+    ITEM_ORANGE,  // Stone blocks from mining, used for building walls
+    ITEM_TYPE_COUNT  // Must be last - number of item types
 } ItemType;
 
 // Item state

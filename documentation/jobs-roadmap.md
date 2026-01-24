@@ -490,6 +490,11 @@ typedef struct {
 - [ ] What happens if blueprint is cancelled? Materials drop?
 - [ ] Deconstruction? (reverse of construction)
 - [ ] Multi-tile structures? (e.g., bed = 1x2)
+- [ ] **Hauler/Builder separation issue:** Currently when a mover delivers material to a blueprint, they immediately become idle and may pick up the build job too (doing haul + build). For true separation we need:
+  - Job types/professions per mover ("this mover is a hauler only")
+  - Or job priority preferences per mover ("prefer hauling over building")
+  - Or a cooldown/exclusion after delivering (quick hack, not ideal)
+  - This ties into the broader "Mover Capabilities / Labor System" section
 
 ---
 

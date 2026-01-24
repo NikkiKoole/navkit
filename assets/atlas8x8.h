@@ -14,6 +14,7 @@ typedef struct {
 } SPRITE8X8Sprite;
 
 enum {
+    SPRITE8X8_crate_orange,
     SPRITE8X8_carpet,
     SPRITE8X8_crate_blue,
     SPRITE8X8_air,
@@ -34,22 +35,23 @@ enum {
 };
 
 static const SPRITE8X8Sprite SPRITE8X8_SPRITES[SPRITE8X8_COUNT] = {
-    { "carpet", { 0, 0, 8, 8 } },
-    { "crate_blue", { 9, 0, 8, 8 } },
-    { "air", { 18, 0, 8, 8 } },
-    { "rock", { 27, 0, 8, 8 } },
-    { "ladder", { 36, 0, 8, 8 } },
-    { "apple", { 45, 0, 8, 8 } },
-    { "grass", { 54, 0, 8, 8 } },
-    { "ladder_up", { 63, 0, 8, 8 } },
-    { "head", { 72, 0, 8, 8 } },
-    { "wall", { 81, 0, 8, 8 } },
-    { "stockpile", { 90, 0, 8, 8 } },
-    { "floor", { 99, 0, 8, 8 } },
-    { "ladder_down", { 108, 0, 8, 8 } },
-    { "rock_floor", { 117, 0, 8, 8 } },
-    { "crate_green", { 126, 0, 8, 8 } },
-    { "crate_red", { 135, 0, 8, 8 } },
+    { "crate_orange", { 0, 0, 8, 8 } },
+    { "carpet", { 9, 0, 8, 8 } },
+    { "crate_blue", { 18, 0, 8, 8 } },
+    { "air", { 27, 0, 8, 8 } },
+    { "rock", { 36, 0, 8, 8 } },
+    { "ladder", { 45, 0, 8, 8 } },
+    { "apple", { 54, 0, 8, 8 } },
+    { "grass", { 63, 0, 8, 8 } },
+    { "ladder_up", { 72, 0, 8, 8 } },
+    { "head", { 81, 0, 8, 8 } },
+    { "wall", { 90, 0, 8, 8 } },
+    { "stockpile", { 99, 0, 8, 8 } },
+    { "floor", { 108, 0, 8, 8 } },
+    { "ladder_down", { 117, 0, 8, 8 } },
+    { "rock_floor", { 126, 0, 8, 8 } },
+    { "crate_green", { 135, 0, 8, 8 } },
+    { "crate_red", { 144, 0, 8, 8 } },
 };
 
 // Helper: get sprite rectangle by enum

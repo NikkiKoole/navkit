@@ -3927,6 +3927,69 @@ describe(mining_job_execution) {
         expect(m->jobState == JOB_IDLE);
     }
     
+    it("should spawn orange block when dig completes") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".#...\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover starts adjacent to wall at (0,1)
+        Mover* m = &movers[0];
+        Point goal = {0, 1, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Wall at (1,1)
+        expect(grid[0][1][1] == CELL_WALL);
+        
+        // Designate wall for digging
+        DesignateDig(1, 1, 0);
+        
+        // Run simulation until dig completes
+        bool completed = false;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (grid[0][1][1] != CELL_WALL) {
+                completed = true;
+                break;
+            }
+        }
+        
+        expect(completed == true);
+        
+        // Find the spawned item and verify it's orange at the dig location
+        bool foundOrange = false;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (items[i].active && items[i].type == ITEM_ORANGE) {
+                foundOrange = true;
+                // Item should be at the dug location (1,1)
+                int itemX = (int)(items[i].x / CELL_SIZE);
+                int itemY = (int)(items[i].y / CELL_SIZE);
+                expect(itemX == 1);
+                expect(itemY == 1);
+                expect((int)items[i].z == 0);
+                expect(items[i].state == ITEM_ON_GROUND);
+                break;
+            }
+        }
+        expect(foundOrange == true);
+    }
+    
     it("should cancel dig job if designation is removed") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
@@ -4066,6 +4129,342 @@ describe(mining_multiple_designations) {
     }
 }
 
+// =============================================================================
+// Building/Construction Tests
+// =============================================================================
+
+describe(building_blueprint) {
+    it("should create blueprint on floor tile") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Create blueprint on floor
+        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        expect(bpIdx >= 0);
+        expect(HasBlueprint(2, 2, 0) == true);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(CountBlueprints() == 1);
+    }
+    
+    it("should not create blueprint on wall tile") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            ".#....\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Try to create blueprint on wall
+        int bpIdx = CreateBuildBlueprint(1, 1, 0);
+        expect(bpIdx == -1);
+        expect(HasBlueprint(1, 1, 0) == false);
+        expect(CountBlueprints() == 0);
+    }
+    
+    it("should cancel blueprint") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        expect(CountBlueprints() == 1);
+        
+        CancelBlueprint(bpIdx);
+        expect(HasBlueprint(2, 2, 0) == false);
+        expect(CountBlueprints() == 0);
+    }
+}
+
+describe(building_haul_job) {
+    it("should assign haul job to blueprint needing materials") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at (1,1) - must be ITEM_ORANGE for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        
+        // Blueprint at (4,4)
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+        
+        // Run job assignment
+        AssignJobs();
+        
+        // Mover should be assigned to haul the item
+        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        expect(m->targetItem == itemIdx);
+        expect(m->targetBlueprint == bpIdx);
+        expect(blueprints[bpIdx].reservedItem == itemIdx);
+    }
+    
+    it("should not assign haul job when no items available") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Blueprint but NO items
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        
+        AssignJobs();
+        
+        // Mover should remain idle
+        expect(m->jobState == JOB_IDLE);
+        expect(blueprints[bpIdx].reservedItem == -1);
+    }
+}
+
+describe(building_job_execution) {
+    it("should deliver material and complete build") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at (1,1) - must be ITEM_ORANGE for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        
+        // Blueprint at (3,3) - will become a wall
+        int bpIdx = CreateBuildBlueprint(3, 3, 0);
+        
+        // Run simulation until build completes
+        // Hauler picks up item, delivers to blueprint, then builder builds
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if wall was built
+            if (grid[0][3][3] == CELL_WALL) break;
+        }
+        
+        // Blueprint should be complete - wall should exist
+        expect(grid[0][3][3] == CELL_WALL);
+        expect(HasBlueprint(3, 3, 0) == false);
+        expect(CountBlueprints() == 0);
+        
+        // Item should be consumed
+        expect(items[itemIdx].active == false);
+        
+        // Mover should be idle
+        expect(m->jobState == JOB_IDLE);
+    }
+    
+    it("should cancel haul job when blueprint is cancelled") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at (1,1) - must be ITEM_ORANGE for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        
+        // Blueprint at (4,4)
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        
+        // Start hauling
+        AssignJobs();
+        expect(m->jobState == JOB_MOVING_TO_ITEM);
+        
+        // Run a few ticks to pick up item
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            JobsTick();
+            if (m->jobState == JOB_HAULING_TO_BLUEPRINT) break;
+        }
+        
+        expect(m->carryingItem == itemIdx);
+        
+        // Cancel the blueprint while hauler is en route
+        CancelBlueprint(bpIdx);
+        
+        // Run more ticks - mover should drop item and become idle
+        for (int i = 0; i < 100; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (m->jobState == JOB_IDLE && m->carryingItem == -1) break;
+        }
+        
+        // Mover should have dropped item and be idle
+        expect(m->jobState == JOB_IDLE);
+        expect(m->carryingItem == -1);
+        
+        // Item should be on ground (not deleted)
+        expect(items[itemIdx].active == true);
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+    }
+}
+
+describe(building_two_movers) {
+    it("should use separate hauler and builder when both idle") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover 1 near the item (will be hauler)
+        Mover* m1 = &movers[0];
+        Point goal1 = {0, 0, 0};
+        InitMover(m1, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal1, 100.0f);
+        
+        // Mover 2 near the blueprint (will be builder)
+        Mover* m2 = &movers[1];
+        Point goal2 = {6, 6, 0};
+        InitMover(m2, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal2, 100.0f);
+        moverCount = 2;
+        
+        // Item at (1,1) - must be ITEM_ORANGE for building walls
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        
+        // Blueprint at (5,5)
+        int bpIdx = CreateBuildBlueprint(5, 5, 0);
+        
+        // Run simulation until build completes
+        bool haulerFound = false;
+        bool builderFound = false;
+        int haulerIdx = -1;
+        
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Track who does what
+            if (m1->jobState == JOB_MOVING_TO_ITEM || m1->jobState == JOB_HAULING_TO_BLUEPRINT) {
+                haulerFound = true;
+                haulerIdx = 0;
+            }
+            if (m2->jobState == JOB_MOVING_TO_ITEM || m2->jobState == JOB_HAULING_TO_BLUEPRINT) {
+                haulerFound = true;
+                haulerIdx = 1;
+            }
+            
+            // After material delivered, a builder should be assigned
+            if (blueprints[bpIdx].active && blueprints[bpIdx].state == BLUEPRINT_BUILDING) {
+                builderFound = true;
+            }
+            
+            if (grid[0][5][5] == CELL_WALL) break;
+        }
+        
+        // Wall should be built
+        expect(grid[0][5][5] == CELL_WALL);
+        expect(haulerFound == true);
+        expect(builderFound == true);
+        
+        // Both movers should be idle at the end
+        expect(m1->jobState == JOB_IDLE);
+        expect(m2->jobState == JOB_IDLE);
+        
+        // Suppress unused variable warning
+        (void)haulerIdx;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose, -b for benchmarks
     bool verbose = false;
@@ -4127,6 +4526,12 @@ int main(int argc, char* argv[]) {
     test(mining_job_assignment);
     test(mining_job_execution);
     test(mining_multiple_designations);
+
+    // Building/construction tests
+    test(building_blueprint);
+    test(building_haul_job);
+    test(building_job_execution);
+    test(building_two_movers);
     
     return summary();
 }

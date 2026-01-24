@@ -125,7 +125,6 @@ static void ClearSourceStockpileSlot(Item* item) {
 
 // Helper: cancel job and release all reservations
 static void CancelJob(Mover* m, int moverIdx) {
-    (void)moverIdx;  // reserved for future use
     // Release item reservation
     if (m->targetItem >= 0) {
         ReleaseItemReservation(m->targetItem);
@@ -155,6 +154,23 @@ static void CancelJob(Mover* m, int moverIdx) {
         }
     }
     
+    // Release blueprint reservation
+    if (m->targetBlueprint >= 0 && m->targetBlueprint < MAX_BLUEPRINTS) {
+        Blueprint* bp = &blueprints[m->targetBlueprint];
+        if (bp->active) {
+            // If we were hauling to this blueprint, release the reserved item
+            if (bp->reservedItem >= 0 && items[bp->reservedItem].reservedBy == moverIdx) {
+                bp->reservedItem = -1;
+            }
+            // If we were building, release the builder assignment
+            if (bp->assignedBuilder == moverIdx) {
+                bp->assignedBuilder = -1;
+                bp->state = BLUEPRINT_READY_TO_BUILD;  // Revert to ready state
+                bp->progress = 0.0f;  // Reset progress
+            }
+        }
+    }
+    
     // Reset mover state
     m->jobState = JOB_IDLE;
     m->targetItem = -1;
@@ -165,6 +181,8 @@ static void CancelJob(Mover* m, int moverIdx) {
     m->targetDigX = -1;
     m->targetDigY = -1;
     m->targetDigZ = -1;
+    m->targetBlueprint = -1;
+    m->buildProgress = 0.0f;
     
     // Add back to idle list
     AddMoverToIdleList(moverIdx);
@@ -273,8 +291,8 @@ void AssignJobs(void) {
     RebuildStockpileFreeSlotCounts();
     
     // Cache which item types have available stockpiles
-    bool typeHasStockpile[3] = {false, false, false};
-    for (int t = 0; t < 3; t++) {
+    bool typeHasStockpile[ITEM_TYPE_COUNT] = {false};
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
         int slotX, slotY;
         if (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0) {
             typeHasStockpile[t] = true;
@@ -321,7 +339,7 @@ void AssignJobs(void) {
     PROFILE_ACCUM_BEGIN(Jobs_FindGroundItem_StockpileCentric);
     // Early check: refresh typeHasStockpile cache and skip if no slots available
     bool anyTypeHasSlotSP = false;
-    for (int t = 0; t < 3; t++) {
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
         int slotX, slotY;
         typeHasStockpile[t] = (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0);
         if (typeHasStockpile[t]) anyTypeHasSlotSP = true;
@@ -333,7 +351,7 @@ void AssignJobs(void) {
             if (!sp->active) continue;
             
             // Check each item type this stockpile accepts
-            for (int t = 0; t < 3 && idleMoverCount > 0; t++) {
+            for (int t = 0; t < ITEM_TYPE_COUNT && idleMoverCount > 0; t++) {
                 if (!sp->allowedTypes[t]) continue;
                 if (!typeHasStockpile[t]) continue;  // Skip if no stockpile has slots for this type
                 
@@ -503,6 +521,7 @@ void AssignJobs(void) {
                 for (int x = 0; x < gridWidth && idleMoverCount > 0; x++) {
                     Designation* d = GetDesignation(x, y, z);
                     if (!d || d->type != DESIGNATION_DIG || d->assignedMover != -1) continue;
+                    if (d->unreachableCooldown > 0.0f) continue;  // Skip if on cooldown
                     
                     // Find an adjacent walkable tile to stand on while digging
                     // Check 4 cardinal directions (miner stands adjacent to wall)
@@ -553,7 +572,11 @@ void AssignJobs(void) {
                     Point tempPath[MAX_PATH];
                     int tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
                     
-                    if (tempLen == 0) continue;  // Can't reach
+                    if (tempLen == 0) {
+                        // Can't reach - set cooldown to avoid spamming
+                        d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+                        continue;
+                    }
                     
                     // Assign dig job
                     d->assignedMover = moverIdx;
@@ -570,6 +593,152 @@ void AssignJobs(void) {
         }
     }
     PROFILE_ACCUM_END(Jobs_FindDigJob);
+    
+    // PRIORITY 5: Haul materials to blueprints
+    PROFILE_ACCUM_BEGIN(Jobs_FindBlueprintHaulJob);
+    if (idleMoverCount > 0) {
+        // Find blueprints needing materials
+        for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && idleMoverCount > 0; bpIdx++) {
+            Blueprint* bp = &blueprints[bpIdx];
+            if (!bp->active) continue;
+            if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
+            if (bp->reservedItem >= 0) continue;  // Already has an item reserved
+            
+            // Find an available orange item (stone blocks for building walls)
+            int itemIdx = -1;
+            float bestDistSq = 1e30f;
+            float bpX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float bpY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+            
+            // Linear scan for items (could use spatial grid for optimization)
+            for (int j = 0; j < MAX_ITEMS; j++) {
+                Item* item = &items[j];
+                if (!item->active) continue;
+                if (item->type != ITEM_ORANGE) continue;  // Only orange blocks for building
+                if (item->reservedBy != -1) continue;
+                if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+                if (item->unreachableCooldown > 0.0f) continue;
+                
+                float dx = item->x - bpX;
+                float dy = item->y - bpY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    itemIdx = j;
+                }
+            }
+            
+            if (itemIdx < 0) continue;  // No available items
+            
+            // Find nearest idle mover
+            Item* item = &items[itemIdx];
+            int moverIdx = -1;
+            float bestMoverDistSq = 1e30f;
+            
+            for (int i = 0; i < idleMoverCount; i++) {
+                int idx = idleMoverList[i];
+                if ((int)movers[idx].z != bp->z) continue;  // Same z-level for now
+                float mdx = movers[idx].x - item->x;
+                float mdy = movers[idx].y - item->y;
+                float distSq = mdx * mdx + mdy * mdy;
+                if (distSq < bestMoverDistSq) {
+                    bestMoverDistSq = distSq;
+                    moverIdx = idx;
+                }
+            }
+            
+            if (moverIdx < 0) continue;  // No idle mover on this z-level
+            
+            Mover* m = &movers[moverIdx];
+            
+            // Check reachability to item
+            Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+            Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+            
+            Point tempPath[MAX_PATH];
+            int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+            
+            if (tempLen == 0) continue;  // Can't reach item
+            
+            // Reserve item for this blueprint
+            if (!ReserveItem(itemIdx, moverIdx)) continue;
+            bp->reservedItem = itemIdx;
+            
+            // Clear source stockpile slot if item is in stockpile
+            if (item->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(item);
+            }
+            
+            // Assign haul job to mover
+            m->jobState = JOB_MOVING_TO_ITEM;
+            m->targetItem = itemIdx;
+            m->targetBlueprint = bpIdx;
+            m->targetStockpile = -1;  // Not going to stockpile
+            m->targetSlotX = bp->x;
+            m->targetSlotY = bp->y;
+            m->goal = itemCell;
+            m->needsRepath = true;
+            
+            RemoveMoverFromIdleList(moverIdx);
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindBlueprintHaulJob);
+    
+    // PRIORITY 6: Build at blueprints with materials delivered
+    PROFILE_ACCUM_BEGIN(Jobs_FindBuildJob);
+    if (idleMoverCount > 0) {
+        for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && idleMoverCount > 0; bpIdx++) {
+            Blueprint* bp = &blueprints[bpIdx];
+            if (!bp->active) continue;
+            if (bp->state != BLUEPRINT_READY_TO_BUILD) continue;
+            if (bp->assignedBuilder >= 0) continue;  // Already has a builder
+            
+            // Find nearest idle mover
+            float bpX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float bpY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+            
+            int moverIdx = -1;
+            float bestDistSq = 1e30f;
+            
+            for (int i = 0; i < idleMoverCount; i++) {
+                int idx = idleMoverList[i];
+                if ((int)movers[idx].z != bp->z) continue;  // Same z-level
+                float dx = movers[idx].x - bpX;
+                float dy = movers[idx].y - bpY;
+                float distSq = dx * dx + dy * dy;
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    moverIdx = idx;
+                }
+            }
+            
+            if (moverIdx < 0) continue;
+            
+            Mover* m = &movers[moverIdx];
+            
+            // Check reachability to blueprint
+            Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+            Point bpCell = { bp->x, bp->y, bp->z };
+            
+            Point tempPath[MAX_PATH];
+            int tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+            
+            if (tempLen == 0) continue;  // Can't reach blueprint
+            
+            // Assign build job
+            bp->assignedBuilder = moverIdx;
+            bp->state = BLUEPRINT_BUILDING;
+            
+            m->jobState = JOB_MOVING_TO_BUILD;
+            m->targetBlueprint = bpIdx;
+            m->goal = bpCell;
+            m->needsRepath = true;
+            m->buildProgress = 0.0f;
+            
+            RemoveMoverFromIdleList(moverIdx);
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindBuildJob);
 }
 
 void JobsTick(void) {
@@ -638,7 +807,15 @@ void JobsTick(void) {
                 m->carryingItem = itemIdx;
                 m->targetItem = -1;
                 
-                if (m->targetStockpile < 0) {
+                if (m->targetBlueprint >= 0) {
+                    // Blueprint haul: go to blueprint location
+                    Blueprint* bp = &blueprints[m->targetBlueprint];
+                    m->jobState = JOB_HAULING_TO_BLUEPRINT;
+                    m->goal.x = bp->x;
+                    m->goal.y = bp->y;
+                    m->goal.z = bp->z;
+                    m->needsRepath = true;
+                } else if (m->targetStockpile < 0) {
                     // Safe-drop job: find a passable tile outside any stockpile
                     // For now, just drop at current position (will be refined)
                     // The item needs to be dropped outside the stockpile it was on
@@ -870,6 +1047,138 @@ void JobsTick(void) {
                 m->targetDigZ = -1;
                 
                 // Add mover back to idle list
+                AddMoverToIdleList(i);
+            }
+        }
+        else if (m->jobState == JOB_HAULING_TO_BLUEPRINT) {
+            int itemIdx = m->carryingItem;
+            int bpIdx = m->targetBlueprint;
+            
+            // Check if still carrying
+            if (itemIdx < 0 || !items[itemIdx].active) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if blueprint still exists and needs materials
+            if (bpIdx < 0 || !blueprints[bpIdx].active) {
+                // Blueprint cancelled - drop item on ground
+                items[itemIdx].state = ITEM_ON_GROUND;
+                items[itemIdx].x = m->x;
+                items[itemIdx].y = m->y;
+                items[itemIdx].z = m->z;
+                items[itemIdx].reservedBy = -1;
+                m->carryingItem = -1;
+                m->targetBlueprint = -1;
+                m->jobState = JOB_IDLE;
+                AddMoverToIdleList(i);
+                continue;
+            }
+            
+            Blueprint* bp = &blueprints[bpIdx];
+            
+            // Check if stuck
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                AddMessage(TextFormat("Mover %d: blueprint unreachable, job cancelled", i), ORANGE);
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Update carried item position
+            items[itemIdx].x = m->x;
+            items[itemIdx].y = m->y;
+            items[itemIdx].z = m->z;
+            
+            // Check if arrived at blueprint
+            float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = m->x - targetX;
+            float dy = m->y - targetY;
+            float distSq = dx*dx + dy*dy;
+            
+            if (distSq < DROP_RADIUS * DROP_RADIUS) {
+                // Deliver material to blueprint
+                DeliverMaterialToBlueprint(bpIdx, itemIdx);
+                AddMessage(TextFormat("Mover %d: delivered material to blueprint at (%d,%d)", i, bp->x, bp->y), GREEN);
+                
+                // Job complete
+                m->jobState = JOB_IDLE;
+                m->carryingItem = -1;
+                m->targetBlueprint = -1;
+                m->targetSlotX = -1;
+                m->targetSlotY = -1;
+                
+                AddMoverToIdleList(i);
+            }
+        }
+        else if (m->jobState == JOB_MOVING_TO_BUILD) {
+            int bpIdx = m->targetBlueprint;
+            
+            // Check if blueprint still exists
+            if (bpIdx < 0 || !blueprints[bpIdx].active) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            Blueprint* bp = &blueprints[bpIdx];
+            
+            // Check if blueprint was cancelled or already built
+            if (bp->state != BLUEPRINT_BUILDING || bp->assignedBuilder != i) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if stuck
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                AddMessage(TextFormat("Mover %d: build site unreachable, job cancelled", i), ORANGE);
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if arrived at blueprint
+            float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = m->x - targetX;
+            float dy = m->y - targetY;
+            float distSq = dx*dx + dy*dy;
+            
+            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                // Arrived, start building
+                m->jobState = JOB_BUILDING;
+                m->buildProgress = 0.0f;
+            }
+        }
+        else if (m->jobState == JOB_BUILDING) {
+            int bpIdx = m->targetBlueprint;
+            
+            // Check if blueprint still exists
+            if (bpIdx < 0 || !blueprints[bpIdx].active) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            Blueprint* bp = &blueprints[bpIdx];
+            
+            // Check if blueprint was cancelled
+            if (bp->assignedBuilder != i) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Progress building
+            m->buildProgress += TICK_DT;
+            bp->progress = m->buildProgress / BUILD_WORK_TIME;
+            
+            if (m->buildProgress >= BUILD_WORK_TIME) {
+                // Build complete!
+                CompleteBlueprint(bpIdx);
+                AddMessage(TextFormat("Mover %d: finished building at (%d,%d)", i, bp->x, bp->y), GREEN);
+                
+                // Reset mover state
+                m->jobState = JOB_IDLE;
+                m->targetBlueprint = -1;
+                m->buildProgress = 0.0f;
+                
                 AddMoverToIdleList(i);
             }
         }

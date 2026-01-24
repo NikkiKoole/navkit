@@ -12,6 +12,7 @@
 #if TILE_SIZE == 8
     #include "atlas8x8.h"
     #define ATLAS_PATH ATLAS8X8_PATH
+    #define SPRITE_crate_orange SPRITE8X8_crate_orange
     #define SPRITE_carpet SPRITE8X8_carpet
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_air SPRITE8X8_air
@@ -32,6 +33,7 @@
 #elif TILE_SIZE == 16
     #include "atlas16x16.h"
     #define ATLAS_PATH ATLAS16X16_PATH
+    #define SPRITE_crate_orange SPRITE16X16_crate_orange
     #define SPRITE_carpet SPRITE16X16_carpet
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_air SPRITE16X16_air

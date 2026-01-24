@@ -541,6 +541,11 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->targetStockpile = -1;
     m->targetSlotX = -1;
     m->targetSlotY = -1;
+    m->targetDigX = -1;
+    m->targetDigY = -1;
+    m->targetDigZ = -1;
+    m->targetBlueprint = -1;
+    m->buildProgress = 0.0f;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen) {

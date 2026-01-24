@@ -52,6 +52,11 @@ bool designatingMining = false;
 bool cancellingMining = false;
 int miningStartX = 0, miningStartY = 0;
 
+// Build designation state (B key to activate, left-drag to designate, right-drag to cancel)
+bool designatingBuild = false;
+bool cancellingBuild = false;
+int buildStartX = 0, buildStartY = 0;
+
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -593,10 +598,11 @@ void DrawMovers(void) {
             Item* item = &items[m->carryingItem];
             int sprite;
             switch (item->type) {
-                case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-                case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-                case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-                default:         sprite = SPRITE_apple;       break;
+                case ITEM_RED:    sprite = SPRITE_crate_red;    break;
+                case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
+                case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
+                case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
+                default:          sprite = SPRITE_apple;        break;
             }
             float itemSize = size * ITEM_SIZE_CARRIED;
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;  // 20% overlap with head
@@ -660,10 +666,11 @@ void DrawItems(void) {
         // Choose sprite based on item type
         int sprite;
         switch (item->type) {
-            case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-            case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-            case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-            default:         sprite = SPRITE_apple;       break;
+            case ITEM_RED:    sprite = SPRITE_crate_red;    break;
+            case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
+            case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
+            case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
+            default:          sprite = SPRITE_apple;        break;
         }
 
         float itemSize = size * ITEM_SIZE_GROUND;
@@ -716,10 +723,11 @@ void DrawStockpiles(void) {
                     ItemType type = sp->slotTypes[slotIdx];
                     int sprite;
                     switch (type) {
-                        case ITEM_RED:   sprite = SPRITE_crate_red;   break;
-                        case ITEM_GREEN: sprite = SPRITE_crate_green; break;
-                        case ITEM_BLUE:  sprite = SPRITE_crate_blue;  break;
-                        default:         sprite = SPRITE_apple;       break;
+                        case ITEM_RED:    sprite = SPRITE_crate_red;    break;
+                        case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
+                        case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
+                        case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
+                        default:          sprite = SPRITE_apple;        break;
                     }
 
                     // Draw up to 5 visible items with diagonal offset (bottom to top)
@@ -763,9 +771,10 @@ void DrawMiningDesignations(void) {
             float sx = offset.x + x * size;
             float sy = offset.y + y * size;
 
-            // Draw orange overlay for dig designation
-            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){255, 150, 0, 80});
-            DrawRectangleLinesEx((Rectangle){sx, sy, size, size}, 1.0f, ORANGE);
+            // Draw stockpile tile pattern tinted cyan for mining
+            Rectangle src = SpriteGetRect(SPRITE_stockpile);
+            Rectangle dest = { sx, sy, size, size };
+            DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 255, 200});
 
             // If being worked on, draw progress bar
             if (d->progress > 0.0f) {
@@ -774,8 +783,53 @@ void DrawMiningDesignations(void) {
                 float barX = sx + size * 0.1f;
                 float barY = sy + size - 8.0f;
                 DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, ORANGE);
+                DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, SKYBLUE);
             }
+        }
+    }
+}
+
+void DrawBlueprints(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        Blueprint* bp = &blueprints[i];
+        if (!bp->active || bp->z != viewZ) continue;
+
+        float sx = offset.x + bp->x * size;
+        float sy = offset.y + bp->y * size;
+
+        // Draw stockpile tile pattern tinted blue for blueprints
+        // Color varies by state: blue (awaiting), cyan (ready), green (building)
+        Color tint;
+        if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+            tint = (Color){100, 150, 255, 200};  // Blue
+        } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
+            tint = (Color){100, 220, 255, 200};  // Cyan
+        } else {
+            tint = (Color){100, 255, 150, 200};  // Green
+        }
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+
+        // If being built, draw progress bar
+        if (bp->state == BLUEPRINT_BUILDING && bp->progress > 0.0f) {
+            float barWidth = size * 0.8f;
+            float barHeight = 4.0f;
+            float barX = sx + size * 0.1f;
+            float barY = sy + size - 8.0f;
+            DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+            DrawRectangle((int)barX, (int)barY, (int)(barWidth * bp->progress), (int)barHeight, GREEN);
+        }
+
+        // Show material count if awaiting
+        if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+            const char* text = TextFormat("%d/%d", bp->deliveredMaterials, bp->requiredMaterials);
+            int textW = MeasureTextUI(text, 10);
+            DrawTextShadow(text, (int)(sx + size/2 - textW/2), (int)(sy + 2), 10, WHITE);
         }
     }
 }
@@ -866,7 +920,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int w2 = MeasureText(stackText, 14);
     int w3 = MeasureText(storageText, 14);
     int w4 = MeasureText(cellText, 14);
-    int w5 = MeasureText("Filters: R G B", 14);
+    int w5 = MeasureText("Filters: R G B O", 14);
     int w6 = MeasureText(helpText, 12);
     int maxW = w0;
     if (w1 > maxW) maxW = w1;
@@ -923,6 +977,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("G", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_BLUE] ? "B" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_BLUE] ? BLUE : DARKGRAY);
+    fx += MeasureText("B", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_ORANGE] ? "O" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_ORANGE] ? ORANGE : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
@@ -1218,6 +1275,10 @@ void HandleInput(void) {
             sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE];
             AddMessage(TextFormat("Blue filter: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE);
         }
+        if (IsKeyPressed(KEY_O)) {
+            sp->allowedTypes[ITEM_ORANGE] = !sp->allowedTypes[ITEM_ORANGE];
+            AddMessage(TextFormat("Orange filter: %s", sp->allowedTypes[ITEM_ORANGE] ? "ON" : "OFF"), ORANGE);
+        }
     }
 
     // Zoom with mouse wheel
@@ -1481,6 +1542,84 @@ void HandleInput(void) {
     } else {
         designatingMining = false;
         cancellingMining = false;
+    }
+
+    // Build designation mode (B key + left-drag to designate, right-drag to cancel)
+    if (IsKeyDown(KEY_B)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        // Left mouse - designate for building
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            designatingBuild = true;
+            buildStartX = x;
+            buildStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && designatingBuild) {
+            designatingBuild = false;
+            int x1 = buildStartX < x ? buildStartX : x;
+            int y1 = buildStartY < y ? buildStartY : y;
+            int x2 = buildStartX > x ? buildStartX : x;
+            int y2 = buildStartY > y ? buildStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int designated = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (CreateBuildBlueprint(dx, dy, z) >= 0) {
+                        designated++;
+                    }
+                }
+            }
+            if (designated > 0) {
+                AddMessage(TextFormat("Created %d blueprint%s for building", designated, designated > 1 ? "s" : ""), BLUE);
+            }
+        }
+
+        // Right mouse - cancel build blueprints in area
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            cancellingBuild = true;
+            buildStartX = x;
+            buildStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && cancellingBuild) {
+            cancellingBuild = false;
+            int x1 = buildStartX < x ? buildStartX : x;
+            int y1 = buildStartY < y ? buildStartY : y;
+            int x2 = buildStartX > x ? buildStartX : x;
+            int y2 = buildStartY > y ? buildStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int cancelled = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    int bpIdx = GetBlueprintAt(dx, dy, z);
+                    if (bpIdx >= 0) {
+                        CancelBlueprint(bpIdx);
+                        cancelled++;
+                    }
+                }
+            }
+            if (cancelled > 0) {
+                AddMessage(TextFormat("Cancelled %d blueprint%s", cancelled, cancelled > 1 ? "s" : ""), ORANGE);
+            }
+        }
+
+        return;  // Skip normal tool interactions while B is held
+    } else {
+        designatingBuild = false;
+        cancellingBuild = false;
     }
 
     // Ladder drawing shortcut (L key + click/drag)
@@ -2293,6 +2432,7 @@ int main(void) {
             PROFILE_BEGIN(ItemsTick);
             ItemsTick(TICK_DT);
             PROFILE_END(ItemsTick);
+            DesignationsTick(TICK_DT);
             PROFILE_BEGIN(AssignJobs);
             AssignJobs();
             PROFILE_END(AssignJobs);
@@ -2315,6 +2455,7 @@ int main(void) {
         PROFILE_END(DrawCells);
         DrawStockpiles();
         DrawMiningDesignations();
+        DrawBlueprints();
         DrawChunkBoundaries();
         PROFILE_BEGIN(DrawGraph);
         DrawGraph();
@@ -2422,6 +2563,32 @@ int main(void) {
             }
         }
 
+        // Draw build designation preview while dragging (B key)
+        if (IsKeyDown(KEY_B) && (designatingBuild || cancellingBuild)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = buildStartX < x ? buildStartX : x;
+            int y1 = buildStartY < y ? buildStartY : y;
+            int x2 = buildStartX > x ? buildStartX : x;
+            int y2 = buildStartY > y ? buildStartY : y;
+            float size = CELL_SIZE * zoom;
+
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+
+            if (designatingBuild) {
+                // Cyan for designating build
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){0, 200, 200, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, (Color){0, 255, 255, 255});
+            } else {
+                // Red for cancelling build designations
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+            }
+        }
+
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, screenHeight - 20, 18, SKYBLUE);
@@ -2446,6 +2613,8 @@ int main(void) {
                 "S + R-drag    Erase stockpile",
                 "M + L-drag    Designate mining",
                 "M + R-drag    Cancel mining",
+                "B + L-drag    Designate building",
+                "B + R-drag    Cancel building",
                 "< / >         Change Z level",
                 "Space         Pause/Resume",
                 "Scroll        Zoom in/out",

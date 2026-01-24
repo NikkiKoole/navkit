@@ -10,9 +10,12 @@ typedef enum {
     JOB_IDLE,
     JOB_MOVING_TO_ITEM,
     JOB_MOVING_TO_STOCKPILE,
-    JOB_MOVING_TO_DROP,  // Clearing: carrying item away from stockpile to drop on ground
-    JOB_MOVING_TO_DIG,   // Walking to adjacent cell to mine
-    JOB_DIGGING,         // At mining location, doing work
+    JOB_MOVING_TO_DROP,           // Clearing: carrying item away from stockpile to drop on ground
+    JOB_MOVING_TO_DIG,            // Walking to adjacent cell to mine
+    JOB_DIGGING,                  // At mining location, doing work
+    JOB_HAULING_TO_BLUEPRINT,     // Carrying material to blueprint location
+    JOB_MOVING_TO_BUILD,          // Walking to blueprint to construct
+    JOB_BUILDING,                 // At blueprint location, constructing
 } JobState;
 
 // Cell size in pixels (for position calculations)
@@ -64,6 +67,9 @@ typedef struct {
     int targetDigX;      // designation tile to dig
     int targetDigY;
     int targetDigZ;
+    // Building job fields
+    int targetBlueprint; // blueprint index we're hauling to or building, -1 = none
+    float buildProgress; // progress on current build (0.0 to BUILD_WORK_TIME)
 } Mover;
 
 // Stuck detection thresholds

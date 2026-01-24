@@ -111,7 +111,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             sp->active = true;
             
             // Default: allow all types
-            for (int t = 0; t < 3; t++) {
+            for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
                 sp->allowedTypes[t] = true;
             }
             

@@ -12,7 +12,7 @@ typedef struct {
     int x, y, z;           // top-left corner
     int width, height;
     bool active;
-    bool allowedTypes[3];  // indexed by ItemType (RED, GREEN, BLUE)
+    bool allowedTypes[ITEM_TYPE_COUNT];  // indexed by ItemType
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];     // which cells are active (for non-rectangular shapes)
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];      // item index per tile, -1 = empty
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // mover index per tile, -1 = none
