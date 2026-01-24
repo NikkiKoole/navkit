@@ -230,6 +230,12 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             mover->needsRepath = true;
         }
         
+        // Final approach - when close but not in pickup range, keep nudging toward item
+        if (mover->pathLength <= 1 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && distSq < CELL_SIZE * CELL_SIZE * 4) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+        
         // Check if stuck
         if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
@@ -288,6 +294,21 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
         
+        // Check if arrived at target slot
+        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - targetX;
+        float dy = mover->y - targetY;
+        float distSq = dx*dx + dy*dy;
+        
+        // Request repath if no path and not at destination
+        if (mover->pathLength == 0 && distSq >= DROP_RADIUS * DROP_RADIUS) {
+            mover->goal.x = job->targetSlotX;
+            mover->goal.y = job->targetSlotY;
+            mover->goal.z = stockpiles[job->targetStockpile].z;
+            mover->needsRepath = true;
+        }
+        
         // Check if stuck
         if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
@@ -297,13 +318,6 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
-        
-        // Check if arrived at target slot
-        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
         
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
