@@ -575,6 +575,7 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
         if (i == currentStockpileIdx) continue;  // skip current stockpile
         if (stockpiles[i].priority <= currentPriority) continue;  // must be higher priority
         if (!stockpiles[i].allowedTypes[type]) continue;  // must accept this type
+        if (stockpiles[i].freeSlotCount <= 0) continue;  // O(1) early exit if full
         
         int slotX, slotY;
         if (FindFreeStockpileSlot(i, type, &slotX, &slotY)) {
