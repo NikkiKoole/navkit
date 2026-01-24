@@ -4,6 +4,7 @@
 #include "items.h"
 #include "mover.h"  // for CELL_SIZE
 #include <string.h>
+#include <math.h>
 
 Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
@@ -140,10 +141,7 @@ void DesignationsTick(float dt) {
             for (int x = 0; x < gridWidth; x++) {
                 Designation* d = &designations[z][y][x];
                 if (d->type != DESIGNATION_NONE && d->unreachableCooldown > 0.0f) {
-                    d->unreachableCooldown -= dt;
-                    if (d->unreachableCooldown < 0.0f) {
-                        d->unreachableCooldown = 0.0f;
-                    }
+                    d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
                 }
             }
         }
