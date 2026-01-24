@@ -16,7 +16,26 @@
 
 ---
 
-## Remaining Problem
+## Known Issues
+
+### 1. Deadlock when swapping filters on full stockpiles
+**Repro:** Two full stockpiles (red and blue). Swap their filters (red→blue, blue→red). Nothing happens - items don't get rehauled.
+
+**Cause:** Both stockpiles are full. To move a red item out of the (now blue) stockpile, we need a free slot in a red stockpile. But the red stockpile is also full of blue items that need to move out. Classic deadlock - no empty cell to start the swap.
+
+**Possible fix:** Temporary "swap buffer" - allow one item to be dropped to ground to break the deadlock. Or detect this case and force a safe-drop.
+
+### 2. FindFreeStockpileSlot still expensive when stockpiles are full
+**Repro:** Many items on ground, but all stockpiles are full (no room). Profiler shows:
+- `AssignJobs` → `FindStockpileForItem` → `FindFreeStockpileSlot` taking 35%+ of frame time
+
+**Cause:** For each ground item, we call `FindStockpileForItem` which scans all stockpiles calling `FindFreeStockpileSlot` on each. Even though slots are full, we still iterate all tiles checking for free slots.
+
+**Possible fix:** Cache "stockpile has free slots" flag per stockpile. Update when slots are reserved/released. Early exit in `FindStockpileForItem` if stockpile has no free slots.
+
+---
+
+## Remaining Problem (filter change rehaul storm)
 When stockpile filters change (e.g., red stockpile no longer accepts red items), `AssignJobs` becomes slow because it scans all stockpiled items every frame to check if they need rehauling.
 
 ## Benchmark Results
