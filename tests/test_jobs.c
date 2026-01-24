@@ -7,6 +7,7 @@
 #include "../pathing/items.h"
 #include "../pathing/jobs.h"
 #include "../pathing/stockpiles.h"
+#include "../pathing/designations.h"
 #include <math.h>
 
 // Stub profiler functions for tests
@@ -3735,6 +3736,336 @@ describe(stockpile_cell_operations) {
     }
 }
 
+// =============================================================================
+// Mining/Digging Tests
+// =============================================================================
+
+describe(mining_designation) {
+    it("should designate a wall for digging") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".###.\n"
+            ".###.\n"
+            ".###.\n"
+            ".....\n", 5, 5);
+        
+        InitDesignations();
+        
+        // Designate center wall
+        bool result = DesignateDig(2, 2, 0);
+        expect(result == true);
+        expect(HasDigDesignation(2, 2, 0) == true);
+        expect(CountDigDesignations() == 1);
+    }
+    
+    it("should not designate floor for digging") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".###.\n"
+            ".###.\n"
+            ".###.\n"
+            ".....\n", 5, 5);
+        
+        InitDesignations();
+        
+        // Try to designate floor tile
+        bool result = DesignateDig(0, 0, 0);
+        expect(result == false);
+        expect(HasDigDesignation(0, 0, 0) == false);
+    }
+    
+    it("should cancel a designation") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".###.\n"
+            ".###.\n"
+            ".###.\n"
+            ".....\n", 5, 5);
+        
+        InitDesignations();
+        
+        DesignateDig(2, 2, 0);
+        expect(HasDigDesignation(2, 2, 0) == true);
+        
+        CancelDesignation(2, 2, 0);
+        expect(HasDigDesignation(2, 2, 0) == false);
+        expect(CountDigDesignations() == 0);
+    }
+}
+
+describe(mining_job_assignment) {
+    it("should assign dig job to mover when adjacent floor exists") {
+        // Wall with floor below it
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".###.\n"
+            ".###.\n"
+            ".###.\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Designate wall at (1,1) - has adjacent floor at (0,1) and (1,0)
+        DesignateDig(1, 1, 0);
+        
+        // Assign jobs
+        AssignJobs();
+        
+        // Mover should be assigned to dig
+        expect(m->jobState == JOB_MOVING_TO_DIG);
+        expect(m->targetDigX == 1);
+        expect(m->targetDigY == 1);
+        expect(m->targetDigZ == 0);
+        
+        // Designation should be reserved
+        Designation* d = GetDesignation(1, 1, 0);
+        expect(d != NULL);
+        expect(d->assignedMover == 0);
+    }
+    
+    it("should not assign dig job when no adjacent floor") {
+        // Completely surrounded wall
+        InitGridFromAsciiWithChunkSize(
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "#####\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Make one floor cell for mover to stand on
+        grid[0][0][0] = CELL_FLOOR;
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Designate wall at (2,2) - surrounded by walls, no adjacent floor
+        DesignateDig(2, 2, 0);
+        
+        // Assign jobs
+        AssignJobs();
+        
+        // Mover should remain idle (can't reach any adjacent tile)
+        expect(m->jobState == JOB_IDLE);
+    }
+}
+
+describe(mining_job_execution) {
+    it("should complete dig job and convert wall to floor") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".#...\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover starts adjacent to wall at (0,1)
+        Mover* m = &movers[0];
+        Point goal = {0, 1, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Wall at (1,1)
+        expect(grid[0][1][1] == CELL_WALL);
+        
+        // Designate wall for digging
+        DesignateDig(1, 1, 0);
+        
+        // Run simulation until dig completes
+        bool completed = false;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if dig completed (wall became floor)
+            if (grid[0][1][1] != CELL_WALL) {
+                completed = true;
+                break;
+            }
+        }
+        
+        expect(completed == true);
+        expect(grid[0][1][1] == CELL_FLOOR);
+        expect(HasDigDesignation(1, 1, 0) == false);
+        expect(m->jobState == JOB_IDLE);
+    }
+    
+    it("should cancel dig job if designation is removed") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".#...\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Designate and assign
+        DesignateDig(1, 1, 0);
+        AssignJobs();
+        
+        expect(m->jobState == JOB_MOVING_TO_DIG);
+        
+        // Cancel designation while mover is en route
+        CancelDesignation(1, 1, 0);
+        
+        // Run one tick to detect cancellation
+        Tick();
+        JobsTick();
+        
+        // Mover should be back to idle
+        expect(m->jobState == JOB_IDLE);
+        expect(m->targetDigX == -1);
+    }
+    
+    it("should cancel dig job if wall is removed by other means") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".#...\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Designate and assign
+        DesignateDig(1, 1, 0);
+        AssignJobs();
+        
+        expect(m->jobState == JOB_MOVING_TO_DIG);
+        
+        // Player removes wall manually (simulating editor action)
+        grid[0][1][1] = CELL_FLOOR;
+        
+        // Run one tick to detect wall removal
+        Tick();
+        JobsTick();
+        
+        // Mover should be back to idle, designation should be cleared
+        expect(m->jobState == JOB_IDLE);
+        expect(HasDigDesignation(1, 1, 0) == false);
+    }
+}
+
+describe(mining_multiple_designations) {
+    it("should process multiple dig designations sequentially") {
+        // Layout with walls that each have at least one adjacent floor
+        // So they can all be dug from the start
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            ".#.#..\n"
+            "......\n"
+            ".#....\n"
+            "......\n"
+            "......\n", 6, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->targetDigX = -1;
+        m->targetDigY = -1;
+        m->targetDigZ = -1;
+        moverCount = 1;
+        
+        // Designate 3 isolated walls (each has adjacent floor)
+        DesignateDig(1, 1, 0);  // Wall at (1,1)
+        DesignateDig(3, 1, 0);  // Wall at (3,1)
+        DesignateDig(1, 3, 0);  // Wall at (1,3)
+        
+        expect(CountDigDesignations() == 3);
+        
+        // Run simulation until all digs complete
+        // Each dig takes ~DIG_WORK_TIME (2s) at 60 ticks/s = 120 ticks per dig
+        // Plus travel time, so give plenty of margin
+        for (int i = 0; i < 5000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (CountDigDesignations() == 0) break;
+        }
+        
+        // All walls should be dug
+        expect(grid[0][1][1] == CELL_FLOOR);
+        expect(grid[0][1][3] == CELL_FLOOR);
+        expect(grid[0][3][1] == CELL_FLOOR);
+        expect(CountDigDesignations() == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose, -b for benchmarks
     bool verbose = false;
@@ -3790,6 +4121,12 @@ int main(int argc, char* argv[]) {
     
     // Cell-based stockpile operations
     test(stockpile_cell_operations);
+    
+    // Mining/digging tests
+    test(mining_designation);
+    test(mining_job_assignment);
+    test(mining_job_execution);
+    test(mining_multiple_designations);
     
     return summary();
 }

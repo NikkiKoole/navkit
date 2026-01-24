@@ -6,6 +6,7 @@
 #include "items.h"
 #include "jobs.h"
 #include "stockpiles.h"
+#include "designations.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
@@ -45,6 +46,11 @@ int floorStartX = 0, floorStartY = 0;
 bool drawingStockpile = false;
 bool erasingStockpile = false;
 int stockpileStartX = 0, stockpileStartY = 0;
+
+// Mining designation state (M key to activate, left-drag to designate, right-drag to cancel)
+bool designatingMining = false;
+bool cancellingMining = false;
+int miningStartX = 0, miningStartY = 0;
 
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
@@ -745,6 +751,35 @@ void DrawStockpiles(void) {
     }
 }
 
+void DrawMiningDesignations(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            Designation* d = GetDesignation(x, y, viewZ);
+            if (!d || d->type != DESIGNATION_DIG) continue;
+
+            float sx = offset.x + x * size;
+            float sy = offset.y + y * size;
+
+            // Draw orange overlay for dig designation
+            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){255, 150, 0, 80});
+            DrawRectangleLinesEx((Rectangle){sx, sy, size, size}, 1.0f, ORANGE);
+
+            // If being worked on, draw progress bar
+            if (d->progress > 0.0f) {
+                float barWidth = size * 0.8f;
+                float barHeight = 4.0f;
+                float barX = sx + size * 0.1f;
+                float barY = sy + size - 8.0f;
+                DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, ORANGE);
+            }
+        }
+    }
+}
+
 // Helper: spawn a 3x3 stockpile with specified type filters
 static void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
     int attempts = 100;
@@ -1371,6 +1406,83 @@ void HandleInput(void) {
         erasingStockpile = false;
     }
 
+    // Mining designation mode (M key + left-drag to designate, right-drag to cancel)
+    if (IsKeyDown(KEY_M)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        // Left mouse - designate for mining
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            designatingMining = true;
+            miningStartX = x;
+            miningStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && designatingMining) {
+            designatingMining = false;
+            int x1 = miningStartX < x ? miningStartX : x;
+            int y1 = miningStartY < y ? miningStartY : y;
+            int x2 = miningStartX > x ? miningStartX : x;
+            int y2 = miningStartY > y ? miningStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int designated = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (DesignateDig(dx, dy, z)) {
+                        designated++;
+                    }
+                }
+            }
+            if (designated > 0) {
+                AddMessage(TextFormat("Designated %d cell%s for mining", designated, designated > 1 ? "s" : ""), ORANGE);
+            }
+        }
+
+        // Right mouse - cancel mining designations in area
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            cancellingMining = true;
+            miningStartX = x;
+            miningStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && cancellingMining) {
+            cancellingMining = false;
+            int x1 = miningStartX < x ? miningStartX : x;
+            int y1 = miningStartY < y ? miningStartY : y;
+            int x2 = miningStartX > x ? miningStartX : x;
+            int y2 = miningStartY > y ? miningStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int cancelled = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (HasDigDesignation(dx, dy, z)) {
+                        CancelDesignation(dx, dy, z);
+                        cancelled++;
+                    }
+                }
+            }
+            if (cancelled > 0) {
+                AddMessage(TextFormat("Cancelled %d mining designation%s", cancelled, cancelled > 1 ? "s" : ""), ORANGE);
+            }
+        }
+
+        return;  // Skip normal tool interactions while M is held
+    } else {
+        designatingMining = false;
+        cancellingMining = false;
+    }
+
     // Ladder drawing shortcut (L key + click/drag)
     // Uses PlaceLadder for auto-connection behavior
     if (IsKeyDown(KEY_L) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -1579,6 +1691,25 @@ void DrawUI(void) {
             BuildGraph();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
             offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
+        if (PushButton(x, y, "Fill with Walls")) {
+            // Fill current z-level with walls (for mining testing)
+            for (int gy = 0; gy < gridHeight; gy++) {
+                for (int gx = 0; gx < gridWidth; gx++) {
+                    grid[currentViewZ][gy][gx] = CELL_WALL;
+                }
+            }
+            // Mark all chunks dirty
+            for (int cy = 0; cy < chunksY; cy++) {
+                for (int cx = 0; cx < chunksX; cx++) {
+                    MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
+                }
+            }
+            BuildEntrances();
+            BuildGraph();
+            InitDesignations();  // Clear any existing designations
+            AddMessage(TextFormat("Filled z=%d with walls", currentViewZ), GREEN);
         }
         y += 22;
         if (PushButton(x, y, "Copy Map ASCII")) {
@@ -2121,6 +2252,7 @@ int main(void) {
             for (int x = 0; x < gridWidth; x++)
                 grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitDesignations();
     BuildEntrances();
     BuildGraph();
     offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -2182,6 +2314,7 @@ int main(void) {
         DrawCellGrid();
         PROFILE_END(DrawCells);
         DrawStockpiles();
+        DrawMiningDesignations();
         DrawChunkBoundaries();
         PROFILE_BEGIN(DrawGraph);
         DrawGraph();
@@ -2263,6 +2396,32 @@ int main(void) {
             }
         }
 
+        // Draw mining designation preview while dragging (M key)
+        if (IsKeyDown(KEY_M) && (designatingMining || cancellingMining)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = miningStartX < x ? miningStartX : x;
+            int y1 = miningStartY < y ? miningStartY : y;
+            int x2 = miningStartX > x ? miningStartX : x;
+            int y2 = miningStartY > y ? miningStartY : y;
+            float size = CELL_SIZE * zoom;
+
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+
+            if (designatingMining) {
+                // Orange for designating mining
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){255, 150, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, ORANGE);
+            } else {
+                // Red for cancelling mining designations
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+            }
+        }
+
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, screenHeight - 20, 18, SKYBLUE);
@@ -2285,6 +2444,8 @@ int main(void) {
                 "L + drag      Draw ladder",
                 "S + L-drag    Draw stockpile",
                 "S + R-drag    Erase stockpile",
+                "M + L-drag    Designate mining",
+                "M + R-drag    Cancel mining",
                 "< / >         Change Z level",
                 "Space         Pause/Resume",
                 "Scroll        Zoom in/out",

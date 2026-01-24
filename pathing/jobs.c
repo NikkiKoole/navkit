@@ -4,6 +4,7 @@
 #include "grid.h"
 #include "pathfinding.h"
 #include "stockpiles.h"
+#include "designations.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
 #include "../vendor/raylib.h"
@@ -145,6 +146,15 @@ static void CancelJob(Mover* m, int moverIdx) {
         item->reservedBy = -1;
     }
     
+    // Release dig designation reservation
+    if (m->targetDigX >= 0 && m->targetDigY >= 0 && m->targetDigZ >= 0) {
+        Designation* d = GetDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+        if (d && d->assignedMover == moverIdx) {
+            d->assignedMover = -1;
+            d->progress = 0.0f;  // Reset progress when cancelled
+        }
+    }
+    
     // Reset mover state
     m->jobState = JOB_IDLE;
     m->targetItem = -1;
@@ -152,6 +162,9 @@ static void CancelJob(Mover* m, int moverIdx) {
     m->targetStockpile = -1;
     m->targetSlotX = -1;
     m->targetSlotY = -1;
+    m->targetDigX = -1;
+    m->targetDigY = -1;
+    m->targetDigZ = -1;
     
     // Add back to idle list
     AddMoverToIdleList(moverIdx);
@@ -480,6 +493,83 @@ void AssignJobs(void) {
         }
     }
     PROFILE_ACCUM_END(Jobs_FindRehaulItem);
+    
+    // PRIORITY 4: Mining designations
+    PROFILE_ACCUM_BEGIN(Jobs_FindDigJob);
+    if (idleMoverCount > 0) {
+        // Find unassigned dig designations
+        for (int z = 0; z < gridDepth && idleMoverCount > 0; z++) {
+            for (int y = 0; y < gridHeight && idleMoverCount > 0; y++) {
+                for (int x = 0; x < gridWidth && idleMoverCount > 0; x++) {
+                    Designation* d = GetDesignation(x, y, z);
+                    if (!d || d->type != DESIGNATION_DIG || d->assignedMover != -1) continue;
+                    
+                    // Find an adjacent walkable tile to stand on while digging
+                    // Check 4 cardinal directions (miner stands adjacent to wall)
+                    int adjX = -1, adjY = -1;
+                    int dx4[] = {0, 1, 0, -1};
+                    int dy4[] = {-1, 0, 1, 0};
+                    for (int dir = 0; dir < 4; dir++) {
+                        int ax = x + dx4[dir];
+                        int ay = y + dy4[dir];
+                        if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                            if (IsCellWalkableAt(z, ay, ax)) {
+                                adjX = ax;
+                                adjY = ay;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (adjX < 0) continue;  // No adjacent walkable tile
+                    
+                    // Find nearest idle mover
+                    float digPosX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float digPosY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    
+                    int moverIdx = -1;
+                    float bestDistSq = 1e30f;
+                    
+                    for (int i = 0; i < idleMoverCount; i++) {
+                        int idx = idleMoverList[i];
+                        if ((int)movers[idx].z != z) continue;  // Same z-level only for now
+                        float mdx = movers[idx].x - digPosX;
+                        float mdy = movers[idx].y - digPosY;
+                        float distSq = mdx * mdx + mdy * mdy;
+                        if (distSq < bestDistSq) {
+                            bestDistSq = distSq;
+                            moverIdx = idx;
+                        }
+                    }
+                    
+                    if (moverIdx < 0) continue;
+                    
+                    Mover* m = &movers[moverIdx];
+                    
+                    // Check reachability
+                    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+                    Point adjCell = { adjX, adjY, z };
+                    
+                    Point tempPath[MAX_PATH];
+                    int tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
+                    
+                    if (tempLen == 0) continue;  // Can't reach
+                    
+                    // Assign dig job
+                    d->assignedMover = moverIdx;
+                    m->jobState = JOB_MOVING_TO_DIG;
+                    m->targetDigX = x;
+                    m->targetDigY = y;
+                    m->targetDigZ = z;
+                    m->goal = adjCell;
+                    m->needsRepath = true;
+                    
+                    RemoveMoverFromIdleList(moverIdx);
+                }
+            }
+        }
+    }
+    PROFILE_ACCUM_END(Jobs_FindDigJob);
 }
 
 void JobsTick(void) {
@@ -704,6 +794,80 @@ void JobsTick(void) {
                 m->targetStockpile = -1;
                 m->targetSlotX = -1;
                 m->targetSlotY = -1;
+                
+                // Add mover back to idle list
+                AddMoverToIdleList(i);
+            }
+        }
+        else if (m->jobState == JOB_MOVING_TO_DIG) {
+            // Check if designation still exists
+            Designation* d = GetDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+            if (!d || d->type != DESIGNATION_DIG) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if the wall was already dug (e.g., by player editing)
+            if (grid[m->targetDigZ][m->targetDigY][m->targetDigX] != CELL_WALL) {
+                CancelDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if stuck
+            if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
+                AddMessage(TextFormat("Mover %d: dig site unreachable, job cancelled", i), ORANGE);
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if arrived at adjacent tile
+            // The goal was set to the adjacent tile in AssignJobs, check if we're close to it
+            float goalX = m->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = m->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = m->x - goalX;
+            float dy = m->y - goalY;
+            float distSq = dx*dx + dy*dy;
+            
+            // Verify we're on the correct Z and the goal is adjacent to the dig target
+            bool correctZ = (int)m->z == m->targetDigZ;
+            int goalDistX = abs(m->goal.x - m->targetDigX);
+            int goalDistY = abs(m->goal.y - m->targetDigY);
+            bool goalIsAdjacent = (goalDistX == 1 && goalDistY == 0) || (goalDistX == 0 && goalDistY == 1);
+            
+            if (correctZ && goalIsAdjacent && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                // Arrived at adjacent tile, start digging
+                m->jobState = JOB_DIGGING;
+            }
+        }
+        else if (m->jobState == JOB_DIGGING) {
+            // Check if designation still exists
+            Designation* d = GetDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+            if (!d || d->type != DESIGNATION_DIG) {
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Check if the wall was already dug
+            if (grid[m->targetDigZ][m->targetDigY][m->targetDigX] != CELL_WALL) {
+                CancelDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+                CancelJob(m, i);
+                continue;
+            }
+            
+            // Progress digging (uses fixed timestep TICK_DT)
+            d->progress += TICK_DT / DIG_WORK_TIME;
+            
+            if (d->progress >= 1.0f) {
+                // Dig complete!
+                CompleteDigDesignation(m->targetDigX, m->targetDigY, m->targetDigZ);
+                AddMessage(TextFormat("Mover %d: finished digging at (%d,%d)", i, m->targetDigX, m->targetDigY), GREEN);
+                
+                // Reset mover state
+                m->jobState = JOB_IDLE;
+                m->targetDigX = -1;
+                m->targetDigY = -1;
+                m->targetDigZ = -1;
                 
                 // Add mover back to idle list
                 AddMoverToIdleList(i);

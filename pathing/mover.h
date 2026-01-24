@@ -11,6 +11,8 @@ typedef enum {
     JOB_MOVING_TO_ITEM,
     JOB_MOVING_TO_STOCKPILE,
     JOB_MOVING_TO_DROP,  // Clearing: carrying item away from stockpile to drop on ground
+    JOB_MOVING_TO_DIG,   // Walking to adjacent cell to mine
+    JOB_DIGGING,         // At mining location, doing work
 } JobState;
 
 // Cell size in pixels (for position calculations)
@@ -58,6 +60,10 @@ typedef struct {
     int targetStockpile; // stockpile index we're delivering to, -1 = none
     int targetSlotX;     // stockpile slot coordinates
     int targetSlotY;
+    // Mining job fields
+    int targetDigX;      // designation tile to dig
+    int targetDigY;
+    int targetDigZ;
 } Mover;
 
 // Stuck detection thresholds
