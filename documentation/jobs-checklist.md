@@ -6,29 +6,40 @@ Prioritized steps to expand the jobs system beyond hauling.
 
 ## Phase 1: UI for Existing Systems
 - [x] Draw/remove stockpiles (click-drag rectangles)
+- [x] Stockpile filters (R/G/B/O toggle with keyboard)
 - [ ] Draw/remove gather zones
-- [ ] Stockpile config panel (filters, priority, stack size)
+- [ ] Stockpile config panel (priority, stack size UI)
 - [ ] Requester stockpiles - "keep N items here" mode
 
 ## Phase 2: Robustness
+- [x] Unreachable cooldowns for items (don't spam-retry)
+- [x] Unreachable cooldowns for designations
 - [ ] Reservation timeouts (auto-release orphaned reservations)
 - [ ] Connectivity regions (cheap reachability check before pathfinding)
 - [ ] **Performance fixes** - see [todo/jobs-rehaul-performance.md](todo/jobs-rehaul-performance.md)
 
 ## Phase 3: Mining
-- [ ] Designation system (player marks tiles for work)
-- [ ] JOB_MOVING_TO_DESIGNATION + JOB_WORKING states
-- [ ] Terrain modification (wall -> floor + spawn item)
+- [x] Designation system (player marks tiles for work)
+- [x] JOB_MOVING_TO_DIG + JOB_DIGGING states
+- [x] Terrain modification (wall -> floor)
+- [x] Spawn ITEM_ORANGE when mining completes
+- [x] Unreachable cooldown for dig designations
+- [x] Visual feedback (cyan tinted stockpile pattern)
 
-## Phase 4: Architecture Refactor
+## Phase 4: Construction (Building)
+- [x] Blueprint system (BLUEPRINT_AWAITING_MATERIALS -> READY_TO_BUILD -> BUILDING)
+- [x] JOB_HAULING_TO_BLUEPRINT state
+- [x] JOB_MOVING_TO_BUILD + JOB_BUILDING states
+- [x] Material delivery to blueprints
+- [x] Require ITEM_ORANGE for building walls
+- [x] Visual feedback (blue/green/yellow tinted stockpile pattern)
+- [ ] Hauler/builder separation (currently same mover does both)
+
+## Phase 5: Architecture Refactor
 - [ ] Job pool separate from Mover (mover.currentJobId)
 - [ ] Job Drivers (per-type step functions)
 - [ ] WorkGivers (modular job producers)
-
-## Phase 5: Construction
-- [ ] Blueprint system
-- [ ] Chained jobs (deliver materials -> build)
-- [ ] Material reservations
+- [ ] Mover capabilities/professions system
 
 ## Phase 6: Crafting
 - [ ] Workshop system with recipes
@@ -40,6 +51,14 @@ Prioritized steps to expand the jobs system beyond hauling.
 - [ ] Farming (multi-stage growth)
 - [ ] Skills/labor priorities per mover
 - [ ] Elevators for vertical transport
+- [ ] Job priority reordering (mining vs hauling priority)
+
+---
+
+## Recently Fixed Bugs
+- [x] StockpileAcceptsType rejected ITEM_ORANGE (hardcoded `type > 2`)
+- [x] SpawnItem in CompleteDigDesignation used cell coords instead of pixel coords
+- [x] Mover fields not initialized in InitMover (targetDigX/Y/Z, targetBlueprint, buildProgress)
 
 ---
 
