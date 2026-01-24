@@ -3404,6 +3404,170 @@ static void RunBenchmarks(void) {
     }
     
     printf("\n");
+    
+    // Benchmark: AssignJobs with stockpile filter changes (rehaul storm)
+    printf("--- AssignJobs Rehaul (filter change scenario) ---\n");
+    
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    InitItemSpatialGrid(100, 100, 4);
+    moverPathAlgorithm = PATH_ALGO_ASTAR;  // Use A* for pathfinding (HPA* needs graph built)
+    
+    // Create 3 stockpiles like the user's scenario:
+    // - Red stockpile: 10x10 = 100 slots
+    // - Green stockpile: 10x10 = 100 slots  
+    // - Blue stockpile: 15x15 = 225 slots (bigger one)
+    int spRed = CreateStockpile(5, 5, 0, 10, 10);
+    int spGreen = CreateStockpile(20, 5, 0, 10, 10);
+    int spBlue = CreateStockpile(35, 5, 0, 15, 15);
+    
+    // Set filters: each only accepts its color
+    SetStockpileFilter(spRed, ITEM_RED, true);
+    SetStockpileFilter(spRed, ITEM_GREEN, false);
+    SetStockpileFilter(spRed, ITEM_BLUE, false);
+    SetStockpileFilter(spGreen, ITEM_RED, false);
+    SetStockpileFilter(spGreen, ITEM_GREEN, true);
+    SetStockpileFilter(spGreen, ITEM_BLUE, false);
+    SetStockpileFilter(spBlue, ITEM_RED, false);
+    SetStockpileFilter(spBlue, ITEM_GREEN, false);
+    SetStockpileFilter(spBlue, ITEM_BLUE, true);
+    
+    // Fill stockpiles with items (simulating fully stocked state)
+    // ~80 red, ~80 green, ~96 blue = 256 items total
+    int itemIdx = 0;
+    
+    // Fill red stockpile
+    for (int ly = 0; ly < 8 && itemIdx < 80; ly++) {
+        for (int lx = 0; lx < 10 && itemIdx < 80; lx++) {
+            int slotX = 5 + lx;
+            int slotY = 5 + ly;
+            float x = slotX * CELL_SIZE + CELL_SIZE / 2;
+            float y = slotY * CELL_SIZE + CELL_SIZE / 2;
+            int idx = SpawnItem(x, y, 0, ITEM_RED);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spRed, slotX, slotY, idx);
+            itemIdx++;
+        }
+    }
+    
+    // Fill green stockpile
+    for (int ly = 0; ly < 8 && itemIdx < 160; ly++) {
+        for (int lx = 0; lx < 10 && itemIdx < 160; lx++) {
+            int slotX = 20 + lx;
+            int slotY = 5 + ly;
+            float x = slotX * CELL_SIZE + CELL_SIZE / 2;
+            float y = slotY * CELL_SIZE + CELL_SIZE / 2;
+            int idx = SpawnItem(x, y, 0, ITEM_GREEN);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spGreen, slotX, slotY, idx);
+            itemIdx++;
+        }
+    }
+    
+    // Fill blue stockpile
+    for (int ly = 0; ly < 8 && itemIdx < 256; ly++) {
+        for (int lx = 0; lx < 12 && itemIdx < 256; lx++) {
+            int slotX = 35 + lx;
+            int slotY = 5 + ly;
+            float x = slotX * CELL_SIZE + CELL_SIZE / 2;
+            float y = slotY * CELL_SIZE + CELL_SIZE / 2;
+            int idx = SpawnItem(x, y, 0, ITEM_BLUE);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spBlue, slotX, slotY, idx);
+            itemIdx++;
+        }
+    }
+    
+    printf("  Setup: %d items in 3 stockpiles (red=%d, green=%d, blue=%d slots)\n",
+           itemIdx, 100, 100, 225);
+    
+    // Create idle movers
+    int moverCounts[] = {10, 50};
+    int numMoverCounts = 2;
+    
+    for (int mc = 0; mc < numMoverCounts; mc++) {
+        int targetMovers = moverCounts[mc];
+        ClearMovers();
+        
+        for (int i = 0; i < targetMovers; i++) {
+            float mx = 50 * CELL_SIZE + CELL_SIZE / 2;
+            float my = 50 * CELL_SIZE + CELL_SIZE / 2;
+            Mover* m = &movers[moverCount];
+            Point goal = {50, 50, 0};
+            InitMover(m, mx, my, 0, goal, 100.0f);
+            m->jobState = JOB_IDLE;
+            moverCount++;
+        }
+        
+        BuildItemSpatialGrid();
+        
+        int numIterations = 100;
+        
+        // Benchmark 1: Steady state (no filter changes, all items in correct stockpiles)
+        volatile int steadySum = 0;
+        double steadyStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            AssignJobs();
+            steadySum += movers[0].jobState;
+        }
+        double steadyTime = (GetBenchTime() - steadyStart) * 1000.0;
+        (void)steadySum;
+        
+        // Reset movers to idle
+        for (int i = 0; i < targetMovers; i++) {
+            movers[i].jobState = JOB_IDLE;
+            movers[i].targetItem = -1;
+            movers[i].targetStockpile = -1;
+        }
+        // Release all item reservations
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (items[i].active) items[i].reservedBy = -1;
+        }
+        
+        // Now simulate filter change: blue stockpile also accepts red,
+        // red stockpile no longer accepts red (forcing rehaul)
+        SetStockpileFilter(spBlue, ITEM_RED, true);
+        SetStockpileFilter(spRed, ITEM_RED, false);
+        
+        // Benchmark 2: After filter change (rehaul storm)
+        // Reset all state each iteration to simulate repeated frames where movers are available
+        volatile int rehaulSum = 0;
+        double rehaulStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            // Reset movers to idle each iteration (simulates movers finishing jobs)
+            for (int m = 0; m < targetMovers; m++) {
+                movers[m].jobState = JOB_IDLE;
+                movers[m].targetItem = -1;
+                movers[m].targetStockpile = -1;
+            }
+            // Release all reservations using proper functions (updates freeSlotCount)
+            for (int i = 0; i < 256; i++) {
+                if (items[i].active) {
+                    ReleaseItemReservation(i);
+                }
+            }
+            for (int m = 0; m < targetMovers; m++) {
+                ReleaseAllSlotsForMover(m);
+            }
+            
+            AssignJobs();
+            rehaulSum += movers[0].jobState;
+        }
+        double rehaulTime = (GetBenchTime() - rehaulStart) * 1000.0;
+        (void)rehaulSum;
+        
+        printf("  %2d movers: Steady=%.3fms  FilterChange=%.3fms  (%.1fx slower)\n",
+               targetMovers, steadyTime, rehaulTime,
+               (steadyTime > 0.001) ? rehaulTime / steadyTime : 0);
+        
+        // Reset filters for next iteration
+        SetStockpileFilter(spBlue, ITEM_RED, false);
+        SetStockpileFilter(spRed, ITEM_RED, true);
+    }
+    
+    FreeItemSpatialGrid();
+    printf("\n");
 }
 
 /*
