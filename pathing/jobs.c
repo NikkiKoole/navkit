@@ -514,6 +514,19 @@ void JobsTick(void) {
                 continue;
             }
             
+            // Check if arrived at item
+            float dx = m->x - item->x;
+            float dy = m->y - item->y;
+            float distSq = dx*dx + dy*dy;
+            
+            // Final approach: if path exhausted but close to item, move directly toward it
+            // This handles the case where knot fix arrival radius < pickup radius
+            if (m->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {  // within 2 cells
+                // Set goal directly to item position to trigger direct movement
+                m->goal = (Point){itemCellX, itemCellY, itemCellZ};
+                m->needsRepath = true;
+            }
+            
             // Check if stuck (no path and not making progress) - item is unreachable
             if (m->pathLength == 0 && m->timeWithoutProgress > JOB_STUCK_TIME) {
                 // Set cooldown on item so we don't immediately retry
@@ -525,11 +538,6 @@ void JobsTick(void) {
                 CancelJob(m, i);
                 continue;
             }
-            
-            // Check if arrived at item
-            float dx = m->x - item->x;
-            float dy = m->y - item->y;
-            float distSq = dx*dx + dy*dy;
             
             if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
                 // Pick up the item (if re-hauling, clear the source slot first)
