@@ -8,6 +8,7 @@
 #include "stockpiles.h"
 #include "designations.h"
 #include "water.h"
+#include "groundwear.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
@@ -86,6 +87,7 @@ bool sectionAgents = false;
 bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
 bool sectionWater = false;
+bool sectionEntropy = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 
@@ -176,7 +178,9 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 
 static int GetCellSprite(CellType cell) {
     switch (cell) {
-        case CELL_WALKABLE:     return SPRITE_grass;
+        case CELL_WALKABLE:     return SPRITE_grass;  // Legacy alias
+        case CELL_GRASS:        return SPRITE_grass;
+        case CELL_DIRT:         return SPRITE_dirt;
         case CELL_WALL:         return SPRITE_wall;
         case CELL_LADDER:       return SPRITE_ladder;  // Legacy: same as BOTH
         case CELL_LADDER_BOTH:  return SPRITE_ladder;
@@ -2364,6 +2368,28 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
+        }
+    }
+    y += 22;
+
+    // === ENTROPY (Ground Wear) ===
+    y += 8;
+    if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {
+        y += 18;
+        ToggleBool(x, y, "Enabled", &groundWearEnabled);
+        y += 22;
+        DraggableInt(x, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100);
+        y += 22;
+        DraggableInt(x, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000);
+        y += 22;
+        DraggableInt(x, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000);
+        y += 22;
+        DraggableInt(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100);
+        y += 22;
+        DraggableInt(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500);
+        y += 22;
+        if (PushButton(x, y, "Clear Wear")) {
+            ClearGroundWear();
         }
     }
     y += 22;

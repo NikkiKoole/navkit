@@ -23,14 +23,16 @@ extern int chunksY;
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
 typedef enum { 
-    CELL_WALKABLE, 
+    CELL_WALKABLE,     // Legacy: alias for CELL_GRASS
     CELL_WALL, 
     CELL_LADDER,       // Legacy: alias for CELL_LADDER_BOTH
     CELL_AIR, 
     CELL_FLOOR,
     CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
-    CELL_LADDER_BOTH   // Middle of ladder - can go both directions
+    CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
+    CELL_GRASS,        // Natural ground - can become dirt when trampled
+    CELL_DIRT          // Worn ground - can become grass when left alone
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -41,11 +43,12 @@ static inline bool IsLadderCell(CellType cell) {
            cell == CELL_LADDER_DOWN || cell == CELL_LADDER_BOTH;
 }
 
-// Helper to check if a cell is walkable (includes floor and all ladder types)
+// Helper to check if a cell is walkable (includes floor, grass, dirt, and all ladder types)
 static inline bool IsCellWalkableAt(int z, int y, int x) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_FLOOR || IsLadderCell(cell);
+    return cell == CELL_WALKABLE || cell == CELL_GRASS || cell == CELL_DIRT || 
+           cell == CELL_FLOOR || IsLadderCell(cell);
 }
 
 // Helper to check if a cell is air (empty space that can be fallen through)

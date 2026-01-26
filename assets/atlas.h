@@ -16,6 +16,7 @@
     #define SPRITE_carpet SPRITE8X8_carpet
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_air SPRITE8X8_air
+    #define SPRITE_dirt SPRITE8X8_dirt
     #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_apple SPRITE8X8_apple
@@ -37,6 +38,7 @@
     #define SPRITE_carpet SPRITE16X16_carpet
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_air SPRITE16X16_air
+    #define SPRITE_dirt SPRITE16X16_dirt
     #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_apple SPRITE16X16_apple

@@ -4,6 +4,7 @@
 #include "items.h"
 #include "jobs.h"
 #include "water.h"
+#include "groundwear.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
 #include "../vendor/raylib.h"
@@ -905,6 +906,13 @@ void UpdateMovers(void) {
                 m->y = newY;
             }
             
+            // Trample ground where mover is standing (creates paths over time)
+            int trampleCellX = (int)(m->x / CELL_SIZE);
+            int trampleCellY = (int)(m->y / CELL_SIZE);
+            if ((int)m->z == 0) {  // Only trample at ground level
+                TrampleGround(trampleCellX, trampleCellY);
+            }
+            
             // Track progress for stuck detection
             float dx = m->x - m->lastX;
             float dy = m->y - m->lastY;
@@ -1017,6 +1025,9 @@ void Tick(void) {
     PROFILE_BEGIN(Water);
     UpdateWater();
     PROFILE_END(Water);
+    
+    // Ground wear (emergent paths)
+    UpdateGroundWear();
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();
