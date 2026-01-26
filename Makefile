@@ -23,6 +23,7 @@ test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c p
 test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c
 test_steering_SRC := tests/test_steering.c steering/steering.c
 test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c
+test_water_SRC    := tests/test_water.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/water.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
@@ -53,8 +54,13 @@ test_jobs: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_jobs
 
+# Water test
+test_water: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_water
+
 # Run all tests
-test: test_pathing test_mover test_steering test_jobs
+test: test_pathing test_mover test_steering test_jobs test_water
 
 # Aliases for convenience (make path, make steer, make crowd)
 path: $(BINDIR) $(BINDIR)/path
@@ -93,4 +99,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs path steer crowd asan debug atlas path8 path16
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water path steer crowd asan debug atlas path8 path16

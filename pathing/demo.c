@@ -85,6 +85,7 @@ bool sectionMapEditing = true;
 bool sectionAgents = false;
 bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
+bool sectionWater = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 
@@ -1752,13 +1753,18 @@ void HandleInput(void) {
         cancellingBuild = false;
     }
 
-    // Water placement mode (W key + left-drag for source, right-drag for drain)
+    // Water placement mode (W key)
+    // W + left-drag = place water 7/7
+    // W + right-drag = remove water
+    // W + Shift + left-drag = place water source
+    // W + Shift + right-drag = place drain
     if (IsKeyDown(KEY_W)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
 
-        // Left mouse - place water source
+        // Left mouse - place water or source
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             placingWaterSource = true;
             waterStartX = x;
@@ -1780,17 +1786,24 @@ void HandleInput(void) {
             int placed = 0;
             for (int dy = y1; dy <= y2; dy++) {
                 for (int dx = x1; dx <= x2; dx++) {
-                    SetWaterSource(dx, dy, z, true);
+                    if (shift) {
+                        // Shift + left = water source
+                        SetWaterSource(dx, dy, z, true);
+                    }
                     SetWaterLevel(dx, dy, z, WATER_MAX_LEVEL);
                     placed++;
                 }
             }
             if (placed > 0) {
-                AddMessage(TextFormat("Placed %d water source%s", placed, placed > 1 ? "s" : ""), BLUE);
+                if (shift) {
+                    AddMessage(TextFormat("Placed %d water source%s", placed, placed > 1 ? "s" : ""), BLUE);
+                } else {
+                    AddMessage(TextFormat("Placed water (7/7) in %d cell%s", placed, placed > 1 ? "s" : ""), SKYBLUE);
+                }
             }
         }
 
-        // Right mouse - place drain
+        // Right mouse - remove water or place drain
         if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
             placingWaterDrain = true;
             waterStartX = x;
@@ -1812,12 +1825,24 @@ void HandleInput(void) {
             int placed = 0;
             for (int dy = y1; dy <= y2; dy++) {
                 for (int dx = x1; dx <= x2; dx++) {
-                    SetWaterDrain(dx, dy, z, true);
+                    if (shift) {
+                        // Shift + right = drain
+                        SetWaterDrain(dx, dy, z, true);
+                    } else {
+                        // Right = remove water (and clear source/drain flags)
+                        SetWaterSource(dx, dy, z, false);
+                        SetWaterDrain(dx, dy, z, false);
+                        SetWaterLevel(dx, dy, z, 0);
+                    }
                     placed++;
                 }
             }
             if (placed > 0) {
-                AddMessage(TextFormat("Placed %d drain%s", placed, placed > 1 ? "s" : ""), DARKBLUE);
+                if (shift) {
+                    AddMessage(TextFormat("Placed %d drain%s", placed, placed > 1 ? "s" : ""), DARKBLUE);
+                } else {
+                    AddMessage(TextFormat("Removed water from %d cell%s", placed, placed > 1 ? "s" : ""), GRAY);
+                }
             }
         }
 
@@ -1850,6 +1875,11 @@ void HandleInput(void) {
                     if (grid[z][y][x] != CELL_WALL) {
                         grid[z][y][x] = CELL_WALL;
                         MarkChunkDirty(x, y, z);
+                        // Clear water in this cell and destabilize neighbors
+                        SetWaterLevel(x, y, z, 0);
+                        SetWaterSource(x, y, z, false);
+                        SetWaterDrain(x, y, z, false);
+                        DestabilizeWater(x, y, z);
                         // Mark movers whose path crosses this cell for replanning
                         for (int i = 0; i < moverCount; i++) {
                             Mover* m = &movers[i];
@@ -1880,6 +1910,8 @@ void HandleInput(void) {
                         if (grid[z][y][x] != eraseType) {
                             grid[z][y][x] = eraseType;
                             MarkChunkDirty(x, y, z);
+                            // Wake up water in this cell and neighbors (wall removal)
+                            DestabilizeWater(x, y, z);
                         }
                     }
                     break;
@@ -1912,6 +1944,8 @@ void HandleInput(void) {
                 if (grid[z][y][x] != eraseType) {
                     grid[z][y][x] = eraseType;
                     MarkChunkDirty(x, y, z);
+                    // Wake up water in this cell and neighbors (wall removal)
+                    DestabilizeWater(x, y, z);
                 }
             }
         }
@@ -2058,6 +2092,10 @@ void DrawUI(void) {
             for (int gy = 0; gy < gridHeight; gy++) {
                 for (int gx = 0; gx < gridWidth; gx++) {
                     grid[currentViewZ][gy][gx] = CELL_WALL;
+                    // Clear water in filled cells
+                    SetWaterLevel(gx, gy, currentViewZ, 0);
+                    SetWaterSource(gx, gy, currentViewZ, false);
+                    SetWaterDrain(gx, gy, currentViewZ, false);
                 }
             }
             // Mark all chunks dirty
@@ -2294,6 +2332,22 @@ void DrawUI(void) {
         y += 22;
         if (PushButton(x, y, "Clear Stockpiles")) {
             ClearStockpiles();
+        }
+    }
+    y += 22;
+
+    // === WATER ===
+    y += 8;
+    if (SectionHeader(x, y, "Water", &sectionWater)) {
+        y += 18;
+        ToggleBool(x, y, "Enabled", &waterEnabled);
+        y += 22;
+        ToggleBool(x, y, "Evaporation", &waterEvaporationEnabled);
+        y += 22;
+        DraggableInt(x, y, "Evap Rate (1/N)", &waterEvapChance, 1.0f, 1, 1000);
+        y += 22;
+        if (PushButton(x, y, "Clear Water")) {
+            ClearWater();
         }
     }
     y += 22;

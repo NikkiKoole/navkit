@@ -3,11 +3,13 @@
 #include <string.h>
 #include <stdlib.h>
 
-// Water grid storage
+// Water grid storage - single buffer (falling sand style)
 WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 bool waterEnabled = true;
+bool waterEvaporationEnabled = true;
+int waterEvapChance = WATER_EVAP_CHANCE_DEFAULT;
 int waterUpdateCount = 0;
 
 // BFS queue for pressure propagation
@@ -141,7 +143,8 @@ float GetWaterSpeedMultiplier(int x, int y, int z) {
 }
 
 // =============================================================================
-// DF-STYLE WATER SIMULATION
+// FALLING SAND STYLE WATER SIMULATION
+// Single buffer, randomized spread direction, bottom-to-top processing
 // Priority: 1. Falling  2. Spreading  3. Pressure
 // =============================================================================
 
@@ -157,7 +160,13 @@ static int TryFall(int x, int y, int z) {
     if (src->level == 0) return 0;
     
     int space = WATER_MAX_LEVEL - dst->level;
-    if (space <= 0) return 0;  // Cell below is full
+    if (space <= 0) {
+        // Cell below is full - create pressure (water wants to fall but can't)
+        dst->hasPressure = true;
+        dst->pressureSourceZ = z;
+        DestabilizeWater(x, y, z - 1);
+        return 0;
+    }
     
     int flow = src->level;
     if (flow > space) flow = space;
@@ -166,10 +175,9 @@ static int TryFall(int x, int y, int z) {
     dst->level += flow;
     
     // Falling water onto full water creates pressure
-    // The pressure source z is where the water fell FROM
     if (dst->level == WATER_MAX_LEVEL) {
         dst->hasPressure = true;
-        dst->pressureSourceZ = z;  // Water came from z, can rise to z-1
+        dst->pressureSourceZ = z;
     }
     
     DestabilizeWater(x, y, z);
@@ -179,41 +187,65 @@ static int TryFall(int x, int y, int z) {
 }
 
 // Phase 2: SPREADING - Equalize water levels with orthogonal neighbors
+// Falling sand style: randomize direction order to prevent directional bias
 // Returns true if water moved
 static bool TrySpread(int x, int y, int z) {
     WaterCell* cell = &waterGrid[z][y][x];
     if (cell->level == 0) return false;
     
-    // Orthogonal neighbors only (DF-style)
+    // Orthogonal neighbors - randomize order each call
     int dx[] = {-1, 1, 0, 0};
     int dy[] = {0, 0, -1, 1};
+    
+    // Fisher-Yates shuffle for direction order
+    int order[] = {0, 1, 2, 3};
+    for (int i = 3; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int tmp = order[i];
+        order[i] = order[j];
+        order[j] = tmp;
+    }
     
     bool moved = false;
     
     for (int i = 0; i < 4; i++) {
-        int nx = x + dx[i];
-        int ny = y + dy[i];
+        int dir = order[i];
+        int nx = x + dx[dir];
+        int ny = y + dy[dir];
         
         if (!CanHoldWater(nx, ny, z)) continue;
         
         WaterCell* neighbor = &waterGrid[z][ny][nx];
+        
+        // Don't spread water into drains
+        if (neighbor->isDrain) continue;
+        
         int diff = cell->level - neighbor->level;
         
-        // Only flow to lower neighbors
-        if (diff >= 2) {  // Need at least 2 difference to transfer 1
-            // Transfer half the difference (rounds down)
-            int transfer = diff / 2;
-            if (transfer < 1) transfer = 1;
-            
-            cell->level -= transfer;
-            neighbor->level += transfer;
+        // Spread to lower neighbors
+        if (diff >= 2) {
+            // Big difference: give 1 unit, keep going
+            cell->level -= 1;
+            neighbor->level += 1;
             
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
             moved = true;
             
-            // Stop if we're empty
-            if (cell->level == 0) break;
+            // Stop if we're now at level 1
+            if (cell->level <= 1) break;
+        } else if (diff == 1 && cell->level > 1) {
+            // Small difference: give 1 unit to ONE neighbor only (randomized)
+            // This breaks the staircase pattern over time
+            cell->level -= 1;
+            neighbor->level += 1;
+            
+            DestabilizeWater(x, y, z);
+            DestabilizeWater(nx, ny, z);
+            moved = true;
+            
+            // Only give to one neighbor when diff=1 to prevent oscillation
+            break;
         }
     }
     
@@ -230,20 +262,18 @@ static bool TryPressure(int x, int y, int z) {
     if (cell->level < WATER_MAX_LEVEL) return false;
     if (!cell->hasPressure) return false;
     
-    int maxZ = cell->pressureSourceZ - 1;  // DF rule: can rise to source - 1
+    int maxZ = cell->pressureSourceZ - 1;
     if (maxZ < 0) maxZ = 0;
     
     // BFS to find nearest non-full cell through full cells
-    // Only orthogonal movement (no diagonals for pressure)
     memset(pressureVisited, 0, sizeof(pressureVisited));
     
     int queueHead = 0;
     int queueTail = 0;
     
-    // Start from neighbors of this cell
     int dx[] = {-1, 1, 0, 0, 0, 0};
     int dy[] = {0, 0, -1, 1, 0, 0};
-    int dz[] = {0, 0, 0, 0, -1, 1};  // Can also go up/down
+    int dz[] = {0, 0, 0, 0, -1, 1};
     
     pressureVisited[z][y][x] = true;
     
@@ -253,7 +283,6 @@ static bool TryPressure(int x, int y, int z) {
         int ny = y + dy[i];
         int nz = z + dz[i];
         
-        // Can't go above max pressure height
         if (nz > maxZ) continue;
         if (!CanHoldWater(nx, ny, nz)) continue;
         if (pressureVisited[nz][ny][nx]) continue;
@@ -272,7 +301,7 @@ static bool TryPressure(int x, int y, int z) {
         // Found a non-full cell - push water here!
         if (current->level < WATER_MAX_LEVEL) {
             int space = WATER_MAX_LEVEL - current->level;
-            int transfer = 1;  // Pressure moves 1 unit at a time
+            int transfer = 1;
             if (transfer > space) transfer = space;
             if (transfer > cell->level) transfer = cell->level;
             
@@ -331,7 +360,7 @@ static bool ProcessWaterCell(int x, int y, int z) {
         if (cell->level < WATER_MAX_LEVEL) {
             cell->level = WATER_MAX_LEVEL;
             cell->hasPressure = true;
-            cell->pressureSourceZ = z;  // Source creates pressure at its own level
+            cell->pressureSourceZ = z;
             DestabilizeWater(x, y, z);
             moved = true;
         }
@@ -368,9 +397,16 @@ static bool ProcessWaterCell(int x, int y, int z) {
         if (TryPressure(x, y, z)) moved = true;
     }
     
+    // Sources refill AFTER spreading to maintain level 7
+    if (cell->isSource) {
+        cell->level = WATER_MAX_LEVEL;
+        cell->hasPressure = true;
+        return true;
+    }
+    
     // Evaporation: level 1 water has a chance to disappear
-    if (cell->level == 1 && !cell->isSource) {
-        if ((rand() % WATER_EVAP_CHANCE) == 0) {
+    if (waterEvaporationEnabled && cell->level == 1 && !cell->isSource && waterEvapChance > 0) {
+        if ((rand() % waterEvapChance) == 0) {
             cell->level = 0;
             cell->hasPressure = false;
             DestabilizeWater(x, y, z);
@@ -383,15 +419,37 @@ static bool ProcessWaterCell(int x, int y, int z) {
         cell->hasPressure = false;
     }
     
-    // Mark stable if nothing moved
+    // Mark stable if nothing moved AND neighbors are balanced
     if (!moved) {
-        cell->stable = true;
+        int dx[] = {-1, 1, 0, 0};
+        int dy[] = {0, 0, -1, 1};
+        bool balanced = true;
+        
+        for (int i = 0; i < 4; i++) {
+            int nx = x + dx[i];
+            int ny = y + dy[i];
+            if (InBounds(nx, ny, z) && CanHoldWater(nx, ny, z)) {
+                int neighborLevel = waterGrid[z][ny][nx].level;
+                int diff = neighborLevel - cell->level;
+                // Unbalanced if neighbor could give us water (diff >= 1 and they have > 1)
+                if (diff >= 1 && neighborLevel > 1) {
+                    balanced = false;
+                    break;
+                }
+            }
+        }
+        
+        // Level-1 water can evaporate, so keep it unstable
+        if (balanced && cell->level != 1) {
+            cell->stable = true;
+        }
     }
     
     return moved;
 }
 
 // Main water update - process all unstable cells
+// Falling sand style: bottom-to-top, single buffer, randomized spread
 void UpdateWater(void) {
     if (!waterEnabled) return;
     

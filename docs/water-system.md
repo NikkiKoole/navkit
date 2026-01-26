@@ -4,8 +4,10 @@ A Dwarf Fortress-style water simulation with gravity, spreading, and pressure me
 
 ## Controls
 
-- **W + left-drag** - Place water sources (bright blue center)
-- **W + right-drag** - Place drains (dark center)
+- **W + left-drag** - Place water (7/7)
+- **W + right-drag** - Remove water (also clears source/drain)
+- **W + Shift + left-drag** - Place water source (bright blue center, refills every tick)
+- **W + Shift + right-drag** - Place drain (dark center, removes water every tick)
 
 ## Water Levels
 

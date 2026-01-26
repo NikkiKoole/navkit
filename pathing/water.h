@@ -12,8 +12,8 @@
 // Pressure settings
 #define WATER_PRESSURE_SEARCH_LIMIT 64  // Max cells to search when tracing pressure
 
-// Evaporation
-#define WATER_EVAP_CHANCE 100       // 1 in N chance per tick for level-1 water to evaporate
+// Evaporation (default: 1 in 100 chance per tick for level-1 water to evaporate)
+#define WATER_EVAP_CHANCE_DEFAULT 100
 
 // Performance tuning
 #define WATER_MAX_UPDATES_PER_TICK 4096  // Cap cells processed per tick
@@ -33,6 +33,8 @@ extern WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 extern bool waterEnabled;           // Master toggle for water simulation
+extern bool waterEvaporationEnabled; // Toggle evaporation (disable for testing)
+extern int waterEvapChance;         // 1 in N chance per tick for level-1 water to evaporate
 extern int waterUpdateCount;        // Cells updated last tick (for debug/profiling)
 
 // Initialize water system (call after grid is initialized)
