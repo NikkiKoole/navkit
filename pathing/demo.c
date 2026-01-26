@@ -2692,6 +2692,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 
 int main(void) {
     int screenWidth = 1280, screenHeight = 800;
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     atlas = LoadTexture(ATLAS_PATH);
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);  // Crisp pixels, no bleeding
@@ -2713,8 +2714,8 @@ int main(void) {
     InitDesignations();
     BuildEntrances();
     BuildGraph();
-    offset.x = (screenWidth - gridWidth * CELL_SIZE * zoom) / 2.0f;
-    offset.y = (screenHeight - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
+    offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
 
     float accumulator = 0.0f;
 
@@ -2911,14 +2912,14 @@ int main(void) {
 
         // Stats display
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, screenHeight - 20, 18, SKYBLUE);
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, GetScreenHeight() - 20, 18, SKYBLUE);
 
         // Help button (?) in bottom-left corner
-        Rectangle helpBtn = {5, screenHeight - 22, 20, 20};
+        Rectangle helpBtn = {5, GetScreenHeight() - 22, 20, 20};
         bool helpHovered = CheckCollisionPointRec(GetMousePosition(), helpBtn);
         DrawRectangleRec(helpBtn, helpHovered ? DARKGRAY : (Color){40, 40, 40, 255});
         DrawRectangleLinesEx(helpBtn, 1, GRAY);
-        DrawTextShadow("?", 11, screenHeight - 20, 18, helpHovered ? WHITE : LIGHTGRAY);
+        DrawTextShadow("?", 11, GetScreenHeight() - 20, 18, helpHovered ? WHITE : LIGHTGRAY);
         if (helpHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             showHelpPanel = !showHelpPanel;
         }
@@ -2944,7 +2945,7 @@ int main(void) {
             int panelW = 260;
             int panelH = 20 + shortcutCount * 18 + 10;
             int panelX = 5;
-            int panelY = screenHeight - 28 - panelH;
+            int panelY = GetScreenHeight() - 28 - panelH;
 
             DrawRectangle(panelX, panelY, panelW, panelH, (Color){30, 30, 30, 240});
             DrawRectangleLinesEx((Rectangle){panelX, panelY, panelW, panelH}, 1, GRAY);
@@ -2955,7 +2956,7 @@ int main(void) {
         }
 
 #if PROFILER_ENABLED
-        DrawProfilerPanel(screenWidth - 50, 5);
+        DrawProfilerPanel(GetScreenWidth() - 50, 5);
 #endif
 
         // Draw UI
@@ -2964,7 +2965,7 @@ int main(void) {
         PROFILE_END(DrawUI);
 
         // Draw message stack
-        DrawMessages(screenWidth, screenHeight);
+        DrawMessages(GetScreenWidth(), GetScreenHeight());
 
         // Draw stockpile tooltip when hovering
         if (hoveredStockpile >= 0) {
