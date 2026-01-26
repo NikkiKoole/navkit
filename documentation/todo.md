@@ -4,11 +4,18 @@ Small remaining items and future improvements.
 
 ---
 
+-- make the memory profiling more complete, we now have jobs, pool, and designations, stockpiles to add  i believe.
+
+-- tweaks : 
+ show the destinaton of an item, we can see it will be picked up, i want to see where its going to be dropped too
+ also the destination of a to-be-mined thing / constructed thing 
+ 
+
+
 ## Prioritized TODO
 
 ### Quick Wins (small, high value)
 - [x] **Blocked movers handling** - DONE. Movers pick new goal when goal becomes wall. Jobs cancel immediately when item/stockpile blocked. On-screen messages for all cases.
-- [ ] **Easy cell types** - add CELL_FENCE, CELL_WATER, CELL_DOOR_OPEN/CLOSED (no pathfinding changes needed)
 
 ### Short-term (meaningful improvements)
 - [ ] **Variable movement costs** - road (cheap), rubble/mud (expensive) - NOTE: disables JPS/JPS+
@@ -27,10 +34,10 @@ Small remaining items and future improvements.
 - [ ] **Jobs next phase** - See [jobs-roadmap.md](jobs-roadmap.md) for full plan
   - [ ] Stockpile/gather zone UI (draw, remove, configure)
   - [ ] Mining/digging (designations, terrain modification)
-  - [ ] Architecture refactor (Job pool, WorkGivers) - optional but recommended before construction
+  - [ ] Architecture refactor (Job pool, WorkGivers) - optional but recommended before construction , we did this, the workgivers are an issue needs adressing
   - [ ] Construction (blueprints, material delivery, chained jobs)
   - [ ] Simple crafting (workshops, recipes)
-- [ ] **Containers** - Portable storage (chests, barrels, wagons, bin, box). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
+- [ ] **Containers** - Portable storage (chests, barrels, wagons, bin, box, bags, 100 seeds go in 1 bags ,10  bags in  1 bins). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
 
 ### Larger efforts (build on queuing)
 - [ ] **Elevators (full sim)** - moving elevator with state, queuing, capacity, wait times (requires queuing)

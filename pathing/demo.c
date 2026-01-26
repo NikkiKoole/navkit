@@ -1903,7 +1903,9 @@ void DrawUI(void) {
             buffer[idx] = '\0';
             SetClipboardText(buffer);
             free(buffer);
-            TraceLog(LOG_INFO, "Map copied to clipboard (%d floors)", gridDepth);
+
+            AddMessage(TextFormat("Map copied to clipboard (%d floors)", gridDepth),ORANGE);
+
         }
     }
     y += 22;

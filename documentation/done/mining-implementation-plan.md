@@ -42,7 +42,7 @@ With two job types to validate against:
 1. Introduce Job pool + `mover.currentJobId`
 2. Port hauling to `RunJob_Haul()` driver
 3. Port mining to `RunJob_Mine()` driver
-4. Split `AssignJobs()` into WorkGivers
+4. Split `AssignJobs()` into WorkGivers  -- we did this has performance issue. 
 5. Remove old job fields from Mover
 
 ### Step 4: Construction
