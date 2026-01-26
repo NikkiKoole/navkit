@@ -1822,27 +1822,43 @@ void HandleInput(void) {
             if (x2 >= gridWidth) x2 = gridWidth - 1;
             if (y2 >= gridHeight) y2 = gridHeight - 1;
 
-            int placed = 0;
+            int placedDrains = 0;
+            int removedSources = 0;
+            int removedDrains = 0;
+            int removedWater = 0;
             for (int dy = y1; dy <= y2; dy++) {
                 for (int dx = x1; dx <= x2; dx++) {
                     if (shift) {
-                        // Shift + right = drain
+                        // Shift + right = place drain
                         SetWaterDrain(dx, dy, z, true);
+                        placedDrains++;
                     } else {
-                        // Right = remove water (and clear source/drain flags)
-                        SetWaterSource(dx, dy, z, false);
-                        SetWaterDrain(dx, dy, z, false);
-                        SetWaterLevel(dx, dy, z, 0);
+                        // Right = remove in priority: source -> drain -> water
+                        WaterCell* cell = &waterGrid[z][dy][dx];
+                        if (cell->isSource) {
+                            SetWaterSource(dx, dy, z, false);
+                            removedSources++;
+                        } else if (cell->isDrain) {
+                            SetWaterDrain(dx, dy, z, false);
+                            removedDrains++;
+                        } else if (cell->level > 0) {
+                            SetWaterLevel(dx, dy, z, 0);
+                            removedWater++;
+                        }
                     }
-                    placed++;
                 }
             }
-            if (placed > 0) {
-                if (shift) {
-                    AddMessage(TextFormat("Placed %d drain%s", placed, placed > 1 ? "s" : ""), DARKBLUE);
-                } else {
-                    AddMessage(TextFormat("Removed water from %d cell%s", placed, placed > 1 ? "s" : ""), GRAY);
-                }
+            if (placedDrains > 0) {
+                AddMessage(TextFormat("Placed %d drain%s", placedDrains, placedDrains > 1 ? "s" : ""), DARKBLUE);
+            }
+            if (removedSources > 0) {
+                AddMessage(TextFormat("Removed %d source%s", removedSources, removedSources > 1 ? "s" : ""), ORANGE);
+            }
+            if (removedDrains > 0) {
+                AddMessage(TextFormat("Removed %d drain%s", removedDrains, removedDrains > 1 ? "s" : ""), ORANGE);
+            }
+            if (removedWater > 0) {
+                AddMessage(TextFormat("Removed water from %d cell%s", removedWater, removedWater > 1 ? "s" : ""), GRAY);
             }
         }
 
