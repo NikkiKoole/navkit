@@ -3,6 +3,7 @@
 #include "pathfinding.h"
 #include "items.h"
 #include "jobs.h"
+#include "water.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
 #include "../vendor/raylib.h"
@@ -828,6 +829,10 @@ void UpdateMovers(void) {
             }
             // CELL_WALKABLE (grass) uses default 1.0x
             
+            // Water slowdown
+            float waterSpeedMult = GetWaterSpeedMultiplier(currentX, currentY, currentZ);
+            terrainSpeedMult *= waterSpeedMult;
+            
             // Base velocity toward waypoint
             float effectiveSpeed = m->speed * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;
@@ -1007,6 +1012,11 @@ void Tick(void) {
     if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
         UpdateDirtyChunks();
     }
+    
+    // Water simulation
+    PROFILE_BEGIN(Water);
+    UpdateWater();
+    PROFILE_END(Water);
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();

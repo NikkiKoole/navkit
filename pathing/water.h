@@ -1,0 +1,69 @@
+#ifndef WATER_H
+#define WATER_H
+
+#include <stdbool.h>
+#include <stdint.h>
+#include "grid.h"
+
+// Water level constants (DF-style: 1-7 scale)
+#define WATER_MAX_LEVEL 7           // Maximum water depth per cell (7/7 = full)
+#define WATER_MIN_FLOW 1            // Minimum level difference to trigger spread
+
+// Pressure settings
+#define WATER_PRESSURE_SEARCH_LIMIT 64  // Max cells to search when tracing pressure
+
+// Evaporation
+#define WATER_EVAP_CHANCE 100       // 1 in N chance per tick for level-1 water to evaporate
+
+// Performance tuning
+#define WATER_MAX_UPDATES_PER_TICK 4096  // Cap cells processed per tick
+
+// Water cell data (parallel to grid)
+typedef struct {
+    uint8_t level;          // 0-7 water depth (0 = dry, 7 = full)
+    bool stable;            // true = skip processing (no recent changes)
+    bool isSource;          // true = refills to max each tick (also generates pressure)
+    bool isDrain;           // true = removes water each tick
+    bool hasPressure;       // true = this water was placed under pressure (can push up)
+    uint8_t pressureSourceZ; // z-level of the pressure source (water can rise to sourceZ - 1)
+} WaterCell;
+
+// Water grid (same dimensions as main grid)
+extern WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Global state
+extern bool waterEnabled;           // Master toggle for water simulation
+extern int waterUpdateCount;        // Cells updated last tick (for debug/profiling)
+
+// Initialize water system (call after grid is initialized)
+void InitWater(void);
+
+// Clear all water
+void ClearWater(void);
+
+// Main simulation tick (call from Tick())
+void UpdateWater(void);
+
+// Place/remove water
+void SetWaterLevel(int x, int y, int z, int level);
+void AddWater(int x, int y, int z, int amount);
+void RemoveWater(int x, int y, int z, int amount);
+
+// Source/drain management
+void SetWaterSource(int x, int y, int z, bool isSource);
+void SetWaterDrain(int x, int y, int z, bool isDrain);
+
+// Query
+int GetWaterLevel(int x, int y, int z);
+bool HasWater(int x, int y, int z);
+bool IsUnderwater(int x, int y, int z, int minDepth);  // level >= minDepth
+bool IsFull(int x, int y, int z);                      // level == 7
+
+// Mark cell and neighbors as unstable (needs processing)
+void DestabilizeWater(int x, int y, int z);
+
+// Speed multiplier for movers walking through water
+// Returns 1.0 for no water, lower values for deeper water
+float GetWaterSpeedMultiplier(int x, int y, int z);
+
+#endif // WATER_H

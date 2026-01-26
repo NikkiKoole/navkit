@@ -16,13 +16,13 @@ TARGETS := steer crowd path
 # Source files for each target
 steer_SRC       := steering/demo.c steering/steering.c
 crowd_SRC       := crowd-experiment/demo.c
-path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c
+path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c
 
 # Test targets
 test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
-test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c
+test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c
 test_steering_SRC := tests/test_steering.c steering/steering.c
-test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c
+test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 

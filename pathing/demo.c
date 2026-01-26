@@ -7,10 +7,12 @@
 #include "jobs.h"
 #include "stockpiles.h"
 #include "designations.h"
+#include "water.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #define UI_IMPLEMENTATION
@@ -56,6 +58,11 @@ int miningStartX = 0, miningStartY = 0;
 bool designatingBuild = false;
 bool cancellingBuild = false;
 int buildStartX = 0, buildStartY = 0;
+
+// Water placement state (W key to activate, left-drag for source, right-drag for drain)
+bool placingWaterSource = false;
+bool placingWaterDrain = false;
+int waterStartX = 0, waterStartY = 0;
 
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
@@ -225,6 +232,61 @@ void DrawCellGrid(void) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             Rectangle src = SpriteGetRect(GetCellSprite(grid[z][y][x]));
             DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+        }
+    }
+}
+
+void DrawWater(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            int level = GetWaterLevel(x, y, z);
+            if (level <= 0) continue;
+
+            // Alpha based on water level (deeper = more opaque)
+            int alpha = 80 + (level * 15);  // 80-230 range
+            if (alpha > 230) alpha = 230;
+            
+            Color waterColor = (Color){30, 100, 200, alpha};
+            
+            // Draw water overlay
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, waterColor);
+            
+            // Mark sources with a brighter center
+            if (waterGrid[z][y][x].isSource) {
+                float inset = size * 0.3f;
+                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                DrawRectangleRec(inner, (Color){100, 180, 255, 200});
+            }
+            
+            // Mark drains with a dark center
+            if (waterGrid[z][y][x].isDrain) {
+                float inset = size * 0.3f;
+                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                DrawRectangleRec(inner, (Color){20, 40, 80, 200});
+            }
         }
     }
 }
@@ -1182,6 +1244,71 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     }
 }
 
+// Draw water tooltip when hovering over water
+void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    WaterCell* cell = &waterGrid[cellZ][cellY][cellX];
+    if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
+
+    // Build tooltip lines
+    char lines[8][64];
+    int lineCount = 0;
+
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Water (%d,%d,z%d)", cellX, cellY, cellZ);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Level: %d/7", cell->level);
+    
+    float speedMult = GetWaterSpeedMultiplier(cellX, cellY, cellZ);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Speed: %.0f%%", speedMult * 100);
+    
+    if (cell->isSource) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "SOURCE");
+    }
+    if (cell->isDrain) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "DRAIN");
+    }
+    if (cell->hasPressure) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Pressure (src z=%d)", cell->pressureSourceZ);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Max rise: z=%d", cell->pressureSourceZ - 1);
+    }
+    if (cell->stable) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "[stable]");
+    }
+
+    // Measure max width
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip near mouse, keep on screen
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background (blue tint for water)
+    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 40, 60, 220});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){50, 100, 200, 255});
+
+    // Draw text
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        Color col = WHITE;
+        if (i == 0) col = (Color){100, 180, 255, 255};  // Header
+        else if (strstr(lines[i], "SOURCE")) col = (Color){150, 220, 255, 255};
+        else if (strstr(lines[i], "DRAIN")) col = (Color){80, 80, 120, 255};
+        else if (strstr(lines[i], "Pressure")) col = YELLOW;
+        else if (strstr(lines[i], "stable")) col = GRAY;
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
 void GenerateCurrentTerrain(void) {
     TraceLog(LOG_INFO, "Generating terrain: %s", terrainNames[currentTerrain]);
     switch (currentTerrain) {
@@ -1623,6 +1750,81 @@ void HandleInput(void) {
     } else {
         designatingBuild = false;
         cancellingBuild = false;
+    }
+
+    // Water placement mode (W key + left-drag for source, right-drag for drain)
+    if (IsKeyDown(KEY_W)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        // Left mouse - place water source
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            placingWaterSource = true;
+            waterStartX = x;
+            waterStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && placingWaterSource) {
+            placingWaterSource = false;
+            int x1 = waterStartX < x ? waterStartX : x;
+            int y1 = waterStartY < y ? waterStartY : y;
+            int x2 = waterStartX > x ? waterStartX : x;
+            int y2 = waterStartY > y ? waterStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int placed = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    SetWaterSource(dx, dy, z, true);
+                    SetWaterLevel(dx, dy, z, WATER_MAX_LEVEL);
+                    placed++;
+                }
+            }
+            if (placed > 0) {
+                AddMessage(TextFormat("Placed %d water source%s", placed, placed > 1 ? "s" : ""), BLUE);
+            }
+        }
+
+        // Right mouse - place drain
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            placingWaterDrain = true;
+            waterStartX = x;
+            waterStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && placingWaterDrain) {
+            placingWaterDrain = false;
+            int x1 = waterStartX < x ? waterStartX : x;
+            int y1 = waterStartY < y ? waterStartY : y;
+            int x2 = waterStartX > x ? waterStartX : x;
+            int y2 = waterStartY > y ? waterStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int placed = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    SetWaterDrain(dx, dy, z, true);
+                    placed++;
+                }
+            }
+            if (placed > 0) {
+                AddMessage(TextFormat("Placed %d drain%s", placed, placed > 1 ? "s" : ""), DARKBLUE);
+            }
+        }
+
+        return;  // Skip normal tool interactions while W is held
+    } else {
+        placingWaterSource = false;
+        placingWaterDrain = false;
     }
 
     // Ladder drawing shortcut (L key + click/drag)
@@ -2473,6 +2675,7 @@ int main(void) {
         ClearBackground(BLACK);
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
+        DrawWater();
         PROFILE_END(DrawCells);
         DrawStockpiles();
         DrawMiningDesignations();
@@ -2681,6 +2884,20 @@ int main(void) {
         if (hoveredItemCount > 0 && hoveredMover < 0 && hoveredStockpile < 0) {
             Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
             DrawItemTooltip(hoveredItemCell, hoveredItemCount, GetMousePosition(), (int)mouseGrid.x, (int)mouseGrid.y);
+        }
+
+        // Draw water tooltip when hovering over water (and no other tooltips active)
+        if (hoveredStockpile < 0 && hoveredMover < 0 && hoveredItemCount == 0) {
+            Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
+            int cellX = (int)mouseGrid.x;
+            int cellY = (int)mouseGrid.y;
+            if (cellX >= 0 && cellX < gridWidth && cellY >= 0 && cellY < gridHeight) {
+                if (HasWater(cellX, cellY, currentViewZ) || 
+                    waterGrid[currentViewZ][cellY][cellX].isSource ||
+                    waterGrid[currentViewZ][cellY][cellX].isDrain) {
+                    DrawWaterTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                }
+            }
         }
 
         PROFILE_BEGIN(EndDraw);
