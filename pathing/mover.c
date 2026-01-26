@@ -820,9 +820,18 @@ void UpdateMovers(void) {
             }
             float invDist = 1.0f / dist;
             
+            // Terrain speed modifier based on current cell type
+            float terrainSpeedMult = 1.0f;
+            CellType currentCell = grid[currentZ][currentY][currentX];
+            if (currentCell == CELL_FLOOR) {
+                terrainSpeedMult = 1.25f;  // Floor: 1.25x speed
+            }
+            // CELL_WALKABLE (grass) uses default 1.0x
+            
             // Base velocity toward waypoint
-            float vx = dxf * invDist * m->speed;
-            float vy = dyf * invDist * m->speed;
+            float effectiveSpeed = m->speed * terrainSpeedMult;
+            float vx = dxf * invDist * effectiveSpeed;
+            float vy = dyf * invDist * effectiveSpeed;
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
