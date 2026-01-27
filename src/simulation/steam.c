@@ -13,8 +13,9 @@ bool steamEnabled = true;
 int steamUpdateCount = 0;
 
 // Tweakable parameters (all in Celsius now!)
-int steamRiseChance = 2;            // 1 in 2 chance to rise (fast, steam is energetic)
-int steamCondensationTemp = 96;     // 96C (just below boiling)
+int steamRiseChance = 1;            // 1 in 1 = always rise (steam is energetic)
+int steamSpreadChance = 2;          // 1 in 2 chance to spread horizontally
+int steamCondensationTemp = 60;     // 60C - steam lingers longer before condensing
 int steamGenerationTemp = 100;      // 100C (boiling point)
 
 // Internal tick counter
@@ -134,6 +135,18 @@ static int SteamTryRise(int x, int y, int z) {
     src->level -= flow;
     dst->level += flow;
     
+    // Steam carries heat - warm up destination cell
+    int srcTemp = GetTemperature(x, y, z);
+    int dstTemp = GetTemperature(x, y, z + 1);
+    if (srcTemp > dstTemp) {
+        // Transfer 75% of heat difference with the steam
+        int heatTransfer = (srcTemp - dstTemp) * 3 / 4;
+        if (heatTransfer > 0) {
+            SetTemperature(x, y, z + 1, dstTemp + heatTransfer);
+            DestabilizeTemperature(x, y, z + 1);
+        }
+    }
+    
     DestabilizeSteam(x, y, z);
     DestabilizeSteam(x, y, z + 1);
     
@@ -141,6 +154,7 @@ static int SteamTryRise(int x, int y, int z) {
 }
 
 // Phase 2: SPREADING - Equalize steam levels with horizontal neighbors
+// (same logic as smoke - stays cohesive)
 static bool SteamTrySpread(int x, int y, int z) {
     SteamCell* cell = &steamGrid[z][y][x];
     if (cell->level == 0) return false;
@@ -180,6 +194,14 @@ static bool SteamTrySpread(int x, int y, int z) {
             moved = true;
             
             if (cell->level <= 1) break;
+        } else if (diff == 1 && cell->level > 1) {
+            cell->level -= 1;
+            neighbor->level += 1;
+            
+            DestabilizeSteam(x, y, z);
+            DestabilizeSteam(nx, ny, z);
+            moved = true;
+            break;  // Only give to one neighbor when diff=1
         }
     }
     
@@ -190,6 +212,9 @@ static bool SteamTrySpread(int x, int y, int z) {
 static bool SteamTryCondense(int x, int y, int z) {
     SteamCell* cell = &steamGrid[z][y][x];
     if (cell->level == 0) return false;
+    
+    // Only condense sometimes (steam lingers)
+    if ((rand() % 3) != 0) return false;
     
     // Check temperature at this cell (Celsius)
     int temp = GetTemperature(x, y, z);

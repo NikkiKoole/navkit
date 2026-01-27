@@ -441,6 +441,7 @@ void DrawUI(void) {
 
     // === TEMPERATURE ===
     y += 8;
+    // NOTE: When adding tweakable values here, also update save/load logic in saveload.c
     if (SectionHeader(x, y, "Temperature", &sectionTemperature)) {
         y += 18;
         ToggleBoolT(x, y, "Enabled", &temperatureEnabled,
@@ -467,6 +468,12 @@ void DrawUI(void) {
         y += 22;
         DraggableIntT(x, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
             "Heat transfer rate through stone walls. Lower = better insulation. At 5%, stone blocks 95% of heat.");
+        y += 22;
+        DraggableIntT(x, y, "Heat Source Temp", &heatSourceTemp, 5.0f, 100, 1000,
+            TextFormat("Temperature of heat sources (fire/furnace): %d C. Water boils at 100C.", heatSourceTemp));
+        y += 22;
+        DraggableIntT(x, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
+            TextFormat("Temperature of cold sources (ice/freezer): %d C. Water freezes at 0C.", coldSourceTemp));
         y += 22;
         if (PushButton(x, y, "Reset to Ambient")) {
             ClearTemperature();

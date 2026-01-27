@@ -339,6 +339,12 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         }
     }
 
+    // Steam info
+    SteamCell* steam = &steamGrid[cellZ][cellY][cellX];
+    if (steam->level > 0) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Steam: %d/7", steam->level);
+    }
+
     // Smoke info
     SmokeCell* smoke = &smokeGrid[cellZ][cellY][cellX];
     if (smoke->level > 0) {
@@ -381,6 +387,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         else if (strstr(lines[i], "FROZEN")) col = (Color){200, 220, 255, 255};
         else if (strstr(lines[i], "Fire:")) col = ORANGE;
         else if (strstr(lines[i], "Water:")) col = (Color){100, 180, 255, 255};
+        else if (strstr(lines[i], "Steam:")) col = (Color){200, 200, 255, 255};
         else if (strstr(lines[i], "Smoke:")) col = GRAY;
         else if (strstr(lines[i], "freezing")) col = (Color){150, 200, 255, 255};
         else if (strstr(lines[i], "cold")) col = (Color){180, 210, 255, 255};

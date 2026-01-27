@@ -563,9 +563,14 @@ void UpdateWaterFreezing(void) {
                     }
                     // Check if should boil (convert to steam)
                     else if (temp >= TEMP_BOILING && cell->level > 0) {
-                        // Convert 1 water level to steam
-                        cell->level--;
-                        GenerateSteamFromBoilingWater(x, y, z, 1);
+                        // Boil faster at higher temperatures
+                        // At 100C: 1 level, at 200C: 2 levels, at 300C: 3 levels, etc.
+                        int boilRate = 1 + (temp - TEMP_BOILING) / 100;
+                        if (boilRate > cell->level) boilRate = cell->level;
+                        if (boilRate > 3) boilRate = 3;  // Cap at 3 per tick
+                        
+                        cell->level -= boilRate;
+                        GenerateSteamFromBoilingWater(x, y, z, boilRate);
                         DestabilizeWater(x, y, z);
                     }
                 }
