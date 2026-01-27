@@ -418,6 +418,7 @@ void DrawCellGrid(void);
 void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
+void DrawSteam(void);
 void DrawChunkBoundaries(void);
 void DrawEntrances(void);
 void DrawGraph(void);
@@ -483,6 +484,7 @@ int main(int argc, char** argv) {
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
     InitTemperature();
+    InitSteam();
     BuildEntrances();
     BuildGraph();
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -543,6 +545,7 @@ int main(int argc, char** argv) {
         DrawFrozenWater();
         DrawFire();
         DrawSmoke();
+        DrawSteam();
         DrawTemperature();
         PROFILE_END(DrawCells);
         if (IsKeyDown(KEY_G)) {

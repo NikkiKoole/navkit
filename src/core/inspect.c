@@ -8,6 +8,7 @@
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
+#include "../simulation/steam.h"
 #include "../simulation/temperature.h"
 #include "../entities/items.h"
 #include "../entities/stockpiles.h"
@@ -15,7 +16,7 @@
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
 
-#define INSPECT_SAVE_VERSION 3
+#define INSPECT_SAVE_VERSION 5
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 static const char* cellTypeNames[] = {"AIR", "WALKABLE", "WALL", "FLOOR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH"};
@@ -29,6 +30,7 @@ static CellType* insp_gridCells = NULL;
 static WaterCell* insp_waterCells = NULL;
 static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
+static SteamCell* insp_steamCells = NULL;
 static uint8_t* insp_cellFlags = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
@@ -192,6 +194,7 @@ static void print_cell(int x, int y, int z) {
     WaterCell water = insp_waterCells[idx];
     FireCell fire = insp_fireCells[idx];
     SmokeCell smoke = insp_smokeCells[idx];
+    SteamCell steam = insp_steamCells[idx];
     TempCell temp = insp_tempCells[idx];
     Designation desig = insp_designations[idx];
     
@@ -213,6 +216,11 @@ static void print_cell(int x, int y, int z) {
     // Smoke
     if (smoke.level > 0) {
         printf("Smoke level: %d/7\n", smoke.level);
+    }
+    
+    // Steam
+    if (steam.level > 0) {
+        printf("Steam level: %d/7\n", steam.level);
     }
     
     // Temperature (decode index to Celsius)
@@ -314,6 +322,7 @@ static void cleanup(void) {
     free(insp_waterCells);
     free(insp_fireCells);
     free(insp_smokeCells);
+    free(insp_steamCells);
     free(insp_cellFlags);
     free(insp_tempCells);
     free(insp_designations);
@@ -423,6 +432,7 @@ int InspectSaveFile(int argc, char** argv) {
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
     insp_fireCells = malloc(totalCells * sizeof(FireCell));
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
+    insp_steamCells = malloc(totalCells * sizeof(SteamCell));
     insp_cellFlags = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
@@ -431,6 +441,7 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
     fread(insp_fireCells, sizeof(FireCell), totalCells, f);
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
+    fread(insp_steamCells, sizeof(SteamCell), totalCells, f);
     fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);

@@ -1,4 +1,5 @@
 #include "water.h"
+#include "steam.h"
 #include "temperature.h"
 #include "../world/grid.h"
 #include <string.h>
@@ -534,7 +535,7 @@ void ThawWater(int x, int y, int z) {
     DestabilizeWater(x, y, z);
 }
 
-// Update water freezing based on temperature
+// Update water freezing and boiling based on temperature
 // Call this after UpdateTemperature() in the game loop
 void UpdateWaterFreezing(void) {
     if (!waterEnabled) return;
@@ -559,6 +560,13 @@ void UpdateWaterFreezing(void) {
                     // Check if should freeze (any water level)
                     if (tempIndex <= TEMP_WATER_FREEZES && cell->level > 0) {
                         FreezeWater(x, y, z);
+                    }
+                    // Check if should boil (convert to steam)
+                    else if (tempIndex >= TEMP_BOILING && cell->level > 0) {
+                        // Convert 1 water level to steam
+                        cell->level--;
+                        GenerateSteamFromBoilingWater(x, y, z, 1);
+                        DestabilizeWater(x, y, z);
                     }
                 }
             }

@@ -20,6 +20,7 @@
 #include "simulation/water.c"
 #include "simulation/fire.c"
 #include "simulation/smoke.c"
+#include "simulation/steam.c"
 #include "simulation/groundwear.c"
 #include "simulation/temperature.c"
 

@@ -13,6 +13,7 @@
 #include "simulation/water.h"
 #include "simulation/fire.h"
 #include "simulation/smoke.h"
+#include "simulation/steam.h"
 #include "simulation/groundwear.h"
 #include "simulation/temperature.h"
 #include "core/inspect.h"

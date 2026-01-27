@@ -8,6 +8,7 @@
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
+#include "../simulation/steam.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/temperature.h"
 #include "../../shared/profiler.h"
@@ -1100,6 +1101,11 @@ void Tick(void) {
     PROFILE_BEGIN(Smoke);
     UpdateSmoke();
     PROFILE_END(Smoke);
+    
+    // Steam simulation
+    PROFILE_BEGIN(Steam);
+    UpdateSteam();
+    PROFILE_END(Steam);
     
     // Temperature simulation
     PROFILE_BEGIN(Temperature);

@@ -27,6 +27,7 @@ test_water_SRC      := tests/test_water.c tests/test_unity.c
 test_groundwear_SRC := tests/test_groundwear.c tests/test_unity.c
 test_fire_SRC       := tests/test_fire.c tests/test_unity.c
 test_temperature_SRC := tests/test_temperature.c tests/test_unity.c
+test_steam_SRC       := tests/test_steam.c tests/test_unity.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
@@ -77,8 +78,13 @@ test_temperature: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_temperature
 
+# Steam test
+test_steam: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_steam
+
 # Run all tests
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam
 
 # Benchmark targets - all use test_unity.c for shared game logic
 bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c
@@ -145,4 +151,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs

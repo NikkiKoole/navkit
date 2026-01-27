@@ -213,6 +213,47 @@ void DrawSmoke(void) {
     }
 }
 
+void DrawSteam(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            int level = GetSteamLevel(x, y, z);
+            if (level <= 0) continue;
+
+            // Steam is white/light gray, more translucent than smoke
+            int alpha = 40 + (level * 20);  // 60-180 range
+            if (alpha > 180) alpha = 180;
+            
+            Color steamColor = (Color){220, 220, 230, alpha};
+            
+            // Draw steam overlay
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, steamColor);
+        }
+    }
+}
+
 void DrawTemperature(void) {
     if (!showTemperatureOverlay) return;
     

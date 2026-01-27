@@ -136,6 +136,11 @@ void SetFireSource(int x, int y, int z, bool isSource) {
         fireGrid[z][y][x].level = FIRE_MAX_LEVEL;
         fireGrid[z][y][x].fuel = 15;  // Max fuel for sources
         DestabilizeFire(x, y, z);
+        // Fire sources also act as heat sources
+        SetHeatSource(x, y, z, true);
+    } else {
+        // Removing fire source also removes heat source
+        SetHeatSource(x, y, z, false);
     }
 }
 
