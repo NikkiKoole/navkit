@@ -1,7 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../pathing/grid.h"
-#include "../pathing/groundwear.h"
+#include "../src/grid.h"
+#include "../src/groundwear.h"
 #include <stdlib.h>
 
 // Stub profiler functions for tests

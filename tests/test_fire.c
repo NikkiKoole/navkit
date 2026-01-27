@@ -1,9 +1,9 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../pathing/grid.h"
-#include "../pathing/fire.h"
-#include "../pathing/smoke.h"
-#include "../pathing/water.h"
+#include "../src/grid.h"
+#include "../src/fire.h"
+#include "../src/smoke.h"
+#include "../src/water.h"
 #include <stdlib.h>
 #include <math.h>
 

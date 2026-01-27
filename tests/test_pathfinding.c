@@ -1,9 +1,9 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include <stdlib.h>
-#include "../pathing/grid.h"
-#include "../pathing/terrain.h"
-#include "../pathing/pathfinding.h"
+#include "../src/grid.h"
+#include "../src/terrain.h"
+#include "../src/pathfinding.h"
 
 // Test grid size - fixed at 96x96 (works with various chunk sizes)
 #define TEST_GRID_SIZE 96

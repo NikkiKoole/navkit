@@ -86,7 +86,7 @@ These optimizations were implemented and benchmarked, but **reverted** because t
 #### 1.1 ItemsTick - Iterate Active Items Only
 | | |
 |---|---|
-| **File** | `pathing/items.c:97-107` |
+| **File** | `src/items.c:97-107` |
 | **Pattern** | Sparse Data Structure |
 | **Current** | `for (int i = 0; i < MAX_ITEMS; i++)` - iterates 25,000 slots |
 | **Change** | Iterate only active items using `itemCount` or active list |
@@ -108,7 +108,7 @@ for (int i = 0; i < MAX_ITEMS; i++) {
 #### 1.2 BuildItemSpatialGrid - Same Fix
 | | |
 |---|---|
-| **File** | `pathing/items.c:272-330` |
+| **File** | `src/items.c:272-330` |
 | **Pattern** | Sparse Data Structure |
 | **Current** | Iterates `MAX_ITEMS` in two phases |
 | **Change** | Same approach as 1.1 |
@@ -121,7 +121,7 @@ for (int i = 0; i < MAX_ITEMS; i++) {
 #### 2.1 FindNearestUnreservedItem → Spatial Query ⭐
 | | |
 |---|---|
-| **File** | `pathing/items.c:78-95` |
+| **File** | `src/items.c:78-95` |
 | **Pattern** | **Spatial Partitioning** (pattern #02) |
 | **Current** | O(25,000) brute force distance check to all items |
 | **Change** | Use `IterateItemsInRadius` with expanding radius search |
@@ -177,7 +177,7 @@ int FindNearestUnreservedItem(float x, float y, float z) {
 #### 2.2 FindGroundItemOnStockpile → Spatial Query
 | | |
 |---|---|
-| **File** | `pathing/stockpiles.c:429-456` |
+| **File** | `src/stockpiles.c:429-456` |
 | **Pattern** | **Spatial Partitioning** (pattern #02) |
 | **Current** | O(64 stockpiles × 256 slots) nested loops |
 | **Change** | Query `ItemSpatialGrid` for each stockpile's bounding box |
@@ -196,7 +196,7 @@ int FindNearestUnreservedItem(float x, float y, float z) {
 #### 3.1 Stockpiled Item List for Re-haul Jobs
 | | |
 |---|---|
-| **File** | `pathing/jobs.c:342-363` + `pathing/items.c` |
+| **File** | `src/jobs.c:342-363` + `src/items.c` |
 | **Pattern** | **Dirty Flags** (pattern #04) / State Lists |
 | **Current** | O(25,000) scan filtering for `ITEM_IN_STOCKPILE` |
 | **Change** | Maintain separate list of items in stockpiles |
@@ -224,7 +224,7 @@ int FindNearestUnreservedItem(float x, float y, float z) {
 #### 4.1 Free Slot Tracking per Stockpile
 | | |
 |---|---|
-| **File** | `pathing/stockpiles.c:139-177` |
+| **File** | `src/stockpiles.c:139-177` |
 | **Pattern** | **Object Pooling** (pattern #01) / Free Lists |
 | **Current** | O(512) two-pass scan per stockpile |
 | **Change** | Track free slot count, optionally maintain free list |
@@ -261,7 +261,7 @@ Once 4.1 is implemented:
 #### 5.1 Tile → Stockpile Lookup Grid
 | | |
 |---|---|
-| **File** | `pathing/stockpiles.c:195-210` |
+| **File** | `src/stockpiles.c:195-210` |
 | **Pattern** | **Spatial Hashing** (pattern #07) |
 | **Current** | O(64) linear scan of all stockpiles |
 | **Change** | 2D grid mapping tile → stockpile index |
@@ -281,7 +281,7 @@ Once 4.1 is implemented:
 #### 5.2 Tile → Gather Zone Lookup (Lower Priority)
 | | |
 |---|---|
-| **File** | `pathing/stockpiles.c:247-262` |
+| **File** | `src/stockpiles.c:247-262` |
 | **Pattern** | **Spatial Hashing** (pattern #07) |
 | **Current** | O(32) linear scan |
 | **Change** | Same approach as 5.1 |
@@ -296,7 +296,7 @@ Lower priority because only 32 gather zones max, and the scan is simpler.
 #### 6.1 Line-of-Sight Result Cache
 | | |
 |---|---|
-| **File** | `pathing/mover.c:571-612` |
+| **File** | `src/mover.c:571-612` |
 | **Pattern** | **Dirty Flags** (pattern #04) |
 | **Current** | Bresenham check per mover per frame (staggered) |
 | **Change** | Cache LOS results, invalidate on wall changes |

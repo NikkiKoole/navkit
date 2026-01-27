@@ -274,6 +274,6 @@ Current `WorkGiver_Haul` rebuilds caches every call. For single-mover use, we co
 
 ## Files
 
-- `pathing/jobs.c` - All three AssignJobs variants, all WorkGivers, all Job Drivers
-- `pathing/jobs.h` - Public declarations
+- `src/jobs.c` - All three AssignJobs variants, all WorkGivers, all Job Drivers
+- `src/jobs.h` - Public declarations
 - `tests/test_jobs.c` - 120 tests + benchmarks (`./bin/test_jobs -b`)

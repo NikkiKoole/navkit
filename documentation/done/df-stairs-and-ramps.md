@@ -352,9 +352,9 @@ Recommend Option B for Phase 2, revisit if needed.
 
 | File | Lines Changed | Purpose |
 |------|---------------|---------|
-| `pathing/grid.h` | ~8 | Add STAIRS_*, RAMP_* to enum |
-| `pathing/grid.c` | ~20 | Update IsCellWalkableAt(), ASCII parser |
-| `pathing/pathfinding.c` | ~100 | Add helpers, update A*, HPA*, JPS+ transitions |
+| `src/grid.h` | ~8 | Add STAIRS_*, RAMP_* to enum |
+| `src/grid.c` | ~20 | Update IsCellWalkableAt(), ASCII parser |
+| `src/pathfinding.c` | ~100 | Add helpers, update A*, HPA*, JPS+ transitions |
 
 ---
 

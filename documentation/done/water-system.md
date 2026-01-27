@@ -137,6 +137,6 @@ The `waterUpdateCount` global tracks how many cells were processed last tick. Hi
 
 ## Files
 
-- `pathing/water.h` - Data structures and API
-- `pathing/water.c` - Simulation logic
-- `pathing/demo.c` - W key handler and rendering (DrawWater function)
+- `src/water.h` - Data structures and API
+- `src/water.c` - Simulation logic
+- `src/demo.c` - W key handler and rendering (DrawWater function)

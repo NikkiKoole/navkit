@@ -13,7 +13,7 @@
 
 | Directory | Description |
 |-----------|-------------|
-| **`/pathing`** | **Main project** — Grid pathfinding (A*, HPA*, JPS), movers, jobs, items, stockpiles, water/fire/smoke simulation — [overview](documentation/overview.md) |
+| **`/src`** | **Main project** — Grid pathfinding (A*, HPA*, JPS), movers, jobs, items, stockpiles, water/fire/smoke simulation — [overview](documentation/overview.md) |
 | `/steering-experiment` | Old experiment: steering behaviors, flocking, social force model |
 | `/crowd-experiment` | Old experiment: crowd simulation testbed |
 | `/tools` | Atlas generator |

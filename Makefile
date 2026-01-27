@@ -16,16 +16,16 @@ TARGETS := steer crowd path
 # Source files for each target
 steer_SRC       := steering-experiment/demo.c steering-experiment/steering.c
 crowd_SRC       := crowd-experiment/demo.c
-path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/fire.c pathing/smoke.c pathing/groundwear.c pathing/inspect.c
+path_SRC        := src/demo.c src/grid.c src/terrain.c src/pathfinding.c src/mover.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c src/inspect.c
 
 # Test targets
-test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
-test_mover_SRC    := tests/test_mover.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c
+test_pathing_SRC  := tests/test_pathfinding.c src/grid.c src/terrain.c src/pathfinding.c
+test_mover_SRC    := tests/test_mover.c src/grid.c src/pathfinding.c src/mover.c src/terrain.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c
 test_steering_SRC := tests/test_steering.c steering-experiment/steering.c
-test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c
-test_water_SRC    := tests/test_water.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/water.c
-test_groundwear_SRC := tests/test_groundwear.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/groundwear.c
-test_fire_SRC       := tests/test_fire.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/fire.c pathing/smoke.c pathing/water.c
+test_jobs_SRC     := tests/test_jobs.c src/grid.c src/pathfinding.c src/mover.c src/terrain.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c
+test_water_SRC    := tests/test_water.c src/grid.c src/terrain.c src/pathfinding.c src/water.c
+test_groundwear_SRC := tests/test_groundwear.c src/grid.c src/terrain.c src/pathfinding.c src/groundwear.c
+test_fire_SRC       := tests/test_fire.c src/grid.c src/terrain.c src/pathfinding.c src/fire.c src/smoke.c src/water.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 

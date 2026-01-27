@@ -1,9 +1,9 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../pathing/grid.h"
-#include "../pathing/pathfinding.h"
-#include "../pathing/mover.h"
-#include "../pathing/terrain.h"
+#include "../src/grid.h"
+#include "../src/pathfinding.h"
+#include "../src/mover.h"
+#include "../src/terrain.h"
 #include <stdlib.h>
 #include <math.h>
 

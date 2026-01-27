@@ -96,7 +96,7 @@ Each generator places appropriate ladders to connect floors, enabling full 3D na
 ## Code Structure
 
 ```
-pathing/
+src/
 ├── grid.c/h          # Grid representation, cell types, chunk management
 ├── pathfinding.c/h   # A*, HPA*, JPS, JPS+ implementations (~3100 lines)
 ├── mover.c/h         # Mover simulation, avoidance, path following (~1000 lines)

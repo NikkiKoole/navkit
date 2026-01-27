@@ -2,7 +2,7 @@
 
 **Status**: Planning document (not yet implementing)
 
-**Related future work**: Z-layers support (separate plan, will be built in pathing/demo first)
+**Related future work**: Z-layers support (separate plan, will be built in src/demo first)
 
 ---
 
@@ -18,7 +18,7 @@ Decouple the pathfinding simulation from rendering so that:
 
 ```
 navkit/
-├── pathing/              # Existing - keep working
+├── src/              # Existing - keep working
 │   ├── grid.c/h
 │   ├── pathfinding.c/h
 │   ├── mover.c/h         # Refactor: remove CELL_SIZE dependency
@@ -38,7 +38,7 @@ navkit/
 
 ### Phase 1: Refactor mover.c to use grid-cell coordinates
 
-**Files to modify**: `pathing/mover.h`, `pathing/mover.c`, `pathing/test_mover.c`
+**Files to modify**: `src/mover.h`, `src/mover.c`, `src/test_mover.c`
 
 **Changes**:
 - Change mover positions from pixels to grid cells (floats, e.g., `x=5.3` means 30% into cell 5)
@@ -64,7 +64,7 @@ int cellX = (int)m->x;
 
 ### Phase 2: Update demo.c to handle the new mover coordinates
 
-**Files to modify**: `pathing/demo.c`
+**Files to modify**: `src/demo.c`
 
 **Changes**:
 - Keep `CELL_SIZE` in demo.c only (for rendering)
@@ -131,10 +131,10 @@ Vector2 View_GridToScreen(View* v, float gridX, float gridY);
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `pathing/mover.h` | Modify | Remove CELL_SIZE, document grid-cell coords |
-| `pathing/mover.c` | Modify | All positions in grid cells, speed in cells/sec |
-| `pathing/test_mover.c` | Modify | Update tests for new coordinate system |
-| `pathing/demo.c` | Modify | Add grid→pixel conversion for rendering |
+| `src/mover.h` | Modify | Remove CELL_SIZE, document grid-cell coords |
+| `src/mover.c` | Modify | All positions in grid cells, speed in cells/sec |
+| `src/test_mover.c` | Modify | Update tests for new coordinate system |
+| `src/demo.c` | Modify | Add grid→pixel conversion for rendering |
 | `simulation/simulation.h` | Create | Simulation interface |
 | `simulation/simulation.c` | Create | Simulation implementation |
 | `game/main.c` | Create | 2.5D game entry point |

@@ -25,11 +25,11 @@ Add mining as a quick prototype using the current architecture:
 - Terrain change: wall → floor + spawn item
 
 **Files:**
-- `pathing/jobs.h` - add states, Designation struct
-- `pathing/jobs.c` - add assignment pass and state machine
-- `pathing/mover.h` - add targetDesignation, workProgress fields
-- `pathing/grid.c` - terrain modification function
-- `pathing/demo.c` - designation UI (click-drag to mark tiles)
+- `src/jobs.h` - add states, Designation struct
+- `src/jobs.c` - add assignment pass and state machine
+- `src/mover.h` - add targetDesignation, workProgress fields
+- `src/grid.c` - terrain modification function
+- `src/demo.c` - designation UI (click-drag to mark tiles)
 
 ### Step 2: Targeted Performance Fix (~1 day)
 After mining works, apply minimal fix to the rehaul bottleneck:

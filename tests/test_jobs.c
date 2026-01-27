@@ -1,13 +1,13 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../pathing/grid.h"
-#include "../pathing/pathfinding.h"
-#include "../pathing/mover.h"
-#include "../pathing/terrain.h"
-#include "../pathing/items.h"
-#include "../pathing/jobs.h"
-#include "../pathing/stockpiles.h"
-#include "../pathing/designations.h"
+#include "../src/grid.h"
+#include "../src/pathfinding.h"
+#include "../src/mover.h"
+#include "../src/terrain.h"
+#include "../src/items.h"
+#include "../src/jobs.h"
+#include "../src/stockpiles.h"
+#include "../src/designations.h"
 #include <math.h>
 
 // Stub profiler functions for tests

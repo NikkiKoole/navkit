@@ -1000,7 +1000,7 @@
   
   Fixed tick (my recommendation for sims): you accumulate time and step the simulation in consistent chunks, e.g. tick = 1/20s or 1/10s.
   
-  For a colony sim (especially with pathing/AI), fixed ticks make behavior deterministic-ish, easier to test, and less “FPS changes my sim.”
+  For a colony sim (especially with src/AI), fixed ticks make behavior deterministic-ish, easier to test, and less “FPS changes my sim.”
   
   A common hybrid loop (raylib-friendly)
   

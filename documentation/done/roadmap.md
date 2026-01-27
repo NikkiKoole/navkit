@@ -105,7 +105,7 @@ Note: Spatial queries ("what obstacles are near me?") moved to todo.md as "Spati
 - Decision: Grid-based approach sufficient for current needs
 
 ## Mover Collision Avoidance - DONE
-Implemented in `pathing/mover.c`:
+Implemented in `src/mover.c`:
 - Boids-style separation (spatial grid for neighbor lookup)
 - Wall repulsion and wall sliding
 - Knot fix (larger waypoint arrival + reduced avoidance near waypoints)

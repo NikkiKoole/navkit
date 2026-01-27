@@ -247,11 +247,11 @@ Gray semi-transparent overlay. Higher smoke level = more opaque.
 
 ## Files (Planned)
 
-- `pathing/fire.h` - Data structures and API
-- `pathing/fire.c` - Fire simulation logic
-- `pathing/smoke.h` - Smoke data structures and API
-- `pathing/smoke.c` - Smoke simulation logic
-- `pathing/demo.c` - F key handler, rendering (DrawFire, DrawSmoke functions)
+- `src/fire.h` - Data structures and API
+- `src/fire.c` - Fire simulation logic
+- `src/smoke.h` - Smoke data structures and API
+- `src/smoke.c` - Smoke simulation logic
+- `src/demo.c` - F key handler, rendering (DrawFire, DrawSmoke functions)
 
 ## Performance Notes
 

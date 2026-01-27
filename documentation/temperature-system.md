@@ -79,8 +79,8 @@ Each tick, temperature moves toward ambient:
 
 ## Files (Planned)
 
-- `pathing/temperature.h` - Data structure and API
-- `pathing/temperature.c` - Update logic, decay, queries
+- `src/temperature.h` - Data structure and API
+- `src/temperature.c` - Update logic, decay, queries
 
 ## Implementation Priority
 
