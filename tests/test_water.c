@@ -1,18 +1,9 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../src/grid.h"
-#include "../src/water.h"
+#include "../src/world/grid.h"
+#include "../src/simulation/water.h"
 #include <stdlib.h>
 #include <math.h>
-
-// Stub profiler functions for tests
-void ProfileBegin(const char* name) { (void)name; }
-void ProfileEnd(const char* name) { (void)name; }
-void ProfileAccumBegin(const char* name) { (void)name; }
-void ProfileAccumEnd(const char* name) { (void)name; }
-
-// Stub UI functions for tests
-void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
 // Helper to run water simulation for N ticks
 static void RunWaterTicks(int n) {

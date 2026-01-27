@@ -1,17 +1,8 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../src/grid.h"
-#include "../src/groundwear.h"
+#include "../src/world/grid.h"
+#include "../src/simulation/groundwear.h"
 #include <stdlib.h>
-
-// Stub profiler functions for tests
-void ProfileBegin(const char* name) { (void)name; }
-void ProfileEnd(const char* name) { (void)name; }
-void ProfileAccumBegin(const char* name) { (void)name; }
-void ProfileAccumEnd(const char* name) { (void)name; }
-
-// Stub UI functions for tests
-void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
 // =============================================================================
 // Basic Initialization

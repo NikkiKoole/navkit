@@ -1,23 +1,14 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../src/grid.h"
-#include "../src/pathfinding.h"
-#include "../src/mover.h"
-#include "../src/terrain.h"
-#include "../src/items.h"
-#include "../src/jobs.h"
-#include "../src/stockpiles.h"
-#include "../src/designations.h"
+#include "../src/world/grid.h"
+#include "../src/world/pathfinding.h"
+#include "../src/entities/mover.h"
+#include "../src/world/terrain.h"
+#include "../src/entities/items.h"
+#include "../src/entities/jobs.h"
+#include "../src/entities/stockpiles.h"
+#include "../src/world/designations.h"
 #include <math.h>
-
-// Stub profiler functions for tests
-void ProfileBegin(const char* name) { (void)name; }
-void ProfileEnd(const char* name) { (void)name; }
-void ProfileAccumBegin(const char* name) { (void)name; }
-void ProfileAccumEnd(const char* name) { (void)name; }
-
-// Stub UI functions for tests
-void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
 // Helper functions to check mover job state (replaces m->jobState checks)
 static bool MoverIsIdle(Mover* m) {

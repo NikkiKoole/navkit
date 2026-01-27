@@ -18,14 +18,14 @@ steer_SRC := steering-experiment/demo.c steering-experiment/steering.c
 crowd_SRC := crowd-experiment/demo.c
 path_SRC  := src/unity.c
 
-# Test targets (need updated paths for the new folder structure)
-test_pathing_SRC    := tests/test_pathfinding.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c
-test_mover_SRC      := tests/test_mover.c src/world/grid.c src/world/pathfinding.c src/entities/mover.c src/world/terrain.c src/entities/items.c src/entities/jobs.c src/entities/stockpiles.c src/world/designations.c src/simulation/water.c src/simulation/fire.c src/simulation/smoke.c src/simulation/groundwear.c
+# Test targets - all use test_unity.c for shared game logic
+test_pathing_SRC    := tests/test_pathfinding.c tests/test_unity.c
+test_mover_SRC      := tests/test_mover.c tests/test_unity.c
 test_steering_SRC   := tests/test_steering.c steering-experiment/steering.c
-test_jobs_SRC       := tests/test_jobs.c src/world/grid.c src/world/pathfinding.c src/entities/mover.c src/world/terrain.c src/entities/items.c src/entities/jobs.c src/entities/stockpiles.c src/world/designations.c src/simulation/water.c src/simulation/fire.c src/simulation/smoke.c src/simulation/groundwear.c
-test_water_SRC      := tests/test_water.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/water.c
-test_groundwear_SRC := tests/test_groundwear.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/groundwear.c
-test_fire_SRC       := tests/test_fire.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/fire.c src/simulation/smoke.c src/simulation/water.c
+test_jobs_SRC       := tests/test_jobs.c tests/test_unity.c
+test_water_SRC      := tests/test_water.c tests/test_unity.c
+test_groundwear_SRC := tests/test_groundwear.c tests/test_unity.c
+test_fire_SRC       := tests/test_fire.c tests/test_unity.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 

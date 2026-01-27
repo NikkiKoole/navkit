@@ -1,20 +1,11 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
-#include "../src/grid.h"
-#include "../src/fire.h"
-#include "../src/smoke.h"
-#include "../src/water.h"
+#include "../src/world/grid.h"
+#include "../src/simulation/fire.h"
+#include "../src/simulation/smoke.h"
+#include "../src/simulation/water.h"
 #include <stdlib.h>
 #include <math.h>
-
-// Stub profiler functions for tests
-void ProfileBegin(const char* name) { (void)name; }
-void ProfileEnd(const char* name) { (void)name; }
-void ProfileAccumBegin(const char* name) { (void)name; }
-void ProfileAccumEnd(const char* name) { (void)name; }
-
-// Stub UI functions for tests
-void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
 // Helper to run fire simulation for N ticks
 static void RunFireTicks(int n) {
