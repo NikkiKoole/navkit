@@ -25,12 +25,11 @@ i think we for starters need to be able to completely copy paste a world, incluc
 
 - # bug3 [ ]  after a mover has built a wall, it canot stand on that wall anymore
   - , and sometimes pops to illogical places. maybe we should make it so it will remembr the tile it was standing on before it got to this tile, and will defualt to that direction ?
+  - **Rolled back:** Attempted to add `prevCellX/prevCellY` to Mover struct to track where mover came from, but this adds 8 bytes per mover (80KB for 10K movers) - not worth it given the existing mover memory concerns (118MB total). Could revisit if we reduce mover memory elsewhere first.
 
-- # bug4 [ ] sometimes otange block ARE in the stockpile
-  - but we dont see them. 
-  - this happens wehn i have a few stacks of them and then  designtate a building to be build, suddenly the stack is gone/invisble but movers will go there and fetch the blocks.
-  -
+
   
 - # bug5 [ ] when bringing items to a stockpile
   - sometims the wrong (lower priority) stockpile is picked first, then mover stands there with block, and then moves to the best option, i see the same happenings with designing a build, and minig some wall.
   - in that case blocks are brought from the groun to a stockpile, to be immeadiatly brought to the deisgnated build.
+  - **Rolled back:** Attempted to fix `FindStockpileForItem` to search for highest priority stockpile first, but this removes the early-exit optimization (now must check ALL stockpiles instead of returning on first match). Performance cost not worth it - the re-hauling system eventually moves items to the right place anyway.

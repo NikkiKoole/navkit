@@ -3,6 +3,8 @@
 #include "pathfinding.h"
 #include "items.h"
 #include "jobs.h"
+#include "stockpiles.h"
+#include "designations.h"
 #include "water.h"
 #include "groundwear.h"
 #include "../shared/profiler.h"
@@ -558,6 +560,64 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
 }
 
 void ClearMovers(void) {
+    // Drop carried items on the ground at mover's position
+    for (int i = 0; i < moverCount; i++) {
+        if (!movers[i].active) continue;
+        Mover* m = &movers[i];
+        
+        // Check if mover has a job with a carried item
+        if (m->currentJobId >= 0) {
+            Job* job = GetJob(m->currentJobId);
+            if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
+                Item* item = &items[job->carryingItem];
+                if (item->active && item->state == ITEM_CARRIED) {
+                    item->x = m->x;
+                    item->y = m->y;
+                    item->z = m->z;
+                    item->state = ITEM_ON_GROUND;
+                    item->reservedBy = -1;
+                }
+            }
+        }
+        
+        ReleaseAllSlotsForMover(i);
+    }
+    
+    // Clear all item reservations
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (items[i].active) {
+            items[i].reservedBy = -1;
+        }
+    }
+    
+    // Reset all designation progress and assignments
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type != DESIGNATION_NONE) {
+                    designations[z][y][x].assignedMover = -1;
+                    designations[z][y][x].progress = 0.0f;
+                }
+            }
+        }
+    }
+    
+    // Reset all blueprint progress and assignments
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (blueprints[i].active) {
+            blueprints[i].assignedBuilder = -1;
+            blueprints[i].reservedItem = -1;
+            blueprints[i].progress = 0.0f;
+            // Revert building state to ready (if it was being built)
+            if (blueprints[i].state == BLUEPRINT_BUILDING) {
+                blueprints[i].state = BLUEPRINT_READY_TO_BUILD;
+            }
+        }
+    }
+    
+    // Clear all jobs (resets job pool)
+    ClearJobs();
+    
     moverCount = 0;
     currentTick = 0;
     // Initialize spatial grid if grid dimensions are set
