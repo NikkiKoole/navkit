@@ -116,14 +116,4 @@ void DestabilizeTemperature(int x, int y, int z);
 // Utility: apply heat from fire (called by fire system)
 void ApplyFireHeat(int x, int y, int z, int fireLevel);
 
-// =============================================================================
-// DEPRECATED - Keeping for backward compatibility during transition
-// =============================================================================
-
-// These functions now just return celsius directly (no encoding)
-static inline int GetTemperatureIndex(int x, int y, int z) { return GetTemperature(x, y, z); }
-static inline void SetTemperatureIndex(int x, int y, int z, int celsius) { SetTemperature(x, y, z, celsius); }
-static inline int DecodeTemp(int16_t celsius) { return celsius; }
-static inline int16_t EncodeTemp(int celsius) { return (int16_t)celsius; }
-
 #endif // TEMPERATURE_H

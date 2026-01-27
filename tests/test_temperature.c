@@ -57,12 +57,11 @@ describe(temperature_initialization) {
         InitTemperature();
         
         // For single z-level grid, z=0 is surface, so ambient should be surface temp
-        // GetAmbientTemperature returns INDEX, GetTemperature returns CELSIUS
-        int expectedAmbientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int expectedAmbient = GetAmbientTemperature(0);
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                expect(GetTemperature(x, y, 0) == expectedAmbientCelsius);
+                expect(GetTemperature(x, y, 0) == expectedAmbient);
             }
         }
     }
@@ -81,10 +80,10 @@ describe(temperature_initialization) {
         
         ClearTemperature();
         
-        // Should reset to ambient for this z-level (decode index to Celsius)
-        int expectedAmbientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
-        expect(GetTemperature(2, 0, 0) == expectedAmbientCelsius);
-        expect(GetTemperature(4, 1, 0) == expectedAmbientCelsius);
+        // Should reset to ambient for this z-level
+        int expectedAmbient = GetAmbientTemperature(0);
+        expect(GetTemperature(2, 0, 0) == expectedAmbient);
+        expect(GetTemperature(4, 1, 0) == expectedAmbient);
     }
 }
 
@@ -178,8 +177,7 @@ describe(temperature_heat_spread) {
         
         InitTemperature();
         
-        // GetAmbientTemperature returns index, decode to Celsius for comparison
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int ambient = GetAmbientTemperature(0);
         
         // Place heat source in center (100C)
         SetHeatSource(2, 2, 0, true);
@@ -190,11 +188,11 @@ describe(temperature_heat_spread) {
         // Center should be hot (source)
         expect(GetTemperature(2, 2, 0) >= 80);
         
-        // Adjacent cells should be warmer than ambient (GetTemperature returns Celsius)
-        expect(GetTemperature(1, 2, 0) > ambientCelsius);
-        expect(GetTemperature(3, 2, 0) > ambientCelsius);
-        expect(GetTemperature(2, 1, 0) > ambientCelsius);
-        expect(GetTemperature(2, 3, 0) > ambientCelsius);
+        // Adjacent cells should be warmer than ambient
+        expect(GetTemperature(1, 2, 0) > ambient);
+        expect(GetTemperature(3, 2, 0) > ambient);
+        expect(GetTemperature(2, 1, 0) > ambient);
+        expect(GetTemperature(2, 3, 0) > ambient);
     }
     
     it("should spread heat in circular pattern (orthogonal first)") {
@@ -241,7 +239,7 @@ describe(temperature_stone_insulation) {
         
         InitTemperature();
         
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int ambient = GetAmbientTemperature(0);
         
         // Place heat source inside room (100C)
         SetHeatSource(3, 2, 0, true);
@@ -249,9 +247,9 @@ describe(temperature_stone_insulation) {
         // Run simulation
         RunTempTicks(200);
         
-        // Inside room should be warm (GetTemperature returns Celsius)
+        // Inside room should be warm
         int insideTemp = GetTemperature(3, 3, 0);
-        expect(insideTemp > ambientCelsius + 10);
+        expect(insideTemp > ambient + 10);
         
         // Outside room should be much closer to ambient
         int outsideTemp = GetTemperature(0, 3, 0);
@@ -504,7 +502,7 @@ describe(temperature_decay) {
         
         InitTemperature();
         
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int ambient = GetAmbientTemperature(0);
         
         // Set center cell to hot (not a source) - 100C
         SetTemperature(1, 1, 0, 100);
@@ -516,10 +514,10 @@ describe(temperature_decay) {
         
         // Should have decayed toward ambient (20C)
         expect(finalTemp < 100);
-        expect(finalTemp < ambientCelsius + 30);  // Roughly near ambient
+        expect(finalTemp < ambient + 30);  // Roughly near ambient
         
         printf("Decay test: started at 100, ended at %d (ambient=%d)\n", 
-               finalTemp, ambientCelsius);
+               finalTemp, ambient);
     }
     
     it("should decay cold temperature toward ambient") {
@@ -530,7 +528,7 @@ describe(temperature_decay) {
         
         InitTemperature();
         
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int ambient = GetAmbientTemperature(0);
         
         // Set center cell to cold (not a source) - 0C
         SetTemperature(1, 1, 0, 0);
@@ -542,10 +540,10 @@ describe(temperature_decay) {
         
         // Should have risen toward ambient (20C)
         expect(finalTemp > 0);
-        expect(finalTemp > ambientCelsius - 30);  // Roughly near ambient
+        expect(finalTemp > ambient - 30);  // Roughly near ambient
         
         printf("Cold decay test: started at 0, ended at %d (ambient=%d)\n", 
-               finalTemp, ambientCelsius);
+               finalTemp, ambient);
     }
 }
 
@@ -597,9 +595,9 @@ describe(temperature_cold_source) {
         
         InitTemperature();
         
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
+        int ambient = GetAmbientTemperature(0);
         
-        // Place cold source in center (-30C based on coldSourceTemp index 10)
+        // Place cold source in center (-20C based on coldSourceTemp)
         SetColdSource(2, 2, 0, true);
         
         // Run simulation (more ticks for cold to spread against decay)
@@ -611,10 +609,10 @@ describe(temperature_cold_source) {
         // Adjacent cells should be cooler than ambient (cold spreads slower due to decay)
         // With decay fighting cold, neighbors may only be slightly cooler
         int neighborTemp = GetTemperature(1, 2, 0);
-        expect(neighborTemp < ambientCelsius);
+        expect(neighborTemp < ambient);
         
         printf("Cold source test: center=%d, neighbor=%d, ambient=%d\n",
-               GetTemperature(2, 2, 0), neighborTemp, ambientCelsius);
+               GetTemperature(2, 2, 0), neighborTemp, ambient);
     }
     
     it("should maintain freezing temperature") {
@@ -703,12 +701,12 @@ describe(temperature_edge_cases) {
         
         InitTemperature();
         
-        // Out of bounds should return ambient (decoded to Celsius)
-        int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(0));
-        expect(GetTemperature(-1, 0, 0) == ambientCelsius);
-        expect(GetTemperature(100, 0, 0) == ambientCelsius);
-        expect(GetTemperature(0, -1, 0) == ambientCelsius);
-        expect(GetTemperature(0, 100, 0) == ambientCelsius);
+        // Out of bounds should return ambient
+        int ambient = GetAmbientTemperature(0);
+        expect(GetTemperature(-1, 0, 0) == ambient);
+        expect(GetTemperature(100, 0, 0) == ambient);
+        expect(GetTemperature(0, -1, 0) == ambient);
+        expect(GetTemperature(0, 100, 0) == ambient);
         
         // Out of bounds set should not crash
         SetTemperature(-1, 0, 0, 200);
