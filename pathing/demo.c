@@ -752,22 +752,19 @@ void DrawItems(void) {
     }
 }
 
-void DrawStockpiles(void) {
+void DrawStockpileTiles(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
-
-        // Only draw stockpiles on the current z-level
         if (sp->z != viewZ) continue;
 
-        // Draw each tile of the stockpile
         for (int dy = 0; dy < sp->height; dy++) {
             for (int dx = 0; dx < sp->width; dx++) {
                 int slotIdx = dy * sp->width + dx;
-                if (!sp->cells[slotIdx]) continue;  // skip inactive cells
+                if (!sp->cells[slotIdx]) continue;
 
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
@@ -781,40 +778,87 @@ void DrawStockpiles(void) {
 
                 // Highlight hovered stockpile with pulsing green overlay
                 if (i == hoveredStockpile) {
-                    float pulse = (sinf(GetTime() * 4.0f) + 1.0f) * 0.5f;  // 0 to 1
-                    unsigned char alpha = (unsigned char)(40 + pulse * 60);  // 40-100 alpha
+                    float pulse = (sinf(GetTime() * 4.0f) + 1.0f) * 0.5f;
+                    unsigned char alpha = (unsigned char)(40 + pulse * 60);
                     DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){100, 255, 100, alpha});
-                }
-
-                // Draw stacked items in this slot
-                int count = sp->slotCounts[slotIdx];
-                if (count > 0) {
-                    ItemType type = sp->slotTypes[slotIdx];
-                    int sprite;
-                    switch (type) {
-                        case ITEM_RED:    sprite = SPRITE_crate_red;    break;
-                        case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
-                        case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
-                        case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
-                        default:          sprite = SPRITE_apple;        break;
-                    }
-
-                    // Draw up to 5 visible items with diagonal offset (bottom to top)
-                    int visibleCount = count > 5 ? 5 : count;
-                    float itemSize = size * ITEM_SIZE_STOCKPILE;
-                    float stackOffset = size * 0.08f;  // Offset per item
-
-                    // Draw oldest first (bottom-right), newest last (up-left, on top)
-                    for (int s = 0; s < visibleCount; s++) {
-                        float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
-                        float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
-                        Rectangle srcItem = SpriteGetRect(sprite);
-                        Rectangle destItem = { itemX, itemY, itemSize, itemSize };
-                        DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
-                    }
                 }
             }
         }
+    }
+}
+
+void DrawStockpileItems(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        Stockpile* sp = &stockpiles[i];
+        if (!sp->active) continue;
+        if (sp->z != viewZ) continue;
+
+        for (int dy = 0; dy < sp->height; dy++) {
+            for (int dx = 0; dx < sp->width; dx++) {
+                int slotIdx = dy * sp->width + dx;
+                if (!sp->cells[slotIdx]) continue;
+
+                int count = sp->slotCounts[slotIdx];
+                if (count <= 0) continue;
+
+                int gx = sp->x + dx;
+                int gy = sp->y + dy;
+
+                float sx = offset.x + gx * size;
+                float sy = offset.y + gy * size;
+
+                ItemType type = sp->slotTypes[slotIdx];
+                int sprite;
+                switch (type) {
+                    case ITEM_RED:    sprite = SPRITE_crate_red;    break;
+                    case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
+                    case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
+                    case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
+                    default:          sprite = SPRITE_apple;        break;
+                }
+
+                int visibleCount = count > 5 ? 5 : count;
+                float itemSize = size * ITEM_SIZE_STOCKPILE;
+                float stackOffset = size * 0.08f;
+
+                for (int s = 0; s < visibleCount; s++) {
+                    float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
+                    float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
+                    Rectangle srcItem = SpriteGetRect(sprite);
+                    Rectangle destItem = { itemX, itemY, itemSize, itemSize };
+                    DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
+                }
+            }
+        }
+    }
+}
+
+void DrawHaulDestinations(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    // Iterate through active jobs looking for haul jobs with a destination
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_HAUL) continue;
+        if (job->targetStockpile < 0) continue;
+        
+        Stockpile* sp = &stockpiles[job->targetStockpile];
+        if (!sp->active) continue;
+        if (sp->z != viewZ) continue;
+        
+        // targetSlotX/Y are already world coordinates
+        float sx = offset.x + job->targetSlotX * size;
+        float sy = offset.y + job->targetSlotY * size;
+        
+        // Draw stockpile checkerboard pattern tinted to show incoming item
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
     }
 }
 
@@ -845,6 +889,22 @@ void DrawMiningDesignations(void) {
                 DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, SKYBLUE);
             }
         }
+    }
+
+    // Highlight designations that have an active dig job (mover assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_DIG) continue;
+        if (job->targetDigZ != viewZ) continue;
+
+        float sx = offset.x + job->targetDigX * size;
+        float sy = offset.y + job->targetDigY * size;
+
+        // Orange tint to show "mover incoming"
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
     }
 }
 
@@ -890,6 +950,25 @@ void DrawBlueprints(void) {
             int textW = MeasureTextUI(text, 10);
             DrawTextShadow(text, (int)(sx + size/2 - textW/2), (int)(sy + 2), 10, WHITE);
         }
+    }
+
+    // Highlight blueprints that have an active job (haul-to-blueprint or build)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_HAUL_TO_BLUEPRINT && job->type != JOBTYPE_BUILD) continue;
+        if (job->targetBlueprint < 0 || job->targetBlueprint >= MAX_BLUEPRINTS) continue;
+        
+        Blueprint* bp = &blueprints[job->targetBlueprint];
+        if (!bp->active || bp->z != viewZ) continue;
+
+        float sx = offset.x + bp->x * size;
+        float sy = offset.y + bp->y * size;
+
+        // Orange tint to show "mover incoming"
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
     }
 }
 
@@ -2809,7 +2888,9 @@ int main(void) {
         DrawCellGrid();
         DrawWater();
         PROFILE_END(DrawCells);
-        DrawStockpiles();
+        DrawStockpileTiles();
+        DrawHaulDestinations();
+        DrawStockpileItems();
         DrawMiningDesignations();
         DrawBlueprints();
         DrawChunkBoundaries();

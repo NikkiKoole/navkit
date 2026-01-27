@@ -3,15 +3,6 @@
 Small remaining items and future improvements.
 
 ---
-
--- make the memory profiling more complete, we now have jobs, pool, and designations, stockpiles to add  i believe.
-
--- tweaks : 
- show the destinaton of an item, we can see it will be picked up, i want to see where its going to be dropped too
- also the destination of a to-be-mined thing / constructed thing 
- 
-
-
 ## Prioritized TODO
 
 ### Quick Wins (small, high value)
