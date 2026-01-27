@@ -7,7 +7,9 @@
 ╚═╝  ╚═══╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚═╝   ╚═╝       └───────┴───┘
 ```
 
-3D grid-based pathfinding and movement for games. C + raylib.
+3D grid-based colony simulation framework. Pathfinding (A*, HPA*, JPS), jobs, movers, items, stockpiles, and cellular automata simulations (water, fire, smoke). C + raylib.
+
+See [src/README.md](src/README.md) for architecture details.
 
 ## Structure
 
