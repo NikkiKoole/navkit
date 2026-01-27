@@ -14,9 +14,9 @@
 | Directory | Description |
 |-----------|-------------|
 | **`/src`** | **Main project** — Grid pathfinding (A*, HPA*, JPS), movers, jobs, items, stockpiles, water/fire/smoke simulation — [overview](documentation/overview.md) |
-| `/steering-experiment` | Old experiment: steering behaviors, flocking, social force model |
-| `/crowd-experiment` | Old experiment: crowd simulation testbed |
-| `/tools` | Atlas generator |
+| `/experiments/steering` | Old experiment: steering behaviors, flocking, social force model |
+| `/experiments/crowd` | Old experiment: crowd simulation testbed |
+| `/tools` | Atlas generator, font embedder |
 | `/documentation` | Design docs — [todo](documentation/todo.md) |
 
 ## Build
@@ -45,6 +45,45 @@ To change the default, edit `GENERATE_16X16 ?= 0` in the Makefile.
 make path8                  # build with 8x8 tiles (included in default build)
 make path16                 # build with 16x16 tiles
 ```
+
+### Embedded assets
+
+All assets (atlas textures, fonts) are embedded directly in the binary - no external files needed at runtime.
+
+```bash
+make embed                  # regenerate all embedded assets (atlas + font)
+make embed_font             # regenerate embedded font only
+make atlas                  # regenerate embedded atlas only
+```
+
+#### Changing the font
+
+1. Get a BMFont-format font (`.fnt` + `.png` files). Tools like [BMFont](https://www.angelcode.com/products/bmfont/) or [Hiero](https://libgdx.com/wiki/tools/hiero) can generate these.
+2. Place both files in `assets/fonts/` with the same base name (e.g., `myfont.fnt` and `myfont.png`)
+3. Update the Makefile `embed_font` target to point to your font:
+   ```makefile
+   ./$(BINDIR)/font_embed assets/fonts/myfont.fnt assets/fonts/myfont_embedded.h
+   ```
+4. Update the include in `src/main.c`:
+   ```c
+   #include "assets/fonts/myfont_embedded.h"
+   ```
+5. Run `make embed_font && make`
+
+#### Using 16x16 tiles
+
+1. Create 16x16 versions of all sprites in `assets/textures/` (must have same filenames as `assets/textures8x8/`)
+2. Generate both atlases with validation:
+   ```bash
+   make atlas GENERATE_16X16=1
+   ```
+3. Build the 16x16 variant:
+   ```bash
+   make path16
+   ```
+4. Run with `./bin/path16`
+
+The atlas generator validates that both atlases have matching sprite names.
 
 ## Run
 
