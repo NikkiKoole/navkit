@@ -14,6 +14,7 @@
 #include "simulation/fire.h"
 #include "simulation/smoke.h"
 #include "simulation/groundwear.h"
+#include "simulation/temperature.h"
 #include "core/inspect.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
@@ -114,6 +115,11 @@ extern bool placingFireSource;
 extern bool extinguishingFire;
 extern int fireStartX, fireStartY;
 
+// Temperature source placement state
+extern bool placingHeatSource;
+extern bool placingColdSource;
+extern int tempStartX, tempStartY;
+
 // Gather zone state
 extern bool drawingGatherZone;
 extern bool erasingGatherZone;
@@ -143,6 +149,8 @@ extern bool sectionMoverAvoidance;
 extern bool sectionWater;
 extern bool sectionFire;
 extern bool sectionSmoke;
+extern bool sectionTemperature;
+extern bool showTemperatureOverlay;
 extern bool sectionEntropy;
 extern bool sectionMoverWalls;
 extern bool sectionMoverDebug;

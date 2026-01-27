@@ -21,6 +21,7 @@
 #include "simulation/fire.c"
 #include "simulation/smoke.c"
 #include "simulation/groundwear.c"
+#include "simulation/temperature.c"
 
 // Entity systems
 #include "entities/items.c"

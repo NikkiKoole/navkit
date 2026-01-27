@@ -1,6 +1,7 @@
 #include "fire.h"
 #include "water.h"
 #include "smoke.h"
+#include "temperature.h"
 #include "../world/grid.h"
 #include <string.h>
 #include <stdlib.h>
@@ -231,9 +232,10 @@ static bool ProcessFireCell(int x, int y, int z) {
             DestabilizeFire(x, y, z);
             changed = true;
         }
-        // Sources still spread and generate smoke
+        // Sources still spread, generate smoke, and heat
         FireTrySpread(x, y, z);
         GenerateSmokeFromFire(x, y, z, cell->level);
+        ApplyFireHeat(x, y, z, cell->level);
         return changed;
     }
     
@@ -284,9 +286,10 @@ static bool ProcessFireCell(int x, int y, int z) {
         changed = true;
     }
     
-    // Generate smoke from active fire
+    // Generate smoke from active fire and apply heat
     if (cell->level > 0) {
         GenerateSmokeFromFire(x, y, z, cell->level);
+        ApplyFireHeat(x, y, z, cell->level);
     }
     
     // Mark stable if nothing is happening

@@ -54,6 +54,10 @@ bool placingFireSource = false;
 bool extinguishingFire = false;
 int fireStartX = 0, fireStartY = 0;
 
+bool placingHeatSource = false;
+bool placingColdSource = false;
+int tempStartX = 0, tempStartY = 0;
+
 bool drawingGatherZone = false;
 bool erasingGatherZone = false;
 int gatherZoneStartX = 0, gatherZoneStartY = 0;
@@ -71,19 +75,21 @@ const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maz
 
 bool sectionView = false;
 bool sectionPathfinding = false;
-bool sectionMapEditing = true;
+bool sectionMapEditing = false;
 bool sectionAgents = false;
 bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
 bool sectionWater = false;
 bool sectionFire = false;
 bool sectionSmoke = false;
+bool sectionTemperature = false;
+bool showTemperatureOverlay = false;
 bool sectionEntropy = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 bool sectionProfiler = false;
 bool sectionMemory = false;
-bool sectionJobs = true;
+bool sectionJobs = false;
 
 int hoveredStockpile = -1;
 int hoveredMover = -1;
@@ -428,6 +434,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid);
 void DrawMoverTooltip(int moverIdx, Vector2 mouse);
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY);
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
+void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
 // From render/ui_panels.c
 void DrawUI(void);
@@ -472,6 +479,7 @@ int main(int argc, char** argv) {
                 grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
+    InitTemperature();
     BuildEntrances();
     BuildGraph();
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -529,8 +537,10 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawWater();
+        DrawFrozenWater();
         DrawFire();
         DrawSmoke();
+        DrawTemperature();
         PROFILE_END(DrawCells);
         if (IsKeyDown(KEY_G)) {
             DrawGatherZones();
@@ -691,7 +701,7 @@ int main(int argc, char** argv) {
         if (showHelpPanel) {
             const char* shortcuts[] = {
                 "R + drag      Draw room (walls + floor)",
-                "F + drag      Draw floor",
+                "T + drag      Draw floor",
                 "L + drag      Draw ladder",
                 "S + L-drag    Draw stockpile",
                 "S + R-drag    Erase stockpile",
@@ -705,6 +715,14 @@ int main(int argc, char** argv) {
                 "W + R-drag    Remove water/source/drain",
                 "W+Shift+L     Place water source",
                 "W+Shift+R     Place water drain",
+                "F + L-drag    Ignite fire",
+                "F + R-drag    Extinguish fire",
+                "F+Shift+L     Place fire source",
+                "F+Shift+R     Remove fire source",
+                "H + L-drag    Place heat source",
+                "H + R-drag    Place cold source",
+                "H+Shift+L     Remove heat source",
+                "H+Shift+R     Remove cold source",
                 "< / >         Change Z level",
                 "Space         Pause/Resume",
                 "Scroll        Zoom in/out",
@@ -754,9 +772,13 @@ int main(int argc, char** argv) {
             int cellX = (int)mouseGrid.x;
             int cellY = (int)mouseGrid.y;
             if (cellX >= 0 && cellX < gridWidth && cellY >= 0 && cellY < gridHeight) {
-                if (HasWater(cellX, cellY, currentViewZ) || 
+                if (paused) {
+                    // When paused, show comprehensive cell info
+                    DrawCellTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                } else if (HasWater(cellX, cellY, currentViewZ) || 
                     waterGrid[currentViewZ][cellY][cellX].isSource ||
                     waterGrid[currentViewZ][cellY][cellX].isDrain) {
+                    // When running, only show water tooltip if there's water
                     DrawWaterTooltip(cellX, cellY, currentViewZ, GetMousePosition());
                 }
             }

@@ -256,6 +256,137 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     }
 }
 
+// Draw comprehensive cell tooltip (shown when paused)
+void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight) return;
+    if (cellZ < 0 || cellZ >= gridDepth) return;
+
+    char lines[20][64];
+    int lineCount = 0;
+
+    // Header with coordinates
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Cell (%d, %d, z%d)", cellX, cellY, cellZ);
+
+    // Cell type
+    CellType ct = grid[cellZ][cellY][cellX];
+    const char* cellTypeName = "?";
+    switch (ct) {
+        case CELL_WALL: cellTypeName = "Wall"; break;
+        case CELL_FLOOR: cellTypeName = "Floor"; break;
+        case CELL_WALKABLE: cellTypeName = "Grass"; break;
+        case CELL_AIR: cellTypeName = "Air"; break;
+        case CELL_LADDER: cellTypeName = "Ladder"; break;
+        case CELL_LADDER_UP: cellTypeName = "Ladder Up"; break;
+        case CELL_LADDER_DOWN: cellTypeName = "Ladder Down"; break;
+        case CELL_LADDER_BOTH: cellTypeName = "Ladder Both"; break;
+        case CELL_GRASS: cellTypeName = "Grass"; break;
+        case CELL_DIRT: cellTypeName = "Dirt"; break;
+        default: cellTypeName = "Unknown"; break;
+    }
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+
+    // Temperature info (value IS Celsius, -128 to 127)
+    int temp = GetTemperature(cellX, cellY, cellZ);
+    int ambient = GetAmbientTemperature(cellZ);
+    int diff = temp - ambient;
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Temp: %d C", temp);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Ambient: %d C [%+d]", ambient, diff);
+
+    // Temperature sources
+    TempCell* tempCell = &temperatureGrid[cellZ][cellY][cellX];
+    if (tempCell->isHeatSource) {
+        int sourceTemp = tempCell->sourceTemp * 8;
+        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d)", sourceTemp);
+    }
+    if (tempCell->isColdSource) {
+        int sourceTemp = tempCell->sourceTemp * 8;
+        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d)", sourceTemp);
+    }
+
+    // Insulation tier
+    int tier = GetInsulationTier(cellX, cellY, cellZ);
+    const char* tierName = tier == 2 ? "Stone (5%)" : tier == 1 ? "Wood (20%)" : "Air (100%)";
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Insulation: %s", tierName);
+
+    // Water info
+    WaterCell* water = &waterGrid[cellZ][cellY][cellX];
+    if (water->level > 0 || water->isSource || water->isDrain) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Water: %d/7%s", 
+            water->level, water->isFrozen ? " [FROZEN]" : "");
+        if (water->isSource) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  WATER SOURCE");
+        }
+        if (water->isDrain) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  WATER DRAIN");
+        }
+        if (water->hasPressure) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  Pressure (z=%d)", water->pressureSourceZ);
+        }
+    }
+
+    // Fire info
+    FireCell* fire = &fireGrid[cellZ][cellY][cellX];
+    if (fire->level > 0 || fire->isSource) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Fire: %d/7", fire->level);
+        if (fire->isSource) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  FIRE SOURCE");
+        }
+        if (fire->fuel > 0) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "  Fuel: %d", fire->fuel);
+        }
+    }
+
+    // Smoke info
+    SmokeCell* smoke = &smokeGrid[cellZ][cellY][cellX];
+    if (smoke->level > 0) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Smoke: %d/7", smoke->level);
+    }
+
+    // Calculate box dimensions
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){30, 30, 30, 230});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
+
+    // Draw lines with color coding
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        Color col = WHITE;
+        if (i == 0) col = YELLOW;  // Header
+        else if (strstr(lines[i], "HEAT SOURCE")) col = RED;
+        else if (strstr(lines[i], "COLD SOURCE")) col = SKYBLUE;
+        else if (strstr(lines[i], "FIRE SOURCE")) col = ORANGE;
+        else if (strstr(lines[i], "WATER SOURCE")) col = (Color){100, 180, 255, 255};
+        else if (strstr(lines[i], "WATER DRAIN")) col = (Color){80, 80, 120, 255};
+        else if (strstr(lines[i], "FROZEN")) col = (Color){200, 220, 255, 255};
+        else if (strstr(lines[i], "Fire:")) col = ORANGE;
+        else if (strstr(lines[i], "Water:")) col = (Color){100, 180, 255, 255};
+        else if (strstr(lines[i], "Smoke:")) col = GRAY;
+        else if (strstr(lines[i], "freezing")) col = (Color){150, 200, 255, 255};
+        else if (strstr(lines[i], "cold")) col = (Color){180, 210, 255, 255};
+        else if (strstr(lines[i], "hot!")) col = (Color){255, 100, 100, 255};
+        else if (strstr(lines[i], "warm")) col = (Color){255, 180, 100, 255};
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
 // Draw water tooltip when hovering over water
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     WaterCell* cell = &waterGrid[cellZ][cellY][cellX];

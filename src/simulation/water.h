@@ -26,7 +26,8 @@
 //   isDrain:        1 bit
 //   hasPressure:    1 bit
 //   pressureSourceZ: 4 bits (0-15)
-//   (3 bits spare)
+//   isFrozen:       1 bit
+//   (2 bits spare)
 typedef struct {
     uint16_t level          : 3;   // 0-7 water depth (0 = dry, 7 = full)
     uint16_t stable         : 1;   // true = skip processing (no recent changes)
@@ -34,6 +35,7 @@ typedef struct {
     uint16_t isDrain        : 1;   // true = removes water each tick
     uint16_t hasPressure    : 1;   // true = this water was placed under pressure (can push up)
     uint16_t pressureSourceZ: 4;   // z-level of the pressure source (water can rise to sourceZ - 1)
+    uint16_t isFrozen       : 1;   // true = water is frozen (blocks flow, can be harvested as ice)
 } WaterCell;
 
 // Water grid (same dimensions as main grid)
@@ -68,6 +70,12 @@ int GetWaterLevel(int x, int y, int z);
 bool HasWater(int x, int y, int z);
 bool IsUnderwater(int x, int y, int z, int minDepth);  // level >= minDepth
 bool IsFull(int x, int y, int z);                      // level == 7
+
+// Freezing
+bool IsWaterFrozen(int x, int y, int z);               // Check if water is frozen
+void FreezeWater(int x, int y, int z);                 // Freeze water at cell
+void ThawWater(int x, int y, int z);                   // Thaw frozen water
+void UpdateWaterFreezing(void);                        // Check temps and freeze/thaw (call after UpdateTemperature)
 
 // Mark cell and neighbors as unstable (needs processing)
 void DestabilizeWater(int x, int y, int z);

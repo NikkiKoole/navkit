@@ -9,6 +9,7 @@
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/temperature.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1099,6 +1100,12 @@ void Tick(void) {
     PROFILE_BEGIN(Smoke);
     UpdateSmoke();
     PROFILE_END(Smoke);
+    
+    // Temperature simulation
+    PROFILE_BEGIN(Temperature);
+    UpdateTemperature();
+    UpdateWaterFreezing();
+    PROFILE_END(Temperature);
     
     // Ground wear (emergent paths)
     UpdateGroundWear();

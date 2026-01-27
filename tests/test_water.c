@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/simulation/water.h"
+#include "../src/simulation/temperature.h"
 #include <stdlib.h>
 #include <math.h>
 
@@ -1091,6 +1092,121 @@ describe(water_edge_cases) {
 }
 
 // =============================================================================
+// Water Freezing
+// =============================================================================
+
+describe(water_freezing) {
+    it("should freeze full water at freezing temperature") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n"
+            "....\n", 4, 2);
+        
+        InitWater();
+        InitTemperature();
+        
+        // Place full water
+        SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);
+        
+        // Set temperature to freezing
+        SetTemperature(1, 0, 0, 40);  // Below TEMP_WATER_FREEZES (50)
+        
+        // Update freezing
+        UpdateWaterFreezing();
+        
+        // Water should be frozen
+        expect(IsWaterFrozen(1, 0, 0) == true);
+    }
+    
+    it("should not freeze partial water") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        
+        InitWater();
+        InitTemperature();
+        
+        // Place partial water (level 5)
+        SetWaterLevel(1, 0, 0, 5);
+        
+        // Set temperature to freezing
+        SetTemperature(1, 0, 0, 40);
+        
+        // Update freezing
+        UpdateWaterFreezing();
+        
+        // Water should NOT be frozen (not full)
+        expect(IsWaterFrozen(1, 0, 0) == false);
+    }
+    
+    it("should thaw frozen water when temperature rises") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        
+        InitWater();
+        InitTemperature();
+        
+        // Place full water and freeze it
+        SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);
+        FreezeWater(1, 0, 0);
+        
+        expect(IsWaterFrozen(1, 0, 0) == true);
+        
+        // Warm up
+        SetTemperature(1, 0, 0, 100);  // Above freezing
+        
+        // Update freezing
+        UpdateWaterFreezing();
+        
+        // Should be thawed
+        expect(IsWaterFrozen(1, 0, 0) == false);
+    }
+    
+    it("should block water flow when frozen") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n", 6, 1);
+        
+        InitWater();
+        InitTemperature();
+        waterEvaporationEnabled = false;
+        
+        // Place full water and freeze middle cell
+        SetWaterLevel(2, 0, 0, WATER_MAX_LEVEL);
+        FreezeWater(2, 0, 0);
+        
+        // Place water source on left side
+        SetWaterSource(0, 0, 0, true);
+        
+        // Run simulation
+        RunWaterTicks(100);
+        
+        // Frozen water should block flow to right side
+        // Water should accumulate on left side but not pass frozen cell
+        expect(GetWaterLevel(4, 0, 0) == 0);  // Right of frozen
+        expect(GetWaterLevel(5, 0, 0) == 0);  // Far right
+        
+        waterEvaporationEnabled = true;
+    }
+    
+    it("should preserve water level when frozen") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        
+        InitWater();
+        InitTemperature();
+        
+        // Place full water and freeze
+        SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);
+        FreezeWater(1, 0, 0);
+        
+        // Run water simulation
+        RunWaterTicks(100);
+        
+        // Water level should be preserved (frozen doesn't flow)
+        expect(GetWaterLevel(1, 0, 0) == WATER_MAX_LEVEL);
+        expect(IsWaterFrozen(1, 0, 0) == true);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -1121,6 +1237,9 @@ int main(int argc, char* argv[]) {
     test(water_stability);
     test(water_wall_interaction);
     test(water_edge_cases);
+    
+    // Freezing tests
+    test(water_freezing);
     
     return summary();
 }

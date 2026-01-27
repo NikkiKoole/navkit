@@ -213,6 +213,121 @@ void DrawSmoke(void) {
     }
 }
 
+void DrawTemperature(void) {
+    if (!showTemperatureOverlay) return;
+    
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    int ambient = GetAmbientTemperature(z);
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            int temp = GetTemperature(x, y, z);
+            
+            // Skip cells at ambient (neutral) - don't draw overlay
+            int diff = temp - ambient;
+            if (diff > -10 && diff < 10) continue;
+            
+            // Color gradient: Blue (cold) -> White (neutral) -> Red (hot)
+            // 0 = deep freeze (blue), 128 = neutral (transparent), 255 = extreme heat (red)
+            int r, g, b, alpha;
+            
+            if (temp < ambient) {
+                // Cold: blue tint
+                // The colder, the more blue
+                int coldness = ambient - temp;  // 0 to ~128
+                r = 50;
+                g = 100 + (coldness > 50 ? 50 : coldness);
+                b = 200 + (coldness > 55 ? 55 : coldness);
+                alpha = 40 + coldness;
+                if (alpha > 150) alpha = 150;
+            } else {
+                // Hot: red/orange tint
+                int hotness = temp - ambient;  // 0 to ~127
+                r = 200 + (hotness > 55 ? 55 : hotness);
+                g = 100 - (hotness > 60 ? 60 : hotness);
+                b = 50;
+                alpha = 40 + hotness;
+                if (alpha > 150) alpha = 150;
+            }
+            
+            Color tempColor = (Color){r, g, b, alpha};
+            
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, tempColor);
+            
+            // Mark heat sources with a bright center
+            if (IsHeatSource(x, y, z)) {
+                float inset = size * 0.3f;
+                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                DrawRectangleRec(inner, (Color){255, 200, 100, 200});
+            }
+            
+            // Mark cold sources with a cyan center
+            if (IsColdSource(x, y, z)) {
+                float inset = size * 0.3f;
+                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                DrawRectangleRec(inner, (Color){100, 200, 255, 200});
+            }
+        }
+    }
+}
+
+void DrawFrozenWater(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!IsWaterFrozen(x, y, z)) continue;
+            
+            // Draw frozen water as light whitish-blue (ice)
+            Color iceColor = (Color){200, 230, 255, 180};
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, iceColor);
+        }
+    }
+}
+
 void DrawChunkBoundaries(void) {
     float cellSize = CELL_SIZE * zoom;
     float chunkPixelsX = chunkWidth * cellSize;

@@ -27,6 +27,7 @@ void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 #include "../src/simulation/fire.c"
 #include "../src/simulation/smoke.c"
 #include "../src/simulation/groundwear.c"
+#include "../src/simulation/temperature.c"
 
 // Entity systems
 #include "../src/entities/items.c"

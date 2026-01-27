@@ -17,10 +17,16 @@
     #define AtlasLoadEmbedded SPRITE8X8LoadEmbedded
     #define SPRITE_crate_orange SPRITE8X8_crate_orange
     #define SPRITE_carpet SPRITE8X8_carpet
+    #define SPRITE_wood_floor SPRITE8X8_wood_floor
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
+    #define SPRITE_wood_block SPRITE8X8_wood_block
     #define SPRITE_air SPRITE8X8_air
+    #define SPRITE_wood_blockl SPRITE8X8_wood_blockl
     #define SPRITE_dirt SPRITE8X8_dirt
+    #define SPRITE_stone_block SPRITE8X8_stone_block
+    #define SPRITE_stone_wall SPRITE8X8_stone_wall
     #define SPRITE_rock SPRITE8X8_rock
+    #define SPRITE_stone_floor SPRITE8X8_stone_floor
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_apple SPRITE8X8_apple
     #define SPRITE_grass SPRITE8X8_grass
@@ -29,9 +35,11 @@
     #define SPRITE_wall SPRITE8X8_wall
     #define SPRITE_stockpile SPRITE8X8_stockpile
     #define SPRITE_floor SPRITE8X8_floor
+    #define SPRITE_ice_block SPRITE8X8_ice_block
     #define SPRITE_ladder_down SPRITE8X8_ladder_down
     #define SPRITE_rock_floor SPRITE8X8_rock_floor
     #define SPRITE_crate_green SPRITE8X8_crate_green
+    #define SPRITE_wood_wall SPRITE8X8_wood_wall
     #define SPRITE_crate_red SPRITE8X8_crate_red
     #define SpriteGetRect SPRITE8X8GetRect
 #elif TILE_SIZE == 16
@@ -42,10 +50,16 @@
     #define AtlasLoadEmbedded SPRITE16X16LoadEmbedded
     #define SPRITE_crate_orange SPRITE16X16_crate_orange
     #define SPRITE_carpet SPRITE16X16_carpet
+    #define SPRITE_wood_floor SPRITE16X16_wood_floor
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
+    #define SPRITE_wood_block SPRITE16X16_wood_block
     #define SPRITE_air SPRITE16X16_air
+    #define SPRITE_wood_blockl SPRITE16X16_wood_blockl
     #define SPRITE_dirt SPRITE16X16_dirt
+    #define SPRITE_stone_block SPRITE16X16_stone_block
+    #define SPRITE_stone_wall SPRITE16X16_stone_wall
     #define SPRITE_rock SPRITE16X16_rock
+    #define SPRITE_stone_floor SPRITE16X16_stone_floor
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_apple SPRITE16X16_apple
     #define SPRITE_grass SPRITE16X16_grass
@@ -54,9 +68,11 @@
     #define SPRITE_wall SPRITE16X16_wall
     #define SPRITE_stockpile SPRITE16X16_stockpile
     #define SPRITE_floor SPRITE16X16_floor
+    #define SPRITE_ice_block SPRITE16X16_ice_block
     #define SPRITE_ladder_down SPRITE16X16_ladder_down
     #define SPRITE_rock_floor SPRITE16X16_rock_floor
     #define SPRITE_crate_green SPRITE16X16_crate_green
+    #define SPRITE_wood_wall SPRITE16X16_wood_wall
     #define SPRITE_crate_red SPRITE16X16_crate_red
     #define SpriteGetRect SPRITE16X16GetRect
 #else

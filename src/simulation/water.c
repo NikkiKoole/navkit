@@ -1,4 +1,5 @@
 #include "water.h"
+#include "temperature.h"
 #include "../world/grid.h"
 #include <string.h>
 #include <stdlib.h>
@@ -38,11 +39,16 @@ static inline bool WaterInBounds(int x, int y, int z) {
            z >= 0 && z < gridDepth;
 }
 
-// Check if water can exist in a cell
+// Check if water can exist in a cell (and flow into it)
 static inline bool CanHoldWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    return cell != CELL_WALL;
+    if (cell == CELL_WALL) return false;
+    
+    // Frozen water acts as a solid block for water flow
+    if (waterGrid[z][y][x].isFrozen) return false;
+    
+    return true;
 }
 
 // Mark cell and neighbors as unstable
@@ -461,6 +467,11 @@ void UpdateWater(void) {
             for (int x = 0; x < gridWidth; x++) {
                 WaterCell* cell = &waterGrid[z][y][x];
                 
+                // Skip frozen water - it doesn't flow
+                if (cell->isFrozen) {
+                    continue;
+                }
+                
                 // Skip stable empty cells
                 if (cell->stable && cell->level == 0 && !cell->isSource) {
                     continue;
@@ -477,6 +488,78 @@ void UpdateWater(void) {
                 // Cap updates per tick
                 if (waterUpdateCount >= WATER_MAX_UPDATES_PER_TICK) {
                     return;
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// WATER FREEZING
+// =============================================================================
+
+// Check if water is frozen at a cell
+bool IsWaterFrozen(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return false;
+    return waterGrid[z][y][x].isFrozen;
+}
+
+// Freeze water at a cell (only full water can freeze)
+void FreezeWater(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return;
+    
+    WaterCell* cell = &waterGrid[z][y][x];
+    
+    // Only full water (level 7) can freeze
+    if (cell->level < WATER_MAX_LEVEL) return;
+    
+    // Already frozen
+    if (cell->isFrozen) return;
+    
+    cell->isFrozen = true;
+    cell->stable = true;  // Frozen water doesn't need processing
+    DestabilizeWater(x, y, z);  // But neighbors might be affected
+}
+
+// Thaw frozen water
+void ThawWater(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return;
+    
+    WaterCell* cell = &waterGrid[z][y][x];
+    
+    if (!cell->isFrozen) return;
+    
+    cell->isFrozen = false;
+    cell->stable = false;  // Water can flow again
+    DestabilizeWater(x, y, z);
+}
+
+// Update water freezing based on temperature
+// Call this after UpdateTemperature() in the game loop
+void UpdateWaterFreezing(void) {
+    if (!waterEnabled) return;
+    if (!temperatureEnabled) return;
+    
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                WaterCell* cell = &waterGrid[z][y][x];
+                
+                // Skip empty cells
+                if (cell->level == 0) continue;
+                
+                int temp = GetTemperature(x, y, z);
+                
+                if (cell->isFrozen) {
+                    // Check if should thaw
+                    if (temp > TEMP_WATER_FREEZES) {
+                        ThawWater(x, y, z);
+                    }
+                } else {
+                    // Check if should freeze (only full water)
+                    if (temp <= TEMP_WATER_FREEZES && cell->level == WATER_MAX_LEVEL) {
+                        FreezeWater(x, y, z);
+                    }
                 }
             }
         }

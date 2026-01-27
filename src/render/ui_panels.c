@@ -439,6 +439,40 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === TEMPERATURE ===
+    y += 8;
+    if (SectionHeader(x, y, "Temperature", &sectionTemperature)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &temperatureEnabled,
+            "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
+        y += 22;
+        ToggleBoolT(x, y, "Show Overlay", &showTemperatureOverlay,
+            "Show temperature overlay: blue=cold, red=hot. Neutral temperatures are transparent.");
+        y += 22;
+        DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -128, 127,
+            TextFormat("Current: %d C. Range -128 to 127. 0=freeze, 20=room, 100=boil, 127=kiln.", ambientSurfaceTemp));
+        y += 22;
+        DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
+            "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
+        y += 22;
+        DraggableIntT(x, y, "Transfer Speed", &heatTransferSpeed, 1.0f, 1, 100,
+            "How fast heat moves between cells. Higher = faster equalization. Air transfers freely, walls slow it.");
+        y += 22;
+        DraggableIntT(x, y, "Decay Rate", &tempDecayRate, 1.0f, 1, 100,
+            "How fast temperatures return to ambient. Higher = faster decay toward ambient temperature.");
+        y += 22;
+        DraggableIntT(x, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
+            "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
+        y += 22;
+        DraggableIntT(x, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
+            "Heat transfer rate through stone walls. Lower = better insulation. At 5%, stone blocks 95% of heat.");
+        y += 22;
+        if (PushButton(x, y, "Reset to Ambient")) {
+            ClearTemperature();
+        }
+    }
+    y += 22;
+
     // === ENTROPY (Ground Wear) ===
     y += 8;
     if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {

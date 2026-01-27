@@ -729,6 +729,113 @@ void HandleInput(void) {
         extinguishingFire = false;
     }
 
+    // Heat/Cold source placement mode (H key)
+    // H + left-drag = place heat source
+    // H + right-drag = place cold source
+    // H + Shift + left-drag = remove heat source
+    // H + Shift + right-drag = remove cold source
+    if (IsKeyDown(KEY_H)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
+        // Left mouse - place heat source or remove heat source (with shift)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            placingHeatSource = true;
+            tempStartX = x;
+            tempStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && placingHeatSource) {
+            placingHeatSource = false;
+            int x1 = tempStartX < x ? tempStartX : x;
+            int y1 = tempStartY < y ? tempStartY : y;
+            int x2 = tempStartX > x ? tempStartX : x;
+            int y2 = tempStartY > y ? tempStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int count = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (shift) {
+                        // Shift + left = remove heat source
+                        TempCell* cell = &temperatureGrid[z][dy][dx];
+                        if (cell->isHeatSource) {
+                            SetHeatSource(dx, dy, z, false, 0);
+                            count++;
+                        }
+                    } else {
+                        // Left = place heat source (100C, hot)
+                        SetHeatSource(dx, dy, z, true, 100);
+                        count++;
+                    }
+                }
+            }
+            if (count > 0) {
+                if (shift) {
+                    AddMessage(TextFormat("Removed %d heat source%s", count, count > 1 ? "s" : ""), ORANGE);
+                } else {
+                    AddMessage(TextFormat("Placed %d heat source%s", count, count > 1 ? "s" : ""), RED);
+                }
+            }
+        }
+
+        // Right mouse - place cold source or remove cold source (with shift)
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            placingColdSource = true;
+            tempStartX = x;
+            tempStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && placingColdSource) {
+            placingColdSource = false;
+            int x1 = tempStartX < x ? tempStartX : x;
+            int y1 = tempStartY < y ? tempStartY : y;
+            int x2 = tempStartX > x ? tempStartX : x;
+            int y2 = tempStartY > y ? tempStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int count = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (shift) {
+                        // Shift + right = remove cold source
+                        TempCell* cell = &temperatureGrid[z][dy][dx];
+                        if (cell->isColdSource) {
+                            SetColdSource(dx, dy, z, false, 0);
+                            count++;
+                        }
+                    } else {
+                        // Right = place cold source (-20C, freezing)
+                        SetColdSource(dx, dy, z, true, -20);
+                        count++;
+                    }
+                }
+            }
+            if (count > 0) {
+                if (shift) {
+                    AddMessage(TextFormat("Removed %d cold source%s", count, count > 1 ? "s" : ""), ORANGE);
+                } else {
+                    AddMessage(TextFormat("Placed %d cold source%s (freezing)", count, count > 1 ? "s" : ""), SKYBLUE);
+                }
+            }
+        }
+
+        return;  // Skip normal tool interactions while H is held
+    } else {
+        placingHeatSource = false;
+        placingColdSource = false;
+    }
+
     // Ladder drawing shortcut (L key + click/drag)
     // Uses PlaceLadder for auto-connection behavior
     if (IsKeyDown(KEY_L) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
