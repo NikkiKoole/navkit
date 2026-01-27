@@ -125,6 +125,10 @@ extern bool drawingGatherZone;
 extern bool erasingGatherZone;
 extern int gatherZoneStartX, gatherZoneStartY;
 
+// Unburn state
+extern bool unburning;
+extern int unburnStartX, unburnStartY;
+
 // Pathfinding settings
 extern int pathAlgorithm;
 extern const char* algorithmNames[];

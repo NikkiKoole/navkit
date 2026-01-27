@@ -356,7 +356,8 @@ void UpdateTemperature(void) {
                 TempCell *cell = &temperatureGrid[z][y][x];
                 
                 // Skip stable cells (optimization)
-                if (cell->stable) continue;
+                // But don't skip if temperature differs from ambient (e.g. ambient changed)
+                if (cell->stable && cell->current == (uint8_t)ambient) continue;
                 
                 // Cap updates per tick
                 if (tempUpdateCount >= TEMP_MAX_UPDATES_PER_TICK) {

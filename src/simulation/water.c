@@ -504,14 +504,14 @@ bool IsWaterFrozen(int x, int y, int z) {
     return waterGrid[z][y][x].isFrozen;
 }
 
-// Freeze water at a cell (only full water can freeze)
+// Freeze water at a cell (any water level can freeze)
 void FreezeWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return;
     
     WaterCell* cell = &waterGrid[z][y][x];
     
-    // Only full water (level 7) can freeze
-    if (cell->level < WATER_MAX_LEVEL) return;
+    // No water to freeze
+    if (cell->level == 0) return;
     
     // Already frozen
     if (cell->isFrozen) return;
@@ -548,16 +548,16 @@ void UpdateWaterFreezing(void) {
                 // Skip empty cells
                 if (cell->level == 0) continue;
                 
-                int temp = GetTemperature(x, y, z);
+                int tempIndex = GetTemperatureIndex(x, y, z);
                 
                 if (cell->isFrozen) {
                     // Check if should thaw
-                    if (temp > TEMP_WATER_FREEZES) {
+                    if (tempIndex > TEMP_WATER_FREEZES) {
                         ThawWater(x, y, z);
                     }
                 } else {
-                    // Check if should freeze (only full water)
-                    if (temp <= TEMP_WATER_FREEZES && cell->level == WATER_MAX_LEVEL) {
+                    // Check if should freeze (any water level)
+                    if (tempIndex <= TEMP_WATER_FREEZES && cell->level > 0) {
                         FreezeWater(x, y, z);
                     }
                 }

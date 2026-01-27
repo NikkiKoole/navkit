@@ -836,6 +836,50 @@ void HandleInput(void) {
         placingColdSource = false;
     }
 
+    // Unburn mode (U key)
+    // U + drag = clear burned flag from cells
+    if (IsKeyDown(KEY_U)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            unburning = true;
+            unburnStartX = x;
+            unburnStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && unburning) {
+            unburning = false;
+            int x1 = unburnStartX < x ? unburnStartX : x;
+            int y1 = unburnStartY < y ? unburnStartY : y;
+            int x2 = unburnStartX > x ? unburnStartX : x;
+            int y2 = unburnStartY > y ? unburnStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int count = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (HAS_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED)) {
+                        CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                        count++;
+                    }
+                }
+            }
+            if (count > 0) {
+                AddMessage(TextFormat("Unburned %d cell%s", count, count > 1 ? "s" : ""), GREEN);
+            }
+        }
+
+        return;  // Skip normal tool interactions while U is held
+    } else {
+        unburning = false;
+    }
+
     // Ladder drawing shortcut (L key + click/drag)
     // Uses PlaceLadder for auto-connection behavior
     if (IsKeyDown(KEY_L) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {

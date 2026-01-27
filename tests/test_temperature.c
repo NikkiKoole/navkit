@@ -128,7 +128,7 @@ describe(temperature_level_operations) {
         SetTemperature(0, 0, 0, 0);   // At freeze threshold (0C)
         expect(IsFreezing(0, 0, 0) == true);
         
-        SetTemperature(1, 0, 0, 1);   // Above freeze threshold
+        SetTemperature(1, 0, 0, 2);   // Above freeze threshold (2C, index 26)
         expect(IsFreezing(1, 0, 0) == false);
         
         SetTemperature(2, 0, 0, -20); // Deep freeze

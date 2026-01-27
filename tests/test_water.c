@@ -1117,7 +1117,7 @@ describe(water_freezing) {
         expect(IsWaterFrozen(1, 0, 0) == true);
     }
     
-    it("should not freeze partial water") {
+    it("should freeze partial water") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         
@@ -1133,8 +1133,8 @@ describe(water_freezing) {
         // Update freezing
         UpdateWaterFreezing();
         
-        // Water should NOT be frozen (not full)
-        expect(IsWaterFrozen(1, 0, 0) == false);
+        // Water should be frozen (any level can freeze)
+        expect(IsWaterFrozen(1, 0, 0) == true);
     }
     
     it("should thaw frozen water when temperature rises") {
@@ -1203,6 +1203,35 @@ describe(water_freezing) {
         // Water level should be preserved (frozen doesn't flow)
         expect(GetWaterLevel(1, 0, 0) == WATER_MAX_LEVEL);
         expect(IsWaterFrozen(1, 0, 0) == true);
+    }
+    
+    it("should freeze water when ambient temperature drops below freezing") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        
+        InitWater();
+        InitTemperature();
+        
+        // Place water
+        SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);
+        
+        // Verify water is not frozen initially (ambient is 20C by default)
+        expect(IsWaterFrozen(1, 0, 0) == false);
+        
+        // Set ambient temperature to freezing (index 20 = -10C)
+        ambientSurfaceTemp = 20;  // Below TEMP_WATER_FREEZES (25 = 0C)
+        
+        // Run temperature and water freezing updates
+        for (int i = 0; i < 100; i++) {
+            UpdateTemperature();
+            UpdateWaterFreezing();
+        }
+        
+        // Water should now be frozen
+        expect(IsWaterFrozen(1, 0, 0) == true);
+        
+        // Reset ambient for other tests
+        ambientSurfaceTemp = TEMP_AMBIENT_DEFAULT;
     }
 }
 

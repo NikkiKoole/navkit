@@ -24,7 +24,10 @@ typedef struct {
 } SmokePos;
 
 static SmokePos smokePressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
-static bool pressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Generation counter for visited tracking (avoids expensive memset)
+static uint16_t smokePressureGeneration = 0;
+static uint16_t smokePressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Initialize smoke system
 void InitSmoke(void) {
@@ -229,7 +232,13 @@ static bool TryFillDown(int x, int y, int z) {
     if (minZ >= z) minZ = 0;  // Can fill all the way down if no source tracked
     
     // BFS to find nearest non-full cell through full cells (going down and horizontal)
-    memset(pressureVisited, 0, sizeof(pressureVisited));
+    // Use generation counter instead of memset for O(1) reset
+    smokePressureGeneration++;
+    if (smokePressureGeneration == 0) {
+        // Handle wraparound (rare) - clear array once
+        memset(smokePressureVisited, 0, sizeof(smokePressureVisited));
+        smokePressureGeneration = 1;
+    }
     
     int queueHead = 0;
     int queueTail = 0;
@@ -238,7 +247,7 @@ static bool TryFillDown(int x, int y, int z) {
     int dy[] = {0, 0, -1, 1, 0};
     int dz[] = {0, 0, 0, 0, -1};  // Include down direction
     
-    pressureVisited[z][y][x] = true;
+    smokePressureVisited[z][y][x] = smokePressureGeneration;
     
     // Add initial neighbors to queue (prioritize going down)
     for (int i = 4; i >= 0; i--) {  // Start with down
@@ -248,9 +257,9 @@ static bool TryFillDown(int x, int y, int z) {
         
         if (nz < minZ) continue;
         if (!CanHoldSmoke(nx, ny, nz)) continue;
-        if (pressureVisited[nz][ny][nx]) continue;
+        if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
         
-        pressureVisited[nz][ny][nx] = true;
+        smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
         smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
         
         if (queueTail >= SMOKE_PRESSURE_SEARCH_LIMIT) break;
@@ -293,9 +302,9 @@ static bool TryFillDown(int x, int y, int z) {
                 
                 if (nz < minZ) continue;
                 if (!CanHoldSmoke(nx, ny, nz)) continue;
-                if (pressureVisited[nz][ny][nx]) continue;
+                if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
                 
-                pressureVisited[nz][ny][nx] = true;
+                smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
                 
                 if (queueTail < SMOKE_PRESSURE_SEARCH_LIMIT) {
                     smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
@@ -363,17 +372,23 @@ static bool ProcessSmokeCell(int x, int y, int z) {
     return moved;
 }
 
-// Main smoke update - process from TOP to BOTTOM (opposite of water)
+// Main smoke update - process from BOTTOM to TOP (smoke rises)
 void UpdateSmoke(void) {
     if (!smokeEnabled) return;
     
     smokeUpdateCount = 0;
     smokeTick++;
     
-    // Process from top to bottom (smoke rises, so process high cells first)
-    for (int z = gridDepth - 1; z >= 0; z--) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
+    // Alternate scan direction each tick to avoid directional bias
+    bool reverseX = (smokeTick & 1);
+    bool reverseY = (smokeTick & 2);
+    
+    // Process from bottom to top (smoke rises, so process low cells first)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int yi = 0; yi < gridHeight; yi++) {
+            int y = reverseY ? (gridHeight - 1 - yi) : yi;
+            for (int xi = 0; xi < gridWidth; xi++) {
+                int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 SmokeCell* cell = &smokeGrid[z][y][x];
                 
                 // Skip stable empty cells

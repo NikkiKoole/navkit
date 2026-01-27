@@ -283,7 +283,12 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         case CELL_DIRT: cellTypeName = "Dirt"; break;
         default: cellTypeName = "Unknown"; break;
     }
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+    bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
+    if (isBurned) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
+    } else {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+    }
 
     // Temperature info (GetTemperature returns Celsius)
     int temp = GetTemperature(cellX, cellY, cellZ);
@@ -367,6 +372,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     for (int i = 0; i < lineCount; i++) {
         Color col = WHITE;
         if (i == 0) col = YELLOW;  // Header
+        else if (strstr(lines[i], "[BURNED]")) col = (Color){80, 60, 40, 255};
         else if (strstr(lines[i], "HEAT SOURCE")) col = RED;
         else if (strstr(lines[i], "COLD SOURCE")) col = SKYBLUE;
         else if (strstr(lines[i], "FIRE SOURCE")) col = ORANGE;

@@ -62,6 +62,9 @@ bool drawingGatherZone = false;
 bool erasingGatherZone = false;
 int gatherZoneStartX = 0, gatherZoneStartY = 0;
 
+bool unburning = false;
+int unburnStartX = 0, unburnStartY = 0;
+
 int pathAlgorithm = 1;
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
 int currentDirection = 1;
@@ -684,6 +687,22 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (IsKeyDown(KEY_U) && unburning) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = unburnStartX < x ? unburnStartX : x;
+            int y1 = unburnStartY < y ? unburnStartY : y;
+            int x2 = unburnStartX > x ? unburnStartX : x;
+            int y2 = unburnStartY > y ? unburnStartY : y;
+            float size = CELL_SIZE * zoom;
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){100, 200, 100, 80});
+            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
+        }
+
         // Stats and HUD
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, GetScreenHeight() - 20, 18, SKYBLUE);
@@ -719,6 +738,7 @@ int main(int argc, char** argv) {
                 "F + R-drag    Extinguish fire",
                 "F+Shift+L     Place fire source",
                 "F+Shift+R     Remove fire source",
+                "U + drag      Unburn cells",
                 "H + L-drag    Place heat source",
                 "H + R-drag    Place cold source",
                 "H+Shift+L     Remove heat source",
