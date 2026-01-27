@@ -1,7 +1,7 @@
 // core/saveload.c - Save and Load functions
 #include "../game_state.h"
 
-#define SAVE_VERSION 5  // Added steam system
+#define SAVE_VERSION 6  // Temperature now uses int16_t Celsius directly
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 bool SaveWorld(const char* filename) {

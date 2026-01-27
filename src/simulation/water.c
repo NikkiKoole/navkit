@@ -549,20 +549,20 @@ void UpdateWaterFreezing(void) {
                 // Skip empty cells
                 if (cell->level == 0) continue;
                 
-                int tempIndex = GetTemperatureIndex(x, y, z);
+                int temp = GetTemperature(x, y, z);  // Celsius
                 
                 if (cell->isFrozen) {
                     // Check if should thaw
-                    if (tempIndex > TEMP_WATER_FREEZES) {
+                    if (temp > TEMP_WATER_FREEZES) {
                         ThawWater(x, y, z);
                     }
                 } else {
                     // Check if should freeze (any water level)
-                    if (tempIndex <= TEMP_WATER_FREEZES && cell->level > 0) {
+                    if (temp <= TEMP_WATER_FREEZES && cell->level > 0) {
                         FreezeWater(x, y, z);
                     }
                     // Check if should boil (convert to steam)
-                    else if (tempIndex >= TEMP_BOILING && cell->level > 0) {
+                    else if (temp >= TEMP_BOILING && cell->level > 0) {
                         // Convert 1 water level to steam
                         cell->level--;
                         GenerateSteamFromBoilingWater(x, y, z, 1);

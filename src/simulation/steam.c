@@ -12,10 +12,10 @@ SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool steamEnabled = true;
 int steamUpdateCount = 0;
 
-// Tweakable parameters
+// Tweakable parameters (all in Celsius now!)
 int steamRiseChance = 2;            // 1 in 2 chance to rise (fast, steam is energetic)
-int steamCondensationTemp = 73;     // Index 73 = ~96C (just below boiling)
-int steamGenerationTemp = 75;       // Index 75 = 100C (boiling point)
+int steamCondensationTemp = 96;     // 96C (just below boiling)
+int steamGenerationTemp = 100;      // 100C (boiling point)
 
 // Internal tick counter
 static int steamTick = 0;
@@ -191,11 +191,11 @@ static bool SteamTryCondense(int x, int y, int z) {
     SteamCell* cell = &steamGrid[z][y][x];
     if (cell->level == 0) return false;
     
-    // Check temperature at this cell
-    int tempIndex = GetTemperatureIndex(x, y, z);
+    // Check temperature at this cell (Celsius)
+    int temp = GetTemperature(x, y, z);
     
     // If temperature is below condensation point, steam condenses
-    if (tempIndex < steamCondensationTemp) {
+    if (temp < steamCondensationTemp) {
         // Convert some steam to water
         int condenseAmount = 1;
         

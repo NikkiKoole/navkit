@@ -1218,8 +1218,8 @@ describe(water_freezing) {
         // Verify water is not frozen initially (ambient is 20C by default)
         expect(IsWaterFrozen(1, 0, 0) == false);
         
-        // Set ambient temperature to freezing (index 20 = -10C)
-        ambientSurfaceTemp = 20;  // Below TEMP_WATER_FREEZES (25 = 0C)
+        // Set ambient temperature to below freezing (-10C)
+        ambientSurfaceTemp = -10;  // Below TEMP_WATER_FREEZES (0C)
         
         // Run temperature and water freezing updates
         for (int i = 0; i < 100; i++) {

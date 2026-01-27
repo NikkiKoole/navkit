@@ -233,9 +233,9 @@ describe(steam_from_boiling) {
         SetWaterLevel(2, 1, 0, 7);
         int initialWater = GetWaterLevel(2, 1, 0);
         
-        // Heat the cell to boiling (100C = index 75)
+        // Heat the cell to boiling (100C)
         SetHeatSource(2, 1, 0, true);
-        heatSourceTemp = 75;  // Set to exactly boiling
+        heatSourceTemp = 100;  // Set to boiling point
         
         // Run simulation until water boils
         for (int i = 0; i < 200; i++) {

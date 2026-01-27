@@ -16,7 +16,7 @@
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
 
-#define INSPECT_SAVE_VERSION 5
+#define INSPECT_SAVE_VERSION 6
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 static const char* cellTypeNames[] = {"AIR", "WALKABLE", "WALL", "FLOOR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH"};
@@ -224,7 +224,7 @@ static void print_cell(int x, int y, int z) {
     }
     
     // Temperature (decode index to Celsius)
-    printf("Temperature: %d C (index %d)", DecodeTemp(temp.current), temp.current);
+    printf("Temperature: %d C", temp.current);
     if (temp.isHeatSource) printf(" [HEAT SOURCE]");
     if (temp.isColdSource) printf(" [COLD SOURCE]");
     printf("\n");

@@ -27,8 +27,8 @@ extern int steamUpdateCount;        // Cells updated last tick (for debug/profil
 
 // Tweakable parameters
 extern int steamRiseChance;         // 1 in N chance to rise per tick (lower = faster)
-extern int steamCondensationTemp;   // Temperature index below which steam condenses (default: ~100C)
-extern int steamGenerationTemp;     // Temperature index above which water boils (default: ~100C)
+extern int steamCondensationTemp;   // Celsius below which steam condenses (default: 96C)
+extern int steamGenerationTemp;     // Celsius above which water boils (default: 100C)
 
 // Initialize/clear
 void InitSteam(void);

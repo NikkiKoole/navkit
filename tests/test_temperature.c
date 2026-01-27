@@ -102,22 +102,22 @@ describe(temperature_level_operations) {
         expect(GetTemperature(2, 1, 0) == 100);
     }
     
-    it("should clamp temperature to max 1498") {
+    it("should clamp temperature to max 2000") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         InitTemperature();
         
-        SetTemperature(0, 0, 0, 2000);
-        expect(GetTemperature(0, 0, 0) == 1498);  // TEMP_CELSIUS_MAX
+        SetTemperature(0, 0, 0, 5000);
+        expect(GetTemperature(0, 0, 0) == TEMP_MAX);  // 2000
     }
     
-    it("should clamp temperature to min -50") {
+    it("should clamp temperature to min -100") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         InitTemperature();
         
-        SetTemperature(0, 0, 0, -200);
-        expect(GetTemperature(0, 0, 0) == -50);  // TEMP_CELSIUS_MIN
+        SetTemperature(0, 0, 0, -500);
+        expect(GetTemperature(0, 0, 0) == TEMP_MIN);  // -100
     }
     
     it("should report IsFreezing correctly") {
