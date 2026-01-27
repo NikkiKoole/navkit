@@ -19,13 +19,21 @@
 #define WATER_MAX_UPDATES_PER_TICK 4096  // Cap cells processed per tick
 
 // Water cell data (parallel to grid)
+// Packed into 2 bytes for memory efficiency:
+//   level:          3 bits (0-7)
+//   stable:         1 bit
+//   isSource:       1 bit
+//   isDrain:        1 bit
+//   hasPressure:    1 bit
+//   pressureSourceZ: 4 bits (0-15)
+//   (3 bits spare)
 typedef struct {
-    uint8_t level;          // 0-7 water depth (0 = dry, 7 = full)
-    bool stable;            // true = skip processing (no recent changes)
-    bool isSource;          // true = refills to max each tick (also generates pressure)
-    bool isDrain;           // true = removes water each tick
-    bool hasPressure;       // true = this water was placed under pressure (can push up)
-    uint8_t pressureSourceZ; // z-level of the pressure source (water can rise to sourceZ - 1)
+    uint16_t level          : 3;   // 0-7 water depth (0 = dry, 7 = full)
+    uint16_t stable         : 1;   // true = skip processing (no recent changes)
+    uint16_t isSource       : 1;   // true = refills to max each tick (also generates pressure)
+    uint16_t isDrain        : 1;   // true = removes water each tick
+    uint16_t hasPressure    : 1;   // true = this water was placed under pressure (can push up)
+    uint16_t pressureSourceZ: 4;   // z-level of the pressure source (water can rise to sourceZ - 1)
 } WaterCell;
 
 // Water grid (same dimensions as main grid)

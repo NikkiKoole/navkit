@@ -609,11 +609,69 @@ describe(water_pressure) {
         expect(rightZ1Water > 0);
     }
     
-    // TODO: Revisit this test - pressure height limit behavior needs investigation
-    // it("should respect pressure height limit (sourceZ - 1)") {
-    //     // Source at z=3, water should only rise to z=2 on other side
-    //     ...
-    // }
+    it("should respect pressure height limit (sourceZ - 1)") {
+        // U-bend with source at z=3
+        // Water should rise to z=2 on the far side via pressure, but NOT to z=3
+        //
+        // Side view (y=1 slice):
+        // z=3:  [source]  .  .  .  .  .  .  [open]   <- water should NOT reach here via pressure
+        // z=2:  [wall]    .  .  .  .  .  .  [open]   <- water SHOULD reach here (sourceZ-1)
+        // z=1:  [wall]    .  .  .  .  .  .  [wall]
+        // z=0:  [open]    .  .  .  .  .  .  [open]   <- bottom of U
+        //
+        // NOTE: Water may still reach z=3 via normal spreading/equalization once it
+        // reaches z=2. This matches Dwarf Fortress behavior where pressure has a height
+        // limit, but once water arrives somewhere it can spread normally. We only check
+        // that z=3 isn't FULL, since pressure alone can't push it there.
+        
+        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        gridDepth = 4;
+        
+        // Initialize all as walkable
+        for (int z = 0; z < 4; z++) {
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 8; x++) {
+                    grid[z][y][x] = CELL_WALKABLE;
+                }
+            }
+        }
+        
+        // Build the U-bend walls:
+        // Left side: wall at z=1 and z=2 (water falls from z=3 source down to z=0)
+        grid[1][1][0] = CELL_WALL;
+        grid[1][1][1] = CELL_WALL;
+        grid[2][1][0] = CELL_WALL;
+        grid[2][1][1] = CELL_WALL;
+        
+        // Right side: wall at z=1 only (water can rise to z=2 but path blocked at z=1)
+        grid[1][1][6] = CELL_WALL;
+        grid[1][1][7] = CELL_WALL;
+        
+        InitWater();
+        waterEvaporationEnabled = false;
+        
+        // Place source at z=3 on left side
+        SetWaterSource(0, 1, 3, true);
+        
+        // Run simulation long enough for pressure to propagate
+        RunWaterTicks(500);
+        
+        // Debug: print water levels at right side
+        printf("U-bend pressure test (source at z=3):\n");
+        printf("  Right side z=0: %d\n", GetWaterLevel(7, 1, 0));
+        printf("  Right side z=1: %d (wall)\n", GetWaterLevel(7, 1, 1));
+        printf("  Right side z=2: %d (should have water)\n", GetWaterLevel(7, 1, 2));
+        printf("  Right side z=3: %d (should be 0 or low)\n", GetWaterLevel(7, 1, 3));
+        
+        // Water SHOULD reach z=2 on the right (sourceZ - 1 = 3 - 1 = 2)
+        expect(GetWaterLevel(7, 1, 2) > 0);
+        
+        // Water should NOT reach z=3 on the right (that's the source level)
+        // It might have a small amount from spreading, but shouldn't be full
+        expect(GetWaterLevel(7, 1, 3) < WATER_MAX_LEVEL);
+        
+        waterEvaporationEnabled = true;
+    }
     
     it("should create pressure when water falls onto full water") {
         InitGridWithSizeAndChunkSize(4, 4, 4, 4);

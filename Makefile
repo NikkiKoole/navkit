@@ -93,6 +93,10 @@ clean:
 clean-atlas:
 	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png
 
+# Fast build - no optimization, no sanitizers (~0.5s)
+fast: $(BINDIR)
+	$(CC) -std=c11 -O0 -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
+
 # Debug build - no optimization, all sanitizers
 debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
 debug: LDFLAGS += -fsanitize=address,undefined
@@ -105,4 +109,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug atlas path8 path16
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas path8 path16
