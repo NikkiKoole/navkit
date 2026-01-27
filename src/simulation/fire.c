@@ -48,6 +48,8 @@ int GetBaseFuelForCellType(CellType cell) {
             return FUEL_GRASS;
         case CELL_DIRT:
             return FUEL_DIRT;
+        case CELL_WOOD_WALL:
+            return FUEL_WOOD_WALL;
         default:
             return FUEL_NONE;
     }
@@ -267,6 +269,12 @@ static bool ProcessFireCell(int x, int y, int z) {
             if (cell->fuel == 0) {
                 // No fuel left - fire dies, mark cell as burned
                 cell->level = 0;
+                
+                // Wood walls collapse when burned
+                if (grid[z][y][x] == CELL_WOOD_WALL) {
+                    grid[z][y][x] = CELL_FLOOR;
+                }
+                
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
                 DestabilizeFire(x, y, z);
                 return true;

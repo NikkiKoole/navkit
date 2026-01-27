@@ -147,7 +147,7 @@ void PlaceLadder(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
     CellType current = grid[z][y][x];
-    if (current == CELL_WALL) return;
+    if (IsWallCell(current)) return;
     
     // If already a ladder, only extend if clicking on the TOP piece (DOWN)
     if (IsLadderCell(current)) {

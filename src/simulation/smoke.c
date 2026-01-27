@@ -52,7 +52,7 @@ static inline bool InBounds(int x, int y, int z) {
 static inline bool CanHoldSmoke(int x, int y, int z) {
     if (!InBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    return cell != CELL_WALL;
+    return !IsWallCell(cell);
 }
 
 // Mark cell and neighbors as unstable

@@ -117,6 +117,7 @@ int GetCellSprite(CellType cell) {
         case CELL_GRASS:        return SPRITE_grass;
         case CELL_DIRT:         return SPRITE_dirt;
         case CELL_WALL:         return SPRITE_wall;
+        case CELL_WOOD_WALL:    return SPRITE_wood_wall;
         case CELL_LADDER:       return SPRITE_ladder;
         case CELL_LADDER_BOTH:  return SPRITE_ladder;
         case CELL_LADDER_UP:    return SPRITE_ladder_up;

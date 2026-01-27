@@ -85,8 +85,9 @@ int GetInsulationTier(int x, int y, int z) {
     switch (cell) {
         case CELL_WALL:
             return INSULATION_TIER_STONE;
+        case CELL_WOOD_WALL:
         case CELL_FLOOR:
-            return INSULATION_TIER_WOOD;  // Floor conducts heat (like a metal grate)
+            return INSULATION_TIER_WOOD;
         default:
             return INSULATION_TIER_AIR;
     }

@@ -10,9 +10,10 @@
 #define FIRE_MIN_SPREAD_LEVEL 2  // Minimum level to spread to neighbors
 
 // Fuel constants
-#define FUEL_GRASS 3
-#define FUEL_DIRT  1
-#define FUEL_NONE  0
+#define FUEL_GRASS     16
+#define FUEL_DIRT      1
+#define FUEL_WOOD_WALL 128
+#define FUEL_NONE      0
 
 // Performance tuning
 #define FIRE_MAX_UPDATES_PER_TICK 4096
@@ -22,8 +23,7 @@ typedef struct {
     uint16_t level    : 3;   // 0-7 fire intensity (0 = no fire)
     uint16_t stable   : 1;   // true = skip processing
     uint16_t isSource : 1;   // true = permanent fire (torch/lava), never runs out
-    uint16_t fuel     : 4;   // 0-15 remaining fuel in this cell
-    // 7 bits spare
+    uint16_t fuel     : 8;   // 0-255 remaining fuel in this cell
 } FireCell;
 
 // Fire grid (same dimensions as main grid)

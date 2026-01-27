@@ -33,7 +33,8 @@ typedef enum {
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
     CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
     CELL_GRASS,        // Natural ground - can become dirt when trampled
-    CELL_DIRT          // Worn ground - can become grass when left alone
+    CELL_DIRT,         // Worn ground - can become grass when left alone
+    CELL_WOOD_WALL     // Flammable wall - burns and turns to floor
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -59,6 +60,11 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 static inline bool IsLadderCell(CellType cell) {
     return cell == CELL_LADDER || cell == CELL_LADDER_UP || 
            cell == CELL_LADDER_DOWN || cell == CELL_LADDER_BOTH;
+}
+
+// Helper to check if a cell is a wall (blocks movement)
+static inline bool IsWallCell(CellType cell) {
+    return cell == CELL_WALL || cell == CELL_WOOD_WALL;
 }
 
 // Helper to check if a cell is walkable (includes floor, grass, dirt, and all ladder types)

@@ -44,7 +44,7 @@ static inline bool WaterInBounds(int x, int y, int z) {
 static inline bool CanHoldWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    if (cell == CELL_WALL) return false;
+    if (IsWallCell(cell)) return false;
     
     // Frozen water acts as a solid block for water flow
     if (waterGrid[z][y][x].isFrozen) return false;

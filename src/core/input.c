@@ -129,10 +129,13 @@ void HandleInput(void) {
             if (x2 >= gridWidth) x2 = gridWidth - 1;
             if (y2 >= gridHeight) y2 = gridHeight - 1;
 
+            // R + 2 = wood walls, R alone = stone walls
+            CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
+            
             for (int ry = y1; ry <= y2; ry++) {
                 for (int rx = x1; rx <= x2; rx++) {
                     bool isBorder = (rx == x1 || rx == x2 || ry == y1 || ry == y2);
-                    grid[z][ry][rx] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    grid[z][ry][rx] = isBorder ? wallType : CELL_FLOOR;
                     MarkChunkDirty(rx, ry, z);
                 }
             }
@@ -899,9 +902,11 @@ void HandleInput(void) {
         int z = currentViewZ;
         if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
             switch (currentTool) {
-                case 0:  // Draw Wall
-                    if (grid[z][y][x] != CELL_WALL) {
-                        grid[z][y][x] = CELL_WALL;
+                case 0:  // Draw Wall (hold 2 for wood wall)
+                    {
+                        CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
+                        if (grid[z][y][x] != wallType) {
+                        grid[z][y][x] = wallType;
                         MarkChunkDirty(x, y, z);
                         // Clear water in this cell and destabilize neighbors
                         SetWaterLevel(x, y, z, 0);
@@ -919,6 +924,7 @@ void HandleInput(void) {
                                 }
                             }
                         }
+                    }
                     }
                     break;
                 case 1:  // Draw Floor

@@ -44,7 +44,7 @@ static inline bool SteamInBounds(int x, int y, int z) {
 static inline bool CanHoldSteam(int x, int y, int z) {
     if (!SteamInBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    return cell != CELL_WALL;
+    return !IsWallCell(cell);
 }
 
 // Mark cell and neighbors as unstable

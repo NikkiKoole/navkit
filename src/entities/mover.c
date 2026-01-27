@@ -69,7 +69,7 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
             m->fallTimer = 1.0f;
             return true;
         }
-        if (grid[checkZ][cellY][cellX] == CELL_WALL) {
+        if (IsWallCell(grid[checkZ][cellY][cellX])) {
             break;  // Can't fall through walls
         }
     }
@@ -695,7 +695,7 @@ void UpdateMovers(void) {
         
         // Skip movers in air or on walls (handled in phase 3)
         if (IsCellAirAt(currentZ, currentY, currentX)) continue;
-        if (grid[currentZ][currentY][currentX] == CELL_WALL) continue;
+        if (IsWallCell(grid[currentZ][currentY][currentX])) continue;
         
         Point target = m->path[m->pathIndex];
         if (target.z == currentZ) {
@@ -812,7 +812,7 @@ void UpdateMovers(void) {
         }
         
         // Check if mover is standing on a wall - push to nearest walkable
-        if (grid[currentZ][currentY][currentX] == CELL_WALL) {
+        if (IsWallCell(grid[currentZ][currentY][currentX])) {
             int dx[] = {0, 0, -1, 1};
             int dy[] = {-1, 1, 0, 0};
             bool pushed = false;
