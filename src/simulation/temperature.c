@@ -23,6 +23,10 @@ int coldSourceTemp = -20;                        // Cold sources emit -20C
 static const int dx[] = {0, 0, -1, 1};
 static const int dy[] = {-1, 1, 0, 0};
 
+// Direction offsets for diagonal neighbors
+static const int diag_dx[] = {-1, -1, 1, 1};
+static const int diag_dy[] = {-1, 1, -1, 1};
+
 // ============================================================================
 // Initialization
 // ============================================================================
@@ -230,6 +234,15 @@ void DestabilizeTemperature(int x, int y, int z) {
         }
     }
     
+    // Mark diagonal neighbors unstable
+    for (int i = 0; i < 4; i++) {
+        int nx = x + diag_dx[i];
+        int ny = y + diag_dy[i];
+        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
+            temperatureGrid[z][ny][nx].stable = false;
+        }
+    }
+    
     // Also destabilize vertical neighbors
     if (z > 0) {
         temperatureGrid[z-1][y][x].stable = false;
@@ -310,6 +323,7 @@ void UpdateTemperature(void) {
                 int totalTransfer = 0;
                 int neighborCount = 0;
                 
+                // Orthogonal neighbors (same z-level)
                 for (int i = 0; i < 4; i++) {
                     int nx = x + dx[i];
                     int ny = y + dy[i];
@@ -328,6 +342,61 @@ void UpdateTemperature(void) {
                     // Calculate transfer amount
                     int tempDiff = neighborTemp - currentTemp;
                     int transfer = (tempDiff * transferRate * heatTransferSpeed) / 4000;
+                    
+                    totalTransfer += transfer;
+                    neighborCount++;
+                }
+                
+                // Diagonal neighbors (same z-level, reduced transfer due to distance)
+                for (int i = 0; i < 4; i++) {
+                    int nx = x + diag_dx[i];
+                    int ny = y + diag_dy[i];
+                    
+                    if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) {
+                        continue;
+                    }
+                    
+                    int neighborTemp = temperatureGrid[z][ny][nx].current;
+                    int neighborInsulation = GetInsulationTier(nx, ny, z);
+                    
+                    int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
+                    int transferRate = GetHeatTransferRate(effectiveInsulation);
+                    
+                    // Calculate transfer amount (70% of orthogonal due to ~1.4x distance)
+                    int tempDiff = neighborTemp - currentTemp;
+                    int transfer = (tempDiff * transferRate * heatTransferSpeed * 70) / (4000 * 100);
+                    
+                    totalTransfer += transfer;
+                    neighborCount++;
+                }
+                
+                // Vertical neighbors (z-1 and z+1)
+                // Heat rises: transfer up is boosted, transfer down is reduced
+                for (int dz = -1; dz <= 1; dz += 2) {
+                    int nz = z + dz;
+                    if (nz < 0 || nz >= gridDepth) continue;
+                    
+                    int neighborTemp = temperatureGrid[nz][y][x].current;
+                    int neighborInsulation = GetInsulationTier(x, y, nz);
+                    
+                    int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
+                    int transferRate = GetHeatTransferRate(effectiveInsulation);
+                    
+                    int tempDiff = neighborTemp - currentTemp;
+                    int transfer = (tempDiff * transferRate * heatTransferSpeed) / 4000;
+                    
+                    // Heat rises: boost upward transfer of heat, reduce downward
+                    if (dz > 0) {
+                        // Neighbor is above us - if we're hotter, heat rises faster
+                        if (currentTemp > neighborTemp) {
+                            transfer = transfer * 150 / 100;  // 50% boost for rising heat
+                        }
+                    } else {
+                        // Neighbor is below us - heat doesn't sink as easily
+                        if (currentTemp > neighborTemp) {
+                            transfer = transfer * 50 / 100;  // 50% reduction for sinking heat
+                        }
+                    }
                     
                     totalTransfer += transfer;
                     neighborCount++;
