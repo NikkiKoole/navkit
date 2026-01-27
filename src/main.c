@@ -4,6 +4,7 @@
 // Included by unity.c - do not compile separately.
 
 #include "game_state.h"
+#include "assets/fonts/comic_embedded.h"
 
 // ============================================================================
 // Global State Definitions
@@ -456,7 +457,7 @@ int main(int argc, char** argv) {
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     atlas = AtlasLoadEmbedded();
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
-    Font comicFont = LoadFont("assets/fonts/comic.fnt");
+    Font comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;

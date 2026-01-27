@@ -96,6 +96,15 @@ atlas: $(BINDIR)
 	$(CC) $(CFLAGS) -DGENERATE_16X16=$(GENERATE_16X16) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
+# Font embedder
+font_embed_SRC := tools/font_embed.c
+embed_font: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/font_embed $(font_embed_SRC)
+	./$(BINDIR)/font_embed assets/fonts/comic.fnt assets/fonts/comic_embedded.h
+
+# Embed all assets (atlas + fonts)
+embed: atlas embed_font
+
 # Build with 8x8 tiles
 path8 $(BINDIR)/path8: $(BINDIR)
 	$(CC) $(CFLAGS) -DTILE_SIZE=8 -o $(BINDIR)/path8 $(path_SRC) $(LDFLAGS)
@@ -126,4 +135,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas embed_font embed path8 path16 bench bench_jobs
