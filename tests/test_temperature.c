@@ -180,7 +180,7 @@ describe(temperature_heat_spread) {
         int ambient = GetAmbientTemperature(0);
         
         // Place heat source in center (100C)
-        SetHeatSource(2, 2, 0, true, 100);
+        SetHeatSource(2, 2, 0, true);
         
         // Run simulation
         RunTempTicks(100);
@@ -208,7 +208,7 @@ describe(temperature_heat_spread) {
         InitTemperature();
         
         // Place heat source in center (127C max)
-        SetHeatSource(3, 3, 0, true, 127);
+        SetHeatSource(3, 3, 0, true);
         
         // Run simulation
         RunTempTicks(50);
@@ -242,7 +242,7 @@ describe(temperature_stone_insulation) {
         int ambient = GetAmbientTemperature(0);
         
         // Place heat source inside room (100C)
-        SetHeatSource(3, 2, 0, true, 100);
+        SetHeatSource(3, 2, 0, true);
         
         // Run simulation
         RunTempTicks(200);
@@ -393,7 +393,7 @@ describe(temperature_heated_room) {
         printf("Initial room temp: %d\n", initialTemp);
         
         // Place heat source inside room (100C)
-        SetHeatSource(3, 3, 0, true, 100);
+        SetHeatSource(3, 3, 0, true);
         
         // Run simulation (more ticks for heat to spread in enclosed room)
         RunTempTicks(1000);
@@ -469,8 +469,8 @@ describe(temperature_room_size_heating) {
         InitTemperature();
         
         // Place equal heat sources in both rooms (100C)
-        SetHeatSource(2, 2, 0, true, 100);  // Small room (2x1 interior)
-        SetHeatSource(10, 3, 0, true, 100); // Large room (6x3 interior)
+        SetHeatSource(2, 2, 0, true);  // Small room (2x1 interior)
+        SetHeatSource(10, 3, 0, true); // Large room (6x3 interior)
         
         // Run simulation for limited ticks
         RunTempTicks(100);
@@ -597,7 +597,7 @@ describe(temperature_cold_source) {
         int ambient = GetAmbientTemperature(0);
         
         // Place cold source in center (-20C)
-        SetColdSource(2, 2, 0, true, -20);
+        SetColdSource(2, 2, 0, true);
         
         // Run simulation (more ticks for cold to spread against decay)
         RunTempTicks(200);
@@ -627,7 +627,7 @@ describe(temperature_cold_source) {
         expect(IsFreezing(2, 0, 0) == true);
         
         // Set a cold source
-        SetColdSource(0, 0, 0, true, -30);
+        SetColdSource(0, 0, 0, true);
         expect(IsFreezing(0, 0, 0) == true);
     }
 }
@@ -643,7 +643,7 @@ describe(temperature_sources) {
         
         InitTemperature();
         
-        SetHeatSource(1, 0, 0, true, 100);  // 100C
+        SetHeatSource(1, 0, 0, true);
         
         // Run many ticks
         RunTempTicks(500);
@@ -659,7 +659,7 @@ describe(temperature_sources) {
         
         InitTemperature();
         
-        SetColdSource(1, 0, 0, true, -20);  // -20C
+        SetColdSource(1, 0, 0, true);
         
         // Run many ticks
         RunTempTicks(500);
@@ -675,7 +675,7 @@ describe(temperature_sources) {
         
         InitTemperature();
         
-        SetHeatSource(1, 0, 0, true, 100);  // 100C
+        SetHeatSource(1, 0, 0, true);
         expect(IsHeatSource(1, 0, 0) == true);
         
         RemoveTemperatureSource(1, 0, 0);
@@ -719,10 +719,10 @@ describe(temperature_edge_cases) {
         InitTemperature();
         
         // Place heat at corners (100C)
-        SetHeatSource(0, 0, 0, true, 100);
-        SetHeatSource(3, 0, 0, true, 100);
-        SetHeatSource(0, 1, 0, true, 100);
-        SetHeatSource(3, 1, 0, true, 100);
+        SetHeatSource(0, 0, 0, true);
+        SetHeatSource(3, 0, 0, true);
+        SetHeatSource(0, 1, 0, true);
+        SetHeatSource(3, 1, 0, true);
         
         // Run simulation - should not crash
         RunTempTicks(50);
@@ -741,8 +741,8 @@ describe(temperature_edge_cases) {
         InitTemperature();
         
         // Place heat and cold sources
-        SetHeatSource(1, 1, 0, true, 100);   // 100C
-        SetColdSource(5, 1, 0, true, -20);   // -20C
+        SetHeatSource(1, 1, 0, true);
+        SetColdSource(5, 1, 0, true);
         
         // Run simulation
         RunTempTicks(100);

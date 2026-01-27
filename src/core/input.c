@@ -766,12 +766,12 @@ void HandleInput(void) {
                         // Shift + left = remove heat source
                         TempCell* cell = &temperatureGrid[z][dy][dx];
                         if (cell->isHeatSource) {
-                            SetHeatSource(dx, dy, z, false, 0);
+                            SetHeatSource(dx, dy, z, false);
                             count++;
                         }
                     } else {
                         // Left = place heat source (100C, hot)
-                        SetHeatSource(dx, dy, z, true, 100);
+                        SetHeatSource(dx, dy, z, true);
                         count++;
                     }
                 }
@@ -811,12 +811,12 @@ void HandleInput(void) {
                         // Shift + right = remove cold source
                         TempCell* cell = &temperatureGrid[z][dy][dx];
                         if (cell->isColdSource) {
-                            SetColdSource(dx, dy, z, false, 0);
+                            SetColdSource(dx, dy, z, false);
                             count++;
                         }
                     } else {
                         // Right = place cold source (-20C, freezing)
-                        SetColdSource(dx, dy, z, true, -20);
+                        SetColdSource(dx, dy, z, true);
                         count++;
                     }
                 }

@@ -217,8 +217,8 @@ static void print_cell(int x, int y, int z) {
     
     // Temperature
     printf("Temperature: %d C", temp.current);
-    if (temp.isHeatSource) printf(" [HEAT SOURCE: %d C]", temp.sourceTemp);
-    if (temp.isColdSource) printf(" [COLD SOURCE: %d C]", temp.sourceTemp);
+    if (temp.isHeatSource) printf(" [HEAT SOURCE]");
+    if (temp.isColdSource) printf(" [COLD SOURCE]");
     printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {

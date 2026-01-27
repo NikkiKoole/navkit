@@ -10,12 +10,14 @@ bool temperatureEnabled = true;
 int tempUpdateCount = 0;
 
 // Tweakable parameters
-int ambientSurfaceTemp = TEMP_AMBIENT_DEFAULT;  // 128
+int ambientSurfaceTemp = TEMP_AMBIENT_DEFAULT;  // 20C
 int ambientDepthDecay = 0;                       // degrees per z-level underground
 int heatTransferSpeed = 50;                      // 1-100 scale
 int tempDecayRate = 10;                          // 1-100 scale
 int insulationTier1Rate = HEAT_TRANSFER_WOOD;   // 20%
 int insulationTier2Rate = HEAT_TRANSFER_STONE;  // 5%
+int heatSourceTemp = 100;                        // Heat sources emit 100C
+int coldSourceTemp = -20;                        // Cold sources emit -20C
 
 // Direction offsets for orthogonal neighbors
 static const int dx[] = {0, 0, -1, 1};
@@ -35,7 +37,6 @@ void InitTemperature(void) {
                 temperatureGrid[z][y][x].stable = true;
                 temperatureGrid[z][y][x].isHeatSource = false;
                 temperatureGrid[z][y][x].isColdSource = false;
-                temperatureGrid[z][y][x].sourceTemp = 0;
             }
         }
     }
@@ -164,7 +165,7 @@ bool IsHot(int x, int y, int z) {
 // Source Management
 // ============================================================================
 
-void SetHeatSource(int x, int y, int z, bool isSource, int sourceTemp) {
+void SetHeatSource(int x, int y, int z, bool isSource) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
@@ -174,16 +175,13 @@ void SetHeatSource(int x, int y, int z, bool isSource, int sourceTemp) {
     cell->isColdSource = false;  // Can't be both
     
     if (isSource) {
-        if (sourceTemp < TEMP_MIN) sourceTemp = TEMP_MIN;
-        if (sourceTemp > TEMP_MAX) sourceTemp = TEMP_MAX;
-        cell->sourceTemp = (int8_t)sourceTemp;
-        cell->current = (int8_t)sourceTemp;
+        cell->current = (int8_t)heatSourceTemp;
     }
     
     DestabilizeTemperature(x, y, z);
 }
 
-void SetColdSource(int x, int y, int z, bool isSource, int sourceTemp) {
+void SetColdSource(int x, int y, int z, bool isSource) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
@@ -193,10 +191,7 @@ void SetColdSource(int x, int y, int z, bool isSource, int sourceTemp) {
     cell->isHeatSource = false;  // Can't be both
     
     if (isSource) {
-        if (sourceTemp < TEMP_MIN) sourceTemp = TEMP_MIN;
-        if (sourceTemp > TEMP_MAX) sourceTemp = TEMP_MAX;
-        cell->sourceTemp = (int8_t)sourceTemp;
-        cell->current = (int8_t)sourceTemp;
+        cell->current = (int8_t)coldSourceTemp;
     }
     
     DestabilizeTemperature(x, y, z);
@@ -210,7 +205,6 @@ void RemoveTemperatureSource(int x, int y, int z) {
     TempCell *cell = &temperatureGrid[z][y][x];
     cell->isHeatSource = false;
     cell->isColdSource = false;
-    cell->sourceTemp = 0;
     
     DestabilizeTemperature(x, y, z);
 }
@@ -296,13 +290,13 @@ void UpdateTemperature(void) {
                 
                 // Sources maintain their temperature and keep spreading
                 if (cell->isHeatSource) {
-                    cell->current = cell->sourceTemp;
+                    cell->current = (int8_t)heatSourceTemp;
                     // Keep neighbors destabilized so heat keeps spreading
                     DestabilizeTemperature(x, y, z);
                     continue;
                 }
                 if (cell->isColdSource) {
-                    cell->current = cell->sourceTemp;
+                    cell->current = (int8_t)coldSourceTemp;
                     // Keep neighbors destabilized so cold keeps spreading
                     DestabilizeTemperature(x, y, z);
                     continue;

@@ -36,7 +36,6 @@
 // Temperature cell data (parallel to grid)
 typedef struct {
     int8_t current;         // Current temperature in Celsius (-128 to 127)
-    int8_t sourceTemp;      // Source temperature in Celsius
     uint8_t stable : 1;     // True = skip processing (no recent changes)
     uint8_t isHeatSource : 1;   // True = permanent heat source
     uint8_t isColdSource : 1;   // True = permanent cold source
@@ -50,12 +49,14 @@ extern bool temperatureEnabled;     // Master toggle for temperature simulation
 extern int tempUpdateCount;         // Cells updated last tick (for debug/profiling)
 
 // Tweakable parameters
-extern int ambientSurfaceTemp;      // Default surface temperature (default: 128)
-extern int ambientDepthDecay;       // Temperature decrease per Z-level down (default: 5)
+extern int ambientSurfaceTemp;      // Default surface temperature (default: 20)
+extern int ambientDepthDecay;       // Temperature decrease per Z-level down (default: 0)
 extern int heatTransferSpeed;       // How fast heat moves (1-100, default: 50)
 extern int tempDecayRate;           // How fast temps return to ambient (1-100, default: 10)
 extern int insulationTier1Rate;     // Wood transfer rate percentage (default: 20)
 extern int insulationTier2Rate;     // Stone transfer rate percentage (default: 5)
+extern int heatSourceTemp;          // Temperature of heat sources (default: 100)
+extern int coldSourceTemp;          // Temperature of cold sources (default: -20)
 
 // Initialize temperature system (call after grid is initialized)
 void InitTemperature(void);
@@ -70,9 +71,9 @@ void UpdateTemperature(void);
 void SetTemperature(int x, int y, int z, int temp);
 int GetTemperature(int x, int y, int z);
 
-// Heat/cold source management
-void SetHeatSource(int x, int y, int z, bool isSource, int sourceTemp);
-void SetColdSource(int x, int y, int z, bool isSource, int sourceTemp);
+// Heat/cold source management (uses global heatSourceTemp/coldSourceTemp)
+void SetHeatSource(int x, int y, int z, bool isSource);
+void SetColdSource(int x, int y, int z, bool isSource);
 void RemoveTemperatureSource(int x, int y, int z);
 
 // Query

@@ -295,12 +295,10 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     // Temperature sources
     TempCell* tempCell = &temperatureGrid[cellZ][cellY][cellX];
     if (tempCell->isHeatSource) {
-        int sourceTemp = tempCell->sourceTemp * 8;
-        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d)", sourceTemp);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d C)", heatSourceTemp);
     }
     if (tempCell->isColdSource) {
-        int sourceTemp = tempCell->sourceTemp * 8;
-        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d)", sourceTemp);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d C)", coldSourceTemp);
     }
 
     // Insulation tier
