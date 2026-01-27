@@ -15,10 +15,10 @@
 // The Face scenario now just shows wander behavior with a note explaining this.
 // For true face/dock behaviors, use Vehicle which has explicit heading.
 
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 #include "steering.h"
 #define UI_IMPLEMENTATION
-#include "../shared/ui.h"
+#include "../../shared/ui.h"
 #include <stdio.h>
 #include <math.h>
 

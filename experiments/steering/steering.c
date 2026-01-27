@@ -1,5 +1,5 @@
 #include "steering.h"
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 #include <math.h>
 #include <stddef.h>
 

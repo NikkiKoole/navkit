@@ -14,14 +14,14 @@ BINDIR := bin
 TARGETS := steer crowd path
 
 # Source files for each target (using unity build for path)
-steer_SRC := steering-experiment/demo.c steering-experiment/steering.c
-crowd_SRC := crowd-experiment/demo.c
+steer_SRC := experiments/steering/demo.c experiments/steering/steering.c
+crowd_SRC := experiments/crowd/demo.c
 path_SRC  := src/unity.c
 
 # Test targets - all use test_unity.c for shared game logic
 test_pathing_SRC    := tests/test_pathfinding.c tests/test_unity.c
 test_mover_SRC      := tests/test_mover.c tests/test_unity.c
-test_steering_SRC   := tests/test_steering.c steering-experiment/steering.c
+test_steering_SRC   := tests/test_steering.c experiments/steering/steering.c
 test_jobs_SRC       := tests/test_jobs.c tests/test_unity.c
 test_water_SRC      := tests/test_water.c tests/test_unity.c
 test_groundwear_SRC := tests/test_groundwear.c tests/test_unity.c

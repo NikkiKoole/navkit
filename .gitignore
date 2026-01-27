@@ -5,5 +5,5 @@ bin/
 .DS_Store
 
 # Save files
-debug_save.bin
-debug_save.bin.gz
+saves/debug_save.bin
+saves/debug_save.bin.gz

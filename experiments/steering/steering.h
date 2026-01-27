@@ -1,7 +1,7 @@
 #ifndef STEERING_H
 #define STEERING_H
 
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 
 // ============================================================================
 // Two Agent Models

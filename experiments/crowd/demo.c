@@ -24,7 +24,7 @@
 //  - To prevent visual overlap, factor BODY_RADIUS into avoidance calculation
 //    (repel when edges touch, not when centers overlap)
 
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 #include <math.h>
 #include <stdlib.h>
 #include <time.h>

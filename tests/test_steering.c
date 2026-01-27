@@ -1,5 +1,5 @@
 #include "../vendor/c89spec.h"
-#include "../steering-experiment/steering.h"
+#include "../experiments/steering/steering.h"
 #include <math.h>
 
 // ============================================================================
