@@ -6,13 +6,16 @@
 #include <string.h>
 #include "../world/grid.h"
 #include "../simulation/water.h"
+#include "../simulation/fire.h"
+#include "../simulation/smoke.h"
+#include "../simulation/temperature.h"
 #include "../entities/items.h"
 #include "../entities/stockpiles.h"
 #include "../world/designations.h"
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
 
-#define INSPECT_SAVE_VERSION 1
+#define INSPECT_SAVE_VERSION 3
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 static const char* cellTypeNames[] = {"AIR", "WALKABLE", "WALL", "FLOOR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH"};
@@ -24,6 +27,10 @@ static const char* jobTypeNames[] = {"NONE", "HAUL", "DIG", "BUILD", "CLEAR", "H
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
 static CellType* insp_gridCells = NULL;
 static WaterCell* insp_waterCells = NULL;
+static FireCell* insp_fireCells = NULL;
+static SmokeCell* insp_smokeCells = NULL;
+static uint8_t* insp_cellFlags = NULL;
+static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
 static Item* insp_items = NULL;
@@ -183,14 +190,36 @@ static void print_cell(int x, int y, int z) {
     int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
     CellType cell = insp_gridCells[idx];
     WaterCell water = insp_waterCells[idx];
+    FireCell fire = insp_fireCells[idx];
+    SmokeCell smoke = insp_smokeCells[idx];
+    TempCell temp = insp_tempCells[idx];
     Designation desig = insp_designations[idx];
     
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
     printf("Type: %s\n", cell < 7 ? cellTypeNames[cell] : "?");
+    
+    // Water
     printf("Water level: %d/7\n", water.level);
     if (water.isSource) printf("  IS SOURCE\n");
     if (water.isDrain) printf("  IS DRAIN\n");
     if (water.hasPressure) printf("  Has pressure from z%d\n", water.pressureSourceZ);
+    
+    // Fire
+    if (fire.level > 0) {
+        printf("Fire level: %d/7\n", fire.level);
+        if (fire.isSource) printf("  IS SOURCE\n");
+    }
+    
+    // Smoke
+    if (smoke.level > 0) {
+        printf("Smoke level: %d/7\n", smoke.level);
+    }
+    
+    // Temperature
+    printf("Temperature: %d C", temp.current);
+    if (temp.isHeatSource) printf(" [HEAT SOURCE: %d C]", temp.sourceTemp);
+    if (temp.isColdSource) printf(" [COLD SOURCE: %d C]", temp.sourceTemp);
+    printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {
         printf("Designation: DIG, assigned to mover %d, progress %.0f%%\n",
@@ -283,6 +312,10 @@ static void print_active_jobs(void) {
 static void cleanup(void) {
     free(insp_gridCells);
     free(insp_waterCells);
+    free(insp_fireCells);
+    free(insp_smokeCells);
+    free(insp_cellFlags);
+    free(insp_tempCells);
     free(insp_designations);
     free(insp_items);
     free(insp_stockpiles);
@@ -388,10 +421,18 @@ int InspectSaveFile(int argc, char** argv) {
     // Allocate and read grid data
     insp_gridCells = malloc(totalCells * sizeof(CellType));
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
+    insp_fireCells = malloc(totalCells * sizeof(FireCell));
+    insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
+    insp_cellFlags = malloc(totalCells * sizeof(uint8_t));
+    insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
     fread(insp_gridCells, sizeof(CellType), totalCells, f);
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
+    fread(insp_fireCells, sizeof(FireCell), totalCells, f);
+    fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
+    fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
+    fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     
     // Items

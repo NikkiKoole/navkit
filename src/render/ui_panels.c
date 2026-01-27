@@ -549,6 +549,9 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t gridSize = sizeof(CellType) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t designationsSize = sizeof(Designation) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t waterSize = sizeof(WaterCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t fireSize = sizeof(FireCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t smokeSize = sizeof(SmokeCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t temperatureSize = sizeof(TempCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t groundWearSize = sizeof(int) * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             
             // Pathfinding
@@ -568,7 +571,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
             size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
             
-            size_t totalGrid = gridSize + designationsSize + waterSize + groundWearSize;
+            size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + temperatureSize + groundWearSize;
             size_t totalPathfinding = entrancesSize + pathSize + edgesSize;
             size_t totalEntities = moversSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize;
             size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
@@ -578,6 +581,9 @@ void DrawProfilerPanel(float rightEdge, float y) {
             DrawTextShadow(TextFormat("  Cells:        %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Designations: %5.1f MB", designationsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Water:        %5.1f MB", waterSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Fire:         %5.1f MB", fireSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Smoke:        %5.1f MB", smokeSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Temperature:  %5.1f MB", temperatureSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             
             DrawTextShadow("-- Pathfinding --", x, y, 14, GRAY); y += 16;

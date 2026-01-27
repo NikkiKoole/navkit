@@ -1,7 +1,7 @@
 // core/saveload.c - Save and Load functions
 #include "../game_state.h"
 
-#define SAVE_VERSION 2  // Added fire, smoke, and cellFlags
+#define SAVE_VERSION 3  // Added temperature grid
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 bool SaveWorld(const char* filename) {
@@ -56,6 +56,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Temperature grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(temperatureGrid[z][y], sizeof(TempCell), gridWidth, f);
         }
     }
     
@@ -177,6 +184,13 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Temperature grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(temperatureGrid[z][y], sizeof(TempCell), gridWidth, f);
         }
     }
     
