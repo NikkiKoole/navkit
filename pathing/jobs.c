@@ -1828,10 +1828,8 @@ void AssignJobsLegacy(void) {
             if (!ReserveItem(itemIdx, moverIdx)) continue;
             bp->reservedItem = itemIdx;
             
-            // Clear source stockpile slot if item is in stockpile
-            if (item->state == ITEM_IN_STOCKPILE) {
-                ClearSourceStockpileSlot(item);
-            }
+            // NOTE: Don't call ClearSourceStockpileSlot here - RunJob_HaulToBlueprint handles it
+            // when the item is actually picked up. This avoids making items invisible in stockpile.
             
             // Create Job entry
             int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
@@ -2562,10 +2560,8 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
     bp->reservedItem = bestItemIdx;
     
-    // Clear source stockpile slot if item is in stockpile
-    if (item->state == ITEM_IN_STOCKPILE) {
-        ClearSourceStockpileSlot(item);
-    }
+    // NOTE: Don't call ClearSourceStockpileSlot here - RunJob_HaulToBlueprint handles it
+    // when the item is actually picked up. This avoids making items invisible in stockpile.
     
     // Create job
     int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
