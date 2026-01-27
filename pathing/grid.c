@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
 bool jpsNeedsRebuild = false;
@@ -43,6 +44,9 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
                 grid[z][y][x] = CELL_WALKABLE;
+
+    // Clear cell flags
+    memset(cellFlags, 0, sizeof(cellFlags));
 
     needsRebuild = true;
     jpsNeedsRebuild = true;

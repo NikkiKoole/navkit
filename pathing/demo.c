@@ -8,6 +8,8 @@
 #include "stockpiles.h"
 #include "designations.h"
 #include "water.h"
+#include "fire.h"
+#include "smoke.h"
 #include "groundwear.h"
 #include "inspect.h"
 #define PROFILER_IMPLEMENTATION
@@ -71,6 +73,11 @@ bool placingWaterSource = false;
 bool placingWaterDrain = false;
 int waterStartX = 0, waterStartY = 0;
 
+// Fire placement state (F key to activate, left-drag to ignite, right-drag to extinguish)
+bool placingFireSource = false;
+bool extinguishingFire = false;
+int fireStartX = 0, fireStartY = 0;
+
 // Gather zone state (G key to activate, left-drag to draw, right-drag to erase)
 bool drawingGatherZone = false;
 bool erasingGatherZone = false;
@@ -98,6 +105,8 @@ bool sectionAgents = false;
 bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
 bool sectionWater = false;
+bool sectionFire = false;
+bool sectionSmoke = false;
 bool sectionEntropy = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
@@ -303,6 +312,121 @@ void DrawWater(void) {
                 Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
                 DrawRectangleRec(inner, (Color){20, 40, 80, 200});
             }
+        }
+    }
+}
+
+void DrawFire(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            FireCell* cell = &fireGrid[z][y][x];
+            int level = cell->level;
+            
+            // Draw burned cells with a darker tint
+            if (level == 0 && HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) {
+                Color burnedColor = (Color){40, 30, 20, 100};
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, burnedColor);
+                continue;
+            }
+            
+            if (level <= 0) continue;
+
+            // Color based on fire level (darker orange to bright yellow)
+            // Level 1-2: dark orange/red (embers)
+            // Level 3-4: orange
+            // Level 5-7: bright orange/yellow
+            int r, g, b, alpha;
+            if (level <= 2) {
+                r = 180; g = 60; b = 20;
+                alpha = 120 + level * 20;
+            } else if (level <= 4) {
+                r = 220; g = 100; b = 30;
+                alpha = 150 + (level - 2) * 15;
+            } else {
+                r = 255; g = 150 + (level - 4) * 20; b = 50;
+                alpha = 180 + (level - 4) * 15;
+            }
+            if (alpha > 230) alpha = 230;
+            
+            Color fireColor = (Color){r, g, b, alpha};
+            
+            // Draw fire overlay
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, fireColor);
+            
+            // Mark sources with a brighter center
+            if (cell->isSource) {
+                float inset = size * 0.3f;
+                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                DrawRectangleRec(inner, (Color){255, 220, 100, 200});
+            }
+        }
+    }
+}
+
+void DrawSmoke(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            int level = GetSmokeLevel(x, y, z);
+            if (level <= 0) continue;
+
+            // Gray smoke, opacity based on level
+            // Level 1-2: light haze
+            // Level 3-5: moderate smoke
+            // Level 6-7: thick smoke
+            int alpha = 30 + (level * 25);  // 55-205 range
+            if (alpha > 205) alpha = 205;
+            
+            Color smokeColor = (Color){80, 80, 90, alpha};
+            
+            // Draw smoke overlay
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, smokeColor);
         }
     }
 }
@@ -1613,8 +1737,8 @@ void HandleInput(void) {
         drawingRoom = false;
     }
 
-    // Floor drawing mode (F key + drag) - fills entire area with floor
-    if (IsKeyDown(KEY_F)) {
+    // Floor/Tile drawing mode (T key + drag) - fills entire area with floor
+    if (IsKeyDown(KEY_T)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
         int x = (int)gp.x, y = (int)gp.y;
         int z = currentViewZ;
@@ -2085,6 +2209,119 @@ void HandleInput(void) {
     } else {
         placingWaterSource = false;
         placingWaterDrain = false;
+    }
+
+    // Fire placement mode (F key)
+    // F + left-drag = place fire (ignite at level 7)
+    // F + right-drag = extinguish fire
+    // F + Shift + left-drag = place fire source (permanent)
+    // F + Shift + right-drag = remove fire source
+    if (IsKeyDown(KEY_F)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+
+        // Left mouse - place fire or source
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            placingFireSource = true;
+            fireStartX = x;
+            fireStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && placingFireSource) {
+            placingFireSource = false;
+            int x1 = fireStartX < x ? fireStartX : x;
+            int y1 = fireStartY < y ? fireStartY : y;
+            int x2 = fireStartX > x ? fireStartX : x;
+            int y2 = fireStartY > y ? fireStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int placed = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    if (shift) {
+                        // Shift + left = fire source
+                        SetFireSource(dx, dy, z, true);
+                        placed++;
+                    } else {
+                        // Normal left = ignite if flammable
+                        if (GetBaseFuelForCellType(grid[z][dy][dx]) > 0 && 
+                            !HAS_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED)) {
+                            IgniteCell(dx, dy, z);
+                            placed++;
+                        }
+                    }
+                }
+            }
+            if (placed > 0) {
+                if (shift) {
+                    AddMessage(TextFormat("Placed %d fire source%s", placed, placed > 1 ? "s" : ""), RED);
+                } else {
+                    AddMessage(TextFormat("Ignited %d cell%s", placed, placed > 1 ? "s" : ""), ORANGE);
+                }
+            }
+        }
+
+        // Right mouse - extinguish fire or remove source
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            extinguishingFire = true;
+            fireStartX = x;
+            fireStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && extinguishingFire) {
+            extinguishingFire = false;
+            int x1 = fireStartX < x ? fireStartX : x;
+            int y1 = fireStartY < y ? fireStartY : y;
+            int x2 = fireStartX > x ? fireStartX : x;
+            int y2 = fireStartY > y ? fireStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int removedSources = 0;
+            int extinguished = 0;
+            for (int dy = y1; dy <= y2; dy++) {
+                for (int dx = x1; dx <= x2; dx++) {
+                    FireCell* cell = &fireGrid[z][dy][dx];
+                    if (shift) {
+                        // Shift + right = remove fire source
+                        if (cell->isSource) {
+                            SetFireSource(dx, dy, z, false);
+                            removedSources++;
+                        }
+                    } else {
+                        // Right = extinguish fire
+                        if (cell->isSource) {
+                            SetFireSource(dx, dy, z, false);
+                            removedSources++;
+                        }
+                        if (cell->level > 0) {
+                            ExtinguishCell(dx, dy, z);
+                            extinguished++;
+                        }
+                    }
+                }
+            }
+            if (removedSources > 0) {
+                AddMessage(TextFormat("Removed %d fire source%s", removedSources, removedSources > 1 ? "s" : ""), ORANGE);
+            }
+            if (extinguished > 0) {
+                AddMessage(TextFormat("Extinguished %d cell%s", extinguished, extinguished > 1 ? "s" : ""), GRAY);
+            }
+        }
+
+        return;  // Skip normal tool interactions while F is held
+    } else {
+        placingFireSource = false;
+        extinguishingFire = false;
     }
 
     // Ladder drawing shortcut (L key + click/drag)
@@ -2612,6 +2849,42 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === FIRE ===
+    y += 8;
+    if (SectionHeader(x, y, "Fire", &sectionFire)) {
+        y += 18;
+        ToggleBool(x, y, "Enabled", &fireEnabled);
+        y += 22;
+        DraggableInt(x, y, "Spread Chance (1/N)", &fireSpreadChance, 1.0f, 1, 50);
+        y += 22;
+        DraggableInt(x, y, "Fuel Consumption", &fireFuelConsumption, 1.0f, 1, 50);
+        y += 22;
+        DraggableInt(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100);
+        y += 22;
+        if (PushButton(x, y, "Clear Fire")) {
+            ClearFire();
+        }
+    }
+    y += 22;
+
+    // === SMOKE ===
+    y += 8;
+    if (SectionHeader(x, y, "Smoke", &sectionSmoke)) {
+        y += 18;
+        ToggleBool(x, y, "Enabled", &smokeEnabled);
+        y += 22;
+        DraggableInt(x, y, "Rise Chance (1/N)", &smokeRiseChance, 1.0f, 1, 20);
+        y += 22;
+        DraggableInt(x, y, "Dissipation Rate", &smokeDissipationRate, 1.0f, 1, 100);
+        y += 22;
+        DraggableInt(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10);
+        y += 22;
+        if (PushButton(x, y, "Clear Smoke")) {
+            ClearSmoke();
+        }
+    }
+    y += 22;
+
     // === ENTROPY (Ground Wear) ===
     y += 8;
     if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {
@@ -2969,7 +3242,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
 // Save/Load World (for debugging)
 // ============================================================================
 
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2  // Added fire, smoke, and cellFlags
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 bool SaveWorld(const char* filename) {
@@ -3003,6 +3276,27 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+        }
+    }
+    
+    // Fire grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(fireGrid[z][y], sizeof(FireCell), gridWidth, f);
+        }
+    }
+    
+    // Smoke grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(smokeGrid[z][y], sizeof(SmokeCell), gridWidth, f);
+        }
+    }
+    
+    // Cell flags
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -3079,21 +3373,13 @@ bool LoadWorld(const char* filename) {
     fread(&newChunkW, sizeof(newChunkW), 1, f);
     fread(&newChunkH, sizeof(newChunkH), 1, f);
     
-    // Check if dimensions match our allocated grids
-    if (newWidth != gridWidth || newHeight != gridHeight || newDepth != gridDepth) {
-        AddMessage(TextFormat("Grid size mismatch (%dx%dx%d vs %dx%dx%d)", 
-            newWidth, newHeight, newDepth, gridWidth, gridHeight, gridDepth), RED);
-        fclose(f);
-        return false;
+    // Reinitialize grid if dimensions don't match
+    if (newWidth != gridWidth || newHeight != gridHeight || 
+        newChunkW != chunkWidth || newChunkH != chunkHeight) {
+        InitGridWithSizeAndChunkSize(newWidth, newHeight, newChunkW, newChunkH);
+        InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     }
-    
-    // Check chunk dimensions
-    if (newChunkW != chunkWidth || newChunkH != chunkHeight) {
-        AddMessage(TextFormat("Chunk size mismatch (%dx%d vs %dx%d)", 
-            newChunkW, newChunkH, chunkWidth, chunkHeight), RED);
-        fclose(f);
-        return false;
-    }
+    gridDepth = newDepth;
     
     // Clear current state
     ClearMovers();
@@ -3111,6 +3397,27 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+        }
+    }
+    
+    // Fire grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(fireGrid[z][y], sizeof(FireCell), gridWidth, f);
+        }
+    }
+    
+    // Smoke grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(smokeGrid[z][y], sizeof(SmokeCell), gridWidth, f);
+        }
+    }
+    
+    // Cell flags
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -3258,6 +3565,8 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawWater();
+        DrawFire();
+        DrawSmoke();
         PROFILE_END(DrawCells);
         if (IsKeyDown(KEY_G)) {
             DrawGatherZones();
@@ -3304,7 +3613,7 @@ int main(int argc, char** argv) {
         }
 
         // Draw floor preview while dragging
-        if (drawingFloor && IsKeyDown(KEY_F)) {
+        if (drawingFloor && IsKeyDown(KEY_T)) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
             int x1 = floorStartX < x ? floorStartX : x;

@@ -16,7 +16,7 @@ TARGETS := steer crowd path
 # Source files for each target
 steer_SRC       := steering/demo.c steering/steering.c
 crowd_SRC       := crowd-experiment/demo.c
-path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c pathing/inspect.c
+path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/fire.c pathing/smoke.c pathing/groundwear.c pathing/inspect.c
 
 # Test targets
 test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c
@@ -25,6 +25,7 @@ test_steering_SRC := tests/test_steering.c steering/steering.c
 test_jobs_SRC     := tests/test_jobs.c pathing/grid.c pathing/pathfinding.c pathing/mover.c pathing/terrain.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c
 test_water_SRC    := tests/test_water.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/water.c
 test_groundwear_SRC := tests/test_groundwear.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/groundwear.c
+test_fire_SRC       := tests/test_fire.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/fire.c pathing/smoke.c pathing/water.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
@@ -65,8 +66,13 @@ test_groundwear: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_groundwear
 
+# Fire test
+test_fire: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_fire
+
 # Run all tests
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire
 
 # Aliases for convenience (make path, make steer, make crowd)
 path: $(BINDIR) $(BINDIR)/path

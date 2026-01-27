@@ -2,6 +2,7 @@
 #define GRID_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Maximum grid dimensions (for static array allocation)
 #define MAX_GRID_WIDTH  512
@@ -36,6 +37,23 @@ typedef enum {
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Cell flags - per-cell terrain properties (burned, wetness, etc.)
+extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Cell flag bits
+#define CELL_FLAG_BURNED    (1 << 0)  // Bit 0: cell has been burned
+// Bits 1-2: wetness level (0=dry, 1=damp, 2=wet, 3=soaked)
+#define CELL_WETNESS_MASK   (3 << 1)
+#define CELL_WETNESS_SHIFT  1
+// Bits 3-7: reserved for future flags
+
+// Cell flag helpers
+#define HAS_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] & (f))
+#define SET_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] |= (f))
+#define CLEAR_CELL_FLAG(x,y,z,f)   (cellFlags[z][y][x] &= ~(f))
+#define GET_CELL_WETNESS(x,y,z)    ((cellFlags[z][y][x] & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
+#define SET_CELL_WETNESS(x,y,z,w)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_WETNESS_MASK) | ((w) << CELL_WETNESS_SHIFT))
 
 // Helper to check if a cell is any ladder type
 static inline bool IsLadderCell(CellType cell) {

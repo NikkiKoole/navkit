@@ -6,6 +6,8 @@
 #include "stockpiles.h"
 #include "designations.h"
 #include "water.h"
+#include "fire.h"
+#include "smoke.h"
 #include "groundwear.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
@@ -1085,6 +1087,16 @@ void Tick(void) {
     PROFILE_BEGIN(Water);
     UpdateWater();
     PROFILE_END(Water);
+    
+    // Fire simulation
+    PROFILE_BEGIN(Fire);
+    UpdateFire();
+    PROFILE_END(Fire);
+    
+    // Smoke simulation
+    PROFILE_BEGIN(Smoke);
+    UpdateSmoke();
+    PROFILE_END(Smoke);
     
     // Ground wear (emergent paths)
     UpdateGroundWear();
