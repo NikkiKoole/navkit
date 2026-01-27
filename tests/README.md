@@ -11,6 +11,7 @@ make test_water        # Run water simulation tests only
 make test_fire         # Run fire simulation tests only
 make test_groundwear   # Run ground wear tests only
 make test_steering     # Run steering tests only
+make test_temperature  # Run temperature simulation tests only
 ```
 
 ### Verbose Output
@@ -55,6 +56,7 @@ tests/
 ├── test_fire.c        # Fire and smoke simulation tests
 ├── test_groundwear.c  # Ground wear tests
 ├── test_steering.c    # Steering behavior tests
+├── test_temperature.c # Temperature simulation tests
 └── bench_jobs.c       # Job system benchmarks
 ```
 
