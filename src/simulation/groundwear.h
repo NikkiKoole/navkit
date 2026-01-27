@@ -2,7 +2,7 @@
 #define GROUNDWEAR_H
 
 #include <stdbool.h>
-#include "grid.h"
+#include "../world/grid.h"
 
 // Ground wear system - creates emergent paths
 // Grass becomes dirt when trampled, dirt becomes grass when left alone

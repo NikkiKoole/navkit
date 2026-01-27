@@ -4,16 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "grid.h"
-#include "water.h"
-#include "items.h"
-#include "stockpiles.h"
-#include "designations.h"
-#include "mover.h"
-#include "jobs.h"
+#include "../world/grid.h"
+#include "../simulation/water.h"
+#include "../entities/items.h"
+#include "../entities/stockpiles.h"
+#include "../world/designations.h"
+#include "../entities/mover.h"
+#include "../entities/jobs.h"
 
-#define SAVE_VERSION 1
-#define SAVE_MAGIC 0x4E41564B
+#define INSPECT_SAVE_VERSION 1
+#define INSPECT_SAVE_MAGIC 0x4E41564B
 
 static const char* cellTypeNames[] = {"AIR", "WALKABLE", "WALL", "FLOOR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH"};
 static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE"};
@@ -365,13 +365,13 @@ int InspectSaveFile(int argc, char** argv) {
     uint32_t magic, version;
     fread(&magic, 4, 1, f);
     fread(&version, 4, 1, f);
-    if (magic != SAVE_MAGIC) {
+    if (magic != INSPECT_SAVE_MAGIC) {
         printf("Invalid save file (bad magic)\n");
         fclose(f);
         return 1;
     }
-    if (version != SAVE_VERSION) {
-        printf("Version mismatch: file=%d, current=%d\n", version, SAVE_VERSION);
+    if (version != INSPECT_SAVE_VERSION) {
+        printf("Version mismatch: file=%d, current=%d\n", version, INSPECT_SAVE_VERSION);
         fclose(f);
         return 1;
     }

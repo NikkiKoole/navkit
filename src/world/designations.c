@@ -1,8 +1,8 @@
 #include "designations.h"
 #include "grid.h"
 #include "pathfinding.h"
-#include "items.h"
-#include "mover.h"  // for CELL_SIZE
+#include "../entities/items.h"
+#include "../entities/mover.h"  // for CELL_SIZE
 #include <string.h>
 #include <math.h>
 

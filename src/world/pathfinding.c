@@ -44,7 +44,7 @@
  */
 
 #include "pathfinding.h"
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 #include <stdlib.h>
 
 #define COST_INF 999999
@@ -1731,18 +1731,8 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
 
     // ==========================================================================
     // CONNECT PHASE: Find costs from start/goal to all entrances in their chunks
-    //
-    // Currently comparing three approaches (TODO: pick one for production):
-    //   1. Multi-target Dijkstra - single search, no heuristic, finds all targets
-    //   2. N x A* - separate search per target with heuristic guidance
-    //   3. (TODO) Add third approach here
-    //
-    // Results so far: Dijkstra is faster and simpler. A* heuristic doesn't help
-    // much when targets are scattered around chunk borders.
+    // Uses multi-target Dijkstra - single search finds all targets efficiently
     // ==========================================================================
-
-    // ========== APPROACH 1: Multi-target Dijkstra ==========
-    // double dijkstraStartTime = GetTime();
     int dijkstraStartCosts[128], dijkstraGoalCosts[128];
     int chunkZ;
 
@@ -1763,7 +1753,6 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
                               goalTargetX, goalTargetY, dijkstraGoalCosts, goalTargetCount,
                               minX > 0 ? minX - 1 : 0, minY > 0 ? minY - 1 : 0, maxX, maxY);
     }
-    // double dijkstraTime = (GetTime() - dijkstraStartTime) * 1000.0;
 
     // Use Dijkstra results for connect phase
     for (int i = 0; i < startTargetCount; i++) {

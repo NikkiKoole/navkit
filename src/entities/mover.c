@@ -1,27 +1,29 @@
 #include "mover.h"
-#include "grid.h"
-#include "pathfinding.h"
+#include "../world/grid.h"
+#include "../world/pathfinding.h"
 #include "items.h"
 #include "jobs.h"
 #include "stockpiles.h"
-#include "designations.h"
-#include "water.h"
-#include "fire.h"
-#include "smoke.h"
-#include "groundwear.h"
-#include "../shared/profiler.h"
-#include "../shared/ui.h"
-#include "../vendor/raylib.h"
+#include "../world/designations.h"
+#include "../simulation/water.h"
+#include "../simulation/fire.h"
+#include "../simulation/smoke.h"
+#include "../simulation/groundwear.h"
+#include "../../shared/profiler.h"
+#include "../../shared/ui.h"
+#include "../../vendor/raylib.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 // Fast inverse square root (Quake III algorithm)
+// Uses memcpy to avoid undefined behavior from type-punning
 static inline float fastInvSqrt(float x) {
     float xhalf = 0.5f * x;
-    int i = *(int*)&x;
+    int i;
+    memcpy(&i, &x, sizeof(i));
     i = 0x5f375a86 - (i >> 1);  // Initial guess
-    x = *(float*)&i;
+    memcpy(&x, &i, sizeof(x));
     x = x * (1.5f - xhalf * x * x);  // Newton-Raphson iteration
     return x;
 }

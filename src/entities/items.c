@@ -1,6 +1,6 @@
 #include "items.h"
 #include "mover.h"  // for CELL_SIZE
-#include "grid.h"   // for gridWidth, gridHeight, gridDepth
+#include "../world/grid.h"   // for gridWidth, gridHeight, gridDepth
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include <math.h>
 #include <stdlib.h>

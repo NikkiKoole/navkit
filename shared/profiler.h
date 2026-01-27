@@ -66,7 +66,8 @@ bool ProfileHasChildren(int sectionIndex);  // Returns true if this section has 
 // Implementation (define PROFILER_IMPLEMENTATION in one .c file before include)
 // ===========================================================================
 
-#ifdef PROFILER_IMPLEMENTATION
+#if defined(PROFILER_IMPLEMENTATION) && !defined(PROFILER_IMPLEMENTATION_DONE)
+#define PROFILER_IMPLEMENTATION_DONE
 
 #if PROFILER_ENABLED
 

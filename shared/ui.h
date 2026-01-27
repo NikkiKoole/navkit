@@ -82,12 +82,16 @@ void ToggleBoolT(float x, float y, const char* label, bool* value, const char* t
 // Draw pending tooltip (call at END of frame, after all UI)
 void DrawTooltip(void);
 
+// Measure text width using UI font
+int MeasureTextUI(const char* text, int size);
+
 #endif // UI_H
 
 // ============================================================================
 // IMPLEMENTATION
 // ============================================================================
-#ifdef UI_IMPLEMENTATION
+#if defined(UI_IMPLEMENTATION) && !defined(UI_IMPLEMENTATION_DONE)
+#define UI_IMPLEMENTATION_DONE
 
 static Font* g_ui_font = NULL;
 static bool g_ui_draggableAnyHovered = false;

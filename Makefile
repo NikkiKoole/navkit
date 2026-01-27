@@ -13,19 +13,19 @@ BINDIR := bin
 # Define your targets here
 TARGETS := steer crowd path
 
-# Source files for each target
-steer_SRC       := steering-experiment/demo.c steering-experiment/steering.c
-crowd_SRC       := crowd-experiment/demo.c
-path_SRC        := src/demo.c src/grid.c src/terrain.c src/pathfinding.c src/mover.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c src/inspect.c
+# Source files for each target (using unity build for path)
+steer_SRC := steering-experiment/demo.c steering-experiment/steering.c
+crowd_SRC := crowd-experiment/demo.c
+path_SRC  := src/unity.c
 
-# Test targets
-test_pathing_SRC  := tests/test_pathfinding.c src/grid.c src/terrain.c src/pathfinding.c
-test_mover_SRC    := tests/test_mover.c src/grid.c src/pathfinding.c src/mover.c src/terrain.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c
-test_steering_SRC := tests/test_steering.c steering-experiment/steering.c
-test_jobs_SRC     := tests/test_jobs.c src/grid.c src/pathfinding.c src/mover.c src/terrain.c src/items.c src/jobs.c src/stockpiles.c src/designations.c src/water.c src/fire.c src/smoke.c src/groundwear.c
-test_water_SRC    := tests/test_water.c src/grid.c src/terrain.c src/pathfinding.c src/water.c
-test_groundwear_SRC := tests/test_groundwear.c src/grid.c src/terrain.c src/pathfinding.c src/groundwear.c
-test_fire_SRC       := tests/test_fire.c src/grid.c src/terrain.c src/pathfinding.c src/fire.c src/smoke.c src/water.c
+# Test targets (need updated paths for the new folder structure)
+test_pathing_SRC    := tests/test_pathfinding.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c
+test_mover_SRC      := tests/test_mover.c src/world/grid.c src/world/pathfinding.c src/entities/mover.c src/world/terrain.c src/entities/items.c src/entities/jobs.c src/entities/stockpiles.c src/world/designations.c src/simulation/water.c src/simulation/fire.c src/simulation/smoke.c src/simulation/groundwear.c
+test_steering_SRC   := tests/test_steering.c steering-experiment/steering.c
+test_jobs_SRC       := tests/test_jobs.c src/world/grid.c src/world/pathfinding.c src/entities/mover.c src/world/terrain.c src/entities/items.c src/entities/jobs.c src/entities/stockpiles.c src/world/designations.c src/simulation/water.c src/simulation/fire.c src/simulation/smoke.c src/simulation/groundwear.c
+test_water_SRC      := tests/test_water.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/water.c
+test_groundwear_SRC := tests/test_groundwear.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/groundwear.c
+test_fire_SRC       := tests/test_fire.c src/world/grid.c src/world/terrain.c src/world/pathfinding.c src/simulation/fire.c src/simulation/smoke.c src/simulation/water.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 

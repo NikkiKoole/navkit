@@ -1,0 +1,800 @@
+// render/ui_panels.c - UI panel drawing functions
+#include "../game_state.h"
+
+// Forward declarations for demo functions
+void SpawnAgents(int count);
+void RepathAgents(void);
+void AddMoversDemo(int count);
+void SpawnMoversDemo(int count);
+void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
+
+
+void DrawUI(void) {
+    ui_begin_frame();
+    float y = 30.0f;
+    float x = 10.0f;
+
+    // === VIEW ===
+    if (SectionHeader(x, y, "View", &sectionView)) {
+        y += 18;
+        ToggleBool(x, y, "Show Graph", &showGraph);
+        y += 22;
+        ToggleBool(x, y, "Show Entrances", &showEntrances);
+        y += 22;
+        ToggleBool(x, y, "Cull Drawing", &cullDrawing);
+    }
+    y += 22;
+
+    // === PATHFINDING ===
+    y += 8;
+    if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
+        y += 18;
+        int prevAlgo = pathAlgorithm;
+        CycleOption(x, y, "Algo", algorithmNames, 4, &pathAlgorithm);
+        if (pathAlgorithm != prevAlgo) ResetPathStats();
+        y += 22;
+        CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
+        use8Dir = (currentDirection == 1);  // Sync with pathfinding
+        y += 22;
+        if (PushButton(x, y, "Build HPA Graph")) {
+            BuildEntrances();
+            BuildGraph();
+        }
+        y += 22;
+        if (PushButton(x, y, "Find Path")) {
+            if (pathAlgorithm == 1) {
+                if (graphEdgeCount == 0) {
+                    BuildEntrances();
+                    BuildGraph();
+                } else if (needsRebuild) {
+                    UpdateDirtyChunks();
+                }
+            }
+            switch (pathAlgorithm) {
+                case 0: RunAStar(); break;
+                case 1: RunHPAStar(); break;
+                case 2: RunJPS(); break;
+                case 3: RunJpsPlus(); break;
+            }
+        }
+    }
+    y += 22;
+
+    // === MAP EDITING ===
+    y += 8;
+    if (SectionHeader(x, y, "Map Editing", &sectionMapEditing)) {
+        y += 18;
+        CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
+        y += 22;
+        CycleOption(x, y, "Terrain", terrainNames, 17, &currentTerrain);
+        y += 22;
+        if (PushButton(x, y, "Generate Terrain")) {
+            GenerateCurrentTerrain();
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            BuildEntrances();
+            BuildGraph();
+            AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
+        }
+        y += 22;
+        if (PushButton(x, y, "Small Grid (32x32)")) {
+            InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+            gridDepth = 6;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+            BuildEntrances();
+            BuildGraph();
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
+        if (PushButton(x, y, "Medium Grid (64x64)")) {
+            InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+            gridDepth = 6;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+            BuildEntrances();
+            BuildGraph();
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
+        if (PushButton(x, y, "Big Grid (256x256)")) {
+            InitGridWithSizeAndChunkSize(256, 256, 16, 16);
+            gridDepth = 3;
+            // Set z>0 to air (z=0 already walkable from init)
+            for (int z = 1; z < gridDepth; z++)
+                for (int gy = 0; gy < gridHeight; gy++)
+                    for (int gx = 0; gx < gridWidth; gx++)
+                        grid[z][gy][gx] = CELL_AIR;
+            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+            BuildEntrances();
+            BuildGraph();
+            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+        }
+        y += 22;
+        if (PushButton(x, y, "Fill with Walls")) {
+            // Fill current z-level with walls (for mining testing)
+            for (int gy = 0; gy < gridHeight; gy++) {
+                for (int gx = 0; gx < gridWidth; gx++) {
+                    grid[currentViewZ][gy][gx] = CELL_WALL;
+                    // Clear water in filled cells
+                    SetWaterLevel(gx, gy, currentViewZ, 0);
+                    SetWaterSource(gx, gy, currentViewZ, false);
+                    SetWaterDrain(gx, gy, currentViewZ, false);
+                }
+            }
+            // Mark all chunks dirty
+            for (int cy = 0; cy < chunksY; cy++) {
+                for (int cx = 0; cx < chunksX; cx++) {
+                    MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
+                }
+            }
+            BuildEntrances();
+            BuildGraph();
+            InitDesignations();  // Clear any existing designations
+            AddMessage(TextFormat("Filled z=%d with walls", currentViewZ), GREEN);
+        }
+        y += 22;
+        if (PushButton(x, y, "Copy Map ASCII")) {
+            // Copy map to clipboard as ASCII (supports multiple floors)
+            // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
+            // "floor:" = 6, max digits for floor number ~3, "\n" = 1, so ~10 chars per floor header
+            int floorDataSize = gridWidth * gridHeight + gridHeight;  // grid + newlines per floor
+            int bufferSize = gridDepth * (16 + floorDataSize) + 1;  // 16 for "floor:XXX\n" with margin
+            char* buffer = malloc(bufferSize);
+            if (!buffer) {
+                AddMessage("Failed to allocate clipboard buffer", RED);
+            } else {
+            int idx = 0;
+
+            for (int z = 0; z < gridDepth; z++) {
+                // Write floor marker
+                idx += snprintf(buffer + idx, bufferSize - idx, "floor:%d\n", z);
+
+                // Write grid data for this floor
+                for (int row = 0; row < gridHeight; row++) {
+                    for (int col = 0; col < gridWidth; col++) {
+                        char c;
+                        switch (grid[z][row][col]) {
+                            case CELL_WALL:        c = '#'; break;
+                            case CELL_LADDER:      c = 'L'; break;  // Legacy
+                            case CELL_LADDER_UP:   c = '<'; break;
+                            case CELL_LADDER_DOWN: c = '>'; break;
+                            case CELL_LADDER_BOTH: c = 'X'; break;
+                            default:               c = '.'; break;
+                        }
+                        buffer[idx++] = c;
+                    }
+                    buffer[idx++] = '\n';
+                }
+            }
+            buffer[idx] = '\0';
+            SetClipboardText(buffer);
+            free(buffer);
+
+            AddMessage(TextFormat("Map copied to clipboard (%d floors)", gridDepth), ORANGE);
+            }
+        }
+    }
+    y += 22;
+
+    // === AGENTS ===
+    y += 8;
+    if (SectionHeader(x, y, "Agents", &sectionAgents)) {
+        y += 18;
+        DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Agents")) {
+            if (graphEdgeCount == 0) {
+                BuildEntrances();
+                BuildGraph();
+            }
+            SpawnAgents(agentCountSetting);
+        }
+        y += 22;
+        if (PushButton(x, y, "Repath Agents")) {
+            if (pathAlgorithm == 1 && graphEdgeCount == 0) {
+                BuildEntrances();
+                BuildGraph();
+            }
+            RepathAgents();
+        }
+    }
+    y += 22;
+
+    // === MOVERS ===
+    y += 8;
+    if (PushButton(x + 150, y, "+")) {
+        AddMoversDemo(moverCountSetting);
+    }
+    if (SectionHeader(x, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
+        y += 18;
+        DraggableIntLog(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Movers")) {
+            SpawnMoversDemo(moverCountSetting);
+        }
+        y += 22;
+        if (PushButton(x, y, "Clear Movers")) {
+            ClearMovers();
+        }
+        y += 22;
+        ToggleBool(x, y, "Show Movers", &showMovers);
+        y += 22;
+        ToggleBool(x, y, "Show Paths", &showMoverPaths);
+        y += 22;
+        ToggleBool(x, y, "String Pulling", &useStringPulling);
+        y += 22;
+        ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
+        y += 22;
+        ToggleBool(x, y, "Prefer Diff Z", &preferDifferentZ);
+        y += 22;
+        ToggleBool(x, y, "Allow Falling", &allowFallingFromAvoidance);
+
+        // Avoidance subsection
+        y += 22;
+        if (SectionHeader(x + 10, y, "Avoidance", &sectionMoverAvoidance)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Enabled", &useMoverAvoidance);
+            y += 22;
+            ToggleBool(x + 10, y, "Directional", &useDirectionalAvoidance);
+            y += 22;
+            DraggableFloat(x + 10, y, "Open Strength", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
+            y += 22;
+            DraggableFloat(x + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
+        }
+
+        // Walls subsection
+        y += 22;
+        if (SectionHeader(x + 10, y, "Walls", &sectionMoverWalls)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Repulsion", &useWallRepulsion);
+            y += 22;
+            DraggableFloat(x + 10, y, "Repel Strength", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
+            y += 22;
+            ToggleBool(x + 10, y, "Sliding", &useWallSliding);
+            y += 22;
+            ToggleBool(x + 10, y, "Knot Fix", &useKnotFix);
+        }
+
+        // Debug views subsection
+        y += 22;
+        if (SectionHeader(x + 10, y, "Debug Views", &sectionMoverDebug)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Show Neighbors", &showNeighborCounts);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Open Area", &showOpenArea);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Knots", &showKnotDetection);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Stuck", &showStuckDetection);
+        }
+    }
+    y += 22;
+
+    // === JOBS ===
+    y += 8;
+    if (SectionHeader(x, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
+        y += 18;
+        DraggableIntLog(x, y, "Count", &itemCountSetting, 1.0f, 1, MAX_ITEMS);
+        y += 22;
+        if (PushButton(x, y, "Spawn Items")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                // Find a random walkable cell on current z-level
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        ItemType type = GetRandomValue(0, 2);  // ITEM_RED, ITEM_GREEN, or ITEM_BLUE
+                        SpawnItem(px, py, (float)currentViewZ, type);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Spawn Red")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_RED);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Spawn Green")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_GREEN);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Spawn Blue")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_BLUE);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
+        if (PushButton(x, y, "Clear Items")) {
+            ClearItems();
+        }
+        y += 22;
+        ToggleBool(x, y, "Show Items", &showItems);
+        y += 22;
+        if (PushButton(x, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Red"))   SpawnStockpileWithFilters(true, false, false);
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Green")) SpawnStockpileWithFilters(false, true, false);
+        y += 22;
+        if (PushButton(x, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
+        y += 22;
+        if (PushButton(x, y, "Clear Stockpiles")) {
+            ClearStockpiles();
+        }
+    }
+    y += 22;
+
+    // === WATER ===
+    y += 8;
+    if (SectionHeader(x, y, "Water", &sectionWater)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &waterEnabled,
+            "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends.");
+        y += 22;
+        ToggleBoolT(x, y, "Evaporation", &waterEvaporationEnabled,
+            "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
+        y += 22;
+        DraggableIntT(x, y, "Evap Rate (1/N)", &waterEvapChance, 1.0f, 1, 1000,
+            "Evaporation chance per tick for level-1 water. Higher = slower evaporation. At 100, there's a 1% chance each tick.");
+        y += 22;
+        if (PushButton(x, y, "Clear Water")) {
+            ClearWater();
+        }
+    }
+    y += 22;
+
+    // === FIRE ===
+    y += 8;
+    if (SectionHeader(x, y, "Fire", &sectionFire)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &fireEnabled,
+            "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
+        y += 22;
+        DraggableIntT(x, y, "Spread Chance (1/N)", &fireSpreadChance, 1.0f, 1, 50,
+            "Base chance for fire to spread to adjacent flammable cells. Lower = faster spread. Higher fire intensity also increases spread chance.");
+        y += 22;
+        DraggableIntT(x, y, "Fuel Consumption", &fireFuelConsumption, 1.0f, 1, 50,
+            "Fire consumes 1 fuel every N ticks. Lower = fire burns out faster. Grass has 3 fuel, dirt has 1. When fuel runs out, the cell is marked burned.");
+        y += 22;
+        DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
+            "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
+        y += 22;
+        if (PushButton(x, y, "Clear Fire")) {
+            ClearFire();
+        }
+    }
+    y += 22;
+
+    // === SMOKE ===
+    y += 8;
+    if (SectionHeader(x, y, "Smoke", &sectionSmoke)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &smokeEnabled,
+            "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
+        y += 22;
+        DraggableIntT(x, y, "Rise Chance (1/N)", &smokeRiseChance, 1.0f, 1, 20,
+            "Chance per tick for smoke to rise one level. Lower = faster rising. At 2, smoke has 50% chance to rise each tick.");
+        y += 22;
+        DraggableIntT(x, y, "Dissipation Rate", &smokeDissipationRate, 1.0f, 1, 100,
+            "Smoke level decreases by 1 every N ticks. Higher = smoke lingers longer. Trapped smoke dissipates slower than open-air smoke.");
+        y += 22;
+        DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
+            "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke per tick.");
+        y += 22;
+        if (PushButton(x, y, "Clear Smoke")) {
+            ClearSmoke();
+        }
+    }
+    y += 22;
+
+    // === ENTROPY (Ground Wear) ===
+    y += 8;
+    if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &groundWearEnabled,
+            "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone.");
+        y += 22;
+        DraggableIntT(x, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
+            "Wear added each time a mover steps on a tile. Higher = paths form faster. Combined with thresholds, controls how many passes to create a path.");
+        y += 22;
+        DraggableIntT(x, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
+            "Wear level at which grass becomes dirt. At 1000 with trample=1, it takes 1000 mover steps to wear a path.");
+        y += 22;
+        DraggableIntT(x, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
+            "Wear level below which dirt recovers to grass. Should be lower than Grass->Dirt to create hysteresis and stable paths.");
+        y += 22;
+        DraggableIntT(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
+            "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
+        y += 22;
+        DraggableIntT(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500,
+            "Decay only happens every N ticks. Higher = slower recovery. At 50, wear decays 50x slower than trampling occurs.");
+        y += 22;
+        if (PushButton(x, y, "Clear Wear")) {
+            ClearGroundWear();
+        }
+    }
+    y += 22;
+
+}
+
+#if PROFILER_ENABLED
+void DrawProfilerPanel(float rightEdge, float y) {
+    float panelW = 220;
+    float x = rightEdge - panelW;
+    Vector2 mouse = GetMousePosition();
+
+    // Block click-through for entire panel area
+    float panelH = sectionProfiler ? 300 : 20;
+    if (mouse.x >= x && mouse.x < rightEdge && mouse.y >= y && mouse.y < y + panelH) {
+        ui_set_hovered();
+    }
+
+    // Draw right-aligned header
+    const char* headerText = sectionProfiler ? "[-] Profiler" : "[+] Profiler";
+    int headerWidth = MeasureText(headerText, 14);
+    float headerX = rightEdge - headerWidth;
+    bool hovered = mouse.x >= headerX && mouse.x < headerX + headerWidth + 10 &&
+                   mouse.y >= y && mouse.y < y + 18;
+
+    DrawTextShadow(headerText, (int)headerX, (int)y, 14, hovered ? YELLOW : GRAY);
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        sectionProfiler = !sectionProfiler;
+    }
+
+    if (sectionProfiler) {
+        y += 18;
+
+        // Memory section
+        const char* memHeader = sectionMemory ? "[-] Memory" : "[+] Memory";
+        int memHeaderWidth = MeasureText(memHeader, 14);
+        float memHeaderX = rightEdge - memHeaderWidth;
+        bool memHovered = mouse.x >= memHeaderX && mouse.x < memHeaderX + memHeaderWidth + 10 &&
+                          mouse.y >= y && mouse.y < y + 18;
+        DrawTextShadow(memHeader, (int)memHeaderX, (int)y, 14, memHovered ? YELLOW : GRAY);
+        if (memHovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            sectionMemory = !sectionMemory;
+        }
+        y += 18;
+
+        if (sectionMemory) {
+            // Calculate sizes of major static arrays
+            // Grid & terrain
+            size_t gridSize = sizeof(CellType) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t designationsSize = sizeof(Designation) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t waterSize = sizeof(WaterCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t groundWearSize = sizeof(int) * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            
+            // Pathfinding
+            size_t entrancesSize = sizeof(Entrance) * MAX_ENTRANCES;
+            size_t pathSize = sizeof(Point) * MAX_PATH;
+            size_t edgesSize = sizeof(GraphEdge) * MAX_EDGES;
+            
+            // Entities
+            size_t moversSize = sizeof(Mover) * MAX_MOVERS;
+            size_t itemsSize = sizeof(Item) * MAX_ITEMS;
+            size_t jobsSize = sizeof(Job) * MAX_JOBS;
+            size_t stockpilesSize = sizeof(Stockpile) * MAX_STOCKPILES;
+            size_t blueprintsSize = sizeof(Blueprint) * MAX_BLUEPRINTS;
+            size_t gatherZonesSize = sizeof(GatherZone) * MAX_GATHER_ZONES;
+            
+            // Spatial grids (heap allocated)
+            size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
+            size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
+            
+            size_t totalGrid = gridSize + designationsSize + waterSize + groundWearSize;
+            size_t totalPathfinding = entrancesSize + pathSize + edgesSize;
+            size_t totalEntities = moversSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize;
+            size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
+            size_t total = totalGrid + totalPathfinding + totalEntities + totalSpatial;
+
+            DrawTextShadow("-- Grid Data --", x, y, 14, GRAY); y += 16;
+            DrawTextShadow(TextFormat("  Cells:        %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Designations: %5.1f MB", designationsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Water:        %5.1f MB", waterSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            
+            DrawTextShadow("-- Pathfinding --", x, y, 14, GRAY); y += 16;
+            DrawTextShadow(TextFormat("  Entrances:    %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Path:         %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Edges:        %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            
+            DrawTextShadow("-- Entities --", x, y, 14, GRAY); y += 16;
+            DrawTextShadow(TextFormat("  Movers:       %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Items:        %5.1f MB", itemsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Jobs:         %5.1f MB", jobsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Stockpiles:   %5.1f KB", stockpilesSize / 1024.0f), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Blueprints:   %5.1f KB", blueprintsSize / 1024.0f), x, y, 14, WHITE); y += 16;
+            
+            DrawTextShadow("-- Spatial --", x, y, 14, GRAY); y += 16;
+            DrawTextShadow(TextFormat("  MoverGrid:    %5.1f KB", moverSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  ItemGrid:     %5.1f KB", itemSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            
+            DrawTextShadow(TextFormat("TOTAL:          %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
+        }
+
+        // Build hierarchical render order (parents before children, children grouped under parent)
+        int renderOrder[PROFILER_MAX_SECTIONS];
+        int renderCount = 0;
+
+        // Add section and all its descendants recursively (depth-first)
+        for (int i = 0; i < profilerSectionCount; i++) {
+            if (profilerSections[i].parent == -1) {
+                // Use a stack to avoid actual recursion
+                int stack[PROFILER_MAX_SECTIONS];
+                int stackSize = 1;
+                stack[0] = i;
+
+                while (stackSize > 0) {
+                    int current = stack[--stackSize];
+                    renderOrder[renderCount++] = current;
+
+                    // Push children in reverse order so they come out in forward order
+                    for (int j = profilerSectionCount - 1; j >= 0; j--) {
+                        if (profilerSections[j].parent == current) {
+                            stack[stackSize++] = j;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find max value for scaling bars
+        float maxMs = 1.0f;  // Minimum scale of 1ms
+        for (int i = 0; i < profilerSectionCount; i++) {
+            float last = (float)ProfileGetLast(i);
+            if (last > maxMs) maxMs = last;
+        }
+
+        // Bar graph settings
+        int barMaxWidth = 100;
+        int labelWidth = 110;
+        int indentPerLevel = 12;
+
+        // Colors for each section (shared with line graph)
+        Color sectionColors[] = {GREEN, YELLOW, ORANGE, SKYBLUE, PINK, PURPLE, RED, LIME};
+        int numColors = sizeof(sectionColors) / sizeof(sectionColors[0]);
+
+        // Check for hover on section labels
+        int labelHoveredSection = -1;
+        int labelStartY = y;  // Remember starting Y for label hover detection
+
+        int visibleRow = 0;
+        for (int r = 0; r < renderCount; r++) {
+            int i = renderOrder[r];
+            ProfileSection* s = &profilerSections[i];
+
+            // Skip hidden sections (collapsed ancestors)
+            if (ProfileIsHidden(i)) continue;
+
+            float last = (float)ProfileGetLast(i);
+            float avg = (float)ProfileGetAvg(i);
+            Color sectionColor = sectionColors[i % numColors];
+            int indent = s->depth * indentPerLevel;
+            bool hasChildren = ProfileHasChildren(i);
+
+            // Check if mouse is hovering this label row
+            int rowY = labelStartY + visibleRow * 18;
+            bool hoveringLabel = (mouse.x >= x && mouse.x < x + labelWidth &&
+                                  mouse.y >= rowY && mouse.y < rowY + 18);
+            if (hoveringLabel) {
+                labelHoveredSection = i;
+                // Block click-through when hovering collapsible items
+                if (hasChildren) {
+                    ui_set_hovered();
+                    // Click to toggle collapse
+                    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                        s->collapsed = !s->collapsed;
+                    }
+                }
+            }
+
+            // Draw collapse indicator for sections with children
+            if (hasChildren) {
+                const char* arrow = s->collapsed ? "+" : "-";
+                Color arrowColor = s->collapsed ? YELLOW : GRAY;
+                DrawTextShadow(arrow, x + indent, y, 14, arrowColor);
+            }
+
+            // Draw color indicator square (indented based on depth, dimmed if collapsed)
+            Color squareColor = sectionColor;
+            if (s->collapsed) squareColor = (Color){sectionColor.r/2, sectionColor.g/2, sectionColor.b/2, 255};
+            DrawRectangle(x + indent + (hasChildren ? 10 : 0), y + 3, 10, 10, squareColor);
+
+            // Draw label (highlight if hovered, indented based on depth, show ... if collapsed)
+            Color labelColor = hoveringLabel ? sectionColor : (s->collapsed ? GRAY : WHITE);
+            const char* displayName = s->collapsed ? TextFormat("%s ...", s->name) : s->name;
+            DrawTextShadow(displayName, x + 14 + indent + (hasChildren ? 10 : 0), y, 14, labelColor);
+
+            // Draw bar background
+            int barX = x + labelWidth;
+            DrawRectangle(barX, y + 2, barMaxWidth, 12, (Color){40, 40, 40, 255});
+
+            // Draw bar (colored by intensity)
+            int barWidth = (int)(last / maxMs * barMaxWidth);
+            if (barWidth < 1 && last > 0) barWidth = 1;
+
+            // Color: green for low, yellow for medium, red for high (relative to max)
+            float ratio = last / maxMs;
+            Color barColor;
+            if (ratio < 0.3f) {
+                barColor = GREEN;
+            } else if (ratio < 0.6f) {
+                barColor = YELLOW;
+            } else {
+                barColor = (Color){255, 100, 100, 255};  // Light red
+            }
+            DrawRectangle(barX, y + 2, barWidth, 12, barColor);
+
+            // Draw avg marker line
+            int avgX = barX + (int)(avg / maxMs * barMaxWidth);
+            DrawLine(avgX, y + 1, avgX, y + 14, WHITE);
+
+            // Draw value
+            DrawTextShadow(TextFormat("%.2f", last), barX + barMaxWidth + 5, y, 14, WHITE);
+
+            y += 18;
+            visibleRow++;
+        }
+
+        // Line graph showing history
+        y += 10;
+        int graphW = labelWidth + barMaxWidth;  // Match width of bars above
+        int graphX = x + labelWidth + barMaxWidth - graphW;  // Right-align with bars
+        int graphY = y;
+        int graphH = 60;
+
+        // Find max across all history for scaling
+        float graphMax = 1.0f;
+        for (int i = 0; i < profilerSectionCount; i++) {
+            ProfileSection* s = &profilerSections[i];
+            for (int f = 0; f < s->historyCount; f++) {
+                if (s->history[f] > graphMax) graphMax = (float)s->history[f];
+            }
+        }
+
+        // Draw background
+        DrawRectangle(graphX, graphY, graphW, graphH, (Color){30, 30, 30, 255});
+        DrawRectangleLines(graphX, graphY, graphW, graphH, GRAY);
+
+        // Draw horizontal guide lines
+        for (int i = 1; i < 4; i++) {
+            int lineY = graphY + (graphH * i / 4);
+            DrawLine(graphX, lineY, graphX + graphW, lineY, (Color){50, 50, 50, 255});
+        }
+
+        // Check if mouse is in graph area
+        bool mouseInGraph = (mouse.x >= graphX && mouse.x < graphX + graphW &&
+                             mouse.y >= graphY && mouse.y < graphY + graphH);
+
+        // Find which section is closest to mouse (if hovering on graph)
+        // Or use labelHoveredSection if hovering on a label
+        int hoveredSection = labelHoveredSection;
+        float hoveredValue = 0;
+        if (mouseInGraph && labelHoveredSection < 0) {
+            // Figure out which frame the mouse is over
+            int mouseFrame = (int)((mouse.x - graphX) * PROFILER_HISTORY_FRAMES / graphW);
+            if (mouseFrame < 0) mouseFrame = 0;
+            if (mouseFrame >= PROFILER_HISTORY_FRAMES) mouseFrame = PROFILER_HISTORY_FRAMES - 1;
+
+            float minDist = 999999.0f;
+            for (int i = 0; i < profilerSectionCount; i++) {
+                ProfileSection* s = &profilerSections[i];
+                if (s->historyCount <= mouseFrame) continue;
+
+                int idx = (s->historyIndex + mouseFrame) % PROFILER_HISTORY_FRAMES;
+                float val = (float)s->history[idx];
+                int valY = graphY + graphH - (int)(val / graphMax * graphH);
+                float dist = fabsf(mouse.y - valY);
+
+                if (dist < minDist && dist < 15) {  // Within 15 pixels
+                    minDist = dist;
+                    hoveredSection = i;
+                    hoveredValue = val;
+                }
+            }
+        }
+
+        // Draw lines for each section
+        for (int i = 0; i < profilerSectionCount; i++) {
+            ProfileSection* s = &profilerSections[i];
+            if (s->historyCount < 2) continue;
+
+            Color col = sectionColors[i % numColors];
+
+            // Dim non-hovered sections when hovering
+            if (hoveredSection >= 0 && hoveredSection != i) {
+                col.a = 60;
+            }
+
+            for (int f = 0; f < s->historyCount - 1; f++) {
+                // Read from oldest to newest
+                int idx0 = (s->historyIndex + f) % PROFILER_HISTORY_FRAMES;
+                int idx1 = (s->historyIndex + f + 1) % PROFILER_HISTORY_FRAMES;
+
+                float v0 = (float)s->history[idx0];
+                float v1 = (float)s->history[idx1];
+
+                int x0 = graphX + (f * graphW / PROFILER_HISTORY_FRAMES);
+                int x1 = graphX + ((f + 1) * graphW / PROFILER_HISTORY_FRAMES);
+                int y0 = graphY + graphH - (int)(v0 / graphMax * graphH);
+                int y1 = graphY + graphH - (int)(v1 / graphMax * graphH);
+
+                DrawLine(x0, y0, x1, y1, col);
+            }
+        }
+
+        // Draw tooltip for hovered section (only when hovering graph, not label)
+        if (hoveredSection >= 0 && labelHoveredSection < 0) {
+            ProfileSection* s = &profilerSections[hoveredSection];
+            const char* tooltip = TextFormat("%s: %.2fms", s->name, hoveredValue);
+            int tooltipW = MeasureText(tooltip, 14) + 10;
+            int tooltipX = (int)mouse.x + 10;
+            int tooltipY = (int)mouse.y - 20;
+
+            // Keep tooltip in screen
+            if (tooltipX + tooltipW > graphX + graphW) tooltipX = (int)mouse.x - tooltipW - 5;
+
+            DrawRectangle(tooltipX - 2, tooltipY - 2, tooltipW, 18, (Color){20, 20, 20, 230});
+            DrawTextShadow(tooltip, tooltipX, tooltipY, 14, sectionColors[hoveredSection % numColors]);
+        }
+
+        // Draw scale label
+        DrawTextShadow(TextFormat("%.1fms", graphMax), graphX + graphW + 5, graphY, 12, WHITE);
+        DrawTextShadow("0", graphX + graphW + 5, graphY + graphH - 12, 12, WHITE);
+    }
+}
+#endif
+

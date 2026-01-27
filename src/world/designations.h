@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include "grid.h"
-#include "items.h"
+#include "../entities/items.h"
 
 // Designation types
 typedef enum {

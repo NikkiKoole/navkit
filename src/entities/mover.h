@@ -1,8 +1,8 @@
 #ifndef MOVER_H
 #define MOVER_H
 
-#include "grid.h"
-#include "pathfinding.h"
+#include "../world/grid.h"
+#include "../world/pathfinding.h"
 #include <stdbool.h>
 
 // Cell size in pixels (for position calculations)

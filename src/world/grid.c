@@ -192,42 +192,50 @@ void PlaceLadder(int x, int y, int z) {
     RecalculateLadderColumn(x, y);
 }
 
-// Called when the cell below lost its upward connection
+// Called when the cell below lost its upward connection - iterates upward
 static void CascadeBreakDown(int x, int y, int z) {
-    if (z < 0 || z >= gridDepth) return;
-    CellType cell = grid[z][y][x];
-    if (!IsLadderCell(cell)) return;
-    
-    MarkChunkDirty(x, y, z);
-    
-    if (cell == CELL_LADDER_BOTH) {
-        // Lost connection below: BOTH → UP
-        grid[z][y][x] = CELL_LADDER_UP;
-    } else if (cell == CELL_LADDER_DOWN) {
-        // DOWN with no connection below: remove and cascade up
-        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
-        CascadeBreakDown(x, y, z + 1);
+    while (z >= 0 && z < gridDepth) {
+        CellType cell = grid[z][y][x];
+        if (!IsLadderCell(cell)) return;
+        
+        MarkChunkDirty(x, y, z);
+        
+        if (cell == CELL_LADDER_BOTH) {
+            // Lost connection below: BOTH → UP
+            grid[z][y][x] = CELL_LADDER_UP;
+            return;  // BOTH→UP doesn't cascade further
+        } else if (cell == CELL_LADDER_DOWN) {
+            // DOWN with no connection below: remove and continue up
+            grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+            z++;  // Continue upward
+        } else {
+            // UP stays UP (still has its upward connection)
+            return;
+        }
     }
-    // UP stays UP (still has its upward connection)
 }
 
-// Called when the cell above lost its downward connection
+// Called when the cell above lost its downward connection - iterates downward
 static void CascadeBreakUp(int x, int y, int z) {
-    if (z < 0 || z >= gridDepth) return;
-    CellType cell = grid[z][y][x];
-    if (!IsLadderCell(cell)) return;
-    
-    MarkChunkDirty(x, y, z);
-    
-    if (cell == CELL_LADDER_BOTH) {
-        // Lost connection above: BOTH → DOWN
-        grid[z][y][x] = CELL_LADDER_DOWN;
-    } else if (cell == CELL_LADDER_UP) {
-        // UP with no connection above: remove and cascade down
-        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
-        CascadeBreakUp(x, y, z - 1);
+    while (z >= 0 && z < gridDepth) {
+        CellType cell = grid[z][y][x];
+        if (!IsLadderCell(cell)) return;
+        
+        MarkChunkDirty(x, y, z);
+        
+        if (cell == CELL_LADDER_BOTH) {
+            // Lost connection above: BOTH → DOWN
+            grid[z][y][x] = CELL_LADDER_DOWN;
+            return;  // BOTH→DOWN doesn't cascade further
+        } else if (cell == CELL_LADDER_UP) {
+            // UP with no connection above: remove and continue down
+            grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+            z--;  // Continue downward
+        } else {
+            // DOWN stays DOWN (still has its downward connection)
+            return;
+        }
     }
-    // DOWN stays DOWN (still has its downward connection)
 }
 
 void EraseLadder(int x, int y, int z) {

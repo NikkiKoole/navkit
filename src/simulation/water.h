@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "grid.h"
+#include "../world/grid.h"
 
 // Water level constants (DF-style: 1-7 scale)
 #define WATER_MAX_LEVEL 7           // Maximum water depth per cell (7/7 = full)

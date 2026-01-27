@@ -1,13 +1,13 @@
 #include "jobs.h"
 #include "items.h"
 #include "mover.h"
-#include "grid.h"
-#include "pathfinding.h"
+#include "../world/grid.h"
+#include "../world/pathfinding.h"
 #include "stockpiles.h"
-#include "designations.h"
-#include "../shared/profiler.h"
-#include "../shared/ui.h"
-#include "../vendor/raylib.h"
+#include "../world/designations.h"
+#include "../../shared/profiler.h"
+#include "../../shared/ui.h"
+#include "../../vendor/raylib.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +42,11 @@ void InitJobPool(void) {
     jobFreeList = (int*)malloc(MAX_JOBS * sizeof(int));
     activeJobList = (int*)malloc(MAX_JOBS * sizeof(int));
     jobIsActive = (bool*)calloc(MAX_JOBS, sizeof(bool));
+    
+    if (!jobFreeList || !activeJobList || !jobIsActive) {
+        TraceLog(LOG_ERROR, "Failed to allocate job pool memory");
+        return;
+    }
     
     jobHighWaterMark = 0;
     jobFreeCount = 0;
@@ -808,6 +813,10 @@ void InitJobSystem(int maxMovers) {
     idleMoverCapacity = maxMovers;
     idleMoverList = (int*)malloc(maxMovers * sizeof(int));
     moverIsInIdleList = (bool*)calloc(maxMovers, sizeof(bool));
+    if (!idleMoverList || !moverIsInIdleList) {
+        TraceLog(LOG_ERROR, "Failed to allocate job system memory");
+        return;
+    }
     idleMoverCount = 0;
 }
 
@@ -1094,6 +1103,7 @@ void AssignJobsWorkGivers(void) {
     
     // Copy idle mover list since WorkGivers modify it via RemoveMoverFromIdleList
     int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+    if (!idleCopy) return;
     int idleCopyCount = idleMoverCount;
     memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
     
@@ -1392,6 +1402,7 @@ void AssignJobsHybrid(void) {
         if (hasDigWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (!idleCopy) return;
             int idleCopyCount = idleMoverCount;
             memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
             

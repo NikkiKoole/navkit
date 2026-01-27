@@ -1,7 +1,7 @@
 #include "fire.h"
 #include "water.h"
 #include "smoke.h"
-#include "grid.h"
+#include "../world/grid.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -33,7 +33,7 @@ void ClearFire(void) {
 }
 
 // Bounds check helper
-static inline bool InBounds(int x, int y, int z) {
+static inline bool FireInBounds(int x, int y, int z) {
     return x >= 0 && x < gridWidth && 
            y >= 0 && y < gridHeight && 
            z >= 0 && z < gridDepth;
@@ -54,7 +54,7 @@ int GetBaseFuelForCellType(CellType cell) {
 
 // Check if cell can burn (has fuel and not already burned)
 static inline bool CanBurn(int x, int y, int z) {
-    if (!InBounds(x, y, z)) return false;
+    if (!FireInBounds(x, y, z)) return false;
     
     // Already burned cells can't burn again
     if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) return false;
@@ -66,23 +66,23 @@ static inline bool CanBurn(int x, int y, int z) {
 
 // Mark cell and neighbors as unstable
 void DestabilizeFire(int x, int y, int z) {
-    if (InBounds(x, y, z)) {
+    if (FireInBounds(x, y, z)) {
         fireGrid[z][y][x].stable = false;
     }
     
     // 4 horizontal neighbors (orthogonal only)
-    if (InBounds(x-1, y, z)) fireGrid[z][y][x-1].stable = false;
-    if (InBounds(x+1, y, z)) fireGrid[z][y][x+1].stable = false;
-    if (InBounds(x, y-1, z)) fireGrid[z][y-1][x].stable = false;
-    if (InBounds(x, y+1, z)) fireGrid[z][y+1][x].stable = false;
+    if (FireInBounds(x-1, y, z)) fireGrid[z][y][x-1].stable = false;
+    if (FireInBounds(x+1, y, z)) fireGrid[z][y][x+1].stable = false;
+    if (FireInBounds(x, y-1, z)) fireGrid[z][y-1][x].stable = false;
+    if (FireInBounds(x, y+1, z)) fireGrid[z][y+1][x].stable = false;
     
     // Above (for smoke generation later)
-    if (InBounds(x, y, z+1)) fireGrid[z+1][y][x].stable = false;
+    if (FireInBounds(x, y, z+1)) fireGrid[z+1][y][x].stable = false;
 }
 
 // Set fire level at a cell
 void SetFireLevel(int x, int y, int z, int level) {
-    if (!InBounds(x, y, z)) return;
+    if (!FireInBounds(x, y, z)) return;
     if (level < 0) level = 0;
     if (level > FIRE_MAX_LEVEL) level = FIRE_MAX_LEVEL;
     
@@ -103,7 +103,7 @@ void SetFireLevel(int x, int y, int z, int level) {
 
 // Ignite cell at max level if it can burn
 void IgniteCell(int x, int y, int z) {
-    if (!InBounds(x, y, z)) return;
+    if (!FireInBounds(x, y, z)) return;
     if (!CanBurn(x, y, z)) return;
     
     FireCell* cell = &fireGrid[z][y][x];
@@ -118,7 +118,7 @@ void IgniteCell(int x, int y, int z) {
 
 // Extinguish fire at a cell
 void ExtinguishCell(int x, int y, int z) {
-    if (!InBounds(x, y, z)) return;
+    if (!FireInBounds(x, y, z)) return;
     
     FireCell* cell = &fireGrid[z][y][x];
     if (cell->level > 0) {
@@ -129,7 +129,7 @@ void ExtinguishCell(int x, int y, int z) {
 
 // Set fire source
 void SetFireSource(int x, int y, int z, bool isSource) {
-    if (!InBounds(x, y, z)) return;
+    if (!FireInBounds(x, y, z)) return;
     fireGrid[z][y][x].isSource = isSource;
     if (isSource) {
         fireGrid[z][y][x].level = FIRE_MAX_LEVEL;
@@ -140,7 +140,7 @@ void SetFireSource(int x, int y, int z, bool isSource) {
 
 // Query functions
 int GetFireLevel(int x, int y, int z) {
-    if (!InBounds(x, y, z)) return 0;
+    if (!FireInBounds(x, y, z)) return 0;
     return fireGrid[z][y][x].level;
 }
 
@@ -149,7 +149,7 @@ bool HasFire(int x, int y, int z) {
 }
 
 int GetCellFuel(int x, int y, int z) {
-    if (!InBounds(x, y, z)) return 0;
+    if (!FireInBounds(x, y, z)) return 0;
     return fireGrid[z][y][x].fuel;
 }
 
@@ -163,7 +163,7 @@ static bool HasAdjacentWater(int x, int y, int z) {
 }
 
 // Try to spread fire to neighbors
-static bool TrySpread(int x, int y, int z) {
+static bool FireTrySpread(int x, int y, int z) {
     FireCell* cell = &fireGrid[z][y][x];
     if (cell->level < FIRE_MIN_SPREAD_LEVEL) return false;
     
@@ -232,7 +232,7 @@ static bool ProcessFireCell(int x, int y, int z) {
             changed = true;
         }
         // Sources still spread and generate smoke
-        TrySpread(x, y, z);
+        FireTrySpread(x, y, z);
         GenerateSmokeFromFire(x, y, z, cell->level);
         return changed;
     }
@@ -280,7 +280,7 @@ static bool ProcessFireCell(int x, int y, int z) {
     }
     
     // Try to spread
-    if (TrySpread(x, y, z)) {
+    if (FireTrySpread(x, y, z)) {
         changed = true;
     }
     
@@ -298,7 +298,7 @@ static bool ProcessFireCell(int x, int y, int z) {
         for (int i = 0; i < 4; i++) {
             int nx = x + dx[i];
             int ny = y + dy[i];
-            if (InBounds(nx, ny, z)) {
+            if (FireInBounds(nx, ny, z)) {
                 FireCell* neighbor = &fireGrid[z][ny][nx];
                 if (neighbor->level > 0 || CanBurn(nx, ny, z)) {
                     hasActiveNeighbor = true;

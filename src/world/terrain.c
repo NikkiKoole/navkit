@@ -1,5 +1,5 @@
 #include "terrain.h"
-#include "../vendor/raylib.h"
+#include "../../vendor/raylib.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>

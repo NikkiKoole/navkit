@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "grid.h"
+#include "../world/grid.h"
 
 // Fire level constants (1-7 scale like water)
 #define FIRE_MAX_LEVEL 7

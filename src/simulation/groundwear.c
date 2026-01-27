@@ -1,5 +1,5 @@
 #include "groundwear.h"
-#include "grid.h"
+#include "../world/grid.h"
 #include <string.h>
 
 // Wear grid storage

@@ -1,5 +1,5 @@
 #include "smoke.h"
-#include "grid.h"
+#include "../world/grid.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -23,7 +23,7 @@ typedef struct {
     int x, y, z;
 } SmokePos;
 
-static SmokePos pressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
+static SmokePos smokePressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
 static bool pressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Initialize smoke system
@@ -164,7 +164,7 @@ static int TryRise(int x, int y, int z) {
 }
 
 // Phase 2: SPREADING - Equalize smoke levels with horizontal neighbors
-static bool TrySpread(int x, int y, int z) {
+static bool SmokeTrySpread(int x, int y, int z) {
     SmokeCell* cell = &smokeGrid[z][y][x];
     if (cell->level == 0) return false;
     
@@ -251,14 +251,14 @@ static bool TryFillDown(int x, int y, int z) {
         if (pressureVisited[nz][ny][nx]) continue;
         
         pressureVisited[nz][ny][nx] = true;
-        pressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
+        smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
         
         if (queueTail >= SMOKE_PRESSURE_SEARCH_LIMIT) break;
     }
     
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
-        SmokePos pos = pressureQueue[queueHead++];
+        SmokePos pos = smokePressureQueue[queueHead++];
         SmokeCell* current = &smokeGrid[pos.z][pos.y][pos.x];
         
         // Found a non-full cell - push smoke here
@@ -298,7 +298,7 @@ static bool TryFillDown(int x, int y, int z) {
                 pressureVisited[nz][ny][nx] = true;
                 
                 if (queueTail < SMOKE_PRESSURE_SEARCH_LIMIT) {
-                    pressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
+                    smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
                 }
             }
         }
@@ -325,7 +325,7 @@ static bool ProcessSmokeCell(int x, int y, int z) {
     
     // Phase 2: Try to spread horizontally (if we still have smoke)
     if (cell->level > 0) {
-        if (TrySpread(x, y, z)) moved = true;
+        if (SmokeTrySpread(x, y, z)) moved = true;
     }
     
     // Phase 3: Try fill down (if full and pressurized)

@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "grid.h"
+#include "../world/grid.h"
 
 // Smoke level constants (1-7 scale like water/fire)
 #define SMOKE_MAX_LEVEL 7
