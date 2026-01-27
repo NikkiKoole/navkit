@@ -135,4 +135,8 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas embed_font embed path8 path16 bench bench_jobs
+# Release build - max optimization, no debug symbols
+release: $(BINDIR)
+	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
+
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs

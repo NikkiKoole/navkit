@@ -19,6 +19,7 @@
 #include "steering.h"
 #define UI_IMPLEMENTATION
 #include "../../shared/ui.h"
+#include "../../assets/fonts/comic_embedded.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -6588,7 +6589,7 @@ static void DrawScenario(void) {
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Steering Behaviors Demo");
 
-    Font comicFont = LoadFont("assets/fonts/comic.fnt");
+    Font comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
 
     SetTargetFPS(60);

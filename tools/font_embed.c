@@ -86,10 +86,20 @@ int main(int argc, char *argv[]) {
     fprintf(out, "// Do not edit manually - regenerate with: make embed_font\n\n");
     fprintf(out, "#ifndef EMBEDDED_FONT_H\n");
     fprintf(out, "#define EMBEDDED_FONT_H\n\n");
-    fprintf(out, "#include \"vendor/raylib.h\"\n\n");
+    fprintf(out, "#include \"vendor/raylib.h\"\n");
+    fprintf(out, "#include <string.h>\n");
+    fprintf(out, "#include <stdlib.h>\n");
+    fprintf(out, "#include <stdio.h>\n\n");
     
-    write_byte_array(out, "EMBEDDED_FONT_FNT", fntData, fntSize);
+    // Add null terminator to FNT data so strstr works correctly
+    unsigned char *fntDataNullTerm = malloc(fntSize + 1);
+    memcpy(fntDataNullTerm, fntData, fntSize);
+    fntDataNullTerm[fntSize] = '\0';
+    
+    write_byte_array(out, "EMBEDDED_FONT_FNT", fntDataNullTerm, fntSize + 1);
     write_byte_array(out, "EMBEDDED_FONT_PNG", pngData, pngSize);
+    
+    free(fntDataNullTerm);
     
     // Write helper function to load font from embedded data
     fprintf(out, "// Load font from embedded data\n");
