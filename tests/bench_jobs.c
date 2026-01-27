@@ -2,6 +2,18 @@
 //
 // Run with: make bench_jobs
 // Or: ./bin/bench_jobs
+//
+// Historical baseline (commit de7e2a4, Jan 2026):
+//
+// | Scenario                 | Old (de7e2a4) | Current (f95cc1f) | Improvement |
+// |--------------------------|---------------|-------------------|-------------|
+// | 10 movers steady         | 349ms         | 31ms              | 11x faster  |
+// | 10 movers filter change  | 6216ms        | 3609ms            | 1.7x faster |
+// | 50 movers steady         | 349ms         | 31ms              | 11x faster  |
+// | 50 movers filter change  | 28899ms       | 17448ms           | 1.7x faster |
+//
+// Note: The ratio (steady vs filter change) looks worse now because steady state
+// improved dramatically. Both scenarios are faster in absolute terms.
 
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
