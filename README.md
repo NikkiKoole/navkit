@@ -14,7 +14,7 @@
 | Directory | Description |
 |-----------|-------------|
 | `/pathing` | Grid pathfinding (A*, HPA*, JPS), movers, wall handling, terrain — [overview](documentation/overview.md) |
-| `/steering` | Steering behaviors, flocking, social force model — [reference](documentation/done/steering.md) |
+| `/steering-experiment` | Steering behaviors, flocking, social force model — [reference](documentation/done/steering.md) |
 | `/crowd-experiment` | Crowd simulation testbed |
 | `/tools` | Atlas generator |
 | `/documentation` | Design docs — [todo](documentation/todo.md) |
