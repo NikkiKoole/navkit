@@ -18,7 +18,9 @@ i think we for starters need to be able to completely copy paste a world, incluc
 
   **Attempted fix (commit `c97a457`):** Added "final approach" phase - when path exhausted but within 2 cells of item, trigger repath to item cell. Needs confirmation that bug is actually fixed.
 
-- # bug2 [ ] items not being picked up
+  **Updated fix:** The repath approach didn't work because knot-fix would just skip to the waypoint again without snapping position. Changed to direct micro-movement: when path exhausted and mover is in same/adjacent cell as item but out of pickup range, move directly toward item each tick (bypassing pathfinding). This should reliably close the gap caused by knot-fix's non-snapping arrival.
+
+- # bug2 [X] items not being picked up
   -  after clearing movers and respawnig, the xisting items are not being picked up anymore,
  
   it has todo with all the cells in the stockpile being taken, but the storage limits have not been reached.

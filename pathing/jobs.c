@@ -230,10 +230,19 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             mover->needsRepath = true;
         }
         
-        // Final approach - when close but not in pickup range, keep nudging toward item
-        if (mover->pathLength <= 1 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && distSq < CELL_SIZE * CELL_SIZE * 4) {
-            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
-            mover->needsRepath = true;
+        // Final approach - when path exhausted but not in pickup range, move directly toward item
+        // This handles the case where knot-fix skips to waypoint without snapping position
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
+        if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            // Move directly toward item (micro-adjustment, not pathfinding)
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
         }
         
         // Check if stuck

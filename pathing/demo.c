@@ -713,6 +713,34 @@ void DrawMovers(void) {
         }
         PROFILE_END(MoverPaths);
     }
+    
+    // Draw hovered mover's path (always, even if showMoverPaths is off)
+    if (hoveredMover >= 0 && !showMoverPaths) {
+        Mover* m = &movers[hoveredMover];
+        if (m->active && m->pathIndex >= 0) {
+            float sx = offset.x + m->x * zoom;
+            float sy = offset.y + m->y * zoom;
+            Color pathColor = YELLOW;
+
+            // Line from mover to next waypoint (if on same z)
+            Point next = m->path[m->pathIndex];
+            if (next.z == viewZ) {
+                float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, pathColor);
+            }
+
+            // Rest of path
+            for (int j = m->pathIndex; j > 0; j--) {
+                if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
+                float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
+            }
+        }
+    }
 }
 
 void DrawItems(void) {
@@ -3030,12 +3058,12 @@ int main(void) {
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
         DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, GetScreenHeight() - 20, 18, SKYBLUE);
 
-        // Help button (?) in bottom-left corner
-        Rectangle helpBtn = {5, GetScreenHeight() - 22, 20, 20};
+        // Help button (?) in bottom-right corner
+        Rectangle helpBtn = {GetScreenWidth() - 25, GetScreenHeight() - 22, 20, 20};
         bool helpHovered = CheckCollisionPointRec(GetMousePosition(), helpBtn);
         DrawRectangleRec(helpBtn, helpHovered ? DARKGRAY : (Color){40, 40, 40, 255});
         DrawRectangleLinesEx(helpBtn, 1, GRAY);
-        DrawTextShadow("?", 11, GetScreenHeight() - 20, 18, helpHovered ? WHITE : LIGHTGRAY);
+        DrawTextShadow("?", GetScreenWidth() - 19, GetScreenHeight() - 20, 18, helpHovered ? WHITE : LIGHTGRAY);
         if (helpHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             showHelpPanel = !showHelpPanel;
         }
@@ -3052,6 +3080,10 @@ int main(void) {
                 "M + R-drag    Cancel mining",
                 "B + L-drag    Designate building",
                 "B + R-drag    Cancel building",
+                "W + L-drag    Place water",
+                "W + R-drag    Remove water/source/drain",
+                "W+Shift+L     Place water source",
+                "W+Shift+R     Place water drain",
                 "< / >         Change Z level",
                 "Space         Pause/Resume",
                 "Scroll        Zoom in/out",
@@ -3060,7 +3092,7 @@ int main(void) {
             int shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
             int panelW = 260;
             int panelH = 20 + shortcutCount * 18 + 10;
-            int panelX = 5;
+            int panelX = GetScreenWidth() - panelW - 5;
             int panelY = GetScreenHeight() - 28 - panelH;
 
             DrawRectangle(panelX, panelY, panelW, panelH, (Color){30, 30, 30, 240});
