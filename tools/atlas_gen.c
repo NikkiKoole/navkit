@@ -1,5 +1,5 @@
 // Texture Atlas Generator
-// Scans assets/textures/ and assets/textures8x8/ for PNG files and packs them into atlases
+// Scans assets/textures16x16/ and assets/textures8x8/ for PNG files and packs them into atlases
 // Outputs: assets/atlas16x16.png/h, assets/atlas8x8.png/h, and assets/atlas.h (selector)
 
 #include <stdio.h>
@@ -299,7 +299,7 @@ int main(void) {
     // Generate 16x16 atlas (optional)
     if (GENERATE_16X16) {
         spriteCount = generate_atlas(
-            "assets/textures",
+            "assets/textures16x16",
             "assets/atlas16x16.png",
             "assets/atlas16x16.h",
             "ATLAS16X16_PATH",
