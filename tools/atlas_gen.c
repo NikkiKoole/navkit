@@ -139,6 +139,46 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     fprintf(header, "#define %s\n\n", headerGuard);
     fprintf(header, "#include \"vendor/raylib.h\"\n\n");
     fprintf(header, "#define %s \"%s\"\n\n", atlasPathMacro, outputPng);
+
+    // Embed the PNG file as a byte array
+    FILE *pngFile = fopen(outputPng, "rb");
+    if (pngFile) {
+        fseek(pngFile, 0, SEEK_END);
+        long pngSize = ftell(pngFile);
+        fseek(pngFile, 0, SEEK_SET);
+        
+        unsigned char *pngData = malloc(pngSize);
+        if (pngData) {
+            fread(pngData, 1, pngSize, pngFile);
+            
+            // Write size constant
+            fprintf(header, "#define %s_DATA_SIZE %ld\n\n", atlasPathMacro, pngSize);
+            
+            // Write byte array
+            fprintf(header, "static const unsigned char %s_DATA[%ld] = {\n", atlasPathMacro, pngSize);
+            for (long i = 0; i < pngSize; i++) {
+                if (i % 16 == 0) fprintf(header, "    ");
+                fprintf(header, "0x%02x", pngData[i]);
+                if (i < pngSize - 1) fprintf(header, ",");
+                if (i % 16 == 15 || i == pngSize - 1) fprintf(header, "\n");
+                else fprintf(header, " ");
+            }
+            fprintf(header, "};\n\n");
+            
+            // Write helper function to load texture from embedded data
+            fprintf(header, "// Load texture from embedded PNG data\n");
+            fprintf(header, "static inline Texture2D %sLoadEmbedded(void) {\n", spritePrefix);
+            fprintf(header, "    Image img = LoadImageFromMemory(\".png\", %s_DATA, %s_DATA_SIZE);\n", atlasPathMacro, atlasPathMacro);
+            fprintf(header, "    Texture2D tex = LoadTextureFromImage(img);\n");
+            fprintf(header, "    UnloadImage(img);\n");
+            fprintf(header, "    return tex;\n");
+            fprintf(header, "}\n\n");
+            
+            free(pngData);
+            printf("Embedded %ld bytes of PNG data\n", pngSize);
+        }
+        fclose(pngFile);
+    }
     
     fprintf(header, "typedef struct {\n");
     fprintf(header, "    const char *name;\n");
@@ -216,6 +256,9 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
     fprintf(f, "#if TILE_SIZE == 8\n");
     fprintf(f, "    #include \"atlas8x8.h\"\n");
     fprintf(f, "    #define ATLAS_PATH ATLAS8X8_PATH\n");
+    fprintf(f, "    #define ATLAS_DATA ATLAS8X8_PATH_DATA\n");
+    fprintf(f, "    #define ATLAS_DATA_SIZE ATLAS8X8_PATH_DATA_SIZE\n");
+    fprintf(f, "    #define AtlasLoadEmbedded SPRITE8X8LoadEmbedded\n");
     for (int i = 0; i < nameCount; i++) {
         fprintf(f, "    #define SPRITE_%s SPRITE8X8_%s\n", names[i], names[i]);
     }
@@ -224,6 +267,9 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
     fprintf(f, "#elif TILE_SIZE == 16\n");
     fprintf(f, "    #include \"atlas16x16.h\"\n");
     fprintf(f, "    #define ATLAS_PATH ATLAS16X16_PATH\n");
+    fprintf(f, "    #define ATLAS_DATA ATLAS16X16_PATH_DATA\n");
+    fprintf(f, "    #define ATLAS_DATA_SIZE ATLAS16X16_PATH_DATA_SIZE\n");
+    fprintf(f, "    #define AtlasLoadEmbedded SPRITE16X16LoadEmbedded\n");
     for (int i = 0; i < nameCount; i++) {
         fprintf(f, "    #define SPRITE_%s SPRITE16X16_%s\n", names[i], names[i]);
     }

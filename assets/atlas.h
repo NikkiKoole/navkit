@@ -12,6 +12,9 @@
 #if TILE_SIZE == 8
     #include "atlas8x8.h"
     #define ATLAS_PATH ATLAS8X8_PATH
+    #define ATLAS_DATA ATLAS8X8_PATH_DATA
+    #define ATLAS_DATA_SIZE ATLAS8X8_PATH_DATA_SIZE
+    #define AtlasLoadEmbedded SPRITE8X8LoadEmbedded
     #define SPRITE_crate_orange SPRITE8X8_crate_orange
     #define SPRITE_carpet SPRITE8X8_carpet
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
@@ -34,6 +37,9 @@
 #elif TILE_SIZE == 16
     #include "atlas16x16.h"
     #define ATLAS_PATH ATLAS16X16_PATH
+    #define ATLAS_DATA ATLAS16X16_PATH_DATA
+    #define ATLAS_DATA_SIZE ATLAS16X16_PATH_DATA_SIZE
+    #define AtlasLoadEmbedded SPRITE16X16LoadEmbedded
     #define SPRITE_crate_orange SPRITE16X16_crate_orange
     #define SPRITE_carpet SPRITE16X16_carpet
     #define SPRITE_crate_blue SPRITE16X16_crate_blue

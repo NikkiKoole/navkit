@@ -454,7 +454,7 @@ int main(int argc, char** argv) {
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
-    atlas = LoadTexture(ATLAS_PATH);
+    atlas = AtlasLoadEmbedded();
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
     Font comicFont = LoadFont("assets/fonts/comic.fnt");
     ui_init(&comicFont);
