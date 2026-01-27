@@ -7,15 +7,15 @@
 ╚═╝  ╚═══╝╚═╝  ╚═╝  ╚═══╝  ╚═╝  ╚═╝╚═╝   ╚═╝       └───────┴───┘
 ```
 
-~~2D~~ 3D navigation and movement for games. C + raylib.
+3D grid-based pathfinding and movement for games. C + raylib.
 
 ## Structure
 
 | Directory | Description |
 |-----------|-------------|
-| `/pathing` | Grid pathfinding (A*, HPA*, JPS), movers, wall handling, terrain — [overview](documentation/overview.md) |
-| `/steering-experiment` | Steering behaviors, flocking, social force model — [reference](documentation/done/steering.md) |
-| `/crowd-experiment` | Crowd simulation testbed |
+| **`/pathing`** | **Main project** — Grid pathfinding (A*, HPA*, JPS), movers, jobs, items, stockpiles, water/fire/smoke simulation — [overview](documentation/overview.md) |
+| `/steering-experiment` | Old experiment: steering behaviors, flocking, social force model |
+| `/crowd-experiment` | Old experiment: crowd simulation testbed |
 | `/tools` | Atlas generator |
 | `/documentation` | Design docs — [todo](documentation/todo.md) |
 
