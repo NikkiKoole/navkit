@@ -1107,8 +1107,8 @@ describe(water_freezing) {
         // Place full water
         SetWaterLevel(1, 0, 0, WATER_MAX_LEVEL);
         
-        // Set temperature to freezing
-        SetTemperature(1, 0, 0, 40);  // Below TEMP_WATER_FREEZES (50)
+        // Set temperature to freezing (0°C or below)
+        SetTemperature(1, 0, 0, -10);  // Below 0°C (freezing point)
         
         // Update freezing
         UpdateWaterFreezing();
@@ -1127,8 +1127,8 @@ describe(water_freezing) {
         // Place partial water (level 5)
         SetWaterLevel(1, 0, 0, 5);
         
-        // Set temperature to freezing
-        SetTemperature(1, 0, 0, 40);
+        // Set temperature to freezing (0°C or below)
+        SetTemperature(1, 0, 0, -10);
         
         // Update freezing
         UpdateWaterFreezing();

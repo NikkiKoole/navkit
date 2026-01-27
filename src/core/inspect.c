@@ -215,8 +215,8 @@ static void print_cell(int x, int y, int z) {
         printf("Smoke level: %d/7\n", smoke.level);
     }
     
-    // Temperature
-    printf("Temperature: %d C", temp.current);
+    // Temperature (decode index to Celsius)
+    printf("Temperature: %d C (index %d)", DecodeTemp(temp.current), temp.current);
     if (temp.isHeatSource) printf(" [HEAT SOURCE]");
     if (temp.isColdSource) printf(" [COLD SOURCE]");
     printf("\n");

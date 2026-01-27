@@ -285,20 +285,20 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     }
     snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
 
-    // Temperature info (value IS Celsius, -128 to 127)
+    // Temperature info (GetTemperature returns Celsius)
     int temp = GetTemperature(cellX, cellY, cellZ);
-    int ambient = GetAmbientTemperature(cellZ);
-    int diff = temp - ambient;
+    int ambientCelsius = DecodeTemp((uint8_t)GetAmbientTemperature(cellZ));
+    int diff = temp - ambientCelsius;
     snprintf(lines[lineCount++], sizeof(lines[0]), "Temp: %d C", temp);
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Ambient: %d C [%+d]", ambient, diff);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Ambient: %d C [%+d]", ambientCelsius, diff);
 
-    // Temperature sources
+    // Temperature sources (decode index to Celsius for display)
     TempCell* tempCell = &temperatureGrid[cellZ][cellY][cellX];
     if (tempCell->isHeatSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d C)", heatSourceTemp);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "HEAT SOURCE (%d C)", DecodeTemp((uint8_t)heatSourceTemp));
     }
     if (tempCell->isColdSource) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d C)", coldSourceTemp);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "COLD SOURCE (%d C)", DecodeTemp((uint8_t)coldSourceTemp));
     }
 
     // Insulation tier

@@ -449,8 +449,9 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Show Overlay", &showTemperatureOverlay,
             "Show temperature overlay: blue=cold, red=hot. Neutral temperatures are transparent.");
         y += 22;
-        DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -128, 127,
-            TextFormat("Current: %d C. Range -128 to 127. 0=freeze, 20=room, 100=boil, 127=kiln.", ambientSurfaceTemp));
+        DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, 0, 150,
+            TextFormat("Index %d = %d C. 0=-50C, 25=0C freeze, 35=20C room, 75=100C boil, 150=250C max Band A.", 
+                       ambientSurfaceTemp, DecodeTemp((uint8_t)ambientSurfaceTemp)));
         y += 22;
         DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
             "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");

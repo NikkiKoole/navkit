@@ -25,8 +25,6 @@
 - # bug3 [ ]  after a mover has built a wall, it canot stand on that wall anymore
   - , and sometimes pops to illogical places. maybe we should make it so it will remembr the tile it was standing on before it got to this tile, and will defualt to that direction ?
   - **Rolled back:** Attempted to add `prevCellX/prevCellY` to Mover struct to track where mover came from, but this adds 8 bytes per mover (80KB for 10K movers) - not worth it given the existing mover memory concerns (118MB total). Could revisit if we reduce mover memory elsewhere first.
-
-
   
 - # bug5 [ ] when bringing items to a stockpile
   - sometims the wrong (lower priority) stockpile is picked first, then mover stands there with block, and then moves to the best option, i see the same happenings with designing a build, and minig some wall.
