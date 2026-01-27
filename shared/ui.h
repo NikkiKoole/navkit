@@ -69,6 +69,19 @@ void CycleOption(float x, float y, const char* label, const char** options, int 
 // Collapsible section header - returns true if section is open
 bool SectionHeader(float x, float y, const char* label, bool* open);
 
+// ============================================================================
+// TOOLTIP VARIANTS - same as above but show tooltip on hover
+// ============================================================================
+
+// Draggable int with tooltip
+bool DraggableIntT(float x, float y, const char* label, int* value, float speed, int min, int max, const char* tooltip);
+
+// Toggle boolean with tooltip
+void ToggleBoolT(float x, float y, const char* label, bool* value, const char* tooltip);
+
+// Draw pending tooltip (call at END of frame, after all UI)
+void DrawTooltip(void);
+
 #endif // UI_H
 
 // ============================================================================
@@ -451,6 +464,173 @@ void DrawMessages(int screenWidth, int screenHeight) {
         
         DrawTextShadow(msg->text, x, y, 16, col);
         y -= MSG_LINE_HEIGHT;
+    }
+}
+
+// ============================================================================
+// TOOLTIP SYSTEM
+// ============================================================================
+
+#define TOOLTIP_MAX_LENGTH 256
+#define TOOLTIP_HOVER_DELAY 0.3f  // seconds before tooltip appears
+
+static char g_tooltip_text[TOOLTIP_MAX_LENGTH] = {0};
+static float g_tooltip_hover_time = 0.0f;
+static Vector2 g_tooltip_mouse_pos = {0, 0};
+
+// Internal: set tooltip to show (called by tooltip variants)
+static void ui_set_tooltip(const char* text) {
+    Vector2 mouse = GetMousePosition();
+    
+    // Reset hover time if mouse moved significantly
+    float dx = mouse.x - g_tooltip_mouse_pos.x;
+    float dy = mouse.y - g_tooltip_mouse_pos.y;
+    if (dx*dx + dy*dy > 25.0f) {  // 5 pixel threshold
+        g_tooltip_hover_time = 0.0f;
+        g_tooltip_mouse_pos = mouse;
+    }
+    
+    g_tooltip_hover_time += GetFrameTime();
+    snprintf(g_tooltip_text, TOOLTIP_MAX_LENGTH, "%s", text);
+}
+
+void DrawTooltip(void) {
+    if (g_tooltip_text[0] == '\0') return;
+    if (g_tooltip_hover_time < TOOLTIP_HOVER_DELAY) {
+        g_tooltip_text[0] = '\0';
+        return;
+    }
+    
+    Vector2 mouse = GetMousePosition();
+    int fontSize = 14;
+    int padding = 6;
+    int maxWidth = 250;
+    
+    // Word-wrap: split into lines
+    char lines[8][128];
+    int lineCount = 0;
+    int maxLineWidth = 0;
+    
+    const char* src = g_tooltip_text;
+    while (*src && lineCount < 8) {
+        // Copy words until line is full
+        char* dst = lines[lineCount];
+        int lineLen = 0;
+        int lastSpace = -1;
+        
+        while (*src && lineLen < 127) {
+            if (*src == ' ') lastSpace = lineLen;
+            dst[lineLen++] = *src++;
+            dst[lineLen] = '\0';
+            
+            int w = MeasureTextUI(dst, fontSize);
+            if (w > maxWidth && lastSpace > 0) {
+                // Wrap at last space
+                dst[lastSpace] = '\0';
+                src -= (lineLen - lastSpace - 1);
+                lineLen = lastSpace;
+                break;
+            }
+        }
+        
+        int w = MeasureTextUI(dst, fontSize);
+        if (w > maxLineWidth) maxLineWidth = w;
+        lineCount++;
+    }
+    
+    int boxW = maxLineWidth + padding * 2;
+    int boxH = lineCount * (fontSize + 2) + padding * 2;
+    
+    // Position tooltip near mouse, keep on screen
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+    if (tx < 0) tx = 0;
+    if (ty < 0) ty = 0;
+    
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){30, 30, 30, 230});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
+    
+    // Draw text lines
+    int textY = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        DrawTextShadow(lines[i], tx + padding, textY, fontSize, WHITE);
+        textY += fontSize + 2;
+    }
+    
+    // Clear tooltip for next frame
+    g_tooltip_text[0] = '\0';
+}
+
+bool DraggableIntT(float x, float y, const char* label, int* value, float speed, int min, int max, const char* tooltip) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %d", label, *value);
+
+    int textWidth = MeasureText(buf, 18);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) {
+        g_ui_draggableAnyHovered = true;
+        if (tooltip) ui_set_tooltip(tooltip);
+    }
+
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    static bool dragging = false;
+    static int* dragTarget = NULL;
+    static float accumulator = 0;
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragging = true;
+        dragTarget = value;
+        accumulator = 0;
+        g_ui_clickConsumed = true;
+    }
+
+    if (dragging && dragTarget == value) {
+        accumulator += GetMouseDelta().x * speed * 0.1f;
+        int delta = (int)accumulator;
+        if (delta != 0) {
+            *value += delta;
+            accumulator -= delta;
+        }
+        if (*value < min) *value = min;
+        if (*value > max) *value = max;
+
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            dragging = false;
+            dragTarget = NULL;
+        }
+        return true;
+    }
+    return false;
+}
+
+void ToggleBoolT(float x, float y, const char* label, bool* value, const char* tooltip) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
+
+    int textWidth = MeasureText(buf, 18);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) {
+        g_ui_toggleAnyHovered = true;
+        if (tooltip) ui_set_tooltip(tooltip);
+    }
+
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        *value = !*value;
+        g_ui_clickConsumed = true;
     }
 }
 

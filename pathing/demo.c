@@ -2837,11 +2837,14 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Water", &sectionWater)) {
         y += 18;
-        ToggleBool(x, y, "Enabled", &waterEnabled);
+        ToggleBoolT(x, y, "Enabled", &waterEnabled,
+            "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends.");
         y += 22;
-        ToggleBool(x, y, "Evaporation", &waterEvaporationEnabled);
+        ToggleBoolT(x, y, "Evaporation", &waterEvaporationEnabled,
+            "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
         y += 22;
-        DraggableInt(x, y, "Evap Rate (1/N)", &waterEvapChance, 1.0f, 1, 1000);
+        DraggableIntT(x, y, "Evap Rate (1/N)", &waterEvapChance, 1.0f, 1, 1000,
+            "Evaporation chance per tick for level-1 water. Higher = slower evaporation. At 100, there's a 1% chance each tick.");
         y += 22;
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
@@ -2853,13 +2856,17 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Fire", &sectionFire)) {
         y += 18;
-        ToggleBool(x, y, "Enabled", &fireEnabled);
+        ToggleBoolT(x, y, "Enabled", &fireEnabled,
+            "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
         y += 22;
-        DraggableInt(x, y, "Spread Chance (1/N)", &fireSpreadChance, 1.0f, 1, 50);
+        DraggableIntT(x, y, "Spread Chance (1/N)", &fireSpreadChance, 1.0f, 1, 50,
+            "Base chance for fire to spread to adjacent flammable cells. Lower = faster spread. Higher fire intensity also increases spread chance.");
         y += 22;
-        DraggableInt(x, y, "Fuel Consumption", &fireFuelConsumption, 1.0f, 1, 50);
+        DraggableIntT(x, y, "Fuel Consumption", &fireFuelConsumption, 1.0f, 1, 50,
+            "Fire consumes 1 fuel every N ticks. Lower = fire burns out faster. Grass has 3 fuel, dirt has 1. When fuel runs out, the cell is marked burned.");
         y += 22;
-        DraggableInt(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100);
+        DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
+            "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
         y += 22;
         if (PushButton(x, y, "Clear Fire")) {
             ClearFire();
@@ -2871,13 +2878,17 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Smoke", &sectionSmoke)) {
         y += 18;
-        ToggleBool(x, y, "Enabled", &smokeEnabled);
+        ToggleBoolT(x, y, "Enabled", &smokeEnabled,
+            "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
         y += 22;
-        DraggableInt(x, y, "Rise Chance (1/N)", &smokeRiseChance, 1.0f, 1, 20);
+        DraggableIntT(x, y, "Rise Chance (1/N)", &smokeRiseChance, 1.0f, 1, 20,
+            "Chance per tick for smoke to rise one level. Lower = faster rising. At 2, smoke has 50% chance to rise each tick.");
         y += 22;
-        DraggableInt(x, y, "Dissipation Rate", &smokeDissipationRate, 1.0f, 1, 100);
+        DraggableIntT(x, y, "Dissipation Rate", &smokeDissipationRate, 1.0f, 1, 100,
+            "Smoke level decreases by 1 every N ticks. Higher = smoke lingers longer. Trapped smoke dissipates slower than open-air smoke.");
         y += 22;
-        DraggableInt(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10);
+        DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
+            "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke per tick.");
         y += 22;
         if (PushButton(x, y, "Clear Smoke")) {
             ClearSmoke();
@@ -2889,17 +2900,23 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {
         y += 18;
-        ToggleBool(x, y, "Enabled", &groundWearEnabled);
+        ToggleBoolT(x, y, "Enabled", &groundWearEnabled,
+            "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone.");
         y += 22;
-        DraggableInt(x, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100);
+        DraggableIntT(x, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
+            "Wear added each time a mover steps on a tile. Higher = paths form faster. Combined with thresholds, controls how many passes to create a path.");
         y += 22;
-        DraggableInt(x, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000);
+        DraggableIntT(x, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
+            "Wear level at which grass becomes dirt. At 1000 with trample=1, it takes 1000 mover steps to wear a path.");
         y += 22;
-        DraggableInt(x, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000);
+        DraggableIntT(x, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
+            "Wear level below which dirt recovers to grass. Should be lower than Grass->Dirt to create hysteresis and stable paths.");
         y += 22;
-        DraggableInt(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100);
+        DraggableIntT(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
+            "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
         y += 22;
-        DraggableInt(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500);
+        DraggableIntT(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500,
+            "Decay only happens every N ticks. Higher = slower recovery. At 50, wear decays 50x slower than trampling occurs.");
         y += 22;
         if (PushButton(x, y, "Clear Wear")) {
             ClearGroundWear();
@@ -3829,6 +3846,9 @@ int main(int argc, char** argv) {
                 }
             }
         }
+
+        // Draw UI parameter tooltips (last, so they appear on top)
+        DrawTooltip();
 
         PROFILE_BEGIN(EndDraw);
         EndDrawing();
