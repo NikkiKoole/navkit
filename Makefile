@@ -74,6 +74,17 @@ test_fire: $(BINDIR)
 # Run all tests
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire
 
+# Benchmark targets - all use test_unity.c for shared game logic
+bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c
+
+# Job system benchmark
+bench_jobs: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_jobs_SRC) $(LDFLAGS)
+	./$(BINDIR)/bench_jobs
+
+# Run all benchmarks
+bench: bench_jobs
+
 # Aliases for convenience (make path, make steer, make crowd)
 path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
@@ -115,4 +126,4 @@ asan: LDFLAGS += -fsanitize=address
 asan: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas path8 path16
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear path steer crowd asan debug fast atlas path8 path16 bench bench_jobs
