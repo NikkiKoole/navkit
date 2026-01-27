@@ -850,16 +850,16 @@ void HandleInput(void) {
     
     // Quick save (F5)
     if (IsKeyPressed(KEY_F5)) {
-        if (SaveWorld("debug_save.bin")) {
-            AddMessage("World saved to debug_save.bin", GREEN);
+        system("mkdir -p saves");
+        if (SaveWorld("saves/debug_save.bin")) {
+            AddMessage("World saved to saves/debug_save.bin", GREEN);
             
             // Also archive a gzipped copy with timestamp
-            system("mkdir -p saves");
             time_t now = time(NULL);
             struct tm* t = localtime(&now);
             char cmd[256];
             snprintf(cmd, sizeof(cmd), 
-                "gzip -c debug_save.bin > saves/%04d-%02d-%02d_%02d-%02d-%02d.bin.gz",
+                "gzip -c saves/debug_save.bin > saves/%04d-%02d-%02d_%02d-%02d-%02d.bin.gz",
                 t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
                 t->tm_hour, t->tm_min, t->tm_sec);
             system(cmd);
@@ -868,8 +868,8 @@ void HandleInput(void) {
     
     // Quick load (F6)
     if (IsKeyPressed(KEY_F6)) {
-        if (LoadWorld("debug_save.bin")) {
-            AddMessage("World loaded from debug_save.bin", GREEN);
+        if (LoadWorld("saves/debug_save.bin")) {
+            AddMessage("World loaded from saves/debug_save.bin", GREEN);
         }
     }
 }

@@ -313,7 +313,7 @@ static void get_basename_without_gz(const char* path, char* out, size_t outSize)
 // Returns 0 on success, 1 on error
 int InspectSaveFile(int argc, char** argv) {
     // Parse arguments
-    const char* filename = "debug_save.bin";
+    const char* filename = "saves/debug_save.bin";
     int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1;
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false;
