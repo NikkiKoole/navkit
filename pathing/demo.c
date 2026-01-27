@@ -65,6 +65,11 @@ bool placingWaterSource = false;
 bool placingWaterDrain = false;
 int waterStartX = 0, waterStartY = 0;
 
+// Gather zone state (G key to activate, left-drag to draw, right-drag to erase)
+bool drawingGatherZone = false;
+bool erasingGatherZone = false;
+int gatherZoneStartX = 0, gatherZoneStartY = 0;
+
 // Pathfinding settings
 int pathAlgorithm = 1;  // Default to HPA*
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -777,6 +782,26 @@ void DrawItems(void) {
         // Tint reserved items slightly darker
         Color tint = (item->reservedBy >= 0) ? (Color) { 200, 200, 200, 255 } : WHITE;
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+    }
+}
+
+void DrawGatherZones(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_GATHER_ZONES; i++) {
+        GatherZone* gz = &gatherZones[i];
+        if (!gz->active) continue;
+        if (gz->z != viewZ) continue;
+
+        float sx = offset.x + gz->x * size;
+        float sy = offset.y + gz->y * size;
+        float w = gz->width * size;
+        float h = gz->height * size;
+
+        // Draw orange tinted overlay
+        DrawRectangle((int)sx, (int)sy, (int)w, (int)h, (Color){255, 180, 50, 40});
+        DrawRectangleLinesEx((Rectangle){sx, sy, w, h}, 2.0f, (Color){255, 180, 50, 180});
     }
 }
 
@@ -1707,6 +1732,83 @@ void HandleInput(void) {
     } else {
         drawingStockpile = false;
         erasingStockpile = false;
+    }
+
+    // Gather zone mode (G key + left-drag to draw, right-drag to erase)
+    if (IsKeyDown(KEY_G)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int x = (int)gp.x, y = (int)gp.y;
+        int z = currentViewZ;
+
+        // Left mouse - draw gather zone
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            drawingGatherZone = true;
+            gatherZoneStartX = x;
+            gatherZoneStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && drawingGatherZone) {
+            drawingGatherZone = false;
+            int x1 = gatherZoneStartX < x ? gatherZoneStartX : x;
+            int y1 = gatherZoneStartY < y ? gatherZoneStartY : y;
+            int x2 = gatherZoneStartX > x ? gatherZoneStartX : x;
+            int y2 = gatherZoneStartY > y ? gatherZoneStartY : y;
+
+            if (x1 < 0) x1 = 0;
+            if (y1 < 0) y1 = 0;
+            if (x2 >= gridWidth) x2 = gridWidth - 1;
+            if (y2 >= gridHeight) y2 = gridHeight - 1;
+
+            int width = x2 - x1 + 1;
+            int height = y2 - y1 + 1;
+
+            int idx = CreateGatherZone(x1, y1, z, width, height);
+            if (idx >= 0) {
+                AddMessage(TextFormat("Created gather zone %dx%d", width, height), ORANGE);
+            } else {
+                AddMessage("Max gather zones reached!", RED);
+            }
+        }
+
+        // Right mouse - erase gather zones
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            erasingGatherZone = true;
+            gatherZoneStartX = x;
+            gatherZoneStartY = y;
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && erasingGatherZone) {
+            erasingGatherZone = false;
+            int x1 = gatherZoneStartX < x ? gatherZoneStartX : x;
+            int y1 = gatherZoneStartY < y ? gatherZoneStartY : y;
+            int x2 = gatherZoneStartX > x ? gatherZoneStartX : x;
+            int y2 = gatherZoneStartY > y ? gatherZoneStartY : y;
+
+            // Delete any gather zones that overlap with the erase area
+            int deleted = 0;
+            for (int i = MAX_GATHER_ZONES - 1; i >= 0; i--) {
+                if (!gatherZones[i].active || gatherZones[i].z != z) continue;
+
+                int gx1 = gatherZones[i].x;
+                int gy1 = gatherZones[i].y;
+                int gx2 = gx1 + gatherZones[i].width - 1;
+                int gy2 = gy1 + gatherZones[i].height - 1;
+
+                // Check overlap
+                if (x1 <= gx2 && x2 >= gx1 && y1 <= gy2 && y2 >= gy1) {
+                    DeleteGatherZone(i);
+                    deleted++;
+                }
+            }
+            if (deleted > 0) {
+                AddMessage(TextFormat("Deleted %d gather zone%s", deleted, deleted > 1 ? "s" : ""), ORANGE);
+            }
+        }
+
+        return;  // Skip normal tool interactions while G is held
+    } else {
+        drawingGatherZone = false;
+        erasingGatherZone = false;
     }
 
     // Mining designation mode (M key + left-drag to designate, right-drag to cancel)
@@ -2916,6 +3018,9 @@ int main(void) {
         DrawCellGrid();
         DrawWater();
         PROFILE_END(DrawCells);
+        if (IsKeyDown(KEY_G)) {
+            DrawGatherZones();
+        }
         DrawStockpileTiles();
         DrawHaulDestinations();
         DrawStockpileItems();
@@ -3002,6 +3107,32 @@ int main(void) {
             }
         }
 
+        // Draw gather zone preview while dragging (G key)
+        if (IsKeyDown(KEY_G) && (drawingGatherZone || erasingGatherZone)) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            int x1 = gatherZoneStartX < x ? gatherZoneStartX : x;
+            int y1 = gatherZoneStartY < y ? gatherZoneStartY : y;
+            int x2 = gatherZoneStartX > x ? gatherZoneStartX : x;
+            int y2 = gatherZoneStartY > y ? gatherZoneStartY : y;
+            float size = CELL_SIZE * zoom;
+
+            float px = offset.x + x1 * size;
+            float py = offset.y + y1 * size;
+            float pw = (x2 - x1 + 1) * size;
+            float ph = (y2 - y1 + 1) * size;
+
+            if (drawingGatherZone) {
+                // Orange for creating gather zone
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){255, 180, 50, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, ORANGE);
+            } else {
+                // Red for erasing gather zones
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+            }
+        }
+
         // Draw mining designation preview while dragging (M key)
         if (IsKeyDown(KEY_M) && (designatingMining || cancellingMining)) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -3076,6 +3207,8 @@ int main(void) {
                 "L + drag      Draw ladder",
                 "S + L-drag    Draw stockpile",
                 "S + R-drag    Erase stockpile",
+                "G + L-drag    Draw gather zone",
+                "G + R-drag    Erase gather zone",
                 "M + L-drag    Designate mining",
                 "M + R-drag    Cancel mining",
                 "B + L-drag    Designate building",

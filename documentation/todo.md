@@ -23,10 +23,10 @@ Small remaining items and future improvements.
   - Unreachable item cooldown, safe-drop on cancellation
   - Debug tooltips (stockpile hover, mover hover when paused)
 - [ ] **Jobs next phase** - See [jobs-roadmap.md](jobs-roadmap.md) for full plan
-  - [ ] Stockpile/gather zone UI (draw, remove, configure)
-  - [ ] Mining/digging (designations, terrain modification)
-  - [ ] Architecture refactor (Job pool, WorkGivers) - optional but recommended before construction , we did this, the workgivers are an issue needs adressing
-  - [ ] Construction (blueprints, material delivery, chained jobs)
+  - [x] Stockpile/gather zone UI (draw, remove, configure) - DONE. S+drag for stockpiles, G+drag for gather zones
+  - [x] Mining/digging (designations, terrain modification) - DONE. M+drag to designate, movers mine walls
+  - [x] Architecture refactor (Job pool, WorkGivers) - DONE. WorkGivers implemented (some issues remain)
+  - [x] Construction (blueprints, material delivery, chained jobs) - DONE. B+drag for blueprints, movers haul materials and build
   - [ ] Simple crafting (workshops, recipes)
 - [ ] **Containers** - Portable storage (chests, barrels, wagons, bin, box, bags, 100 seeds go in 1 bags ,10  bags in  1 bins). Containers are items themselves (can be hauled, stored in stockpiles) but also hold other items inside. Design questions: filters per container, hauling full containers (weight?), contents vs stockpile stats.
 
