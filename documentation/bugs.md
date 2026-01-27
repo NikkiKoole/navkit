@@ -1,6 +1,3 @@
-these bugs should be reproducable, testable, failing in test and then fixed by code and stress test.
-i think we for starters need to be able to completely copy paste a world, inclucing stockpiles, items, movers and state. then reproducing and testing becomes much easier.
-
 - # bug1 [?] MOVIN-TO_ITEM STUCKNESS
  - Dont really knwo how to reproduce yet, but sometimes movers get 'stuck' in a moving-to-item statse, the object the want can be right next to them.
  - my guess is it thinks it has arrived, or something, or the radius to reach is not big enough, maybe it should show some info about those sort of things in the mover hover popup? might help debuging it further.

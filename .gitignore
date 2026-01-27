@@ -3,3 +3,7 @@ bin/
 
 # macOS
 .DS_Store
+
+# Save files
+debug_save.bin
+debug_save.bin.gz

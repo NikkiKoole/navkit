@@ -16,7 +16,7 @@ TARGETS := steer crowd path
 # Source files for each target
 steer_SRC       := steering/demo.c steering/steering.c
 crowd_SRC       := crowd-experiment/demo.c
-path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c
+path_SRC        := pathing/demo.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c pathing/mover.c pathing/items.c pathing/jobs.c pathing/stockpiles.c pathing/designations.c pathing/water.c pathing/groundwear.c pathing/inspect.c
 
 # Test targets
 test_pathing_SRC  := tests/test_pathfinding.c pathing/grid.c pathing/terrain.c pathing/pathfinding.c

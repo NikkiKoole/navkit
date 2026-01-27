@@ -55,3 +55,26 @@ make path16                 # build with 16x16 tiles
 ```
 
 Requires raylib.
+
+## Save/Load & Inspector
+
+In-game:
+- **F5** - Quick save to `debug_save.bin` + archived copy to `saves/YYYY-MM-DD_HH-MM-SS.bin.gz`
+- **F6** - Quick load from `debug_save.bin`
+
+Inspect save files from the command line (works with `.bin` and `.gz` files):
+
+```bash
+./bin/path --inspect debug_save.bin                    # summary
+./bin/path --inspect saves/bug_name.bin.gz             # works with gzipped files too
+./bin/path --inspect debug_save.bin --mover 0          # mover details
+./bin/path --inspect debug_save.bin --item 5           # item details
+./bin/path --inspect debug_save.bin --job 3            # job details
+./bin/path --inspect debug_save.bin --stockpile 0      # stockpile details
+./bin/path --inspect debug_save.bin --cell 10,20,0     # cell at (x,y,z)
+./bin/path --inspect debug_save.bin --stuck            # movers stuck > 2s
+./bin/path --inspect debug_save.bin --reserved         # items with reservations
+./bin/path --inspect debug_save.bin --jobs-active      # all active jobs
+```
+
+Bug save workflow: F5 to save → rename `saves/*.bin.gz` to something meaningful → inspect later.

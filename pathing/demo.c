@@ -9,12 +9,14 @@
 #include "designations.h"
 #include "water.h"
 #include "groundwear.h"
+#include "inspect.h"
 #define PROFILER_IMPLEMENTATION
 #include "../shared/profiler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #define UI_IMPLEMENTATION
 #include "../shared/ui.h"
@@ -36,6 +38,10 @@ Texture2D atlas;
 bool showGraph = false;
 bool showEntrances = false;
 int currentViewZ = 0;  // Which z-level we're viewing
+
+// Forward declarations for save/load
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 
 // Room drawing state (R key to activate, drag to draw)
 bool drawingRoom = false;
@@ -2199,6 +2205,31 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_SPACE)) {
         paused = !paused;
     }
+    
+    // Quick save (F5)
+    if (IsKeyPressed(KEY_F5)) {
+        if (SaveWorld("debug_save.bin")) {
+            AddMessage("World saved to debug_save.bin", GREEN);
+            
+            // Also archive a gzipped copy with timestamp
+            system("mkdir -p saves");
+            time_t now = time(NULL);
+            struct tm* t = localtime(&now);
+            char cmd[256];
+            snprintf(cmd, sizeof(cmd), 
+                "gzip -c debug_save.bin > saves/%04d-%02d-%02d_%02d-%02d-%02d.bin.gz",
+                t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                t->tm_hour, t->tm_min, t->tm_sec);
+            system(cmd);
+        }
+    }
+    
+    // Quick load (F6)
+    if (IsKeyPressed(KEY_F6)) {
+        if (LoadWorld("debug_save.bin")) {
+            AddMessage("World loaded from debug_save.bin", GREEN);
+        }
+    }
 }
 
 void DrawUI(void) {
@@ -2934,7 +2965,217 @@ void DrawProfilerPanel(float rightEdge, float y) {
 }
 #endif
 
-int main(void) {
+// ============================================================================
+// Save/Load World (for debugging)
+// ============================================================================
+
+#define SAVE_VERSION 1
+#define SAVE_MAGIC 0x4E41564B  // "NAVK"
+
+bool SaveWorld(const char* filename) {
+    FILE* f = fopen(filename, "wb");
+    if (!f) {
+        AddMessage(TextFormat("Failed to open %s for writing", filename), RED);
+        return false;
+    }
+    
+    // Header
+    uint32_t magic = SAVE_MAGIC;
+    uint32_t version = SAVE_VERSION;
+    fwrite(&magic, sizeof(magic), 1, f);
+    fwrite(&version, sizeof(version), 1, f);
+    
+    // Grid dimensions
+    fwrite(&gridWidth, sizeof(gridWidth), 1, f);
+    fwrite(&gridHeight, sizeof(gridHeight), 1, f);
+    fwrite(&gridDepth, sizeof(gridDepth), 1, f);
+    fwrite(&chunkWidth, sizeof(chunkWidth), 1, f);
+    fwrite(&chunkHeight, sizeof(chunkHeight), 1, f);
+    
+    // Grid cells
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(grid[z][y], sizeof(CellType), gridWidth, f);
+        }
+    }
+    
+    // Water grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+        }
+    }
+    
+    // Designations
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(designations[z][y], sizeof(Designation), gridWidth, f);
+        }
+    }
+    
+    // Items
+    fwrite(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
+    fwrite(items, sizeof(Item), itemHighWaterMark, f);
+    
+    // Stockpiles
+    fwrite(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    
+    // Gather zones
+    fwrite(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);
+    fwrite(gatherZones, sizeof(GatherZone), MAX_GATHER_ZONES, f);
+    
+    // Blueprints
+    fwrite(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    
+    // Movers
+    fwrite(&moverCount, sizeof(moverCount), 1, f);
+    fwrite(movers, sizeof(Mover), moverCount, f);
+    
+    // Jobs
+    fwrite(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
+    fwrite(&activeJobCount, sizeof(activeJobCount), 1, f);
+    fwrite(jobs, sizeof(Job), jobHighWaterMark, f);
+    fwrite(jobIsActive, sizeof(bool), jobHighWaterMark, f);
+    fwrite(activeJobList, sizeof(int), activeJobCount, f);
+    
+    // View state
+    fwrite(&currentViewZ, sizeof(currentViewZ), 1, f);
+    fwrite(&zoom, sizeof(zoom), 1, f);
+    fwrite(&offset, sizeof(offset), 1, f);
+    
+    fclose(f);
+    return true;
+}
+
+bool LoadWorld(const char* filename) {
+    FILE* f = fopen(filename, "rb");
+    if (!f) {
+        AddMessage(TextFormat("Failed to open %s", filename), RED);
+        return false;
+    }
+    
+    // Check header
+    uint32_t magic, version;
+    fread(&magic, sizeof(magic), 1, f);
+    fread(&version, sizeof(version), 1, f);
+    
+    if (magic != SAVE_MAGIC) {
+        AddMessage("Invalid save file (bad magic)", RED);
+        fclose(f);
+        return false;
+    }
+    
+    if (version != SAVE_VERSION) {
+        AddMessage(TextFormat("Save version mismatch (file: %d, current: %d)", version, SAVE_VERSION), RED);
+        fclose(f);
+        return false;
+    }
+    
+    // Grid dimensions
+    int newWidth, newHeight, newDepth, newChunkW, newChunkH;
+    fread(&newWidth, sizeof(newWidth), 1, f);
+    fread(&newHeight, sizeof(newHeight), 1, f);
+    fread(&newDepth, sizeof(newDepth), 1, f);
+    fread(&newChunkW, sizeof(newChunkW), 1, f);
+    fread(&newChunkH, sizeof(newChunkH), 1, f);
+    
+    // Check if dimensions match our allocated grids
+    if (newWidth != gridWidth || newHeight != gridHeight || newDepth != gridDepth) {
+        AddMessage(TextFormat("Grid size mismatch (%dx%dx%d vs %dx%dx%d)", 
+            newWidth, newHeight, newDepth, gridWidth, gridHeight, gridDepth), RED);
+        fclose(f);
+        return false;
+    }
+    
+    // Check chunk dimensions
+    if (newChunkW != chunkWidth || newChunkH != chunkHeight) {
+        AddMessage(TextFormat("Chunk size mismatch (%dx%d vs %dx%d)", 
+            newChunkW, newChunkH, chunkWidth, chunkHeight), RED);
+        fclose(f);
+        return false;
+    }
+    
+    // Clear current state
+    ClearMovers();
+    ClearJobs();
+    ClearGatherZones();
+    
+    // Grid cells
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(grid[z][y], sizeof(CellType), gridWidth, f);
+        }
+    }
+    
+    // Water grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(waterGrid[z][y], sizeof(WaterCell), gridWidth, f);
+        }
+    }
+    
+    // Designations
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(designations[z][y], sizeof(Designation), gridWidth, f);
+        }
+    }
+    
+    // Items
+    fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
+    fread(items, sizeof(Item), itemHighWaterMark, f);
+    
+    // Stockpiles
+    fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    
+    // Gather zones
+    fread(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);
+    fread(gatherZones, sizeof(GatherZone), MAX_GATHER_ZONES, f);
+    
+    // Blueprints
+    fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    
+    // Movers
+    fread(&moverCount, sizeof(moverCount), 1, f);
+    fread(movers, sizeof(Mover), moverCount, f);
+    
+    // Jobs
+    fread(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
+    fread(&activeJobCount, sizeof(activeJobCount), 1, f);
+    fread(jobs, sizeof(Job), jobHighWaterMark, f);
+    fread(jobIsActive, sizeof(bool), jobHighWaterMark, f);
+    fread(activeJobList, sizeof(int), activeJobCount, f);
+    
+    // View state
+    fread(&currentViewZ, sizeof(currentViewZ), 1, f);
+    fread(&zoom, sizeof(zoom), 1, f);
+    fread(&offset, sizeof(offset), 1, f);
+    
+    fclose(f);
+    
+    // Rebuild HPA* graph after loading - mark all chunks dirty
+    hpaNeedsRebuild = true;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y += chunkHeight) {
+            for (int x = 0; x < gridWidth; x += chunkWidth) {
+                MarkChunkDirty(x, y, z);
+            }
+        }
+    }
+    
+    // Rebuild spatial grids
+    BuildMoverSpatialGrid();
+    BuildItemSpatialGrid();
+    
+    return true;
+}
+
+int main(int argc, char** argv) {
+    // Check for --inspect mode (runs without GUI)
+    if (argc >= 2 && strcmp(argv[1], "--inspect") == 0) {
+        return InspectSaveFile(argc, argv);
+    }
+    
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
@@ -3221,6 +3462,8 @@ int main(void) {
                 "Space         Pause/Resume",
                 "Scroll        Zoom in/out",
                 "Middle-drag   Pan view",
+                "F5            Quick save",
+                "F6            Quick load",
             };
             int shortcutCount = sizeof(shortcuts) / sizeof(shortcuts[0]);
             int panelW = 260;
