@@ -32,6 +32,11 @@ extern float fireSpreadInterval;    // Seconds between spread attempts
 extern float fireFuelInterval;      // Seconds between fuel consumption
 extern int fireWaterReduction;      // Spread chance multiplier near water (percentage, 0-100)
 
+// Fire spread chance formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel)
+// At level 2 (min): spreadBase + 2*perLevel, at level 7 (max): spreadBase + 7*perLevel
+extern int fireSpreadBase;          // Base spread chance percentage (default: 10)
+extern int fireSpreadPerLevel;      // Additional spread chance per fire level (default: 10)
+
 // Initialize fire system
 void InitFire(void);
 

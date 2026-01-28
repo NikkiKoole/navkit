@@ -390,6 +390,20 @@ void DrawUI(void) {
         DraggableFloatT(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
             "Game-seconds between evaporation attempts for shallow water. Higher = water persists longer. At 10s, puddles last ~10 seconds.");
         y += 22;
+        
+        // Speed multipliers subsection
+        DrawTextShadow("Mover Speed in Water:", x, y, 14, GRAY);
+        y += 18;
+        DraggableFloatT(x, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
+            "Speed multiplier in shallow water (levels 1-2). At 0.85, movers move at 85% speed. Lower = slower movement.");
+        y += 22;
+        DraggableFloatT(x, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
+            "Speed multiplier in medium water (levels 3-4). At 0.6, movers move at 60% speed. Lower = slower movement.");
+        y += 22;
+        DraggableFloatT(x, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
+            "Speed multiplier in deep water (levels 5-7). At 0.35, movers move at 35% speed. Lower = slower movement.");
+        y += 22;
+        
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
         }
@@ -412,6 +426,23 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
             "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
         y += 22;
+        
+        // Spread chance formula subsection
+        DrawTextShadow("Spread Chance Formula:", x, y, 14, GRAY);
+        y += 18;
+        DraggableIntT(x, y, "Base Chance %", &fireSpreadBase, 1.0f, 0, 50,
+            "Base spread chance before fire level bonus. Formula: base + (level * perLevel). At 10%, even weak fires have some spread chance.");
+        y += 22;
+        DraggableIntT(x, y, "Per Level %", &fireSpreadPerLevel, 1.0f, 0, 30,
+            "Additional spread chance per fire level. At 10%, level 2 fire has +20%, level 7 has +70%. Higher = intense fires spread much faster.");
+        y += 22;
+        
+        // Show calculated spread chances
+        int minSpread = fireSpreadBase + (FIRE_MIN_SPREAD_LEVEL * fireSpreadPerLevel);
+        int maxSpread = fireSpreadBase + (FIRE_MAX_LEVEL * fireSpreadPerLevel);
+        DrawTextShadow(TextFormat("Level 2: %d%%, Level 7: %d%%", minSpread, maxSpread), x, y, 14, GRAY);
+        y += 18;
+        
         if (PushButton(x, y, "Clear Fire")) {
             ClearFire();
         }
@@ -498,6 +529,23 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
             TextFormat("Temperature of cold sources (ice/freezer): %d C. Water freezes at 0C.", coldSourceTemp));
         y += 22;
+        
+        // Heat physics subsection
+        DrawTextShadow("Heat Physics:", x, y, 14, GRAY);
+        y += 18;
+        DraggableIntT(x, y, "Heat Rise Boost %", &heatRiseBoost, 5.0f, 50, 300,
+            "Heat transfer boost when rising (hot air rises). At 150%, heat moves 50% faster upward. Higher = stronger convection.");
+        y += 22;
+        DraggableIntT(x, y, "Heat Sink Reduction %", &heatSinkReduction, 5.0f, 10, 100,
+            "Heat transfer reduction when sinking. At 50%, heat moves 50% slower downward. Lower = heat stays up longer.");
+        y += 22;
+        DraggableIntT(x, y, "Decay Rate %", &heatDecayPercent, 1.0f, 1, 50,
+            "Percentage of temperature difference that decays toward ambient each interval. Higher = faster return to ambient.");
+        y += 22;
+        DraggableIntT(x, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
+            "Diagonal heat transfer as percentage of orthogonal. At 70%, diagonal neighbors receive 70% as much heat. Due to ~1.4x distance.");
+        y += 22;
+        
         if (PushButton(x, y, "Reset to Ambient")) {
             ClearTemperature();
         }

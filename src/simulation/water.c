@@ -16,6 +16,11 @@ bool waterEvaporationEnabled = true;
 float waterEvapInterval = WATER_EVAP_INTERVAL_DEFAULT;
 int waterUpdateCount = 0;
 
+// Speed multipliers for movers walking through water
+float waterSpeedShallow = 0.85f;    // Level 1-2: slight slowdown (15%)
+float waterSpeedMedium = 0.6f;      // Level 3-4: noticeable slowdown (40%)
+float waterSpeedDeep = 0.35f;       // Level 5-7: major slowdown (65%)
+
 // Internal accumulator for evaporation
 static float waterEvapAccum = 0.0f;
 
@@ -150,9 +155,9 @@ float GetWaterSpeedMultiplier(int x, int y, int z) {
     // 1-2: shallow, slight slowdown
     // 3-4: medium, noticeable slowdown
     // 5-7: deep, major slowdown
-    if (level <= 2) return 0.85f;
-    if (level <= 4) return 0.6f;
-    return 0.35f;
+    if (level <= 2) return waterSpeedShallow;
+    if (level <= 4) return waterSpeedMedium;
+    return waterSpeedDeep;
 }
 
 // =============================================================================

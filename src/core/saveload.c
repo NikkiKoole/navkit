@@ -116,12 +116,17 @@ bool SaveWorld(const char* filename) {
     fwrite(&waterEnabled, sizeof(waterEnabled), 1, f);
     fwrite(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
     fwrite(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
+    fwrite(&waterSpeedShallow, sizeof(waterSpeedShallow), 1, f);
+    fwrite(&waterSpeedMedium, sizeof(waterSpeedMedium), 1, f);
+    fwrite(&waterSpeedDeep, sizeof(waterSpeedDeep), 1, f);
     
     // Fire
     fwrite(&fireEnabled, sizeof(fireEnabled), 1, f);
     fwrite(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
     fwrite(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
     fwrite(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
+    fwrite(&fireSpreadBase, sizeof(fireSpreadBase), 1, f);
+    fwrite(&fireSpreadPerLevel, sizeof(fireSpreadPerLevel), 1, f);
     
     // Smoke
     fwrite(&smokeEnabled, sizeof(smokeEnabled), 1, f);
@@ -143,6 +148,10 @@ bool SaveWorld(const char* filename) {
     fwrite(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
     fwrite(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
     fwrite(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
+    fwrite(&heatRiseBoost, sizeof(heatRiseBoost), 1, f);
+    fwrite(&heatSinkReduction, sizeof(heatSinkReduction), 1, f);
+    fwrite(&heatDecayPercent, sizeof(heatDecayPercent), 1, f);
+    fwrite(&diagonalTransferPercent, sizeof(diagonalTransferPercent), 1, f);
     
     // Ground wear
     fwrite(&groundWearEnabled, sizeof(groundWearEnabled), 1, f);
@@ -294,12 +303,17 @@ bool LoadWorld(const char* filename) {
     fread(&waterEnabled, sizeof(waterEnabled), 1, f);
     fread(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
     fread(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
+    fread(&waterSpeedShallow, sizeof(waterSpeedShallow), 1, f);
+    fread(&waterSpeedMedium, sizeof(waterSpeedMedium), 1, f);
+    fread(&waterSpeedDeep, sizeof(waterSpeedDeep), 1, f);
     
     // Fire
     fread(&fireEnabled, sizeof(fireEnabled), 1, f);
     fread(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
     fread(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
     fread(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
+    fread(&fireSpreadBase, sizeof(fireSpreadBase), 1, f);
+    fread(&fireSpreadPerLevel, sizeof(fireSpreadPerLevel), 1, f);
     
     // Smoke
     fread(&smokeEnabled, sizeof(smokeEnabled), 1, f);
@@ -321,6 +335,10 @@ bool LoadWorld(const char* filename) {
     fread(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
     fread(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
     fread(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
+    fread(&heatRiseBoost, sizeof(heatRiseBoost), 1, f);
+    fread(&heatSinkReduction, sizeof(heatSinkReduction), 1, f);
+    fread(&heatDecayPercent, sizeof(heatDecayPercent), 1, f);
+    fread(&diagonalTransferPercent, sizeof(diagonalTransferPercent), 1, f);
     
     // Ground wear
     fread(&groundWearEnabled, sizeof(groundWearEnabled), 1, f);

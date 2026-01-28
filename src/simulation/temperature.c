@@ -21,6 +21,12 @@ int insulationTier2Rate = HEAT_TRANSFER_STONE;  // 5%
 int heatSourceTemp = 200;                        // 200C (fire/furnace)
 int coldSourceTemp = -20;                        // -20C (ice/cold source)
 
+// Heat physics parameters
+int heatRiseBoost = 150;            // 150% = heat rises 50% faster
+int heatSinkReduction = 50;         // 50% = heat sinks 50% slower
+int heatDecayPercent = 10;          // Decay 10% of difference per interval
+int diagonalTransferPercent = 70;   // Diagonal is 70% of orthogonal (due to ~1.4x distance)
+
 // Internal accumulators for game-time
 static float heatTransferAccum = 0.0f;
 static float tempDecayAccum = 0.0f;
@@ -369,9 +375,9 @@ void UpdateTemperature(void) {
                         int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
                         int transferRate = GetHeatTransferRate(effectiveInsulation);
                         
-                        // 70% of orthogonal due to ~1.4x distance
+                        // Diagonal transfer is reduced due to ~1.4x distance
                         int tempDiff = neighborTemp - currentTemp;
-                        int transfer = (tempDiff * transferRate * 70) / (100 * 100);
+                        int transfer = (tempDiff * transferRate * diagonalTransferPercent) / (100 * 100);
                         
                         totalTransfer += transfer;
                         neighborCount++;
@@ -393,9 +399,9 @@ void UpdateTemperature(void) {
                         
                         // Heat rises: boost upward, reduce downward
                         if (dz > 0 && currentTemp > neighborTemp) {
-                            transfer = transfer * 150 / 100;
+                            transfer = transfer * heatRiseBoost / 100;
                         } else if (dz < 0 && currentTemp > neighborTemp) {
-                            transfer = transfer * 50 / 100;
+                            transfer = transfer * heatSinkReduction / 100;
                         }
                         
                         totalTransfer += transfer;
@@ -411,8 +417,8 @@ void UpdateTemperature(void) {
                 // Phase 2: Decay toward ambient (only when interval elapses)
                 if (doDecay && currentTemp != ambient) {
                     int diff = ambient - currentTemp;
-                    // Decay by 10% of the difference each interval
-                    int decay = diff / 10;
+                    // Decay by heatDecayPercent% of the difference each interval
+                    int decay = (diff * heatDecayPercent) / 100;
                     
                     // Ensure at least some decay happens
                     if (decay == 0 && diff != 0) {

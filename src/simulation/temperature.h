@@ -76,6 +76,12 @@ extern int insulationTier2Rate;     // Stone transfer rate percentage (default: 
 extern int heatSourceTemp;          // Temperature of heat sources (default: 200)
 extern int coldSourceTemp;          // Temperature of cold sources (default: -20)
 
+// Heat physics parameters
+extern int heatRiseBoost;           // Upward heat transfer multiplier % (default: 150 = 50% boost)
+extern int heatSinkReduction;       // Downward heat transfer multiplier % (default: 50 = 50% reduction)
+extern int heatDecayPercent;        // Decay toward ambient per interval (default: 10 = 10%)
+extern int diagonalTransferPercent; // Diagonal transfer vs orthogonal % (default: 70)
+
 // =============================================================================
 // Initialization
 // =============================================================================

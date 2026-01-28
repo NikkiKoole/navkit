@@ -47,6 +47,11 @@ extern bool waterEvaporationEnabled; // Toggle evaporation (disable for testing)
 extern float waterEvapInterval;     // Game-seconds between evaporation attempts for level-1 water
 extern int waterUpdateCount;        // Cells updated last tick (for debug/profiling)
 
+// Speed multipliers for movers walking through water (lower = slower)
+extern float waterSpeedShallow;     // Speed in level 1-2 water (default: 0.85 = 15% slowdown)
+extern float waterSpeedMedium;      // Speed in level 3-4 water (default: 0.6 = 40% slowdown)
+extern float waterSpeedDeep;        // Speed in level 5-7 water (default: 0.35 = 65% slowdown)
+
 // Initialize water system (call after grid is initialized)
 void InitWater(void);
 

@@ -21,6 +21,10 @@ float fireSpreadInterval = 0.2f;   // Spread attempt every 0.2 game-seconds
 float fireFuelInterval = 0.1f;     // Consume fuel every 0.1 game-seconds
 int fireWaterReduction = 25;       // 25% spread chance near water
 
+// Fire spread formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel)
+int fireSpreadBase = 10;           // Base 10% spread chance
+int fireSpreadPerLevel = 10;       // +10% per fire level (level 2 = 30%, level 7 = 80%)
+
 // Internal accumulators for game-time based updates
 static float fireSpreadAccum = 0.0f;
 static float fireFuelAccum = 0.0f;
@@ -197,8 +201,8 @@ static bool FireTrySpread(int x, int y, int z) {
         if (neighbor->level > 0) continue;  // Already burning
         
         // Base spread chance: higher fire level = more likely to spread
-        // At level 2 (min): 20% chance, at level 7 (max): 70% chance
-        int spreadPercent = 10 + (cell->level * 10);
+        // Formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel)
+        int spreadPercent = fireSpreadBase + (cell->level * fireSpreadPerLevel);
         
         // Reduce chance if neighbor is near water
         if (HasAdjacentWater(nx, ny, z)) {
