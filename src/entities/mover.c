@@ -695,9 +695,9 @@ void UpdateMovers(void) {
         int currentY = (int)(m->y / CELL_SIZE);
         int currentZ = (int)m->z;
         
-        // Skip movers in air or on walls (handled in phase 3)
-        if (IsCellAirAt(currentZ, currentY, currentX)) continue;
-        if (IsWallCell(grid[currentZ][currentY][currentX])) continue;
+        // Skip movers in non-walkable positions (handled in phase 3)
+        // In DF mode, air cells above solid ARE walkable, so check walkability
+        if (!IsCellWalkableAt(currentZ, currentY, currentX)) continue;
         
         Point target = m->path[m->pathIndex];
         if (target.z == currentZ) {
@@ -766,8 +766,11 @@ void UpdateMovers(void) {
         int currentY = (int)(m->y / CELL_SIZE);
         int currentZ = (int)m->z;
 
-        // Check if mover is standing in air - fall to ground (check first, before any other logic)
-        if (IsCellAirAt(currentZ, currentY, currentX)) {
+        // Check if mover needs to fall - only for non-blocking, non-walkable cells (e.g., air without solid below)
+        // In DF mode, air cells above solid ARE walkable, so we check walkability not just cell type
+        // Walls are handled separately below (push to adjacent cell)
+        CellType currentCell = grid[currentZ][currentY][currentX];
+        if (!CellBlocksMovement(currentCell) && !IsCellWalkableAt(currentZ, currentY, currentX)) {
             TryFallToGround(m, currentX, currentY);
             continue;
         }
@@ -945,8 +948,10 @@ void UpdateMovers(void) {
                     // Normal movement
                     m->x = newX;
                     m->y = newY;
-                } else if (IsCellAirAt(mz, newCellY, newCellX)) {
-                    // Moving into air - allow it, then fall
+                } else if (!CellBlocksMovement(grid[mz][newCellY][newCellX]) && 
+                           !IsCellWalkableAt(mz, newCellY, newCellX)) {
+                    // Moving into non-blocking, non-walkable cell (e.g., air without solid below)
+                    // Allow it, then fall to find ground
                     m->x = newX;
                     m->y = newY;
                     TryFallToGround(m, newCellX, newCellY);
