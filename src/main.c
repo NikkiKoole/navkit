@@ -612,7 +612,43 @@ int main(int argc, char** argv) {
             int fpsW = MeasureTextUI(TextFormat("FPS: %d", GetFPS()), 18);
             DrawTextShadow("*paused*", 5 + fpsW + 10, 5, 18, YELLOW);
         }
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, GetScreenHeight() - 28 - 6 + 4, 18, SKYBLUE);
+        // Z level display with clickable < > buttons
+        {
+            int zY = GetScreenHeight() - 28 - 6 + 4;
+            const char* zText = TextFormat("Z: %d/%d", currentViewZ, gridDepth - 1);
+            int zTextW = MeasureTextUI(zText, 18);
+            DrawTextShadow(zText, 5, zY, 18, SKYBLUE);
+            
+            int btnX = 5 + zTextW + 8;
+            int btnW = 24;
+            int btnH = 24;
+            int fontSize = 22;
+            int textOffsetY = -2;  // Adjust text position within button
+            
+            // < button (decrease Z)
+            Rectangle btnDown = {btnX, zY + textOffsetY, btnW, btnH};
+            bool downHovered = CheckCollisionPointRec(GetMousePosition(), btnDown);
+            Color downColor = (currentViewZ > 0) ? (downHovered ? WHITE : SKYBLUE) : DARKGRAY;
+            DrawTextShadow("<", btnX, zY, fontSize, downColor);
+            if (downHovered && currentViewZ > 0) {
+                ui_set_hovered();
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    currentViewZ--;
+                }
+            }
+            
+            // > button (increase Z)
+            Rectangle btnUp = {btnX + btnW + 4, zY + textOffsetY, btnW, btnH};
+            bool upHovered = CheckCollisionPointRec(GetMousePosition(), btnUp);
+            Color upColor = (currentViewZ < gridDepth - 1) ? (upHovered ? WHITE : SKYBLUE) : DARKGRAY;
+            DrawTextShadow(">", btnX + btnW + 4, zY, fontSize, upColor);
+            if (upHovered && currentViewZ < gridDepth - 1) {
+                ui_set_hovered();
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    currentViewZ++;
+                }
+            }
+        }
 
         // Quit confirmation popup
         if (showQuitConfirm) {
