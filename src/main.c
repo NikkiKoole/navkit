@@ -447,6 +447,17 @@ int main(int argc, char** argv) {
         accumulator += frameTime;
 
         ui_update();
+        
+        // Register UI block areas BEFORE HandleInput so clicks are blocked immediately
+        ui_clear_block_rects();
+        {
+            // Bottom bar area
+            int barH = 28;
+            int barY = GetScreenHeight() - barH - 6;
+            int barX = 150;
+            ui_add_block_rect((Rectangle){barX, barY, GetScreenWidth() - barX, barH});
+        }
+        
         HandleInput();
         if (!paused) {
             UpdatePathStats();
@@ -601,26 +612,16 @@ int main(int argc, char** argv) {
 
         // Stats and HUD
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, GetScreenHeight() - 20, 18, SKYBLUE);
-
-        // Input mode bar at bottom
-        {
-            int barH = 24;
-            int barY = GetScreenHeight() - barH;
-            int barX = 80;  // After Z level display
-            int barW = GetScreenWidth() - barX - 30;  // Leave room for help button
-            
-            DrawRectangle(barX, barY, barW, barH, (Color){30, 30, 30, 220});
-            DrawRectangleLinesEx((Rectangle){barX, barY, barW, barH}, 1, GRAY);
-            
-            const char* barText = InputMode_GetBarText();
-            DrawTextShadow(barText, barX + 8, barY + 5, 12, WHITE);
+        if (paused) {
+            int fpsW = MeasureTextUI(TextFormat("FPS: %d", GetFPS()), 18);
+            DrawTextShadow("*paused*", 5 + fpsW + 10, 5, 18, YELLOW);
         }
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, GetScreenHeight() - 28 - 6 + 4, 18, SKYBLUE);
 
         // Quit confirmation popup
         if (showQuitConfirm) {
             const char* msg = "Press ESC again to quit";
-            int msgW = MeasureText(msg, 20);
+            int msgW = MeasureTextUI(msg, 20);
             int popW = msgW + 40;
             int popH = 40;
             int popX = (GetScreenWidth() - popW) / 2;
@@ -642,34 +643,20 @@ int main(int argc, char** argv) {
 
         if (showHelpPanel) {
             const char* shortcuts[] = {
-                "R + drag      Draw room (walls + floor)",
-                "T + drag      Draw floor",
-                "L + drag      Draw ladder",
-                "S + L-drag    Draw stockpile",
-                "S + R-drag    Erase stockpile",
-                "G + L-drag    Draw gather zone",
-                "G + R-drag    Erase gather zone",
-                "M + L-drag    Designate mining",
-                "M + R-drag    Cancel mining",
-                "B + L-drag    Designate building",
-                "B + R-drag    Cancel building",
-                "W + L-drag    Place water",
-                "W + R-drag    Remove water/source/drain",
-                "W+Shift+L     Place water source",
-                "W+Shift+R     Place water drain",
-                "F + L-drag    Ignite fire",
-                "F + R-drag    Extinguish fire",
-                "F+Shift+L     Place fire source",
-                "F+Shift+R     Remove fire source",
-                "U + drag      Unburn cells",
-                "H + L-drag    Place heat source",
-                "H + R-drag    Place cold source",
-                "H+Shift+L     Remove heat source",
-                "H+Shift+R     Remove cold source",
+                "--- Navigation ---",
+                "ESC           Back / Exit menu",
                 "< / >         Change Z level",
-                "Space         Pause/Resume",
                 "Scroll        Zoom in/out",
                 "Middle-drag   Pan view",
+                "C             Center view",
+                "Space         Pause/Resume",
+                "",
+                "--- Quick Edit (Normal mode) ---",
+                "L-click       Place wall",
+                "R-click       Erase",
+                "2 + L-click   Place wood wall",
+                "",
+                "--- General ---",
                 "F5            Quick save",
                 "F6            Quick load",
             };
@@ -694,6 +681,83 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawUI);
         DrawUI();
         PROFILE_END(DrawUI);
+
+        // Input mode bar at bottom - individual buttons (after DrawUI so ui_begin_frame has run)
+        {
+            int barH = 28;
+            int barY = GetScreenHeight() - barH - 6;
+            int barX = 150;  // After Z level display
+            int padding = 12;
+            int spacing = 12;
+            int fontSize = 16;
+            
+            BarItem items[MAX_BAR_ITEMS];
+            int itemCount = InputMode_GetBarItems(items);
+            
+            int x = barX;
+            for (int i = 0; i < itemCount; i++) {
+                int textW = MeasureTextUI(items[i].text, fontSize);
+                int btnW = textW + padding * 2 + 8;  // Extra width for right margin
+                int textY = barY + (barH - fontSize) / 2 - 4;  // Shift up more for bottom margin
+                
+                bool isClickable = items[i].key != 0 && !items[i].isHint;
+                Rectangle btnRect = {x, barY, btnW, barH};
+                bool hovered = isClickable && CheckCollisionPointRec(GetMousePosition(), btnRect);
+                
+                // Choose colors based on type
+                Color bgColor = {30, 30, 30, 220};
+                Color textColor = WHITE;
+                
+                if (items[i].isHeader) {
+                    textColor = YELLOW;
+                } else if (items[i].isHint) {
+                    // Shift hints are more important, show in white
+                    textColor = (strncmp(items[i].text, "+Shift", 6) == 0) ? WHITE : GRAY;
+                } else if (items[i].isSelected) {
+                    bgColor = (Color){80, 80, 40, 220};
+                    textColor = YELLOW;
+                } else if (hovered) {
+                    bgColor = (Color){60, 60, 60, 220};
+                }
+                
+                // Draw button background only for clickable items
+                if (isClickable) {
+                    DrawRectangle(x, barY, btnW, barH, bgColor);
+                    DrawRectangleLinesEx(btnRect, 1, hovered ? WHITE : GRAY);
+                }
+                
+                // Exit headers: draw [X] in red, rest in yellow
+                if (items[i].isExit && items[i].text[0] == '[') {
+                    // Find the closing bracket
+                    char* closeBracket = strchr(items[i].text, ']');
+                    if (closeBracket) {
+                        int keyPartLen = (int)(closeBracket - items[i].text + 1);
+                        char keyPart[8];
+                        strncpy(keyPart, items[i].text, keyPartLen);
+                        keyPart[keyPartLen] = '\0';
+                        
+                        int keyPartW = MeasureTextUI(keyPart, fontSize);
+                        DrawTextShadow(keyPart, x + padding, textY, fontSize, RED);
+                        DrawTextShadow(closeBracket + 1, x + padding + keyPartW, textY, fontSize, YELLOW);
+                    } else {
+                        DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
+                    }
+                } else {
+                    DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
+                }
+                
+                // Handle hover and click
+                if (hovered) {
+                    ui_set_hovered();
+                    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                        InputMode_TriggerKey(items[i].key);
+                        ui_consume_click();
+                    }
+                }
+                
+                x += btnW + spacing;
+            }
+        }
 
         DrawMessages(GetScreenWidth(), GetScreenHeight());
 

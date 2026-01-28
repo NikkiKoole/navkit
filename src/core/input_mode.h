@@ -61,6 +61,23 @@ void InputMode_ExitToNormal(void);   // Go directly to normal (re-tap mode key)
 const char* InputMode_GetModeName(void);
 const char* InputMode_GetBarText(void);
 
+// Individual bar item for separate button rendering
+typedef struct {
+    char text[32];      // Display text like "[B]uild"
+    int key;            // Raylib key code to trigger (0 if not clickable)
+    bool isHeader;      // True if this is a mode header like "BUILD:"
+    bool isHint;        // True if this is a hint like "L-drag place"
+    bool isSelected;    // True if this option is currently selected
+    bool isExit;        // True if this key exits the current mode (show in red)
+} BarItem;
+
+#define MAX_BAR_ITEMS 12
+int InputMode_GetBarItems(BarItem* items);  // Returns count of items
+
+// Trigger a bar item action (called when button clicked)
+void InputMode_TriggerKey(int key);
+int InputMode_GetPendingKey(void);  // Returns and clears pending key
+
 // Check if a key would conflict with current mode
 bool InputMode_IsReservedKey(int key);
 

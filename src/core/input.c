@@ -388,7 +388,22 @@ static void ExecutePlaceCold(int x1, int y1, int x2, int y2, int z, bool shift) 
 // Main Input Handler
 // ============================================================================
 
+// Helper to check key press OR pending key from mouse click
+static int currentPendingKey = 0;
+static bool CheckKey(int key) {
+    if (IsKeyPressed(key)) return true;
+    if (currentPendingKey == key) {
+        currentPendingKey = 0;  // Consume it
+        return true;
+    }
+    return false;
+}
+
 void HandleInput(void) {
+    // Check for pending key from UI button clicks
+    int pending = InputMode_GetPendingKey();
+    if (pending != 0) currentPendingKey = pending;
+    
     Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
     int z = currentViewZ;
     
@@ -487,14 +502,12 @@ void HandleInput(void) {
         if (LoadWorld("saves/debug_save.bin")) AddMessage("World loaded", GREEN);
     }
 
-    // Skip grid interactions if UI wants mouse
-    if (ui_wants_mouse()) return;
-
     // ========================================================================
     // Navigation: ESC, re-tap mode key
+    // Handle before ui_wants_mouse check since bar buttons trigger pending keys
     // ========================================================================
     
-    if (IsKeyPressed(KEY_ESCAPE)) {
+    if (CheckKey(KEY_ESCAPE)) {
         if (showQuitConfirm) {
             // Second ESC while quit confirm shown = quit
             shouldQuit = true;
@@ -519,22 +532,25 @@ void HandleInput(void) {
 
 
     // Re-tap mode key exits to normal
-    if (inputMode == MODE_BUILD && IsKeyPressed(KEY_B)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_DESIGNATE && IsKeyPressed(KEY_D)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_ZONES && IsKeyPressed(KEY_Z)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_PLACE && IsKeyPressed(KEY_P)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_VIEW && IsKeyPressed(KEY_V)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_BUILD && CheckKey(KEY_B)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_DESIGNATE && CheckKey(KEY_D)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_ZONES && CheckKey(KEY_Z)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_PLACE && CheckKey(KEY_S)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_VIEW && CheckKey(KEY_V)) { InputMode_ExitToNormal(); return; }
 
     // ========================================================================
     // Mode selection (only in normal mode)
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
-        if (IsKeyPressed(KEY_B)) { inputMode = MODE_BUILD; return; }
-        if (IsKeyPressed(KEY_D)) { inputMode = MODE_DESIGNATE; return; }
-        if (IsKeyPressed(KEY_Z)) { inputMode = MODE_ZONES; return; }
-        if (IsKeyPressed(KEY_P)) { inputMode = MODE_PLACE; return; }
-        if (IsKeyPressed(KEY_V)) { inputMode = MODE_VIEW; return; }
+        if (CheckKey(KEY_B)) { inputMode = MODE_BUILD; return; }
+        if (CheckKey(KEY_D)) { inputMode = MODE_DESIGNATE; return; }
+        if (CheckKey(KEY_Z)) { inputMode = MODE_ZONES; return; }
+        if (CheckKey(KEY_S)) { inputMode = MODE_PLACE; return; }
+        if (CheckKey(KEY_V)) { inputMode = MODE_VIEW; return; }
+        
+        // Skip grid interactions if UI wants mouse
+        if (ui_wants_mouse()) return;
         
         // Quick edit: left-click = wall, right-click = erase (when enabled)
         if (quickEditEnabled) {
@@ -586,24 +602,24 @@ void HandleInput(void) {
     if (inputAction == ACTION_NONE) {
         switch (inputMode) {
             case MODE_BUILD:
-                if (IsKeyPressed(KEY_W)) { inputAction = ACTION_BUILD_WALL; selectedMaterial = 1; }
-                if (IsKeyPressed(KEY_F)) { inputAction = ACTION_BUILD_FLOOR; selectedMaterial = 1; }
-                if (IsKeyPressed(KEY_L)) { inputAction = ACTION_BUILD_LADDER; selectedMaterial = 1; }
-                if (IsKeyPressed(KEY_R)) { inputAction = ACTION_BUILD_ROOM; selectedMaterial = 1; }
+                if (CheckKey(KEY_W)) { inputAction = ACTION_BUILD_WALL; selectedMaterial = 1; }
+                if (CheckKey(KEY_F)) { inputAction = ACTION_BUILD_FLOOR; selectedMaterial = 1; }
+                if (CheckKey(KEY_L)) { inputAction = ACTION_BUILD_LADDER; selectedMaterial = 1; }
+                if (CheckKey(KEY_R)) { inputAction = ACTION_BUILD_ROOM; selectedMaterial = 1; }
                 break;
             case MODE_DESIGNATE:
-                if (IsKeyPressed(KEY_M)) { inputAction = ACTION_DESIGNATE_MINE; }
-                if (IsKeyPressed(KEY_B)) { inputAction = ACTION_DESIGNATE_BUILD; }
-                if (IsKeyPressed(KEY_U)) { inputAction = ACTION_DESIGNATE_UNBURN; }
+                if (CheckKey(KEY_M)) { inputAction = ACTION_DESIGNATE_MINE; }
+                if (CheckKey(KEY_B)) { inputAction = ACTION_DESIGNATE_BUILD; }
                 break;
             case MODE_ZONES:
-                if (IsKeyPressed(KEY_S)) { inputAction = ACTION_ZONE_STOCKPILE; }
-                if (IsKeyPressed(KEY_G)) { inputAction = ACTION_ZONE_GATHER; }
+                if (CheckKey(KEY_S)) { inputAction = ACTION_ZONE_STOCKPILE; }
+                if (CheckKey(KEY_G)) { inputAction = ACTION_ZONE_GATHER; }
                 break;
             case MODE_PLACE:
-                if (IsKeyPressed(KEY_W)) { inputAction = ACTION_PLACE_WATER; }
-                if (IsKeyPressed(KEY_F)) { inputAction = ACTION_PLACE_FIRE; }
-                if (IsKeyPressed(KEY_H)) { inputAction = ACTION_PLACE_HEAT; }
+                if (CheckKey(KEY_W)) { inputAction = ACTION_PLACE_WATER; }
+                if (CheckKey(KEY_F)) { inputAction = ACTION_PLACE_FIRE; }
+                if (CheckKey(KEY_H)) { inputAction = ACTION_PLACE_HEAT; }
+                if (CheckKey(KEY_U)) { inputAction = ACTION_DESIGNATE_UNBURN; }
                 break;
             case MODE_VIEW:
                 // TODO: Implement view toggles
@@ -618,13 +634,16 @@ void HandleInput(void) {
     // Material selection (when action is selected)
     // ========================================================================
     
-    if (IsKeyPressed(KEY_ONE)) selectedMaterial = 1;
-    if (IsKeyPressed(KEY_TWO)) selectedMaterial = 2;
-    if (IsKeyPressed(KEY_THREE)) selectedMaterial = 3;
+    if (CheckKey(KEY_ONE)) selectedMaterial = 1;
+    if (CheckKey(KEY_TWO)) selectedMaterial = 2;
+    if (CheckKey(KEY_THREE)) selectedMaterial = 3;
 
     // ========================================================================
     // Action execution (drag handling)
     // ========================================================================
+    
+    // Skip grid interactions if UI wants mouse
+    if (ui_wants_mouse()) return;
     
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     

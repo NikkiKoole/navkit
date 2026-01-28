@@ -26,6 +26,12 @@ void ui_consume_click(void);
 // Mark custom UI element as hovered (blocks click-through next frame)
 void ui_set_hovered(void);
 
+// Register a blocking rectangle for this frame (checked immediately in ui_wants_mouse)
+// Call this BEFORE HandleInput for persistent UI areas like bottom bar
+#define UI_MAX_BLOCK_RECTS 16
+void ui_add_block_rect(Rectangle rect);
+void ui_clear_block_rects(void);
+
 // Draw text with shadow
 void DrawTextShadow(const char* text, int x, int y, int size, Color col);
 
@@ -100,6 +106,11 @@ static bool g_ui_buttonAnyHovered = false;
 static bool g_ui_cycleAnyHovered = false;
 static bool g_ui_clickConsumed = false;  // Set when UI consumes a click
 static bool g_ui_customHovered = false;  // For custom UI elements (like profiler)
+static bool g_ui_isDragging = false;     // True while any draggable is being dragged
+
+// Block rectangles - registered before HandleInput, checked immediately
+static Rectangle g_ui_blockRects[UI_MAX_BLOCK_RECTS];
+static int g_ui_blockRectCount = 0;
 
 void ui_init(Font* font) {
     g_ui_font = font;
@@ -117,6 +128,17 @@ void ui_update(void) {
 }
 
 bool ui_wants_mouse(void) {
+    // If any UI element is being dragged, always block
+    if (g_ui_isDragging) return true;
+    
+    // Check block rectangles (immediate, same-frame check)
+    Vector2 mouse = GetMousePosition();
+    for (int i = 0; i < g_ui_blockRectCount; i++) {
+        if (CheckCollisionPointRec(mouse, g_ui_blockRects[i])) {
+            return true;
+        }
+    }
+    // Fall back to hover flags (frame-delayed)
     return g_ui_clickConsumed || g_ui_draggableAnyHovered || g_ui_toggleAnyHovered ||
            g_ui_buttonAnyHovered || g_ui_cycleAnyHovered || g_ui_customHovered;
 }
@@ -128,6 +150,17 @@ void ui_begin_frame(void) {
     g_ui_cycleAnyHovered = false;
     g_ui_clickConsumed = false;
     g_ui_customHovered = false;
+    // Note: block rects are NOT cleared here - they persist until explicitly cleared
+}
+
+void ui_clear_block_rects(void) {
+    g_ui_blockRectCount = 0;
+}
+
+void ui_add_block_rect(Rectangle rect) {
+    if (g_ui_blockRectCount < UI_MAX_BLOCK_RECTS) {
+        g_ui_blockRects[g_ui_blockRectCount++] = rect;
+    }
 }
 
 void ui_consume_click(void) {
@@ -180,6 +213,7 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
         dragging = true;
         dragTarget = value;
         g_ui_clickConsumed = true;
+        g_ui_isDragging = true;
     }
 
     if (dragging && dragTarget == value) {
@@ -191,6 +225,7 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             dragging = false;
             dragTarget = NULL;
+            g_ui_isDragging = false;
         }
         return true;
     }
@@ -220,6 +255,7 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
         dragTarget = value;
         accumulator = 0;
         g_ui_clickConsumed = true;
+        g_ui_isDragging = true;
     }
 
     if (dragging && dragTarget == value) {
@@ -235,6 +271,7 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             dragging = false;
             dragTarget = NULL;
+            g_ui_isDragging = false;
         }
         return true;
     }
@@ -264,6 +301,7 @@ bool DraggableIntLog(float x, float y, const char* label, int* value, float spee
         dragTarget = value;
         accumulator = 0;
         g_ui_clickConsumed = true;
+        g_ui_isDragging = true;
     }
 
     if (dragging && dragTarget == value) {
@@ -282,6 +320,7 @@ bool DraggableIntLog(float x, float y, const char* label, int* value, float spee
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             dragging = false;
             dragTarget = NULL;
+            g_ui_isDragging = false;
         }
         return true;
     }
@@ -594,6 +633,7 @@ bool DraggableIntT(float x, float y, const char* label, int* value, float speed,
         dragTarget = value;
         accumulator = 0;
         g_ui_clickConsumed = true;
+        g_ui_isDragging = true;
     }
 
     if (dragging && dragTarget == value) {
@@ -609,6 +649,7 @@ bool DraggableIntT(float x, float y, const char* label, int* value, float speed,
         if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
             dragging = false;
             dragTarget = NULL;
+            g_ui_isDragging = false;
         }
         return true;
     }

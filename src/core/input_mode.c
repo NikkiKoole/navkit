@@ -48,7 +48,7 @@ const char* InputMode_GetModeName(void) {
         case MODE_BUILD:     return "BUILD";
         case MODE_DESIGNATE: return "DESIGNATE";
         case MODE_ZONES:     return "ZONES";
-        case MODE_PLACE:     return "PLACE";
+        case MODE_PLACE:     return "SANDBOX";
         case MODE_VIEW:      return "VIEW";
         default:             return "???";
     }
@@ -169,8 +169,168 @@ bool InputMode_IsReservedKey(int key) {
         case MODE_BUILD:     return key == KEY_B;
         case MODE_DESIGNATE: return key == KEY_D;
         case MODE_ZONES:     return key == KEY_Z;
-        case MODE_PLACE:     return key == KEY_P;
+        case MODE_PLACE:     return key == KEY_S;
         case MODE_VIEW:      return key == KEY_V;
         default:             return false;
     }
+}
+
+// Helper to add a bar item
+static int AddItem(BarItem* items, int count, const char* text, int key, bool isHeader, bool isHint, bool isSelected) {
+    if (count >= MAX_BAR_ITEMS) return count;
+    strncpy(items[count].text, text, sizeof(items[count].text) - 1);
+    items[count].text[sizeof(items[count].text) - 1] = '\0';
+    items[count].key = key;
+    items[count].isHeader = isHeader;
+    items[count].isHint = isHint;
+    items[count].isSelected = isSelected;
+    items[count].isExit = false;
+    return count + 1;
+}
+
+// Helper to add a header with exit key
+static int AddExitHeader(BarItem* items, int count, const char* text, int key) {
+    if (count >= MAX_BAR_ITEMS) return count;
+    strncpy(items[count].text, text, sizeof(items[count].text) - 1);
+    items[count].text[sizeof(items[count].text) - 1] = '\0';
+    items[count].key = key;
+    items[count].isHeader = true;
+    items[count].isHint = false;
+    items[count].isSelected = false;
+    items[count].isExit = true;
+    return count + 1;
+}
+
+int InputMode_GetBarItems(BarItem* items) {
+    int n = 0;
+    
+    if (inputMode == MODE_NORMAL) {
+        n = AddItem(items, n, "[B]uild", KEY_B, false, false, false);
+        n = AddItem(items, n, "[D]esignate", KEY_D, false, false, false);
+        n = AddItem(items, n, "[Z]ones", KEY_Z, false, false, false);
+        n = AddItem(items, n, "[S]andbox", KEY_S, false, false, false);
+        return n;
+    }
+    
+    if (inputAction == ACTION_NONE) {
+        // In a mode, no action selected
+        switch (inputMode) {
+            case MODE_BUILD:
+                n = AddExitHeader(items, n, "[B]UILD:", KEY_B);
+                n = AddItem(items, n, "[W]all", KEY_W, false, false, false);
+                n = AddItem(items, n, "[F]loor", KEY_F, false, false, false);
+                n = AddItem(items, n, "[L]adder", KEY_L, false, false, false);
+                n = AddItem(items, n, "[R]oom", KEY_R, false, false, false);
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+            case MODE_DESIGNATE:
+                n = AddExitHeader(items, n, "[D]ESIGNATE:", KEY_D);
+                n = AddItem(items, n, "[M]ine", KEY_M, false, false, false);
+                n = AddItem(items, n, "[B]uild", KEY_B, false, false, false);
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+            case MODE_ZONES:
+                n = AddExitHeader(items, n, "[Z]ONES:", KEY_Z);
+                n = AddItem(items, n, "[S]tockpile", KEY_S, false, false, false);
+                n = AddItem(items, n, "[G]ather", KEY_G, false, false, false);
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+            case MODE_PLACE:
+                n = AddExitHeader(items, n, "[S]ANDBOX:", KEY_S);
+                n = AddItem(items, n, "[W]ater", KEY_W, false, false, false);
+                n = AddItem(items, n, "[F]ire", KEY_F, false, false, false);
+                n = AddItem(items, n, "[H]eat", KEY_H, false, false, false);
+                n = AddItem(items, n, "[U]nburn", KEY_U, false, false, false);
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+            case MODE_VIEW:
+                n = AddExitHeader(items, n, "[V]IEW:", KEY_V);
+                n = AddItem(items, n, "[T]emperature", KEY_T, false, false, false);
+                n = AddItem(items, n, "[W]ater", KEY_W, false, false, false);
+                n = AddItem(items, n, "[O]zones", KEY_O, false, false, false);
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+            default:
+                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                break;
+        }
+        return n;
+    }
+    
+    // Action selected - show materials/hints
+    const char* actionName = GetActionName();
+    char header[64];
+    int exitKey = 0;
+    switch (inputMode) {
+        case MODE_BUILD:     snprintf(header, sizeof(header), "[B]UILD > %s:", actionName); exitKey = KEY_B; break;
+        case MODE_DESIGNATE: snprintf(header, sizeof(header), "[D]ESIGNATE > %s:", actionName); exitKey = KEY_D; break;
+        case MODE_ZONES:     snprintf(header, sizeof(header), "[Z]ONES > %s:", actionName); exitKey = KEY_Z; break;
+        case MODE_PLACE:     snprintf(header, sizeof(header), "[S]ANDBOX > %s:", actionName); exitKey = KEY_S; break;
+        case MODE_VIEW:      snprintf(header, sizeof(header), "[V]IEW > %s:", actionName); exitKey = KEY_V; break;
+        default:             snprintf(header, sizeof(header), "%s:", actionName); break;
+    }
+    n = AddExitHeader(items, n, header, exitKey);
+    
+    switch (inputAction) {
+        case ACTION_BUILD_WALL:
+        case ACTION_BUILD_FLOOR:
+        case ACTION_BUILD_ROOM:
+            n = AddItem(items, n, "[1]Stone", KEY_ONE, false, false, selectedMaterial == 1);
+            n = AddItem(items, n, "[2]Wood", KEY_TWO, false, false, selectedMaterial == 2);
+            n = AddItem(items, n, "L-drag place", 0, false, true, false);
+            if (inputAction == ACTION_BUILD_WALL) {
+                n = AddItem(items, n, "R-drag erase", 0, false, true, false);
+            }
+            break;
+        case ACTION_BUILD_LADDER:
+            n = AddItem(items, n, "L-drag place", 0, false, true, false);
+            break;
+        case ACTION_DESIGNATE_MINE:
+        case ACTION_DESIGNATE_BUILD:
+            n = AddItem(items, n, "L-drag designate", 0, false, true, false);
+            n = AddItem(items, n, "R-drag cancel", 0, false, true, false);
+            break;
+        case ACTION_DESIGNATE_UNBURN:
+            n = AddItem(items, n, "L-drag unburn", 0, false, true, false);
+            break;
+        case ACTION_ZONE_STOCKPILE:
+        case ACTION_ZONE_GATHER:
+            n = AddItem(items, n, "L-drag create", 0, false, true, false);
+            n = AddItem(items, n, "R-drag erase", 0, false, true, false);
+            break;
+        case ACTION_PLACE_WATER:
+            n = AddItem(items, n, "L-drag add", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+            n = AddItem(items, n, "+Shift=source/drain", 0, false, true, false);
+            break;
+        case ACTION_PLACE_FIRE:
+            n = AddItem(items, n, "L-drag ignite", 0, false, true, false);
+            n = AddItem(items, n, "R-drag extinguish", 0, false, true, false);
+            n = AddItem(items, n, "+Shift=source", 0, false, true, false);
+            break;
+        case ACTION_PLACE_HEAT:
+            n = AddItem(items, n, "L-drag heat", 0, false, true, false);
+            n = AddItem(items, n, "R-drag cold", 0, false, true, false);
+            n = AddItem(items, n, "+Shift=remove", 0, false, true, false);
+            break;
+        default:
+            n = AddItem(items, n, "L-drag", 0, false, true, false);
+            break;
+    }
+    
+    n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+    return n;
+}
+
+// Pending key to be processed by HandleInput
+static int pendingKey = 0;
+
+void InputMode_TriggerKey(int key) {
+    pendingKey = key;
+}
+
+int InputMode_GetPendingKey(void) {
+    int key = pendingKey;
+    pendingKey = 0;
+    return key;
 }
