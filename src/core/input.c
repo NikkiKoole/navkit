@@ -499,14 +499,7 @@ void HandleInput(void) {
         return;
     }
 
-    // Right-click backs out when not dragging
-    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && !isDragging) {
-        // Only back out if we're in a mode or have an action
-        if (inputAction != ACTION_NONE || inputMode != MODE_NORMAL) {
-            InputMode_Back();
-            return;
-        }
-    }
+
 
     // Re-tap mode key exits to normal
     if (inputMode == MODE_BUILD && IsKeyPressed(KEY_B)) { InputMode_ExitToNormal(); return; }
