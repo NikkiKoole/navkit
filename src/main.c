@@ -5,6 +5,7 @@
 
 #include "game_state.h"
 #include "world/cell_defs.h"
+#include "core/input_mode.h"
 #include "assets/fonts/comic_embedded.h"
 
 // ============================================================================
@@ -28,43 +29,6 @@ bool cullDrawing = true;
 bool showItems = true;
 bool showHelpPanel = false;
 bool paused = false;
-
-bool drawingRoom = false;
-int roomStartX = 0, roomStartY = 0;
-
-bool drawingFloor = false;
-int floorStartX = 0, floorStartY = 0;
-
-bool drawingStockpile = false;
-bool erasingStockpile = false;
-int stockpileStartX = 0, stockpileStartY = 0;
-
-bool designatingMining = false;
-bool cancellingMining = false;
-int miningStartX = 0, miningStartY = 0;
-
-bool designatingBuild = false;
-bool cancellingBuild = false;
-int buildStartX = 0, buildStartY = 0;
-
-bool placingWaterSource = false;
-bool placingWaterDrain = false;
-int waterStartX = 0, waterStartY = 0;
-
-bool placingFireSource = false;
-bool extinguishingFire = false;
-int fireStartX = 0, fireStartY = 0;
-
-bool placingHeatSource = false;
-bool placingColdSource = false;
-int tempStartX = 0, tempStartY = 0;
-
-bool drawingGatherZone = false;
-bool erasingGatherZone = false;
-int gatherZoneStartX = 0, gatherZoneStartY = 0;
-
-bool unburning = false;
-int unburnStartX = 0, unburnStartY = 0;
 
 int pathAlgorithm = 1;
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -559,141 +523,98 @@ int main(int argc, char** argv) {
             PROFILE_END(DrawMovers);
         }
 
-        // Draw previews for various drawing modes
-        if (drawingRoom && IsKeyDown(KEY_R)) {
+        // Draw drag preview rectangle when dragging
+        if (isDragging && inputAction != ACTION_NONE) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
-            int x1 = roomStartX < x ? roomStartX : x;
-            int y1 = roomStartY < y ? roomStartY : y;
-            int x2 = roomStartX > x ? roomStartX : x;
-            int y2 = roomStartY > y ? roomStartY : y;
+            int x1 = dragStartX < x ? dragStartX : x;
+            int y1 = dragStartY < y ? dragStartY : y;
+            int x2 = dragStartX > x ? dragStartX : x;
+            int y2 = dragStartY > y ? dragStartY : y;
             float size = CELL_SIZE * zoom;
             float px = offset.x + x1 * size;
             float py = offset.y + y1 * size;
             float pw = (x2 - x1 + 1) * size;
             float ph = (y2 - y1 + 1) * size;
-            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, YELLOW);
-        }
-
-        if (drawingFloor && IsKeyDown(KEY_T)) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = floorStartX < x ? floorStartX : x;
-            int y1 = floorStartY < y ? floorStartY : y;
-            int x2 = floorStartX > x ? floorStartX : x;
-            int y2 = floorStartY > y ? floorStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){139, 90, 43, 100});
-            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, BROWN);
-        }
-
-        if (IsKeyDown(KEY_S) && (drawingStockpile || erasingStockpile)) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = stockpileStartX < x ? stockpileStartX : x;
-            int y1 = stockpileStartY < y ? stockpileStartY : y;
-            int x2 = stockpileStartX > x ? stockpileStartX : x;
-            int y2 = stockpileStartY > y ? stockpileStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            if (drawingStockpile) {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){0, 200, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
+            
+            // Choose colors based on action and mouse button
+            Color fillColor = {100, 200, 100, 80};
+            Color lineColor = GREEN;
+            bool isRightDrag = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+            
+            if (isRightDrag) {
+                fillColor = (Color){200, 0, 0, 80};
+                lineColor = RED;
             } else {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+                switch (inputAction) {
+                    case ACTION_BUILD_WALL:
+                    case ACTION_BUILD_FLOOR:
+                    case ACTION_BUILD_LADDER:
+                        fillColor = (Color){100, 200, 100, 80};
+                        lineColor = GREEN;
+                        break;
+                    case ACTION_BUILD_ROOM:
+                        fillColor = (Color){200, 200, 0, 80};
+                        lineColor = YELLOW;
+                        break;
+                    case ACTION_DESIGNATE_MINE:
+                        fillColor = (Color){255, 150, 0, 80};
+                        lineColor = ORANGE;
+                        break;
+                    case ACTION_DESIGNATE_BUILD:
+                        fillColor = (Color){0, 200, 200, 80};
+                        lineColor = (Color){0, 255, 255, 255};
+                        break;
+                    case ACTION_DESIGNATE_UNBURN:
+                        fillColor = (Color){100, 200, 100, 80};
+                        lineColor = GREEN;
+                        break;
+                    case ACTION_ZONE_STOCKPILE:
+                        fillColor = (Color){0, 200, 0, 80};
+                        lineColor = GREEN;
+                        break;
+                    case ACTION_ZONE_GATHER:
+                        fillColor = (Color){255, 180, 50, 80};
+                        lineColor = ORANGE;
+                        break;
+                    case ACTION_PLACE_WATER:
+                        fillColor = (Color){0, 100, 200, 80};
+                        lineColor = SKYBLUE;
+                        break;
+                    case ACTION_PLACE_FIRE:
+                        fillColor = (Color){200, 50, 0, 80};
+                        lineColor = RED;
+                        break;
+                    case ACTION_PLACE_HEAT:
+                        fillColor = (Color){200, 100, 0, 80};
+                        lineColor = ORANGE;
+                        break;
+                    default:
+                        break;
+                }
             }
-        }
-
-        if (IsKeyDown(KEY_G) && (drawingGatherZone || erasingGatherZone)) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = gatherZoneStartX < x ? gatherZoneStartX : x;
-            int y1 = gatherZoneStartY < y ? gatherZoneStartY : y;
-            int x2 = gatherZoneStartX > x ? gatherZoneStartX : x;
-            int y2 = gatherZoneStartY > y ? gatherZoneStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            if (drawingGatherZone) {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){255, 180, 50, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, ORANGE);
-            } else {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
-            }
-        }
-
-        if (IsKeyDown(KEY_M) && (designatingMining || cancellingMining)) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = miningStartX < x ? miningStartX : x;
-            int y1 = miningStartY < y ? miningStartY : y;
-            int x2 = miningStartX > x ? miningStartX : x;
-            int y2 = miningStartY > y ? miningStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            if (designatingMining) {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){255, 150, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, ORANGE);
-            } else {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
-            }
-        }
-
-        if (IsKeyDown(KEY_B) && (designatingBuild || cancellingBuild)) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = buildStartX < x ? buildStartX : x;
-            int y1 = buildStartY < y ? buildStartY : y;
-            int x2 = buildStartX > x ? buildStartX : x;
-            int y2 = buildStartY > y ? buildStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            if (designatingBuild) {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){0, 200, 200, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, (Color){0, 255, 255, 255});
-            } else {
-                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){200, 0, 0, 80});
-                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
-            }
-        }
-
-        if (IsKeyDown(KEY_U) && unburning) {
-            Vector2 gp = ScreenToGrid(GetMousePosition());
-            int x = (int)gp.x, y = (int)gp.y;
-            int x1 = unburnStartX < x ? unburnStartX : x;
-            int y1 = unburnStartY < y ? unburnStartY : y;
-            int x2 = unburnStartX > x ? unburnStartX : x;
-            int y2 = unburnStartY > y ? unburnStartY : y;
-            float size = CELL_SIZE * zoom;
-            float px = offset.x + x1 * size;
-            float py = offset.y + y1 * size;
-            float pw = (x2 - x1 + 1) * size;
-            float ph = (y2 - y1 + 1) * size;
-            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, (Color){100, 200, 100, 80});
-            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, GREEN);
+            
+            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
+            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
         }
 
         // Stats and HUD
         DrawTextShadow(TextFormat("FPS: %d", GetFPS()), 5, 5, 18, LIME);
-        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 30, GetScreenHeight() - 20, 18, SKYBLUE);
+        DrawTextShadow(TextFormat("Z: %d/%d  </>", currentViewZ, gridDepth - 1), 5, GetScreenHeight() - 20, 18, SKYBLUE);
+
+        // Input mode bar at bottom
+        {
+            int barH = 24;
+            int barY = GetScreenHeight() - barH;
+            int barX = 80;  // After Z level display
+            int barW = GetScreenWidth() - barX - 30;  // Leave room for help button
+            
+            DrawRectangle(barX, barY, barW, barH, (Color){30, 30, 30, 220});
+            DrawRectangleLinesEx((Rectangle){barX, barY, barW, barH}, 1, GRAY);
+            
+            const char* barText = InputMode_GetBarText();
+            DrawTextShadow(barText, barX + 8, barY + 5, 12, WHITE);
+        }
 
         // Help button
         Rectangle helpBtn = {GetScreenWidth() - 25, GetScreenHeight() - 22, 20, 20};

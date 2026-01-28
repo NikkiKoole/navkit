@@ -83,53 +83,6 @@ extern bool showItems;
 extern bool showHelpPanel;
 extern bool paused;
 
-// Room drawing state
-extern bool drawingRoom;
-extern int roomStartX, roomStartY;
-
-// Floor drawing state
-extern bool drawingFloor;
-extern int floorStartX, floorStartY;
-
-// Stockpile drawing state
-extern bool drawingStockpile;
-extern bool erasingStockpile;
-extern int stockpileStartX, stockpileStartY;
-
-// Mining designation state
-extern bool designatingMining;
-extern bool cancellingMining;
-extern int miningStartX, miningStartY;
-
-// Build designation state
-extern bool designatingBuild;
-extern bool cancellingBuild;
-extern int buildStartX, buildStartY;
-
-// Water placement state
-extern bool placingWaterSource;
-extern bool placingWaterDrain;
-extern int waterStartX, waterStartY;
-
-// Fire placement state
-extern bool placingFireSource;
-extern bool extinguishingFire;
-extern int fireStartX, fireStartY;
-
-// Temperature source placement state
-extern bool placingHeatSource;
-extern bool placingColdSource;
-extern int tempStartX, tempStartY;
-
-// Gather zone state
-extern bool drawingGatherZone;
-extern bool erasingGatherZone;
-extern int gatherZoneStartX, gatherZoneStartY;
-
-// Unburn state
-extern bool unburning;
-extern int unburnStartX, unburnStartY;
-
 // Pathfinding settings
 extern int pathAlgorithm;
 extern const char* algorithmNames[];

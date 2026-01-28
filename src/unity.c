@@ -33,6 +33,7 @@
 
 // Core systems
 #include "core/inspect.c"
+#include "core/input_mode.c"
 #include "core/input.c"
 #include "core/saveload.c"
 
