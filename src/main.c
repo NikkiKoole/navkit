@@ -415,6 +415,7 @@ int main(int argc, char** argv) {
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
+    SetExitKey(0);  // Disable ESC closing the window - we use ESC for input navigation
     atlas = AtlasLoadEmbedded();
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
     Font comicFont = LoadEmbeddedFont();
