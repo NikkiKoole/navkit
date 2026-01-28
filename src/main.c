@@ -553,7 +553,7 @@ int main(int argc, char** argv) {
         DrawSteam();
         DrawTemperature();
         PROFILE_END(DrawCells);
-        if (inputAction == ACTION_ZONE_GATHER) {
+        if (inputAction == ACTION_WORK_GATHER) {
             DrawGatherZones();
         }
         DrawStockpileTiles();
@@ -603,41 +603,40 @@ int main(int argc, char** argv) {
                 lineColor = RED;
             } else {
                 switch (inputAction) {
-                    case ACTION_BUILD_WALL:
-                    case ACTION_BUILD_FLOOR:
-                    case ACTION_BUILD_LADDER:
+                    // Draw actions
+                    case ACTION_DRAW_WALL:
+                    case ACTION_DRAW_FLOOR:
+                    case ACTION_DRAW_LADDER:
                         fillColor = (Color){100, 200, 100, 80};
                         lineColor = GREEN;
                         break;
-                    case ACTION_BUILD_ROOM:
-                        fillColor = (Color){200, 200, 0, 80};
-                        lineColor = YELLOW;
-                        break;
-                    case ACTION_DESIGNATE_MINE:
-                        fillColor = (Color){255, 150, 0, 80};
-                        lineColor = ORANGE;
-                        break;
-                    case ACTION_DESIGNATE_BUILD:
-                        fillColor = (Color){0, 200, 200, 80};
-                        lineColor = (Color){0, 255, 255, 255};
-                        break;
-                    case ACTION_ZONE_STOCKPILE:
+                    case ACTION_DRAW_STOCKPILE:
                         fillColor = (Color){0, 200, 0, 80};
                         lineColor = GREEN;
                         break;
-                    case ACTION_ZONE_GATHER:
+                    // Work actions
+                    case ACTION_WORK_MINE:
+                        fillColor = (Color){255, 150, 0, 80};
+                        lineColor = ORANGE;
+                        break;
+                    case ACTION_WORK_CONSTRUCT:
+                        fillColor = (Color){0, 200, 200, 80};
+                        lineColor = (Color){0, 255, 255, 255};
+                        break;
+                    case ACTION_WORK_GATHER:
                         fillColor = (Color){255, 180, 50, 80};
                         lineColor = ORANGE;
                         break;
-                    case ACTION_PLACE_WATER:
+                    // Sandbox actions
+                    case ACTION_SANDBOX_WATER:
                         fillColor = (Color){0, 100, 200, 80};
                         lineColor = SKYBLUE;
                         break;
-                    case ACTION_PLACE_FIRE:
+                    case ACTION_SANDBOX_FIRE:
                         fillColor = (Color){200, 50, 0, 80};
                         lineColor = RED;
                         break;
-                    case ACTION_PLACE_HEAT:
+                    case ACTION_SANDBOX_HEAT:
                         fillColor = (Color){200, 100, 0, 80};
                         lineColor = ORANGE;
                         break;
@@ -794,40 +793,41 @@ int main(int argc, char** argv) {
 
                 if (items[i].isHeader) {
                     textColor = YELLOW;
+                    if (hovered) bgColor = (Color){60, 60, 40, 220};
                 } else if (items[i].isHint) {
-                    // Shift hints are more important, show in white
-                    textColor = (strncmp(items[i].text, "+Shift", 6) == 0) ? WHITE : GRAY;
+                    textColor = GRAY;
                 } else if (items[i].isSelected) {
-                    bgColor = (Color){80, 80, 40, 220};
-                    textColor = YELLOW;
+                    bgColor = (Color){60, 60, 80, 220};
+                    textColor = WHITE;
                 } else if (hovered) {
                     bgColor = (Color){60, 60, 60, 220};
                 }
 
-                // Draw button background only for clickable items
+                // Draw button background for clickable items
                 if (isClickable) {
                     DrawRectangle(x, barY, btnW, barH, bgColor);
-                    DrawRectangleLinesEx(btnRect, 1, hovered ? WHITE : GRAY);
+                    DrawRectangleLinesEx(btnRect, 1, hovered ? WHITE : (items[i].isHeader ? (Color){80, 80, 40, 255} : GRAY));
                 }
 
-                // Exit headers: draw [X] in red, rest in yellow
-                if (items[i].isExit && items[i].text[0] == '[') {
-                    // Find the closing bracket
-                    char* closeBracket = strchr(items[i].text, ']');
-                    if (closeBracket) {
-                        int keyPartLen = (int)(closeBracket - items[i].text + 1);
-                        char keyPart[8];
-                        strncpy(keyPart, items[i].text, keyPartLen);
-                        keyPart[keyPartLen] = '\0';
-
-                        int keyPartW = MeasureTextUI(keyPart, fontSize);
-                        DrawTextShadow(keyPart, x + padding, textY, fontSize, RED);
-                        DrawTextShadow(closeBracket + 1, x + padding + keyPartW, textY, fontSize, YELLOW);
-                    } else {
-                        DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
-                    }
-                } else {
-                    DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
+                // Draw text
+                DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
+                
+                // Draw underline under the shortcut character
+                if (items[i].underlinePos >= 0 && items[i].underlinePos < (int)strlen(items[i].text)) {
+                    // Measure width up to the underlined character
+                    char before[32];
+                    strncpy(before, items[i].text, items[i].underlinePos);
+                    before[items[i].underlinePos] = '\0';
+                    int beforeW = MeasureTextUI(before, fontSize);
+                    
+                    // Measure the underlined character
+                    char underlineChar[2] = {items[i].text[items[i].underlinePos], '\0'};
+                    int charW = MeasureTextUI(underlineChar, fontSize);
+                    
+                    // Draw underline
+                    int underlineX = x + padding + beforeW;
+                    int underlineY = textY + fontSize + 4;
+                    DrawRectangle(underlineX, underlineY, charW, 2, textColor);
                 }
 
                 // Handle hover and click

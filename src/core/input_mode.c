@@ -44,34 +44,31 @@ void InputMode_ExitToNormal(void) {
 
 const char* InputMode_GetModeName(void) {
     switch (inputMode) {
-        case MODE_NORMAL:    return "NORMAL";
-        case MODE_BUILD:     return "BUILD";
-        case MODE_DESIGNATE: return "DESIGNATE";
-        case MODE_ZONES:     return "ZONES";
-        case MODE_PLACE:     return "SANDBOX";
-        case MODE_VIEW:      return "VIEW";
-        default:             return "???";
+        case MODE_NORMAL:  return "NORMAL";
+        case MODE_DRAW:    return "DRAW";
+        case MODE_WORK:    return "WORK";
+        case MODE_SANDBOX: return "SANDBOX";
+        default:           return "???";
     }
 }
 
 static const char* GetActionName(void) {
     switch (inputAction) {
-        case ACTION_BUILD_WALL:       return "WALL";
-        case ACTION_BUILD_FLOOR:      return "FLOOR";
-        case ACTION_BUILD_LADDER:     return "LADDER";
-        case ACTION_BUILD_ROOM:       return "ROOM";
-        case ACTION_DESIGNATE_MINE:   return "MINE";
-        case ACTION_DESIGNATE_BUILD:  return "BUILD";
-        case ACTION_ZONE_STOCKPILE:   return "STOCKPILE";
-        case ACTION_ZONE_GATHER:      return "GATHER";
-        case ACTION_PLACE_WATER:      return "WATER";
-        case ACTION_PLACE_FIRE:       return "FIRE";
-        case ACTION_PLACE_HEAT:       return "HEAT";
-        case ACTION_PLACE_COLD:       return "COLD";
-        case ACTION_PLACE_SMOKE:      return "SMOKE";
-        case ACTION_PLACE_STEAM:      return "STEAM";
-        case ACTION_PLACE_GRASS:      return "GRASS";
-        default:                      return NULL;
+        case ACTION_DRAW_WALL:       return "WALL";
+        case ACTION_DRAW_FLOOR:      return "FLOOR";
+        case ACTION_DRAW_LADDER:     return "LADDER";
+        case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
+        case ACTION_WORK_MINE:       return "DIG";
+        case ACTION_WORK_CONSTRUCT:  return "CONSTRUCT";
+        case ACTION_WORK_GATHER:     return "GATHER";
+        case ACTION_SANDBOX_WATER:   return "WATER";
+        case ACTION_SANDBOX_FIRE:    return "FIRE";
+        case ACTION_SANDBOX_HEAT:    return "HEAT";
+        case ACTION_SANDBOX_COLD:    return "COLD";
+        case ACTION_SANDBOX_SMOKE:   return "SMOKE";
+        case ACTION_SANDBOX_STEAM:   return "STEAM";
+        case ACTION_SANDBOX_GRASS:   return "GRASS";
+        default:                     return NULL;
     }
 }
 
@@ -80,22 +77,18 @@ static char barTextBuffer[256];
 
 const char* InputMode_GetBarText(void) {
     if (inputMode == MODE_NORMAL) {
-        return "[B]uild  [D]esignate  [Z]ones  [P]lace";
+        return "[D]raw  [W]ork  [S]andbox";
     }
     
     if (inputAction == ACTION_NONE) {
         // In a mode, no action selected - show available actions
         switch (inputMode) {
-            case MODE_BUILD:
-                return "BUILD: [W]all  [F]loor  [L]adder  [R]oom                    [ESC]Back";
-            case MODE_DESIGNATE:
-                return "DESIGNATE: [M]ine  [B]uild  [U]nburn                        [ESC]Back";
-            case MODE_ZONES:
-                return "ZONES: [S]tockpile  [G]ather                                [ESC]Back";
-            case MODE_PLACE:
-                return "PLACE: [W]ater  [F]ire  [H]eat                              [ESC]Back";
-            case MODE_VIEW:
-                return "VIEW: [T]emperature  [W]ater  [O]zones                      [ESC]Back";
+            case MODE_DRAW:
+                return "DRAW: [W]all  [F]loor  [L]adder  [S]tockpile    [ESC]Back";
+            case MODE_WORK:
+                return "WORK: [M]ine  [C]onstruct  [G]ather    [ESC]Back";
+            case MODE_SANDBOX:
+                return "SANDBOX: [W]ater  [F]ire  [H]eat  [C]old  s[M]oke  s[T]eam  [G]rass    [ESC]Back";
             default:
                 return "[ESC]Back";
         }
@@ -106,52 +99,52 @@ const char* InputMode_GetBarText(void) {
     const char* modeName = InputMode_GetModeName();
     
     switch (inputAction) {
-        case ACTION_BUILD_WALL:
+        case ACTION_DRAW_WALL:
             snprintf(barTextBuffer, sizeof(barTextBuffer), 
                 "%s > %s: [1]Stone%s [2]Wood%s    L-drag place  R-drag erase  [ESC]Back",
                 modeName, actionName,
                 selectedMaterial == 1 ? "<" : "",
                 selectedMaterial == 2 ? "<" : "");
             break;
-        case ACTION_BUILD_FLOOR:
+        case ACTION_DRAW_FLOOR:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: [1]Stone%s [2]Wood%s    L-drag place  [ESC]Back",
                 modeName, actionName,
                 selectedMaterial == 1 ? "<" : "",
                 selectedMaterial == 2 ? "<" : "");
             break;
-        case ACTION_BUILD_LADDER:
+        case ACTION_DRAW_LADDER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag place  [ESC]Back", modeName, actionName);
             break;
-        case ACTION_BUILD_ROOM:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: [1]Stone%s [2]Wood%s    L-drag place  [ESC]Back",
-                modeName, actionName,
-                selectedMaterial == 1 ? "<" : "",
-                selectedMaterial == 2 ? "<" : "");
-            break;
-        case ACTION_DESIGNATE_MINE:
-        case ACTION_DESIGNATE_BUILD:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
-            break;
-        case ACTION_ZONE_STOCKPILE:
-        case ACTION_ZONE_GATHER:
+        case ACTION_DRAW_STOCKPILE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag create  R-drag erase  [ESC]Back", modeName, actionName);
             break;
-        case ACTION_PLACE_WATER:
+        case ACTION_WORK_MINE:
+        case ACTION_WORK_CONSTRUCT:
+        case ACTION_WORK_GATHER:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
+            break;
+        case ACTION_SANDBOX_WATER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag add  R-drag remove  +Shift=source/drain  [ESC]Back", modeName, actionName);
             break;
-        case ACTION_PLACE_FIRE:
+        case ACTION_SANDBOX_FIRE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag ignite  R-drag extinguish  +Shift=source  [ESC]Back", modeName, actionName);
             break;
-        case ACTION_PLACE_HEAT:
+        case ACTION_SANDBOX_HEAT:
+        case ACTION_SANDBOX_COLD:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag heat  R-drag cold  +Shift=remove  [ESC]Back", modeName, actionName);
+                "%s > %s: L-drag add  R-drag remove  [ESC]Back", modeName, actionName);
+            break;
+        case ACTION_SANDBOX_SMOKE:
+        case ACTION_SANDBOX_STEAM:
+        case ACTION_SANDBOX_GRASS:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s > %s: L-drag add  R-drag remove  [ESC]Back", modeName, actionName);
             break;
         default:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
@@ -165,21 +158,21 @@ const char* InputMode_GetBarText(void) {
 bool InputMode_IsReservedKey(int key) {
     // Check if this key is the mode's entry key (reserved for exit)
     switch (inputMode) {
-        case MODE_BUILD:     return key == KEY_B;
-        case MODE_DESIGNATE: return key == KEY_D;
-        case MODE_ZONES:     return key == KEY_Z;
-        case MODE_PLACE:     return key == KEY_S;
-        case MODE_VIEW:      return key == KEY_V;
-        default:             return false;
+        case MODE_DRAW:    return key == KEY_D;
+        case MODE_WORK:    return key == KEY_W;
+        case MODE_SANDBOX: return key == KEY_S;
+        default:           return false;
     }
 }
 
 // Helper to add a bar item
-static int AddItem(BarItem* items, int count, const char* text, int key, bool isHeader, bool isHint, bool isSelected) {
+// underlinePos: character index to underline (-1 for none)
+static int AddItem(BarItem* items, int count, const char* text, int key, int underlinePos, bool isHeader, bool isHint, bool isSelected) {
     if (count >= MAX_BAR_ITEMS) return count;
     strncpy(items[count].text, text, sizeof(items[count].text) - 1);
     items[count].text[sizeof(items[count].text) - 1] = '\0';
     items[count].key = key;
+    items[count].underlinePos = underlinePos;
     items[count].isHeader = isHeader;
     items[count].isHint = isHint;
     items[count].isSelected = isSelected;
@@ -188,11 +181,12 @@ static int AddItem(BarItem* items, int count, const char* text, int key, bool is
 }
 
 // Helper to add a header with exit key
-static int AddExitHeader(BarItem* items, int count, const char* text, int key) {
+static int AddExitHeader(BarItem* items, int count, const char* text, int key, int underlinePos) {
     if (count >= MAX_BAR_ITEMS) return count;
     strncpy(items[count].text, text, sizeof(items[count].text) - 1);
     items[count].text[sizeof(items[count].text) - 1] = '\0';
     items[count].key = key;
+    items[count].underlinePos = underlinePos;
     items[count].isHeader = true;
     items[count].isHint = false;
     items[count].isSelected = false;
@@ -204,135 +198,129 @@ int InputMode_GetBarItems(BarItem* items) {
     int n = 0;
     
     if (inputMode == MODE_NORMAL) {
-        n = AddItem(items, n, "[B]uild", KEY_B, false, false, false);
-        n = AddItem(items, n, "[D]esignate", KEY_D, false, false, false);
-        n = AddItem(items, n, "[Z]ones", KEY_Z, false, false, false);
-        n = AddItem(items, n, "[S]andbox", KEY_S, false, false, false);
+        n = AddItem(items, n, "Draw", KEY_D, 0, false, false, false);
+        n = AddItem(items, n, "Work", KEY_W, 0, false, false, false);
+        n = AddItem(items, n, "Sandbox", KEY_S, 0, false, false, false);
         return n;
     }
     
     if (inputAction == ACTION_NONE) {
         // In a mode, no action selected
         switch (inputMode) {
-            case MODE_BUILD:
-                n = AddExitHeader(items, n, "[B]UILD:", KEY_B);
-                n = AddItem(items, n, "[W]all", KEY_W, false, false, false);
-                n = AddItem(items, n, "[F]loor", KEY_F, false, false, false);
-                n = AddItem(items, n, "[L]adder", KEY_L, false, false, false);
-                n = AddItem(items, n, "[R]oom", KEY_R, false, false, false);
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+            case MODE_DRAW:
+                n = AddExitHeader(items, n, "DRAW:", KEY_D, 0);
+                n = AddItem(items, n, "Wall", KEY_W, 0, false, false, false);
+                n = AddItem(items, n, "Floor", KEY_F, 0, false, false, false);
+                n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
+                n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
+                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
-            case MODE_DESIGNATE:
-                n = AddExitHeader(items, n, "[D]ESIGNATE:", KEY_D);
-                n = AddItem(items, n, "[M]ine", KEY_M, false, false, false);
-                n = AddItem(items, n, "[B]uild", KEY_B, false, false, false);
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+            case MODE_WORK:
+                n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
+                n = AddItem(items, n, "Dig", KEY_D, 0, false, false, false);
+                n = AddItem(items, n, "Construct", KEY_C, 0, false, false, false);
+                n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
+                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
-            case MODE_ZONES:
-                n = AddExitHeader(items, n, "[Z]ONES:", KEY_Z);
-                n = AddItem(items, n, "[S]tockpile", KEY_S, false, false, false);
-                n = AddItem(items, n, "[G]ather", KEY_G, false, false, false);
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
-                break;
-            case MODE_PLACE:
-                n = AddExitHeader(items, n, "[S]ANDBOX:", KEY_S);
-                n = AddItem(items, n, "[W]ater", KEY_W, false, false, false);
-                n = AddItem(items, n, "[F]ire", KEY_F, false, false, false);
-                n = AddItem(items, n, "[H]eat", KEY_H, false, false, false);
-                n = AddItem(items, n, "[C]old", KEY_C, false, false, false);
-                n = AddItem(items, n, "s[M]oke", KEY_M, false, false, false);
-                n = AddItem(items, n, "s[T]eam", KEY_T, false, false, false);
-                n = AddItem(items, n, "[G]rass", KEY_G, false, false, false);
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
-                break;
-            case MODE_VIEW:
-                n = AddExitHeader(items, n, "[V]IEW:", KEY_V);
-                n = AddItem(items, n, "[T]emperature", KEY_T, false, false, false);
-                n = AddItem(items, n, "[W]ater", KEY_W, false, false, false);
-                n = AddItem(items, n, "[O]zones", KEY_O, false, false, false);
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+            case MODE_SANDBOX:
+                n = AddExitHeader(items, n, "SANDBOX:", KEY_S, 0);
+                n = AddItem(items, n, "Water", KEY_W, 0, false, false, false);
+                n = AddItem(items, n, "Fire", KEY_F, 0, false, false, false);
+                n = AddItem(items, n, "Heat", KEY_H, 0, false, false, false);
+                n = AddItem(items, n, "Cold", KEY_C, 0, false, false, false);
+                n = AddItem(items, n, "sMoke", KEY_M, 1, false, false, false);
+                n = AddItem(items, n, "sTeam", KEY_T, 1, false, false, false);
+                n = AddItem(items, n, "Grass", KEY_G, 0, false, false, false);
+                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             default:
-                n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
         }
         return n;
     }
     
-    // Action selected - show materials/hints
-    const char* actionName = GetActionName();
-    char header[64];
-    int exitKey = 0;
+    // Action selected - show mode header and action header separately
+    // Mode header (click to exit to normal)
     switch (inputMode) {
-        case MODE_BUILD:     snprintf(header, sizeof(header), "[B]UILD > %s:", actionName); exitKey = KEY_B; break;
-        case MODE_DESIGNATE: snprintf(header, sizeof(header), "[D]ESIGNATE > %s:", actionName); exitKey = KEY_D; break;
-        case MODE_ZONES:     snprintf(header, sizeof(header), "[Z]ONES > %s:", actionName); exitKey = KEY_Z; break;
-        case MODE_PLACE:     snprintf(header, sizeof(header), "[S]ANDBOX > %s:", actionName); exitKey = KEY_S; break;
-        case MODE_VIEW:      snprintf(header, sizeof(header), "[V]IEW > %s:", actionName); exitKey = KEY_V; break;
-        default:             snprintf(header, sizeof(header), "%s:", actionName); break;
+        case MODE_DRAW:    n = AddExitHeader(items, n, "DRAW >", KEY_D, 0); break;
+        case MODE_WORK:    n = AddExitHeader(items, n, "WORK >", KEY_W, 0); break;
+        case MODE_SANDBOX: n = AddExitHeader(items, n, "SANDBOX >", KEY_S, 0); break;
+        default: break;
     }
-    n = AddExitHeader(items, n, header, exitKey);
+    
+    // Action header (click to go back one level)
+    int actionKey = 0;
+    int actionUnderline = 0;
+    switch (inputAction) {
+        case ACTION_DRAW_WALL:      actionKey = KEY_W; break;
+        case ACTION_DRAW_FLOOR:     actionKey = KEY_F; break;
+        case ACTION_DRAW_LADDER:    actionKey = KEY_L; break;
+        case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
+        case ACTION_WORK_MINE:      actionKey = KEY_D; break;
+        case ACTION_WORK_CONSTRUCT: actionKey = KEY_C; break;
+        case ACTION_WORK_GATHER:    actionKey = KEY_G; break;
+        case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
+        case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
+        case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;
+        case ACTION_SANDBOX_COLD:   actionKey = KEY_C; break;
+        case ACTION_SANDBOX_SMOKE:  actionKey = KEY_M; actionUnderline = 1; break;
+        case ACTION_SANDBOX_STEAM:  actionKey = KEY_T; actionUnderline = 1; break;
+        case ACTION_SANDBOX_GRASS:  actionKey = KEY_G; break;
+        default: break;
+    }
+    const char* actionName = GetActionName();
+    char actionHeader[32];
+    snprintf(actionHeader, sizeof(actionHeader), "%s:", actionName);
+    n = AddItem(items, n, actionHeader, actionKey, actionUnderline, true, false, false);
     
     switch (inputAction) {
-        case ACTION_BUILD_WALL:
-        case ACTION_BUILD_FLOOR:
-        case ACTION_BUILD_ROOM:
-            n = AddItem(items, n, "[1]Stone", KEY_ONE, false, false, selectedMaterial == 1);
-            n = AddItem(items, n, "[2]Wood", KEY_TWO, false, false, selectedMaterial == 2);
-            n = AddItem(items, n, "L-drag place", 0, false, true, false);
-            if (inputAction == ACTION_BUILD_WALL) {
-                n = AddItem(items, n, "R-drag erase", 0, false, true, false);
+        case ACTION_DRAW_WALL:
+        case ACTION_DRAW_FLOOR:
+            n = AddItem(items, n, "1:Stone", KEY_ONE, 0, false, false, selectedMaterial == 1);
+            n = AddItem(items, n, "2:Wood", KEY_TWO, 0, false, false, selectedMaterial == 2);
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            if (inputAction == ACTION_DRAW_WALL) {
+                n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             }
             break;
-        case ACTION_BUILD_LADDER:
-            n = AddItem(items, n, "L-drag place", 0, false, true, false);
+        case ACTION_DRAW_LADDER:
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             break;
-        case ACTION_DESIGNATE_MINE:
-        case ACTION_DESIGNATE_BUILD:
-            n = AddItem(items, n, "L-drag designate", 0, false, true, false);
-            n = AddItem(items, n, "R-drag cancel", 0, false, true, false);
+        case ACTION_DRAW_STOCKPILE:
+            n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;
-        case ACTION_ZONE_STOCKPILE:
-        case ACTION_ZONE_GATHER:
-            n = AddItem(items, n, "L-drag create", 0, false, true, false);
-            n = AddItem(items, n, "R-drag erase", 0, false, true, false);
+        case ACTION_WORK_MINE:
+        case ACTION_WORK_CONSTRUCT:
+        case ACTION_WORK_GATHER:
+            n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
             break;
-        case ACTION_PLACE_WATER:
-            n = AddItem(items, n, "L-drag add", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
-            n = AddItem(items, n, "+Shift=source/drain", 0, false, true, false);
+        case ACTION_SANDBOX_WATER:
+            n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+            n = AddItem(items, n, "+Shift=source/drain", 0, -1, false, true, false);
             break;
-        case ACTION_PLACE_FIRE:
-            n = AddItem(items, n, "L-drag ignite", 0, false, true, false);
-            n = AddItem(items, n, "R-drag extinguish", 0, false, true, false);
-            n = AddItem(items, n, "+Shift=source", 0, false, true, false);
+        case ACTION_SANDBOX_FIRE:
+            n = AddItem(items, n, "L-drag ignite", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag extinguish", 0, -1, false, true, false);
+            n = AddItem(items, n, "+Shift=source", 0, -1, false, true, false);
             break;
-        case ACTION_PLACE_HEAT:
-            n = AddItem(items, n, "L-drag add", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
-            break;
-        case ACTION_PLACE_COLD:
-            n = AddItem(items, n, "L-drag add", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
-            break;
-        case ACTION_PLACE_SMOKE:
-            n = AddItem(items, n, "L-drag add", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
-            break;
-        case ACTION_PLACE_STEAM:
-            n = AddItem(items, n, "L-drag add", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
-            break;
-        case ACTION_PLACE_GRASS:
-            n = AddItem(items, n, "L-drag grow", 0, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+        case ACTION_SANDBOX_HEAT:
+        case ACTION_SANDBOX_COLD:
+        case ACTION_SANDBOX_SMOKE:
+        case ACTION_SANDBOX_STEAM:
+        case ACTION_SANDBOX_GRASS:
+            n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;
         default:
-            n = AddItem(items, n, "L-drag", 0, false, true, false);
+            n = AddItem(items, n, "L-drag", 0, -1, false, true, false);
             break;
     }
     
-    n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
+    n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
     return n;
 }
 

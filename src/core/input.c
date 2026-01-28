@@ -100,20 +100,6 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
-static void ExecuteBuildRoom(int x1, int y1, int x2, int y2, int z) {
-    CellType wallType = (selectedMaterial == 2) ? CELL_WOOD_WALL : CELL_WALL;
-    for (int dy = y1; dy <= y2; dy++) {
-        for (int dx = x1; dx <= x2; dx++) {
-            bool isBorder = (dx == x1 || dx == x2 || dy == y1 || dy == y2);
-            grid[z][dy][dx] = isBorder ? wallType : CELL_FLOOR;
-            MarkChunkDirty(dx, dy, z);
-            CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-        }
-    }
-    const char* matName = (selectedMaterial == 2) ? "wood" : "stone";
-    AddMessage(TextFormat("Built %s room %dx%d", matName, x2 - x1 + 1, y2 - y1 + 1), GREEN);
-}
-
 static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -550,8 +536,8 @@ void HandleInput(void) {
             if (newSize >= 1) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
             return;
         }
-        // Filter toggles - only when not in a mode that uses these keys
-        if (inputMode == MODE_NORMAL || inputMode == MODE_ZONES) {
+        // Filter toggles - only in normal mode (R/G/B/O aren't used by other modes)
+        if (inputMode == MODE_NORMAL) {
             if (IsKeyPressed(KEY_R)) { sp->allowedTypes[ITEM_RED] = !sp->allowedTypes[ITEM_RED]; AddMessage(TextFormat("Red: %s", sp->allowedTypes[ITEM_RED] ? "ON" : "OFF"), RED); return; }
             if (IsKeyPressed(KEY_G)) { sp->allowedTypes[ITEM_GREEN] = !sp->allowedTypes[ITEM_GREEN]; AddMessage(TextFormat("Green: %s", sp->allowedTypes[ITEM_GREEN] ? "ON" : "OFF"), GREEN); return; }
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
@@ -643,22 +629,18 @@ void HandleInput(void) {
 
 
     // Re-tap mode key exits to normal
-    if (inputMode == MODE_BUILD && CheckKey(KEY_B)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_DESIGNATE && CheckKey(KEY_D)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_ZONES && CheckKey(KEY_Z)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_PLACE && CheckKey(KEY_S)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_VIEW && CheckKey(KEY_V)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_DRAW && CheckKey(KEY_D)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_WORK && CheckKey(KEY_W)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_SANDBOX && CheckKey(KEY_S)) { InputMode_ExitToNormal(); return; }
 
     // ========================================================================
     // Mode selection (only in normal mode)
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
-        if (CheckKey(KEY_B)) { inputMode = MODE_BUILD; return; }
-        if (CheckKey(KEY_D)) { inputMode = MODE_DESIGNATE; return; }
-        if (CheckKey(KEY_Z)) { inputMode = MODE_ZONES; return; }
-        if (CheckKey(KEY_S)) { inputMode = MODE_PLACE; return; }
-        if (CheckKey(KEY_V)) { inputMode = MODE_VIEW; return; }
+        if (CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
+        if (CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
+        if (CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
         
         // Skip grid interactions if UI wants mouse
         if (ui_wants_mouse()) return;
@@ -712,35 +694,59 @@ void HandleInput(void) {
     
     if (inputAction == ACTION_NONE) {
         switch (inputMode) {
-            case MODE_BUILD:
-                if (CheckKey(KEY_W)) { inputAction = ACTION_BUILD_WALL; selectedMaterial = 1; }
-                if (CheckKey(KEY_F)) { inputAction = ACTION_BUILD_FLOOR; selectedMaterial = 1; }
-                if (CheckKey(KEY_L)) { inputAction = ACTION_BUILD_LADDER; selectedMaterial = 1; }
-                if (CheckKey(KEY_R)) { inputAction = ACTION_BUILD_ROOM; selectedMaterial = 1; }
+            case MODE_DRAW:
+                if (CheckKey(KEY_W)) { inputAction = ACTION_DRAW_WALL; selectedMaterial = 1; }
+                if (CheckKey(KEY_F)) { inputAction = ACTION_DRAW_FLOOR; selectedMaterial = 1; }
+                if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
+                if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
                 break;
-            case MODE_DESIGNATE:
-                if (CheckKey(KEY_M)) { inputAction = ACTION_DESIGNATE_MINE; }
-                if (CheckKey(KEY_B)) { inputAction = ACTION_DESIGNATE_BUILD; }
+            case MODE_WORK:
+                if (CheckKey(KEY_D)) { inputAction = ACTION_WORK_MINE; }
+                if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
+                if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 break;
-            case MODE_ZONES:
-                if (CheckKey(KEY_S)) { inputAction = ACTION_ZONE_STOCKPILE; }
-                if (CheckKey(KEY_G)) { inputAction = ACTION_ZONE_GATHER; }
-                break;
-            case MODE_PLACE:
-                if (CheckKey(KEY_W)) { inputAction = ACTION_PLACE_WATER; }
-                if (CheckKey(KEY_F)) { inputAction = ACTION_PLACE_FIRE; }
-                if (CheckKey(KEY_H)) { inputAction = ACTION_PLACE_HEAT; }
-                if (CheckKey(KEY_C)) { inputAction = ACTION_PLACE_COLD; }
-                if (CheckKey(KEY_M)) { inputAction = ACTION_PLACE_SMOKE; }
-                if (CheckKey(KEY_T)) { inputAction = ACTION_PLACE_STEAM; }
-                if (CheckKey(KEY_G)) { inputAction = ACTION_PLACE_GRASS; }
-                break;
-            case MODE_VIEW:
-                // TODO: Implement view toggles
+            case MODE_SANDBOX:
+                if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
+                if (CheckKey(KEY_F)) { inputAction = ACTION_SANDBOX_FIRE; }
+                if (CheckKey(KEY_H)) { inputAction = ACTION_SANDBOX_HEAT; }
+                if (CheckKey(KEY_C)) { inputAction = ACTION_SANDBOX_COLD; }
+                if (CheckKey(KEY_M)) { inputAction = ACTION_SANDBOX_SMOKE; }
+                if (CheckKey(KEY_T)) { inputAction = ACTION_SANDBOX_STEAM; }
+                if (CheckKey(KEY_G)) { inputAction = ACTION_SANDBOX_GRASS; }
                 break;
             default:
                 break;
         }
+        return;
+    }
+
+    // ========================================================================
+    // Re-tap action key to go back one level
+    // ========================================================================
+    
+    bool backOneLevel = false;
+    switch (inputAction) {
+        // Draw actions
+        case ACTION_DRAW_WALL:      backOneLevel = CheckKey(KEY_W); break;
+        case ACTION_DRAW_FLOOR:     backOneLevel = CheckKey(KEY_F); break;
+        case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
+        case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
+        // Work actions
+        case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_D); break;
+        case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_WORK_GATHER:    backOneLevel = CheckKey(KEY_G); break;
+        // Sandbox actions
+        case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
+        case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
+        case ACTION_SANDBOX_HEAT:   backOneLevel = CheckKey(KEY_H); break;
+        case ACTION_SANDBOX_COLD:   backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_SANDBOX_SMOKE:  backOneLevel = CheckKey(KEY_M); break;
+        case ACTION_SANDBOX_STEAM:  backOneLevel = CheckKey(KEY_T); break;
+        case ACTION_SANDBOX_GRASS:  backOneLevel = CheckKey(KEY_G); break;
+        default: break;
+    }
+    if (backOneLevel) {
+        InputMode_Back();
         return;
     }
 
@@ -778,63 +784,62 @@ void HandleInput(void) {
         GetDragRect(&x1, &y1, &x2, &y2);
         
         switch (inputAction) {
-            case ACTION_BUILD_WALL:
+            // Draw actions
+            case ACTION_DRAW_WALL:
                 if (leftClick) ExecuteBuildWall(x1, y1, x2, y2, z);
                 else ExecuteErase(x1, y1, x2, y2, z);
                 break;
-            case ACTION_BUILD_FLOOR:
+            case ACTION_DRAW_FLOOR:
                 if (leftClick) ExecuteBuildFloor(x1, y1, x2, y2, z);
                 else ExecuteErase(x1, y1, x2, y2, z);
                 break;
-            case ACTION_BUILD_LADDER:
+            case ACTION_DRAW_LADDER:
                 if (leftClick) ExecuteBuildLadder(x1, y1, x2, y2, z);
                 else ExecuteErase(x1, y1, x2, y2, z);
                 break;
-            case ACTION_BUILD_ROOM:
-                if (leftClick) ExecuteBuildRoom(x1, y1, x2, y2, z);
-                else ExecuteErase(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DESIGNATE_MINE:
-                if (leftClick) ExecuteDesignateMine(x1, y1, x2, y2, z);
-                else ExecuteCancelMine(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DESIGNATE_BUILD:
-                if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);
-                else ExecuteCancelBuild(x1, y1, x2, y2, z);
-                break;
-            case ACTION_ZONE_STOCKPILE:
+            case ACTION_DRAW_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
                 else ExecuteEraseStockpile(x1, y1, x2, y2, z);
                 break;
-            case ACTION_ZONE_GATHER:
+            // Work actions
+            case ACTION_WORK_MINE:
+                if (leftClick) ExecuteDesignateMine(x1, y1, x2, y2, z);
+                else ExecuteCancelMine(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_CONSTRUCT:
+                if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);
+                else ExecuteCancelBuild(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_GATHER:
                 if (leftClick) ExecuteCreateGatherZone(x1, y1, x2, y2, z);
                 else ExecuteEraseGatherZone(x1, y1, x2, y2, z);
                 break;
-            case ACTION_PLACE_WATER:
+            // Sandbox actions
+            case ACTION_SANDBOX_WATER:
                 if (leftClick) ExecutePlaceWater(x1, y1, x2, y2, z, shift);
                 else ExecuteRemoveWater(x1, y1, x2, y2, z, shift);
                 break;
-            case ACTION_PLACE_FIRE:
+            case ACTION_SANDBOX_FIRE:
                 if (leftClick) ExecutePlaceFire(x1, y1, x2, y2, z, shift);
                 else ExecuteRemoveFire(x1, y1, x2, y2, z, shift);
                 break;
-            case ACTION_PLACE_HEAT:
+            case ACTION_SANDBOX_HEAT:
                 if (leftClick) ExecutePlaceHeat(x1, y1, x2, y2, z);
                 else ExecuteRemoveHeat(x1, y1, x2, y2, z);
                 break;
-            case ACTION_PLACE_COLD:
+            case ACTION_SANDBOX_COLD:
                 if (leftClick) ExecutePlaceCold(x1, y1, x2, y2, z);
                 else ExecuteRemoveCold(x1, y1, x2, y2, z);
                 break;
-            case ACTION_PLACE_SMOKE:
+            case ACTION_SANDBOX_SMOKE:
                 if (leftClick) ExecutePlaceSmoke(x1, y1, x2, y2, z);
                 else ExecuteRemoveSmoke(x1, y1, x2, y2, z);
                 break;
-            case ACTION_PLACE_STEAM:
+            case ACTION_SANDBOX_STEAM:
                 if (leftClick) ExecutePlaceSteam(x1, y1, x2, y2, z);
                 else ExecuteRemoveSteam(x1, y1, x2, y2, z);
                 break;
-            case ACTION_PLACE_GRASS:
+            case ACTION_SANDBOX_GRASS:
                 if (leftClick) ExecutePlaceGrass(x1, y1, x2, y2, z);
                 else ExecuteRemoveGrass(x1, y1, x2, y2, z);
                 break;

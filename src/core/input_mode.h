@@ -7,35 +7,31 @@
 // Top-level input modes
 typedef enum {
     MODE_NORMAL,
-    MODE_BUILD,
-    MODE_DESIGNATE,
-    MODE_ZONES,
-    MODE_PLACE,
-    MODE_VIEW,
+    MODE_DRAW,      // Direct level editing (walls, floors, ladders, stockpiles)
+    MODE_WORK,      // Jobs for movers (mine, construct, gather)
+    MODE_SANDBOX,   // Sim systems (water, fire, heat, etc.)
 } InputMode;
 
 // Actions within modes
 typedef enum {
     ACTION_NONE,
-    // Build actions
-    ACTION_BUILD_WALL,
-    ACTION_BUILD_FLOOR,
-    ACTION_BUILD_LADDER,
-    ACTION_BUILD_ROOM,
-    // Designate actions
-    ACTION_DESIGNATE_MINE,
-    ACTION_DESIGNATE_BUILD,
-    // Zone actions
-    ACTION_ZONE_STOCKPILE,
-    ACTION_ZONE_GATHER,
-    // Place actions (debug/sandbox)
-    ACTION_PLACE_WATER,
-    ACTION_PLACE_FIRE,
-    ACTION_PLACE_HEAT,
-    ACTION_PLACE_COLD,
-    ACTION_PLACE_SMOKE,
-    ACTION_PLACE_STEAM,
-    ACTION_PLACE_GRASS,
+    // Draw actions (direct level editing)
+    ACTION_DRAW_WALL,
+    ACTION_DRAW_FLOOR,
+    ACTION_DRAW_LADDER,
+    ACTION_DRAW_STOCKPILE,
+    // Work actions (jobs for movers)
+    ACTION_WORK_MINE,
+    ACTION_WORK_CONSTRUCT,
+    ACTION_WORK_GATHER,
+    // Sandbox actions (sim systems)
+    ACTION_SANDBOX_WATER,
+    ACTION_SANDBOX_FIRE,
+    ACTION_SANDBOX_HEAT,
+    ACTION_SANDBOX_COLD,
+    ACTION_SANDBOX_SMOKE,
+    ACTION_SANDBOX_STEAM,
+    ACTION_SANDBOX_GRASS,
 } InputAction;
 
 // Current input state
@@ -66,9 +62,10 @@ const char* InputMode_GetBarText(void);
 
 // Individual bar item for separate button rendering
 typedef struct {
-    char text[32];      // Display text like "[B]uild"
+    char text[32];      // Display text like "Wall"
     int key;            // Raylib key code to trigger (0 if not clickable)
-    bool isHeader;      // True if this is a mode header like "BUILD:"
+    int underlinePos;   // Character index to underline (-1 for none)
+    bool isHeader;      // True if this is a mode header like "DRAW:"
     bool isHint;        // True if this is a hint like "L-drag place"
     bool isSelected;    // True if this option is currently selected
     bool isExit;        // True if this key exits the current mode (show in red)

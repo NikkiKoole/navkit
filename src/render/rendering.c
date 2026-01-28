@@ -258,7 +258,7 @@ void DrawSteam(void) {
 
 void DrawTemperature(void) {
     // Auto-show when placing heat or cold
-    bool autoShow = (inputAction == ACTION_PLACE_HEAT || inputAction == ACTION_PLACE_COLD);
+    bool autoShow = (inputAction == ACTION_SANDBOX_HEAT || inputAction == ACTION_SANDBOX_COLD);
     if (!showTemperatureOverlay && !autoShow) return;
     
     float size = CELL_SIZE * zoom;
