@@ -577,10 +577,6 @@ int main(int argc, char** argv) {
                         fillColor = (Color){0, 200, 200, 80};
                         lineColor = (Color){0, 255, 255, 255};
                         break;
-                    case ACTION_DESIGNATE_UNBURN:
-                        fillColor = (Color){100, 200, 100, 80};
-                        lineColor = GREEN;
-                        break;
                     case ACTION_ZONE_STOCKPILE:
                         fillColor = (Color){0, 200, 0, 80};
                         lineColor = GREEN;

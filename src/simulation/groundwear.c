@@ -1,5 +1,6 @@
 #include "groundwear.h"
 #include "../world/grid.h"
+#include "fire.h"
 #include <string.h>
 
 // Wear grid storage
@@ -57,8 +58,6 @@ void UpdateGroundWear(void) {
     // Process all cells
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (wearGrid[y][x] == 0) continue;
-            
             CellType cell = grid[0][y][x];
             
             // Only process grass/dirt tiles
@@ -71,9 +70,10 @@ void UpdateGroundWear(void) {
                 wearGrid[y][x] = 0;
             }
             
-            // Check if dirt should become grass
-            if (cell == CELL_DIRT && wearGrid[y][x] <= wearDirtToGrass) {
+            // Check if dirt should become grass (but not while on fire)
+            if (cell == CELL_DIRT && wearGrid[y][x] <= wearDirtToGrass && !HasFire(x, y, 0)) {
                 grid[0][y][x] = CELL_GRASS;
+                CLEAR_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED);
             }
         }
     }

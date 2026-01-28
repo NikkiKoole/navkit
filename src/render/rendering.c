@@ -1,6 +1,7 @@
 // render/rendering.c - Core rendering functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../core/input_mode.h"
 
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
@@ -256,7 +257,9 @@ void DrawSteam(void) {
 }
 
 void DrawTemperature(void) {
-    if (!showTemperatureOverlay) return;
+    // Auto-show when placing heat or cold
+    bool autoShow = (inputAction == ACTION_PLACE_HEAT || inputAction == ACTION_PLACE_COLD);
+    if (!showTemperatureOverlay && !autoShow) return;
     
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;

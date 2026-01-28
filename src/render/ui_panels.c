@@ -504,6 +504,17 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500,
             "Decay only happens every N ticks. Higher = slower recovery. At 50, wear decays 50x slower than trampling occurs.");
         y += 22;
+        
+        // Calculate and display regrow time
+        int ticksToRegrow = ((wearMax - wearDirtToGrass) / wearDecayRate) * wearDecayInterval;
+        float secondsToRegrow = ticksToRegrow / 60.0f;
+        if (secondsToRegrow < 60) {
+            DrawTextShadow(TextFormat("Regrow time: %.1fs", secondsToRegrow), x, y, 14, GRAY);
+        } else {
+            DrawTextShadow(TextFormat("Regrow time: %.1fm", secondsToRegrow / 60.0f), x, y, 14, GRAY);
+        }
+        y += 18;
+        
         if (PushButton(x, y, "Clear Wear")) {
             ClearGroundWear();
         }

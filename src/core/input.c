@@ -1,6 +1,8 @@
 // core/input.c - Input handling with hierarchical mode system
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../simulation/smoke.h"
+#include "../simulation/steam.h"
 #include "input_mode.h"
 
 // Forward declarations
@@ -44,6 +46,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
             if (grid[z][dy][dx] != wallType) {
                 grid[z][dy][dx] = wallType;
                 MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 SetWaterLevel(dx, dy, z, 0);
                 SetWaterSource(dx, dy, z, false);
                 SetWaterDrain(dx, dy, z, false);
@@ -76,6 +79,7 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
             if (grid[z][dy][dx] != CELL_FLOOR) {
                 grid[z][dy][dx] = CELL_FLOOR;
                 MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 count++;
             }
         }
@@ -89,6 +93,7 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             PlaceLadder(dx, dy, z);
+            CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
         }
     }
 }
@@ -100,6 +105,7 @@ static void ExecuteBuildRoom(int x1, int y1, int x2, int y2, int z) {
             bool isBorder = (dx == x1 || dx == x2 || dy == y1 || dy == y2);
             grid[z][dy][dx] = isBorder ? wallType : CELL_FLOOR;
             MarkChunkDirty(dx, dy, z);
+            CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
         }
     }
     const char* matName = (selectedMaterial == 2) ? "wood" : "stone";
@@ -181,21 +187,6 @@ static void ExecuteCancelBuild(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Cancelled %d blueprint%s", count, count > 1 ? "s" : ""), ORANGE);
-    }
-}
-
-static void ExecuteUnburn(int x1, int y1, int x2, int y2, int z) {
-    int count = 0;
-    for (int dy = y1; dy <= y2; dy++) {
-        for (int dx = x1; dx <= x2; dx++) {
-            if (HAS_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED)) {
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                count++;
-            }
-        }
-    }
-    if (count > 0) {
-        AddMessage(TextFormat("Unburned %d cell%s", count, count > 1 ? "s" : ""), GREEN);
     }
 }
 
@@ -346,41 +337,154 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
     if (extinguished > 0) AddMessage(TextFormat("Extinguished %d cell%s", extinguished, extinguished > 1 ? "s" : ""), GRAY);
 }
 
-static void ExecutePlaceHeat(int x1, int y1, int x2, int y2, int z, bool shift) {
+static void ExecutePlaceHeat(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (shift) {
-                TempCell* cell = &temperatureGrid[z][dy][dx];
-                if (cell->isHeatSource) { SetHeatSource(dx, dy, z, false); count++; }
-            } else {
-                SetHeatSource(dx, dy, z, true);
-                count++;
-            }
+            SetHeatSource(dx, dy, z, true);
+            count++;
         }
     }
     if (count > 0) {
-        if (shift) AddMessage(TextFormat("Removed %d heat source%s", count, count > 1 ? "s" : ""), ORANGE);
-        else AddMessage(TextFormat("Placed %d heat source%s", count, count > 1 ? "s" : ""), RED);
+        AddMessage(TextFormat("Placed %d heat source%s", count, count > 1 ? "s" : ""), RED);
     }
 }
 
-static void ExecutePlaceCold(int x1, int y1, int x2, int y2, int z, bool shift) {
+static void ExecuteRemoveHeat(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (shift) {
-                TempCell* cell = &temperatureGrid[z][dy][dx];
-                if (cell->isColdSource) { SetColdSource(dx, dy, z, false); count++; }
-            } else {
-                SetColdSource(dx, dy, z, true);
+            TempCell* cell = &temperatureGrid[z][dy][dx];
+            if (cell->isHeatSource) {
+                SetHeatSource(dx, dy, z, false);
                 count++;
             }
         }
     }
     if (count > 0) {
-        if (shift) AddMessage(TextFormat("Removed %d cold source%s", count, count > 1 ? "s" : ""), ORANGE);
-        else AddMessage(TextFormat("Placed %d cold source%s", count, count > 1 ? "s" : ""), SKYBLUE);
+        AddMessage(TextFormat("Removed %d heat source%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecutePlaceCold(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            SetColdSource(dx, dy, z, true);
+            count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d cold source%s", count, count > 1 ? "s" : ""), SKYBLUE);
+    }
+}
+
+static void ExecuteRemoveCold(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            TempCell* cell = &temperatureGrid[z][dy][dx];
+            if (cell->isColdSource) {
+                SetColdSource(dx, dy, z, false);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed %d cold source%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecutePlaceSmoke(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            SetSmokeLevel(dx, dy, z, SMOKE_MAX_LEVEL);
+            count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed smoke in %d cell%s", count, count > 1 ? "s" : ""), GRAY);
+    }
+}
+
+static void ExecuteRemoveSmoke(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (GetSmokeLevel(dx, dy, z) > 0) {
+                SetSmokeLevel(dx, dy, z, 0);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed smoke from %d cell%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecutePlaceSteam(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            SetSteamLevel(dx, dy, z, STEAM_MAX_LEVEL);
+            count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed steam in %d cell%s", count, count > 1 ? "s" : ""), WHITE);
+    }
+}
+
+static void ExecuteRemoveSteam(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (GetSteamLevel(dx, dy, z) > 0) {
+                SetSteamLevel(dx, dy, z, 0);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed steam from %d cell%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            CellType cell = grid[z][dy][dx];
+            // Can grow grass on dirt, walkable ground, or existing grass
+            if (cell == CELL_DIRT || cell == CELL_WALKABLE || cell == CELL_GRASS) {
+                if (cell != CELL_GRASS) {
+                    grid[z][dy][dx] = CELL_GRASS;
+                    MarkChunkDirty(dx, dy, z);
+                    count++;
+                }
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Grew grass on %d cell%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (grid[z][dy][dx] == CELL_GRASS) {
+                grid[z][dy][dx] = CELL_DIRT;
+                MarkChunkDirty(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed grass from %d cell%s", count, count > 1 ? "s" : ""), ORANGE);
     }
 }
 
@@ -619,7 +723,10 @@ void HandleInput(void) {
                 if (CheckKey(KEY_W)) { inputAction = ACTION_PLACE_WATER; }
                 if (CheckKey(KEY_F)) { inputAction = ACTION_PLACE_FIRE; }
                 if (CheckKey(KEY_H)) { inputAction = ACTION_PLACE_HEAT; }
-                if (CheckKey(KEY_U)) { inputAction = ACTION_DESIGNATE_UNBURN; }
+                if (CheckKey(KEY_C)) { inputAction = ACTION_PLACE_COLD; }
+                if (CheckKey(KEY_M)) { inputAction = ACTION_PLACE_SMOKE; }
+                if (CheckKey(KEY_T)) { inputAction = ACTION_PLACE_STEAM; }
+                if (CheckKey(KEY_G)) { inputAction = ACTION_PLACE_GRASS; }
                 break;
             case MODE_VIEW:
                 // TODO: Implement view toggles
@@ -688,9 +795,6 @@ void HandleInput(void) {
                 if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);
                 break;
-            case ACTION_DESIGNATE_UNBURN:
-                if (leftClick) ExecuteUnburn(x1, y1, x2, y2, z);
-                break;
             case ACTION_ZONE_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
                 else ExecuteEraseStockpile(x1, y1, x2, y2, z);
@@ -708,8 +812,24 @@ void HandleInput(void) {
                 else ExecuteRemoveFire(x1, y1, x2, y2, z, shift);
                 break;
             case ACTION_PLACE_HEAT:
-                if (leftClick) ExecutePlaceHeat(x1, y1, x2, y2, z, shift);
-                else ExecutePlaceCold(x1, y1, x2, y2, z, shift);
+                if (leftClick) ExecutePlaceHeat(x1, y1, x2, y2, z);
+                else ExecuteRemoveHeat(x1, y1, x2, y2, z);
+                break;
+            case ACTION_PLACE_COLD:
+                if (leftClick) ExecutePlaceCold(x1, y1, x2, y2, z);
+                else ExecuteRemoveCold(x1, y1, x2, y2, z);
+                break;
+            case ACTION_PLACE_SMOKE:
+                if (leftClick) ExecutePlaceSmoke(x1, y1, x2, y2, z);
+                else ExecuteRemoveSmoke(x1, y1, x2, y2, z);
+                break;
+            case ACTION_PLACE_STEAM:
+                if (leftClick) ExecutePlaceSteam(x1, y1, x2, y2, z);
+                else ExecuteRemoveSteam(x1, y1, x2, y2, z);
+                break;
+            case ACTION_PLACE_GRASS:
+                if (leftClick) ExecutePlaceGrass(x1, y1, x2, y2, z);
+                else ExecuteRemoveGrass(x1, y1, x2, y2, z);
                 break;
             default:
                 break;

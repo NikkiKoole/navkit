@@ -8,14 +8,14 @@
 // Grass becomes dirt when trampled, dirt becomes grass when left alone
 
 // Wear thresholds - now variables for UI tweaking
-#define WEAR_GRASS_TO_DIRT_DEFAULT 1000  // Above this, grass becomes dirt
-#define WEAR_DIRT_TO_GRASS_DEFAULT 500   // Below this, dirt becomes grass
-#define WEAR_MAX_DEFAULT 10000           // Maximum wear value
+#define WEAR_GRASS_TO_DIRT_DEFAULT 100   // Above this, grass becomes dirt
+#define WEAR_DIRT_TO_GRASS_DEFAULT 0     // Below this, dirt becomes grass
+#define WEAR_MAX_DEFAULT 300             // Maximum wear value (set when burned)
 
 // Wear change rates - now variables for UI tweaking
 #define WEAR_TRAMPLE_AMOUNT_DEFAULT 1    // Added when a mover walks on tile (low = needs many passes)
 #define WEAR_DECAY_RATE_DEFAULT 1        // Subtracted per decay tick (natural recovery)
-#define WEAR_DECAY_INTERVAL_DEFAULT 50   // Only decay every N ticks (higher = slower recovery)
+#define WEAR_DECAY_INTERVAL_DEFAULT 1    // Only decay every N ticks (higher = slower recovery)
 
 // Runtime configurable values
 extern int wearGrassToDirt;      // Threshold to turn grass into dirt

@@ -62,12 +62,15 @@ static const char* GetActionName(void) {
         case ACTION_BUILD_ROOM:       return "ROOM";
         case ACTION_DESIGNATE_MINE:   return "MINE";
         case ACTION_DESIGNATE_BUILD:  return "BUILD";
-        case ACTION_DESIGNATE_UNBURN: return "UNBURN";
         case ACTION_ZONE_STOCKPILE:   return "STOCKPILE";
         case ACTION_ZONE_GATHER:      return "GATHER";
         case ACTION_PLACE_WATER:      return "WATER";
         case ACTION_PLACE_FIRE:       return "FIRE";
         case ACTION_PLACE_HEAT:       return "HEAT";
+        case ACTION_PLACE_COLD:       return "COLD";
+        case ACTION_PLACE_SMOKE:      return "SMOKE";
+        case ACTION_PLACE_STEAM:      return "STEAM";
+        case ACTION_PLACE_GRASS:      return "GRASS";
         default:                      return NULL;
     }
 }
@@ -132,10 +135,6 @@ const char* InputMode_GetBarText(void) {
         case ACTION_DESIGNATE_BUILD:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
-            break;
-        case ACTION_DESIGNATE_UNBURN:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag unburn  [ESC]Back", modeName, actionName);
             break;
         case ACTION_ZONE_STOCKPILE:
         case ACTION_ZONE_GATHER:
@@ -240,7 +239,10 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "[W]ater", KEY_W, false, false, false);
                 n = AddItem(items, n, "[F]ire", KEY_F, false, false, false);
                 n = AddItem(items, n, "[H]eat", KEY_H, false, false, false);
-                n = AddItem(items, n, "[U]nburn", KEY_U, false, false, false);
+                n = AddItem(items, n, "[C]old", KEY_C, false, false, false);
+                n = AddItem(items, n, "s[M]oke", KEY_M, false, false, false);
+                n = AddItem(items, n, "s[T]eam", KEY_T, false, false, false);
+                n = AddItem(items, n, "[G]rass", KEY_G, false, false, false);
                 n = AddItem(items, n, "[ESC]Back", KEY_ESCAPE, false, false, false);
                 break;
             case MODE_VIEW:
@@ -290,9 +292,6 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "L-drag designate", 0, false, true, false);
             n = AddItem(items, n, "R-drag cancel", 0, false, true, false);
             break;
-        case ACTION_DESIGNATE_UNBURN:
-            n = AddItem(items, n, "L-drag unburn", 0, false, true, false);
-            break;
         case ACTION_ZONE_STOCKPILE:
         case ACTION_ZONE_GATHER:
             n = AddItem(items, n, "L-drag create", 0, false, true, false);
@@ -309,9 +308,24 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "+Shift=source", 0, false, true, false);
             break;
         case ACTION_PLACE_HEAT:
-            n = AddItem(items, n, "L-drag heat", 0, false, true, false);
-            n = AddItem(items, n, "R-drag cold", 0, false, true, false);
-            n = AddItem(items, n, "+Shift=remove", 0, false, true, false);
+            n = AddItem(items, n, "L-drag add", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+            break;
+        case ACTION_PLACE_COLD:
+            n = AddItem(items, n, "L-drag add", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+            break;
+        case ACTION_PLACE_SMOKE:
+            n = AddItem(items, n, "L-drag add", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+            break;
+        case ACTION_PLACE_STEAM:
+            n = AddItem(items, n, "L-drag add", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
+            break;
+        case ACTION_PLACE_GRASS:
+            n = AddItem(items, n, "L-drag grow", 0, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, false, true, false);
             break;
         default:
             n = AddItem(items, n, "L-drag", 0, false, true, false);

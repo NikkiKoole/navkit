@@ -25,7 +25,6 @@ typedef enum {
     // Designate actions
     ACTION_DESIGNATE_MINE,
     ACTION_DESIGNATE_BUILD,
-    ACTION_DESIGNATE_UNBURN,
     // Zone actions
     ACTION_ZONE_STOCKPILE,
     ACTION_ZONE_GATHER,
@@ -33,6 +32,10 @@ typedef enum {
     ACTION_PLACE_WATER,
     ACTION_PLACE_FIRE,
     ACTION_PLACE_HEAT,
+    ACTION_PLACE_COLD,
+    ACTION_PLACE_SMOKE,
+    ACTION_PLACE_STEAM,
+    ACTION_PLACE_GRASS,
 } InputAction;
 
 // Current input state

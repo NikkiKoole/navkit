@@ -2,6 +2,7 @@
 #include "water.h"
 #include "smoke.h"
 #include "temperature.h"
+#include "groundwear.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include <string.h>
@@ -266,6 +267,10 @@ static bool ProcessFireCell(int x, int y, int z) {
                 CellType burnResult = CellBurnsInto(currentCell);
                 if (burnResult != currentCell) {
                     grid[z][y][x] = burnResult;
+                    // Set high wear on burned ground so it takes time to regrow
+                    if (burnResult == CELL_DIRT && z == 0) {
+                        wearGrid[y][x] = wearMax;
+                    }
                 }
                 
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
