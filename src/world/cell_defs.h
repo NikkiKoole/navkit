@@ -31,6 +31,11 @@ typedef struct {
 // Cell definitions table (defined in cell_defs.c)
 extern CellDef cellDefs[];
 
+// DF-style walkability toggle (defined in grid.c)
+// When true, uses "walkable if cell below is solid" model
+// When false, uses legacy "cell has CF_WALKABLE flag" model
+extern bool g_useDFWalkability;
+
 // Flag accessors
 #define CellHasFlag(c, f)       (cellDefs[c].flags & (f))
 #define CellBlocksMovement(c)   CellHasFlag(c, CF_BLOCKS_MOVEMENT)
@@ -59,7 +64,14 @@ static inline bool IsWallCell(CellType cell) {
     return CellBlocksMovement(cell);
 }
 
+// Forward declaration of DF-style function (defined below)
+static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x);
+
 static inline bool IsCellWalkableAt(int z, int y, int x) {
+    if (g_useDFWalkability) {
+        return IsCellWalkableAt_DFStyle(z, y, x);
+    }
+    // Legacy walkability: cell has CF_WALKABLE flag
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     return CellIsWalkable(grid[z][y][x]);
 }

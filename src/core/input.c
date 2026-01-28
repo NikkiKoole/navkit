@@ -650,6 +650,18 @@ void HandleInput(void) {
         if (LoadWorld("saves/debug_save.bin")) AddMessage("World loaded", GREEN);
     }
 
+    // Toggle DF-style walkability (for testing new walkability model)
+    if (IsKeyPressed(KEY_F7)) {
+        g_useDFWalkability = !g_useDFWalkability;
+        // Mark everything dirty so pathfinding recalculates
+        hpaNeedsRebuild = true;
+        jpsNeedsRebuild = true;
+        for (int i = 0; i < moverCount; i++) {
+            if (movers[i].active) movers[i].needsRepath = true;
+        }
+        AddMessage(TextFormat("Walkability: %s", g_useDFWalkability ? "DF-style (solid below)" : "Legacy (cell flag)"), YELLOW);
+    }
+
     // ========================================================================
     // Navigation: ESC, re-tap mode key
     // Handle before ui_wants_mouse check since bar buttons trigger pending keys
