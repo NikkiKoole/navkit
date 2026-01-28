@@ -679,7 +679,7 @@ static void AssignNewMoverGoal(Mover* m) {
 }
 
 void UpdateMovers(void) {
-    float dt = TICK_DT;
+    float dt = gameDeltaTime;  // Use game time so movers scale with gameSpeed
     
     // Phase 1: LOS checks (optionally staggered - each mover checks every 3 frames)
     PROFILE_BEGIN(LOS);
