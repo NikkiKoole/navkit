@@ -653,9 +653,11 @@ void HandleInput(void) {
     // Toggle DF-style walkability (for testing new walkability model)
     if (IsKeyPressed(KEY_F7)) {
         g_useDFWalkability = !g_useDFWalkability;
-        // Mark everything dirty so pathfinding recalculates
-        hpaNeedsRebuild = true;
+        // Full rebuild of pathfinding graph with new walkability rules
+        BuildEntrances();
+        BuildGraph();
         jpsNeedsRebuild = true;
+        // Repath all movers
         for (int i = 0; i < moverCount; i++) {
             if (movers[i].active) movers[i].needsRepath = true;
         }

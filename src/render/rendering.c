@@ -440,7 +440,10 @@ void DrawChunkBoundaries(void) {
 void DrawEntrances(void) {
     float size = CELL_SIZE * zoom;
     float ms = size * 0.5f;
+    int z = currentViewZ;
     for (int i = 0; i < entranceCount; i++) {
+        // Only draw entrances on current z-level (faded) or skip others
+        if (entrances[i].z != z) continue;
         float px = offset.x + entrances[i].x * size + (size - ms) / 2;
         float py = offset.y + entrances[i].y * size + (size - ms) / 2;
         DrawRectangle((int)px, (int)py, (int)ms, (int)ms, WHITE);
@@ -450,11 +453,16 @@ void DrawEntrances(void) {
 void DrawGraph(void) {
     if (!showGraph) return;
     float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
     for (int i = 0; i < graphEdgeCount; i += 2) {
         int e1 = graphEdges[i].from, e2 = graphEdges[i].to;
+        // Only draw edges where both entrances are on the current z-level
+        if (entrances[e1].z != z && entrances[e2].z != z) continue;
         Vector2 p1 = {offset.x + entrances[e1].x * size + size/2, offset.y + entrances[e1].y * size + size/2};
         Vector2 p2 = {offset.x + entrances[e2].x * size + size/2, offset.y + entrances[e2].y * size + size/2};
-        DrawLineEx(p1, p2, 2.0f, YELLOW);
+        // Fade edges that connect to different z-levels
+        Color col = (entrances[e1].z == z && entrances[e2].z == z) ? YELLOW : (Color){255, 255, 0, 80};
+        DrawLineEx(p1, p2, 2.0f, col);
     }
 }
 

@@ -93,11 +93,11 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     // Ramps are always walkable (special case)
     if (CellIsRamp(cellHere)) return true;
     
-    // Z=0 edge case: treat as having implicit bedrock below
-    // At z=0, walkable if the cell itself has the legacy walkable flag
-    // This allows gradual migration of terrain generators
+    // Z=0: In DF mode, z=0 is the ground layer (solid blocks you walk ON)
+    // You can only walk at z=0 if the cell is non-blocking (air) - but there's no z=-1 to stand on
+    // So z=0 is never walkable in pure DF mode (implicit bedrock is solid, not walkable surface)
     if (z == 0) {
-        return CellIsWalkable(cellHere);
+        return false;
     }
     
     // DF-style: walkable if cell below is solid
