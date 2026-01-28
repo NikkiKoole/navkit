@@ -29,6 +29,8 @@ test_fire_SRC       := tests/test_fire.c tests/test_unity.c
 test_temperature_SRC := tests/test_temperature.c tests/test_unity.c
 test_steam_SRC       := tests/test_steam.c tests/test_unity.c
 test_time_SRC        := tests/test_time.c tests/test_unity.c
+test_time_specs_SRC  := tests/test_time_specs.c tests/test_unity.c
+test_high_speed_SRC  := tests/test_high_speed.c tests/test_unity.c
 
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
@@ -89,8 +91,18 @@ test_time: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_time
 
+# Time specification tests
+test_time_specs: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_time_specs
+
+# High game speed safety tests
+test_high_speed: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(LDFLAGS)
+	./$(BINDIR)/test_high_speed
+
 # Run all tests
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed
 
 # Benchmark targets - all use test_unity.c for shared game logic
 bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c
@@ -157,4 +169,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs

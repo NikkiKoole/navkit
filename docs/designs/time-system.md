@@ -1167,11 +1167,25 @@ The design proposed `moverSpeed = 6.0f` meaning "6 tiles per game-second" for hu
 
 These are nice-to-have features that can be added when needed for gameplay.
 
-**Specification Tests:**
-The design document includes detailed specification tests like "mover walks 2 tiles in 1 second". These are valuable for ensuring the system behaves as documented but weren't implemented during the initial conversion. The existing tests verify the accumulator mechanics work correctly.
+**Specification Tests:** ✅ IMPLEMENTED
+- `tests/test_time_specs.c` - Comprehensive specification tests covering:
+  - Fire spread timing and formula parameters
+  - Smoke dissipation within `smokeDissipationTime`
+  - Steam rise per `steamRiseInterval`
+  - Temperature decay toward ambient
+  - Heat physics (rise/sink boost)
+  - Water speed multipliers
+  - Ground wear thresholds
+  - Game speed scaling (10x produces 10x game time)
+  - Day cycle timing
 
-**High Game Speed Safety Tests:**
-Tests to verify movers don't end up inside walls at extreme game speeds (100x, 500x, 1000x). Currently accepted as a potential edge case at extreme speeds.
+**High Game Speed Safety Tests:** ✅ IMPLEMENTED
+- `tests/test_high_speed.c` - Safety tests for extreme speeds:
+  - Movers don't clip through walls at 10x, 100x, 1000x game speed
+  - Multiple movers navigating through corridors at high speed
+  - Simulation stability (fire, temperature) at 100x speed
+  - Day cycle progression at high speed
+  - Rapid speed changes and pause/resume behavior
 
 ### How the Accumulator Pattern Works
 
