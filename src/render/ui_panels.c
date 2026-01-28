@@ -521,6 +521,48 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === TIME ===
+    y += 8;
+    if (SectionHeader(x, y, "Time", &sectionTime)) {
+        y += 18;
+        
+        // Display current time
+        int hours = (int)timeOfDay;
+        int minutes = (int)((timeOfDay - hours) * 60);
+        DrawTextShadow(TextFormat("Day %d, %02d:%02d", dayNumber, hours, minutes), x, y, 14, WHITE);
+        y += 18;
+        DrawTextShadow(TextFormat("Game time: %.1fs", (float)gameTime), x, y, 14, GRAY);
+        y += 22;
+        
+        // Game speed control
+        DraggableFloat(x, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f);
+        y += 22;
+        
+        // Speed presets
+        if (PushButton(x, y, "Pause")) gameSpeed = 0.0f;
+        y += 22;
+        if (PushButton(x, y, "1x")) gameSpeed = 1.0f;
+        y += 22;
+        if (PushButton(x, y, "10x")) gameSpeed = 10.0f;
+        y += 22;
+        if (PushButton(x, y, "100x")) gameSpeed = 100.0f;
+        y += 22;
+        
+        // Day length
+        DraggableFloat(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f);
+        y += 22;
+        
+        // Day length presets
+        DrawTextShadow("Presets:", x, y, 14, GRAY);
+        y += 18;
+        if (PushButton(x, y, "Fast (24s)")) dayLength = 24.0f;
+        y += 22;
+        if (PushButton(x, y, "Normal (60s)")) dayLength = 60.0f;
+        y += 22;
+        if (PushButton(x, y, "Slow (12m)")) dayLength = 720.0f;
+    }
+    y += 22;
+
 }
 
 #if PROFILER_ENABLED

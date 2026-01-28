@@ -32,6 +32,7 @@
 #include "entities/jobs.c"
 
 // Core systems
+#include "core/time.c"
 #include "core/inspect.c"
 #include "core/input_mode.c"
 #include "core/input.c"

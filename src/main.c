@@ -58,6 +58,7 @@ bool sectionMoverDebug = false;
 bool sectionProfiler = false;
 bool sectionMemory = false;
 bool sectionJobs = false;
+bool sectionTime = true;  // Start expanded so it's visible
 
 int hoveredStockpile = -1;
 int hoveredMover = -1;

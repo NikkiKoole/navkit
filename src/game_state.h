@@ -17,6 +17,7 @@
 #include "simulation/groundwear.h"
 #include "simulation/temperature.h"
 #include "core/inspect.h"
+#include "core/time.h"
 #include "../shared/profiler.h"
 #include "../shared/ui.h"
 #include "../assets/atlas.h"
@@ -115,6 +116,7 @@ extern bool sectionMoverDebug;
 extern bool sectionProfiler;
 extern bool sectionMemory;
 extern bool sectionJobs;
+extern bool sectionTime;
 
 // Hover state
 extern int hoveredStockpile;

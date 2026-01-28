@@ -31,6 +31,9 @@ void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 #include "../src/simulation/groundwear.c"
 #include "../src/simulation/temperature.c"
 
+// Core systems
+#include "../src/core/time.c"
+
 // Entity systems
 #include "../src/entities/items.c"
 #include "../src/entities/stockpiles.c"

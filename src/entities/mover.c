@@ -1,4 +1,5 @@
 #include "mover.h"
+#include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/pathfinding.h"
@@ -1083,6 +1084,11 @@ void ProcessMoverRepaths(void) {
 }
 
 void Tick(void) {
+    // Update game time (handles pause)
+    if (!UpdateTime(TICK_DT)) {
+        return;  // Paused - skip simulation
+    }
+    
     // Update HPA* graph if any chunks are dirty (do this first, before any pathfinding)
     if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
         UpdateDirtyChunks();
