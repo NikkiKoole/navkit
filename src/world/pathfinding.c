@@ -70,13 +70,12 @@ static inline bool CanClimbUp(int x, int y, int z) {
     bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
     bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
     
-    // In DF mode, a ladder at z+1 allows climbing from walkable z to z+1
-    // You're standing ON z-1 (solid), at z level (walkable), climbing ladder at z+1
+    // In DF mode, same as legacy: need ladder at both levels to climb
+    // The difference is only in what makes a cell "walkable", not in ladder mechanics
     if (g_useDFWalkability) {
-        // A ladder at the destination (z+1) is enough to climb up
-        // Also need to be able to walk at the destination
+        bool hasLadderHere = CellIsLadder(low);
         bool hasLadderAbove = CellIsLadder(high);
-        return hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
+        return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
     }
     
     return lowCanUp && highCanDown;
@@ -91,14 +90,11 @@ static inline bool CanClimbDown(int x, int y, int z) {
     bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
     bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
     
-    // In DF mode, a ladder at current z allows climbing down to z-1
-    // You're on a ladder at z, climbing down to stand ON z-2 (at level z-1)
+    // In DF mode, same as legacy: need ladder at both levels to climb
     if (g_useDFWalkability) {
-        // Need a ladder at current position OR at the destination
-        // and the destination must be walkable
         bool hasLadderHere = CellIsLadder(high);
         bool hasLadderBelow = CellIsLadder(low);
-        return (hasLadderHere || hasLadderBelow) && IsCellWalkableAt(z - 1, y, x);
+        return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
     }
     
     return highCanDown && lowCanUp;
@@ -479,6 +475,13 @@ void MarkChunkDirty(int cellX, int cellY, int cellZ) {
     int cy = cellY / chunkHeight;
     if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY && cellZ >= 0 && cellZ < gridDepth) {
         chunkDirty[cellZ][cy][cx] = true;
+        
+        // In DF mode, changing a cell affects walkability of the cell ABOVE it
+        // (because walkability depends on the cell below being solid)
+        if (g_useDFWalkability && cellZ + 1 < gridDepth) {
+            chunkDirty[cellZ + 1][cy][cx] = true;
+        }
+        
         needsRebuild = true;
         hpaNeedsRebuild = true;
         jpsNeedsRebuild = true;
@@ -1102,6 +1105,14 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
     entranceCount = newCount;
     TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total (%d ladder links)", 
              keptCount, newCount, ladderLinkCount);
+    
+    // Debug: print ladder link details
+    for (int i = 0; i < ladderLinkCount; i++) {
+        TraceLog(LOG_INFO, "  Ladder link %d: (%d,%d) z=%d<->z=%d, entrances %d<->%d",
+                 i, ladderLinks[i].x, ladderLinks[i].y, 
+                 ladderLinks[i].zLow, ladderLinks[i].zHigh,
+                 ladderLinks[i].entranceLow, ladderLinks[i].entranceHigh);
+    }
 }
 
 // Storage for old entrances before rebuild (used for edge remapping)

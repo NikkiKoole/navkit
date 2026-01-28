@@ -8,6 +8,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/steam.h"
@@ -554,6 +555,9 @@ int main(int argc, char* argv[]) {
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
+    
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
     
     // Fire specifications
     test(spec_fire_spread);

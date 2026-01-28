@@ -3,6 +3,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include <stdlib.h>
 #include <math.h>
 
@@ -283,6 +284,9 @@ int main(int argc, char* argv[]) {
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
+    
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
     
     // Core time system
     test(time_initialization);

@@ -15,7 +15,7 @@
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
 Texture2D atlas;
-int currentViewZ = 0;
+int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above ground)
 
 bool showGraph = false;
 bool showEntrances = false;

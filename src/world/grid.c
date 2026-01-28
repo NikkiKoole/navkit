@@ -9,7 +9,7 @@ uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
 bool jpsNeedsRebuild = false;
-bool g_useDFWalkability = false;  // Default to legacy walkability model
+bool g_useDFWalkability = true;  // Default to DF-style walkability model
 
 // Runtime dimensions - default to max
 int gridWidth = MAX_GRID_WIDTH;

@@ -396,6 +396,28 @@ Each checkpoint is a commit where:
 
 ---
 
+## Future Design Ideas
+
+### Implicit Bedrock at z=-1
+
+Currently z=0 is never walkable in DF mode because there's no z=-1 to stand on. We could treat z=-1 as an implicit solid "bedrock" layer, making z=0 walkable by default. This would:
+
+- Allow entities to walk at z=0 (standing on implicit bedrock)
+- Make the default terrain more intuitive (fill z=0 with air, entities can walk there)
+- Match how Dwarf Fortress treats the bottom layer
+
+Implementation would be a simple change in `IsCellWalkableAt_DFStyle`:
+```c
+if (z == 0) {
+    // Treat z=-1 as implicit solid bedrock
+    return true;  // or: return !CellBlocksMovement(cellHere);
+}
+```
+
+This is a game design decision - postponed for now.
+
+---
+
 ## Files Summary
 
 | File | Phase(s) |
@@ -439,23 +461,34 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     if (CellIsRamp(cellHere)) return true;     // Ramps always walkable
     if (z == 0) return false;                  // z=0 never walkable in DF mode
     CellType cellBelow = grid[z-1][y][x];
+    // Cells above ladders only walkable if also a ladder (prevents unreachable goals)
+    if (CellIsLadder(cellBelow) && !CellIsLadder(cellHere)) return false;
     return CellIsSolid(cellBelow);
 }
 ```
 
 **Ladder Climbing in DF Mode** (`pathfinding.c`):
 ```c
-// CanClimbUp: ladder at z+1 allows climbing from walkable z to z+1
+// CanClimbUp: need ladder at BOTH levels (same as legacy)
 if (g_useDFWalkability) {
+    bool hasLadderHere = CellIsLadder(low);
     bool hasLadderAbove = CellIsLadder(high);
-    return hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
+    return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
 }
 
-// CanClimbDown: ladder at current z OR below allows climbing down
+// CanClimbDown: need ladder at BOTH levels (same as legacy)
 if (g_useDFWalkability) {
     bool hasLadderHere = CellIsLadder(high);
     bool hasLadderBelow = CellIsLadder(low);
-    return (hasLadderHere || hasLadderBelow) && IsCellWalkableAt(z - 1, y, x);
+    return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
+}
+```
+
+**MarkChunkDirty in DF Mode** (`pathfinding.c`):
+```c
+// In DF mode, changing a cell affects walkability of the cell ABOVE it
+if (g_useDFWalkability && cellZ + 1 < gridDepth) {
+    chunkDirty[cellZ + 1][cy][cx] = true;
 }
 ```
 
@@ -465,21 +498,19 @@ if (g_useDFWalkability) {
 
 ### Working Features
 
+- DF mode enabled by default
+- Default view at z=1, InitGrid() fills z=0 with dirt
 - Toggle between legacy and DF mode with F7
 - Basic walking on flat DF terrain (z=1 on z=0 dirt)
-- Pathfinding works on flat terrain
-- Movers pathfind correctly at z=1
-- Ladders work in simple cases (tested in-game)
+- Pathfinding works correctly with ladders
+- Movers pathfind correctly across z-levels
+- Incremental graph updates work in DF mode
+- All tests pass (legacy tests use `g_useDFWalkability = false`)
 
 ### Known Limitations & Future Work
 
-**Tests**: 
-- Basic walkability tests pass (`df_walkability` suite)
-- Ladder pathfinding test (`df_ladder_pathfinding`) needs work - test setup is complex
-- The in-game behavior works but automated test doesn't find path (likely test grid setup issue)
-
 **Not Yet Implemented**:
-- Phase 7: Converting other terrain generators
+- Phase 7: Converting other terrain generators to DF-style
 - Phase 8: Rendering adjustments (floor textures from z-1)
 - Phase 10: Removing legacy model (keeping toggle for now)
 
@@ -493,9 +524,11 @@ make test
 ./bin/test_pathing
 
 # In-game testing
-# 1. Select "FlatDF" terrain generator
-# 2. Press F7 to toggle DF walkability mode
-# 3. Spawn movers and observe pathfinding
+# DF mode is now enabled by default
+# 1. Start game - z=0 is dirt, view starts at z=1
+# 2. Spawn movers - they walk on z=1
+# 3. Build ladders - movers can climb between levels
+# 4. Press F7 to toggle back to legacy mode if needed
 ```
 
 ### Debug Tips
@@ -504,4 +537,5 @@ When debugging DF mode issues:
 1. Check `IsCellWalkableAt()` returns expected values for start/goal
 2. Verify `ladderLinkCount` > 0 if ladders should exist
 3. Check `entranceCount` is reasonable for the terrain
-4. Ensure ladders are placed at the destination z-level (climb UP to the ladder)
+4. Ensure ladders are placed at BOTH z-levels (ladder shaft, not single cell)
+5. Cells directly above ladder tops are NOT walkable unless they also have a ladder

@@ -1725,6 +1725,9 @@ int main(int argc, char* argv[]) {
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
+    
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
 
     test(mover_initialization);
     test(fixed_timestep_movement);

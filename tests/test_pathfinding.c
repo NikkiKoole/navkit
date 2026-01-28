@@ -3159,50 +3159,47 @@ describe(df_walkability) {
 describe(df_ladder_pathfinding) {
     it("should find path up ladder in DF mode") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        // Create DF-style terrain with a platform at z=2
-        // z=0: all solid dirt (ground floor)
-        // z=1: walkable (standing on z=0)
-        // z=2: ladder at (5,5), solid platform at (5,6) and (5,7)
-        // z=3: walkable above platform
+        // Create DF-style terrain: ground at z=0, walk at z=1, climb to z=2
+        // Mirrors legacy test: ladder shaft at both levels
+        //
+        // z=0: solid dirt everywhere (ground you stand ON)
+        // z=1: air (walkable because z=0 is solid), ladder at (5,5)
+        // z=2: air (not walkable except ladder), ladder at (5,5), solid platform at (5,6)
+        // z=3: air, walkable at (5,6) because z=2 platform is solid
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_DIRT;
-                SET_CELL_FLAG(x, y, 0, CF_SOLID);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;
                 grid[3][y][x] = CELL_AIR;
             }
         }
-        // Ladder at z=2 (climb target from z=1) - ladder is walkable by itself
+        // Ladder shaft at (5,5) from z=1 to z=3 (need to reach z=3 to step off)
+        grid[1][5][5] = CELL_LADDER;
         grid[2][5][5] = CELL_LADDER;
-        // Solid platform adjacent to ladder at z=2 for walking at z=3
+        grid[3][5][5] = CELL_LADDER;
+        // Solid platform at z=2 adjacent to ladder, for walking at z=3
         grid[2][6][5] = CELL_DIRT;
-        SET_CELL_FLAG(5, 6, 2, CF_SOLID);
-        grid[2][7][5] = CELL_DIRT;
-        SET_CELL_FLAG(5, 7, 2, CF_SOLID);
         
         g_useDFWalkability = true;
         BuildEntrances();
         BuildGraph();
         
-        // Debug: check walkability
+        // Debug output
         printf("Start (5,3,z=1) walkable: %d\n", IsCellWalkableAt(1, 3, 5));
-        printf("Goal (5,7,z=3) walkable: %d\n", IsCellWalkableAt(3, 7, 5));
-        printf("Ladder (5,5,z=2) walkable: %d\n", IsCellWalkableAt(2, 5, 5));
-        printf("Below ladder (5,5,z=1) walkable: %d\n", IsCellWalkableAt(1, 5, 5));
-        printf("Platform (5,6,z=3) walkable: %d\n", IsCellWalkableAt(3, 6, 5));
+        printf("Goal (5,6,z=3) walkable: %d\n", IsCellWalkableAt(3, 6, 5));
+        printf("Ladder z=1 (5,5) walkable: %d\n", IsCellWalkableAt(1, 5, 5));
+        printf("Ladder z=2 (5,5) walkable: %d\n", IsCellWalkableAt(2, 5, 5));
         printf("Ladder count: %d, entrance count: %d\n", ladderLinkCount, entranceCount);
         
-        // Check ladder link details
         if (ladderLinkCount > 0) {
-            printf("Ladder link 0: x=%d y=%d zLow=%d zHigh=%d entrLow=%d entrHigh=%d\n", 
-                ladderLinks[0].x, ladderLinks[0].y, ladderLinks[0].zLow, ladderLinks[0].zHigh,
-                ladderLinks[0].entranceLow, ladderLinks[0].entranceHigh);
+            printf("Ladder link 0: x=%d y=%d zLow=%d zHigh=%d\n", 
+                ladderLinks[0].x, ladderLinks[0].y, ladderLinks[0].zLow, ladderLinks[0].zHigh);
         }
         
-        // Path from z=1 ground to z=3 platform (adjacent to ladder)
+        // Path from z=1 ground to z=3 platform (step off ladder at z=2, walk to z=3)
         startPos = (Point){5, 3, 1};  // Start at z=1 (walking on z=0 dirt)
-        goalPos = (Point){5, 7, 3};   // Goal at z=3 (walking on z=2 platform)
+        goalPos = (Point){5, 6, 3};   // Goal at z=3 (walking on z=2 platform)
         RunAStar();
         
         printf("Path length: %d\n", pathLength);
@@ -3221,29 +3218,25 @@ describe(df_ladder_pathfinding) {
     
     it("should not find path when ladder is missing in DF mode") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        // Same setup but no ladder
+        // Same terrain structure but no ladder - should not be able to reach z=3
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_DIRT;
-                SET_CELL_FLAG(x, y, 0, CF_SOLID);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;
                 grid[3][y][x] = CELL_AIR;
             }
         }
-        // Platform at z=2 but NO ladder
-        grid[2][5][5] = CELL_DIRT;
-        SET_CELL_FLAG(5, 5, 2, CF_SOLID);
-        grid[2][5][6] = CELL_DIRT;
-        SET_CELL_FLAG(6, 5, 2, CF_SOLID);
+        // Platform at z=2 but NO ladder to reach it
+        grid[2][6][5] = CELL_DIRT;
         
         g_useDFWalkability = true;
         BuildEntrances();
         BuildGraph();
         
         // Path from z=1 ground to z=3 platform should fail (no ladder)
-        startPos = (Point){3, 5, 1};
-        goalPos = (Point){6, 5, 3};
+        startPos = (Point){5, 3, 1};
+        goalPos = (Point){5, 6, 3};
         RunAStar();
         
         expect(pathLength == 0);  // Should NOT find path
@@ -3261,6 +3254,10 @@ int main(int argc, char* argv[]) {
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
+    
+    // Most tests use legacy terrain (z=0 walkable), so default to legacy mode
+    // DF-specific tests will enable DF mode explicitly
+    g_useDFWalkability = false;
 
     test(grid_initialization);
     test(entrance_building);

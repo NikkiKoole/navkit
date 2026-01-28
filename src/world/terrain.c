@@ -13,9 +13,16 @@ typedef struct {
 } Room;
 
 void InitGrid(void) {
+    // Clear all levels to air first
+    for (int z = 0; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                grid[z][y][x] = CELL_AIR;
+    
+    // Fill z=0 with dirt (DF-style ground)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            grid[0][y][x] = CELL_WALKABLE;
+            grid[0][y][x] = CELL_DIRT;
 }
 
 void GenerateSparse(float density) {

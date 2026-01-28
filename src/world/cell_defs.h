@@ -102,6 +102,14 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     
     // DF-style: walkable if cell below is solid
     CellType cellBelow = grid[z-1][y][x];
+    
+    // Special case: if cell below is a ladder, this cell is only walkable if
+    // there's also a ladder here (i.e., you can climb to it). Otherwise you'd
+    // have an unreachable "walkable" cell above the top of a ladder shaft.
+    if (CellIsLadder(cellBelow) && !CellIsLadder(cellHere)) {
+        return false;
+    }
+    
     return CellIsSolid(cellBelow);
 }
 

@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/simulation/groundwear.h"
 #include <stdlib.h>
 
@@ -561,6 +562,9 @@ int main(int argc, char* argv[]) {
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
+    
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
     
     // Run tests
     test(groundwear_initialization);

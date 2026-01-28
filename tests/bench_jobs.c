@@ -17,6 +17,7 @@
 
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/items.h"
@@ -456,6 +457,9 @@ int main(int argc, char* argv[]) {
     (void)argv;
     
     SetTraceLogLevel(LOG_NONE);
+    
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
     
     printf("\n=== JOB SYSTEM BENCHMARKS ===\n\n");
     

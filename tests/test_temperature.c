@@ -835,6 +835,9 @@ int main(int argc, char* argv[]) {
         SetTraceLogLevel(LOG_NONE);
     }
     
+    // Tests use legacy terrain (z=0 walkable), so use legacy mode
+    g_useDFWalkability = false;
+    
     // Basic operations
     test(temperature_initialization);
     test(temperature_level_operations);
