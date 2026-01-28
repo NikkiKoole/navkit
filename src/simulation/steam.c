@@ -112,10 +112,21 @@ void GenerateSteamFromBoilingWater(int x, int y, int z, int amount) {
 
 // Phase 1: RISING - Steam moves up if there's space above
 static int SteamTryRise(int x, int y, int z) {
-    if (z >= gridDepth - 1) return 0;  // At top
+    SteamCell* src = &steamGrid[z][y][x];
+    
+    // At top of world - steam escapes into the sky
+    if (z >= gridDepth - 1) {
+        if (src->level > 0 && (rand() % steamRiseChance) == 0) {
+            int escaped = 1;
+            if (escaped > src->level) escaped = src->level;
+            src->level -= escaped;
+            return escaped;
+        }
+        return 0;
+    }
+    
     if (!CanHoldSteam(x, y, z + 1)) return 0;  // Blocked above
     
-    SteamCell* src = &steamGrid[z][y][x];
     SteamCell* dst = &steamGrid[z+1][y][x];
     
     if (src->level == 0) return 0;

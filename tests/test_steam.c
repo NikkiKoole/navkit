@@ -424,6 +424,82 @@ describe(steam_spreading) {
 }
 
 // =============================================================================
+// Heaters evaporating water test
+// =============================================================================
+
+describe(heaters_evaporate_water) {
+    it("should eventually evaporate all water with heaters in center") {
+        // Small 8x8 grid, 1 z-level
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        gridDepth = 2;
+        
+        // Make z=1 all walls (ceiling)
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[1][y][x] = CELL_WALL;
+            }
+        }
+        
+        InitWater();
+        InitSteam();
+        InitTemperature();
+        
+        waterEnabled = true;
+        steamEnabled = true;
+        temperatureEnabled = true;
+        heatSourceTemp = 200;  // Hot heaters
+        
+        // Fill entire z=0 with water level 7
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                SetWaterLevel(x, y, 0, WATER_MAX_LEVEL);
+            }
+        }
+        
+        int initialWater = CountTotalWater();
+        printf("Initial water: %d\n", initialWater);
+        
+        // Place heaters in center (3x3 block)
+        for (int y = 3; y <= 5; y++) {
+            for (int x = 3; x <= 5; x++) {
+                SetHeatSource(x, y, 0, true);
+            }
+        }
+        
+        // Run simulation
+        int ticks = 0;
+        int maxTicks = 10000;
+        while (ticks < maxTicks) {
+            UpdateTemperature();
+            UpdateWater();
+            UpdateWaterFreezing();
+            UpdateSteam();
+            ticks++;
+            
+            int water = CountTotalWater();
+            if (ticks % 1000 == 0) {
+                printf("Tick %d: water=%d\n", ticks, water);
+            }
+            if (water == 0) break;
+        }
+        
+        int finalWater = CountTotalWater();
+        printf("Final water after %d ticks: %d\n", ticks, finalWater);
+        
+        // Water should have decreased significantly
+        expect(finalWater < initialWater / 2);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -451,6 +527,9 @@ int main(int argc, char* argv[]) {
     
     // Full cycle test from documentation
     test(water_cycle);
+    
+    // Heater evaporation test
+    test(heaters_evaporate_water);
     
     return summary();
 }
