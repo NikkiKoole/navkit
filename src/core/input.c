@@ -518,7 +518,48 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_Z)) { inputMode = MODE_ZONES; return; }
         if (IsKeyPressed(KEY_P)) { inputMode = MODE_PLACE; return; }
         if (IsKeyPressed(KEY_V)) { inputMode = MODE_VIEW; return; }
-        return;  // Nothing else to do in normal mode
+        
+        // Quick edit: left-click = wall, right-click = erase (when enabled)
+        if (quickEditEnabled) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+                    CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
+                    if (grid[z][y][x] != wallType) {
+                        grid[z][y][x] = wallType;
+                        MarkChunkDirty(x, y, z);
+                        SetWaterLevel(x, y, z, 0);
+                        SetWaterSource(x, y, z, false);
+                        SetWaterDrain(x, y, z, false);
+                        DestabilizeWater(x, y, z);
+                        for (int i = 0; i < moverCount; i++) {
+                            Mover* m = &movers[i];
+                            if (!m->active) continue;
+                            for (int j = m->pathIndex; j >= 0; j--) {
+                                if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
+                                    m->needsRepath = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+                    if (IsLadderCell(grid[z][y][x])) {
+                        EraseLadder(x, y, z);
+                    } else {
+                        CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                        if (grid[z][y][x] != eraseType) {
+                            grid[z][y][x] = eraseType;
+                            MarkChunkDirty(x, y, z);
+                            DestabilizeWater(x, y, z);
+                        }
+                    }
+                }
+            }
+        }
+        return;
     }
 
     // ========================================================================
