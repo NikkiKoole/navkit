@@ -2,6 +2,98 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 
+// ============================================================================
+// TIME OF DAY WIDGET
+// ============================================================================
+
+// Get sky color based on time of day (0-24 hours)
+static Color GetSkyColorForTime(float hour) {
+    // Time periods and their colors:
+    // 0-4:   Night (dark blue)
+    // 4-6:   Dawn (orange/pink gradient)
+    // 6-8:   Morning (light blue warming up)
+    // 8-12:  Late morning (bright sky blue)
+    // 12-16: Afternoon (bright sky, slightly warmer)
+    // 16-18: Golden hour (warm golden)
+    // 18-20: Dusk (orange/red/purple)
+    // 20-24: Night (dark blue)
+    
+    // Define key colors at specific hours
+    typedef struct { float hour; Color color; } TimeColor;
+    TimeColor keyframes[] = {
+        { 0.0f,  (Color){ 15,  25,  50, 255} },  // Midnight - deep night blue
+        { 4.0f,  (Color){ 25,  35,  65, 255} },  // Late night - slightly lighter
+        { 5.0f,  (Color){ 70,  50,  80, 255} },  // Pre-dawn - purple hint
+        { 6.0f,  (Color){180, 100,  80, 255} },  // Dawn - orange/pink
+        { 7.0f,  (Color){220, 160, 120, 255} },  // Early morning - warm
+        { 8.0f,  (Color){135, 180, 220, 255} },  // Morning - light blue
+        {12.0f,  (Color){100, 160, 220, 255} },  // Noon - bright blue
+        {16.0f,  (Color){130, 170, 210, 255} },  // Afternoon - slightly warmer blue
+        {17.0f,  (Color){200, 170, 130, 255} },  // Golden hour start
+        {18.0f,  (Color){230, 140,  80, 255} },  // Golden hour - orange
+        {19.0f,  (Color){180,  80,  70, 255} },  // Sunset - red/orange
+        {20.0f,  (Color){ 80,  50,  90, 255} },  // Dusk - purple
+        {21.0f,  (Color){ 35,  40,  70, 255} },  // Early night
+        {24.0f,  (Color){ 15,  25,  50, 255} },  // Midnight again
+    };
+    int numKeyframes = sizeof(keyframes) / sizeof(keyframes[0]);
+    
+    // Find the two keyframes to interpolate between
+    int i;
+    for (i = 0; i < numKeyframes - 1; i++) {
+        if (hour < keyframes[i + 1].hour) break;
+    }
+    
+    // Interpolate
+    float t = (hour - keyframes[i].hour) / (keyframes[i + 1].hour - keyframes[i].hour);
+    Color c1 = keyframes[i].color;
+    Color c2 = keyframes[i + 1].color;
+    
+    return (Color){
+        (unsigned char)(c1.r + t * (c2.r - c1.r)),
+        (unsigned char)(c1.g + t * (c2.g - c1.g)),
+        (unsigned char)(c1.b + t * (c2.b - c1.b)),
+        255
+    };
+}
+
+// Draw the time-of-day widget at the specified position
+void DrawTimeOfDayWidget(float x, float y) {
+    // Widget dimensions - fixed size to prevent resizing
+    int paddingY = 4;
+    int fontSize = 16;
+    int boxWidth = 140;  // Fixed width to accommodate "Day 999  23:59"
+    
+    // Get current time info
+    int hours = (int)timeOfDay;
+    int minutes = (int)((timeOfDay - hours) * 60);
+    
+    // Format time string
+    char timeStr[32];
+    snprintf(timeStr, sizeof(timeStr), "Day %d  %02d:%02d", dayNumber, hours, minutes);
+    
+    // Measure text width (height is approximately fontSize for most fonts)
+    int textWidth = MeasureTextUI(timeStr, fontSize);
+    int boxHeight = fontSize + paddingY * 2;
+    
+    // Draw sky-colored background rectangle
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+    DrawRectangle((int)x, (int)y, boxWidth, boxHeight, skyColor);
+    DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, (Color){100, 100, 100, 255});
+    
+    // Draw time text centered in box
+    int textX = (int)x + (boxWidth - textWidth) / 2;
+    int textY = (int)y + paddingY;
+    DrawTextShadow(timeStr, textX, textY, fontSize, WHITE);
+    
+    // Block mouse clicks on widget area
+    Vector2 mouse = GetMousePosition();
+    Rectangle bounds = {x, y, (float)boxWidth, (float)boxHeight};
+    if (CheckCollisionPointRec(mouse, bounds)) {
+        ui_set_hovered();
+    }
+}
+
 // Forward declarations for demo functions
 void SpawnAgents(int count);
 void RepathAgents(void);
@@ -654,9 +746,11 @@ void DrawUI(void) {
         y += 22;
         
         // Day length
+        float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
         DraggableFloatT(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
-            TextFormat("Game-seconds per full day. At %.0fs, one game-day = %.1f real-%s (at 1x speed).", 
-                       dayLength, dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes"));
+            TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.", 
+                       dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
+                       gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f, realDuration < 60 ? "seconds" : "minutes"));
         y += 22;
         
         // Day length presets
@@ -720,7 +814,9 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t waterSize = sizeof(WaterCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t fireSize = sizeof(FireCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t smokeSize = sizeof(SmokeCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t steamSize = sizeof(SteamCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t temperatureSize = sizeof(TempCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t cellFlagsSize = sizeof(uint8_t) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t groundWearSize = sizeof(int) * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             
             // Pathfinding
@@ -740,7 +836,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
             size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
             
-            size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + temperatureSize + groundWearSize;
+            size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + steamSize + temperatureSize + cellFlagsSize + groundWearSize;
             size_t totalPathfinding = entrancesSize + pathSize + edgesSize;
             size_t totalEntities = moversSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize;
             size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
@@ -752,7 +848,9 @@ void DrawProfilerPanel(float rightEdge, float y) {
             DrawTextShadow(TextFormat("  Water:        %5.1f MB", waterSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Fire:         %5.1f MB", fireSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Smoke:        %5.1f MB", smokeSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  Steam:        %5.1f MB", steamSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Temperature:  %5.1f MB", temperatureSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            DrawTextShadow(TextFormat("  CellFlags:    %5.1f MB", cellFlagsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             
             DrawTextShadow("-- Pathfinding --", x, y, 14, GRAY); y += 16;

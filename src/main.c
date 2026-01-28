@@ -59,7 +59,7 @@ bool sectionMoverDebug = false;
 bool sectionProfiler = false;
 bool sectionMemory = false;
 bool sectionJobs = false;
-bool sectionTime = true;  // Start expanded so it's visible
+bool sectionTime = false;
 
 int hoveredStockpile = -1;
 int hoveredMover = -1;
@@ -393,6 +393,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
 // From render/ui_panels.c
 void DrawUI(void);
+void DrawTimeOfDayWidget(float x, float y);
 #if PROFILER_ENABLED
 void DrawProfilerPanel(float rightEdge, float y);
 #endif
@@ -413,7 +414,7 @@ int main(int argc, char** argv) {
     if (argc >= 2 && strcmp(argv[1], "--inspect") == 0) {
         return InspectSaveFile(argc, argv);
     }
-    
+
     // Check for --load option
     const char* loadFile = NULL;
     for (int i = 1; i < argc; i++) {
@@ -422,7 +423,7 @@ int main(int argc, char** argv) {
             break;
         }
     }
-    
+
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
@@ -455,7 +456,7 @@ int main(int argc, char** argv) {
     if (loadFile) {
         const char* actualFile = loadFile;
         char tempFile[512] = {0};
-        
+
         // Handle .gz files by decompressing to /tmp
         size_t len = strlen(loadFile);
         if (len > 3 && strcmp(loadFile + len - 3, ".gz") == 0) {
@@ -463,7 +464,7 @@ int main(int argc, char** argv) {
             const char* base = strrchr(loadFile, '/');
             base = base ? base + 1 : loadFile;
             snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
-            
+
             char cmd[1024];
             snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", loadFile, tempFile);
             if (system(cmd) == 0) {
@@ -473,7 +474,7 @@ int main(int argc, char** argv) {
                 printf("Failed to decompress: %s\n", loadFile);
             }
         }
-        
+
         if (LoadWorld(actualFile)) {
             printf("Loaded: %s\n", loadFile);
             fflush(stdout);
@@ -490,7 +491,7 @@ int main(int argc, char** argv) {
         accumulator += frameTime;
 
         ui_update();
-        
+
         // Register UI block areas BEFORE HandleInput so clicks are blocked immediately
         ui_clear_block_rects();
         {
@@ -500,7 +501,7 @@ int main(int argc, char** argv) {
             int barX = 150;
             ui_add_block_rect((Rectangle){barX, barY, GetScreenWidth() - barX, barH});
         }
-        
+
         HandleInput();
         if (!paused) {
             UpdatePathStats();
@@ -552,7 +553,7 @@ int main(int argc, char** argv) {
         DrawSteam();
         DrawTemperature();
         PROFILE_END(DrawCells);
-        if (IsKeyDown(KEY_G)) {
+        if (inputAction == ACTION_ZONE_GATHER) {
             DrawGatherZones();
         }
         DrawStockpileTiles();
@@ -591,12 +592,12 @@ int main(int argc, char** argv) {
             float py = offset.y + y1 * size;
             float pw = (x2 - x1 + 1) * size;
             float ph = (y2 - y1 + 1) * size;
-            
+
             // Choose colors based on action and mouse button
             Color fillColor = {100, 200, 100, 80};
             Color lineColor = GREEN;
             bool isRightDrag = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
-            
+
             if (isRightDrag) {
                 fillColor = (Color){200, 0, 0, 80};
                 lineColor = RED;
@@ -644,7 +645,7 @@ int main(int argc, char** argv) {
                         break;
                 }
             }
-            
+
             DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
             DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
         }
@@ -661,13 +662,13 @@ int main(int argc, char** argv) {
             const char* zText = TextFormat("Z: %d/%d", currentViewZ, gridDepth - 1);
             int zTextW = MeasureTextUI(zText, 18);
             DrawTextShadow(zText, 5, zY, 18, SKYBLUE);
-            
+
             int btnX = 5 + zTextW + 8;
             int btnW = 24;
             int btnH = 24;
             int fontSize = 22;
             int textOffsetY = -2;  // Adjust text position within button
-            
+
             // < button (decrease Z)
             Rectangle btnDown = {btnX, zY + textOffsetY, btnW, btnH};
             bool downHovered = CheckCollisionPointRec(GetMousePosition(), btnDown);
@@ -679,7 +680,7 @@ int main(int argc, char** argv) {
                     currentViewZ--;
                 }
             }
-            
+
             // > button (increase Z)
             Rectangle btnUp = {btnX + btnW + 4, zY + textOffsetY, btnW, btnH};
             bool upHovered = CheckCollisionPointRec(GetMousePosition(), btnUp);
@@ -749,8 +750,16 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Time of day widget (top right)
+        {
+            int widgetWidth = 140;
+            int widgetX = GetScreenWidth() - widgetWidth - 10;
+            int widgetY = 10;
+            DrawTimeOfDayWidget(widgetX, widgetY);
+        }
+
 #if PROFILER_ENABLED
-        DrawProfilerPanel(GetScreenWidth() - 50, 5);
+        DrawProfilerPanel(GetScreenWidth() - 50, 45);  // Below time widget
 #endif
 
         PROFILE_BEGIN(DrawUI);
@@ -765,24 +774,24 @@ int main(int argc, char** argv) {
             int padding = 12;
             int spacing = 12;
             int fontSize = 16;
-            
+
             BarItem items[MAX_BAR_ITEMS];
             int itemCount = InputMode_GetBarItems(items);
-            
+
             int x = barX;
             for (int i = 0; i < itemCount; i++) {
                 int textW = MeasureTextUI(items[i].text, fontSize);
                 int btnW = textW + padding * 2 + 8;  // Extra width for right margin
                 int textY = barY + (barH - fontSize) / 2 - 4;  // Shift up more for bottom margin
-                
+
                 bool isClickable = items[i].key != 0 && !items[i].isHint;
                 Rectangle btnRect = {x, barY, btnW, barH};
                 bool hovered = isClickable && CheckCollisionPointRec(GetMousePosition(), btnRect);
-                
+
                 // Choose colors based on type
                 Color bgColor = {30, 30, 30, 220};
                 Color textColor = WHITE;
-                
+
                 if (items[i].isHeader) {
                     textColor = YELLOW;
                 } else if (items[i].isHint) {
@@ -794,13 +803,13 @@ int main(int argc, char** argv) {
                 } else if (hovered) {
                     bgColor = (Color){60, 60, 60, 220};
                 }
-                
+
                 // Draw button background only for clickable items
                 if (isClickable) {
                     DrawRectangle(x, barY, btnW, barH, bgColor);
                     DrawRectangleLinesEx(btnRect, 1, hovered ? WHITE : GRAY);
                 }
-                
+
                 // Exit headers: draw [X] in red, rest in yellow
                 if (items[i].isExit && items[i].text[0] == '[') {
                     // Find the closing bracket
@@ -810,7 +819,7 @@ int main(int argc, char** argv) {
                         char keyPart[8];
                         strncpy(keyPart, items[i].text, keyPartLen);
                         keyPart[keyPartLen] = '\0';
-                        
+
                         int keyPartW = MeasureTextUI(keyPart, fontSize);
                         DrawTextShadow(keyPart, x + padding, textY, fontSize, RED);
                         DrawTextShadow(closeBracket + 1, x + padding + keyPartW, textY, fontSize, YELLOW);
@@ -820,7 +829,7 @@ int main(int argc, char** argv) {
                 } else {
                     DrawTextShadow(items[i].text, x + padding, textY, fontSize, textColor);
                 }
-                
+
                 // Handle hover and click
                 if (hovered) {
                     ui_set_hovered();
@@ -829,7 +838,7 @@ int main(int argc, char** argv) {
                         ui_consume_click();
                     }
                 }
-                
+
                 x += btnW + spacing;
             }
         }
@@ -857,7 +866,7 @@ int main(int argc, char** argv) {
                 if (paused) {
                     // When paused, show comprehensive cell info
                     DrawCellTooltip(cellX, cellY, currentViewZ, GetMousePosition());
-                } else if (HasWater(cellX, cellY, currentViewZ) || 
+                } else if (HasWater(cellX, cellY, currentViewZ) ||
                     waterGrid[currentViewZ][cellY][cellX].isSource ||
                     waterGrid[currentViewZ][cellY][cellX].isDrain) {
                     // When running, only show water tooltip if there's water

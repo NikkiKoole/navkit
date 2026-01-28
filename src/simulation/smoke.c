@@ -53,7 +53,7 @@ void ClearSmoke(void) {
 void ResetSmokeAccumulators(void) {
     smokeRiseAccum = 0.0f;
     smokeDissipationAccum = 0.0f;
-    
+
     // Also destabilize all cells so they get processed after load
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -66,8 +66,8 @@ void ResetSmokeAccumulators(void) {
 
 // Bounds check helper
 static inline bool InBounds(int x, int y, int z) {
-    return x >= 0 && x < gridWidth && 
-           y >= 0 && y < gridHeight && 
+    return x >= 0 && x < gridWidth &&
+           y >= 0 && y < gridHeight &&
            z >= 0 && z < gridDepth;
 }
 
@@ -83,13 +83,13 @@ void DestabilizeSmoke(int x, int y, int z) {
     if (InBounds(x, y, z)) {
         smokeGrid[z][y][x].stable = false;
     }
-    
+
     // 4 horizontal neighbors
     if (InBounds(x-1, y, z)) smokeGrid[z][y][x-1].stable = false;
     if (InBounds(x+1, y, z)) smokeGrid[z][y][x+1].stable = false;
     if (InBounds(x, y-1, z)) smokeGrid[z][y-1][x].stable = false;
     if (InBounds(x, y+1, z)) smokeGrid[z][y+1][x].stable = false;
-    
+
     // Above and below
     if (InBounds(x, y, z-1)) smokeGrid[z-1][y][x].stable = false;
     if (InBounds(x, y, z+1)) smokeGrid[z+1][y][x].stable = false;
@@ -100,10 +100,10 @@ void SetSmokeLevel(int x, int y, int z, int level) {
     if (!InBounds(x, y, z)) return;
     if (level < 0) level = 0;
     if (level > SMOKE_MAX_LEVEL) level = SMOKE_MAX_LEVEL;
-    
+
     int oldLevel = smokeGrid[z][y][x].level;
     smokeGrid[z][y][x].level = (uint8_t)level;
-    
+
     if (oldLevel != level) {
         DestabilizeSmoke(x, y, z);
     }
@@ -130,14 +130,14 @@ bool HasSmoke(int x, int y, int z) {
 void GenerateSmokeFromFire(int x, int y, int z, int fireLevel) {
     if (!InBounds(x, y, z)) return;
     if (fireLevel <= 0) return;
-    
+
     // Generate smoke based on fire level
     int smokeAmount = fireLevel / smokeGenerationRate;
     if (smokeAmount < 1 && fireLevel > 0) smokeAmount = 1;
-    
+
     // Add smoke to current cell and cell above
     AddSmoke(x, y, z, smokeAmount);
-    
+
     // Smoke rises - add more to cell above if possible
     if (CanHoldSmoke(x, y, z + 1)) {
         AddSmoke(x, y, z + 1, smokeAmount);
@@ -153,18 +153,18 @@ static int TryRise(int x, int y, int z) {
     if (!CanHoldSmoke(x, y, z + 1)) {
         return 0;  // Blocked above
     }
-    
+
     SmokeCell* src = &smokeGrid[z][y][x];
     SmokeCell* dst = &smokeGrid[z+1][y][x];
-    
+
     if (src->level == 0) return 0;
-    
+
     // Don't rise if this cell's smoke already rose into it this tick
     // This prevents smoke from cascading through multiple z-levels in one tick
     if (smokeHasRisen[z][y][x] == smokeRiseGeneration) {
         return 0;
     }
-    
+
     int space = SMOKE_MAX_LEVEL - dst->level;
     if (space <= 0) {
         // Cell above is full - create pressure (smoke wants to rise but can't)
@@ -172,31 +172,31 @@ static int TryRise(int x, int y, int z) {
         if (src->pressureSourceZ == 0) src->pressureSourceZ = z;
         return 0;
     }
-    
+
     int flow = 1;  // Move 1 unit at a time for gradual rising
     if (flow > src->level) flow = src->level;
     if (flow > space) flow = space;
-    
+
     src->level -= flow;
     dst->level += flow;
-    
+
     // Mark destination as having received risen smoke this tick
     // This prevents the smoke from immediately rising again when z+1 is processed
     smokeHasRisen[z+1][y][x] = smokeRiseGeneration;
-    
+
     // Track pressure source
     if (dst->pressureSourceZ == 0 || dst->pressureSourceZ > z) {
         dst->pressureSourceZ = z;
     }
-    
+
     // If destination is now full, mark for pressure
     if (dst->level == SMOKE_MAX_LEVEL) {
         dst->hasPressure = true;
     }
-    
+
     DestabilizeSmoke(x, y, z);
     DestabilizeSmoke(x, y, z + 1);
-    
+
     return flow;
 }
 
@@ -204,11 +204,11 @@ static int TryRise(int x, int y, int z) {
 static bool SmokeTrySpread(int x, int y, int z) {
     SmokeCell* cell = &smokeGrid[z][y][x];
     if (cell->level == 0) return false;
-    
+
     // Orthogonal neighbors - randomize order
     int dx[] = {-1, 1, 0, 0};
     int dy[] = {0, 0, -1, 1};
-    
+
     // Fisher-Yates shuffle
     int order[] = {0, 1, 2, 3};
     for (int i = 3; i > 0; i--) {
@@ -217,54 +217,54 @@ static bool SmokeTrySpread(int x, int y, int z) {
         order[i] = order[j];
         order[j] = tmp;
     }
-    
+
     bool moved = false;
-    
+
     for (int i = 0; i < 4; i++) {
         int dir = order[i];
         int nx = x + dx[dir];
         int ny = y + dy[dir];
-        
+
         if (!CanHoldSmoke(nx, ny, z)) continue;
-        
+
         SmokeCell* neighbor = &smokeGrid[z][ny][nx];
         int diff = cell->level - neighbor->level;
-        
+
         // Spread to lower neighbors
         if (diff >= 2) {
             cell->level -= 1;
             neighbor->level += 1;
-            
+
             DestabilizeSmoke(x, y, z);
             DestabilizeSmoke(nx, ny, z);
             moved = true;
-            
+
             if (cell->level <= 1) break;
         } else if (diff == 1 && cell->level > 1) {
             cell->level -= 1;
             neighbor->level += 1;
-            
+
             DestabilizeSmoke(x, y, z);
             DestabilizeSmoke(nx, ny, z);
             moved = true;
             break;  // Only give to one neighbor when diff=1
         }
     }
-    
+
     return moved;
 }
 
 // Phase 3: FILL DOWN - When trapped, smoke fills downward (inverse pressure)
 static bool TryFillDown(int x, int y, int z) {
     SmokeCell* cell = &smokeGrid[z][y][x];
-    
+
     // Need full smoke with pressure to fill down
     if (cell->level < SMOKE_MAX_LEVEL) return false;
     if (!cell->hasPressure) return false;
-    
+
     int minZ = cell->pressureSourceZ;
     if (minZ >= z) minZ = 0;  // Can fill all the way down if no source tracked
-    
+
     // BFS to find nearest non-full cell through full cells (going down and horizontal)
     // Use generation counter instead of memset for O(1) reset
     smokePressureGeneration++;
@@ -273,80 +273,80 @@ static bool TryFillDown(int x, int y, int z) {
         memset(smokePressureVisited, 0, sizeof(smokePressureVisited));
         smokePressureGeneration = 1;
     }
-    
+
     int queueHead = 0;
     int queueTail = 0;
-    
+
     int dx[] = {-1, 1, 0, 0, 0};
     int dy[] = {0, 0, -1, 1, 0};
     int dz[] = {0, 0, 0, 0, -1};  // Include down direction
-    
+
     smokePressureVisited[z][y][x] = smokePressureGeneration;
-    
+
     // Add initial neighbors to queue (prioritize going down)
     for (int i = 4; i >= 0; i--) {  // Start with down
         int nx = x + dx[i];
         int ny = y + dy[i];
         int nz = z + dz[i];
-        
+
         if (nz < minZ) continue;
         if (!CanHoldSmoke(nx, ny, nz)) continue;
         if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
-        
+
         smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
         smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
-        
+
         if (queueTail >= SMOKE_PRESSURE_SEARCH_LIMIT) break;
     }
-    
+
     // BFS through full cells looking for non-full cell
     while (queueHead < queueTail) {
         SmokePos pos = smokePressureQueue[queueHead++];
         SmokeCell* current = &smokeGrid[pos.z][pos.y][pos.x];
-        
+
         // Found a non-full cell - push smoke here
         if (current->level < SMOKE_MAX_LEVEL) {
             int space = SMOKE_MAX_LEVEL - current->level;
             int transfer = 1;
             if (transfer > space) transfer = space;
             if (transfer > cell->level) transfer = cell->level;
-            
+
             if (transfer > 0) {
                 cell->level -= transfer;
                 current->level += transfer;
-                
+
                 DestabilizeSmoke(x, y, z);
                 DestabilizeSmoke(pos.x, pos.y, pos.z);
-                
+
                 // Clear pressure if we're no longer full
                 if (cell->level < SMOKE_MAX_LEVEL) {
                     cell->hasPressure = false;
                 }
-                
+
                 return true;
             }
         }
-        
+
         // Cell is full - continue searching through it
         if (current->level >= SMOKE_MAX_LEVEL) {
             for (int i = 4; i >= 0; i--) {
                 int nx = pos.x + dx[i];
                 int ny = pos.y + dy[i];
                 int nz = pos.z + dz[i];
-                
+
                 if (nz < minZ) continue;
                 if (!CanHoldSmoke(nx, ny, nz)) continue;
                 if (smokePressureVisited[nz][ny][nx] == smokePressureGeneration) continue;
-                
+
                 smokePressureVisited[nz][ny][nx] = smokePressureGeneration;
-                
+
                 if (queueTail < SMOKE_PRESSURE_SEARCH_LIMIT) {
                     smokePressureQueue[queueTail++] = (SmokePos){nx, ny, nz};
                 }
             }
         }
     }
-    
+
     return false;
 }
 
@@ -356,7 +356,7 @@ static bool TryFillDown(int x, int y, int z) {
 static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate) {
     SmokeCell* cell = &smokeGrid[z][y][x];
     bool moved = false;
-    
+
     // No smoke to process
     if (cell->level == 0) {
         // Mark stable - DestabilizeSmoke will clear this if smoke arrives nearby
@@ -364,30 +364,30 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
         cell->hasPressure = false;
         return false;
     }
-    
+
     // Phase 1: Try to rise (highest priority for smoke)
     if (doRise) {
         int rose = TryRise(x, y, z);
         if (rose > 0) moved = true;
     }
-    
+
     // Phase 2: Try to spread horizontally (if we still have smoke)
     // Spreading happens every tick for smooth equalization
     if (cell->level > 0) {
         if (SmokeTrySpread(x, y, z)) moved = true;
     }
-    
+
     // Phase 3: Try fill down (if full and pressurized)
     if (cell->level >= SMOKE_MAX_LEVEL && cell->hasPressure) {
         if (TryFillDown(x, y, z)) moved = true;
     }
-    
+
     // Dissipation: smoke gradually fades
     if (doDissipate && cell->level > 0) {
         // Smoke at lower z-levels (in open air) dissipates faster
         // Smoke at higher z-levels or trapped dissipates slower
         bool isTrapped = cell->hasPressure || (z > 0 && !CanHoldSmoke(x, y, z + 1));
-        
+
         if (!isTrapped || (rand() % 3) == 0) {
             cell->level--;
             if (cell->level == 0) {
@@ -398,17 +398,17 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
             moved = true;
         }
     }
-    
+
     // Clear pressure if we're no longer full
     if (cell->level < SMOKE_MAX_LEVEL) {
         cell->hasPressure = false;
     }
-    
+
     // Mark stable if nothing is happening
     if (!moved && cell->level == 0) {
         cell->stable = true;
     }
-    
+
     return moved;
 }
 
@@ -418,20 +418,20 @@ static int smokeTick = 0;
 // Main smoke update - process from BOTTOM to TOP (smoke rises)
 void UpdateSmoke(void) {
     if (!smokeEnabled) return;
-    
+
     smokeUpdateCount = 0;
     smokeTick++;
-    
+
     // Accumulate game time for interval-based actions
     smokeRiseAccum += gameDeltaTime;
     smokeDissipationAccum += gameDeltaTime;
-    
+
     // Check if intervals have elapsed
     bool doRise = smokeRiseAccum >= smokeRiseInterval;
     // Dissipation interval is per level, so we check against smokeDissipationTime / SMOKE_MAX_LEVEL
     float dissipationInterval = smokeDissipationTime / (float)SMOKE_MAX_LEVEL;
     bool doDissipate = smokeDissipationAccum >= dissipationInterval;
-    
+
     // Reset accumulators when intervals elapse
     if (doRise) {
         smokeRiseAccum -= smokeRiseInterval;
@@ -444,11 +444,11 @@ void UpdateSmoke(void) {
         }
     }
     if (doDissipate) smokeDissipationAccum -= dissipationInterval;
-    
+
     // Alternate scan direction each tick to avoid directional bias
     bool reverseX = (smokeTick & 1);
     bool reverseY = (smokeTick & 2);
-    
+
     // Process from bottom to top (smoke rises, so process low cells first)
     for (int z = 0; z < gridDepth; z++) {
         for (int yi = 0; yi < gridHeight; yi++) {
@@ -456,17 +456,17 @@ void UpdateSmoke(void) {
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 SmokeCell* cell = &smokeGrid[z][y][x];
-                
+
                 // Don't skip any cells - the stable optimization causes z-level skipping bugs
                 // TODO: fix stable optimization to account for smoke rising from below
                 (void)cell->stable;  // Silence unused warning
-                
+
                 ProcessSmokeCell(x, y, z, doRise, doDissipate);
                 smokeUpdateCount++;
-                
+
                 // Cap updates per tick
                 if (smokeUpdateCount >= SMOKE_MAX_UPDATES_PER_TICK) {
-                    printf("HIT UPDATE CAP at z=%d, count=%d\n", z, smokeUpdateCount);
+                   // printf("HIT UPDATE CAP at z=%d, count=%d\n", z, smokeUpdateCount);
                     return;
                 }
             }

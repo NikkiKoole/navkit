@@ -589,6 +589,11 @@ void DrawTooltip(void) {
         int lastSpace = -1;
         
         while (*src && lineLen < 127) {
+            // Handle explicit newlines
+            if (*src == '\n') {
+                src++;
+                break;
+            }
             if (*src == ' ') lastSpace = lineLen;
             dst[lineLen++] = *src++;
             dst[lineLen] = '\0';

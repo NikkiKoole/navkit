@@ -10,7 +10,7 @@
 #define FIRE_MIN_SPREAD_LEVEL 2  // Minimum level to spread to neighbors
 
 // Performance tuning
-#define FIRE_MAX_UPDATES_PER_TICK 4096
+#define FIRE_MAX_UPDATES_PER_TICK 4096*4
 
 // Fire cell data (parallel to grid)
 typedef struct {
