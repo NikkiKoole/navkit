@@ -491,11 +491,28 @@ void HandleInput(void) {
     if (ui_wants_mouse()) return;
 
     // ========================================================================
-    // Navigation: ESC, right-click (no drag), re-tap mode key
+    // Navigation: ESC, re-tap mode key
     // ========================================================================
     
     if (IsKeyPressed(KEY_ESCAPE)) {
-        InputMode_Back();
+        if (showQuitConfirm) {
+            // Second ESC while quit confirm shown = quit
+            shouldQuit = true;
+            return;
+        } else if (inputAction != ACTION_NONE || inputMode != MODE_NORMAL) {
+            // Back out of menus
+            InputMode_Back();
+            return;
+        } else {
+            // At root - show quit confirm
+            showQuitConfirm = true;
+            return;
+        }
+    }
+    
+    // Any other key dismisses quit confirm
+    if (showQuitConfirm && GetKeyPressed() != 0) {
+        showQuitConfirm = false;
         return;
     }
 

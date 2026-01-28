@@ -48,6 +48,10 @@ extern int dragStartY;
 // Quick edit mode - left/right click draws/erases walls in normal mode
 extern bool quickEditEnabled;
 
+// Quit confirmation
+extern bool showQuitConfirm;
+extern bool shouldQuit;
+
 // Mode management
 void InputMode_Reset(void);
 void InputMode_Back(void);           // Go back one level (ESC / right-click)

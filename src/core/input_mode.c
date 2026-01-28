@@ -14,6 +14,9 @@ int dragStartY = 0;
 
 bool quickEditEnabled = true;  // Left/right click draws/erases walls in normal mode
 
+bool showQuitConfirm = false;
+bool shouldQuit = false;
+
 void InputMode_Reset(void) {
     inputMode = MODE_NORMAL;
     inputAction = ACTION_NONE;

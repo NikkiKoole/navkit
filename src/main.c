@@ -442,7 +442,7 @@ int main(int argc, char** argv) {
 
     float accumulator = 0.0f;
 
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !shouldQuit) {
         float frameTime = GetFrameTime();
         accumulator += frameTime;
 
@@ -615,6 +615,19 @@ int main(int argc, char** argv) {
             
             const char* barText = InputMode_GetBarText();
             DrawTextShadow(barText, barX + 8, barY + 5, 12, WHITE);
+        }
+
+        // Quit confirmation popup
+        if (showQuitConfirm) {
+            const char* msg = "Press ESC again to quit";
+            int msgW = MeasureText(msg, 20);
+            int popW = msgW + 40;
+            int popH = 40;
+            int popX = (GetScreenWidth() - popW) / 2;
+            int popY = (GetScreenHeight() - popH) / 2;
+            DrawRectangle(popX, popY, popW, popH, (Color){40, 40, 40, 240});
+            DrawRectangleLinesEx((Rectangle){popX, popY, popW, popH}, 2, WHITE);
+            DrawTextShadow(msg, popX + 20, popY + 10, 20, WHITE);
         }
 
         // Help button
