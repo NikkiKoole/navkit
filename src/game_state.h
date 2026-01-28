@@ -108,6 +108,7 @@ extern bool sectionMoverAvoidance;
 extern bool sectionWater;
 extern bool sectionFire;
 extern bool sectionSmoke;
+extern bool sectionSteam;
 extern bool sectionTemperature;
 extern bool showTemperatureOverlay;
 extern bool sectionEntropy;

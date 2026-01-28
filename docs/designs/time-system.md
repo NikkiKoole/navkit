@@ -1122,3 +1122,82 @@ if (Button("Slow")) dayLength = 720.0f;
 | No day/night | `timeOfDay`, `dayLength` |
 | `RunTempTicks(1000)` (~17 sec) | `RunGameSeconds(17.0f)` |
 | `RunTempTicks(3600)` (1 min) | `RunGameSeconds(60.0f)` |
+
+---
+
+## Implementation Status
+
+### Completed (January 2026)
+
+**Core Time Layer:**
+- ✅ `gameSpeed`, `gameTime` (double), `gameDeltaTime` - all working
+- ✅ `timeOfDay`, `dayNumber`, `dayLength` - world clock functional
+- ✅ `UpdateTime()` called from `Tick()`, handles pause correctly
+- ✅ `RunGameSeconds()` helper for tests
+- ✅ `ResetTestState()` for reproducible tests
+
+**Simulation Systems Converted:**
+- ✅ Fire: `fireSpreadInterval`, `fireFuelInterval` with accumulators
+- ✅ Smoke: `smokeRiseInterval`, `smokeDissipationTime` with accumulators
+- ✅ Steam: `steamRiseInterval` with accumulator
+- ✅ Temperature: `heatTransferInterval`, `tempDecayInterval` with accumulators
+- ✅ Ground Wear: `wearRecoveryInterval` with accumulator
+- ✅ Water: `waterEvapInterval` with accumulator
+- ✅ Mover movement uses `gameDeltaTime` (scales with game speed)
+
+**UI:**
+- ✅ Time panel with game speed control and day length
+- ✅ Speed presets (Pause, 1x, 10x, 100x)
+- ✅ Day length presets (Fast 24s, Normal 60s, Slow 12m)
+- ✅ All simulation panels have interval controls with tooltips
+- ✅ Steam UI section added
+
+**Save/Load:**
+- ✅ All new interval variables saved and loaded correctly
+
+### Not Implemented (Future Work)
+
+**Mover Speed in Tiles/Second:**
+The design proposed `moverSpeed = 6.0f` meaning "6 tiles per game-second" for human-readable configuration. Currently movers still use `MOVER_SPEED` in pixels/second. This is a deliberate deferral - the current system works and scales with `gameSpeed`.
+
+**Day/Night Effects:**
+- Temperature variation based on `timeOfDay` (cooler at night)
+- `GetDaylightLevel()` function for lighting
+- Visual day/night cycle
+
+These are nice-to-have features that can be added when needed for gameplay.
+
+**Specification Tests:**
+The design document includes detailed specification tests like "mover walks 2 tiles in 1 second". These are valuable for ensuring the system behaves as documented but weren't implemented during the initial conversion. The existing tests verify the accumulator mechanics work correctly.
+
+**High Game Speed Safety Tests:**
+Tests to verify movers don't end up inside walls at extreme game speeds (100x, 500x, 1000x). Currently accepted as a potential edge case at extreme speeds.
+
+### How the Accumulator Pattern Works
+
+All simulation systems use the same pattern:
+
+```c
+float someInterval = 0.5f;      // "Every 0.5 game-seconds"
+static float someAccum = 0.0f;  // Tracks elapsed time
+
+void UpdateSomething(void) {
+    someAccum += gameDeltaTime;  // Add elapsed game time
+    
+    if (someAccum >= someInterval) {
+        someAccum -= someInterval;  // Keep remainder for smooth timing
+        DoTheThing();               // Perform the action
+    }
+}
+```
+
+**Key insight:** The interval is in game-seconds, not ticks.
+- At `gameSpeed = 1.0`: `gameDeltaTime ≈ 0.0167` (one tick)
+- At `gameSpeed = 10.0`: `gameDeltaTime ≈ 0.167` (ten ticks worth)
+
+So `someInterval = 0.5f` means:
+- At 1x speed: fires every ~30 ticks (0.5 real-seconds)
+- At 10x speed: fires every ~3 ticks (0.05 real-seconds)
+- At 100x speed: fires multiple times per tick
+
+The subtraction `someAccum -= someInterval` (not `= 0`) ensures smooth timing even when the interval is shorter than a tick.

@@ -50,6 +50,7 @@ bool sectionMoverAvoidance = false;
 bool sectionWater = false;
 bool sectionFire = false;
 bool sectionSmoke = false;
+bool sectionSteam = false;
 bool sectionTemperature = false;
 bool showTemperatureOverlay = false;
 bool sectionEntropy = false;

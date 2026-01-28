@@ -387,7 +387,8 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Evaporation", &waterEvaporationEnabled,
             "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
         y += 22;
-        DraggableFloat(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f);
+        DraggableFloatT(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
+            "Game-seconds between evaporation attempts for shallow water. Higher = water persists longer. At 10s, puddles last ~10 seconds.");
         y += 22;
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
@@ -402,9 +403,11 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Enabled", &fireEnabled,
             "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
         y += 22;
-        DraggableFloat(x, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f);
+        DraggableFloatT(x, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
+            "Game-seconds between fire spread attempts. Lower = fire spreads faster. At 0.5s, fire tries to spread twice per second.");
         y += 22;
-        DraggableFloat(x, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f);
+        DraggableFloatT(x, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
+            "Game-seconds between fuel consumption ticks. Lower = fire burns out faster. At 0.5s, fuel depletes twice per second.");
         y += 22;
         DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
             "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
@@ -422,15 +425,39 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Enabled", &smokeEnabled,
             "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
         y += 22;
-        DraggableFloat(x, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f);
+        DraggableFloatT(x, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
+            "Game-seconds between smoke rise attempts. Lower = smoke rises faster. At 0.1s, smoke rises 10 times per game-second.");
         y += 22;
-        DraggableFloat(x, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f);
+        DraggableFloatT(x, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
+            "Game-seconds for smoke to fully dissipate (all 7 levels). At 5s, each level fades in ~0.7s.");
         y += 22;
         DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
             "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke.");
         y += 22;
         if (PushButton(x, y, "Clear Smoke")) {
             ClearSmoke();
+        }
+    }
+    y += 22;
+
+    // === STEAM ===
+    y += 8;
+    if (SectionHeader(x, y, "Steam", &sectionSteam)) {
+        y += 18;
+        ToggleBoolT(x, y, "Enabled", &steamEnabled,
+            "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
+        y += 22;
+        DraggableFloatT(x, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
+            "Game-seconds between steam rise attempts. Lower = steam rises faster. At 0.5s, steam rises twice per game-second.");
+        y += 22;
+        DraggableIntT(x, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
+            TextFormat("Temperature below which steam condenses to water: %d C. Steam lingers longer at higher values.", steamCondensationTemp));
+        y += 22;
+        DraggableIntT(x, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
+            TextFormat("Temperature at which water boils to steam: %d C. Standard is 100C (boiling point).", steamGenerationTemp));
+        y += 22;
+        if (PushButton(x, y, "Clear Steam")) {
+            ClearSteam();
         }
     }
     y += 22;
@@ -453,9 +480,11 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
             "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
         y += 22;
-        DraggableFloat(x, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f);
+        DraggableFloatT(x, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
+            "Game-seconds between heat transfer steps. Lower = heat spreads faster. At 0.1s, heat transfers 10 times per second.");
         y += 22;
-        DraggableFloat(x, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f);
+        DraggableFloatT(x, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
+            "Game-seconds between temperature decay steps toward ambient. Lower = faster return to ambient temperature.");
         y += 22;
         DraggableIntT(x, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
             "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
@@ -494,7 +523,8 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
             "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
         y += 22;
-        DraggableFloat(x, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f);
+        DraggableFloatT(x, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
+            "Game-seconds between wear decay ticks. Higher = grass recovers slower. Combined with Decay Rate controls regrowth speed.");
         y += 22;
         
         // Calculate and display regrow time in game-seconds
@@ -527,7 +557,8 @@ void DrawUI(void) {
         y += 22;
         
         // Game speed control
-        DraggableFloat(x, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f);
+        DraggableFloatT(x, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f,
+            "Simulation speed multiplier. 1.0 = real-time, 10.0 = 10x faster, 0 = paused. All systems scale with this.");
         y += 22;
         
         // Speed presets
@@ -541,7 +572,8 @@ void DrawUI(void) {
         y += 22;
         
         // Day length
-        DraggableFloat(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f);
+        DraggableFloatT(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
+            "Game-seconds per full day (24 hours). At 60s, one real-minute equals one game-day. Affects day/night cycle speed.");
         y += 22;
         
         // Day length presets

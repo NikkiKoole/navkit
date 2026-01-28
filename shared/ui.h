@@ -79,6 +79,9 @@ bool SectionHeader(float x, float y, const char* label, bool* open);
 // TOOLTIP VARIANTS - same as above but show tooltip on hover
 // ============================================================================
 
+// Draggable float with tooltip
+bool DraggableFloatT(float x, float y, const char* label, float* value, float speed, float min, float max, const char* tooltip);
+
 // Draggable int with tooltip
 bool DraggableIntT(float x, float y, const char* label, int* value, float speed, int min, int max, const char* tooltip);
 
@@ -605,6 +608,49 @@ void DrawTooltip(void) {
     
     // Clear tooltip for next frame
     g_tooltip_text[0] = '\0';
+}
+
+bool DraggableFloatT(float x, float y, const char* label, float* value, float speed, float min, float max, const char* tooltip) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
+
+    int textWidth = MeasureText(buf, 18);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) {
+        g_ui_draggableAnyHovered = true;
+        if (tooltip) ui_set_tooltip(tooltip);
+    }
+
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    static bool dragging = false;
+    static float* dragTarget = NULL;
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        dragging = true;
+        dragTarget = value;
+        g_ui_clickConsumed = true;
+        g_ui_isDragging = true;
+    }
+
+    if (dragging && dragTarget == value) {
+        float delta = GetMouseDelta().x * speed * 0.1f;
+        *value += delta;
+        if (*value < min) *value = min;
+        if (*value > max) *value = max;
+
+        if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+            dragging = false;
+            dragTarget = NULL;
+            g_ui_isDragging = false;
+        }
+        return true;
+    }
+    return false;
 }
 
 bool DraggableIntT(float x, float y, const char* label, int* value, float speed, int min, int max, const char* tooltip) {
