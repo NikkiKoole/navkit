@@ -30,3 +30,6 @@
   - sometims the wrong (lower priority) stockpile is picked first, then mover stands there with block, and then moves to the best option, i see the same happenings with designing a build, and minig some wall.
   - in that case blocks are brought from the groun to a stockpile, to be immeadiatly brought to the deisgnated build.
   - **Rolled back:** Attempted to fix `FindStockpileForItem` to search for highest priority stockpile first, but this removes the early-exit optimization (now must check ALL stockpiles instead of returning on first match). Performance cost not worth it - the re-hauling system eventually moves items to the right place anyway.
+
+- # bug6 [ ] a high gamespeed movers get stuck
+  - at game speed 100 i get movers that sort of are yellow and not pathing, when i cahneg the game speed they can find their goal again
