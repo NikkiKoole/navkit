@@ -115,23 +115,23 @@ bool SaveWorld(const char* filename) {
     // Water
     fwrite(&waterEnabled, sizeof(waterEnabled), 1, f);
     fwrite(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
-    fwrite(&waterEvapChance, sizeof(waterEvapChance), 1, f);
+    fwrite(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
     
     // Fire
     fwrite(&fireEnabled, sizeof(fireEnabled), 1, f);
-    fwrite(&fireSpreadChance, sizeof(fireSpreadChance), 1, f);
-    fwrite(&fireFuelConsumption, sizeof(fireFuelConsumption), 1, f);
+    fwrite(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
+    fwrite(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
     fwrite(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
     
     // Smoke
     fwrite(&smokeEnabled, sizeof(smokeEnabled), 1, f);
-    fwrite(&smokeRiseChance, sizeof(smokeRiseChance), 1, f);
-    fwrite(&smokeDissipationRate, sizeof(smokeDissipationRate), 1, f);
+    fwrite(&smokeRiseInterval, sizeof(smokeRiseInterval), 1, f);
+    fwrite(&smokeDissipationTime, sizeof(smokeDissipationTime), 1, f);
     fwrite(&smokeGenerationRate, sizeof(smokeGenerationRate), 1, f);
     
     // Steam
     fwrite(&steamEnabled, sizeof(steamEnabled), 1, f);
-    fwrite(&steamRiseChance, sizeof(steamRiseChance), 1, f);
+    fwrite(&steamRiseInterval, sizeof(steamRiseInterval), 1, f);
     fwrite(&steamCondensationTemp, sizeof(steamCondensationTemp), 1, f);
     fwrite(&steamGenerationTemp, sizeof(steamGenerationTemp), 1, f);
     
@@ -139,8 +139,8 @@ bool SaveWorld(const char* filename) {
     fwrite(&temperatureEnabled, sizeof(temperatureEnabled), 1, f);
     fwrite(&ambientSurfaceTemp, sizeof(ambientSurfaceTemp), 1, f);
     fwrite(&ambientDepthDecay, sizeof(ambientDepthDecay), 1, f);
-    fwrite(&heatTransferSpeed, sizeof(heatTransferSpeed), 1, f);
-    fwrite(&tempDecayRate, sizeof(tempDecayRate), 1, f);
+    fwrite(&heatTransferInterval, sizeof(heatTransferInterval), 1, f);
+    fwrite(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
     fwrite(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
     fwrite(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
     
@@ -150,7 +150,7 @@ bool SaveWorld(const char* filename) {
     fwrite(&wearDirtToGrass, sizeof(wearDirtToGrass), 1, f);
     fwrite(&wearTrampleAmount, sizeof(wearTrampleAmount), 1, f);
     fwrite(&wearDecayRate, sizeof(wearDecayRate), 1, f);
-    fwrite(&wearDecayInterval, sizeof(wearDecayInterval), 1, f);
+    fwrite(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fwrite(&wearMax, sizeof(wearMax), 1, f);
     
     fclose(f);
@@ -293,23 +293,23 @@ bool LoadWorld(const char* filename) {
     // Water
     fread(&waterEnabled, sizeof(waterEnabled), 1, f);
     fread(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
-    fread(&waterEvapChance, sizeof(waterEvapChance), 1, f);
+    fread(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
     
     // Fire
     fread(&fireEnabled, sizeof(fireEnabled), 1, f);
-    fread(&fireSpreadChance, sizeof(fireSpreadChance), 1, f);
-    fread(&fireFuelConsumption, sizeof(fireFuelConsumption), 1, f);
+    fread(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
+    fread(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
     fread(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
     
     // Smoke
     fread(&smokeEnabled, sizeof(smokeEnabled), 1, f);
-    fread(&smokeRiseChance, sizeof(smokeRiseChance), 1, f);
-    fread(&smokeDissipationRate, sizeof(smokeDissipationRate), 1, f);
+    fread(&smokeRiseInterval, sizeof(smokeRiseInterval), 1, f);
+    fread(&smokeDissipationTime, sizeof(smokeDissipationTime), 1, f);
     fread(&smokeGenerationRate, sizeof(smokeGenerationRate), 1, f);
     
     // Steam
     fread(&steamEnabled, sizeof(steamEnabled), 1, f);
-    fread(&steamRiseChance, sizeof(steamRiseChance), 1, f);
+    fread(&steamRiseInterval, sizeof(steamRiseInterval), 1, f);
     fread(&steamCondensationTemp, sizeof(steamCondensationTemp), 1, f);
     fread(&steamGenerationTemp, sizeof(steamGenerationTemp), 1, f);
     
@@ -317,8 +317,8 @@ bool LoadWorld(const char* filename) {
     fread(&temperatureEnabled, sizeof(temperatureEnabled), 1, f);
     fread(&ambientSurfaceTemp, sizeof(ambientSurfaceTemp), 1, f);
     fread(&ambientDepthDecay, sizeof(ambientDepthDecay), 1, f);
-    fread(&heatTransferSpeed, sizeof(heatTransferSpeed), 1, f);
-    fread(&tempDecayRate, sizeof(tempDecayRate), 1, f);
+    fread(&heatTransferInterval, sizeof(heatTransferInterval), 1, f);
+    fread(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
     fread(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
     fread(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
     
@@ -328,7 +328,7 @@ bool LoadWorld(const char* filename) {
     fread(&wearDirtToGrass, sizeof(wearDirtToGrass), 1, f);
     fread(&wearTrampleAmount, sizeof(wearTrampleAmount), 1, f);
     fread(&wearDecayRate, sizeof(wearDecayRate), 1, f);
-    fread(&wearDecayInterval, sizeof(wearDecayInterval), 1, f);
+    fread(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fread(&wearMax, sizeof(wearMax), 1, f);
     
     fclose(f);

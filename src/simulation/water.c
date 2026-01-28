@@ -3,6 +3,7 @@
 #include "temperature.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -12,8 +13,11 @@ WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Global state
 bool waterEnabled = true;
 bool waterEvaporationEnabled = true;
-int waterEvapChance = WATER_EVAP_CHANCE_DEFAULT;
+float waterEvapInterval = WATER_EVAP_INTERVAL_DEFAULT;
 int waterUpdateCount = 0;
+
+// Internal accumulator for evaporation
+static float waterEvapAccum = 0.0f;
 
 // BFS queue for pressure propagation
 typedef struct {
@@ -32,6 +36,7 @@ void InitWater(void) {
 void ClearWater(void) {
     memset(waterGrid, 0, sizeof(waterGrid));
     waterUpdateCount = 0;
+    waterEvapAccum = 0.0f;
 }
 
 // Bounds check helper
@@ -359,7 +364,8 @@ static bool TryPressure(int x, int y, int z) {
 }
 
 // Process a single water cell with DF-style rules
-static bool ProcessWaterCell(int x, int y, int z) {
+// doEvap: interval has elapsed for evaporation
+static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     WaterCell* cell = &waterGrid[z][y][x];
     bool moved = false;
     
@@ -412,14 +418,12 @@ static bool ProcessWaterCell(int x, int y, int z) {
         return true;
     }
     
-    // Evaporation: level 1 water has a chance to disappear
-    if (waterEvaporationEnabled && cell->level == 1 && !cell->isSource && waterEvapChance > 0) {
-        if ((rand() % waterEvapChance) == 0) {
-            cell->level = 0;
-            cell->hasPressure = false;
-            DestabilizeWater(x, y, z);
-            moved = true;
-        }
+    // Evaporation: level 1 water evaporates when interval elapses
+    if (doEvap && waterEvaporationEnabled && cell->level == 1 && !cell->isSource) {
+        cell->level = 0;
+        cell->hasPressure = false;
+        DestabilizeWater(x, y, z);
+        moved = true;
     }
     
     // Clear pressure if we're no longer full
@@ -463,6 +467,13 @@ void UpdateWater(void) {
     
     waterUpdateCount = 0;
     
+    // Accumulate game time for interval-based evaporation
+    waterEvapAccum += gameDeltaTime;
+    
+    // Check if evaporation interval has elapsed
+    bool doEvap = waterEvapAccum >= waterEvapInterval;
+    if (doEvap) waterEvapAccum -= waterEvapInterval;
+    
     // Process from bottom to top (so falling water settles properly)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -484,7 +495,7 @@ void UpdateWater(void) {
                     continue;
                 }
                 
-                ProcessWaterCell(x, y, z);
+                ProcessWaterCell(x, y, z, doEvap);
                 waterUpdateCount++;
                 
                 // Cap updates per tick

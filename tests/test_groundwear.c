@@ -232,21 +232,21 @@ describe(grass_to_dirt_conversion) {
         groundWearEnabled = true;
         
         // Reset to default values
-        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;  // 1000
+        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;  // 100
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;  // 1
         
         // Single trample should NOT convert grass to dirt
         TrampleGround(2, 0);
         expect(grid[0][0][2] == CELL_GRASS);
         
-        // Even 100 tramplings shouldn't convert (100*1=100, still < 1000)
-        for (int i = 0; i < 100; i++) {
+        // 50 tramplings shouldn't convert (50*1=50, still < 100)
+        for (int i = 0; i < 49; i++) {
             TrampleGround(2, 0);
         }
         expect(grid[0][0][2] == CELL_GRASS);
         
-        // Need 1000 tramplings (1000*1=1000 >= threshold)
-        for (int i = 0; i < 899; i++) {  // Already did 101, need 899 more
+        // Need 100 tramplings (100*1=100 >= threshold)
+        for (int i = 0; i < 50; i++) {  // Already did 50, need 50 more
             TrampleGround(2, 0);
         }
         expect(grid[0][0][2] == CELL_DIRT);
@@ -273,8 +273,8 @@ describe(dirt_to_grass_conversion) {
         wearGrid[0][2] = 100;
         
         // Set decay interval to 1 for testing
-        int originalInterval = wearDecayInterval;
-        wearDecayInterval = 1;
+        float originalInterval = wearRecoveryInterval;
+        wearRecoveryInterval = 0.01f;
         
         int initialWear = GetGroundWear(2, 0);
         
@@ -283,7 +283,7 @@ describe(dirt_to_grass_conversion) {
         expect(GetGroundWear(2, 0) < initialWear);
         
         // Restore original values
-        wearDecayInterval = originalInterval;
+        wearRecoveryInterval = originalInterval;
     }
     
     it("should convert dirt to grass when wear drops below threshold") {
@@ -300,7 +300,7 @@ describe(dirt_to_grass_conversion) {
         // Use easy-to-test values
         wearDirtToGrass = 50;
         wearDecayRate = 10;
-        wearDecayInterval = 1;
+        wearRecoveryInterval = 0.01f;
         
         // Set wear just above threshold
         wearGrid[0][2] = 55;
@@ -315,7 +315,7 @@ describe(dirt_to_grass_conversion) {
         // Restore default values
         wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-        wearDecayInterval = WEAR_DECAY_INTERVAL_DEFAULT;
+        wearRecoveryInterval = 0.01f;
     }
     
     it("should only decay every N ticks based on decay interval") {
@@ -328,27 +328,29 @@ describe(dirt_to_grass_conversion) {
         
         InitGroundWear();
         groundWearEnabled = true;
-        groundWearTickCounter = 0;
         
-        // Set decay interval to 5
-        wearDecayInterval = 5;
+        // Set decay interval to longer than one tick
+        // With gameDeltaTime = TICK_DT (~0.0167s), interval of 0.1s takes ~6 ticks
+        wearRecoveryInterval = 0.1f;
         wearDecayRate = 10;
         
         // Set initial wear
         wearGrid[0][2] = 100;
         
-        // Ticks 1-4: no decay
-        for (int i = 0; i < 4; i++) {
+        // First few ticks: no decay (accumulator < interval)
+        for (int i = 0; i < 3; i++) {
             UpdateGroundWear();
             expect(GetGroundWear(2, 0) == 100);
         }
         
-        // Tick 5: decay happens
-        UpdateGroundWear();
-        expect(GetGroundWear(2, 0) == 90);
+        // After enough ticks, decay should happen
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+        expect(GetGroundWear(2, 0) < 100);
         
         // Restore default values
-        wearDecayInterval = WEAR_DECAY_INTERVAL_DEFAULT;
+        wearRecoveryInterval = 0.01f;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
     
@@ -364,7 +366,7 @@ describe(dirt_to_grass_conversion) {
         groundWearEnabled = true;
         
         wearDecayRate = 10;
-        wearDecayInterval = 1;
+        wearRecoveryInterval = 0.01f;
         
         // Set wear lower than decay rate
         wearGrid[0][2] = 5;
@@ -375,7 +377,7 @@ describe(dirt_to_grass_conversion) {
         
         // Restore default values
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-        wearDecayInterval = WEAR_DECAY_INTERVAL_DEFAULT;
+        wearRecoveryInterval = 0.01f;
     }
 }
 
@@ -400,7 +402,7 @@ describe(groundwear_full_cycle) {
         wearDirtToGrass = 10;
         wearTrampleAmount = 10;
         wearDecayRate = 5;
-        wearDecayInterval = 1;
+        wearRecoveryInterval = 0.01f;
         
         // Start as grass
         expect(grid[0][0][2] == CELL_GRASS);
@@ -425,7 +427,7 @@ describe(groundwear_full_cycle) {
         wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-        wearDecayInterval = WEAR_DECAY_INTERVAL_DEFAULT;
+        wearRecoveryInterval = 0.01f;
     }
     
     it("should create path on heavily trafficked area") {

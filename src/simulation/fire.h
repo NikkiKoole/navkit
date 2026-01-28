@@ -27,9 +27,9 @@ extern FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern bool fireEnabled;            // Master toggle for fire simulation
 extern int fireUpdateCount;         // Cells updated last tick (for debug/profiling)
 
-// Tweakable parameters
-extern int fireSpreadChance;        // 1 in N chance to spread per tick (lower = faster)
-extern int fireFuelConsumption;     // Fuel consumed per N ticks
+// Tweakable parameters (game-time based)
+extern float fireSpreadInterval;    // Seconds between spread attempts
+extern float fireFuelInterval;      // Seconds between fuel consumption
 extern int fireWaterReduction;      // Spread chance multiplier near water (percentage, 0-100)
 
 // Initialize fire system

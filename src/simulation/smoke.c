@@ -1,6 +1,7 @@
 #include "smoke.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -11,13 +12,14 @@ SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool smokeEnabled = true;
 int smokeUpdateCount = 0;
 
-// Tweakable parameters (defaults)
-int smokeRiseChance = 2;         // 1 in 2 chance to rise per tick (fast)
-int smokeDissipationRate = 10;   // Dissipate every 10 ticks
-int smokeGenerationRate = 3;     // Fire level / 3 = smoke generated
+// Tweakable parameters (game-time based)
+float smokeRiseInterval = 0.1f;      // Rise attempt every 0.1 game-seconds
+float smokeDissipationTime = 5.0f;   // Smoke dissipates over 5 game-seconds per level
+int smokeGenerationRate = 3;         // Fire level / 3 = smoke generated
 
-// Internal tick counter
-static int smokeTick = 0;
+// Internal accumulators for game-time
+static float smokeRiseAccum = 0.0f;
+static float smokeDissipationAccum = 0.0f;
 
 // BFS queue for pressure propagation (fill down)
 typedef struct {
@@ -39,7 +41,8 @@ void InitSmoke(void) {
 void ClearSmoke(void) {
     memset(smokeGrid, 0, sizeof(smokeGrid));
     smokeUpdateCount = 0;
-    smokeTick = 0;
+    smokeRiseAccum = 0.0f;
+    smokeDissipationAccum = 0.0f;
 }
 
 // Bounds check helper
@@ -132,9 +135,6 @@ static int TryRise(int x, int y, int z) {
     SmokeCell* dst = &smokeGrid[z+1][y][x];
     
     if (src->level == 0) return 0;
-    
-    // Roll for rise chance
-    if ((rand() % smokeRiseChance) != 0) return 0;
     
     int space = SMOKE_MAX_LEVEL - dst->level;
     if (space <= 0) {
@@ -318,7 +318,9 @@ static bool TryFillDown(int x, int y, int z) {
 }
 
 // Process a single smoke cell
-static bool ProcessSmokeCell(int x, int y, int z) {
+// doRise: interval has elapsed for rising
+// doDissipate: interval has elapsed for dissipation
+static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate) {
     SmokeCell* cell = &smokeGrid[z][y][x];
     bool moved = false;
     
@@ -330,10 +332,13 @@ static bool ProcessSmokeCell(int x, int y, int z) {
     }
     
     // Phase 1: Try to rise (highest priority for smoke)
-    int rose = TryRise(x, y, z);
-    if (rose > 0) moved = true;
+    if (doRise) {
+        int rose = TryRise(x, y, z);
+        if (rose > 0) moved = true;
+    }
     
     // Phase 2: Try to spread horizontally (if we still have smoke)
+    // Spreading happens every tick for smooth equalization
     if (cell->level > 0) {
         if (SmokeTrySpread(x, y, z)) moved = true;
     }
@@ -344,7 +349,7 @@ static bool ProcessSmokeCell(int x, int y, int z) {
     }
     
     // Dissipation: smoke gradually fades
-    if (smokeTick % smokeDissipationRate == 0 && cell->level > 0) {
+    if (doDissipate && cell->level > 0) {
         // Smoke at lower z-levels (in open air) dissipates faster
         // Smoke at higher z-levels or trapped dissipates slower
         bool isTrapped = cell->hasPressure || (z > 0 && !CanHoldSmoke(x, y, z + 1));
@@ -373,12 +378,29 @@ static bool ProcessSmokeCell(int x, int y, int z) {
     return moved;
 }
 
+// Internal tick counter for scan direction alternation
+static int smokeTick = 0;
+
 // Main smoke update - process from BOTTOM to TOP (smoke rises)
 void UpdateSmoke(void) {
     if (!smokeEnabled) return;
     
     smokeUpdateCount = 0;
     smokeTick++;
+    
+    // Accumulate game time for interval-based actions
+    smokeRiseAccum += gameDeltaTime;
+    smokeDissipationAccum += gameDeltaTime;
+    
+    // Check if intervals have elapsed
+    bool doRise = smokeRiseAccum >= smokeRiseInterval;
+    // Dissipation interval is per level, so we check against smokeDissipationTime / SMOKE_MAX_LEVEL
+    float dissipationInterval = smokeDissipationTime / (float)SMOKE_MAX_LEVEL;
+    bool doDissipate = smokeDissipationAccum >= dissipationInterval;
+    
+    // Reset accumulators when intervals elapse
+    if (doRise) smokeRiseAccum -= smokeRiseInterval;
+    if (doDissipate) smokeDissipationAccum -= dissipationInterval;
     
     // Alternate scan direction each tick to avoid directional bias
     bool reverseX = (smokeTick & 1);
@@ -402,7 +424,7 @@ void UpdateSmoke(void) {
                     continue;
                 }
                 
-                ProcessSmokeCell(x, y, z);
+                ProcessSmokeCell(x, y, z, doRise, doDissipate);
                 smokeUpdateCount++;
                 
                 // Cap updates per tick

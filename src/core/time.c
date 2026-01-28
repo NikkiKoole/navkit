@@ -6,7 +6,7 @@
 // Core time variables
 float gameSpeed = 1.0f;
 double gameTime = 0.0;
-float gameDeltaTime = 0.0f;
+float gameDeltaTime = TICK_DT;  // Default to one tick for systems called directly
 
 // World clock
 float timeOfDay = 6.0f;        // Start at 6am
@@ -16,7 +16,7 @@ float dayLength = 60.0f;       // Default: 1 real-minute = 1 day
 void InitTime(void) {
     gameSpeed = 1.0f;
     gameTime = 0.0;
-    gameDeltaTime = 0.0f;
+    gameDeltaTime = TICK_DT;  // Default to one tick
     timeOfDay = 6.0f;
     dayNumber = 1;
     dayLength = 60.0f;

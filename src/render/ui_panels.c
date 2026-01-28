@@ -387,8 +387,7 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Evaporation", &waterEvaporationEnabled,
             "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
         y += 22;
-        DraggableIntT(x, y, "Evap Rate (1/N)", &waterEvapChance, 1.0f, 1, 1000,
-            "Evaporation chance per tick for level-1 water. Higher = slower evaporation. At 100, there's a 1% chance each tick.");
+        DraggableFloat(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f);
         y += 22;
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
@@ -403,11 +402,9 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Enabled", &fireEnabled,
             "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
         y += 22;
-        DraggableIntT(x, y, "Spread Chance (1/N)", &fireSpreadChance, 1.0f, 1, 50,
-            "Base chance for fire to spread to adjacent flammable cells. Lower = faster spread. Higher fire intensity also increases spread chance.");
+        DraggableFloat(x, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f);
         y += 22;
-        DraggableIntT(x, y, "Fuel Consumption", &fireFuelConsumption, 1.0f, 1, 50,
-            "Fire consumes 1 fuel every N ticks. Lower = fire burns out faster. Grass has 3 fuel, dirt has 1. When fuel runs out, the cell is marked burned.");
+        DraggableFloat(x, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f);
         y += 22;
         DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
             "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
@@ -425,14 +422,12 @@ void DrawUI(void) {
         ToggleBoolT(x, y, "Enabled", &smokeEnabled,
             "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
         y += 22;
-        DraggableIntT(x, y, "Rise Chance (1/N)", &smokeRiseChance, 1.0f, 1, 20,
-            "Chance per tick for smoke to rise one level. Lower = faster rising. At 2, smoke has 50% chance to rise each tick.");
+        DraggableFloat(x, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f);
         y += 22;
-        DraggableIntT(x, y, "Dissipation Rate", &smokeDissipationRate, 1.0f, 1, 100,
-            "Smoke level decreases by 1 every N ticks. Higher = smoke lingers longer. Trapped smoke dissipates slower than open-air smoke.");
+        DraggableFloat(x, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f);
         y += 22;
         DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
-            "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke per tick.");
+            "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke.");
         y += 22;
         if (PushButton(x, y, "Clear Smoke")) {
             ClearSmoke();
@@ -458,11 +453,9 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
             "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
         y += 22;
-        DraggableIntT(x, y, "Transfer Speed", &heatTransferSpeed, 1.0f, 1, 100,
-            "How fast heat moves between cells. Higher = faster equalization. Air transfers freely, walls slow it.");
+        DraggableFloat(x, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f);
         y += 22;
-        DraggableIntT(x, y, "Decay Rate", &tempDecayRate, 1.0f, 1, 100,
-            "How fast temperatures return to ambient. Higher = faster decay toward ambient temperature.");
+        DraggableFloat(x, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f);
         y += 22;
         DraggableIntT(x, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
             "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
@@ -501,17 +494,16 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
             "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
         y += 22;
-        DraggableIntT(x, y, "Decay Interval", &wearDecayInterval, 5.0f, 1, 500,
-            "Decay only happens every N ticks. Higher = slower recovery. At 50, wear decays 50x slower than trampling occurs.");
+        DraggableFloat(x, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f);
         y += 22;
         
-        // Calculate and display regrow time
-        int ticksToRegrow = ((wearMax - wearDirtToGrass) / wearDecayRate) * wearDecayInterval;
-        float secondsToRegrow = ticksToRegrow / 60.0f;
-        if (secondsToRegrow < 60) {
-            DrawTextShadow(TextFormat("Regrow time: %.1fs", secondsToRegrow), x, y, 14, GRAY);
+        // Calculate and display regrow time in game-seconds
+        int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
+        float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
+        if (gameSecondsToRegrow < 60) {
+            DrawTextShadow(TextFormat("Regrow time: %.1fs game-time", gameSecondsToRegrow), x, y, 14, GRAY);
         } else {
-            DrawTextShadow(TextFormat("Regrow time: %.1fm", secondsToRegrow / 60.0f), x, y, 14, GRAY);
+            DrawTextShadow(TextFormat("Regrow time: %.1fm game-time", gameSecondsToRegrow / 60.0f), x, y, 14, GRAY);
         }
         y += 18;
         

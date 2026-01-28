@@ -27,10 +27,10 @@ extern SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern bool smokeEnabled;           // Master toggle for smoke simulation
 extern int smokeUpdateCount;        // Cells updated last tick (for debug/profiling)
 
-// Tweakable parameters
-extern int smokeRiseChance;         // 1 in N chance to rise per tick (lower = faster)
-extern int smokeDissipationRate;    // Ticks between dissipation (smoke level decrease)
-extern int smokeGenerationRate;     // Smoke generated per fire level per tick
+// Tweakable parameters (game-time based)
+extern float smokeRiseInterval;     // Game-seconds between rise attempts
+extern float smokeDissipationTime;  // Game-seconds for smoke to fully dissipate (per level)
+extern int smokeGenerationRate;     // Smoke generated per fire level (ratio, not time-based)
 
 // Initialize smoke system
 void InitSmoke(void);

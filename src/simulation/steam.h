@@ -25,9 +25,9 @@ extern SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern bool steamEnabled;
 extern int steamUpdateCount;        // Cells updated last tick (for debug/profiling)
 
-// Tweakable parameters
-extern int steamRiseChance;         // 1 in N chance to rise per tick (lower = faster)
-extern int steamCondensationTemp;   // Celsius below which steam condenses (default: 96C)
+// Tweakable parameters (game-time based)
+extern float steamRiseInterval;     // Game-seconds between rise attempts
+extern int steamCondensationTemp;   // Celsius below which steam condenses (default: 60C)
 extern int steamGenerationTemp;     // Celsius above which water boils (default: 100C)
 
 // Initialize/clear

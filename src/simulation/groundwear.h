@@ -14,15 +14,14 @@
 
 // Wear change rates - now variables for UI tweaking
 #define WEAR_TRAMPLE_AMOUNT_DEFAULT 1    // Added when a mover walks on tile (low = needs many passes)
-#define WEAR_DECAY_RATE_DEFAULT 1        // Subtracted per decay tick (natural recovery)
-#define WEAR_DECAY_INTERVAL_DEFAULT 1    // Only decay every N ticks (higher = slower recovery)
+#define WEAR_DECAY_RATE_DEFAULT 1        // Subtracted per decay interval (natural recovery)
 
 // Runtime configurable values
 extern int wearGrassToDirt;      // Threshold to turn grass into dirt
 extern int wearDirtToGrass;      // Threshold to turn dirt back to grass  
 extern int wearTrampleAmount;    // Wear added per mover step
-extern int wearDecayRate;        // Wear removed per decay tick
-extern int wearDecayInterval;    // Ticks between decay updates
+extern int wearDecayRate;        // Wear removed per decay interval
+extern float wearRecoveryInterval; // Game-seconds between decay updates
 extern int wearMax;              // Maximum wear value
 
 // Wear grid (parallel to main grid, only z=0 for now)
@@ -30,7 +29,6 @@ extern int wearGrid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 extern bool groundWearEnabled;
-extern int groundWearTickCounter;
 
 // Initialize ground wear system
 void InitGroundWear(void);

@@ -5,6 +5,7 @@
 #include "groundwear.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -15,13 +16,14 @@ FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool fireEnabled = true;
 int fireUpdateCount = 0;
 
-// Tweakable parameters (defaults)
-int fireSpreadChance = 10;       // 1 in 10 chance to spread per tick
-int fireFuelConsumption = 5;     // Consume 1 fuel every 5 ticks
-int fireWaterReduction = 25;     // 25% spread chance near water
+// Tweakable parameters (game-time based)
+float fireSpreadInterval = 0.2f;   // Spread attempt every 0.2 game-seconds
+float fireFuelInterval = 0.1f;     // Consume fuel every 0.1 game-seconds
+int fireWaterReduction = 25;       // 25% spread chance near water
 
-// Internal tick counter for fuel consumption timing
-static int fireTick = 0;
+// Internal accumulators for game-time based updates
+static float fireSpreadAccum = 0.0f;
+static float fireFuelAccum = 0.0f;
 
 // Initialize fire system
 void InitFire(void) {
@@ -32,7 +34,8 @@ void InitFire(void) {
 void ClearFire(void) {
     memset(fireGrid, 0, sizeof(fireGrid));
     fireUpdateCount = 0;
-    fireTick = 0;
+    fireSpreadAccum = 0.0f;
+    fireFuelAccum = 0.0f;
 }
 
 // Bounds check helper
@@ -163,6 +166,7 @@ static bool HasAdjacentWater(int x, int y, int z) {
 }
 
 // Try to spread fire to neighbors
+// Called when spread interval is reached - fire level and water affect probability
 static bool FireTrySpread(int x, int y, int z) {
     FireCell* cell = &fireGrid[z][y][x];
     if (cell->level < FIRE_MIN_SPREAD_LEVEL) return false;
@@ -192,20 +196,17 @@ static bool FireTrySpread(int x, int y, int z) {
         FireCell* neighbor = &fireGrid[z][ny][nx];
         if (neighbor->level > 0) continue;  // Already burning
         
-        // Calculate spread chance
-        int chance = fireSpreadChance;
+        // Base spread chance: higher fire level = more likely to spread
+        // At level 2 (min): 20% chance, at level 7 (max): 70% chance
+        int spreadPercent = 10 + (cell->level * 10);
         
         // Reduce chance if neighbor is near water
         if (HasAdjacentWater(nx, ny, z)) {
-            chance = chance * 100 / fireWaterReduction;  // Increase denominator = less likely
-            if (chance < 1) chance = 1;
+            spreadPercent = spreadPercent * fireWaterReduction / 100;
+            if (spreadPercent < 5) spreadPercent = 5;
         }
         
-        // Higher fire level = higher spread chance
-        chance = chance - (cell->level - FIRE_MIN_SPREAD_LEVEL);
-        if (chance < 1) chance = 1;
-        
-        if ((rand() % chance) == 0) {
+        if ((rand() % 100) < spreadPercent) {
             // Ignite neighbor
             CellType cellType = grid[z][ny][nx];
             neighbor->fuel = GetBaseFuelForCellType(cellType);
@@ -220,7 +221,7 @@ static bool FireTrySpread(int x, int y, int z) {
 }
 
 // Process a single fire cell
-static bool ProcessFireCell(int x, int y, int z) {
+static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     FireCell* cell = &fireGrid[z][y][x];
     bool changed = false;
     
@@ -232,7 +233,7 @@ static bool ProcessFireCell(int x, int y, int z) {
             changed = true;
         }
         // Sources still spread, generate smoke, and heat
-        FireTrySpread(x, y, z);
+        if (doSpread) FireTrySpread(x, y, z);
         GenerateSmokeFromFire(x, y, z, cell->level);
         ApplyFireHeat(x, y, z, cell->level);
         return changed;
@@ -252,8 +253,8 @@ static bool ProcessFireCell(int x, int y, int z) {
         return true;
     }
     
-    // Fuel consumption (every N ticks)
-    if (fireTick % fireFuelConsumption == 0) {
+    // Fuel consumption (on fuel interval)
+    if (doFuel) {
         if (cell->fuel > 0) {
             cell->fuel--;
             
@@ -292,8 +293,8 @@ static bool ProcessFireCell(int x, int y, int z) {
         }
     }
     
-    // Try to spread
-    if (FireTrySpread(x, y, z)) {
+    // Try to spread (on spread interval)
+    if (doSpread && FireTrySpread(x, y, z)) {
         changed = true;
     }
     
@@ -337,7 +338,17 @@ void UpdateFire(void) {
     if (!fireEnabled) return;
     
     fireUpdateCount = 0;
-    fireTick++;
+    
+    // Accumulate game time for interval-based updates
+    fireSpreadAccum += gameDeltaTime;
+    fireFuelAccum += gameDeltaTime;
+    
+    // Check if we should do spread/fuel this tick
+    bool doSpread = fireSpreadAccum >= fireSpreadInterval;
+    bool doFuel = fireFuelAccum >= fireFuelInterval;
+    
+    if (doSpread) fireSpreadAccum -= fireSpreadInterval;
+    if (doFuel) fireFuelAccum -= fireFuelInterval;
     
     // Process from bottom to top (like water)
     for (int z = 0; z < gridDepth; z++) {
@@ -355,7 +366,7 @@ void UpdateFire(void) {
                     continue;
                 }
                 
-                ProcessFireCell(x, y, z);
+                ProcessFireCell(x, y, z, doSpread, doFuel);
                 fireUpdateCount++;
                 
                 // Cap updates per tick

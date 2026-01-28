@@ -1,5 +1,6 @@
 #include "groundwear.h"
 #include "../world/grid.h"
+#include "../core/time.h"
 #include "fire.h"
 #include <string.h>
 
@@ -8,15 +9,17 @@ int wearGrid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 bool groundWearEnabled = true;
-int groundWearTickCounter = 0;
 
 // Runtime configurable values
 int wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
 int wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
 int wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
 int wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-int wearDecayInterval = WEAR_DECAY_INTERVAL_DEFAULT;
+float wearRecoveryInterval = 5.0f;  // Decay wear every 5 game-seconds
 int wearMax = WEAR_MAX_DEFAULT;
+
+// Internal accumulator for game-time
+static float wearRecoveryAccum = 0.0f;
 
 void InitGroundWear(void) {
     ClearGroundWear();
@@ -24,7 +27,7 @@ void InitGroundWear(void) {
 
 void ClearGroundWear(void) {
     memset(wearGrid, 0, sizeof(wearGrid));
-    groundWearTickCounter = 0;
+    wearRecoveryAccum = 0.0f;
 }
 
 void TrampleGround(int x, int y) {
@@ -49,11 +52,12 @@ void TrampleGround(int x, int y) {
 void UpdateGroundWear(void) {
     if (!groundWearEnabled) return;
     
-    groundWearTickCounter++;
+    // Accumulate game time for interval-based decay
+    wearRecoveryAccum += gameDeltaTime;
     
-    // Only decay wear every N ticks (makes recovery slower than trampling)
-    if (groundWearTickCounter < wearDecayInterval) return;
-    groundWearTickCounter = 0;
+    // Only decay wear when interval elapses
+    if (wearRecoveryAccum < wearRecoveryInterval) return;
+    wearRecoveryAccum -= wearRecoveryInterval;
     
     // Process all cells
     for (int y = 0; y < gridHeight; y++) {

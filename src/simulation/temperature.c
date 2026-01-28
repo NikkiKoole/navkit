@@ -1,5 +1,6 @@
 #include "temperature.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,15 +11,19 @@ TempCell temperatureGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool temperatureEnabled = true;
 int tempUpdateCount = 0;
 
-// Tweakable parameters (all in Celsius now - much simpler!)
+// Tweakable parameters (temps in Celsius, time in game-seconds)
 int ambientSurfaceTemp = TEMP_AMBIENT_DEFAULT;  // 20C
 int ambientDepthDecay = 0;                       // Celsius per z-level underground
-int heatTransferSpeed = 50;                      // 1-100 scale
-int tempDecayRate = 10;                          // 1-100 scale
+float heatTransferInterval = 0.1f;               // Transfer heat every 0.1 game-seconds
+float tempDecayInterval = 0.1f;                  // Decay toward ambient every 0.1 game-seconds
 int insulationTier1Rate = HEAT_TRANSFER_WOOD;   // 20%
 int insulationTier2Rate = HEAT_TRANSFER_STONE;  // 5%
 int heatSourceTemp = 200;                        // 200C (fire/furnace)
 int coldSourceTemp = -20;                        // -20C (ice/cold source)
+
+// Internal accumulators for game-time
+static float heatTransferAccum = 0.0f;
+static float tempDecayAccum = 0.0f;
 
 // Direction offsets for orthogonal neighbors
 static const int dx[] = {0, 0, -1, 1};
@@ -46,6 +51,8 @@ void InitTemperature(void) {
         }
     }
     tempUpdateCount = 0;
+    heatTransferAccum = 0.0f;
+    tempDecayAccum = 0.0f;
 }
 
 void ClearTemperature(void) {
@@ -271,6 +278,21 @@ void UpdateTemperature(void) {
     
     tempUpdateCount = 0;
     
+    // Accumulate game time for interval-based actions
+    heatTransferAccum += gameDeltaTime;
+    tempDecayAccum += gameDeltaTime;
+    
+    // Check if intervals have elapsed
+    bool doTransfer = heatTransferAccum >= heatTransferInterval;
+    bool doDecay = tempDecayAccum >= tempDecayInterval;
+    
+    // Reset accumulators when intervals elapse
+    if (doTransfer) heatTransferAccum -= heatTransferInterval;
+    if (doDecay) tempDecayAccum -= tempDecayInterval;
+    
+    // Early exit if nothing to do this tick
+    if (!doTransfer && !doDecay) return;
+    
     // Process all cells
     for (int z = 0; z < gridDepth; z++) {
         int ambient = GetAmbientTemperature(z);
@@ -303,91 +325,94 @@ void UpdateTemperature(void) {
                 int currentTemp = cell->current;
                 int myInsulation = GetInsulationTier(x, y, z);
                 
-                // Phase 1: Heat transfer with neighbors
-                int totalTransfer = 0;
-                int neighborCount = 0;
-                
-                // Orthogonal neighbors (same z-level)
-                for (int i = 0; i < 4; i++) {
-                    int nx = x + dx[i];
-                    int ny = y + dy[i];
+                // Phase 1: Heat transfer with neighbors (only when interval elapses)
+                if (doTransfer) {
+                    int totalTransfer = 0;
+                    int neighborCount = 0;
                     
-                    if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) {
-                        continue;
+                    // Orthogonal neighbors (same z-level)
+                    for (int i = 0; i < 4; i++) {
+                        int nx = x + dx[i];
+                        int ny = y + dy[i];
+                        
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) {
+                            continue;
+                        }
+                        
+                        int neighborTemp = temperatureGrid[z][ny][nx].current;
+                        int neighborInsulation = GetInsulationTier(nx, ny, z);
+                        
+                        // Use the higher insulation of the two cells
+                        int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
+                        int transferRate = GetHeatTransferRate(effectiveInsulation);
+                        
+                        // Calculate transfer amount (transferRate is percentage 0-100)
+                        int tempDiff = neighborTemp - currentTemp;
+                        int transfer = (tempDiff * transferRate) / 100;
+                        
+                        totalTransfer += transfer;
+                        neighborCount++;
                     }
                     
-                    int neighborTemp = temperatureGrid[z][ny][nx].current;
-                    int neighborInsulation = GetInsulationTier(nx, ny, z);
-                    
-                    // Use the higher insulation of the two cells
-                    int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
-                    int transferRate = GetHeatTransferRate(effectiveInsulation);
-                    
-                    // Calculate transfer amount
-                    int tempDiff = neighborTemp - currentTemp;
-                    int transfer = (tempDiff * transferRate * heatTransferSpeed) / 10000;
-                    
-                    totalTransfer += transfer;
-                    neighborCount++;
-                }
-                
-                // Diagonal neighbors (same z-level, reduced transfer)
-                for (int i = 0; i < 4; i++) {
-                    int nx = x + diag_dx[i];
-                    int ny = y + diag_dy[i];
-                    
-                    if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) {
-                        continue;
+                    // Diagonal neighbors (same z-level, reduced transfer)
+                    for (int i = 0; i < 4; i++) {
+                        int nx = x + diag_dx[i];
+                        int ny = y + diag_dy[i];
+                        
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) {
+                            continue;
+                        }
+                        
+                        int neighborTemp = temperatureGrid[z][ny][nx].current;
+                        int neighborInsulation = GetInsulationTier(nx, ny, z);
+                        
+                        int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
+                        int transferRate = GetHeatTransferRate(effectiveInsulation);
+                        
+                        // 70% of orthogonal due to ~1.4x distance
+                        int tempDiff = neighborTemp - currentTemp;
+                        int transfer = (tempDiff * transferRate * 70) / (100 * 100);
+                        
+                        totalTransfer += transfer;
+                        neighborCount++;
                     }
                     
-                    int neighborTemp = temperatureGrid[z][ny][nx].current;
-                    int neighborInsulation = GetInsulationTier(nx, ny, z);
-                    
-                    int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
-                    int transferRate = GetHeatTransferRate(effectiveInsulation);
-                    
-                    // 70% of orthogonal due to ~1.4x distance
-                    int tempDiff = neighborTemp - currentTemp;
-                    int transfer = (tempDiff * transferRate * heatTransferSpeed * 70) / (10000 * 100);
-                    
-                    totalTransfer += transfer;
-                    neighborCount++;
-                }
-                
-                // Vertical neighbors (z-1 and z+1)
-                for (int dz = -1; dz <= 1; dz += 2) {
-                    int nz = z + dz;
-                    if (nz < 0 || nz >= gridDepth) continue;
-                    
-                    int neighborTemp = temperatureGrid[nz][y][x].current;
-                    int neighborInsulation = GetInsulationTier(x, y, nz);
-                    
-                    int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
-                    int transferRate = GetHeatTransferRate(effectiveInsulation);
-                    
-                    int tempDiff = neighborTemp - currentTemp;
-                    int transfer = (tempDiff * transferRate * heatTransferSpeed) / 10000;
-                    
-                    // Heat rises: boost upward, reduce downward
-                    if (dz > 0 && currentTemp > neighborTemp) {
-                        transfer = transfer * 150 / 100;
-                    } else if (dz < 0 && currentTemp > neighborTemp) {
-                        transfer = transfer * 50 / 100;
+                    // Vertical neighbors (z-1 and z+1)
+                    for (int dz = -1; dz <= 1; dz += 2) {
+                        int nz = z + dz;
+                        if (nz < 0 || nz >= gridDepth) continue;
+                        
+                        int neighborTemp = temperatureGrid[nz][y][x].current;
+                        int neighborInsulation = GetInsulationTier(x, y, nz);
+                        
+                        int effectiveInsulation = (myInsulation > neighborInsulation) ? myInsulation : neighborInsulation;
+                        int transferRate = GetHeatTransferRate(effectiveInsulation);
+                        
+                        int tempDiff = neighborTemp - currentTemp;
+                        int transfer = (tempDiff * transferRate) / 100;
+                        
+                        // Heat rises: boost upward, reduce downward
+                        if (dz > 0 && currentTemp > neighborTemp) {
+                            transfer = transfer * 150 / 100;
+                        } else if (dz < 0 && currentTemp > neighborTemp) {
+                            transfer = transfer * 50 / 100;
+                        }
+                        
+                        totalTransfer += transfer;
+                        neighborCount++;
                     }
                     
-                    totalTransfer += transfer;
-                    neighborCount++;
+                    // Apply transfer
+                    if (neighborCount > 0) {
+                        currentTemp += totalTransfer / neighborCount;
+                    }
                 }
                 
-                // Apply transfer
-                if (neighborCount > 0) {
-                    currentTemp += totalTransfer / neighborCount;
-                }
-                
-                // Phase 2: Decay toward ambient
-                if (currentTemp != ambient) {
+                // Phase 2: Decay toward ambient (only when interval elapses)
+                if (doDecay && currentTemp != ambient) {
                     int diff = ambient - currentTemp;
-                    int decay = (diff * tempDecayRate) / 1000;
+                    // Decay by 10% of the difference each interval
+                    int decay = diff / 10;
                     
                     // Ensure at least some decay happens
                     if (decay == 0 && diff != 0) {

@@ -66,11 +66,11 @@ extern TempCell temperatureGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH]
 extern bool temperatureEnabled;     // Master toggle for temperature simulation
 extern int tempUpdateCount;         // Cells updated last tick (for debug/profiling)
 
-// Tweakable parameters (all in Celsius now!)
+// Tweakable parameters (temps in Celsius, time in game-seconds)
 extern int ambientSurfaceTemp;      // Default surface temperature (default: 20)
 extern int ambientDepthDecay;       // Temperature decrease per Z-level down (default: 0)
-extern int heatTransferSpeed;       // How fast heat moves (1-100, default: 50)
-extern int tempDecayRate;           // How fast temps return to ambient (1-100, default: 10)
+extern float heatTransferInterval;  // Game-seconds between heat transfer steps
+extern float tempDecayInterval;     // Game-seconds between decay toward ambient steps
 extern int insulationTier1Rate;     // Wood transfer rate percentage (default: 20)
 extern int insulationTier2Rate;     // Stone transfer rate percentage (default: 5)
 extern int heatSourceTemp;          // Temperature of heat sources (default: 200)

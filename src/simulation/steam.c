@@ -3,6 +3,7 @@
 #include "temperature.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -13,14 +14,13 @@ SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool steamEnabled = true;
 int steamUpdateCount = 0;
 
-// Tweakable parameters (all in Celsius now!)
-int steamRiseChance = 1;            // 1 in 1 = always rise (steam is energetic)
-int steamSpreadChance = 2;          // 1 in 2 chance to spread horizontally
+// Tweakable parameters (game-time based, temps in Celsius)
+float steamRiseInterval = 0.5f;     // Rise attempt every 0.5 game-seconds
 int steamCondensationTemp = 60;     // 60C - steam lingers longer before condensing
 int steamGenerationTemp = 100;      // 100C (boiling point)
 
-// Internal tick counter
-static int steamTick = 0;
+// Internal accumulators for game-time
+static float steamRiseAccum = 0.0f;
 
 // Initialize steam system
 void InitSteam(void) {
@@ -31,7 +31,7 @@ void InitSteam(void) {
 void ClearSteam(void) {
     memset(steamGrid, 0, sizeof(steamGrid));
     steamUpdateCount = 0;
-    steamTick = 0;
+    steamRiseAccum = 0.0f;
 }
 
 // Bounds check helper
@@ -116,7 +116,7 @@ static int SteamTryRise(int x, int y, int z) {
     
     // At top of world - steam escapes into the sky
     if (z >= gridDepth - 1) {
-        if (src->level > 0 && (rand() % steamRiseChance) == 0) {
+        if (src->level > 0) {
             int escaped = 1;
             if (escaped > src->level) escaped = src->level;
             src->level -= escaped;
@@ -130,9 +130,6 @@ static int SteamTryRise(int x, int y, int z) {
     SteamCell* dst = &steamGrid[z+1][y][x];
     
     if (src->level == 0) return 0;
-    
-    // Roll for rise chance
-    if ((rand() % steamRiseChance) != 0) return 0;
     
     int space = STEAM_MAX_LEVEL - dst->level;
     if (space <= 0) {
@@ -261,7 +258,8 @@ static bool SteamTryCondense(int x, int y, int z) {
 }
 
 // Process a single steam cell
-static bool ProcessSteamCell(int x, int y, int z) {
+// doRise: interval has elapsed for rising
+static bool ProcessSteamCell(int x, int y, int z, bool doRise) {
     SteamCell* cell = &steamGrid[z][y][x];
     bool moved = false;
     
@@ -272,15 +270,19 @@ static bool ProcessSteamCell(int x, int y, int z) {
     }
     
     // Phase 1: Try to rise (highest priority for steam)
-    int rose = SteamTryRise(x, y, z);
-    if (rose > 0) moved = true;
+    if (doRise) {
+        int rose = SteamTryRise(x, y, z);
+        if (rose > 0) moved = true;
+    }
     
     // Phase 2: Try to spread horizontally (if we still have steam)
+    // Spreading happens every tick for smooth equalization
     if (cell->level > 0) {
         if (SteamTrySpread(x, y, z)) moved = true;
     }
     
     // Phase 3: Try to condense (if temperature is low enough)
+    // Condensation happens every tick, controlled by temperature
     if (cell->level > 0) {
         if (SteamTryCondense(x, y, z)) moved = true;
     }
@@ -293,12 +295,22 @@ static bool ProcessSteamCell(int x, int y, int z) {
     return moved;
 }
 
+// Internal tick counter for scan direction alternation
+static int steamTick = 0;
+
 // Main steam update - process from BOTTOM to TOP (steam rises)
 void UpdateSteam(void) {
     if (!steamEnabled) return;
     
     steamUpdateCount = 0;
     steamTick++;
+    
+    // Accumulate game time for interval-based actions
+    steamRiseAccum += gameDeltaTime;
+    
+    // Check if rise interval has elapsed
+    bool doRise = steamRiseAccum >= steamRiseInterval;
+    if (doRise) steamRiseAccum -= steamRiseInterval;
     
     // Alternate scan direction each tick to avoid directional bias
     bool reverseX = (steamTick & 1);
@@ -322,7 +334,7 @@ void UpdateSteam(void) {
                     continue;
                 }
                 
-                ProcessSteamCell(x, y, z);
+                ProcessSteamCell(x, y, z, doRise);
                 steamUpdateCount++;
                 
                 // Cap updates per tick
