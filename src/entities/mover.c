@@ -977,9 +977,8 @@ void UpdateMovers(void) {
             // Trample ground where mover is standing (creates paths over time)
             int trampleCellX = (int)(m->x / CELL_SIZE);
             int trampleCellY = (int)(m->y / CELL_SIZE);
-            if ((int)m->z == 0) {  // Only trample at ground level
-                TrampleGround(trampleCellX, trampleCellY);
-            }
+            int trampleCellZ = (int)m->z;
+            TrampleGround(trampleCellX, trampleCellY, trampleCellZ);
             
             // Track progress for stuck detection
             float dx = m->x - m->lastX;

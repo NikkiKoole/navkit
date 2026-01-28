@@ -410,43 +410,47 @@ describe(spec_water_speed) {
 // =============================================================================
 
 describe(spec_ground_wear) {
-    it("grass should become dirt when wear exceeds threshold") {
+    it("grass overlay should become bare when wear exceeds threshold") {
         SetupTestGrid();
         ResetTestState(12345);
         
-        // Set up grass
-        grid[0][4][8] = CELL_GRASS;
+        // Set up dirt with tall grass overlay (new system)
+        grid[0][4][8] = CELL_DIRT;
+        SET_CELL_SURFACE(8, 4, 0, SURFACE_TALL_GRASS);
         wearGrassToDirt = 100;
         wearTrampleAmount = 10;
         groundWearEnabled = true;
         
         // Trample until wear exceeds threshold
         for (int i = 0; i < 15; i++) {  // 15 * 10 = 150 wear > 100 threshold
-            TrampleGround(8, 4);
+            TrampleGround(8, 4, 0);
         }
         
-        expect(grid[0][4][8] == CELL_DIRT);
+        // Surface should now be bare (no grass overlay)
+        expect(GET_CELL_SURFACE(8, 4, 0) == SURFACE_BARE);
     }
     
-    it("dirt should recover to grass when wear drops below threshold") {
+    it("bare dirt should recover grass overlay when wear drops below threshold") {
         SetupTestGrid();
         ResetTestState(12345);
         
-        // Set up worn dirt
+        // Set up bare worn dirt
         grid[0][4][8] = CELL_DIRT;
-        wearGrid[4][8] = 150;  // Above threshold
+        SET_CELL_SURFACE(8, 4, 0, SURFACE_BARE);
+        wearGrid[0][4][8] = 150;  // Above threshold (3D array now)
         
-        wearDirtToGrass = 50;
+        wearDirtToGrass = 50;  // Unused now - surface is based on wear thresholds
         wearDecayRate = 10;
         wearRecoveryInterval = 0.5f;
         groundWearEnabled = true;
         gameSpeed = 1.0f;
         
-        // Run until wear decays below threshold
-        // Need (150 - 50) / 10 = 10 decay ticks = 5 seconds
-        RunGameSeconds(6.0f);
+        // Run until wear decays to < 20 (tall grass threshold)
+        // Need 150 / 10 = 15 decay ticks = 7.5 seconds to reach 0
+        RunGameSeconds(8.0f);
         
-        expect(grid[0][4][8] == CELL_GRASS);
+        // Should now have tall grass overlay (wear < 20)
+        expect(GET_CELL_SURFACE(8, 4, 0) == SURFACE_TALL_GRASS);
     }
 }
 

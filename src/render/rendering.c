@@ -52,6 +52,54 @@ void DrawCellGrid(void) {
     }
 }
 
+void DrawGrassOverlay(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX = 0, minY = 0;
+    int maxX = gridWidth, maxY = gridHeight;
+
+    // Calculate visible cell range (view frustum culling)
+    if (cullDrawing) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+
+        minX = (int)((-offset.x) / size);
+        maxX = (int)((-offset.x + screenW) / size) + 1;
+        minY = (int)((-offset.y) / size);
+        maxY = (int)((-offset.y + screenH) / size) + 1;
+
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > gridWidth) maxX = gridWidth;
+        if (maxY > gridHeight) maxY = gridHeight;
+    }
+
+    // Draw grass overlay on dirt tiles based on surface type
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            // Only draw overlay on dirt tiles
+            if (grid[z][y][x] != CELL_DIRT) continue;
+            
+            int surface = GET_CELL_SURFACE(x, y, z);
+            if (surface == SURFACE_BARE) continue;  // No overlay for bare dirt
+            
+            // Select sprite based on surface type
+            int sprite;
+            switch (surface) {
+                case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
+                case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
+                case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
+                default: continue;  // Unknown type, skip
+            }
+            
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            Rectangle src = SpriteGetRect(sprite);
+            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+        }
+    }
+}
+
 void DrawWater(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;

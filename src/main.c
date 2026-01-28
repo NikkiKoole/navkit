@@ -366,6 +366,7 @@ void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
 
 // From render/rendering.c
 void DrawCellGrid(void);
+void DrawGrassOverlay(void);
 void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
@@ -546,6 +547,7 @@ int main(int argc, char** argv) {
         ClearBackground(BLACK);
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
+        DrawGrassOverlay();
         DrawWater();
         DrawFrozenWater();
         DrawFire();

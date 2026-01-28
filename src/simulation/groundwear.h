@@ -24,8 +24,8 @@ extern int wearDecayRate;        // Wear removed per decay interval
 extern float wearRecoveryInterval; // Game-seconds between decay updates
 extern int wearMax;              // Maximum wear value
 
-// Wear grid (parallel to main grid, only z=0 for now)
-extern int wearGrid[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+// Wear grid (parallel to main grid, all z-levels)
+extern int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Global state
 extern bool groundWearEnabled;
@@ -37,12 +37,12 @@ void InitGroundWear(void);
 void ClearGroundWear(void);
 
 // Called when a mover steps on a tile - increases wear
-void TrampleGround(int x, int y);
+void TrampleGround(int x, int y, int z);
 
 // Update wear decay and grass/dirt conversion (call from main tick)
 void UpdateGroundWear(void);
 
 // Get current wear value at position
-int GetGroundWear(int x, int y);
+int GetGroundWear(int x, int y, int z);
 
 #endif // GROUNDWEAR_H

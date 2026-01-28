@@ -16,9 +16,11 @@ describe(groundwear_initialization) {
         
         InitGroundWear();
         
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                expect(GetGroundWear(x, y) == 0);
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    expect(GetGroundWear(x, y, z) == 0);
+                }
             }
         }
     }
@@ -30,72 +32,75 @@ describe(groundwear_initialization) {
         
         InitGroundWear();
         
-        // Manually set some wear
-        wearGrid[0][2] = 100;
-        wearGrid[1][4] = 200;
+        // Manually set some wear at different z-levels
+        wearGrid[0][0][2] = 100;
+        wearGrid[0][1][4] = 200;
+        wearGrid[1][0][3] = 150;
         
-        expect(GetGroundWear(2, 0) == 100);
-        expect(GetGroundWear(4, 1) == 200);
+        expect(GetGroundWear(2, 0, 0) == 100);
+        expect(GetGroundWear(4, 1, 0) == 200);
+        expect(GetGroundWear(3, 0, 1) == 150);
         
         ClearGroundWear();
         
-        expect(GetGroundWear(2, 0) == 0);
-        expect(GetGroundWear(4, 1) == 0);
+        expect(GetGroundWear(2, 0, 0) == 0);
+        expect(GetGroundWear(4, 1, 0) == 0);
+        expect(GetGroundWear(3, 0, 1) == 0);
     }
 }
 
 // =============================================================================
-// Trampling
+// Trampling (now operates on CELL_DIRT only)
 // =============================================================================
 
 describe(groundwear_trampling) {
-    it("should increase wear when trampled") {
+    it("should increase wear when dirt is trampled") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n"
-            "gggg\n", 4, 2);
+            "dddd\n"
+            "dddd\n", 4, 2);
         
-        // Convert to CELL_GRASS
+        // Set up dirt tiles
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
             }
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
-        expect(GetGroundWear(2, 1) == 0);
+        expect(GetGroundWear(2, 1, 0) == 0);
         
-        TrampleGround(2, 1);
+        TrampleGround(2, 1, 0);
         
-        expect(GetGroundWear(2, 1) == wearTrampleAmount);
+        expect(GetGroundWear(2, 1, 0) == wearTrampleAmount);
     }
     
     it("should accumulate wear over multiple tramplings") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Trample multiple times
-        TrampleGround(2, 0);
-        TrampleGround(2, 0);
-        TrampleGround(2, 0);
+        TrampleGround(2, 0, 0);
+        TrampleGround(2, 0, 0);
+        TrampleGround(2, 0, 0);
         
-        expect(GetGroundWear(2, 0) == wearTrampleAmount * 3);
+        expect(GetGroundWear(2, 0, 0) == wearTrampleAmount * 3);
     }
     
     it("should cap wear at wearMax") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
         }
         
         InitGroundWear();
@@ -108,12 +113,12 @@ describe(groundwear_trampling) {
         wearMax = 1000;
         
         // Set wear close to max
-        wearGrid[0][2] = 900;
+        wearGrid[0][0][2] = 900;
         
         // Trample - should cap at wearMax (900 + 200 would be 1100, but caps at 1000)
-        TrampleGround(2, 0);
+        TrampleGround(2, 0, 0);
         
-        expect(GetGroundWear(2, 0) == 1000);
+        expect(GetGroundWear(2, 0, 0) == 1000);
         
         // Restore original values
         wearTrampleAmount = originalTrample;
@@ -122,142 +127,151 @@ describe(groundwear_trampling) {
     
     it("should not trample wall cells") {
         InitGridFromAsciiWithChunkSize(
-            "g#gg\n", 4, 1);
+            "d#dd\n", 4, 1);
         
-        grid[0][0][0] = CELL_GRASS;
+        grid[0][0][0] = CELL_DIRT;
         grid[0][0][1] = CELL_WALL;
-        grid[0][0][2] = CELL_GRASS;
-        grid[0][0][3] = CELL_GRASS;
+        grid[0][0][2] = CELL_DIRT;
+        grid[0][0][3] = CELL_DIRT;
         
         InitGroundWear();
         groundWearEnabled = true;
         
-        TrampleGround(1, 0);  // Wall cell
+        TrampleGround(1, 0, 0);  // Wall cell
         
-        expect(GetGroundWear(1, 0) == 0);
+        expect(GetGroundWear(1, 0, 0) == 0);
     }
     
     it("should not trample when disabled") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
         }
         
         InitGroundWear();
         groundWearEnabled = false;
         
-        TrampleGround(2, 0);
+        TrampleGround(2, 0, 0);
         
-        expect(GetGroundWear(2, 0) == 0);
+        expect(GetGroundWear(2, 0, 0) == 0);
         
         groundWearEnabled = true;  // Re-enable for other tests
     }
+    
+    it("should work on any z-level") {
+        InitGridFromAsciiWithChunkSize(
+            "dddd\n", 4, 1);
+        
+        // Set up dirt at z=0 and z=1
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][0][x] = CELL_DIRT;
+            grid[1][0][x] = CELL_DIRT;
+        }
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        // Trample at z=0
+        TrampleGround(2, 0, 0);
+        expect(GetGroundWear(2, 0, 0) == wearTrampleAmount);
+        expect(GetGroundWear(2, 0, 1) == 0);
+        
+        // Trample at z=1
+        TrampleGround(2, 0, 1);
+        expect(GetGroundWear(2, 0, 1) == wearTrampleAmount);
+    }
 }
 
 // =============================================================================
-// Grass to Dirt Conversion
+// Surface Overlay Changes (replaces grass<->dirt cell transitions)
 // =============================================================================
 
-describe(grass_to_dirt_conversion) {
-    it("should convert grass to dirt when wear exceeds threshold") {
+describe(surface_overlay_updates) {
+    it("should update surface overlay based on wear level") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
-        // Use low threshold for testing
-        int originalThreshold = wearGrassToDirt;
-        wearGrassToDirt = 10;
-        wearTrampleAmount = 5;
+        // Start with tall grass (wear = 0)
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
         
-        expect(grid[0][0][2] == CELL_GRASS);
-        
-        // First trample - wear = 5, below threshold
-        TrampleGround(2, 0);
-        expect(grid[0][0][2] == CELL_GRASS);
-        
-        // Second trample - wear = 10, at threshold
-        TrampleGround(2, 0);
-        expect(grid[0][0][2] == CELL_DIRT);
-        
-        // Restore original values
-        wearGrassToDirt = originalThreshold;
-        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
-    }
-    
-    it("should convert CELL_WALKABLE to dirt (legacy support)") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
-        
-        // CELL_WALKABLE is the legacy cell type
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_WALKABLE;
-        }
-        
-        InitGroundWear();
-        groundWearEnabled = true;
-        
-        // Use low threshold for testing
-        int originalThreshold = wearGrassToDirt;
-        wearGrassToDirt = 5;
+        // Trample until surface changes
+        // Default thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
         wearTrampleAmount = 10;
         
-        expect(grid[0][0][2] == CELL_WALKABLE);
+        // 2 tramplings = 20 wear -> SURFACE_GRASS
+        TrampleGround(2, 0, 0);
+        TrampleGround(2, 0, 0);
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
         
-        TrampleGround(2, 0);
+        // More trampling to get to TRAMPLED (60)
+        for (int i = 0; i < 4; i++) {
+            TrampleGround(2, 0, 0);
+        }
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TRAMPLED);
         
-        expect(grid[0][0][2] == CELL_DIRT);
+        // More to get to BARE (100)
+        for (int i = 0; i < 4; i++) {
+            TrampleGround(2, 0, 0);
+        }
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
         
-        // Restore original values
-        wearGrassToDirt = originalThreshold;
+        // Restore
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
     }
     
-    it("should require many tramplings with default values") {
+    it("should recover grass overlay as wear decays") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
-        // Reset to default values
-        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;  // 100
-        wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;  // 1
+        // Set high wear (bare dirt)
+        wearGrid[0][0][2] = 150;
+        SET_CELL_SURFACE(2, 0, 0, SURFACE_BARE);
         
-        // Single trample should NOT convert grass to dirt
-        TrampleGround(2, 0);
-        expect(grid[0][0][2] == CELL_GRASS);
+        // Use fast decay for testing
+        wearDecayRate = 50;
+        wearRecoveryInterval = 0.01f;
         
-        // 50 tramplings shouldn't convert (50*1=50, still < 100)
-        for (int i = 0; i < 49; i++) {
-            TrampleGround(2, 0);
-        }
-        expect(grid[0][0][2] == CELL_GRASS);
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
         
-        // Need 100 tramplings (100*1=100 >= threshold)
-        for (int i = 0; i < 50; i++) {  // Already did 50, need 50 more
-            TrampleGround(2, 0);
-        }
-        expect(grid[0][0][2] == CELL_DIRT);
+        // Decay: 150 -> 100 (still bare)
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        
+        // Decay: 100 -> 50 (trampled: 60-99) - actually 50 is GRASS
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
+        
+        // Decay: 50 -> 0 (tall grass: < 20)
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        
+        // Restore
+        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
 }
 
 // =============================================================================
-// Dirt to Grass Conversion (Decay)
+// Wear Decay
 // =============================================================================
 
-describe(dirt_to_grass_conversion) {
+describe(wear_decay) {
     it("should decay wear over time") {
         InitGridFromAsciiWithChunkSize(
             "dddd\n", 4, 1);
@@ -270,52 +284,20 @@ describe(dirt_to_grass_conversion) {
         groundWearEnabled = true;
         
         // Set initial wear
-        wearGrid[0][2] = 100;
+        wearGrid[0][0][2] = 100;
         
-        // Set decay interval to 1 for testing
+        // Set decay interval to fast for testing
         float originalInterval = wearRecoveryInterval;
         wearRecoveryInterval = 0.01f;
         
-        int initialWear = GetGroundWear(2, 0);
+        int initialWear = GetGroundWear(2, 0, 0);
         
         UpdateGroundWear();
         
-        expect(GetGroundWear(2, 0) < initialWear);
+        expect(GetGroundWear(2, 0, 0) < initialWear);
         
         // Restore original values
         wearRecoveryInterval = originalInterval;
-    }
-    
-    it("should convert dirt to grass when wear drops below threshold") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
-        
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-        }
-        
-        InitGroundWear();
-        groundWearEnabled = true;
-        
-        // Use easy-to-test values
-        wearDirtToGrass = 50;
-        wearDecayRate = 10;
-        wearRecoveryInterval = 0.01f;
-        
-        // Set wear just above threshold
-        wearGrid[0][2] = 55;
-        
-        expect(grid[0][0][2] == CELL_DIRT);
-        
-        // First decay: 55 - 10 = 45, below threshold
-        UpdateGroundWear();
-        
-        expect(grid[0][0][2] == CELL_GRASS);
-        
-        // Restore default values
-        wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
-        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-        wearRecoveryInterval = 0.01f;
     }
     
     it("should only decay every N ticks based on decay interval") {
@@ -330,24 +312,23 @@ describe(dirt_to_grass_conversion) {
         groundWearEnabled = true;
         
         // Set decay interval to longer than one tick
-        // With gameDeltaTime = TICK_DT (~0.0167s), interval of 0.1s takes ~6 ticks
         wearRecoveryInterval = 0.1f;
         wearDecayRate = 10;
         
         // Set initial wear
-        wearGrid[0][2] = 100;
+        wearGrid[0][0][2] = 100;
         
         // First few ticks: no decay (accumulator < interval)
         for (int i = 0; i < 3; i++) {
             UpdateGroundWear();
-            expect(GetGroundWear(2, 0) == 100);
+            expect(GetGroundWear(2, 0, 0) == 100);
         }
         
         // After enough ticks, decay should happen
         for (int i = 0; i < 10; i++) {
             UpdateGroundWear();
         }
-        expect(GetGroundWear(2, 0) < 100);
+        expect(GetGroundWear(2, 0, 0) < 100);
         
         // Restore default values
         wearRecoveryInterval = 0.01f;
@@ -369,15 +350,47 @@ describe(dirt_to_grass_conversion) {
         wearRecoveryInterval = 0.01f;
         
         // Set wear lower than decay rate
-        wearGrid[0][2] = 5;
+        wearGrid[0][0][2] = 5;
         
         UpdateGroundWear();
         
-        expect(GetGroundWear(2, 0) == 0);
+        expect(GetGroundWear(2, 0, 0) == 0);
         
         // Restore default values
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
+    }
+    
+    it("should decay wear at all z-levels") {
+        InitGridFromAsciiWithChunkSize(
+            "dddd\n", 4, 1);
+        
+        // Set up dirt at multiple z-levels
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][0][x] = CELL_DIRT;
+            grid[1][0][x] = CELL_DIRT;
+            grid[2][0][x] = CELL_DIRT;
+        }
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        // Set wear at different z-levels
+        wearGrid[0][0][2] = 100;
+        wearGrid[1][0][2] = 100;
+        wearGrid[2][0][2] = 100;
+        
+        wearDecayRate = 10;
         wearRecoveryInterval = 0.01f;
+        
+        UpdateGroundWear();
+        
+        // All z-levels should have decayed
+        expect(GetGroundWear(2, 0, 0) == 90);
+        expect(GetGroundWear(2, 0, 1) == 90);
+        expect(GetGroundWear(2, 0, 2) == 90);
+        
+        // Restore
+        wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
 }
 
@@ -386,56 +399,60 @@ describe(dirt_to_grass_conversion) {
 // =============================================================================
 
 describe(groundwear_full_cycle) {
-    it("should complete grass->dirt->grass cycle") {
+    it("should complete tall grass->bare->tall grass cycle via surface overlay") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Use test-friendly values
-        wearGrassToDirt = 20;
-        wearDirtToGrass = 10;
-        wearTrampleAmount = 10;
-        wearDecayRate = 5;
+        wearGrassToDirt = 100;  // This is the threshold for BARE surface
+        wearTrampleAmount = 50;
+        wearDecayRate = 30;
         wearRecoveryInterval = 0.01f;
         
-        // Start as grass
-        expect(grid[0][0][2] == CELL_GRASS);
-        expect(GetGroundWear(2, 0) == 0);
+        // Start with tall grass
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetGroundWear(2, 0, 0) == 0);
         
-        // Trample twice to become dirt (2*10=20 >= 20)
-        TrampleGround(2, 0);
-        TrampleGround(2, 0);
-        expect(grid[0][0][2] == CELL_DIRT);
-        expect(GetGroundWear(2, 0) == 20);
+        // Trample twice to reach bare (2*50=100 >= 100)
+        TrampleGround(2, 0, 0);
+        TrampleGround(2, 0, 0);
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        expect(GetGroundWear(2, 0, 0) == 100);
         
-        // Let it decay back to grass
-        // 20 -> 15 -> 10 -> 5 (at 10 becomes grass)
-        UpdateGroundWear();  // 20 -> 15
-        expect(grid[0][0][2] == CELL_DIRT);
+        // Let it decay back
+        // 100 -> 70 (trampled)
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TRAMPLED);
         
-        UpdateGroundWear();  // 15 -> 10, at threshold - becomes grass
-        expect(grid[0][0][2] == CELL_GRASS);
+        // 70 -> 40 (grass)
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
+        
+        // 40 -> 10 (tall grass)
+        UpdateGroundWear();
+        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
         
         // Restore default values
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
-        wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-        wearRecoveryInterval = 0.01f;
     }
     
-    it("should create path on heavily trafficked area") {
+    it("should create worn path on heavily trafficked area") {
         InitGridFromAsciiWithChunkSize(
-            "gggggggggg\n", 10, 1);
+            "dddddddddd\n", 10, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_GRASS;
+            grid[0][0][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
         InitGroundWear();
@@ -447,21 +464,21 @@ describe(groundwear_full_cycle) {
         
         // Simulate heavy traffic on cells 3, 4, 5 (center path)
         for (int i = 0; i < 10; i++) {
-            TrampleGround(3, 0);
-            TrampleGround(4, 0);
-            TrampleGround(5, 0);
+            TrampleGround(3, 0, 0);
+            TrampleGround(4, 0, 0);
+            TrampleGround(5, 0, 0);
         }
         
-        // Center cells should be dirt
-        expect(grid[0][0][3] == CELL_DIRT);
-        expect(grid[0][0][4] == CELL_DIRT);
-        expect(grid[0][0][5] == CELL_DIRT);
+        // Center cells should be bare (wear = 100 >= 50)
+        expect(GET_CELL_SURFACE(3, 0, 0) == SURFACE_BARE);
+        expect(GET_CELL_SURFACE(4, 0, 0) == SURFACE_BARE);
+        expect(GET_CELL_SURFACE(5, 0, 0) == SURFACE_BARE);
         
-        // Edge cells should still be grass
-        expect(grid[0][0][0] == CELL_GRASS);
-        expect(grid[0][0][1] == CELL_GRASS);
-        expect(grid[0][0][8] == CELL_GRASS);
-        expect(grid[0][0][9] == CELL_GRASS);
+        // Edge cells should still have tall grass
+        expect(GET_CELL_SURFACE(0, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GET_CELL_SURFACE(1, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GET_CELL_SURFACE(8, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GET_CELL_SURFACE(9, 0, 0) == SURFACE_TALL_GRASS);
         
         // Restore default values
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
@@ -473,116 +490,61 @@ describe(groundwear_full_cycle) {
 // Edge Cases
 // =============================================================================
 
-describe(sandbox_grass_placement) {
-    it("should reset wear when placing grass on worn dirt") {
-        // This tests the fix for: placing grass via sandbox should reset wear
-        // so the grass doesn't immediately turn back to dirt
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
-        
-        // Make sure it's dirt
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-        }
-        
-        InitGroundWear();
-        groundWearEnabled = true;
-        
-        // Simulate the cell was worn (wear is high)
-        wearGrid[0][2] = wearGrassToDirt + 100;  // Well above threshold
-        
-        // Now "place grass" - simulating what ExecutePlaceGrass does
-        grid[0][0][2] = CELL_GRASS;
-        wearGrid[0][2] = 0;  // This is the fix - reset wear
-        
-        // Verify wear was reset
-        expect(GetGroundWear(2, 0) == 0);
-        expect(grid[0][0][2] == CELL_GRASS);
-        
-        // Run a few wear update ticks - grass should NOT immediately turn to dirt
-        for (int i = 0; i < 10; i++) {
-            UpdateGroundWear();
-        }
-        
-        // Grass should still be grass (not reverted to dirt from residual wear)
-        expect(grid[0][0][2] == CELL_GRASS);
-    }
-    
-    it("should allow freshly placed grass to survive trampling cycle") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
-        
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-        }
-        
-        InitGroundWear();
-        groundWearEnabled = true;
-        
-        // Simulate dirt with high wear
-        wearGrid[0][2] = wearGrassToDirt + 50;
-        
-        // Place grass and reset wear (the fix)
-        grid[0][0][2] = CELL_GRASS;
-        wearGrid[0][2] = 0;
-        
-        // Now trample it a few times - should start accumulating wear from 0
-        for (int i = 0; i < 5; i++) {
-            TrampleGround(2, 0);
-        }
-        
-        // Wear should be at 5 * wearTrampleAmount, not wearGrassToDirt + 50 + 5 * wearTrampleAmount
-        expect(GetGroundWear(2, 0) == 5 * wearTrampleAmount);
-        
-        // Should still be grass (5 tramples usually not enough to convert)
-        expect(grid[0][0][2] == CELL_GRASS);
-    }
-}
-
 describe(groundwear_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         InitGroundWear();
         
-        expect(GetGroundWear(-1, 0) == 0);
-        expect(GetGroundWear(100, 0) == 0);
-        expect(GetGroundWear(0, -1) == 0);
-        expect(GetGroundWear(0, 100) == 0);
+        expect(GetGroundWear(-1, 0, 0) == 0);
+        expect(GetGroundWear(100, 0, 0) == 0);
+        expect(GetGroundWear(0, -1, 0) == 0);
+        expect(GetGroundWear(0, 100, 0) == 0);
+        expect(GetGroundWear(0, 0, -1) == 0);
+        expect(GetGroundWear(0, 0, 100) == 0);
     }
     
     it("should handle out-of-bounds trampling gracefully") {
         InitGridFromAsciiWithChunkSize(
-            "gggg\n", 4, 1);
+            "dddd\n", 4, 1);
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Should not crash
-        TrampleGround(-1, 0);
-        TrampleGround(100, 0);
-        TrampleGround(0, -1);
-        TrampleGround(0, 100);
+        TrampleGround(-1, 0, 0);
+        TrampleGround(100, 0, 0);
+        TrampleGround(0, -1, 0);
+        TrampleGround(0, 100, 0);
+        TrampleGround(0, 0, -1);
+        TrampleGround(0, 0, 100);
         
         expect(true);  // If we get here, no crash
     }
     
-    it("should handle dirt cell trampling (keeps it dirt)") {
+    it("should not trample non-dirt cells (grass, floor, etc)") {
         InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+            "dfgw\n", 4, 1);
         
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-        }
+        grid[0][0][0] = CELL_DIRT;
+        grid[0][0][1] = CELL_FLOOR;
+        grid[0][0][2] = CELL_GRASS;  // Legacy grass cell
+        grid[0][0][3] = CELL_WALL;
         
         InitGroundWear();
         groundWearEnabled = true;
         
-        // Trampling dirt should increase wear (keeps it from reverting)
-        TrampleGround(2, 0);
-        expect(GetGroundWear(2, 0) == wearTrampleAmount);
-        expect(grid[0][0][2] == CELL_DIRT);
+        // Trample all - only dirt should accumulate wear
+        TrampleGround(0, 0, 0);
+        TrampleGround(1, 0, 0);
+        TrampleGround(2, 0, 0);
+        TrampleGround(3, 0, 0);
+        
+        expect(GetGroundWear(0, 0, 0) == wearTrampleAmount);  // Dirt - trampled
+        expect(GetGroundWear(1, 0, 0) == 0);  // Floor - not trampled
+        expect(GetGroundWear(2, 0, 0) == 0);  // Grass - not trampled (use dirt+overlay)
+        expect(GetGroundWear(3, 0, 0) == 0);  // Wall - not trampled
     }
 }
 
@@ -603,10 +565,9 @@ int main(int argc, char* argv[]) {
     // Run tests
     test(groundwear_initialization);
     test(groundwear_trampling);
-    test(grass_to_dirt_conversion);
-    test(dirt_to_grass_conversion);
+    test(surface_overlay_updates);
+    test(wear_decay);
     test(groundwear_full_cycle);
-    test(sandbox_grass_placement);
     test(groundwear_edge_cases);
     
     return summary();

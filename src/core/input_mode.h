@@ -20,6 +20,7 @@ typedef enum {
     ACTION_DRAW_FLOOR,
     ACTION_DRAW_LADDER,
     ACTION_DRAW_STOCKPILE,
+    ACTION_DRAW_DIRT,
     // Work actions (jobs for movers)
     ACTION_WORK_MINE,
     ACTION_WORK_CONSTRUCT,

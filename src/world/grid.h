@@ -47,7 +47,16 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Bits 1-2: wetness level (0=dry, 1=damp, 2=wet, 3=soaked)
 #define CELL_WETNESS_MASK   (3 << 1)
 #define CELL_WETNESS_SHIFT  1
-// Bits 3-7: reserved for future flags
+// Bits 3-4: surface overlay type (0=bare, 1=trampled, 2=normal grass, 3=tall grass)
+#define CELL_SURFACE_MASK   (3 << 3)
+#define CELL_SURFACE_SHIFT  3
+// Bits 5-7: reserved for future flags
+
+// Surface overlay types (for dirt tiles)
+#define SURFACE_BARE        0
+#define SURFACE_TRAMPLED    1
+#define SURFACE_GRASS       2
+#define SURFACE_TALL_GRASS  3
 
 // Cell flag helpers
 #define HAS_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] & (f))
@@ -55,6 +64,8 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define CLEAR_CELL_FLAG(x,y,z,f)   (cellFlags[z][y][x] &= ~(f))
 #define GET_CELL_WETNESS(x,y,z)    ((cellFlags[z][y][x] & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
 #define SET_CELL_WETNESS(x,y,z,w)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_WETNESS_MASK) | ((w) << CELL_WETNESS_SHIFT))
+#define GET_CELL_SURFACE(x,y,z)    ((cellFlags[z][y][x] & CELL_SURFACE_MASK) >> CELL_SURFACE_SHIFT)
+#define SET_CELL_SURFACE(x,y,z,s)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_SURFACE_MASK) | ((s) << CELL_SURFACE_SHIFT))
 
 // Helper to check if a cell is air (empty space that can be fallen through)
 static inline bool IsCellAirAt(int z, int y, int x) {

@@ -100,6 +100,45 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            CellType cell = grid[z][dy][dx];
+            // Can place dirt on air, walkable, or grass
+            if (cell == CELL_AIR || cell == CELL_WALKABLE || cell == CELL_GRASS) {
+                grid[z][dy][dx] = CELL_DIRT;
+                MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                // Set tall grass overlay and reset wear
+                SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d dirt%s", count, count > 1 ? " tiles" : ""), GREEN);
+    }
+}
+
+static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (grid[z][dy][dx] == CELL_DIRT) {
+                CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                grid[z][dy][dx] = eraseType;
+                MarkChunkDirty(dx, dy, z);
+                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Erased %d dirt%s", count, count > 1 ? " tiles" : ""), ORANGE);
+    }
+}
+
 static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -445,18 +484,18 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can grow grass on dirt, walkable ground, or existing grass
-            if (cell == CELL_DIRT || cell == CELL_WALKABLE || cell == CELL_GRASS) {
-                if (cell != CELL_GRASS) {
-                    grid[z][dy][dx] = CELL_GRASS;
-                    MarkChunkDirty(dx, dy, z);
-                    count++;
-                }
+            // Can grow grass on dirt, air, walkable ground, or existing grass
+            if (cell == CELL_AIR || cell == CELL_WALKABLE || cell == CELL_GRASS) {
+                // Convert to dirt first
+                grid[z][dy][dx] = CELL_DIRT;
+                MarkChunkDirty(dx, dy, z);
+            }
+            if (grid[z][dy][dx] == CELL_DIRT) {
+                // Set tall grass overlay and reset wear
+                SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
+                wearGrid[z][dy][dx] = 0;
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                // Reset wear so freshly placed grass doesn't immediately turn to dirt
-                if (z == 0) {
-                    wearGrid[dy][dx] = 0;
-                }
+                count++;
             }
         }
     }
@@ -469,8 +508,20 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
+            // Remove grass overlay from dirt tiles
+            if (grid[z][dy][dx] == CELL_DIRT) {
+                int surface = GET_CELL_SURFACE(dx, dy, z);
+                if (surface != SURFACE_BARE) {
+                    SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                    wearGrid[z][dy][dx] = wearMax;  // Set max wear so grass doesn't regrow immediately
+                    count++;
+                }
+            }
+            // Also handle legacy CELL_GRASS
             if (grid[z][dy][dx] == CELL_GRASS) {
                 grid[z][dy][dx] = CELL_DIRT;
+                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                wearGrid[z][dy][dx] = wearMax;
                 MarkChunkDirty(dx, dy, z);
                 count++;
             }
@@ -699,6 +750,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_F)) { inputAction = ACTION_DRAW_FLOOR; selectedMaterial = 1; }
                 if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
+                if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
                 break;
             case MODE_WORK:
                 if (CheckKey(KEY_D)) { inputAction = ACTION_WORK_MINE; }
@@ -731,6 +783,7 @@ void HandleInput(void) {
         case ACTION_DRAW_FLOOR:     backOneLevel = CheckKey(KEY_F); break;
         case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
+        case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         // Work actions
         case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_D); break;
         case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
@@ -800,6 +853,10 @@ void HandleInput(void) {
             case ACTION_DRAW_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
                 else ExecuteEraseStockpile(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_DIRT:
+                if (leftClick) ExecuteBuildDirt(x1, y1, x2, y2, z);
+                else ExecuteEraseDirt(x1, y1, x2, y2, z);
                 break;
             // Work actions
             case ACTION_WORK_MINE:

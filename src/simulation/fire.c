@@ -273,8 +273,9 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                 if (burnResult != currentCell) {
                     grid[z][y][x] = burnResult;
                     // Set high wear on burned ground so it takes time to regrow
-                    if (burnResult == CELL_DIRT && z == 0) {
-                        wearGrid[y][x] = wearMax;
+                    if (burnResult == CELL_DIRT) {
+                        wearGrid[z][y][x] = wearMax;
+                        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                     }
                 }
                 
