@@ -1,5 +1,6 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
+#include "../world/cell_defs.h"
 
 // Forward declarations for demo functions
 void SpawnAgents(int count);

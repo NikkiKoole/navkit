@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/water.h"

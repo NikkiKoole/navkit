@@ -2,6 +2,7 @@
 #include "items.h"
 #include "mover.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include "../world/pathfinding.h"
 #include "stockpiles.h"
 #include "../world/designations.h"

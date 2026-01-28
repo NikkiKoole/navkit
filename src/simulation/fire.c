@@ -3,6 +3,7 @@
 #include "smoke.h"
 #include "temperature.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -42,17 +43,7 @@ static inline bool FireInBounds(int x, int y, int z) {
 
 // Get base fuel for a cell type
 int GetBaseFuelForCellType(CellType cell) {
-    switch (cell) {
-        case CELL_GRASS:
-        case CELL_WALKABLE:  // Legacy alias for grass
-            return FUEL_GRASS;
-        case CELL_DIRT:
-            return FUEL_DIRT;
-        case CELL_WOOD_WALL:
-            return FUEL_WOOD_WALL;
-        default:
-            return FUEL_NONE;
-    }
+    return CellFuel(cell);
 }
 
 // Check if cell can burn (has fuel and not already burned)
@@ -270,9 +261,11 @@ static bool ProcessFireCell(int x, int y, int z) {
                 // No fuel left - fire dies, mark cell as burned
                 cell->level = 0;
                 
-                // Wood walls collapse when burned
-                if (grid[z][y][x] == CELL_WOOD_WALL) {
-                    grid[z][y][x] = CELL_FLOOR;
+                // Transform cell based on burnsInto property
+                CellType currentCell = grid[z][y][x];
+                CellType burnResult = CellBurnsInto(currentCell);
+                if (burnResult != currentCell) {
+                    grid[z][y][x] = burnResult;
                 }
                 
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);

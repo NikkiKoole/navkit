@@ -1,4 +1,5 @@
 #include "grid.h"
+#include "cell_defs.h"
 #include "pathfinding.h"
 #include <string.h>
 #include <stdio.h>

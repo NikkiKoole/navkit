@@ -1,5 +1,6 @@
 #include "mover.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include "../world/pathfinding.h"
 #include "items.h"
 #include "jobs.h"

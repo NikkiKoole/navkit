@@ -1,5 +1,6 @@
 #include "smoke.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -48,11 +49,11 @@ static inline bool InBounds(int x, int y, int z) {
            z >= 0 && z < gridDepth;
 }
 
-// Check if smoke can exist in a cell (not a wall)
+// Check if smoke can exist in a cell (not blocked by walls)
 static inline bool CanHoldSmoke(int x, int y, int z) {
     if (!InBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    return !IsWallCell(cell);
+    return CellAllowsFluids(cell);
 }
 
 // Mark cell and neighbors as unstable

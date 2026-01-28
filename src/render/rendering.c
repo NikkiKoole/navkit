@@ -1,5 +1,6 @@
 // render/rendering.c - Core rendering functions
 #include "../game_state.h"
+#include "../world/cell_defs.h"
 
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
@@ -34,7 +35,7 @@ void DrawCellGrid(void) {
                 CellType cell = grid[zBelow][y][x];
                 if (cell == CELL_AIR) continue;  // Don't draw air from below
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(GetCellSprite(cell));
+                Rectangle src = SpriteGetRect(CellSprite(cell));
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -44,7 +45,7 @@ void DrawCellGrid(void) {
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            Rectangle src = SpriteGetRect(GetCellSprite(grid[z][y][x]));
+            Rectangle src = SpriteGetRect(CellSprite(grid[z][y][x]));
             DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
         }
     }

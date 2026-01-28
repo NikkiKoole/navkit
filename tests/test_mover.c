@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
 #include "../src/world/terrain.h"

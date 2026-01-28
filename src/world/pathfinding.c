@@ -8,6 +8,10 @@
  *   - HPA*    : Hierarchical Pathfinding A*, supports variable terrain costs
  *   - JPS     : Jump Point Search, uniform cost only
  *   - JPS+    : JPS with preprocessing, uniform cost only
+ */
+#include "grid.h"
+#include "cell_defs.h"
+/*
  *
  * IMPORTANT: JPS/JPS+ LIMITATIONS
  * -------------------------------

@@ -9,12 +9,6 @@
 #define FIRE_MAX_LEVEL 7
 #define FIRE_MIN_SPREAD_LEVEL 2  // Minimum level to spread to neighbors
 
-// Fuel constants
-#define FUEL_GRASS     16
-#define FUEL_DIRT      1
-#define FUEL_WOOD_WALL 128
-#define FUEL_NONE      0
-
 // Performance tuning
 #define FIRE_MAX_UPDATES_PER_TICK 4096
 

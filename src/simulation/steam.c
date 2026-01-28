@@ -2,6 +2,7 @@
 #include "water.h"
 #include "temperature.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -40,11 +41,11 @@ static inline bool SteamInBounds(int x, int y, int z) {
            z >= 0 && z < gridDepth;
 }
 
-// Check if steam can exist in a cell (not a wall)
+// Check if steam can exist in a cell (not blocked by walls)
 static inline bool CanHoldSteam(int x, int y, int z) {
     if (!SteamInBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    return !IsWallCell(cell);
+    return CellAllowsFluids(cell);
 }
 
 // Mark cell and neighbors as unstable

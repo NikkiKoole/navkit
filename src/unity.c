@@ -11,6 +11,7 @@
 #define UI_IMPLEMENTATION
 
 // World systems
+#include "world/cell_defs.c"
 #include "world/grid.c"
 #include "world/terrain.c"
 #include "world/pathfinding.c"

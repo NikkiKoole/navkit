@@ -1,4 +1,4 @@
-- # bug1 [?] MOVIN-TO_ITEM STUCKNESS
+- # bug1 [X] MOVIN-TO_ITEM STUCKNESS
  - Dont really knwo how to reproduce yet, but sometimes movers get 'stuck' in a moving-to-item statse, the object the want can be right next to them.
  - my guess is it thinks it has arrived, or something, or the radius to reach is not big enough, maybe it should show some info about those sort of things in the mover hover popup? might help debuging it further.
  claudes answer:  Would you like me to:

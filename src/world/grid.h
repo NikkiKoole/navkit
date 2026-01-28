@@ -56,30 +56,14 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define GET_CELL_WETNESS(x,y,z)    ((cellFlags[z][y][x] & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
 #define SET_CELL_WETNESS(x,y,z,w)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_WETNESS_MASK) | ((w) << CELL_WETNESS_SHIFT))
 
-// Helper to check if a cell is any ladder type
-static inline bool IsLadderCell(CellType cell) {
-    return cell == CELL_LADDER || cell == CELL_LADDER_UP || 
-           cell == CELL_LADDER_DOWN || cell == CELL_LADDER_BOTH;
-}
-
-// Helper to check if a cell is a wall (blocks movement)
-static inline bool IsWallCell(CellType cell) {
-    return cell == CELL_WALL || cell == CELL_WOOD_WALL;
-}
-
-// Helper to check if a cell is walkable (includes floor, grass, dirt, and all ladder types)
-static inline bool IsCellWalkableAt(int z, int y, int x) {
-    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-    CellType cell = grid[z][y][x];
-    return cell == CELL_WALKABLE || cell == CELL_GRASS || cell == CELL_DIRT || 
-           cell == CELL_FLOOR || IsLadderCell(cell);
-}
-
 // Helper to check if a cell is air (empty space that can be fallen through)
 static inline bool IsCellAirAt(int z, int y, int x) {
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     return grid[z][y][x] == CELL_AIR;
 }
+
+// Note: IsLadderCell, IsWallCell, IsCellWalkableAt are defined in cell_defs.h
+// Include cell_defs.h after grid.h to use them
 extern bool needsRebuild;      // Generic flag (legacy)
 extern bool hpaNeedsRebuild;   // HPA* specific rebuild flag
 extern bool jpsNeedsRebuild;   // JPS+ specific rebuild flag

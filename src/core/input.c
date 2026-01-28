@@ -1,5 +1,6 @@
 // core/input.c - Input handling
 #include "../game_state.h"
+#include "../world/cell_defs.h"
 
 // Forward declarations
 bool SaveWorld(const char* filename);

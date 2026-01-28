@@ -1,5 +1,6 @@
 // render/tooltips.c - Tooltip drawing functions
 #include "../game_state.h"
+#include "../world/cell_defs.h"
 
 // Draw stockpile tooltip at mouse position
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
@@ -269,20 +270,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 
     // Cell type
     CellType ct = grid[cellZ][cellY][cellX];
-    const char* cellTypeName = "?";
-    switch (ct) {
-        case CELL_WALL: cellTypeName = "Wall"; break;
-        case CELL_FLOOR: cellTypeName = "Floor"; break;
-        case CELL_WALKABLE: cellTypeName = "Grass"; break;
-        case CELL_AIR: cellTypeName = "Air"; break;
-        case CELL_LADDER: cellTypeName = "Ladder"; break;
-        case CELL_LADDER_UP: cellTypeName = "Ladder Up"; break;
-        case CELL_LADDER_DOWN: cellTypeName = "Ladder Down"; break;
-        case CELL_LADDER_BOTH: cellTypeName = "Ladder Both"; break;
-        case CELL_GRASS: cellTypeName = "Grass"; break;
-        case CELL_DIRT: cellTypeName = "Dirt"; break;
-        default: cellTypeName = "Unknown"; break;
-    }
+    const char* cellTypeName = CellName(ct);
     bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
     if (isBurned) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);

@@ -4,6 +4,7 @@
 // Included by unity.c - do not compile separately.
 
 #include "game_state.h"
+#include "world/cell_defs.h"
 #include "assets/fonts/comic_embedded.h"
 
 // ============================================================================
@@ -110,23 +111,6 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-int GetCellSprite(CellType cell) {
-    switch (cell) {
-        case CELL_WALKABLE:     return SPRITE_grass;
-        case CELL_GRASS:        return SPRITE_grass;
-        case CELL_DIRT:         return SPRITE_dirt;
-        case CELL_WALL:         return SPRITE_wall;
-        case CELL_WOOD_WALL:    return SPRITE_wood_wall;
-        case CELL_LADDER:       return SPRITE_ladder;
-        case CELL_LADDER_BOTH:  return SPRITE_ladder;
-        case CELL_LADDER_UP:    return SPRITE_ladder_up;
-        case CELL_LADDER_DOWN:  return SPRITE_ladder_down;
-        case CELL_FLOOR:        return SPRITE_floor;
-        case CELL_AIR:          return SPRITE_air;
-    }
-    return SPRITE_grass;
-}
 
 Color GetRandomColor(void) {
     return (Color){

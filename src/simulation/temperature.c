@@ -1,4 +1,5 @@
 #include "temperature.h"
+#include "../world/cell_defs.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -81,16 +82,7 @@ int GetInsulationTier(int x, int y, int z) {
     }
     
     CellType cell = grid[z][y][x];
-    
-    switch (cell) {
-        case CELL_WALL:
-            return INSULATION_TIER_STONE;
-        case CELL_WOOD_WALL:
-        case CELL_FLOOR:
-            return INSULATION_TIER_WOOD;
-        default:
-            return INSULATION_TIER_AIR;
-    }
+    return CellInsulationTier(cell);
 }
 
 // Get heat transfer rate based on insulation tier

@@ -202,9 +202,6 @@ int GetMoverAtWorldPos(float wx, float wy, int wz);
 // Get items at cell
 int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems);
 
-// Get cell sprite for rendering
-int GetCellSprite(CellType cell);
-
 // Generate terrain based on currentTerrain setting
 void GenerateCurrentTerrain(void);
 

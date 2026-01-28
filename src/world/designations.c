@@ -1,5 +1,6 @@
 #include "designations.h"
 #include "grid.h"
+#include "cell_defs.h"
 #include "pathfinding.h"
 #include "../entities/items.h"
 #include "../entities/mover.h"  // for CELL_SIZE

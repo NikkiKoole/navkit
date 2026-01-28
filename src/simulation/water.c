@@ -2,6 +2,7 @@
 #include "steam.h"
 #include "temperature.h"
 #include "../world/grid.h"
+#include "../world/cell_defs.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -44,7 +45,7 @@ static inline bool WaterInBounds(int x, int y, int z) {
 static inline bool CanHoldWater(int x, int y, int z) {
     if (!WaterInBounds(x, y, z)) return false;
     CellType cell = grid[z][y][x];
-    if (IsWallCell(cell)) return false;
+    if (!CellAllowsFluids(cell)) return false;
     
     // Frozen water acts as a solid block for water flow
     if (waterGrid[z][y][x].isFrozen) return false;
