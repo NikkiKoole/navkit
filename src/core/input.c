@@ -3,6 +3,7 @@
 #include "../world/cell_defs.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
+#include "../simulation/groundwear.h"
 #include "input_mode.h"
 
 // Forward declarations
@@ -464,6 +465,10 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
                     count++;
                 }
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                // Reset wear so freshly placed grass doesn't immediately turn to dirt
+                if (z == 0) {
+                    wearGrid[dy][dx] = 0;
+                }
             }
         }
     }

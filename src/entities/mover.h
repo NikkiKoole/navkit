@@ -158,4 +158,11 @@ extern bool useStaggeredUpdates;      // When true, LOS/avoidance are staggered 
 // Returns a vector pointing away from nearby movers, strength based on proximity
 Vec2 ComputeMoverAvoidance(int moverIndex);
 
+// Mover path state getters/setters (inline for zero overhead)
+static inline int GetMoverPathLength(int moverIdx) { return movers[moverIdx].pathLength; }
+static inline int GetMoverPathIndex(int moverIdx) { return movers[moverIdx].pathIndex; }
+static inline bool GetMoverNeedsRepath(int moverIdx) { return movers[moverIdx].needsRepath; }
+static inline void SetMoverNeedsRepath(int moverIdx, bool needsRepath) { movers[moverIdx].needsRepath = needsRepath; }
+static inline void ClearMoverPath(int moverIdx) { movers[moverIdx].pathLength = 0; movers[moverIdx].pathIndex = -1; }
+
 #endif

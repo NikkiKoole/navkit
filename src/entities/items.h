@@ -92,4 +92,12 @@ typedef bool (*ItemFilterFunc)(int itemIndex, void* userData);
 int FindFirstItemInRadius(int tileX, int tileY, int z, int radiusTiles,
                           ItemFilterFunc filter, void* userData);
 
+// Item getters (inline for zero overhead)
+static inline bool IsItemActive(int itemIdx) { return items[itemIdx].active; }
+static inline float GetItemX(int itemIdx) { return items[itemIdx].x; }
+static inline float GetItemY(int itemIdx) { return items[itemIdx].y; }
+static inline int GetItemZ(int itemIdx) { return (int)items[itemIdx].z; }
+static inline ItemType GetItemType(int itemIdx) { return items[itemIdx].type; }
+static inline int GetItemReservedBy(int itemIdx) { return items[itemIdx].reservedBy; }
+
 #endif

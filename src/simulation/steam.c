@@ -34,6 +34,20 @@ void ClearSteam(void) {
     steamRiseAccum = 0.0f;
 }
 
+// Reset accumulators (call after loading steam grid from save)
+void ResetSteamAccumulators(void) {
+    steamRiseAccum = 0.0f;
+    
+    // Also destabilize all cells so they get processed after load
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                steamGrid[z][y][x].stable = false;
+            }
+        }
+    }
+}
+
 // Bounds check helper
 static inline bool SteamInBounds(int x, int y, int z) {
     return x >= 0 && x < gridWidth && 

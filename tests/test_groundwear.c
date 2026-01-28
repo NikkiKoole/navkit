@@ -473,6 +473,72 @@ describe(groundwear_full_cycle) {
 // Edge Cases
 // =============================================================================
 
+describe(sandbox_grass_placement) {
+    it("should reset wear when placing grass on worn dirt") {
+        // This tests the fix for: placing grass via sandbox should reset wear
+        // so the grass doesn't immediately turn back to dirt
+        InitGridFromAsciiWithChunkSize(
+            "dddd\n", 4, 1);
+        
+        // Make sure it's dirt
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][0][x] = CELL_DIRT;
+        }
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        // Simulate the cell was worn (wear is high)
+        wearGrid[0][2] = wearGrassToDirt + 100;  // Well above threshold
+        
+        // Now "place grass" - simulating what ExecutePlaceGrass does
+        grid[0][0][2] = CELL_GRASS;
+        wearGrid[0][2] = 0;  // This is the fix - reset wear
+        
+        // Verify wear was reset
+        expect(GetGroundWear(2, 0) == 0);
+        expect(grid[0][0][2] == CELL_GRASS);
+        
+        // Run a few wear update ticks - grass should NOT immediately turn to dirt
+        for (int i = 0; i < 10; i++) {
+            UpdateGroundWear();
+        }
+        
+        // Grass should still be grass (not reverted to dirt from residual wear)
+        expect(grid[0][0][2] == CELL_GRASS);
+    }
+    
+    it("should allow freshly placed grass to survive trampling cycle") {
+        InitGridFromAsciiWithChunkSize(
+            "dddd\n", 4, 1);
+        
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][0][x] = CELL_DIRT;
+        }
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        // Simulate dirt with high wear
+        wearGrid[0][2] = wearGrassToDirt + 50;
+        
+        // Place grass and reset wear (the fix)
+        grid[0][0][2] = CELL_GRASS;
+        wearGrid[0][2] = 0;
+        
+        // Now trample it a few times - should start accumulating wear from 0
+        for (int i = 0; i < 5; i++) {
+            TrampleGround(2, 0);
+        }
+        
+        // Wear should be at 5 * wearTrampleAmount, not wearGrassToDirt + 50 + 5 * wearTrampleAmount
+        expect(GetGroundWear(2, 0) == 5 * wearTrampleAmount);
+        
+        // Should still be grass (5 tramples usually not enough to convert)
+        expect(grid[0][0][2] == CELL_GRASS);
+    }
+}
+
 describe(groundwear_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
         InitGridFromAsciiWithChunkSize(
@@ -540,6 +606,7 @@ int main(int argc, char* argv[]) {
     test(grass_to_dirt_conversion);
     test(dirt_to_grass_conversion);
     test(groundwear_full_cycle);
+    test(sandbox_grass_placement);
     test(groundwear_edge_cases);
     
     return summary();

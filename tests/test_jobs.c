@@ -8,6 +8,7 @@
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/world/designations.h"
+#include "../src/core/time.h"
 #include <math.h>
 
 // Helper functions to check mover job state (replaces m->jobState checks)
@@ -142,11 +143,11 @@ describe(item_system) {
         int idx = SpawnItem(100.0f, 100.0f, 0.0f, ITEM_RED);
         
         expect(idx >= 0);
-        expect(items[idx].active == true);
-        expect(items[idx].x == 100.0f);
-        expect(items[idx].y == 100.0f);
-        expect(items[idx].type == ITEM_RED);
-        expect(items[idx].reservedBy == -1);
+        expect(IsItemActive(idx) == true);
+        expect(GetItemX(idx) == 100.0f);
+        expect(GetItemY(idx) == 100.0f);
+        expect(GetItemType(idx) == ITEM_RED);
+        expect(GetItemReservedBy(idx) == -1);
     }
 
     it("should track item count correctly") {
@@ -165,10 +166,10 @@ describe(item_system) {
         ClearItems();
         
         int idx = SpawnItem(100.0f, 100.0f, 0.0f, ITEM_RED);
-        expect(items[idx].active == true);
+        expect(IsItemActive(idx) == true);
         
         DeleteItem(idx);
-        expect(items[idx].active == false);
+        expect(IsItemActive(idx) == false);
     }
 }
 
@@ -181,7 +182,7 @@ describe(item_reservation) {
         bool reserved = ReserveItem(itemIdx, 0);  // mover 0 reserves
         
         expect(reserved == true);
-        expect(items[itemIdx].reservedBy == 0);
+        expect(GetItemReservedBy(itemIdx) == 0);
     }
 
     it("should reject reservation if item already reserved") {
@@ -193,7 +194,7 @@ describe(item_reservation) {
         bool secondReserve = ReserveItem(itemIdx, 1);  // mover 1 tries
         
         expect(secondReserve == false);
-        expect(items[itemIdx].reservedBy == 0);  // still reserved by mover 0
+        expect(GetItemReservedBy(itemIdx) == 0);  // still reserved by mover 0
     }
 
     it("should release reservation") {
@@ -204,7 +205,7 @@ describe(item_reservation) {
         
         ReleaseItemReservation(itemIdx);
         
-        expect(items[itemIdx].reservedBy == -1);
+        expect(GetItemReservedBy(itemIdx) == -1);
     }
 
     it("should find nearest unreserved item") {
@@ -295,7 +296,7 @@ describe(mover_job_state) {
         
         expect(MoverIsMovingToPickup(m));
         expect(MoverGetTargetItem(m) == itemIdx);
-        expect(items[itemIdx].reservedBy == 0);
+        expect(GetItemReservedBy(itemIdx) == 0);
     }
 }
 
@@ -338,7 +339,7 @@ describe(pickup_behavior) {
         AssignJobs();
         
         expect(MoverIsMovingToPickup(m));
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         
         // Run simulation until item is in stockpile (or timeout)
         for (int i = 0; i < 500; i++) {
@@ -393,7 +394,7 @@ describe(reservation_safety) {
         if (MoverGetTargetItem(m1) == itemIdx) claimCount++;
         
         expect(claimCount == 1);
-        expect(items[itemIdx].reservedBy >= 0);
+        expect(GetItemReservedBy(itemIdx) >= 0);
     }
 
     it("should release reservation when item is deleted externally") {
@@ -488,7 +489,7 @@ describe(post_job_behavior) {
             JobsTick();
             storedCount = 0;
             for (int j = 0; j < MAX_ITEMS; j++) {
-                if (items[j].active && items[j].state == ITEM_IN_STOCKPILE) storedCount++;
+                if (IsItemActive(j) && items[j].state == ITEM_IN_STOCKPILE) storedCount++;
             }
             if (storedCount == 1) break;
         }
@@ -561,7 +562,7 @@ describe(post_job_behavior) {
         }
         
         // Mover should have a path now (not stuck with pathLength == 0)
-        expect(m->pathLength > 0);
+        expect(GetMoverPathLength(0) > 0);
     }
 }
 
@@ -678,8 +679,8 @@ describe(haul_happy_path) {
         
         // Item should be in stockpile at (2,2)
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        expect((int)(items[itemIdx].x / CELL_SIZE) == 2);
-        expect((int)(items[itemIdx].y / CELL_SIZE) == 2);
+        expect((int)(GetItemX(itemIdx) / CELL_SIZE) == 2);
+        expect((int)(GetItemY(itemIdx) / CELL_SIZE) == 2);
         
         // Mover should be idle
         expect(MoverIsIdle(m));
@@ -739,13 +740,13 @@ describe(haul_happy_path) {
         
         // Red should be in stockpile A (2,2)
         expect(items[redIdx].state == ITEM_IN_STOCKPILE);
-        expect((int)(items[redIdx].x / CELL_SIZE) == 2);
-        expect((int)(items[redIdx].y / CELL_SIZE) == 2);
+        expect((int)(GetItemX(redIdx) / CELL_SIZE) == 2);
+        expect((int)(GetItemY(redIdx) / CELL_SIZE) == 2);
         
         // Green should be in stockpile B (2,3)
         expect(items[greenIdx].state == ITEM_IN_STOCKPILE);
-        expect((int)(items[greenIdx].x / CELL_SIZE) == 2);
-        expect((int)(items[greenIdx].y / CELL_SIZE) == 3);
+        expect((int)(GetItemX(greenIdx) / CELL_SIZE) == 2);
+        expect((int)(GetItemY(greenIdx) / CELL_SIZE) == 3);
     }
 }
 
@@ -998,7 +999,7 @@ describe(haul_cancellation) {
         
         // Item should be back on ground (not vanished, not stuck as "carried")
         expect(items[itemIdx].state == ITEM_ON_GROUND);
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
     }
 }
 
@@ -1054,8 +1055,8 @@ describe(filter_change_mid_haul) {
         
         // Green item should be in RGB stockpile
         expect(items[greenItem].state == ITEM_IN_STOCKPILE);
-        int itemTileX = (int)(items[greenItem].x / CELL_SIZE);
-        int itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+        int itemTileX = (int)(GetItemX(greenItem) / CELL_SIZE);
+        int itemTileY = (int)(GetItemY(greenItem) / CELL_SIZE);
         expect(itemTileX == 5);
         expect(itemTileY == 5);
         expect(MoverIsIdle(m));
@@ -1071,15 +1072,15 @@ describe(filter_change_mid_haul) {
             JobsTick();
             
             // Check if item moved to green stockpile
-            itemTileX = (int)(items[greenItem].x / CELL_SIZE);
-            itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+            itemTileX = (int)(GetItemX(greenItem) / CELL_SIZE);
+            itemTileY = (int)(GetItemY(greenItem) / CELL_SIZE);
             if (itemTileX == 8 && itemTileY == 8) break;
         }
         
         // Green item should now be in green stockpile
         expect(items[greenItem].state == ITEM_IN_STOCKPILE);
-        itemTileX = (int)(items[greenItem].x / CELL_SIZE);
-        itemTileY = (int)(items[greenItem].y / CELL_SIZE);
+        itemTileX = (int)(GetItemX(greenItem) / CELL_SIZE);
+        itemTileY = (int)(GetItemY(greenItem) / CELL_SIZE);
         expect(itemTileX == 8);
         expect(itemTileY == 8);
     }
@@ -1144,7 +1145,7 @@ describe(filter_change_mid_haul) {
         
         // Item should be back on ground
         expect(items[itemIdx].state == ITEM_ON_GROUND);
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
     }
 }
 
@@ -1219,7 +1220,7 @@ describe(dynamic_obstacles) {
         expect(validState == true);
         
         // Also verify the item wasn't corrupted
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         expect(items[itemIdx].state == ITEM_ON_GROUND || items[itemIdx].state == ITEM_CARRIED);
     }
 
@@ -1265,7 +1266,7 @@ describe(dynamic_obstacles) {
         // Job should be cancelled immediately (not wait 3 seconds)
         expect(MoverIsIdle(m));
         expect(MoverGetTargetItem(m) == -1);
-        expect(items[itemIdx].reservedBy == -1);
+        expect(GetItemReservedBy(itemIdx) == -1);
     }
 
     it("should not assign job to item on wall") {
@@ -1302,7 +1303,7 @@ describe(dynamic_obstacles) {
         
         // Mover should NOT be assigned to the item on a wall
         expect(MoverIsIdle(m));
-        expect(items[itemIdx].reservedBy == -1);
+        expect(GetItemReservedBy(itemIdx) == -1);
     }
 }
 
@@ -1908,8 +1909,8 @@ describe(stockpile_priority) {
         
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
         // Should be in low-priority first (closer/first available)
-        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        int itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         expect(itemTileX == 2);
         expect(itemTileY == 2);
         
@@ -1921,8 +1922,8 @@ describe(stockpile_priority) {
         }
         
         // Item should now be in high-priority stockpile
-        itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         expect(itemTileX == 8);
         expect(itemTileY == 8);
     }
@@ -1973,8 +1974,8 @@ describe(stockpile_priority) {
         }
         
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        int itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         
         // Record position
         int origX = itemTileX;
@@ -1988,8 +1989,8 @@ describe(stockpile_priority) {
         }
         
         // Item should still be at same position (not re-hauled to worse storage)
-        itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         expect(itemTileX == origX);
         expect(itemTileY == origY);
     }
@@ -2041,8 +2042,8 @@ describe(stockpile_priority) {
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
         
         // Record position
-        int origX = (int)(items[itemIdx].x / CELL_SIZE);
-        int origY = (int)(items[itemIdx].y / CELL_SIZE);
+        int origX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int origY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         
         // Run more ticks
         for (int i = 0; i < 1000; i++) {
@@ -2052,8 +2053,8 @@ describe(stockpile_priority) {
         }
         
         // Item should not have moved (no re-haul between equal priorities)
-        int newX = (int)(items[itemIdx].x / CELL_SIZE);
-        int newY = (int)(items[itemIdx].y / CELL_SIZE);
+        int newX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int newY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         expect(newX == origX);
         expect(newY == origY);
     }
@@ -2107,8 +2108,7 @@ describe(stockpile_max_stack_size) {
         expect(MoverIsCarrying(m));
         
         // Clear path to simulate losing it (like when wall is drawn)
-        m->pathLength = 0;
-        m->pathIndex = -1;
+        ClearMoverPath(0);
         
         // Record the job's target stockpile slot and current goal
         Job* job = GetJob(m->currentJobId);
@@ -2122,8 +2122,8 @@ describe(stockpile_max_stack_size) {
         
         // Ensure mover is active and has no path (trigger the endless mover branch)
         m->active = true;
-        expect(m->pathLength == 0);
-        expect(m->pathIndex < 0);
+        expect(GetMoverPathLength(0) == 0);
+        expect(GetMoverPathIndex(0) < 0);
         
         // Run a single Tick - this is where the bug manifests:
         // endless mover mode calls AssignNewMoverGoal() which sets m->goal to random point
@@ -2138,8 +2138,7 @@ describe(stockpile_max_stack_size) {
         // Seed random with a value that will produce a different goal than (6,1)
         // The bug is that AssignNewMoverGoal gets called and changes the goal to random point
         SetRandomSeed(12345);
-        m->pathLength = 0;
-        m->pathIndex = -1;
+        ClearMoverPath(0);
         m->repathCooldown = 0;
         Tick();
         
@@ -2409,7 +2408,7 @@ describe(stockpile_max_stack_size) {
         // Count items in each stockpile
         int inA = 0, inB = 0;
         for (int i = 0; i < 5; i++) {
-            int slotX = (int)(items[itemIds[i]].x / CELL_SIZE);
+            int slotX = (int)(GetItemX(itemIds[i]) / CELL_SIZE);
             if (slotX == 2) inA++;
             if (slotX == 6) inB++;
         }
@@ -2495,7 +2494,7 @@ describe(stockpile_max_stack_size) {
         // All items should still be in stockpile
         int inStockpile = 0;
         for (int i = 0; i < MAX_ITEMS; i++) {
-            if (items[i].active && items[i].state == ITEM_IN_STOCKPILE) inStockpile++;
+            if (IsItemActive(i) && items[i].state == ITEM_IN_STOCKPILE) inStockpile++;
         }
         
         expect(inStockpile == 3);
@@ -2625,8 +2624,8 @@ describe(stockpile_ground_item_blocking) {
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
         
         // Item should still be at same tile
-        expect((int)(items[itemIdx].x / CELL_SIZE) == 5);
-        expect((int)(items[itemIdx].y / CELL_SIZE) == 5);
+        expect((int)(GetItemX(itemIdx) / CELL_SIZE) == 5);
+        expect((int)(GetItemY(itemIdx) / CELL_SIZE) == 5);
         
         // Stockpile slot should have count of 1
         expect(GetStockpileSlotCount(spIdx, 5, 5) == 1);
@@ -2681,8 +2680,8 @@ describe(stockpile_ground_item_blocking) {
         
         // Item should be in the GREEN stockpile
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        expect((int)(items[itemIdx].x / CELL_SIZE) == 8);
-        expect((int)(items[itemIdx].y / CELL_SIZE) == 8);
+        expect((int)(GetItemX(itemIdx) / CELL_SIZE) == 8);
+        expect((int)(GetItemY(itemIdx) / CELL_SIZE) == 8);
     }
     
     it("should safe-drop foreign item outside stockpile when no valid destination") {
@@ -2730,11 +2729,11 @@ describe(stockpile_ground_item_blocking) {
         
         // Item should be ON_GROUND but NOT on the stockpile tile anymore
         expect(items[itemIdx].state == ITEM_ON_GROUND);
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         
         // Item should NOT be on the stockpile (safe-dropped outside)
-        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        int itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         bool onStockpile = (itemTileX >= 5 && itemTileX < 7 && itemTileY >= 5 && itemTileY < 7);
         expect(onStockpile == false);
         
@@ -2840,8 +2839,8 @@ describe(stockpile_ground_item_blocking) {
         
         // Item should be absorbed into stockpile A (same tile), not hauled to B
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        expect((int)(items[itemIdx].x / CELL_SIZE) == 5);
-        expect((int)(items[itemIdx].y / CELL_SIZE) == 5);
+        expect((int)(GetItemX(itemIdx) / CELL_SIZE) == 5);
+        expect((int)(GetItemY(itemIdx) / CELL_SIZE) == 5);
     }
 }
 
@@ -3003,11 +3002,11 @@ describe(clear_job_state) {
         
         // Item should be on ground
         expect(items[itemIdx].state == ITEM_ON_GROUND);
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         
         // Item should NOT be on the stockpile anymore
-        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
-        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        int itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
+        int itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         bool onStockpile = (itemTileX >= 5 && itemTileX < 7 && itemTileY >= 5 && itemTileY < 7);
         expect(onStockpile == false);
         
@@ -3371,7 +3370,7 @@ describe(stockpile_cell_operations) {
         
         // Item should now be on ground
         expect(items[itemIdx].state == ITEM_ON_GROUND);
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         
         FreeItemSpatialGrid();
     }
@@ -3649,14 +3648,14 @@ describe(mining_job_execution) {
         // Find the spawned item and verify it's orange at the dig location
         bool foundOrange = false;
         for (int i = 0; i < MAX_ITEMS; i++) {
-            if (items[i].active && items[i].type == ITEM_ORANGE) {
+            if (IsItemActive(i) && GetItemType(i) == ITEM_ORANGE) {
                 foundOrange = true;
                 // Item should be at the dug location (1,1)
-                int itemX = (int)(items[i].x / CELL_SIZE);
-                int itemY = (int)(items[i].y / CELL_SIZE);
+                int itemX = (int)(GetItemX(i) / CELL_SIZE);
+                int itemY = (int)(GetItemY(i) / CELL_SIZE);
                 expect(itemX == 1);
                 expect(itemY == 1);
-                expect((int)items[i].z == 0);
+                expect(GetItemZ(i) == 0);
                 expect(items[i].state == ITEM_ON_GROUND);
                 break;
             }
@@ -3985,7 +3984,7 @@ describe(building_job_execution) {
         expect(CountBlueprints() == 0);
         
         // Item should be consumed
-        expect(items[itemIdx].active == false);
+        expect(IsItemActive(itemIdx) == false);
         
         // Mover should be idle
         expect(MoverIsIdle(m));
@@ -4048,7 +4047,7 @@ describe(building_job_execution) {
         expect(MoverGetCarryingItem(m) == -1);
         
         // Item should be on ground (not deleted)
-        expect(items[itemIdx].active == true);
+        expect(IsItemActive(itemIdx) == true);
         expect(items[itemIdx].state == ITEM_ON_GROUND);
     }
 }
@@ -4641,6 +4640,196 @@ describe(job_drivers) {
 
 /*
  * =============================================================================
+ * GAME SPEED TESTS
+ * 
+ * These tests verify that job progress scales with game speed (gameDeltaTime).
+ * Mining and building should complete faster at higher game speeds.
+ * =============================================================================
+ */
+
+describe(job_game_speed) {
+    it("should complete dig job faster at higher game speed") {
+        // Setup world with a wall to dig
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "...#....\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover adjacent to wall (at 2,1, wall is at 3,1)
+        Mover* m = &movers[0];
+        Point goal = {2, 1, 0};
+        InitMover(m, CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->pathLength = 0;  // Already at destination
+        moverCount = 1;
+        
+        // Designate wall at (3,1) for digging
+        DesignateDig(3, 1, 0);
+        
+        // Create dig job
+        int jobId = CreateJob(JOBTYPE_DIG);
+        Job* job = GetJob(jobId);
+        job->targetDigX = 3;
+        job->targetDigY = 1;
+        job->targetDigZ = 0;
+        job->assignedMover = 0;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+        m->currentJobId = jobId;
+        
+        // Reserve designation
+        Designation* d = GetDesignation(3, 1, 0);
+        d->assignedMover = 0;
+        
+        // Test at 1x speed - count ticks needed
+        gameSpeed = 1.0f;
+        gameDeltaTime = TICK_DT * gameSpeed;
+        
+        int ticksAt1x = 0;
+        for (int i = 0; i < 600; i++) {
+            JobsTick();
+            ticksAt1x++;
+            if (grid[0][1][3] == CELL_FLOOR) break;
+        }
+        expect(grid[0][1][3] == CELL_FLOOR);
+        
+        // Reset for 2x speed test
+        grid[0][1][3] = CELL_WALL;
+        DesignateDig(3, 1, 0);
+        d = GetDesignation(3, 1, 0);
+        d->assignedMover = 0;
+        
+        // Create fresh job for 2x test
+        int jobId2 = CreateJob(JOBTYPE_DIG);
+        Job* job2 = GetJob(jobId2);
+        job2->targetDigX = 3;
+        job2->targetDigY = 1;
+        job2->targetDigZ = 0;
+        job2->assignedMover = 0;
+        job2->step = STEP_WORKING;
+        job2->progress = 0.0f;
+        m->currentJobId = jobId2;
+        
+        // Test at 2x speed
+        gameSpeed = 2.0f;
+        gameDeltaTime = TICK_DT * gameSpeed;
+        
+        int ticksAt2x = 0;
+        for (int i = 0; i < 600; i++) {
+            JobsTick();
+            ticksAt2x++;
+            if (grid[0][1][3] == CELL_FLOOR) break;
+        }
+        expect(grid[0][1][3] == CELL_FLOOR);
+        
+        // At 2x speed, should complete in roughly half the ticks
+        // Allow some tolerance (within 20%)
+        printf("Dig: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
+               ticksAt1x, ticksAt2x, (float)ticksAt1x / ticksAt2x);
+        expect(ticksAt2x < ticksAt1x);
+        expect(ticksAt2x <= (ticksAt1x / 2) + 5);  // Should be ~half, with small tolerance
+        
+        // Reset game speed
+        gameSpeed = 1.0f;
+        gameDeltaTime = TICK_DT;
+    }
+    
+    it("should complete build job faster at higher game speed") {
+        // Setup world
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        ClearJobs();
+        
+        // Create mover at blueprint location (4,1)
+        Mover* m = &movers[0];
+        Point goal = {4, 1, 0};
+        InitMover(m, CELL_SIZE * 4.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        m->pathLength = 0;  // Already at destination
+        moverCount = 1;
+        
+        // Create blueprint at (4,1) - ready to build
+        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx].state = BLUEPRINT_BUILDING;
+        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].assignedBuilder = 0;
+        
+        // Create build job
+        int jobId = CreateJob(JOBTYPE_BUILD);
+        Job* job = GetJob(jobId);
+        job->targetBlueprint = bpIdx;
+        job->assignedMover = 0;
+        job->step = STEP_WORKING;
+        job->progress = 0.0f;
+        m->currentJobId = jobId;
+        
+        // Test at 1x speed
+        gameSpeed = 1.0f;
+        gameDeltaTime = TICK_DT * gameSpeed;
+        
+        int ticksAt1x = 0;
+        for (int i = 0; i < 600; i++) {
+            JobsTick();
+            ticksAt1x++;
+            if (grid[0][1][4] == CELL_WALL) break;
+        }
+        expect(grid[0][1][4] == CELL_WALL);
+        
+        // Reset for 2x speed test
+        grid[0][1][4] = CELL_WALKABLE;
+        int bpIdx2 = CreateBuildBlueprint(4, 1, 0);
+        blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
+        blueprints[bpIdx2].deliveredMaterials = 1;
+        blueprints[bpIdx2].assignedBuilder = 0;
+        
+        // Create fresh job for 2x test
+        int jobId2 = CreateJob(JOBTYPE_BUILD);
+        Job* job2 = GetJob(jobId2);
+        job2->targetBlueprint = bpIdx2;
+        job2->assignedMover = 0;
+        job2->step = STEP_WORKING;
+        job2->progress = 0.0f;
+        m->currentJobId = jobId2;
+        
+        // Test at 2x speed
+        gameSpeed = 2.0f;
+        gameDeltaTime = TICK_DT * gameSpeed;
+        
+        int ticksAt2x = 0;
+        for (int i = 0; i < 600; i++) {
+            JobsTick();
+            ticksAt2x++;
+            if (grid[0][1][4] == CELL_WALL) break;
+        }
+        expect(grid[0][1][4] == CELL_WALL);
+        
+        // At 2x speed, should complete in roughly half the ticks
+        printf("Build: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
+               ticksAt1x, ticksAt2x, (float)ticksAt1x / ticksAt2x);
+        expect(ticksAt2x < ticksAt1x);
+        expect(ticksAt2x <= (ticksAt1x / 2) + 5);
+        
+        // Reset game speed
+        gameSpeed = 1.0f;
+        gameDeltaTime = TICK_DT;
+    }
+}
+
+/*
+ * =============================================================================
  * MOVER CAPABILITIES TESTS (Phase 3 of Jobs Refactor)
  * 
  * These tests verify that movers can be assigned different capabilities:
@@ -5184,6 +5373,9 @@ int main(int argc, char* argv[]) {
     
     // Job driver tests (Phase 2 of Jobs Refactor)
     test(job_drivers);
+    
+    // Game speed tests (verify mining/building scales with game speed)
+    test(job_game_speed);
     
     // Mover capabilities tests (Phase 3 of Jobs Refactor)
     test(mover_capabilities);

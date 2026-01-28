@@ -43,8 +43,8 @@ describe(mover_initialization) {
         InitMoverWithPath(m, 16.0f, 16.0f, 0.0f, goal, 100.0f, testPath, 5);
         moverCount = 1;
 
-        expect(m->pathLength == 5);
-        expect(m->pathIndex == 4);  // Points to last element (start)
+        expect(GetMoverPathLength(0) == 5);
+        expect(GetMoverPathIndex(0) == 4);  // Points to last element (start)
         expect(m->path[0].x == 4 && m->path[0].y == 0);  // Goal
     }
 }
@@ -172,7 +172,7 @@ describe(wall_collision) {
         // Mover should have moved to a neighbor cell and need repath
         int cellX = (int)(m->x / CELL_SIZE);
         int cellY = (int)(m->y / CELL_SIZE);
-        expect(!(cellX == 1 && cellY == 1) && m->needsRepath == true);
+        expect(!(cellX == 1 && cellY == 1) && GetMoverNeedsRepath(0) == true);
     }
 
     it("should deactivate mover when fully surrounded by walls") {
@@ -233,7 +233,7 @@ describe(line_of_sight_repath) {
         Tick();
 
         // Mover should need repath (wall blocks line of sight to path[1]={6,0})
-        expect(m->needsRepath == true);
+        expect(GetMoverNeedsRepath(0) == true);
     }
 }
 
@@ -450,7 +450,7 @@ describe(blocked_mover_handling) {
         MarkChunkDirty(6, 0, 0);
 
         // Trigger repath
-        m->needsRepath = true;
+        SetMoverNeedsRepath(0, true);
 
         // Run enough ticks for repath cooldown and processing
         RunTicks(REPATH_COOLDOWN_FRAMES + 10);
@@ -458,7 +458,7 @@ describe(blocked_mover_handling) {
         // Mover should have picked a NEW goal (not stuck on the walled goal)
         expect(m->goal.x != 6 || m->goal.y != 0);
         // And should have a valid path (not blocked)
-        expect(m->pathLength > 0);
+        expect(GetMoverPathLength(0) > 0);
 
         moverPathAlgorithm = savedAlgo;  // Restore
         useRandomizedCooldowns = true;
@@ -492,7 +492,7 @@ describe(blocked_mover_handling) {
         MarkChunkDirty(3, 0, 0);
 
         // Trigger repath
-        m->needsRepath = true;
+        SetMoverNeedsRepath(0, true);
 
         // Run enough ticks for repath cooldown and processing
         RunTicks(REPATH_COOLDOWN_FRAMES + 10);
@@ -500,7 +500,7 @@ describe(blocked_mover_handling) {
         // Goal should remain the SAME (6,0) - mover waits for path to clear
         expect(m->goal.x == 6 && m->goal.y == 0);
         // Path should be empty (blocked)
-        expect(m->pathLength == 0);
+        expect(GetMoverPathLength(0) == 0);
 
         moverPathAlgorithm = savedAlgo;  // Restore
         useRandomizedCooldowns = true;
@@ -584,7 +584,7 @@ describe(refinement_after_wall_changes) {
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
             Mover* m = &movers[i];
-            if (m->active && m->pathLength == 0 && m->repathCooldown == 0) {
+            if (m->active && GetMoverPathLength(i) == 0 && m->repathCooldown == 0) {
                 stuckMovers++;
             }
         }
@@ -701,7 +701,7 @@ describe(refinement_after_wall_changes) {
         int stuckMovers = 0;
         for (int i = 0; i < moverCount; i++) {
             Mover* m = &movers[i];
-            if (m->active && m->pathLength == 0 && !m->needsRepath && m->repathCooldown == 0) {
+            if (m->active && GetMoverPathLength(i) == 0 && !GetMoverNeedsRepath(i) && m->repathCooldown == 0) {
                 stuckMovers++;
             }
         }
@@ -901,11 +901,11 @@ describe(path_truncation) {
         moverCount = 1;
         
         // Path should be truncated to MAX_MOVER_PATH
-        expect(m->pathLength == MAX_MOVER_PATH);
+        expect(GetMoverPathLength(0) == MAX_MOVER_PATH);
         
         // First waypoint (path[pathLength-1]) should be at or near the start position (0,0)
         // not somewhere in the middle of the path
-        Point firstWaypoint = m->path[m->pathIndex];
+        Point firstWaypoint = m->path[GetMoverPathIndex(0)];
         expect(firstWaypoint.x == 0);
         expect(firstWaypoint.y == 0);
         
@@ -1452,7 +1452,7 @@ describe(mover_ladder_transitions) {
                     int stuckZ = (int)m->z;
                     printf("STUCK: test %d, start=(%d,%d,%d) goal=(%d,%d,%d) stuck at cell=(%d,%d,%d) pathIndex=%d/%d\n",
                            test, start.x, start.y, start.z, goal.x, goal.y, goal.z,
-                           stuckX, stuckY, stuckZ, m->pathIndex, m->pathLength);
+                           stuckX, stuckY, stuckZ, GetMoverPathIndex(0), GetMoverPathLength(0));
                 }
             }
         }
@@ -1513,7 +1513,7 @@ describe(sparse_level_pathfinding) {
                     int stuckY = (int)(m->y / CELL_SIZE);
                     printf("JPS STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
                            test, start.x, start.y, goal.x, goal.y,
-                           stuckX, stuckY, m->pathIndex, m->pathLength);
+                           stuckX, stuckY, GetMoverPathIndex(0), GetMoverPathLength(0));
                 }
             }
         }
@@ -1570,7 +1570,7 @@ describe(sparse_level_pathfinding) {
                     int stuckY = (int)(m->y / CELL_SIZE);
                     printf("JPS+ STUCK: test %d, start=(%d,%d) goal=(%d,%d) stuck at cell=(%d,%d) pathIndex=%d/%d\n",
                            test, start.x, start.y, goal.x, goal.y,
-                           stuckX, stuckY, m->pathIndex, m->pathLength);
+                           stuckX, stuckY, GetMoverPathIndex(0), GetMoverPathLength(0));
                 }
             }
         }

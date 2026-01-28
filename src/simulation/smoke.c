@@ -32,6 +32,10 @@ static SmokePos smokePressureQueue[SMOKE_PRESSURE_SEARCH_LIMIT];
 static uint16_t smokePressureGeneration = 0;
 static uint16_t smokePressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Track cells that have already risen this tick (prevents cascading through multiple z-levels)
+static uint16_t smokeRiseGeneration = 0;
+static uint16_t smokeHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Initialize smoke system
 void InitSmoke(void) {
     ClearSmoke();
@@ -43,6 +47,21 @@ void ClearSmoke(void) {
     smokeUpdateCount = 0;
     smokeRiseAccum = 0.0f;
     smokeDissipationAccum = 0.0f;
+}
+
+// Reset accumulators (call after loading smoke grid from save)
+void ResetSmokeAccumulators(void) {
+    smokeRiseAccum = 0.0f;
+    smokeDissipationAccum = 0.0f;
+    
+    // Also destabilize all cells so they get processed after load
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                smokeGrid[z][y][x].stable = false;
+            }
+        }
+    }
 }
 
 // Bounds check helper
@@ -128,13 +147,23 @@ void GenerateSmokeFromFire(int x, int y, int z, int fireLevel) {
 
 // Phase 1: RISING - Smoke moves up if there's space above
 static int TryRise(int x, int y, int z) {
-    if (z >= gridDepth - 1) return 0;  // At top
-    if (!CanHoldSmoke(x, y, z + 1)) return 0;  // Blocked above
+    if (z >= gridDepth - 1) {
+        return 0;  // At top
+    }
+    if (!CanHoldSmoke(x, y, z + 1)) {
+        return 0;  // Blocked above
+    }
     
     SmokeCell* src = &smokeGrid[z][y][x];
     SmokeCell* dst = &smokeGrid[z+1][y][x];
     
     if (src->level == 0) return 0;
+    
+    // Don't rise if this cell's smoke already rose into it this tick
+    // This prevents smoke from cascading through multiple z-levels in one tick
+    if (smokeHasRisen[z][y][x] == smokeRiseGeneration) {
+        return 0;
+    }
     
     int space = SMOKE_MAX_LEVEL - dst->level;
     if (space <= 0) {
@@ -150,6 +179,10 @@ static int TryRise(int x, int y, int z) {
     
     src->level -= flow;
     dst->level += flow;
+    
+    // Mark destination as having received risen smoke this tick
+    // This prevents the smoke from immediately rising again when z+1 is processed
+    smokeHasRisen[z+1][y][x] = smokeRiseGeneration;
     
     // Track pressure source
     if (dst->pressureSourceZ == 0 || dst->pressureSourceZ > z) {
@@ -326,6 +359,7 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
     
     // No smoke to process
     if (cell->level == 0) {
+        // Mark stable - DestabilizeSmoke will clear this if smoke arrives nearby
         cell->stable = true;
         cell->hasPressure = false;
         return false;
@@ -399,7 +433,16 @@ void UpdateSmoke(void) {
     bool doDissipate = smokeDissipationAccum >= dissipationInterval;
     
     // Reset accumulators when intervals elapse
-    if (doRise) smokeRiseAccum -= smokeRiseInterval;
+    if (doRise) {
+        smokeRiseAccum -= smokeRiseInterval;
+        // Increment generation to reset "has risen" tracking for this tick
+        smokeRiseGeneration++;
+        if (smokeRiseGeneration == 0) {
+            // Handle wraparound - clear the array
+            memset(smokeHasRisen, 0, sizeof(smokeHasRisen));
+            smokeRiseGeneration = 1;
+        }
+    }
     if (doDissipate) smokeDissipationAccum -= dissipationInterval;
     
     // Alternate scan direction each tick to avoid directional bias
@@ -414,21 +457,16 @@ void UpdateSmoke(void) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
                 SmokeCell* cell = &smokeGrid[z][y][x];
                 
-                // Skip stable empty cells
-                if (cell->stable && cell->level == 0) {
-                    continue;
-                }
-                
-                // Skip stable cells
-                if (cell->stable) {
-                    continue;
-                }
+                // Don't skip any cells - the stable optimization causes z-level skipping bugs
+                // TODO: fix stable optimization to account for smoke rising from below
+                (void)cell->stable;  // Silence unused warning
                 
                 ProcessSmokeCell(x, y, z, doRise, doDissipate);
                 smokeUpdateCount++;
                 
                 // Cap updates per tick
                 if (smokeUpdateCount >= SMOKE_MAX_UPDATES_PER_TICK) {
+                    printf("HIT UPDATE CAP at z=%d, count=%d\n", z, smokeUpdateCount);
                     return;
                 }
             }

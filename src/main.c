@@ -414,6 +414,15 @@ int main(int argc, char** argv) {
         return InspectSaveFile(argc, argv);
     }
     
+    // Check for --load option
+    const char* loadFile = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--load") == 0 && i + 1 < argc) {
+            loadFile = argv[i + 1];
+            break;
+        }
+    }
+    
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
@@ -441,6 +450,38 @@ int main(int argc, char** argv) {
     BuildGraph();
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
     offset.y = (GetScreenHeight() - gridHeight * CELL_SIZE * zoom) / 2.0f;
+
+    // Load save file if specified via --load
+    if (loadFile) {
+        const char* actualFile = loadFile;
+        char tempFile[512] = {0};
+        
+        // Handle .gz files by decompressing to /tmp
+        size_t len = strlen(loadFile);
+        if (len > 3 && strcmp(loadFile + len - 3, ".gz") == 0) {
+            // Extract basename without .gz
+            const char* base = strrchr(loadFile, '/');
+            base = base ? base + 1 : loadFile;
+            snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
+            
+            char cmd[1024];
+            snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", loadFile, tempFile);
+            if (system(cmd) == 0) {
+                actualFile = tempFile;
+                printf("Decompressed to: %s\n", tempFile);
+            } else {
+                printf("Failed to decompress: %s\n", loadFile);
+            }
+        }
+        
+        if (LoadWorld(actualFile)) {
+            printf("Loaded: %s\n", loadFile);
+            fflush(stdout);
+        } else {
+            printf("Failed to load: %s\n", loadFile);
+            fflush(stdout);
+        }
+    }
 
     float accumulator = 0.0f;
 

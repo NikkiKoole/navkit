@@ -89,4 +89,8 @@ void DestabilizeWater(int x, int y, int z);
 // Returns 1.0 for no water, lower values for deeper water
 float GetWaterSpeedMultiplier(int x, int y, int z);
 
+// Water cell state getters (inline for zero overhead)
+static inline bool IsWaterStable(int x, int y, int z) { return waterGrid[z][y][x].stable; }
+static inline bool HasWaterPressure(int x, int y, int z) { return waterGrid[z][y][x].hasPressure; }
+
 #endif // WATER_H

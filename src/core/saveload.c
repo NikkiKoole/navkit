@@ -1,8 +1,17 @@
 // core/saveload.c - Save and Load functions
 #include "../game_state.h"
+#include "../simulation/smoke.h"
+#include "../simulation/steam.h"
 
-#define SAVE_VERSION 6  // Temperature now uses int16_t Celsius directly
+#define SAVE_VERSION 7  // Added section markers
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
+
+// Section markers (readable in hex dump)
+#define MARKER_GRIDS    0x47524944  // "GRID"
+#define MARKER_ENTITIES 0x454E5449  // "ENTI"
+#define MARKER_VIEW     0x56494557  // "VIEW"
+#define MARKER_SETTINGS 0x53455454  // "SETT"
+#define MARKER_END      0x454E4421  // "END!"
 
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -23,6 +32,10 @@ bool SaveWorld(const char* filename) {
     fwrite(&gridDepth, sizeof(gridDepth), 1, f);
     fwrite(&chunkWidth, sizeof(chunkWidth), 1, f);
     fwrite(&chunkHeight, sizeof(chunkHeight), 1, f);
+    
+    // === GRIDS SECTION ===
+    uint32_t marker = MARKER_GRIDS;
+    fwrite(&marker, sizeof(marker), 1, f);
     
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
@@ -80,6 +93,10 @@ bool SaveWorld(const char* filename) {
         }
     }
     
+    // === ENTITIES SECTION ===
+    marker = MARKER_ENTITIES;
+    fwrite(&marker, sizeof(marker), 1, f);
+    
     // Items
     fwrite(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
     fwrite(items, sizeof(Item), itemHighWaterMark, f);
@@ -105,12 +122,20 @@ bool SaveWorld(const char* filename) {
     fwrite(jobIsActive, sizeof(bool), jobHighWaterMark, f);
     fwrite(activeJobList, sizeof(int), activeJobCount, f);
     
+    // === VIEW SECTION ===
+    marker = MARKER_VIEW;
+    fwrite(&marker, sizeof(marker), 1, f);
+    
     // View state
     fwrite(&currentViewZ, sizeof(currentViewZ), 1, f);
     fwrite(&zoom, sizeof(zoom), 1, f);
     fwrite(&offset, sizeof(offset), 1, f);
     
-    // Simulation settings (v4+)
+    // === SETTINGS SECTION ===
+    marker = MARKER_SETTINGS;
+    fwrite(&marker, sizeof(marker), 1, f);
+    
+    // Simulation settings
     // NOTE: When adding new tweakable settings, add them here AND in LoadWorld below!
     // Water
     fwrite(&waterEnabled, sizeof(waterEnabled), 1, f);
@@ -162,6 +187,10 @@ bool SaveWorld(const char* filename) {
     fwrite(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fwrite(&wearMax, sizeof(wearMax), 1, f);
     
+    // === END MARKER ===
+    marker = MARKER_END;
+    fwrite(&marker, sizeof(marker), 1, f);
+    
     fclose(f);
     return true;
 }
@@ -179,12 +208,14 @@ bool LoadWorld(const char* filename) {
     fread(&version, sizeof(version), 1, f);
     
     if (magic != SAVE_MAGIC) {
+        printf("ERROR: Invalid save file (bad magic: 0x%08X, expected 0x%08X)\n", magic, SAVE_MAGIC);
         AddMessage("Invalid save file (bad magic)", RED);
         fclose(f);
         return false;
     }
     
     if (version != SAVE_VERSION) {
+        printf("ERROR: Save version mismatch (file: %d, current: %d)\n", version, SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch (file: %d, current: %d)", version, SAVE_VERSION), RED);
         fclose(f);
         return false;
@@ -210,6 +241,16 @@ bool LoadWorld(const char* filename) {
     ClearMovers();
     ClearJobs();
     ClearGatherZones();
+    
+    // === GRIDS SECTION ===
+    uint32_t marker;
+    fread(&marker, sizeof(marker), 1, f);
+    if (marker != MARKER_GRIDS) {
+        printf("ERROR: Bad GRID marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_GRIDS);
+        AddMessage(TextFormat("Bad GRID marker: 0x%08X", marker), RED);
+        fclose(f);
+        return false;
+    }
     
     // Grid cells
     for (int z = 0; z < gridDepth; z++) {
@@ -267,6 +308,15 @@ bool LoadWorld(const char* filename) {
         }
     }
     
+    // === ENTITIES SECTION ===
+    fread(&marker, sizeof(marker), 1, f);
+    if (marker != MARKER_ENTITIES) {
+        printf("ERROR: Bad ENTI marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_ENTITIES);
+        AddMessage(TextFormat("Bad ENTI marker: 0x%08X", marker), RED);
+        fclose(f);
+        return false;
+    }
+    
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
     fread(items, sizeof(Item), itemHighWaterMark, f);
@@ -292,12 +342,30 @@ bool LoadWorld(const char* filename) {
     fread(jobIsActive, sizeof(bool), jobHighWaterMark, f);
     fread(activeJobList, sizeof(int), activeJobCount, f);
     
+    // === VIEW SECTION ===
+    fread(&marker, sizeof(marker), 1, f);
+    if (marker != MARKER_VIEW) {
+        printf("ERROR: Bad VIEW marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_VIEW);
+        AddMessage(TextFormat("Bad VIEW marker: 0x%08X", marker), RED);
+        fclose(f);
+        return false;
+    }
+    
     // View state
     fread(&currentViewZ, sizeof(currentViewZ), 1, f);
     fread(&zoom, sizeof(zoom), 1, f);
     fread(&offset, sizeof(offset), 1, f);
     
-    // Simulation settings (v4+)
+    // === SETTINGS SECTION ===
+    fread(&marker, sizeof(marker), 1, f);
+    if (marker != MARKER_SETTINGS) {
+        printf("ERROR: Bad SETT marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_SETTINGS);
+        AddMessage(TextFormat("Bad SETT marker: 0x%08X", marker), RED);
+        fclose(f);
+        return false;
+    }
+    
+    // Simulation settings
     // NOTE: When adding new tweakable settings, add them here AND in SaveWorld above!
     // Water
     fread(&waterEnabled, sizeof(waterEnabled), 1, f);
@@ -349,7 +417,20 @@ bool LoadWorld(const char* filename) {
     fread(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fread(&wearMax, sizeof(wearMax), 1, f);
     
+    // === END MARKER ===
+    fread(&marker, sizeof(marker), 1, f);
+    if (marker != MARKER_END) {
+        printf("ERROR: Bad END marker: 0x%08X (expected 0x%08X) - file may be truncated or corrupted\n", marker, MARKER_END);
+        AddMessage(TextFormat("Bad END marker: 0x%08X (file may be truncated or corrupted)", marker), RED);
+        fclose(f);
+        return false;
+    }
+    
     fclose(f);
+    
+    // Reset simulation accumulators (they weren't saved, grid data was)
+    ResetSmokeAccumulators();
+    ResetSteamAccumulators();
     
     // Rebuild HPA* graph after loading - mark all chunks dirty
     hpaNeedsRebuild = true;

@@ -162,4 +162,16 @@ void SeedRandom(unsigned int seed);
 Point GetRandomWalkableCell(void);
 Point GetRandomWalkableCellDifferentZ(int excludeZ);
 
+// Entrance getters (inline for zero overhead)
+static inline int GetEntranceX(int idx) { return entrances[idx].x; }
+static inline int GetEntranceY(int idx) { return entrances[idx].y; }
+static inline int GetEntranceZ(int idx) { return entrances[idx].z; }
+static inline int GetEntranceChunk1(int idx) { return entrances[idx].chunk1; }
+static inline int GetEntranceChunk2(int idx) { return entrances[idx].chunk2; }
+
+// Graph edge getters (inline for zero overhead)
+static inline int GetGraphEdgeFrom(int idx) { return graphEdges[idx].from; }
+static inline int GetGraphEdgeTo(int idx) { return graphEdges[idx].to; }
+static inline int GetGraphEdgeCost(int idx) { return graphEdges[idx].cost; }
+
 #endif // PATHFINDING_H

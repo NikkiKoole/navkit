@@ -1,6 +1,7 @@
 #include "jobs.h"
 #include "items.h"
 #include "mover.h"
+#include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/pathfinding.h"
@@ -784,7 +785,7 @@ void JobsTick(void) {
             continue;
         }
         
-        JobRunResult result = driver(job, m, TICK_DT);
+        JobRunResult result = driver(job, m, gameDeltaTime);
         
         if (result == JOBRUN_DONE) {
             // Job completed successfully - release job and return mover to idle

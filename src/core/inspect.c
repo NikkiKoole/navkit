@@ -214,8 +214,11 @@ static void print_cell(int x, int y, int z) {
     }
     
     // Smoke
-    if (smoke.level > 0) {
-        printf("Smoke level: %d/7\n", smoke.level);
+    if (smoke.level > 0 || smoke.stable) {
+        printf("Smoke level: %d/7", smoke.level);
+        if (smoke.stable) printf(" [STABLE]");
+        if (smoke.hasPressure) printf(" [PRESSURE from z%d]", smoke.pressureSourceZ);
+        printf("\n");
     }
     
     // Steam

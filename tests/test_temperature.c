@@ -813,11 +813,11 @@ describe(temperature_stability) {
         SetTemperature(2, 1, 0, 100);
         
         // Center and orthogonal neighbors should be unstable
-        expect(temperatureGrid[0][1][2].stable == false);  // Center
-        expect(temperatureGrid[0][0][2].stable == false);  // North
-        expect(temperatureGrid[0][2][2].stable == false);  // South
-        expect(temperatureGrid[0][1][1].stable == false);  // West
-        expect(temperatureGrid[0][1][3].stable == false);  // East
+        expect(IsTemperatureStable(2, 1, 0) == false);  // Center
+        expect(IsTemperatureStable(2, 0, 0) == false);  // North
+        expect(IsTemperatureStable(2, 2, 0) == false);  // South
+        expect(IsTemperatureStable(1, 1, 0) == false);  // West
+        expect(IsTemperatureStable(3, 1, 0) == false);  // East
     }
 }
 

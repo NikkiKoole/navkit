@@ -9,7 +9,7 @@
 #define SMOKE_MAX_LEVEL 7
 
 // Performance tuning
-#define SMOKE_MAX_UPDATES_PER_TICK 4096
+#define SMOKE_MAX_UPDATES_PER_TICK 16384
 #define SMOKE_PRESSURE_SEARCH_LIMIT 64  // Max cells to search for pressure fill
 
 // Smoke cell data (parallel to grid)
@@ -37,6 +37,9 @@ void InitSmoke(void);
 
 // Clear all smoke
 void ClearSmoke(void);
+
+// Reset accumulators (call after loading smoke grid from save)
+void ResetSmokeAccumulators(void);
 
 // Main simulation tick
 void UpdateSmoke(void);

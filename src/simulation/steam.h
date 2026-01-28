@@ -33,6 +33,7 @@ extern int steamGenerationTemp;     // Celsius above which water boils (default:
 // Initialize/clear
 void InitSteam(void);
 void ClearSteam(void);
+void ResetSteamAccumulators(void);
 
 // Level operations
 void SetSteamLevel(int x, int y, int z, int level);

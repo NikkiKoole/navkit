@@ -694,7 +694,7 @@ describe(water_pressure) {
         RunWaterTicks(5);
         
         // The cell at z=0 where water fell should have pressure
-        expect(waterGrid[0][2][2].hasPressure == true);
+        expect(HasWaterPressure(2, 2, 0) == true);
     }
 }
 
@@ -939,7 +939,7 @@ describe(water_stability) {
         int stableCells = 0;
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
-                if (waterGrid[0][y][x].stable) {
+                if (IsWaterStable(x, y, 0)) {
                     stableCells++;
                 }
             }
@@ -968,11 +968,11 @@ describe(water_stability) {
         SetWaterLevel(2, 1, 0, 5);
         
         // Center and orthogonal neighbors should be unstable
-        expect(waterGrid[0][1][2].stable == false);  // Center
-        expect(waterGrid[0][0][2].stable == false);  // North
-        expect(waterGrid[0][2][2].stable == false);  // South
-        expect(waterGrid[0][1][1].stable == false);  // West
-        expect(waterGrid[0][1][3].stable == false);  // East
+        expect(IsWaterStable(2, 1, 0) == false);  // Center
+        expect(IsWaterStable(2, 0, 0) == false);  // North
+        expect(IsWaterStable(2, 2, 0) == false);  // South
+        expect(IsWaterStable(1, 1, 0) == false);  // West
+        expect(IsWaterStable(3, 1, 0) == false);  // East
     }
 }
 

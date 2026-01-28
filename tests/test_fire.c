@@ -674,8 +674,70 @@ describe(smoke_multi_z_rising) {
                smokeAtZ2 ? "yes" : "no",
                smokeAtZ3 ? "yes" : "no");
         
-        // At least z=1 should have smoke
+        // Smoke must reach ALL levels - no skipping
         expect(smokeAtZ1 == true);
+        expect(smokeAtZ2 == true);
+        expect(smokeAtZ3 == true);
+    }
+    
+    it("should have smoke at ALL intermediate z-levels simultaneously") {
+        // This test catches the "cascading" bug where smoke passes through
+        // intermediate levels without accumulating there
+        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        gridDepth = 6;  // More levels to make the bug obvious
+        
+        // Initialize all levels as open air
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+                }
+            }
+        }
+        
+        InitFire();
+        InitSmoke();
+        
+        // Place fire source at z=0
+        SetFireSource(4, 4, 0, true);
+        
+        // Run enough ticks for smoke to reach top but not too many
+        // With proper rising (one z-level per rise interval), smoke needs
+        // multiple rise intervals to reach higher levels
+        RunFireAndSmokeTicks(100);
+        
+        // Count total smoke at each level
+        int smokeByZ[6] = {0};
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    smokeByZ[z] += GetSmokeLevel(x, y, z);
+                }
+            }
+        }
+        
+        printf("Smoke by z-level: z0=%d z1=%d z2=%d z3=%d z4=%d z5=%d\n",
+               smokeByZ[0], smokeByZ[1], smokeByZ[2], smokeByZ[3], smokeByZ[4], smokeByZ[5]);
+        
+        // Key test: intermediate levels (z1-z4) must have smoke
+        // If smoke cascades through in one tick, intermediate levels will be empty
+        // while z5 (top) has all the smoke
+        expect(smokeByZ[1] > 0);  // z1 must have smoke
+        expect(smokeByZ[2] > 0);  // z2 must have smoke  
+        expect(smokeByZ[3] > 0);  // z3 must have smoke
+        expect(smokeByZ[4] > 0);  // z4 must have smoke
+        
+        // Additional check: intermediate levels should have meaningful amounts
+        // not just 1 or 2 from spreading. If z5 has way more than others, 
+        // something is wrong with rising
+        int intermediateTotal = smokeByZ[1] + smokeByZ[2] + smokeByZ[3] + smokeByZ[4];
+        int topLevel = smokeByZ[5];
+        
+        printf("Intermediate total=%d, top level=%d\n", intermediateTotal, topLevel);
+        
+        // Intermediate levels combined should have at least as much smoke as top
+        // (smoke should be distributed, not concentrated at top)
+        expect(intermediateTotal >= topLevel);
     }
 }
 

@@ -122,4 +122,7 @@ void DestabilizeTemperature(int x, int y, int z);
 // Utility: apply heat from fire (called by fire system)
 void ApplyFireHeat(int x, int y, int z, int fireLevel);
 
+// Temperature cell state getters (inline for zero overhead)
+static inline bool IsTemperatureStable(int x, int y, int z) { return temperatureGrid[z][y][x].stable; }
+
 #endif // TEMPERATURE_H

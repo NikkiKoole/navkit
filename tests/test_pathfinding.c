@@ -48,8 +48,8 @@ describe(entrance_building) {
         // Verify all entrances are on chunk borders
         int allOnBorders = 1;
         for (int i = 0; i < entranceCount && allOnBorders; i++) {
-            int x = entrances[i].x;
-            int y = entrances[i].y;
+            int x = GetEntranceX(i);
+            int y = GetEntranceY(i);
             // Entrance must be on a vertical border (x % chunkWidth == 0)
             // OR on a horizontal border (y % chunkHeight == 0)
             int onVerticalBorder = (x % chunkWidth == 0);
@@ -73,7 +73,7 @@ describe(entrance_building) {
         // Check no entrances at y=borderY on z=0
         int entrancesAtBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].z == 0 && entrances[i].y == borderY) entrancesAtBorder++;
+            if (GetEntranceZ(i) == 0 && GetEntranceY(i) == borderY) entrancesAtBorder++;
         }
         expect(entrancesAtBorder == 0);
     }
@@ -86,7 +86,7 @@ describe(entrance_building) {
         // Count entrances on the horizontal border at y=chunkHeight, x in [0, chunkWidth) on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].z == 0 && entrances[i].y == chunkHeight && entrances[i].x < chunkWidth) {
+            if (GetEntranceZ(i) == 0 && GetEntranceY(i) == chunkHeight && GetEntranceX(i) < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -118,7 +118,7 @@ describe(entrance_building) {
         // Count entrances on this border section on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].z == 0 && entrances[i].y == borderY && entrances[i].x < chunkWidth) {
+            if (GetEntranceZ(i) == 0 && GetEntranceY(i) == borderY && GetEntranceX(i) < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -149,7 +149,7 @@ describe(entrance_building) {
         // Count entrances on this border section on z=0
         int entrancesOnBorder = 0;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].z == 0 && entrances[i].y == borderY && entrances[i].x < chunkWidth) {
+            if (GetEntranceZ(i) == 0 && GetEntranceY(i) == borderY && GetEntranceX(i) < chunkWidth) {
                 entrancesOnBorder++;
             }
         }
@@ -194,7 +194,7 @@ describe(graph_building) {
         int chunk4Entrances[32];
         int chunk4Count = 0;
         for (int i = 0; i < entranceCount && chunk4Count < 32; i++) {
-            if (entrances[i].chunk1 == 4 || entrances[i].chunk2 == 4) {
+            if (GetEntranceChunk1(i) == 4 || GetEntranceChunk2(i) == 4) {
                 chunk4Entrances[chunk4Count++] = i;
             }
         }
@@ -212,8 +212,8 @@ describe(graph_building) {
                 // Look for edge between them
                 int foundEdge = 0;
                 for (int k = 0; k < graphEdgeCount; k++) {
-                    if ((graphEdges[k].from == e1 && graphEdges[k].to == e2) ||
-                        (graphEdges[k].from == e2 && graphEdges[k].to == e1)) {
+                    if ((GetGraphEdgeFrom(k) == e1 && GetGraphEdgeTo(k) == e2) ||
+                        (GetGraphEdgeFrom(k) == e2 && GetGraphEdgeTo(k) == e1)) {
                         foundEdge = 1;
                         break;
                     }
@@ -232,14 +232,14 @@ describe(graph_building) {
         // For every edge, the reverse edge should exist with same cost
         int symmetric = 1;
         for (int i = 0; i < graphEdgeCount && symmetric; i++) {
-            int from = graphEdges[i].from;
-            int to = graphEdges[i].to;
-            int cost = graphEdges[i].cost;
+            int from = GetGraphEdgeFrom(i);
+            int to = GetGraphEdgeTo(i);
+            int cost = GetGraphEdgeCost(i);
 
             int foundReverse = 0;
             for (int j = 0; j < graphEdgeCount; j++) {
-                if (graphEdges[j].from == to && graphEdges[j].to == from) {
-                    if (graphEdges[j].cost == cost) foundReverse = 1;
+                if (GetGraphEdgeFrom(j) == to && GetGraphEdgeTo(j) == from) {
+                    if (GetGraphEdgeCost(j) == cost) foundReverse = 1;
                     break;
                 }
             }
@@ -256,12 +256,12 @@ describe(graph_building) {
         // No edge should connect entrances that don't share any chunk
         int noInvalidEdges = 1;
         for (int i = 0; i < graphEdgeCount && noInvalidEdges; i++) {
-            int e1 = graphEdges[i].from;
-            int e2 = graphEdges[i].to;
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
 
             // Get chunks for each entrance
-            int c1a = entrances[e1].chunk1, c1b = entrances[e1].chunk2;
-            int c2a = entrances[e2].chunk1, c2b = entrances[e2].chunk2;
+            int c1a = GetEntranceChunk1(e1), c1b = GetEntranceChunk2(e1);
+            int c2a = GetEntranceChunk1(e2), c2b = GetEntranceChunk2(e2);
 
             // They must share at least one chunk
             int share = (c1a == c2a || c1a == c2b || c1b == c2a || c1b == c2b);
@@ -291,22 +291,22 @@ describe(graph_building) {
         // an entrance on the right side of chunk 0
         int foundInvalidEdge = 0;
         for (int i = 0; i < graphEdgeCount && !foundInvalidEdge; i++) {
-            int e1 = graphEdges[i].from;
-            int e2 = graphEdges[i].to;
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
 
             // Check if both are in chunk 0
-            int e1InChunk0 = (entrances[e1].chunk1 == 0 || entrances[e1].chunk2 == 0);
-            int e2InChunk0 = (entrances[e2].chunk1 == 0 || entrances[e2].chunk2 == 0);
+            int e1InChunk0 = (GetEntranceChunk1(e1) == 0 || GetEntranceChunk2(e1) == 0);
+            int e2InChunk0 = (GetEntranceChunk1(e2) == 0 || GetEntranceChunk2(e2) == 0);
 
             if (e1InChunk0 && e2InChunk0) {
                 // Check if they're on opposite sides of the wall
-                int e1Left = entrances[e1].x < chunkWidth / 2;
-                int e2Left = entrances[e2].x < chunkWidth / 2;
+                int e1Left = GetEntranceX(e1) < chunkWidth / 2;
+                int e2Left = GetEntranceX(e2) < chunkWidth / 2;
 
                 // If both entrances are in chunk 0 and on opposite sides of wall,
                 // there shouldn't be an edge (wall blocks it)
                 // But we need to check their y positions too - the wall is vertical
-                if (entrances[e1].y < chunkHeight && entrances[e2].y < chunkHeight) {
+                if (GetEntranceY(e1) < chunkHeight && GetEntranceY(e2) < chunkHeight) {
                     if (e1Left != e2Left) {
                         foundInvalidEdge = 1;  // This edge shouldn't exist
                     }
@@ -327,7 +327,7 @@ describe(graph_building) {
         int chunk0Entrances[64];
         int chunk0Count = 0;
         for (int i = 0; i < entranceCount && chunk0Count < 64; i++) {
-            if (entrances[i].chunk1 == 0 || entrances[i].chunk2 == 0) {
+            if (GetEntranceChunk1(i) == 0 || GetEntranceChunk2(i) == 0) {
                 chunk0Entrances[chunk0Count++] = i;
             }
         }
@@ -340,14 +340,14 @@ describe(graph_building) {
                 int e2 = chunk0Entrances[j];
 
                 // Only check if they actually share chunk 0 (not just touch it)
-                int e1HasChunk0 = (entrances[e1].chunk1 == 0 || entrances[e1].chunk2 == 0);
-                int e2HasChunk0 = (entrances[e2].chunk1 == 0 || entrances[e2].chunk2 == 0);
+                int e1HasChunk0 = (GetEntranceChunk1(e1) == 0 || GetEntranceChunk2(e1) == 0);
+                int e2HasChunk0 = (GetEntranceChunk1(e2) == 0 || GetEntranceChunk2(e2) == 0);
                 if (!e1HasChunk0 || !e2HasChunk0) continue;
 
                 // Check both share chunk 0 specifically
                 int bothShareChunk0 = 0;
-                if ((entrances[e1].chunk1 == 0 && (entrances[e2].chunk1 == 0 || entrances[e2].chunk2 == 0)) ||
-                    (entrances[e1].chunk2 == 0 && (entrances[e2].chunk1 == 0 || entrances[e2].chunk2 == 0))) {
+                if ((GetEntranceChunk1(e1) == 0 && (GetEntranceChunk1(e2) == 0 || GetEntranceChunk2(e2) == 0)) ||
+                    (GetEntranceChunk2(e1) == 0 && (GetEntranceChunk1(e2) == 0 || GetEntranceChunk2(e2) == 0))) {
                     bothShareChunk0 = 1;
                 }
                 if (!bothShareChunk0) continue;
@@ -355,8 +355,8 @@ describe(graph_building) {
                 // Look for edge between them
                 int foundEdge = 0;
                 for (int k = 0; k < graphEdgeCount; k++) {
-                    if ((graphEdges[k].from == e1 && graphEdges[k].to == e2) ||
-                        (graphEdges[k].from == e2 && graphEdges[k].to == e1)) {
+                    if ((GetGraphEdgeFrom(k) == e1 && GetGraphEdgeTo(k) == e2) ||
+                        (GetGraphEdgeFrom(k) == e2 && GetGraphEdgeTo(k) == e1)) {
                         foundEdge = 1;
                         break;
                     }
@@ -376,8 +376,8 @@ describe(graph_building) {
         int duplicates = 0;
         for (int i = 0; i < graphEdgeCount; i++) {
             for (int j = i + 1; j < graphEdgeCount; j++) {
-                if (graphEdges[i].from == graphEdges[j].from &&
-                    graphEdges[i].to == graphEdges[j].to) {
+                if (GetGraphEdgeFrom(i) == GetGraphEdgeFrom(j) &&
+                    GetGraphEdgeTo(i) == GetGraphEdgeTo(j)) {
                     duplicates++;
                 }
             }
@@ -395,13 +395,13 @@ describe(graph_building) {
         int tested = 0;
 
         for (int i = 0; i < graphEdgeCount && tested < 10; i++) {
-            int e1 = graphEdges[i].from;
-            int e2 = graphEdges[i].to;
-            int edgeCost = graphEdges[i].cost;
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            int edgeCost = GetGraphEdgeCost(i);
 
             // Calculate expected cost: Manhattan distance for 4-dir, or diagonal for 8-dir
-            int dx = abs(entrances[e1].x - entrances[e2].x);
-            int dy = abs(entrances[e1].y - entrances[e2].y);
+            int dx = abs(GetEntranceX(e1) - GetEntranceX(e2));
+            int dy = abs(GetEntranceY(e1) - GetEntranceY(e2));
 
             // On an open grid, the cost should be the optimal path distance
             // For 8-dir: max(dx,dy)*10 + min(dx,dy)*4 (diagonal shortcut)
@@ -445,9 +445,9 @@ describe(incremental_graph_updates) {
         // Save edges from incremental update
         int incrementalEdges[MAX_EDGES][3];  // from, to, cost
         for (int i = 0; i < graphEdgeCount && i < MAX_EDGES; i++) {
-            incrementalEdges[i][0] = graphEdges[i].from;
-            incrementalEdges[i][1] = graphEdges[i].to;
-            incrementalEdges[i][2] = graphEdges[i].cost;
+            incrementalEdges[i][0] = GetGraphEdgeFrom(i);
+            incrementalEdges[i][1] = GetGraphEdgeTo(i);
+            incrementalEdges[i][2] = GetGraphEdgeCost(i);
         }
 
         // Now do full rebuild
@@ -499,8 +499,8 @@ describe(incremental_graph_updates) {
         // All edge indices should be valid (no dangling references)
         int allValid = 1;
         for (int i = 0; i < graphEdgeCount; i++) {
-            if (graphEdges[i].from < 0 || graphEdges[i].from >= entranceCount ||
-                graphEdges[i].to < 0 || graphEdges[i].to >= entranceCount) {
+            if (GetGraphEdgeFrom(i) < 0 || GetGraphEdgeFrom(i) >= entranceCount ||
+                GetGraphEdgeTo(i) < 0 || GetGraphEdgeTo(i) >= entranceCount) {
                 allValid = 0;
             }
         }
@@ -1066,9 +1066,9 @@ describe(maze_refinement_failure) {
         // Find entrances on the y=8 boundary
         int entrance1 = -1, entrance2 = -1;
         for (int i = 0; i < entranceCount; i++) {
-            if (entrances[i].y == 8) {
-                if (entrances[i].x < 5 && entrance1 < 0) entrance1 = i;
-                else if (entrances[i].x >= 5 && entrances[i].x < 10 && entrance2 < 0) entrance2 = i;
+            if (GetEntranceY(i) == 8) {
+                if (GetEntranceX(i) < 5 && entrance1 < 0) entrance1 = i;
+                else if (GetEntranceX(i) >= 5 && GetEntranceX(i) < 10 && entrance2 < 0) entrance2 = i;
             }
         }
 
@@ -1077,8 +1077,8 @@ describe(maze_refinement_failure) {
         int foundBoth = (entrance1 >= 0 && entrance2 >= 0);
         
         if (foundBoth) {
-            int x1 = entrances[entrance1].x;
-            int x2 = entrances[entrance2].x;
+            int x1 = GetEntranceX(entrance1);
+            int x2 = GetEntranceX(entrance2);
             
             // Try to path between them using chunk-bounded A*
             // The chunk that contains both is chunk 0 (0,0)-(8,8) or chunk 2 (0,8)-(8,16)
@@ -1723,10 +1723,10 @@ describe(hpa_ladder_pathfinding) {
         // The ladder link creates 2 edges (bidirectional)
         int ladderEdges = 0;
         for (int i = 0; i < graphEdgeCount; i++) {
-            int e1 = graphEdges[i].from;
-            int e2 = graphEdges[i].to;
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
             // Check if this edge crosses z-levels
-            if (entrances[e1].z != entrances[e2].z) {
+            if (GetEntranceZ(e1) != GetEntranceZ(e2)) {
                 ladderEdges++;
             }
         }
@@ -2067,7 +2067,7 @@ describe(hpa_ladder_pathfinding) {
         int ladderEntLow = ladderLinks[0].entranceLow;
         int edgesFromLow = 0;
         for (int i = 0; i < graphEdgeCount; i++) {
-            if (graphEdges[i].from == ladderEntLow) edgesFromLow++;
+            if (GetGraphEdgeFrom(i) == ladderEntLow) edgesFromLow++;
         }
         expect(edgesFromLow > 1);  // Should have edges to z=0 entrances + ladder link
         
