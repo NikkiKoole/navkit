@@ -16,16 +16,17 @@ typedef struct {
     // Future: uint8_t hardness;
 } CellDef;
 
-// Physics flags (5 bits used, 3 reserved)
+// Physics flags (6 bits used, 2 reserved)
 #define CF_BLOCKS_MOVEMENT  (1 << 0)  // Can't walk through (walls, closed doors, grates)
-#define CF_WALKABLE         (1 << 1)  // Can stand on (ground, floors, ladders)
+#define CF_WALKABLE         (1 << 1)  // Can stand on (ground, floors, ladders) - legacy
 #define CF_LADDER           (1 << 2)  // Vertical climbing - slower movement
 #define CF_RAMP             (1 << 3)  // Vertical walking - normal speed (stairs)
 #define CF_BLOCKS_FLUIDS    (1 << 4)  // Blocks water/smoke/steam
+#define CF_SOLID            (1 << 5)  // Can stand ON this cell from above (DF-style walkability)
 
 // Common flag combinations
-#define CF_GROUND  (CF_WALKABLE)
-#define CF_WALL    (CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS)
+#define CF_GROUND  (CF_WALKABLE | CF_SOLID)
+#define CF_WALL    (CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS | CF_SOLID)
 
 // Cell definitions table (defined in cell_defs.c)
 extern CellDef cellDefs[];
@@ -37,6 +38,7 @@ extern CellDef cellDefs[];
 #define CellIsLadder(c)         CellHasFlag(c, CF_LADDER)
 #define CellIsRamp(c)           CellHasFlag(c, CF_RAMP)
 #define CellBlocksFluids(c)     CellHasFlag(c, CF_BLOCKS_FLUIDS)
+#define CellIsSolid(c)          CellHasFlag(c, CF_SOLID)
 
 // Field accessors
 #define CellName(c)             (cellDefs[c].name)
