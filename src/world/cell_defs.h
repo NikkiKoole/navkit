@@ -64,4 +64,33 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     return CellIsWalkable(grid[z][y][x]);
 }
 
+// DF-style walkability: walkable if current cell is traversable AND cell below is solid
+// This function exists but is not yet used - will be activated via toggle in Phase 3
+static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
+    // Bounds check
+    if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+    
+    CellType cellHere = grid[z][y][x];
+    
+    // Can't walk through solid blocks (walls)
+    if (CellBlocksMovement(cellHere)) return false;
+    
+    // Ladders are always walkable (special case - they provide their own support)
+    if (CellIsLadder(cellHere)) return true;
+    
+    // Ramps are always walkable (special case)
+    if (CellIsRamp(cellHere)) return true;
+    
+    // Z=0 edge case: treat as having implicit bedrock below
+    // At z=0, walkable if the cell itself has the legacy walkable flag
+    // This allows gradual migration of terrain generators
+    if (z == 0) {
+        return CellIsWalkable(cellHere);
+    }
+    
+    // DF-style: walkable if cell below is solid
+    CellType cellBelow = grid[z-1][y][x];
+    return CellIsSolid(cellBelow);
+}
+
 #endif // CELL_DEFS_H
