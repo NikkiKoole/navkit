@@ -2255,6 +2255,122 @@ void GenerateCouncilEstate(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// DF-Style Flat Terrain Generator
+// Creates terrain for DF-style walkability (solid below = walkable)
+// z=0: Solid dirt ground (CELL_DIRT with CF_SOLID)
+// z=1: Air where entities walk (walkable because z=0 is solid)
+// z=2+: Air
+// Walls extend from z=0 through z=1 to block movement
+// ============================================================================
+
+void GenerateFlatDF(void) {
+    // Clear all levels to air
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[z][y][x] = CELL_AIR;
+            }
+        }
+    }
+    
+    // z=0: Solid ground (dirt) - this is what entities stand ON
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            // Add grass overlay for visual interest
+            SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+        }
+    }
+    
+    // z=1 is already air (set above), which is walkable in DF mode
+    // because z=0 below is solid
+    
+    // Add some scattered walls for testing
+    // Walls need to extend through z=0 AND z=1 to block movement at z=1
+    int numWalls = (gridWidth * gridHeight) / 200;
+    for (int i = 0; i < numWalls; i++) {
+        int wx = 2 + GetRandomValue(0, gridWidth - 4);
+        int wy = 2 + GetRandomValue(0, gridHeight - 4);
+        int wlen = 3 + GetRandomValue(0, 8);
+        bool horizontal = GetRandomValue(0, 1) == 0;
+        
+        for (int j = 0; j < wlen; j++) {
+            int x = horizontal ? wx + j : wx;
+            int y = horizontal ? wy : wy + j;
+            if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                // Wall at z=0 (ground level block)
+                grid[0][y][x] = CELL_WALL;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_BARE);
+                // Wall at z=1 (blocks walking)
+                if (gridDepth > 1) {
+                    grid[1][y][x] = CELL_WALL;
+                }
+            }
+        }
+    }
+    
+    // Add a few test ladders
+    // Ladders allow climbing between z-levels
+    int numLadders = 4 + (gridWidth * gridHeight) / 1000;
+    for (int i = 0; i < numLadders; i++) {
+        int lx = 5 + GetRandomValue(0, gridWidth - 10);
+        int ly = 5 + GetRandomValue(0, gridHeight - 10);
+        
+        // Make sure we're not placing on a wall
+        if (grid[0][ly][lx] != CELL_WALL) {
+            // Ladder at z=1 (where entities walk)
+            grid[1][ly][lx] = CELL_LADDER_BOTH;
+            // Also place ladder at z=0 for climbing down
+            grid[0][ly][lx] = CELL_LADDER_BOTH;
+            SET_CELL_SURFACE(lx, ly, 0, SURFACE_BARE);
+        }
+    }
+    
+    // Add a small elevated platform to test multi-level
+    // Platform at z=1 (solid floor), walkable at z=2
+    int platX = gridWidth / 2 - 5;
+    int platY = gridHeight / 2 - 5;
+    int platW = 10;
+    int platH = 10;
+    
+    if (gridDepth > 2) {
+        // Floor of platform at z=1 (this becomes solid ground for z=2)
+        for (int y = platY; y < platY + platH; y++) {
+            for (int x = platX; x < platX + platW; x++) {
+                if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        }
+        
+        // Walls around platform edge at z=2
+        for (int x = platX; x < platX + platW; x++) {
+            if (x >= 0 && x < gridWidth) {
+                grid[2][platY][x] = CELL_WALL;
+                grid[2][platY + platH - 1][x] = CELL_WALL;
+            }
+        }
+        for (int y = platY; y < platY + platH; y++) {
+            if (y >= 0 && y < gridHeight) {
+                grid[2][y][platX] = CELL_WALL;
+                grid[2][y][platX + platW - 1] = CELL_WALL;
+            }
+        }
+        
+        // Opening in wall for access
+        grid[2][platY + platH - 1][platX + platW / 2] = CELL_AIR;
+        
+        // Ladder to get up to platform
+        int ladderX = platX + platW / 2;
+        int ladderY = platY + platH / 2;
+        grid[1][ladderY][ladderX] = CELL_LADDER_BOTH;
+        grid[2][ladderY][ladderX] = CELL_LADDER_BOTH;
+    }
+    
+    needsRebuild = true;
+}
+
 void GenerateMixed(void) {
     InitGrid();
     int zoneSize = chunkWidth * 4;
