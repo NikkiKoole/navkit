@@ -69,6 +69,9 @@ void ToggleBool(float x, float y, const char* label, bool* value);
 // Push button - returns true when clicked
 bool PushButton(float x, float y, const char* label);
 
+// Inline push button - returns button width (for inline layouts)
+float PushButtonInline(float x, float y, const char* label, bool* clicked);
+
 // Cycle through options - click to advance
 void CycleOption(float x, float y, const char* label, const char** options, int count, int* value);
 
@@ -369,6 +372,27 @@ bool PushButton(float x, float y, const char* label) {
         return true;
     }
     return false;
+}
+
+float PushButtonInline(float x, float y, const char* label, bool* clicked) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "[%s]", label);
+
+    int textWidth = MeasureText(buf, 18);
+    Rectangle bounds = {x, y, (float)textWidth + 10, 20};
+    Vector2 mouse = GetMousePosition();
+    bool hovered = CheckCollisionPointRec(mouse, bounds);
+
+    if (hovered) g_ui_buttonAnyHovered = true;
+
+    Color col = hovered ? YELLOW : LIGHTGRAY;
+    DrawTextShadow(buf, (int)x, (int)y, 18, col);
+
+    if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        g_ui_clickConsumed = true;
+        *clicked = true;
+    }
+    return (float)textWidth + 15;  // width + spacing
 }
 
 void CycleOption(float x, float y, const char* label, const char** options, int count, int* value) {

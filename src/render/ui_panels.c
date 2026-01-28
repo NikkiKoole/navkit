@@ -622,11 +622,29 @@ void DrawUI(void) {
         // Speed presets
         if (PushButton(x, y, "Pause")) gameSpeed = 0.0f;
         y += 22;
-        if (PushButton(x, y, "1x")) gameSpeed = 1.0f;
+        
+        // Inline speed buttons: 1x 2x 3x
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) gameSpeed = 1.0f;
+            clicked = false;
+            bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) gameSpeed = 2.0f;
+            clicked = false;
+            PushButtonInline(bx, y, "3x", &clicked); if (clicked) gameSpeed = 3.0f;
+        }
         y += 22;
-        if (PushButton(x, y, "10x")) gameSpeed = 10.0f;
-        y += 22;
-        if (PushButton(x, y, "100x")) gameSpeed = 100.0f;
+        
+        // Inline speed buttons: 5x 10x 50x
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "5x", &clicked); if (clicked) gameSpeed = 5.0f;
+            clicked = false;
+            bx += PushButtonInline(bx, y, "10x", &clicked); if (clicked) gameSpeed = 10.0f;
+            clicked = false;
+            PushButtonInline(bx, y, "50x", &clicked); if (clicked) gameSpeed = 50.0f;
+        }
         y += 22;
         
         // Day length
