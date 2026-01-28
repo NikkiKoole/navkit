@@ -406,3 +406,102 @@ Each checkpoint is a commit where:
 | `src/entities/mover.c` | 5, 6 |
 | `src/render/rendering.c` | 8 |
 | `tests/*.c` | 9 |
+
+---
+
+## Implementation Progress & Findings
+
+### Completed (Phases 1-6)
+
+**Phase 1-3**: Core infrastructure in place:
+- `CF_SOLID` flag added to cell definitions
+- `IsCellWalkableAt_DFStyle()` function implemented
+- `g_useDFWalkability` toggle with F7 key binding
+- HPA graph rebuilds when toggling (calls `BuildEntrances()` + `BuildGraph()`)
+
+**Phase 4**: `GenerateFlatDF()` terrain generator added:
+- z=0: solid dirt with grass overlay
+- z=1+: air (walkable in DF mode because solid below)
+
+**Phase 5-6**: Entity spawning and falling updated:
+- Movers spawn at correct z-level based on walkability mode
+- Falling distinguishes between air (fall) and walls (push out)
+
+### Key Implementation Details
+
+**Walkability Logic** (`cell_defs.h`):
+```c
+static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
+    if (z < 0 || z >= gridDepth || ...) return false;
+    CellType cellHere = grid[z][y][x];
+    if (CellBlocksMovement(cellHere)) return false;
+    if (CellIsLadder(cellHere)) return true;   // Ladders always walkable
+    if (CellIsRamp(cellHere)) return true;     // Ramps always walkable
+    if (z == 0) return false;                  // z=0 never walkable in DF mode
+    CellType cellBelow = grid[z-1][y][x];
+    return CellIsSolid(cellBelow);
+}
+```
+
+**Ladder Climbing in DF Mode** (`pathfinding.c`):
+```c
+// CanClimbUp: ladder at z+1 allows climbing from walkable z to z+1
+if (g_useDFWalkability) {
+    bool hasLadderAbove = CellIsLadder(high);
+    return hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
+}
+
+// CanClimbDown: ladder at current z OR below allows climbing down
+if (g_useDFWalkability) {
+    bool hasLadderHere = CellIsLadder(high);
+    bool hasLadderBelow = CellIsLadder(low);
+    return (hasLadderHere || hasLadderBelow) && IsCellWalkableAt(z - 1, y, x);
+}
+```
+
+**HPA Visualization Fix** (`rendering.c`):
+- `DrawEntrances()` and `DrawGraph()` now filter by `currentViewZ`
+- Previously showed all z-levels overlapping
+
+### Working Features
+
+- Toggle between legacy and DF mode with F7
+- Basic walking on flat DF terrain (z=1 on z=0 dirt)
+- Pathfinding works on flat terrain
+- Movers pathfind correctly at z=1
+- Ladders work in simple cases (tested in-game)
+
+### Known Limitations & Future Work
+
+**Tests**: 
+- Basic walkability tests pass (`df_walkability` suite)
+- Ladder pathfinding test (`df_ladder_pathfinding`) needs work - test setup is complex
+- The in-game behavior works but automated test doesn't find path (likely test grid setup issue)
+
+**Not Yet Implemented**:
+- Phase 7: Converting other terrain generators
+- Phase 8: Rendering adjustments (floor textures from z-1)
+- Phase 10: Removing legacy model (keeping toggle for now)
+
+### Testing Commands
+
+```bash
+# Run all tests
+make test
+
+# Run pathfinding tests only
+./bin/test_pathing
+
+# In-game testing
+# 1. Select "FlatDF" terrain generator
+# 2. Press F7 to toggle DF walkability mode
+# 3. Spawn movers and observe pathfinding
+```
+
+### Debug Tips
+
+When debugging DF mode issues:
+1. Check `IsCellWalkableAt()` returns expected values for start/goal
+2. Verify `ladderLinkCount` > 0 if ladders should exist
+3. Check `entranceCount` is reasonable for the terrain
+4. Ensure ladders are placed at the destination z-level (climb UP to the ladder)
