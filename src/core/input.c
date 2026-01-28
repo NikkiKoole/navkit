@@ -3,6 +3,7 @@
 #include "../world/cell_defs.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
+#include "../simulation/temperature.h"
 #include "../simulation/groundwear.h"
 #include "input_mode.h"
 
@@ -429,6 +430,7 @@ static void ExecutePlaceSteam(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             SetSteamLevel(dx, dy, z, STEAM_MAX_LEVEL);
+            SetTemperature(dx, dy, z, 100);  // Steam should be hot (100°C)
             count++;
         }
     }

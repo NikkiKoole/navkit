@@ -18,9 +18,15 @@ int steamUpdateCount = 0;
 float steamRiseInterval = 0.5f;     // Rise attempt every 0.5 game-seconds
 int steamCondensationTemp = 60;     // 60C - steam lingers longer before condensing
 int steamGenerationTemp = 100;      // 100C (boiling point)
+int steamCondensationChance = 3;    // 1 in N ticks attempts condensation
+int steamRiseFlow = 1;              // Units of steam that rise per attempt
 
 // Internal accumulators for game-time
 static float steamRiseAccum = 0.0f;
+
+// Track which cells have received risen steam this tick (prevents cascading through z-levels)
+static uint16_t steamRiseGeneration = 0;
+static uint16_t steamHasRisen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Initialize steam system
 void InitSteam(void) {
@@ -145,18 +151,28 @@ static int SteamTryRise(int x, int y, int z) {
     
     if (src->level == 0) return 0;
     
+    // Don't rise if this cell's steam already rose into it this tick
+    // This prevents steam from cascading through multiple z-levels in one tick
+    if (steamHasRisen[z][y][x] == steamRiseGeneration) {
+        return 0;
+    }
+    
     int space = STEAM_MAX_LEVEL - dst->level;
     if (space <= 0) {
         // Cell above is full - pressure builds (Phase 2)
         return 0;
     }
     
-    int flow = 1;  // Move 1 unit at a time
+    int flow = steamRiseFlow;
     if (flow > src->level) flow = src->level;
     if (flow > space) flow = space;
     
     src->level -= flow;
     dst->level += flow;
+    
+    // Mark destination as having received risen steam this tick
+    // This prevents the steam from immediately rising again when z+1 is processed
+    steamHasRisen[z+1][y][x] = steamRiseGeneration;
     
     // Steam carries heat - warm up destination cell
     int srcTemp = GetTemperature(x, y, z);
@@ -237,7 +253,7 @@ static bool SteamTryCondense(int x, int y, int z) {
     if (cell->level == 0) return false;
     
     // Only condense sometimes (steam lingers)
-    if ((rand() % 3) != 0) return false;
+    if (steamCondensationChance > 1 && (rand() % steamCondensationChance) != 0) return false;
     
     // Check temperature at this cell (Celsius)
     int temp = GetTemperature(x, y, z);
@@ -324,7 +340,17 @@ void UpdateSteam(void) {
     
     // Check if rise interval has elapsed
     bool doRise = steamRiseAccum >= steamRiseInterval;
-    if (doRise) steamRiseAccum -= steamRiseInterval;
+    if (doRise) {
+        steamRiseAccum -= steamRiseInterval;
+        
+        // Increment generation for rise tracking (prevents cascading through z-levels)
+        steamRiseGeneration++;
+        if (steamRiseGeneration == 0) {
+            // Handle overflow by clearing the tracking array
+            memset(steamHasRisen, 0, sizeof(steamHasRisen));
+            steamRiseGeneration = 1;
+        }
+    }
     
     // Alternate scan direction each tick to avoid directional bias
     bool reverseX = (steamTick & 1);

@@ -493,6 +493,12 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
             TextFormat("Temperature at which water boils to steam: %d C. Standard is 100C (boiling point).", steamGenerationTemp));
         y += 22;
+        DraggableIntT(x, y, "Condensation Chance", &steamCondensationChance, 1.0f, 1, 600,
+            TextFormat("1 in %d ticks attempts condensation. Higher = slower condensation.", steamCondensationChance));
+        y += 22;
+        DraggableIntT(x, y, "Rise Flow", &steamRiseFlow, 1.0f, 1, STEAM_MAX_LEVEL,
+            TextFormat("Units of steam that rise per attempt: %d. Higher = faster rising.", steamRiseFlow));
+        y += 22;
         if (PushButton(x, y, "Clear Steam")) {
             ClearSteam();
         }

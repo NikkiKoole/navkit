@@ -29,6 +29,8 @@ extern int steamUpdateCount;        // Cells updated last tick (for debug/profil
 extern float steamRiseInterval;     // Game-seconds between rise attempts
 extern int steamCondensationTemp;   // Celsius below which steam condenses (default: 60C)
 extern int steamGenerationTemp;     // Celsius above which water boils (default: 100C)
+extern int steamCondensationChance; // 1 in N ticks attempts condensation (default: 3)
+extern int steamRiseFlow;           // Units of steam that rise per attempt (default: 1)
 
 // Initialize/clear
 void InitSteam(void);
