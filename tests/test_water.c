@@ -5,6 +5,7 @@
 #include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 // Helper to run water simulation for N ticks
@@ -373,7 +374,7 @@ describe(water_falling) {
         SetWaterLevel(2, 1, 1, 7);
         
         // Make z=0 able to receive water (not a wall)
-        expect(grid[0][1][2] == CELL_WALKABLE);
+        expect(!CellBlocksMovement(grid[0][1][2]));
         
         // Run simulation
         RunWaterTicks(10);
@@ -1243,15 +1244,21 @@ describe(water_freezing) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    // Default to DF mode, but allow override via command line
+    g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
     
     // Basic operations
     test(water_initialization);

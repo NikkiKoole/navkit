@@ -10,6 +10,7 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/world/designations.h"
 #include "../src/core/time.h"
+#include <string.h>
 #include <math.h>
 
 // Helper functions to check mover job state (replaces m->jobState checks)
@@ -1549,6 +1550,7 @@ describe(unreachable_item_cooldown) {
     }
     
     it("should retry unreachable item after cooldown expires") {
+        g_useDFWalkability = false;  // Use legacy mode for this complex job test
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -4742,6 +4744,7 @@ describe(job_game_speed) {
     }
     
     it("should complete build job faster at higher game speed") {
+        g_useDFWalkability = false;  // Use legacy mode for this complex job test
         // Setup world
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5311,15 +5314,21 @@ describe(workgivers) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    // Default to DF mode, but allow override via command line
+    g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
 
     test(item_system);
     test(item_reservation);

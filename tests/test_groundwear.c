@@ -4,6 +4,7 @@
 #include "../src/world/cell_defs.h"
 #include "../src/simulation/groundwear.h"
 #include <stdlib.h>
+#include <string.h>
 
 // =============================================================================
 // Basic Initialization
@@ -556,15 +557,21 @@ describe(groundwear_edge_cases) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    // Default to DF mode, but allow override via command line
+    g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
     
     // Run tests
     test(groundwear_initialization);

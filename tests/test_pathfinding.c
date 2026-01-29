@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include <stdlib.h>
+#include <string.h>
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/terrain.h"
@@ -3391,15 +3392,22 @@ describe(df_basics) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Default to DF mode - tests that need legacy mode will set it explicitly
+    // Default to DF mode, but allow override via command line
+    // Note: individual tests may override this for specific test cases
     g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
 
     test(grid_initialization);
     test(entrance_building);

@@ -101,8 +101,44 @@ test_high_speed: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_high_speed
 
-# Run all tests
+# Run all tests (default: DF mode)
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed
+
+# Run all tests in legacy mode
+test-legacy: $(BINDIR)
+	@echo "=== Running all tests in LEGACY mode ==="
+	./$(BINDIR)/test_pathing --legacy
+	./$(BINDIR)/test_mover --legacy
+	./$(BINDIR)/test_steering
+	./$(BINDIR)/test_jobs --legacy
+	./$(BINDIR)/test_water --legacy
+	./$(BINDIR)/test_groundwear --legacy
+	./$(BINDIR)/test_fire --legacy
+	./$(BINDIR)/test_temperature --legacy
+	./$(BINDIR)/test_steam --legacy
+	./$(BINDIR)/test_time --legacy
+	./$(BINDIR)/test_time_specs --legacy
+	./$(BINDIR)/test_high_speed --legacy
+
+# Run all tests in DF mode
+test-df: $(BINDIR)
+	@echo "=== Running all tests in DF mode ==="
+	./$(BINDIR)/test_pathing --df
+	./$(BINDIR)/test_mover --df
+	./$(BINDIR)/test_steering
+	./$(BINDIR)/test_jobs --df
+	./$(BINDIR)/test_water --df
+	./$(BINDIR)/test_groundwear --df
+	./$(BINDIR)/test_fire --df
+	./$(BINDIR)/test_temperature --df
+	./$(BINDIR)/test_steam --df
+	./$(BINDIR)/test_time --df
+	./$(BINDIR)/test_time_specs --df
+	./$(BINDIR)/test_high_speed --df
+
+# Run all tests in both modes
+test-both: test test-legacy test-df
+	@echo "=== All tests passed in both modes ==="
 
 # Benchmark targets - all use test_unity.c for shared game logic
 bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c

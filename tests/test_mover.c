@@ -6,6 +6,7 @@
 #include "../src/entities/mover.h"
 #include "../src/world/terrain.h"
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 describe(mover_initialization) {
@@ -801,6 +802,7 @@ describe(string_pulling_narrow_gaps) {
 
 describe(chunk_boundary_paths) {
     it("should find paths when room entrance is in adjacent chunk") {
+        g_useDFWalkability = false;  // Chunk boundary test uses legacy mode
         // Regression test for chunk boundary pathfinding bug.
         //
         // The bug: ReconstructLocalPath() only searched within chunk bounds.
@@ -921,6 +923,7 @@ describe(path_truncation) {
 
 describe(mover_falling) {
     it("should fall to ground when placed in air") {
+        g_useDFWalkability = false;  // Falling test uses legacy mode
         // Two floors: z=0 is ground, z=1 is all air
         const char* map =
             "floor:0\n"
@@ -966,6 +969,7 @@ describe(mover_falling) {
     }
     
     it("should not fall when walking on walkable cells") {
+        g_useDFWalkability = false;  // Falling test uses legacy mode
         // Simple two-floor map where both floors are fully walkable
         const char* map =
             "floor:0\n"
@@ -1125,7 +1129,9 @@ describe(mover_z_level_collision) {
 }
 
 describe(mover_ladder_transitions) {
+    // Ladder tests use legacy walkability - they test ladder mechanics, not DF walkability
     it("should transition z-level when reaching ladder waypoint") {
+        g_useDFWalkability = false;
         // Simple two-floor map with a ladder at (2,1)
         const char* map =
             "floor:0\n"
@@ -1176,6 +1182,7 @@ describe(mover_ladder_transitions) {
     }
 
     it("should climb ladder when path goes through ladder cell") {
+        g_useDFWalkability = false;
         // Map with ladder connecting z=0 and z=1
         const char* map =
             "floor:0\n"
@@ -1222,6 +1229,7 @@ describe(mover_ladder_transitions) {
     }
 
     it("should handle JPS+ 3D path through Labyrinth3D") {
+        g_useDFWalkability = false;
         // Use actual Labyrinth3D terrain
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
@@ -1314,6 +1322,7 @@ describe(mover_ladder_transitions) {
     }
 
     it("JPS+ 3D path should match JPS 3D path structure") {
+        g_useDFWalkability = false;
         // Compare paths from both algorithms to ensure JPS+ produces valid paths
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
@@ -1402,6 +1411,7 @@ describe(mover_ladder_transitions) {
     }
 
     it("should handle multiple random cross-z paths with JPS+") {
+        g_useDFWalkability = false;
         // Test many random paths to catch intermittent issues
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
@@ -1719,15 +1729,21 @@ describe(staggered_updates) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    // Default to DF mode, but allow override via command line
+    g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
 
     test(mover_initialization);
     test(fixed_timestep_movement);

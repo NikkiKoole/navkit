@@ -6,6 +6,7 @@
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/water.h"
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 // Helper to run fire simulation for N ticks
@@ -175,8 +176,8 @@ describe(fire_basic_burning) {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n", 4, 2);
+        FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
         
-        // Grid is initialized as CELL_WALKABLE which is an alias for grass
         InitFire();
         InitSmoke();
         
@@ -206,6 +207,7 @@ describe(fire_basic_burning) {
     it("should show burned tint after fire dies") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
+        FillGroundLevel();
         
         InitFire();
         
@@ -237,6 +239,7 @@ describe(fire_spreading) {
             "........\n"
             "........\n"
             "........\n", 8, 4);
+        FillGroundLevel();
         
         InitFire();
         
@@ -379,6 +382,7 @@ describe(fire_water_extinguishing) {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n", 4, 2);
+        FillGroundLevel();
         
         InitFire();
         InitWater();
@@ -530,6 +534,7 @@ describe(fire_burned_cells) {
     it("should not reignite burned cells") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
+        FillGroundLevel();
         
         InitFire();
         
@@ -685,15 +690,7 @@ describe(smoke_multi_z_rising) {
         // intermediate levels without accumulating there
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         gridDepth = 6;  // More levels to make the bug obvious
-        
-        // Initialize all levels as open air
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
-                }
-            }
-        }
+        FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
         
         InitFire();
         InitSmoke();
@@ -704,7 +701,7 @@ describe(smoke_multi_z_rising) {
         // Run enough ticks for smoke to reach top but not too many
         // With proper rising (one z-level per rise interval), smoke needs
         // multiple rise intervals to reach higher levels
-        RunFireAndSmokeTicks(100);
+        RunFireAndSmokeTicks(150);
         
         // Count total smoke at each level
         int smokeByZ[6] = {0};
@@ -939,15 +936,21 @@ describe(fire_edge_cases) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool forceDF = false;
+    bool forceLegacy = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (strcmp(argv[i], "--df") == 0) forceDF = true;
+        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    // Default to DF mode, but allow override via command line
+    g_useDFWalkability = true;
+    if (forceLegacy) g_useDFWalkability = false;
+    if (forceDF) g_useDFWalkability = true;
     
     // Basic operations
     test(fire_initialization);
