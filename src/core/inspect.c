@@ -16,6 +16,8 @@
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
 #include "../entities/workshops.h"
+#include "../world/pathfinding.h"
+#include "../world/cell_defs.h"
 
 #define INSPECT_SAVE_VERSION 8
 #define INSPECT_SAVE_MAGIC 0x4E41564B
@@ -266,6 +268,30 @@ static void print_cell(int x, int y, int z) {
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
     printf("Type: %s (raw=%d)\n", cell < 12 ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
     
+    // Walkability (requires globals to be set up)
+    bool walkable = IsCellWalkableAt(z, y, x);
+    printf("Walkable: %s", walkable ? "YES" : "NO");
+    if (walkable) {
+        if (CellIsLadder(cell)) printf(" (ladder)");
+        else if (CellIsRamp(cell)) printf(" (ramp)");
+        else if (insp_cellFlags[idx] & CELL_FLAG_HAS_FLOOR) printf(" (constructed floor)");
+        else if (z == 0) printf(" (bedrock below)");
+        else {
+            int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
+            CellType cellBelow = insp_gridCells[idxBelow];
+            printf(" (solid below: %s)", cell < 12 ? cellTypeNames[cellBelow] : "?");
+        }
+    } else {
+        if (CellBlocksMovement(cell)) printf(" (blocks movement)");
+        else if (insp_cellFlags[idx] & CELL_FLAG_WORKSHOP_BLOCK) printf(" (workshop blocks)");
+        else if (z > 0) {
+            int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
+            CellType cellBelow = insp_gridCells[idxBelow];
+            if (!CellIsSolid(cellBelow)) printf(" (no solid below: %s)", cellBelow < 12 ? cellTypeNames[cellBelow] : "?");
+        }
+    }
+    printf("\n");
+    
     // Water
     printf("Water level: %d/7\n", water.level);
     if (water.isSource) printf("  IS SOURCE\n");
@@ -332,6 +358,63 @@ static void print_cell(int x, int y, int z) {
         }
     }
     if (!found) printf("  (none)\n");
+}
+
+// Copy inspector grid data to game globals so pathfinding works
+static void setup_pathfinding_globals(void) {
+    gridWidth = insp_gridW;
+    gridHeight = insp_gridH;
+    gridDepth = insp_gridD;
+    
+    for (int z = 0; z < insp_gridD; z++) {
+        for (int y = 0; y < insp_gridH; y++) {
+            for (int x = 0; x < insp_gridW; x++) {
+                int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+                grid[z][y][x] = insp_gridCells[idx];
+                cellFlags[z][y][x] = insp_cellFlags[idx];
+            }
+        }
+    }
+}
+
+static void print_path(int x1, int y1, int z1, int x2, int y2, int z2) {
+    printf("\n=== PATH TEST ===\n");
+    printf("From: (%d, %d, z%d)\n", x1, y1, z1);
+    printf("To:   (%d, %d, z%d)\n", x2, y2, z2);
+    
+    // Check bounds
+    if (x1 < 0 || x1 >= insp_gridW || y1 < 0 || y1 >= insp_gridH || z1 < 0 || z1 >= insp_gridD) {
+        printf("Error: Start position out of bounds\n");
+        return;
+    }
+    if (x2 < 0 || x2 >= insp_gridW || y2 < 0 || y2 >= insp_gridH || z2 < 0 || z2 >= insp_gridD) {
+        printf("Error: Goal position out of bounds\n");
+        return;
+    }
+    
+    // Check walkability
+    bool startWalkable = IsCellWalkableAt(z1, y1, x1);
+    bool goalWalkable = IsCellWalkableAt(z2, y2, x2);
+    printf("Start walkable: %s\n", startWalkable ? "YES" : "NO");
+    printf("Goal walkable:  %s\n", goalWalkable ? "YES" : "NO");
+    
+    if (!startWalkable || !goalWalkable) {
+        printf("Path: NOT POSSIBLE (endpoints not walkable)\n");
+        return;
+    }
+    
+    // Run pathfinding
+    Point start = { x1, y1, z1 };
+    Point goal = { x2, y2, z2 };
+    Point outPath[MAX_PATH];
+    
+    int len = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+    
+    if (len > 0) {
+        printf("Path: FOUND (%d steps)\n", len);
+    } else {
+        printf("Path: NOT FOUND\n");
+    }
 }
 
 static void print_stuck_movers(void) {
@@ -427,6 +510,8 @@ int InspectSaveFile(int argc, char** argv) {
     const char* filename = "saves/debug_save.bin";
     int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1, opt_workshop = -1;
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
+    int opt_path_x1 = -1, opt_path_y1 = -1, opt_path_z1 = -1;
+    int opt_path_x2 = -1, opt_path_y2 = -1, opt_path_z2 = -1;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false;
     
     for (int i = 2; i < argc; i++) {  // Start at 2, skip program name and --inspect
@@ -437,6 +522,10 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--workshop") == 0 && i+1 < argc) opt_workshop = atoi(argv[++i]);
         else if (strcmp(argv[i], "--cell") == 0 && i+1 < argc) {
             sscanf(argv[++i], "%d,%d,%d", &opt_cell_x, &opt_cell_y, &opt_cell_z);
+        }
+        else if (strcmp(argv[i], "--path") == 0 && i+2 < argc) {
+            sscanf(argv[++i], "%d,%d,%d", &opt_path_x1, &opt_path_y1, &opt_path_z1);
+            sscanf(argv[++i], "%d,%d,%d", &opt_path_x2, &opt_path_y2, &opt_path_z2);
         }
         else if (strcmp(argv[i], "--stuck") == 0) opt_stuck = true;
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
@@ -576,7 +665,7 @@ int InspectSaveFile(int argc, char** argv) {
     // Print summary if no specific queries
     bool anyQuery = (opt_mover >= 0 || opt_item >= 0 || opt_job >= 0 || 
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_cell_x >= 0 || 
-                     opt_stuck || opt_reserved || opt_jobs_active);
+                     opt_path_x1 >= 0 || opt_stuck || opt_reserved || opt_jobs_active);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -599,16 +688,22 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --cell X,Y,Z\n");
-        printf("         --stuck, --reserved, --jobs-active\n");
+        printf("         --path X1,Y1,Z1 X2,Y2,Z2, --stuck, --reserved, --jobs-active\n");
     }
     
     // Handle queries
+    // Set up globals first if any query needs walkability/pathfinding
+    if (opt_cell_x >= 0 || opt_path_x1 >= 0) {
+        setup_pathfinding_globals();
+    }
+    
     if (opt_mover >= 0) print_mover(opt_mover);
     if (opt_item >= 0) print_item(opt_item);
     if (opt_job >= 0) print_job(opt_job);
     if (opt_stockpile >= 0) print_stockpile(opt_stockpile);
     if (opt_workshop >= 0) print_workshop(opt_workshop);
     if (opt_cell_x >= 0) print_cell(opt_cell_x, opt_cell_y, opt_cell_z);
+    if (opt_path_x1 >= 0) print_path(opt_path_x1, opt_path_y1, opt_path_z1, opt_path_x2, opt_path_y2, opt_path_z2);
     if (opt_stuck) print_stuck_movers();
     if (opt_reserved) print_reserved_items();
     if (opt_jobs_active) print_active_jobs();
