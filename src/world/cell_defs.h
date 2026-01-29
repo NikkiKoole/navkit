@@ -76,8 +76,8 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     return CellIsWalkable(grid[z][y][x]);
 }
 
-// DF-style walkability: walkable if current cell is traversable AND cell below is solid
-// This function exists but is not yet used - will be activated via toggle in Phase 3
+// DF-style walkability: walkable if current cell is traversable AND
+// (cell below is solid OR this cell has a constructed floor)
 static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     // Bounds check
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
@@ -95,6 +95,9 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     
     // Can't walk inside solid blocks (dirt, walls, etc.)
     if (CellIsSolid(cellHere)) return false;
+    
+    // Constructed floor: walkable even with air below (balconies, bridges)
+    if (HAS_FLOOR(x, y, z)) return true;
     
     // DF-style: walkable if cell below is solid
     // At z=0, treat z=-1 as implicit solid bedrock

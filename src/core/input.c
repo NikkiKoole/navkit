@@ -78,11 +78,23 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (grid[z][dy][dx] != CELL_FLOOR) {
-                grid[z][dy][dx] = CELL_FLOOR;
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                count++;
+            if (g_useDFWalkability) {
+                // DF mode: set floor flag on AIR cell (for balconies/bridges)
+                if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
+                    grid[z][dy][dx] = CELL_AIR;
+                    SET_FLOOR(dx, dy, z);
+                    MarkChunkDirty(dx, dy, z);
+                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                    count++;
+                }
+            } else {
+                // Legacy mode: use CELL_FLOOR type
+                if (grid[z][dy][dx] != CELL_FLOOR) {
+                    grid[z][dy][dx] = CELL_FLOOR;
+                    MarkChunkDirty(dx, dy, z);
+                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                    count++;
+                }
             }
         }
     }
@@ -148,8 +160,17 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                 count++;
             } else {
                 CellType eraseType = (z == 0) ? CELL_BEDROCK : CELL_AIR;
+                bool changed = false;
                 if (grid[z][dy][dx] != eraseType) {
                     grid[z][dy][dx] = eraseType;
+                    changed = true;
+                }
+                // Also clear floor flag in DF mode
+                if (HAS_FLOOR(dx, dy, z)) {
+                    CLEAR_FLOOR(dx, dy, z);
+                    changed = true;
+                }
+                if (changed) {
                     MarkChunkDirty(dx, dy, z);
                     DestabilizeWater(dx, dy, z);
                     count++;

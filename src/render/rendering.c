@@ -47,11 +47,22 @@ void DrawCellGrid(void) {
             }
         }
         
+        // Draw constructed floors (HAS_FLOOR flag - for balconies/bridges over empty space)
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (HAS_FLOOR(x, y, z)) {
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Rectangle src = SpriteGetRect(SPRITE_floor);
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                }
+            }
+        }
+        
         // Draw current layer (walls, ladders, etc. - things that block or occupy the space)
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 CellType cell = grid[z][y][x];
-                // Skip air - floor was already drawn from z-1
+                // Skip air - floor was already drawn from z-1 or HAS_FLOOR
                 if (cell == CELL_AIR) continue;
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(CellSprite(cell));

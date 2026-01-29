@@ -3144,12 +3144,24 @@ void SeedRandom(unsigned int seed) {
     SetRandomSeed(seed);
 }
 
+// Wall-top fix: In DF mode, only pick z-levels that have ladder links.
+// This prevents movers from spawning/targeting unreachable wall tops.
+static bool ZLevelHasLadderLinks(int z) {
+    for (int i = 0; i < ladderLinkCount; i++) {
+        if (ladderLinks[i].zLow == z || ladderLinks[i].zHigh == z) {
+            return true;
+        }
+    }
+    return false;
+}
+
 Point GetRandomWalkableCell(void) {
     Point p;
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
+        if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         if (IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }
@@ -3163,6 +3175,7 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
+        if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         if (p.z != excludeZ && IsCellWalkableAt(p.z, p.y, p.x)) {
             return p;
         }
@@ -3170,6 +3183,8 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     return GetRandomWalkableCell();
 }
 
+// NOTE: This function is called for same-z goals, so no ladder check needed.
+// If mover is already on a z-level, they can reach any walkable cell on that level.
 Point GetRandomWalkableCellOnZ(int z) {
     Point p;
     p.z = z;
