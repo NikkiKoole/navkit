@@ -143,6 +143,7 @@ void DrawGrassOverlay(void) {
                 if (grid[zBelow][y][x] != CELL_DIRT) continue;
                 CellType cellHere = grid[z][y][x];
                 if (cellHere != CELL_AIR) continue;  // Don't draw grass under walls, ladders, etc.
+                if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
                 
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
                 if (surface == SURFACE_BARE) continue;

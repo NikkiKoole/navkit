@@ -41,14 +41,21 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     chunksX = (gridWidth + chunkWidth - 1) / chunkWidth;   // ceiling division
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
 
-    // Clear the grid (all z-levels)
-    for (int z = 0; z < gridDepth; z++)
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
-
-    // Clear cell flags
+    // Clear the grid (all z-levels) and cell flags
     memset(cellFlags, 0, sizeof(cellFlags));
+    
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (z == 0) {
+                    grid[z][y][x] = CELL_DIRT;
+                    SET_CELL_SURFACE(x, y, z, SURFACE_TALL_GRASS);  // Start with grass
+                } else {
+                    grid[z][y][x] = CELL_AIR;
+                }
+            }
+        }
+    }
 
     needsRebuild = true;
     jpsNeedsRebuild = true;

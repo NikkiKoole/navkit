@@ -13,16 +13,8 @@ typedef struct {
 } Room;
 
 void InitGrid(void) {
-    // Clear all levels to air first
-    for (int z = 0; z < gridDepth; z++)
-        for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = CELL_AIR;
-    
-    // Fill z=0 with dirt (DF-style ground)
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            grid[0][y][x] = CELL_DIRT;
+    // Re-initialize grid with current dimensions (clears cells and flags)
+    InitGridWithSizeAndChunkSize(gridWidth, gridHeight, chunkWidth, chunkHeight);
 }
 
 void GenerateSparse(float density) {
@@ -32,6 +24,32 @@ void GenerateSparse(float density) {
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
                 grid[1][y][x] = CELL_WALL;  // Walls at z=1 (walking level)
     needsRebuild = true;
+}
+
+// ============================================================================
+// Floor Placement Helper
+// In DF mode: uses CELL_AIR + HAS_FLOOR flag (for balconies/bridges)
+// In legacy mode: uses CELL_FLOOR cell type
+// ============================================================================
+static void PlaceFloor(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    if (g_useDFWalkability) {
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
+    } else {
+        grid[z][y][x] = CELL_FLOOR;
+    }
+    // Clear grass/surface overlay on floors
+    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+}
+
+// Helper to check if a cell is a floor (either CELL_FLOOR or HAS_FLOOR flag)
+static bool IsFloorCell(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (g_useDFWalkability) {
+        return HAS_FLOOR(x, y, z) || grid[z][y][x] == CELL_FLOOR;
+    }
+    return grid[z][y][x] == CELL_FLOOR;
 }
 
 // ============================================================================
@@ -46,14 +64,14 @@ void GenerateSparse(float density) {
 // ============================================================================
 
 // Helper: Place a ladder connecting zLow and zHigh near (targetX, targetY)
-// Searches within radius for a spot where both levels have CELL_FLOOR
+// Searches within radius for a spot where both levels have floor
 static void PlaceLadderNear(int targetX, int targetY, int zLow, int zHigh, int radius) {
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
             int x = targetX + dx;
             int y = targetY + dy;
             if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
-                if (grid[zLow][y][x] == CELL_FLOOR && grid[zHigh][y][x] == CELL_FLOOR) {
+                if (IsFloorCell(x, y, zLow) && IsFloorCell(x, y, zHigh)) {
                     grid[zLow][y][x] = CELL_LADDER;
                     grid[zHigh][y][x] = CELL_LADDER;
                     return;
@@ -64,23 +82,19 @@ static void PlaceLadderNear(int targetX, int targetY, int zLow, int zHigh, int r
 }
 
 void GenerateLabyrinth3D(void) {
+    InitGrid();  // Clear cells and flags
+    
     // In DF mode, z=0 is ground (dirt), buildings start at z=1
     int baseZ = g_useDFWalkability ? 1 : 0;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
     
-    // Clear all levels
-    for (int z = 0; z < gridDepth; z++) {
+    // Fill labyrinth levels with walls (to carve passages)
+    for (int z = baseZ; z < baseZ + numLevels; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (z == 0 && g_useDFWalkability) {
-                    grid[z][y][x] = CELL_DIRT;
-                } else if (z >= baseZ && z < baseZ + numLevels) {
-                    grid[z][y][x] = CELL_WALL;
-                } else {
-                    grid[z][y][x] = CELL_AIR;
-                }
+                grid[z][y][x] = CELL_WALL;
             }
         }
     }
@@ -98,14 +112,14 @@ void GenerateLabyrinth3D(void) {
     for (int y = spacing; y < gridHeight - spacing; y += spacing) {
         for (int x = 1; x < gridWidth - 1; x++) {
             for (int w = 0; w < passageWidth && y + w < gridHeight - 1; w++) {
-                grid[z0][y + w][x] = CELL_FLOOR;
+                PlaceFloor(x, y + w, z0);
             }
         }
     }
     int westConnectorX = gridWidth / 6;
     for (int y = 1; y < gridHeight - 1; y++) {
         for (int w = 0; w < passageWidth && westConnectorX + w < gridWidth; w++) {
-            grid[z0][y][westConnectorX + w] = CELL_FLOOR;
+            PlaceFloor(westConnectorX + w, y, z0);
         }
     }
     
@@ -113,14 +127,14 @@ void GenerateLabyrinth3D(void) {
     for (int x = spacing; x < gridWidth - spacing; x += spacing) {
         for (int y = 1; y < gridHeight - 1; y++) {
             for (int w = 0; w < passageWidth && x + w < gridWidth - 1; w++) {
-                grid[z1][y][x + w] = CELL_FLOOR;
+                PlaceFloor(x + w, y, z1);
             }
         }
     }
     int southConnectorY = gridHeight - gridHeight / 6;
     for (int x = 1; x < gridWidth - 1; x++) {
         for (int w = 0; w < passageWidth && southConnectorY + w < gridHeight; w++) {
-            grid[z1][southConnectorY + w][x] = CELL_FLOOR;
+            PlaceFloor(x, southConnectorY + w, z1);
         }
     }
     
@@ -129,14 +143,14 @@ void GenerateLabyrinth3D(void) {
     for (int y = spacing + offset; y < gridHeight - spacing; y += spacing) {
         for (int x = 1; x < gridWidth - 1; x++) {
             for (int w = 0; w < passageWidth && y + w < gridHeight - 1; w++) {
-                grid[z2][y + w][x] = CELL_FLOOR;
+                PlaceFloor(x, y + w, z2);
             }
         }
     }
     int eastConnectorX = gridWidth - gridWidth / 6;
     for (int y = 1; y < gridHeight - 1; y++) {
         for (int w = 0; w < passageWidth && eastConnectorX + w < gridWidth; w++) {
-            grid[z2][y][eastConnectorX + w] = CELL_FLOOR;
+            PlaceFloor(eastConnectorX + w, y, z2);
         }
     }
     
@@ -144,7 +158,7 @@ void GenerateLabyrinth3D(void) {
     for (int y = 1; y < gridHeight - 1; y++) {
         for (int x = 1; x < gridWidth - 1; x++) {
             if ((y % spacing) < passageWidth || (x % spacing) < passageWidth) {
-                grid[z3][y][x] = CELL_FLOOR;
+                PlaceFloor(x, y, z3);
             }
         }
     }
@@ -178,23 +192,19 @@ void GenerateLabyrinth3D(void) {
 // ============================================================================
 
 void GenerateSpiral3D(void) {
+    InitGrid();  // Clear cells and flags
+    
     // In DF mode, z=0 is ground (dirt), buildings start at z=1
     int baseZ = g_useDFWalkability ? 1 : 0;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
     
-    // Clear all levels
-    for (int z = 0; z < gridDepth; z++) {
+    // Fill spiral levels with floor
+    for (int z = baseZ; z < baseZ + numLevels; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (z == 0 && g_useDFWalkability) {
-                    grid[z][y][x] = CELL_DIRT;
-                } else if (z >= baseZ && z < baseZ + numLevels) {
-                    grid[z][y][x] = CELL_FLOOR;
-                } else {
-                    grid[z][y][x] = CELL_AIR;
-                }
+                PlaceFloor(x, y, z);
             }
         }
     }
@@ -301,12 +311,12 @@ void GenerateSpiral3D(void) {
     // Gaps on all sides for level 3
     for (int i = -gapSize/2; i <= gapSize/2; i++) {
         if (centerX + i > 0 && centerX + i < gridWidth - 1) {
-            grid[z3][centerY - innerRing][centerX + i] = CELL_FLOOR;
-            grid[z3][centerY + innerRing][centerX + i] = CELL_FLOOR;
+            PlaceFloor(centerX + i, centerY - innerRing, z3);
+            PlaceFloor(centerX + i, centerY + innerRing, z3);
         }
         if (centerY + i > 0 && centerY + i < gridHeight - 1) {
-            grid[z3][centerY + i][centerX - innerRing] = CELL_FLOOR;
-            grid[z3][centerY + i][centerX + innerRing] = CELL_FLOOR;
+            PlaceFloor(centerX - innerRing, centerY + i, z3);
+            PlaceFloor(centerX + innerRing, centerY + i, z3);
         }
     }
     
@@ -329,8 +339,8 @@ void GenerateSpiral3D(void) {
     grid[z1][ladder01_y][ladder01_x] = CELL_LADDER;
     // Ensure path to ladder is clear
     for (int y = ladder01_y; y < centerY - outerRingDist; y++) {
-        grid[z0][y][ladder01_x] = (grid[z0][y][ladder01_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
-        grid[z1][y][ladder01_x] = (grid[z1][y][ladder01_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        if (grid[z0][y][ladder01_x] != CELL_LADDER) PlaceFloor(ladder01_x, y, z0);
+        if (grid[z1][y][ladder01_x] != CELL_LADDER) PlaceFloor(ladder01_x, y, z1);
     }
     
     // Ladder 1→2: Must be accessed from EAST (outside the outermost ring, east side)
@@ -341,8 +351,8 @@ void GenerateSpiral3D(void) {
     grid[z2][ladder12_y][ladder12_x] = CELL_LADDER;
     // Ensure path to ladder is clear
     for (int x = centerX + outerRingDist; x <= ladder12_x; x++) {
-        grid[z1][ladder12_y][x] = (grid[z1][ladder12_y][x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
-        grid[z2][ladder12_y][x] = (grid[z2][ladder12_y][x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        if (grid[z1][ladder12_y][x] != CELL_LADDER) PlaceFloor(x, ladder12_y, z1);
+        if (grid[z2][ladder12_y][x] != CELL_LADDER) PlaceFloor(x, ladder12_y, z2);
     }
     
     // Ladder 2→3: Must be accessed from SOUTH (outside the outermost ring, south side)
@@ -351,10 +361,15 @@ void GenerateSpiral3D(void) {
     if (ladder23_y >= gridHeight - 2) ladder23_y = gridHeight - 3;
     grid[z2][ladder23_y][ladder23_x] = CELL_LADDER;
     grid[z3][ladder23_y][ladder23_x] = CELL_LADDER;
-    // Ensure path to ladder is clear
+    // Ensure path to ladder is clear (from outer ring to ladder)
     for (int y = centerY + outerRingDist; y <= ladder23_y; y++) {
-        grid[z2][y][ladder23_x] = (grid[z2][y][ladder23_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
-        grid[z3][y][ladder23_x] = (grid[z3][y][ladder23_x] == CELL_LADDER) ? CELL_LADDER : CELL_FLOOR;
+        if (grid[z2][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z2);
+        if (grid[z3][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z3);
+    }
+    // On z3: ensure path from ladder to the inner ring (south gap)
+    // The inner ring is at centerY + innerRing, so connect from ladder to there
+    for (int y = centerY + innerRing; y <= ladder23_y; y++) {
+        if (grid[z3][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z3);
     }
     
     // Add a few "decoy" ladders that lead to dead ends or longer routes
@@ -365,8 +380,8 @@ void GenerateSpiral3D(void) {
         grid[z0][decoy1_y][decoy1_x] = CELL_LADDER;
         grid[z1][decoy1_y][decoy1_x] = CELL_LADDER;
         // Make sure there's floor around it
-        if (grid[z0][decoy1_y][decoy1_x - 1] == CELL_WALL) grid[z0][decoy1_y][decoy1_x - 1] = CELL_FLOOR;
-        if (grid[z1][decoy1_y][decoy1_x - 1] == CELL_WALL) grid[z1][decoy1_y][decoy1_x - 1] = CELL_FLOOR;
+        if (grid[z0][decoy1_y][decoy1_x - 1] == CELL_WALL) PlaceFloor(decoy1_x - 1, decoy1_y, z0);
+        if (grid[z1][decoy1_y][decoy1_x - 1] == CELL_WALL) PlaceFloor(decoy1_x - 1, decoy1_y, z1);
     }
     
     // Decoy 2: Center area ladder that skips a level but puts you in a bad spot
@@ -457,7 +472,9 @@ static bool RoomOverlaps(int x, int y, int w, int h, int margin) {
 }
 
 void GenerateDungeonRooms(void) {
-    // Fill with walls
+    InitGrid();  // Clear cells and flags
+    
+    // Fill z=1 with walls (to carve rooms)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
             grid[1][y][x] = CELL_WALL;
@@ -526,6 +543,8 @@ void GenerateDungeonRooms(void) {
 // ============================================================================
 
 void GenerateCaves(void) {
+    InitGrid();  // Clear cells and flags
+    
     // Start with random noise
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
@@ -588,7 +607,9 @@ void GenerateCaves(void) {
 // ============================================================================
 
 void GenerateDrunkard(void) {
-    // Fill with walls
+    InitGrid();  // Clear cells and flags
+    
+    // Fill z=1 with walls (to carve)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
             grid[1][y][x] = CELL_WALL;
@@ -669,7 +690,9 @@ static void CarveVerticalTunnel(int y1, int y2, int x) {
 }
 
 void GenerateTunneler(void) {
-    // Fill with walls
+    InitGrid();  // Clear cells and flags
+    
+    // Fill z=1 with walls (to carve)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
             grid[1][y][x] = CELL_WALL;
@@ -1109,14 +1132,7 @@ static void BuildBridge(Tower* t1, Tower* t2) {
 }
 
 void GenerateTowers(void) {
-    // Clear grid: z=0 dirt, z>0 air (DF-style)
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
-            }
-        }
-    }
+    InitGrid();  // Clear cells and flags
     
     // Place towers
     Tower towers[MAX_TOWERS];
@@ -1170,10 +1186,10 @@ void GenerateTowers(void) {
             // Add door at z=1 (opening in wall)
             int doorSide = GetRandomValue(0, 3);
             switch (doorSide) {
-                case 0: grid[1][ty][tx + tw / 2] = CELL_FLOOR; break;          // North
-                case 1: grid[1][ty + th / 2][tx + tw - 1] = CELL_FLOOR; break; // East
-                case 2: grid[1][ty + th - 1][tx + tw / 2] = CELL_FLOOR; break; // South
-                case 3: grid[1][ty + th / 2][tx] = CELL_FLOOR; break;          // West
+                case 0: PlaceFloor(tx + tw / 2, ty, 1); break;          // North
+                case 1: PlaceFloor(tx + tw - 1, ty + th / 2, 1); break; // East
+                case 2: PlaceFloor(tx + tw / 2, ty + th - 1, 1); break; // South
+                case 3: PlaceFloor(tx, ty + th / 2, 1); break;          // West
             }
         }
     }
@@ -1270,14 +1286,7 @@ void GenerateTowers(void) {
 // ============================================================================
 
 void GenerateGalleryFlat(void) {
-    // Clear grid: z=0 dirt, z>0 air (DF-style)
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
-            }
-        }
-    }
+    InitGrid();  // Clear cells and flags
     
     // Building parameters
     int apartmentWidth = 4;
@@ -1315,7 +1324,7 @@ void GenerateGalleryFlat(void) {
         // Fill building interior with floor
         for (int y = buildingY + 1; y < buildingY + buildingDepth - 1; y++) {
             for (int x = buildingX + 1; x < buildingX + buildingWidth - 1; x++) {
-                grid[z][y][x] = CELL_FLOOR;
+                PlaceFloor(x, y, z);
             }
         }
         
@@ -1342,7 +1351,7 @@ void GenerateGalleryFlat(void) {
             // Door to corridor (middle of back wall)
             int doorX = aptX + apartmentWidth / 2;
             if (doorX < buildingX + buildingWidth - stairWidth) {
-                grid[z][buildingY + apartmentDepth - 1][doorX] = CELL_FLOOR;
+                PlaceFloor(doorX, buildingY + apartmentDepth - 1, z);
             }
         }
         
@@ -1368,9 +1377,9 @@ void GenerateGalleryFlat(void) {
     
     // Ground floor entrance at z=1 (door in south wall)
     int entranceX = buildingX + buildingWidth / 2;
-    grid[1][buildingY + buildingDepth - 1][entranceX] = CELL_FLOOR;
+    PlaceFloor(entranceX, buildingY + buildingDepth - 1, 1);
     // Second entrance on the other side
-    grid[1][buildingY + buildingDepth - 1][entranceX + 2] = CELL_FLOOR;
+    PlaceFloor(entranceX + 2, buildingY + buildingDepth - 1, 1);
     
     needsRebuild = true;
 }
@@ -1386,14 +1395,7 @@ void GenerateGalleryFlat(void) {
 // ============================================================================
 
 void GenerateCastle(void) {
-    // Clear all levels: z=0 is ground, z>0 is air (DF-style)
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
-            }
-        }
-    }
+    InitGrid();  // Clear cells and flags
     
     // Castle dimensions - centered in grid
     int wallThickness = 2;
@@ -1453,19 +1455,19 @@ void GenerateCastle(void) {
     if (gridDepth > 2) {
         // North wall walk floor
         for (int x = castleX + wallThickness; x < castleX + castleWidth - wallThickness; x++) {
-            grid[2][castleY + wallThickness][x] = CELL_FLOOR;
+            PlaceFloor(x, castleY + wallThickness, 2);
         }
         // South wall walk floor
         for (int x = castleX + wallThickness; x < castleX + castleWidth - wallThickness; x++) {
-            grid[2][castleY + castleHeight - 1 - wallThickness][x] = CELL_FLOOR;
+            PlaceFloor(x, castleY + castleHeight - 1 - wallThickness, 2);
         }
         // West wall walk floor
         for (int y = castleY + wallThickness; y < castleY + castleHeight - wallThickness; y++) {
-            grid[2][y][castleX + wallThickness] = CELL_FLOOR;
+            PlaceFloor(castleX + wallThickness, y, 2);
         }
         // East wall walk floor
         for (int y = castleY + wallThickness; y < castleY + castleHeight - wallThickness; y++) {
-            grid[2][y][castleX + castleWidth - 1 - wallThickness] = CELL_FLOOR;
+            PlaceFloor(castleX + castleWidth - 1 - wallThickness, y, 2);
         }
         
         // Crenellations (merlons on outer edge at z=2)
@@ -1529,17 +1531,17 @@ void GenerateCastle(void) {
         
         // Door from tower to courtyard at z=1 (toward inside of castle)
         int doorY = (t < 2) ? (ty + towerSize - 1) : ty;  // NW/NE: south, SW/SE: north
-        grid[1][doorY][tx + towerSize / 2] = CELL_FLOOR;
+        PlaceFloor(tx + towerSize / 2, doorY, 1);
         
         // Connect tower to wall walk at z=2
         if (gridDepth > 2) {
             // Vertical connection (N/S): NW/NE open south, SW/SE open north
             int connY = (t < 2) ? (ty + towerSize - 1) : ty;
-            grid[2][connY][tx + towerSize / 2] = CELL_FLOOR;
+            PlaceFloor(tx + towerSize / 2, connY, 2);
             
             // Horizontal connection (E/W): NW/SW open east, NE/SE open west
             int connX = (t == 0 || t == 2) ? (tx + towerSize - 1) : tx;
-            grid[2][ty + towerSize / 2][connX] = CELL_FLOOR;
+            PlaceFloor(connX, ty + towerSize / 2, 2);
         }
     }
     
@@ -1569,7 +1571,11 @@ void GenerateCastle(void) {
                 for (int px = sx; px < sx + stairTowerSize; px++) {
                     bool isBorder = (px == sx || px == sx + stairTowerSize - 1 ||
                                     py == sy || py == sy + stairTowerSize - 1);
-                    grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    if (isBorder) {
+                        grid[z][py][px] = CELL_WALL;
+                    } else {
+                        PlaceFloor(px, py, z);
+                    }
                 }
             }
         }
@@ -1585,9 +1591,9 @@ void GenerateCastle(void) {
         
         // Door to courtyard at z=1 and connection to wall walk at z=2
         int doorX = (s == 0) ? (sx + stairTowerSize - 1) : sx;  // West: east side, East: west side
-        grid[1][sy + stairTowerSize / 2][doorX] = CELL_FLOOR;
+        PlaceFloor(doorX, sy + stairTowerSize / 2, 1);
         if (gridDepth > 2) {
-            grid[2][sy + stairTowerSize / 2][doorX] = CELL_FLOOR;
+            PlaceFloor(doorX, sy + stairTowerSize / 2, 2);
         }
     }
     
@@ -1600,7 +1606,7 @@ void GenerateCastle(void) {
     // Clear the gate opening at z=1 only (wall above remains)
     for (int x = gateX; x < gateX + gateWidth; x++) {
         for (int t = 0; t < wallThickness; t++) {
-            grid[1][castleY + castleHeight - 1 - t][x] = CELL_FLOOR;
+            PlaceFloor(x, castleY + castleHeight - 1 - t, 1);
         }
     }
     
@@ -1615,7 +1621,7 @@ void GenerateCastle(void) {
     for (int y = courtyardY; y < courtyardY + courtyardH; y++) {
         for (int x = courtyardX; x < courtyardX + courtyardW; x++) {
             if (grid[1][y][x] != CELL_LADDER) {
-                grid[1][y][x] = CELL_FLOOR;
+                PlaceFloor(x, y, 1);
             }
         }
     }
@@ -1640,12 +1646,16 @@ void GenerateCastle(void) {
                 for (int px = bx; px < bx + bw; px++) {
                     bool isBorder = (px == bx || px == bx + bw - 1 ||
                                     py == by || py == by + bh - 1);
-                    grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    if (isBorder) {
+                        grid[z][py][px] = CELL_WALL;
+                    } else {
+                        PlaceFloor(px, py, z);
+                    }
                 }
             }
         }
         // Door on south, ladder inside
-        grid[1][by + bh - 1][bx + bw / 2] = CELL_FLOOR;
+        PlaceFloor(bx + bw / 2, by + bh - 1, 1);
         int lx = (b == 0) ? (bx + 1) : (bx + bw - 2);
         for (int floor = 0; floor < 2 && floor + 1 < gridDepth; floor++) {
             grid[floor + 1][by + 1][lx] = CELL_LADDER;
@@ -1658,10 +1668,14 @@ void GenerateCastle(void) {
     for (int py = b3y; py < b3y + 4; py++) {
         for (int px = b3x; px < b3x + 8; px++) {
             bool isBorder = (px == b3x || px == b3x + 7 || py == b3y || py == b3y + 3);
-            grid[1][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+            if (isBorder) {
+                grid[1][py][px] = CELL_WALL;
+            } else {
+                PlaceFloor(px, py, 1);
+            }
         }
     }
-    grid[1][b3y][b3x + 4] = CELL_FLOOR;  // Door on north
+    PlaceFloor(b3x + 4, b3y, 1);  // Door on north
     
     needsRebuild = true;
 }
@@ -1745,7 +1759,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             // Interior floor of main building
             for (int y = baseY + 1; y < baseY + buildingShort - 1; y++) {
                 for (int x = baseX + 1; x < baseX + width - 1; x++) {
-                    grid[z][y][x] = CELL_FLOOR;
+                    PlaceFloor(x, y, z);
                 }
             }
             
@@ -1774,7 +1788,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             for (int x = baseX; x < baseX + width; x++) {
                 for (int gy = 0; gy < galleryWidth; gy++) {
                     if (galleryY + gy < gridHeight) {
-                        grid[z][galleryY + gy][x] = CELL_FLOOR;
+                        PlaceFloor(x, galleryY + gy, z);
                     }
                 }
             }
@@ -1800,7 +1814,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             for (int u = 0; u < numUnits; u++) {
                 int doorX = baseX + 2 + u * unitSize + unitSize / 2;
                 if (doorX >= baseX + width - 1) break;
-                grid[z][baseY + buildingShort - 1][doorX] = CELL_FLOOR;
+                PlaceFloor(doorX, baseY + buildingShort - 1, z);
             }
             
             // Stairwell cores
@@ -1810,7 +1824,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                 
                 for (int sy = 0; sy < 3 && stairY + sy < baseY + buildingShort - 1; sy++) {
                     for (int sx = 0; sx < 3 && stairX + sx < baseX + width - 1; sx++) {
-                        grid[z][stairY + sy][stairX + sx] = CELL_FLOOR;
+                        PlaceFloor(stairX + sx, stairY + sy, z);
                     }
                 }
                 
@@ -1824,7 +1838,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                 }
                 
                 grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
-                grid[z][baseY + buildingShort - 1][stairX + 1] = CELL_FLOOR;
+                PlaceFloor(stairX + 1, baseY + buildingShort - 1, z);
             }
         } else {
             // === VERTICAL ORIENTATION (gallery on east) ===
@@ -1850,7 +1864,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             // Interior floor of main building
             for (int y = baseY + 1; y < baseY + height - 1; y++) {
                 for (int x = baseX + 1; x < baseX + buildingShort - 1; x++) {
-                    grid[z][y][x] = CELL_FLOOR;
+                    PlaceFloor(x, y, z);
                 }
             }
             
@@ -1879,7 +1893,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             for (int y = baseY; y < baseY + height; y++) {
                 for (int gx = 0; gx < galleryWidth; gx++) {
                     if (galleryX + gx < gridWidth) {
-                        grid[z][y][galleryX + gx] = CELL_FLOOR;
+                        PlaceFloor(galleryX + gx, y, z);
                     }
                 }
             }
@@ -1905,7 +1919,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
             for (int u = 0; u < numUnits; u++) {
                 int doorY = baseY + 2 + u * unitSize + unitSize / 2;
                 if (doorY >= baseY + height - 1) break;
-                grid[z][doorY][baseX + buildingShort - 1] = CELL_FLOOR;
+                PlaceFloor(baseX + buildingShort - 1, doorY, z);
             }
             
             // Stairwell cores
@@ -1915,7 +1929,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                 
                 for (int sy = 0; sy < 3 && stairY + sy < baseY + height - 1; sy++) {
                     for (int sx = 0; sx < 3 && stairX + sx < baseX + buildingShort - 1; sx++) {
-                        grid[z][stairY + sy][stairX + sx] = CELL_FLOOR;
+                        PlaceFloor(stairX + sx, stairY + sy, z);
                     }
                 }
                 
@@ -1929,7 +1943,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                 }
                 
                 grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
-                grid[z][stairY + 1][baseX + buildingShort - 1] = CELL_FLOOR;
+                PlaceFloor(baseX + buildingShort - 1, stairY + 1, z);
             }
         }
     }
@@ -1940,21 +1954,21 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
         for (int s = 0; s < numStairCores; s++) {
             int stairX = baseX + stairPositions[s];
             if (galleryY + galleryWidth < gridHeight) {
-                grid[0][galleryY + galleryWidth - 1][stairX + 1] = CELL_FLOOR;
+                PlaceFloor(stairX + 1, galleryY + galleryWidth - 1, 0);
             }
         }
-        grid[0][galleryY][baseX] = CELL_FLOOR;
-        grid[0][galleryY][baseX + width - 1] = CELL_FLOOR;
+        PlaceFloor(baseX, galleryY, 0);
+        PlaceFloor(baseX + width - 1, galleryY, 0);
     } else {
         int galleryX = baseX + buildingShort;
         for (int s = 0; s < numStairCores; s++) {
             int stairY = baseY + stairPositions[s];
             if (galleryX + galleryWidth < gridWidth) {
-                grid[0][stairY + 1][galleryX + galleryWidth - 1] = CELL_FLOOR;
+                PlaceFloor(galleryX + galleryWidth - 1, stairY + 1, 0);
             }
         }
-        grid[0][baseY][galleryX] = CELL_FLOOR;
-        grid[0][baseY + height - 1][galleryX] = CELL_FLOOR;
+        PlaceFloor(galleryX, baseY, 0);
+        PlaceFloor(galleryX, baseY + height - 1, 0);
     }
 }
 
@@ -1982,7 +1996,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
             // Interior floor
             for (int y = baseY + 1; y < baseY + unitDepth - 1; y++) {
                 for (int x = baseX + 1; x < baseX + totalWidth - 1; x++) {
-                    grid[z][y][x] = CELL_FLOOR;
+                    PlaceFloor(x, y, z);
                 }
             }
             
@@ -1999,9 +2013,9 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
         for (int u = 0; u < numUnits; u++) {
             int doorX = baseX + u * unitWidth + unitWidth / 2;
             if (doorsNorth) {
-                grid[0][baseY][doorX] = CELL_FLOOR;
+                PlaceFloor(doorX, baseY, 0);
             } else {
-                grid[0][baseY + unitDepth - 1][doorX] = CELL_FLOOR;
+                PlaceFloor(doorX, baseY + unitDepth - 1, 0);
             }
         }
         
@@ -2032,7 +2046,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
             // Interior floor
             for (int y = baseY + 1; y < baseY + totalHeight - 1; y++) {
                 for (int x = baseX + 1; x < baseX + unitDepth - 1; x++) {
-                    grid[z][y][x] = CELL_FLOOR;
+                    PlaceFloor(x, y, z);
                 }
             }
             
@@ -2049,9 +2063,9 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
         for (int u = 0; u < numUnits; u++) {
             int doorY = baseY + u * unitWidth + unitWidth / 2;
             if (doorsNorth) {  // doorsNorth means doors on west side for vertical
-                grid[0][doorY][baseX] = CELL_FLOOR;
+                PlaceFloor(baseX, doorY, 0);
             } else {
-                grid[0][doorY][baseX + unitDepth - 1] = CELL_FLOOR;
+                PlaceFloor(baseX + unitDepth - 1, doorY, 0);
             }
         }
         
@@ -2068,19 +2082,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
 }
 
 void GenerateCouncilEstate(void) {
-    // Clear all levels: z=0 is ground (walkable), z>0 is air
-    for (int y = 0; y < gridHeight; y++) {
-        for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
-        }
-    }
-    for (int z = 1; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = CELL_AIR;
-            }
-        }
-    }
+    InitGrid();  // Clear cells and flags properly
     
     // Scale building count based on grid size
     int numTerraceRows = 4 + (gridWidth * gridHeight) / 6000;
