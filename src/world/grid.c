@@ -215,7 +215,7 @@ static void CascadeBreakDown(int x, int y, int z) {
             return;  // BOTH→UP doesn't cascade further
         } else if (cell == CELL_LADDER_DOWN) {
             // DOWN with no connection below: remove and continue up
-            grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+            grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
             z++;  // Continue upward
         } else {
             // UP stays UP (still has its upward connection)
@@ -238,7 +238,7 @@ static void CascadeBreakUp(int x, int y, int z) {
             return;  // BOTH→DOWN doesn't cascade further
         } else if (cell == CELL_LADDER_UP) {
             // UP with no connection above: remove and continue down
-            grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+            grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
             z--;  // Continue downward
         } else {
             // DOWN stays DOWN (still has its downward connection)
@@ -264,12 +264,12 @@ void EraseLadder(int x, int y, int z) {
         
     } else if (cell == CELL_LADDER_UP) {
         // Remove completely, cascade upward
-        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
         CascadeBreakDown(x, y, z + 1);
         
     } else if (cell == CELL_LADDER_DOWN) {
         // Remove completely, cascade downward
-        grid[z][y][x] = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+        grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
         CascadeBreakUp(x, y, z - 1);
     }
 }

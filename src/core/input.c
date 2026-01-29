@@ -773,7 +773,7 @@ void HandleInput(void) {
                     if (IsLadderCell(grid[z][y][x])) {
                         EraseLadder(x, y, z);
                     } else {
-                        CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                        CellType eraseType = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
                         if (grid[z][y][x] != eraseType) {
                             grid[z][y][x] = eraseType;
                             MarkChunkDirty(x, y, z);

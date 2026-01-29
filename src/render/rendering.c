@@ -30,6 +30,7 @@ void DrawCellGrid(void) {
     if (g_useDFWalkability) {
         // DF mode: draw floor from z-1 (the ground you're standing ON)
         // At z=1, you see z=0's surface as the floor
+        // At z=0, you see implicit bedrock as the floor (for dug holes)
         if (z > 0) {
             int zBelow = z - 1;
             for (int y = minY; y < maxY; y++) {
@@ -41,6 +42,18 @@ void DrawCellGrid(void) {
                     if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         Rectangle src = SpriteGetRect(CellSprite(cellBelow));
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                    }
+                }
+            }
+        } else {
+            // z=0: draw bedrock for air cells (implicit bedrock at z=-1)
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cellHere = grid[z][y][x];
+                    if (cellHere == CELL_AIR) {
+                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                        Rectangle src = SpriteGetRect(SPRITE_bedrock);
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
                     }
                 }
