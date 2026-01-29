@@ -3163,6 +3163,13 @@ Point GetRandomWalkableCell(void) {
         p.z = GetRandomValue(0, gridDepth - 1);
         if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         if (IsCellWalkableAt(p.z, p.y, p.x)) {
+            // Skip wall tops as destinations (air above wall) - they're traversable but not goals
+            // Movers can still walk on wall tops, just won't pick them as random destinations
+            if (g_useDFWalkability && p.z > 0 && 
+                grid[p.z][p.y][p.x] == CELL_AIR && 
+                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
+                continue;
+            }
             return p;
         }
     }
@@ -3177,6 +3184,12 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
         p.z = GetRandomValue(0, gridDepth - 1);
         if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         if (p.z != excludeZ && IsCellWalkableAt(p.z, p.y, p.x)) {
+            // Skip wall tops as destinations (see GetRandomWalkableCell)
+            if (g_useDFWalkability && p.z > 0 && 
+                grid[p.z][p.y][p.x] == CELL_AIR && 
+                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
+                continue;
+            }
             return p;
         }
     }
@@ -3192,6 +3205,12 @@ Point GetRandomWalkableCellOnZ(int z) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         if (IsCellWalkableAt(p.z, p.y, p.x)) {
+            // Skip wall tops as destinations (see GetRandomWalkableCell)
+            if (g_useDFWalkability && p.z > 0 && 
+                grid[p.z][p.y][p.x] == CELL_AIR && 
+                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
+                continue;
+            }
             return p;
         }
     }

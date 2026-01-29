@@ -16,10 +16,30 @@
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
 
-#define INSPECT_SAVE_VERSION 6
+#define INSPECT_SAVE_VERSION 7
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
-static const char* cellTypeNames[] = {"AIR", "WALKABLE", "WALL", "FLOOR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH"};
+// Section markers (must match saveload.c)
+#define MARKER_GRIDS    0x47524944  // "GRID"
+#define MARKER_ENTITIES 0x454E5449  // "ENTI"
+#define MARKER_VIEW     0x56494557  // "VIEW"
+#define MARKER_SETTINGS 0x53455454  // "SETT"
+#define MARKER_END      0x454E4421  // "END!"
+
+static const char* cellTypeNames[] = {
+    "WALKABLE",      // 0
+    "WALL",          // 1
+    "LADDER",        // 2
+    "AIR",           // 3
+    "FLOOR",         // 4
+    "LADDER_UP",     // 5
+    "LADDER_DOWN",   // 6
+    "LADDER_BOTH",   // 7
+    "GRASS",         // 8
+    "DIRT",          // 9
+    "WOOD_WALL",     // 10
+    "BEDROCK"        // 11
+};
 static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE"};
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "DIG", "BUILD", "CLEAR", "HAUL_TO_BP"};
@@ -199,7 +219,7 @@ static void print_cell(int x, int y, int z) {
     Designation desig = insp_designations[idx];
     
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
-    printf("Type: %s\n", cell < 7 ? cellTypeNames[cell] : "?");
+    printf("Type: %s (raw=%d)\n", cell < 12 ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
     
     // Water
     printf("Water level: %d/7\n", water.level);
@@ -430,6 +450,15 @@ int InspectSaveFile(int argc, char** argv) {
     
     int totalCells = insp_gridW * insp_gridH * insp_gridD;
     
+    // === GRIDS SECTION ===
+    uint32_t marker;
+    fread(&marker, 4, 1, f);
+    if (marker != MARKER_GRIDS) {
+        printf("Bad GRID marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_GRIDS);
+        fclose(f);
+        return 1;
+    }
+    
     // Allocate and read grid data
     insp_gridCells = malloc(totalCells * sizeof(CellType));
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
@@ -448,6 +477,14 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
+    
+    // === ENTITIES SECTION ===
+    fread(&marker, 4, 1, f);
+    if (marker != MARKER_ENTITIES) {
+        printf("Bad ENTI marker: 0x%08X (expected 0x%08X)\n", marker, MARKER_ENTITIES);
+        fclose(f);
+        return 1;
+    }
     
     // Items
     fread(&insp_itemHWM, 4, 1, f);
