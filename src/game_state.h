@@ -73,6 +73,7 @@ extern int currentViewZ;
 // Display toggles
 extern bool showGraph;
 extern bool showEntrances;
+extern bool showChunkBoundaries;
 extern bool showMovers;
 extern bool showMoverPaths;
 extern bool showNeighborCounts;

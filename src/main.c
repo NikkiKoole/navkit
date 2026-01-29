@@ -19,6 +19,7 @@ int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above groun
 
 bool showGraph = false;
 bool showEntrances = false;
+bool showChunkBoundaries = true;
 bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
@@ -573,7 +574,9 @@ int main(int argc, char** argv) {
         DrawStockpileItems();
         DrawMiningDesignations();
         DrawBlueprints();
-        DrawChunkBoundaries();
+        if (showChunkBoundaries) {
+            DrawChunkBoundaries();
+        }
         PROFILE_BEGIN(DrawGraph);
         DrawGraph();
         PROFILE_END(DrawGraph);
