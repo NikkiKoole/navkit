@@ -2323,6 +2323,21 @@ int WorkGiver_Craft(int moverIdx) {
         // Find first non-suspended bill that can run
         for (int b = 0; b < ws->billCount; b++) {
             Bill* bill = &ws->bills[b];
+            
+            // Auto-resume bills that were suspended due to no storage
+            if (bill->suspended && bill->suspendedNoStorage) {
+                // Check if storage is now available
+                int recipeCount;
+                Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
+                    int outSlotX, outSlotY;
+                    if (FindStockpileForItem(recipes[bill->recipeIdx].outputType, &outSlotX, &outSlotY) >= 0) {
+                        bill->suspended = false;
+                        bill->suspendedNoStorage = false;
+                    }
+                }
+            }
+            
             if (bill->suspended) continue;
             if (!ShouldBillRun(ws, bill)) continue;
             
@@ -2331,6 +2346,15 @@ int WorkGiver_Craft(int moverIdx) {
             Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
             if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
             Recipe* recipe = &recipes[bill->recipeIdx];
+            
+            // Check if there's stockpile space for the output
+            // If not, auto-suspend the bill to prevent items piling up
+            int outSlotX, outSlotY;
+            if (FindStockpileForItem(recipe->outputType, &outSlotX, &outSlotY) < 0) {
+                bill->suspended = true;
+                bill->suspendedNoStorage = true;  // Mark why it was suspended
+                continue;
+            }
             
             // Find an input item (search nearby or all if radius = 0)
             int searchRadius = bill->ingredientSearchRadius;

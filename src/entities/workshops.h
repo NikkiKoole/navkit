@@ -48,6 +48,7 @@ typedef struct {
     int completedCount;  // progress for DO_X_TIMES
     int ingredientSearchRadius;  // how far to look for inputs (tiles), 0 = unlimited
     bool suspended;
+    bool suspendedNoStorage;  // auto-suspended due to no stockpile space (auto-resumes when space available)
 } Bill;
 
 // Workshop struct

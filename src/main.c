@@ -5,6 +5,7 @@
 
 #include "game_state.h"
 #include "world/cell_defs.h"
+#include "world/designations.h"
 #include "core/input_mode.h"
 #include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
@@ -20,7 +21,7 @@ int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above groun
 
 bool showGraph = false;
 bool showEntrances = false;
-bool showChunkBoundaries = true;
+bool showChunkBoundaries = false;
 bool showMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
@@ -399,6 +400,8 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse);
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY);
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
+void DrawBlueprintTooltip(int bpIdx, Vector2 mouse);
+void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
 // From render/ui_panels.c
 void DrawUI(void);
@@ -911,12 +914,21 @@ int main(int argc, char** argv) {
             DrawItemTooltip(hoveredItemCell, hoveredItemCount, GetMousePosition(), (int)mouseGrid.x, (int)mouseGrid.y);
         }
 
-        if (hoveredStockpile < 0 && hoveredMover < 0 && hoveredItemCount == 0) {
+        if (hoveredStockpile < 0 && hoveredMover < 0 && hoveredItemCount == 0 && hoveredWorkshop < 0) {
             Vector2 mouseGrid = ScreenToGrid(GetMousePosition());
             int cellX = (int)mouseGrid.x;
             int cellY = (int)mouseGrid.y;
             if (cellX >= 0 && cellX < gridWidth && cellY >= 0 && cellY < gridHeight) {
-                if (paused) {
+                // Check for blueprint at this cell
+                int bpIdx = GetBlueprintAt(cellX, cellY, currentViewZ);
+                if (bpIdx >= 0) {
+                    DrawBlueprintTooltip(bpIdx, GetMousePosition());
+                }
+                // Check for mining designation at this cell
+                else if (HasDigDesignation(cellX, cellY, currentViewZ)) {
+                    DrawMiningTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                }
+                else if (paused) {
                     // When paused, show comprehensive cell info
                     DrawCellTooltip(cellX, cellY, currentViewZ, GetMousePosition());
                 } else if (HasWater(cellX, cellY, currentViewZ) ||

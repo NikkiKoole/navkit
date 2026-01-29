@@ -731,12 +731,12 @@ void HandleInput(void) {
         offset.y += d.y;
     }
 
-    // Reset view
-    if (IsKeyPressed(KEY_C)) {
-        zoom = 1.0f;
-        offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-        offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-    }
+    // Reset view (disabled)
+    // if (IsKeyPressed(KEY_C)) {
+    //     zoom = 1.0f;
+    //     offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+    //     offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    // }
 
     // Z-level
     if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;

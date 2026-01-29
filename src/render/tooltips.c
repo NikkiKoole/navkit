@@ -2,6 +2,7 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../entities/workshops.h"
+#include "../world/designations.h"
 
 // Draw stockpile tooltip at mouse position
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
@@ -492,7 +493,9 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
         const char* modeName = (bill->mode < 3) ? billModeNames[bill->mode] : "?";
         
         char statusStr[32] = "";
-        if (bill->suspended) {
+        if (bill->suspended && bill->suspendedNoStorage) {
+            snprintf(statusStr, sizeof(statusStr), " [NO STORAGE]");
+        } else if (bill->suspended) {
             snprintf(statusStr, sizeof(statusStr), " [PAUSED]");
         } else if (bill->mode == BILL_DO_X_TIMES) {
             snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
@@ -544,7 +547,12 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     int billLines = ws->billCount;
     for (int i = 0; i < billLines && (4 + i) < lineCount; i++) {
         Bill* bill = &ws->bills[i];
-        Color col = bill->suspended ? RED : (Color){200, 180, 140, 255};
+        Color col = (Color){200, 180, 140, 255};
+        if (bill->suspended && bill->suspendedNoStorage) {
+            col = ORANGE;  // Auto-suspended due to no storage
+        } else if (bill->suspended) {
+            col = RED;     // Manually paused
+        }
         DrawTextShadow(lines[4 + i], tx + padding, y, 14, col);
         y += lineH;
     }
@@ -552,5 +560,140 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     // Help text (last line)
     if (lineCount > 4 + billLines) {
         DrawTextShadow(lines[4 + billLines], tx + padding, y, 14, GRAY);
+    }
+}
+
+// Draw blueprint (construction) tooltip
+void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
+    if (bpIdx < 0 || bpIdx >= MAX_BLUEPRINTS) return;
+    Blueprint* bp = &blueprints[bpIdx];
+    if (!bp->active) return;
+
+    const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building"};
+
+    char lines[8][64];
+    int lineCount = 0;
+
+    // Header
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Construction (%d,%d,%d)", bp->x, bp->y, bp->z);
+
+    // State
+    const char* stateName = (bp->state < 3) ? stateNames[bp->state] : "?";
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Status: %s", stateName);
+
+    // Materials
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", bp->deliveredMaterials, bp->requiredMaterials);
+
+    // What it's waiting for
+    if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+        if (bp->reservedItem >= 0) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Item reserved: #%d", bp->reservedItem);
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for hauler");
+        }
+    } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for builder");
+    } else if (bp->state == BLUEPRINT_BUILDING) {
+        if (bp->assignedBuilder >= 0) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Builder: Mover #%d", bp->assignedBuilder);
+        }
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Progress: %d%%", (int)(bp->progress * 100));
+    }
+
+    // Calculate box dimensions
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background (blue tint for construction)
+    DrawRectangle(tx, ty, boxW, boxH, (Color){30, 35, 50, 230});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 100, 150, 255});
+
+    // Draw lines
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        Color col = WHITE;
+        if (i == 0) col = YELLOW;  // Header
+        else if (strstr(lines[i], "Awaiting")) col = ORANGE;
+        else if (strstr(lines[i], "Ready")) col = GREEN;
+        else if (strstr(lines[i], "Building")) col = SKYBLUE;
+        else if (strstr(lines[i], "Waiting")) col = GRAY;
+        else if (strstr(lines[i], "Builder:")) col = GREEN;
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
+// Draw mining designation tooltip
+void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    Designation* des = GetDesignation(cellX, cellY, cellZ);
+    if (!des || des->type != DESIGNATION_DIG) return;
+
+    char lines[6][64];
+    int lineCount = 0;
+
+    // Header
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Mining (%d,%d,%d)", cellX, cellY, cellZ);
+
+    // Cell type being mined
+    CellType ct = grid[cellZ][cellY][cellX];
+    const char* cellName = CellName(ct);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Target: %s", cellName);
+
+    // Assignment status
+    if (des->assignedMover >= 0) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Miner: Mover #%d", des->assignedMover);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Progress: %d%%", (int)(des->progress * 100));
+    } else if (des->unreachableCooldown > 0) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Unreachable (%.1fs)", des->unreachableCooldown);
+    } else {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for miner");
+    }
+
+    // Calculate box dimensions
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background (orange tint for mining)
+    DrawRectangle(tx, ty, boxW, boxH, (Color){50, 40, 30, 230});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){150, 120, 80, 255});
+
+    // Draw lines
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        Color col = WHITE;
+        if (i == 0) col = YELLOW;  // Header
+        else if (strstr(lines[i], "Miner:")) col = GREEN;
+        else if (strstr(lines[i], "Unreachable")) col = RED;
+        else if (strstr(lines[i], "Waiting")) col = GRAY;
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
     }
 }
