@@ -11,6 +11,8 @@ int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool groundWearEnabled = true;
 
 // Runtime configurable values
+int wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+int wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
 int wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
 int wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
 int wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
@@ -27,9 +29,9 @@ static void UpdateSurfaceFromWear(int x, int y, int z) {
     int surface;
     if (wear >= wearGrassToDirt) {
         surface = SURFACE_BARE;
-    } else if (wear >= 60) {
+    } else if (wear >= wearNormalToTrampled) {
         surface = SURFACE_TRAMPLED;
-    } else if (wear >= 20) {
+    } else if (wear >= wearTallToNormal) {
         surface = SURFACE_GRASS;
     } else {
         surface = SURFACE_TALL_GRASS;

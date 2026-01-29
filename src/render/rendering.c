@@ -264,7 +264,7 @@ void DrawGrassOverlay(void) {
                     
                     int sprite;
                     switch (surface) {
-                        case SURFACE_TALL_GRASS: sprite = SPRITE_grass;      break;
+                        case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
                         case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
                         case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
                         default: continue;
@@ -294,7 +294,7 @@ void DrawGrassOverlay(void) {
                 
                 int sprite;
                 switch (surface) {
-                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass;      break;  // Render tall grass as normal grass
+                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
                     case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
                     case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
                     default: continue;

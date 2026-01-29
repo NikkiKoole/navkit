@@ -419,6 +419,8 @@ describe(spec_ground_wear) {
         // Set up dirt with tall grass overlay (new system)
         grid[0][4][8] = CELL_DIRT;
         SET_CELL_SURFACE(8, 4, 0, SURFACE_TALL_GRASS);
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
         wearGrassToDirt = 100;
         wearTrampleAmount = 10;
         groundWearEnabled = true;
@@ -441,6 +443,9 @@ describe(spec_ground_wear) {
         SET_CELL_SURFACE(8, 4, 0, SURFACE_BARE);
         wearGrid[0][4][8] = 150;  // Above threshold (3D array now)
         
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
+        wearGrassToDirt = 100;
         wearDirtToGrass = 50;  // Unused now - surface is based on wear thresholds
         wearDecayRate = 10;
         wearRecoveryInterval = 0.5f;

@@ -663,14 +663,6 @@ static void AssignNewMoverGoal(Mover* m) {
     Point tempPath[MAX_PATH];
     int len = FindPath(moverPathAlgorithm, start, newGoal, tempPath, MAX_PATH);
 
-    // Debug: log pathfinding attempts
-    bool startWalkable = IsCellWalkableAt(start.z, start.y, start.x);
-    bool goalWalkable = IsCellWalkableAt(newGoal.z, newGoal.y, newGoal.x);
-    if (len == 0) {
-        TraceLog(LOG_WARNING, "Path failed: (%d,%d,z=%d) -> (%d,%d,z=%d) | start walkable: %d, goal walkable: %d",
-                 start.x, start.y, start.z, newGoal.x, newGoal.y, newGoal.z, startWalkable, goalWalkable);
-    }
-
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
     // If truncating, keep the START end (high indices), not the goal end

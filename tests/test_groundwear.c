@@ -207,7 +207,10 @@ describe(surface_overlay_updates) {
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
         
         // Trample until surface changes
-        // Default thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
+        // Set test thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
+        wearGrassToDirt = 100;
         wearTrampleAmount = 10;
         
         // 2 tramplings = 20 wear -> SURFACE_GRASS
@@ -228,6 +231,9 @@ describe(surface_overlay_updates) {
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
         
         // Restore
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
+        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
     }
     
@@ -241,6 +247,11 @@ describe(surface_overlay_updates) {
         
         InitGroundWear();
         groundWearEnabled = true;
+        
+        // Set test thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
+        wearGrassToDirt = 100;
         
         // Set high wear (bare dirt)
         wearGrid[0][0][2] = 150;
@@ -265,6 +276,9 @@ describe(surface_overlay_updates) {
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
         
         // Restore
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
+        wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
 }
@@ -414,6 +428,8 @@ describe(groundwear_full_cycle) {
         groundWearEnabled = true;
         
         // Use test-friendly values
+        wearTallToNormal = 20;
+        wearNormalToTrampled = 60;
         wearGrassToDirt = 100;  // This is the threshold for BARE surface
         wearTrampleAmount = 50;
         wearDecayRate = 30;
@@ -443,6 +459,8 @@ describe(groundwear_full_cycle) {
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
         
         // Restore default values
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
@@ -483,6 +501,8 @@ describe(groundwear_full_cycle) {
         expect(GET_CELL_SURFACE(9, 0, 0) == SURFACE_TALL_GRASS);
         
         // Restore default values
+        wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
+        wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
         wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
     }

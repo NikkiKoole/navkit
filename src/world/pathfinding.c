@@ -913,7 +913,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
             entrances[newCount++] = entrances[i];
         }
     }
-    int keptCount = newCount;
+
     
     int chunksPerLevel = chunksX * chunksY;
 
@@ -1078,16 +1078,6 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
     }
 
     entranceCount = newCount;
-    TraceLog(LOG_INFO, "Incremental entrances: kept %d, rebuilt to %d total (%d ladder links)", 
-             keptCount, newCount, ladderLinkCount);
-    
-    // Debug: print ladder link details
-    for (int i = 0; i < ladderLinkCount; i++) {
-        TraceLog(LOG_INFO, "  Ladder link %d: (%d,%d) z=%d<->z=%d, entrances %d<->%d",
-                 i, ladderLinks[i].x, ladderLinks[i].y, 
-                 ladderLinks[i].zLow, ladderLinks[i].zHigh,
-                 ladderLinks[i].entranceLow, ladderLinks[i].entranceHigh);
-    }
 }
 
 // Storage for old entrances before rebuild (used for edge remapping)
@@ -1165,7 +1155,6 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
 
     // Step 3: Rebuild edges using multi-target Dijkstra (one search per affected entrance)
     // Instead of O(n²) A* calls per chunk, we do O(n) Dijkstra calls
-    int dijkstraCalls = 0;
     int chunksPerLevel = chunksX * chunksY;
 
     for (int z = 0; z < gridDepth; z++) {
@@ -1242,7 +1231,6 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
                     if (numTargets == 0) continue;
 
                     // Run ONE multi-target Dijkstra from e1 to all targets
-                    dijkstraCalls++;
                     AStarChunkMultiTarget(entrances[e1].x, entrances[e1].y, z,
                                           targetX, targetY, outCosts, numTargets,
                                           minX, minY, maxX, maxY);
@@ -1303,8 +1291,6 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
         }
     }
 
-    TraceLog(LOG_INFO, "Incremental edges: kept %d, total now %d, dijkstra calls=%d",
-             keptEdges, graphEdgeCount, dijkstraCalls);
 }
 
 void UpdateDirtyChunks(void) {

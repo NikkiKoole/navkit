@@ -7,17 +7,21 @@
 // Ground wear system - creates emergent paths
 // Grass becomes dirt when trampled, dirt becomes grass when left alone
 
-// Wear thresholds - now variables for UI tweaking
-#define WEAR_GRASS_TO_DIRT_DEFAULT 100   // Above this, grass becomes dirt
+// Wear thresholds - scaled 10x to allow fractional trample amounts
+#define WEAR_TALL_TO_NORMAL_DEFAULT 200  // Above this, tall grass becomes normal grass
+#define WEAR_NORMAL_TO_TRAMPLED_DEFAULT 600  // Above this, normal grass becomes trampled
+#define WEAR_GRASS_TO_DIRT_DEFAULT 1000  // Above this, grass becomes bare dirt
 #define WEAR_DIRT_TO_GRASS_DEFAULT 0     // Below this, dirt becomes grass
-#define WEAR_MAX_DEFAULT 300             // Maximum wear value (set when burned)
+#define WEAR_MAX_DEFAULT 3000            // Maximum wear value (set when burned)
 
 // Wear change rates - now variables for UI tweaking
-#define WEAR_TRAMPLE_AMOUNT_DEFAULT 1    // Added when a mover walks on tile (low = needs many passes)
-#define WEAR_DECAY_RATE_DEFAULT 1        // Subtracted per decay interval (natural recovery)
+#define WEAR_TRAMPLE_AMOUNT_DEFAULT 1    // Added when a mover walks on tile (1 = 0.1 effective)
+#define WEAR_DECAY_RATE_DEFAULT 10       // Subtracted per decay interval (natural recovery)
 
 // Runtime configurable values
-extern int wearGrassToDirt;      // Threshold to turn grass into dirt
+extern int wearTallToNormal;     // Threshold for tall grass -> normal grass
+extern int wearNormalToTrampled; // Threshold for normal grass -> trampled
+extern int wearGrassToDirt;      // Threshold to turn grass into bare dirt
 extern int wearDirtToGrass;      // Threshold to turn dirt back to grass  
 extern int wearTrampleAmount;    // Wear added per mover step
 extern int wearDecayRate;        // Wear removed per decay interval
