@@ -51,17 +51,30 @@ void TrampleGround(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return;
     if (z < 0 || z >= gridDepth) return;
     
-    // Only affect dirt tiles (grass is now just an overlay on dirt)
+    // Check current cell for dirt
     CellType cell = grid[z][y][x];
-    if (cell != CELL_DIRT) return;
+    int targetZ = z;
+    
+    // In DF mode, movers walk at z=1 on floors above z=0 dirt
+    // If current cell isn't dirt, check if we're standing on dirt below
+    if (cell != CELL_DIRT && z > 0) {
+        CellType cellBelow = grid[z - 1][y][x];
+        if (cellBelow == CELL_DIRT) {
+            targetZ = z - 1;
+        } else {
+            return;  // No dirt to trample
+        }
+    } else if (cell != CELL_DIRT) {
+        return;  // No dirt to trample
+    }
     
     // Increase wear (cap at wearMax)
-    int newWear = wearGrid[z][y][x] + wearTrampleAmount;
+    int newWear = wearGrid[targetZ][y][x] + wearTrampleAmount;
     if (newWear > wearMax) newWear = wearMax;
-    wearGrid[z][y][x] = newWear;
+    wearGrid[targetZ][y][x] = newWear;
     
     // Update surface overlay based on new wear
-    UpdateSurfaceFromWear(x, y, z);
+    UpdateSurfaceFromWear(x, y, targetZ);
 }
 
 void UpdateGroundWear(void) {

@@ -548,6 +548,51 @@ describe(groundwear_edge_cases) {
         expect(GetGroundWear(2, 0, 0) == 0);  // Grass - not trampled (use dirt+overlay)
         expect(GetGroundWear(3, 0, 0) == 0);  // Wall - not trampled
     }
+    
+    it("should trample dirt below when walking on floor above (DF mode)") {
+        // DF mode: z=0 is dirt with grass, z=1 is where movers walk (air/floor above dirt)
+        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        
+        // Set up z=0 as dirt ground with tall grass
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 8; x++) {
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+                grid[1][y][x] = CELL_AIR;  // Walking level is air above dirt
+            }
+        }
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        // Trample at z=1 (where movers walk in DF mode)
+        // This should affect the dirt at z=0 below
+        TrampleGround(2, 1, 1);
+        
+        // Wear should be applied to z=0 (the dirt below)
+        expect(GetGroundWear(2, 1, 0) == wearTrampleAmount);
+        expect(GetGroundWear(2, 1, 1) == 0);  // No wear at z=1 (air)
+        
+        // Surface on z=0 should update based on wear
+        TrampleGround(2, 1, 1);  // Trample again
+        expect(GetGroundWear(2, 1, 0) == wearTrampleAmount * 2);
+    }
+    
+    it("should not trample when no dirt below floor") {
+        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        
+        // z=0 is stone/wall, z=1 is floor - no dirt to trample
+        grid[0][1][2] = CELL_WALL;
+        grid[1][1][2] = CELL_FLOOR;
+        
+        InitGroundWear();
+        groundWearEnabled = true;
+        
+        TrampleGround(2, 1, 1);
+        
+        expect(GetGroundWear(2, 1, 0) == 0);
+        expect(GetGroundWear(2, 1, 1) == 0);
+    }
 }
 
 // =============================================================================
