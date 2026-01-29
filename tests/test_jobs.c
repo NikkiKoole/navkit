@@ -1550,7 +1550,7 @@ describe(unreachable_item_cooldown) {
     }
     
     it("should retry unreachable item after cooldown expires") {
-        g_useDFWalkability = false;  // Use legacy mode for this complex job test
+        g_legacyWalkability = true;  // Use legacy mode for this complex job test
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -4744,7 +4744,7 @@ describe(job_game_speed) {
     }
     
     it("should complete build job faster at higher game speed") {
-        g_useDFWalkability = false;  // Use legacy mode for this complex job test
+        g_legacyWalkability = true;  // Use legacy mode for this complex job test
         // Setup world
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5326,9 +5326,9 @@ int main(int argc, char* argv[]) {
     }
     
     // Default to DF mode, but allow override via command line
-    g_useDFWalkability = true;
-    if (forceLegacy) g_useDFWalkability = false;
-    if (forceDF) g_useDFWalkability = true;
+    g_legacyWalkability = false;
+    if (forceLegacy) g_legacyWalkability = true;
+    if (forceDF) g_legacyWalkability = false;
 
     test(item_system);
     test(item_reservation);

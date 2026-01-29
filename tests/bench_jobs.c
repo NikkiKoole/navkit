@@ -459,7 +459,7 @@ int main(int argc, char* argv[]) {
     SetTraceLogLevel(LOG_NONE);
     
     // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_useDFWalkability = false;
+    g_legacyWalkability = true;
     
     printf("\n=== JOB SYSTEM BENCHMARKS ===\n\n");
     

@@ -117,16 +117,16 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
 1. Add global toggle:
 ```c
 // In header
-extern bool g_useDFWalkability;
+extern bool g_legacyWalkability;
 
 // In source
-bool g_useDFWalkability = false;  // Default to old behavior
+bool g_legacyWalkability = false;  // Default to old behavior
 ```
 
 2. Modify `IsCellWalkableAt()` to use toggle:
 ```c
 static inline bool IsCellWalkableAt(int z, int y, int x) {
-    if (g_useDFWalkability) {
+    if (g_legacyWalkability) {
         return IsCellWalkableAt_DFStyle(z, y, x);
     }
     
@@ -137,7 +137,7 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
 }
 ```
 
-3. Add UI toggle or key binding to flip `g_useDFWalkability` for testing.
+3. Add UI toggle or key binding to flip `g_legacyWalkability` for testing.
 
 **Verification**:
 - With toggle OFF: all tests pass, game plays as before
@@ -209,7 +209,7 @@ void GenerateFlatDF(void) {
 1. Add helper to find walkable z-level:
 ```c
 int FindWalkableZ(int x, int y) {
-    if (g_useDFWalkability) {
+    if (g_legacyWalkability) {
         // DF-style: find lowest z where cell below is solid
         for (int z = 1; z < gridDepth; z++) {
             if (IsCellWalkableAt(z, y, x)) {
@@ -264,7 +264,7 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
         }
         
         // In DF mode, stop at solid blocks even if not walkable
-        if (g_useDFWalkability && CellBlocksMovement(grid[checkZ][cellY][cellX])) {
+        if (g_legacyWalkability && CellBlocksMovement(grid[checkZ][cellY][cellX])) {
             break;
         }
     }
@@ -354,7 +354,7 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
 **Goal**: Clean up if old model no longer needed.
 
 **Changes**:
-- Remove `g_useDFWalkability` toggle
+- Remove `g_legacyWalkability` toggle
 - Remove `CF_WALKABLE` flag if unused
 - Simplify `IsCellWalkableAt()` to only DF-style
 - Update all documentation
@@ -439,7 +439,7 @@ This is a game design decision - postponed for now.
 |-------|---------|--------|
 | 1 | CF_SOLID flag | ✅ Complete |
 | 2 | IsCellWalkableAt_DFStyle | ✅ Complete |
-| 3 | g_useDFWalkability toggle | ✅ Complete |
+| 3 | g_legacyWalkability toggle | ✅ Complete |
 | 4 | DF test terrain | ✅ Complete |
 | 5 | Entity spawning | ✅ Complete |
 | 6 | Falling logic | ✅ Complete |
@@ -448,7 +448,7 @@ This is a game design decision - postponed for now.
 | 9 | Tests | ✅ Complete |
 | 10 | Legacy cleanup | ⏳ Deferred (intentional - keeps fallback capability) |
 
-**DF mode is now the PRIMARY mode** - `g_useDFWalkability = true` by default.
+**Standard mode is now the PRIMARY mode** - `g_legacyWalkability = false` by default.
 
 ---
 
@@ -461,13 +461,13 @@ This is a game design decision - postponed for now.
   - Handles constructed floors (`HAS_FLOOR` flag for balconies/bridges)
   - Treats z=-1 as implicit solid bedrock (z=0 walkable for air cells)
   - Special case handling for ladders and ramps
-- `g_useDFWalkability` toggle with F7 key binding
+- `g_legacyWalkability` toggle with F7 key binding
 - HPA graph rebuilds when toggling
 
 ### Phase 4: DF Terrain ✅
 
 - `FillGroundLevel()` helper in `grid.c:69-76`
-- Called by generators when `g_useDFWalkability` is true
+- Called by generators when `g_legacyWalkability` is false (standard mode)
 - z=0: solid dirt with grass overlay
 - z=1+: air (walkable in DF mode)
 
@@ -506,7 +506,7 @@ Full DF-mode rendering implemented in `rendering.c`:
 Comprehensive test coverage in `test_pathfinding.c`:
 - `describe(df_walkability)` - 3 tests
 - `describe(df_ladder_pathfinding)` - 2 tests
-- Legacy tests explicitly set `g_useDFWalkability = false`
+- Legacy tests explicitly set `g_legacyWalkability = true`
 - Command-line flags: `--df` / `--legacy`
 
 ### Phase 10: Legacy Cleanup ⏳
@@ -540,21 +540,21 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
 - CanClimbUp/Down: need ladder at BOTH levels
 - Matches legacy behavior for consistency
 
-**MarkChunkDirty in DF Mode** (`pathfinding.c`):
+**MarkChunkDirty in Standard Mode** (`pathfinding.c`):
 ```c
-// In DF mode, changing a cell affects walkability of the cell ABOVE it
-if (g_useDFWalkability && cellZ + 1 < gridDepth) {
+// In standard mode, changing a cell affects walkability of the cell ABOVE it
+if (!g_legacyWalkability && cellZ + 1 < gridDepth) {
     chunkDirty[cellZ + 1][cy][cx] = true;
 }
 ```
 
-**Fire System**: Burns on z-1 (the floor) in DF mode
+**Fire System**: Burns on z-1 (the floor) in standard mode
 
 ---
 
 ### Working Features
 
-- DF mode enabled by default (`g_useDFWalkability = true`)
+- Standard mode enabled by default (`g_legacyWalkability = false`)
 - Default view at z=1, InitGrid() fills z=0 with dirt
 - Toggle between legacy and DF mode with F7
 - Basic walking on flat DF terrain (z=1 on z=0 dirt)

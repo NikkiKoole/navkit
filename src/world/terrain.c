@@ -33,11 +33,12 @@ void GenerateSparse(float density) {
 // ============================================================================
 static void PlaceFloor(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    if (g_useDFWalkability) {
+    if (g_legacyWalkability) {
+        grid[z][y][x] = CELL_FLOOR;
+    } else {
+        // Standard mode: uses CELL_AIR + HAS_FLOOR flag (for balconies/bridges)
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
-    } else {
-        grid[z][y][x] = CELL_FLOOR;
     }
     // Clear grass/surface overlay on floors
     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
@@ -46,10 +47,10 @@ static void PlaceFloor(int x, int y, int z) {
 // Helper to check if a cell is a floor (either CELL_FLOOR or HAS_FLOOR flag)
 static bool IsFloorCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
-    if (g_useDFWalkability) {
-        return HAS_FLOOR(x, y, z) || grid[z][y][x] == CELL_FLOOR;
+    if (g_legacyWalkability) {
+        return grid[z][y][x] == CELL_FLOOR;
     }
-    return grid[z][y][x] == CELL_FLOOR;
+    return HAS_FLOOR(x, y, z) || grid[z][y][x] == CELL_FLOOR;
 }
 
 // ============================================================================
@@ -83,10 +84,10 @@ static void PlaceLadderNear(int targetX, int targetY, int zLow, int zHigh, int r
 
 void GenerateLabyrinth3D(void) {
     InitGrid();  // Clear cells and flags
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_useDFWalkability ? 1 : 0;
+    int baseZ = g_legacyWalkability ? 0 : 1;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
@@ -194,10 +195,10 @@ void GenerateLabyrinth3D(void) {
 
 void GenerateSpiral3D(void) {
     InitGrid();  // Clear cells and flags
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_useDFWalkability ? 1 : 0;
+    int baseZ = g_legacyWalkability ? 0 : 1;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
@@ -1229,7 +1230,7 @@ static void BuildBridge(Tower* t1, Tower* t2) {
 
 void GenerateTowers(void) {
     InitGrid();  // Clear cells and flags
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // Place towers
     Tower towers[MAX_TOWERS];
@@ -1262,22 +1263,31 @@ void GenerateTowers(void) {
         if (!overlaps) {
             towers[towerCount++] = (Tower){tx, ty, tw, th, tHeight};
             
+            // Calculate ladder position
+            int ladderX = tx + tw / 2;
+            int ladderY = ty + th / 2;
+            
             // Build the tower: walls on border, floor inside (shifted +1 for DF)
+            // Skip ladder position when placing floors
             for (int z = 0; z < tHeight; z++) {
                 for (int py = ty; py < ty + th; py++) {
                     for (int px = tx; px < tx + tw; px++) {
                         bool isBorder = (px == tx || px == tx + tw - 1 || 
                                         py == ty || py == ty + th - 1);
-                        grid[z + 1][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                        bool isLadderPos = (px == ladderX && py == ladderY);
+                        if (isBorder) {
+                            grid[z + 1][py][px] = CELL_WALL;
+                        } else if (!isLadderPos) {
+                            PlaceFloor(px, py, z + 1);
+                        }
                     }
                 }
             }
             
             // Add ladder inside tower (connects all levels)
-            int ladderX = tx + tw / 2;
-            int ladderY = ty + th / 2;
-            for (int z = 0; z < tHeight; z++) {
-                grid[z + 1][ladderY][ladderX] = CELL_LADDER;
+            // Place ladder from bottom to top
+            for (int z = 0; z < tHeight - 1; z++) {
+                PlaceLadder(ladderX, ladderY, z + 1);
             }
             
             // Add door at z=1 (opening in wall)
@@ -1384,7 +1394,7 @@ void GenerateTowers(void) {
 
 void GenerateGalleryFlat(void) {
     InitGrid();  // Clear cells and flags
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // Building parameters
     int apartmentWidth = 4;
@@ -1494,7 +1504,7 @@ void GenerateGalleryFlat(void) {
 
 void GenerateCastle(void) {
     InitGrid();  // Clear cells and flags
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // Castle dimensions - centered in grid
     int wallThickness = 2;
@@ -1796,7 +1806,7 @@ void GenerateCastle(void) {
 // width/height are the TOTAL footprint dimensions (X and Y) including gallery
 static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
     // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_useDFWalkability ? 1 : 0;
+    int baseZ = g_legacyWalkability ? 0 : 1;
     int maxFloors = gridDepth - baseZ;
     if (floors > maxFloors) floors = maxFloors;
     if (floors < 1) floors = 1;
@@ -2182,7 +2192,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
 
 void GenerateCouncilEstate(void) {
     InitGrid();  // Clear cells and flags properly
-    if (g_useDFWalkability) FillGroundLevel();
+    if (!g_legacyWalkability) FillGroundLevel();
     
     // Scale building count based on grid size
     int numTerraceRows = 4 + (gridWidth * gridHeight) / 6000;

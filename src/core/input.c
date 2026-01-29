@@ -78,19 +78,19 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (g_useDFWalkability) {
-                // DF mode: set floor flag on AIR cell (for balconies/bridges)
-                if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
-                    grid[z][dy][dx] = CELL_AIR;
-                    SET_FLOOR(dx, dy, z);
+            if (g_legacyWalkability) {
+                // Legacy mode: use CELL_FLOOR type
+                if (grid[z][dy][dx] != CELL_FLOOR) {
+                    grid[z][dy][dx] = CELL_FLOOR;
                     MarkChunkDirty(dx, dy, z);
                     CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                     count++;
                 }
             } else {
-                // Legacy mode: use CELL_FLOOR type
-                if (grid[z][dy][dx] != CELL_FLOOR) {
-                    grid[z][dy][dx] = CELL_FLOOR;
+                // Standard mode: set floor flag on AIR cell (for balconies/bridges)
+                if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
+                    grid[z][dy][dx] = CELL_AIR;
+                    SET_FLOOR(dx, dy, z);
                     MarkChunkDirty(dx, dy, z);
                     CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                     count++;
@@ -355,9 +355,9 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // In DF mode, fire burns on the floor (z-1), not in the air (z)
+            // In standard mode, fire burns on the floor (z-1), not in the air (z)
             int fireZ = z;
-            if (g_useDFWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (!g_legacyWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
                 fireZ = z - 1;
             }
             
@@ -382,9 +382,9 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
     int removedSources = 0, extinguished = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // In DF mode, fire burns on the floor (z-1), not in the air (z)
+            // In standard mode, fire burns on the floor (z-1), not in the air (z)
             int fireZ = z;
-            if (g_useDFWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (!g_legacyWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
                 fireZ = z - 1;
             }
             
@@ -685,7 +685,7 @@ void HandleInput(void) {
 
     // Toggle DF-style walkability (for testing new walkability model)
     if (IsKeyPressed(KEY_F7)) {
-        g_useDFWalkability = !g_useDFWalkability;
+        g_legacyWalkability = !g_legacyWalkability;
         // Full rebuild of pathfinding graph with new walkability rules
         BuildEntrances();
         BuildGraph();
@@ -694,7 +694,7 @@ void HandleInput(void) {
         for (int i = 0; i < moverCount; i++) {
             if (movers[i].active) movers[i].needsRepath = true;
         }
-        AddMessage(TextFormat("Walkability: %s", g_useDFWalkability ? "DF-style (solid below)" : "Legacy (cell flag)"), YELLOW);
+        AddMessage(TextFormat("Walkability: %s", g_legacyWalkability ? "Legacy (cell flag)" : "Standard (solid below)"), YELLOW);
     }
 
     // ========================================================================
@@ -773,7 +773,7 @@ void HandleInput(void) {
                     if (IsLadderCell(grid[z][y][x])) {
                         EraseLadder(x, y, z);
                     } else {
-                        CellType eraseType = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
+                        CellType eraseType = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
                         if (grid[z][y][x] != eraseType) {
                             grid[z][y][x] = eraseType;
                             MarkChunkDirty(x, y, z);

@@ -562,9 +562,9 @@ int main(int argc, char* argv[]) {
     }
     
     // Default to DF mode, but allow override via command line
-    g_useDFWalkability = true;
-    if (forceLegacy) g_useDFWalkability = false;
-    if (forceDF) g_useDFWalkability = true;
+    g_legacyWalkability = false;
+    if (forceLegacy) g_legacyWalkability = true;
+    if (forceDF) g_legacyWalkability = false;
     
     // Fire specifications
     test(spec_fire_spread);

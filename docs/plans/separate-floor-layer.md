@@ -138,7 +138,7 @@ Add ability to place floors:
 
 ```c
 // When player builds a floor at (x, y, z):
-if (g_useDFWalkability) {
+if (g_legacyWalkability) {
     // DF mode: set floor flag, keep cell as AIR
     grid[z][y][x] = CELL_AIR;
     SET_FLOOR(x, y, z);

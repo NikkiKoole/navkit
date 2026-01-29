@@ -28,8 +28,8 @@ void DrawCellGrid(void) {
         if (maxY > gridHeight) maxY = gridHeight;
     }
 
-    if (g_useDFWalkability) {
-        // DF mode: draw deeper levels first (z-3, z-2) with blue tint for depth
+    if (!g_legacyWalkability) {
+        // Standard mode: draw deeper levels first (z-3, z-2) with blue tint for depth
         // These show terrain dropping away below current view
         Color depthTints[] = {
             {100, 120, 160, 255},  // z-3: darker blue
@@ -232,8 +232,8 @@ void DrawGrassOverlay(void) {
         if (maxY > gridHeight) maxY = gridHeight;
     }
 
-    if (g_useDFWalkability) {
-        // DF mode: draw grass for deeper levels (z-3, z-2) with blue tint
+    if (!g_legacyWalkability) {
+        // Standard mode: draw grass for deeper levels (z-3, z-2) with blue tint
         Color depthTints[] = {
             {100, 120, 160, 255},  // z-3: darker blue
             {130, 150, 180, 255}   // z-2: lighter blue
@@ -410,9 +410,9 @@ void DrawFire(void) {
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            // In DF mode, fire on the floor (z-1) should be visible when viewing z
+            // In standard mode, fire on the floor (z-1) should be visible when viewing z
             int fireZ = z;
-            if (g_useDFWalkability && z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
+            if (!g_legacyWalkability && z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
                 fireZ = z - 1;
             }
             

@@ -3136,8 +3136,8 @@ Point GetRandomWalkableCell(void) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
-        // Skip z-levels with no ladder connections (stranded spawns)
-        if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
+        // Skip z-levels with no ladder connections (stranded spawns) in standard mode
+        if (!g_legacyWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         // Use IsValidDestination to filter wall-tops and other non-goal cells
         if (IsValidDestination(p.z, p.y, p.x)) {
             return p;
@@ -3152,8 +3152,8 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
-        // Skip z-levels with no ladder connections (stranded spawns)
-        if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
+        // Skip z-levels with no ladder connections (stranded spawns) in standard mode
+        if (!g_legacyWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
         if (p.z != excludeZ && IsValidDestination(p.z, p.y, p.x)) {
             return p;
         }

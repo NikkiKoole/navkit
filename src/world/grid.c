@@ -9,7 +9,7 @@ uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
 bool jpsNeedsRebuild = false;
-bool g_useDFWalkability = true;  // Default to DF-style walkability model
+bool g_legacyWalkability = false;  // false = standard walkability, true = legacy
 
 // Runtime dimensions - default to max
 int gridWidth = MAX_GRID_WIDTH;
@@ -47,12 +47,12 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                // In DF mode: all air (z=0 walkable via implicit bedrock)
+                // In standard mode: all air (z=0 walkable via implicit bedrock)
                 // In legacy mode: z=0 walkable, higher levels air
-                if (g_useDFWalkability) {
-                    grid[z][y][x] = CELL_AIR;
-                } else {
+                if (g_legacyWalkability) {
                     grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+                } else {
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -117,7 +117,7 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
                     grid[0][y][x] = CELL_WALL;
                 } else {
                     // Use CELL_AIR in DF mode, CELL_WALKABLE in legacy mode
-                    grid[0][y][x] = g_useDFWalkability ? CELL_AIR : CELL_WALKABLE;
+                    grid[0][y][x] = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
                 }
             }
             x++;
@@ -226,7 +226,7 @@ static void CascadeBreakDown(int x, int y, int z) {
             return;  // BOTH→UP doesn't cascade further
         } else if (cell == CELL_LADDER_DOWN) {
             // DOWN with no connection below: remove and continue up
-            grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
+            grid[z][y][x] = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
             z++;  // Continue upward
         } else {
             // UP stays UP (still has its upward connection)
@@ -249,7 +249,7 @@ static void CascadeBreakUp(int x, int y, int z) {
             return;  // BOTH→DOWN doesn't cascade further
         } else if (cell == CELL_LADDER_UP) {
             // UP with no connection above: remove and continue down
-            grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
+            grid[z][y][x] = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
             z--;  // Continue downward
         } else {
             // DOWN stays DOWN (still has its downward connection)
@@ -275,12 +275,12 @@ void EraseLadder(int x, int y, int z) {
         
     } else if (cell == CELL_LADDER_UP) {
         // Remove completely, cascade upward
-        grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
+        grid[z][y][x] = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
         CascadeBreakDown(x, y, z + 1);
         
     } else if (cell == CELL_LADDER_DOWN) {
         // Remove completely, cascade downward
-        grid[z][y][x] = (g_useDFWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
+        grid[z][y][x] = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
         CascadeBreakUp(x, y, z - 1);
     }
 }
@@ -291,6 +291,8 @@ int InitGridFromAscii(const char* ascii) {
 
 int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
     // Parse format: "floor:0\n...\nfloor:1\n..."
+    // In standard mode: floor:0 becomes solid ground (CELL_DIRT), floor:1+ becomes walkable air
+    // In legacy mode: all floors use CELL_WALKABLE for '.' cells
     
     // First pass: find dimensions and floor count
     int width = 0;
@@ -389,8 +391,18 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
                 } else if (*p == 'X') {
                     grid[currentFloor][y][x] = CELL_LADDER_BOTH;
                 } else {
-                    // Use CELL_AIR in DF mode, CELL_WALKABLE in legacy mode
-                    grid[currentFloor][y][x] = g_useDFWalkability ? CELL_AIR : CELL_WALKABLE;
+                    // In standard mode: all floors are CELL_AIR
+                    //   - floor 0 is walkable via implicit bedrock at z=-1
+                    //   - floor 1+ gets HAS_FLOOR flag for walkability
+                    // In legacy mode: all floors use CELL_WALKABLE
+                    if (g_legacyWalkability) {
+                        grid[currentFloor][y][x] = CELL_WALKABLE;
+                    } else {
+                        grid[currentFloor][y][x] = CELL_AIR;
+                        if (currentFloor > 0) {
+                            SET_FLOOR(x, y, currentFloor);  // Constructed floor for walkability
+                        }
+                    }
                 }
             }
             x++;
