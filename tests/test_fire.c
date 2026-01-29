@@ -524,6 +524,131 @@ describe(fire_non_flammable) {
         expect(GetBaseFuelForCellType(CELL_GRASS) > 0);
         expect(GetBaseFuelForCellType(CELL_WALKABLE) > 0);
     }
+    
+    it("should not spread fire through walls at same z-level") {
+        // Create two grass areas separated by a wall at z=0
+        // Left side: grass with fire source
+        // Middle: wall barrier
+        // Right side: grass that should NOT catch fire
+        InitGridFromAsciiWithChunkSize(
+            "...#...\n"
+            "...#...\n"
+            "...#...\n", 7, 3);
+        
+        // Fill with flammable grass (but preserve walls)
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 7; x++) {
+                if (grid[0][y][x] != CELL_WALL) {
+                    grid[0][y][x] = CELL_DIRT;
+                    SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+                }
+            }
+        }
+        
+        InitFire();
+        
+        // Place fire source on left side
+        SetFireSource(1, 1, 0, true);
+        
+        // Run simulation for a long time
+        RunFireTicks(500);
+        
+        // Fire should NOT have spread to the right side of the wall
+        // Check all cells on the right side (x >= 4)
+        for (int y = 0; y < 3; y++) {
+            for (int x = 4; x < 7; x++) {
+                expect(HasFire(x, y, 0) == false);
+                expect(HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED) == 0);
+            }
+        }
+        
+        // Fire should exist on left side
+        int leftSideFire = 0;
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 3; x++) {
+                if (HasFire(x, y, 0) || HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) {
+                    leftSideFire++;
+                }
+            }
+        }
+        expect(leftSideFire > 0);
+    }
+    
+    it("should not spread fire under walls at z+1 (DF mode)") {
+        // DF mode scenario: 
+        // z=0: dirt with grass (flammable ground)
+        // z=1: walls forming a barrier, air elsewhere
+        // Fire should NOT spread under the wall from one side to the other
+        InitGridWithSizeAndChunkSize(7, 3, 7, 3);
+        gridDepth = 2;
+        
+        // z=0: all dirt with grass surface
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 7; x++) {
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+            }
+        }
+        
+        // z=1: wall barrier in the middle (x=3), air elsewhere
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 7; x++) {
+                if (x == 3) {
+                    grid[1][y][x] = CELL_WALL;
+                } else {
+                    grid[1][y][x] = CELL_AIR;
+                }
+            }
+        }
+        
+        InitFire();
+        
+        // Place fire source on left side at z=0 - use multiple sources to ensure spread
+        SetFireSource(0, 1, 0, true);
+        SetFireSource(1, 1, 0, true);
+        SetFireSource(2, 1, 0, true);  // Right next to the wall
+        
+        // Run simulation for a long time
+        RunFireTicks(1000);
+        
+        // Debug: print fire/burn state
+        printf("Legacy mode: %s\n", g_legacyWalkability ? "yes" : "no");
+        printf("Fire state at z=0 after 1000 ticks:\n");
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 7; x++) {
+                char c = '.';
+                if (x == 3) c = '#';  // wall above
+                if (HasFire(x, y, 0)) c = 'F';
+                else if (HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) c = 'B';
+                printf("%c", c);
+            }
+            printf("\n");
+        }
+        
+        // Fire should NOT have spread to the right side (under the wall)
+        // Check all cells on the right side (x >= 4) at z=0
+        int rightSideBurned = 0;
+        for (int y = 0; y < 3; y++) {
+            for (int x = 4; x < 7; x++) {
+                if (HasFire(x, y, 0) || HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) {
+                    rightSideBurned++;
+                }
+            }
+        }
+        printf("Right side burned/burning cells: %d\n", rightSideBurned);
+        expect(rightSideBurned == 0);
+        
+        // Fire should exist on left side
+        int leftSideFire = 0;
+        for (int y = 0; y < 3; y++) {
+            for (int x = 0; x < 3; x++) {
+                if (HasFire(x, y, 0) || HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) {
+                    leftSideFire++;
+                }
+            }
+        }
+        expect(leftSideFire > 0);
+    }
 }
 
 // =============================================================================

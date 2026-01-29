@@ -4,7 +4,7 @@
 CellDef cellDefs[] = {
     // === GROUND TYPES ===
     [CELL_GRASS]       = {"grass",       SPRITE_grass,       CF_GROUND,            INSULATION_TIER_AIR,   16, CELL_DIRT},
-    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND,            INSULATION_TIER_AIR,    1, CELL_DIRT},
+    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT},
     [CELL_FLOOR]       = {"floor",       SPRITE_floor,       CF_WALKABLE,          INSULATION_TIER_WOOD,   0, CELL_FLOOR},
     
     // === WALLS ===
