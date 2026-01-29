@@ -30,7 +30,10 @@ typedef struct {
 } WaterPos;
 
 static WaterPos pressureQueue[WATER_PRESSURE_SEARCH_LIMIT];
-static bool pressureVisited[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Generation-based visited tracking (avoids expensive memset each call)
+static uint16_t pressureVisitedGen[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+static uint16_t currentPressureGen = 0;
 
 // Initialize water system
 void InitWater(void) {
@@ -284,7 +287,13 @@ static bool TryPressure(int x, int y, int z) {
     if (maxZ < 0) maxZ = 0;
     
     // BFS to find nearest non-full cell through full cells
-    memset(pressureVisited, 0, sizeof(pressureVisited));
+    // Use generation counter instead of memset (much faster)
+    currentPressureGen++;
+    if (currentPressureGen == 0) {
+        // Handle wrap-around (rare) - clear the array once
+        memset(pressureVisitedGen, 0, sizeof(pressureVisitedGen));
+        currentPressureGen = 1;
+    }
     
     int queueHead = 0;
     int queueTail = 0;
@@ -293,7 +302,7 @@ static bool TryPressure(int x, int y, int z) {
     int dy[] = {0, 0, -1, 1, 0, 0};
     int dz[] = {0, 0, 0, 0, -1, 1};
     
-    pressureVisited[z][y][x] = true;
+    pressureVisitedGen[z][y][x] = currentPressureGen;
     
     // Add initial neighbors to queue
     for (int i = 0; i < 6; i++) {
@@ -303,9 +312,9 @@ static bool TryPressure(int x, int y, int z) {
         
         if (nz > maxZ) continue;
         if (!CanHoldWater(nx, ny, nz)) continue;
-        if (pressureVisited[nz][ny][nx]) continue;
+        if (pressureVisitedGen[nz][ny][nx] == currentPressureGen) continue;
         
-        pressureVisited[nz][ny][nx] = true;
+        pressureVisitedGen[nz][ny][nx] = currentPressureGen;
         pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
         
         if (queueTail >= WATER_PRESSURE_SEARCH_LIMIT) break;
@@ -354,9 +363,9 @@ static bool TryPressure(int x, int y, int z) {
                 
                 if (nz > maxZ) continue;
                 if (!CanHoldWater(nx, ny, nz)) continue;
-                if (pressureVisited[nz][ny][nx]) continue;
+                if (pressureVisitedGen[nz][ny][nx] == currentPressureGen) continue;
                 
-                pressureVisited[nz][ny][nx] = true;
+                pressureVisitedGen[nz][ny][nx] = currentPressureGen;
                 
                 if (queueTail < WATER_PRESSURE_SEARCH_LIMIT) {
                     pressureQueue[queueTail++] = (WaterPos){nx, ny, nz};
