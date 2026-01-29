@@ -355,12 +355,18 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
+            // In DF mode, fire burns on the floor (z-1), not in the air (z)
+            int fireZ = z;
+            if (g_useDFWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+                fireZ = z - 1;
+            }
+            
             if (shift) {
-                SetFireSource(dx, dy, z, true);
+                SetFireSource(dx, dy, fireZ, true);
                 count++;
             } else {
-                if (GetBaseFuelForCellType(grid[z][dy][dx]) > 0 && !HAS_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED)) {
-                    IgniteCell(dx, dy, z);
+                if (GetBaseFuelForCellType(grid[fireZ][dy][dx]) > 0 && !HAS_CELL_FLAG(dx, dy, fireZ, CELL_FLAG_BURNED)) {
+                    IgniteCell(dx, dy, fireZ);
                     count++;
                 }
             }
@@ -376,9 +382,15 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
     int removedSources = 0, extinguished = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            FireCell* cell = &fireGrid[z][dy][dx];
-            if (cell->isSource) { SetFireSource(dx, dy, z, false); removedSources++; }
-            if (!shift && cell->level > 0) { ExtinguishCell(dx, dy, z); extinguished++; }
+            // In DF mode, fire burns on the floor (z-1), not in the air (z)
+            int fireZ = z;
+            if (g_useDFWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+                fireZ = z - 1;
+            }
+            
+            FireCell* cell = &fireGrid[fireZ][dy][dx];
+            if (cell->isSource) { SetFireSource(dx, dy, fireZ, false); removedSources++; }
+            if (!shift && cell->level > 0) { ExtinguishCell(dx, dy, fireZ); extinguished++; }
         }
     }
     if (removedSources > 0) AddMessage(TextFormat("Removed %d fire source%s", removedSources, removedSources > 1 ? "s" : ""), ORANGE);

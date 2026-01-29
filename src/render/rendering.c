@@ -266,11 +266,17 @@ void DrawFire(void) {
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            FireCell* cell = &fireGrid[z][y][x];
+            // In DF mode, fire on the floor (z-1) should be visible when viewing z
+            int fireZ = z;
+            if (g_useDFWalkability && z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
+                fireZ = z - 1;
+            }
+            
+            FireCell* cell = &fireGrid[fireZ][y][x];
             int level = cell->level;
             
             // Draw burned cells with a darker tint
-            if (level == 0 && HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) {
+            if (level == 0 && HAS_CELL_FLAG(x, y, fireZ, CELL_FLAG_BURNED)) {
                 Color burnedColor = (Color){40, 30, 20, 100};
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawRectangleRec(dest, burnedColor);

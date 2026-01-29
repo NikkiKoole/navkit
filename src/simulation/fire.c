@@ -54,6 +54,22 @@ int GetBaseFuelForCellType(CellType cell) {
     return CellFuel(cell);
 }
 
+// Get fuel at a specific position, considering grass surface overlay
+static int GetFuelAt(int x, int y, int z) {
+    CellType cell = grid[z][y][x];
+    int baseFuel = CellFuel(cell);
+    
+    // In DF mode, grass surface on dirt adds extra fuel (like CELL_GRASS)
+    if (cell == CELL_DIRT) {
+        int surface = GET_CELL_SURFACE(x, y, z);
+        if (surface == SURFACE_GRASS || surface == SURFACE_TALL_GRASS) {
+            baseFuel = 16;  // Same as CELL_GRASS
+        }
+    }
+    
+    return baseFuel;
+}
+
 // Check if cell can burn (has fuel and not already burned)
 static inline bool CanBurn(int x, int y, int z) {
     if (!FireInBounds(x, y, z)) return false;
@@ -61,9 +77,8 @@ static inline bool CanBurn(int x, int y, int z) {
     // Already burned cells can't burn again
     if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) return false;
     
-    // Check if cell type has fuel
-    CellType cell = grid[z][y][x];
-    return GetBaseFuelForCellType(cell) > 0;
+    // Check if cell has fuel (including grass surface)
+    return GetFuelAt(x, y, z) > 0;
 }
 
 // Mark cell and neighbors as unstable
@@ -94,8 +109,7 @@ void SetFireLevel(int x, int y, int z, int level) {
     
     // Initialize fuel if igniting for the first time
     if (oldLevel == 0 && level > 0 && cell->fuel == 0) {
-        CellType cellType = grid[z][y][x];
-        cell->fuel = GetBaseFuelForCellType(cellType);
+        cell->fuel = GetFuelAt(x, y, z);
     }
     
     if (oldLevel != level) {
@@ -110,9 +124,8 @@ void IgniteCell(int x, int y, int z) {
     
     FireCell* cell = &fireGrid[z][y][x];
     
-    // Initialize fuel from cell type
-    CellType cellType = grid[z][y][x];
-    cell->fuel = GetBaseFuelForCellType(cellType);
+    // Initialize fuel from cell type (including grass surface)
+    cell->fuel = GetFuelAt(x, y, z);
     cell->level = FIRE_MAX_LEVEL;
     
     DestabilizeFire(x, y, z);
@@ -212,8 +225,7 @@ static bool FireTrySpread(int x, int y, int z) {
         
         if ((rand() % 100) < spreadPercent) {
             // Ignite neighbor
-            CellType cellType = grid[z][ny][nx];
-            neighbor->fuel = GetBaseFuelForCellType(cellType);
+            neighbor->fuel = GetFuelAt(nx, ny, z);
             neighbor->level = FIRE_MIN_SPREAD_LEVEL;  // Start at low intensity
             
             DestabilizeFire(nx, ny, z);
