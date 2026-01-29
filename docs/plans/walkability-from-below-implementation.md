@@ -433,21 +433,90 @@ This is a game design decision - postponed for now.
 
 ## Implementation Progress & Findings
 
-### Completed (Phases 1-6)
+### Status Summary (Updated 2026-01-29)
 
-**Phase 1-3**: Core infrastructure in place:
-- `CF_SOLID` flag added to cell definitions
-- `IsCellWalkableAt_DFStyle()` function implemented
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 1 | CF_SOLID flag | ✅ Complete |
+| 2 | IsCellWalkableAt_DFStyle | ✅ Complete |
+| 3 | g_useDFWalkability toggle | ✅ Complete |
+| 4 | DF test terrain | ✅ Complete |
+| 5 | Entity spawning | ✅ Complete |
+| 6 | Falling logic | ✅ Complete |
+| 7 | Terrain generators | ✅ Complete (6/17 converted, others work via FillGroundLevel) |
+| 8 | Rendering | ✅ Complete |
+| 9 | Tests | ✅ Complete |
+| 10 | Legacy cleanup | ⏳ Deferred (intentional - keeps fallback capability) |
+
+**DF mode is now the PRIMARY mode** - `g_useDFWalkability = true` by default.
+
+---
+
+### Phase 1-3: Core Infrastructure ✅
+
+- `CF_SOLID` flag added to cell definitions (`cell_defs.h:6`)
+- `CellIsSolid()` macro implemented
+- Applied to: `CELL_GRASS`, `CELL_DIRT`, `CELL_WALL`, `CELL_WOOD_WALL`, `CELL_BEDROCK`
+- `IsCellWalkableAt_DFStyle()` function with advanced features:
+  - Handles constructed floors (`HAS_FLOOR` flag for balconies/bridges)
+  - Treats z=-1 as implicit solid bedrock (z=0 walkable for air cells)
+  - Special case handling for ladders and ramps
 - `g_useDFWalkability` toggle with F7 key binding
-- HPA graph rebuilds when toggling (calls `BuildEntrances()` + `BuildGraph()`)
+- HPA graph rebuilds when toggling
 
-**Phase 4**: `GenerateFlatDF()` terrain generator added:
+### Phase 4: DF Terrain ✅
+
+- `FillGroundLevel()` helper in `grid.c:69-76`
+- Called by generators when `g_useDFWalkability` is true
 - z=0: solid dirt with grass overlay
-- z=1+: air (walkable in DF mode because solid below)
+- z=1+: air (walkable in DF mode)
 
-**Phase 5-6**: Entity spawning and falling updated:
+### Phase 5-6: Entity Behavior ✅
+
 - Movers spawn at correct z-level based on walkability mode
-- Falling distinguishes between air (fall) and walls (push out)
+- Falling uses `IsCellWalkableAt()` which respects toggle
+- `TryFallToGround()` stops at walls in DF mode
+
+### Phase 7: Terrain Generators ✅
+
+**DF-Compatible Generators** (use `FillGroundLevel()` + `baseZ` pattern):
+1. ✅ GenerateLabyrinth3D
+2. ✅ GenerateSpiral3D
+3. ✅ GenerateTowers
+4. ✅ GenerateGalleryFlat
+5. ✅ GenerateCastle
+6. ✅ GenerateCouncilEstate
+
+**Other Generators** (work in both modes via automatic ground fill):
+- GenerateSparse, GenerateDungeonRooms, GenerateCaves, GenerateDrunkard
+- GenerateTunneler, GenerateMixMax, GenerateConcentricMaze, GenerateHills
+- GeneratePerlin, GenerateCity, GenerateMixed
+
+### Phase 8: Rendering ✅
+
+Full DF-mode rendering implemented in `rendering.c`:
+- Depth layers (z-3, z-2) drawn with blue tint
+- Floor drawn from z-1 cell (what you're standing on)
+- Wall tops tinted blue for depth cue
+- z=0 bedrock rendering for dug holes
+- HPA visualization filtered by `currentViewZ`
+
+### Phase 9: Tests ✅
+
+Comprehensive test coverage in `test_pathfinding.c`:
+- `describe(df_walkability)` - 3 tests
+- `describe(df_ladder_pathfinding)` - 2 tests
+- Legacy tests explicitly set `g_useDFWalkability = false`
+- Command-line flags: `--df` / `--legacy`
+
+### Phase 10: Legacy Cleanup ⏳
+
+**Intentionally deferred** - Legacy model retained for:
+- Safe fallback testing
+- A/B testing capability
+- No breaking changes for existing saves
+
+---
 
 ### Key Implementation Details
 
@@ -459,30 +528,17 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     if (CellBlocksMovement(cellHere)) return false;
     if (CellIsLadder(cellHere)) return true;   // Ladders always walkable
     if (CellIsRamp(cellHere)) return true;     // Ramps always walkable
-    if (z == 0) return false;                  // z=0 never walkable in DF mode
+    if (IsConstructedFloor(z, y, x)) return true;  // HAS_FLOOR flag
+    if (z == 0) return !CellBlocksMovement(cellHere);  // Implicit bedrock
     CellType cellBelow = grid[z-1][y][x];
-    // Cells above ladders only walkable if also a ladder (prevents unreachable goals)
     if (CellIsLadder(cellBelow) && !CellIsLadder(cellHere)) return false;
     return CellIsSolid(cellBelow);
 }
 ```
 
 **Ladder Climbing in DF Mode** (`pathfinding.c`):
-```c
-// CanClimbUp: need ladder at BOTH levels (same as legacy)
-if (g_useDFWalkability) {
-    bool hasLadderHere = CellIsLadder(low);
-    bool hasLadderAbove = CellIsLadder(high);
-    return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
-}
-
-// CanClimbDown: need ladder at BOTH levels (same as legacy)
-if (g_useDFWalkability) {
-    bool hasLadderHere = CellIsLadder(high);
-    bool hasLadderBelow = CellIsLadder(low);
-    return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
-}
-```
+- CanClimbUp/Down: need ladder at BOTH levels
+- Matches legacy behavior for consistency
 
 **MarkChunkDirty in DF Mode** (`pathfinding.c`):
 ```c
@@ -492,27 +548,22 @@ if (g_useDFWalkability && cellZ + 1 < gridDepth) {
 }
 ```
 
-**HPA Visualization Fix** (`rendering.c`):
-- `DrawEntrances()` and `DrawGraph()` now filter by `currentViewZ`
-- Previously showed all z-levels overlapping
+**Fire System**: Burns on z-1 (the floor) in DF mode
+
+---
 
 ### Working Features
 
-- DF mode enabled by default
+- DF mode enabled by default (`g_useDFWalkability = true`)
 - Default view at z=1, InitGrid() fills z=0 with dirt
 - Toggle between legacy and DF mode with F7
 - Basic walking on flat DF terrain (z=1 on z=0 dirt)
 - Pathfinding works correctly with ladders
 - Movers pathfind correctly across z-levels
 - Incremental graph updates work in DF mode
-- All tests pass (legacy tests use `g_useDFWalkability = false`)
+- All tests pass
 
-### Known Limitations & Future Work
-
-**Not Yet Implemented**:
-- Phase 7: Converting other terrain generators to DF-style
-- Phase 8: Rendering adjustments (floor textures from z-1)
-- Phase 10: Removing legacy model (keeping toggle for now)
+---
 
 ### Testing Commands
 
@@ -522,6 +573,10 @@ make test
 
 # Run pathfinding tests only
 ./bin/test_pathing
+
+# Run with explicit mode
+./bin/test_pathing --df      # Force DF mode
+./bin/test_pathing --legacy  # Force legacy mode
 
 # In-game testing
 # DF mode is now enabled by default

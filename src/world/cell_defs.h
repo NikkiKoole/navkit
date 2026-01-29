@@ -109,4 +109,73 @@ static inline bool IsCellWalkableAt_DFStyle(int z, int y, int x) {
     return CellIsSolid(cellBelow);
 }
 
+// =============================================================================
+// Pathfinder-agnostic helpers (allow pathfinder extraction without DF knowledge)
+// =============================================================================
+
+// Check if a cell is a valid destination (not a wall-top in DF mode)
+// Wall tops are traversable but shouldn't be random goals
+static inline bool IsValidDestination(int z, int y, int x) {
+    if (!IsCellWalkableAt(z, y, x)) return false;
+    
+    if (g_useDFWalkability && z > 0) {
+        // In DF mode, skip "wall tops" (air above wall) as destinations
+        if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Get additional z-levels affected when a cell changes (for chunk dirtying)
+// In DF mode, changing a cell affects walkability of cell above (z+1)
+// Returns the number of additional z-levels written to outZ array
+static inline int GetAdditionalAffectedZLevels(int z, int* outZ) {
+    if (g_useDFWalkability && z + 1 < gridDepth) {
+        outZ[0] = z + 1;
+        return 1;
+    }
+    return 0;
+}
+
+// Can climb UP from z to z+1 at position (x, y)?
+// Abstracted ladder connection logic for pathfinder extraction
+static inline bool CanClimbUpAt(int x, int y, int z) {
+    if (z + 1 >= gridDepth) return false;
+    CellType low = grid[z][y][x];
+    CellType high = grid[z+1][y][x];
+    
+    if (g_useDFWalkability) {
+        // DF mode: need ladder at both levels AND upper level must be walkable
+        bool hasLadderHere = CellIsLadder(low);
+        bool hasLadderAbove = CellIsLadder(high);
+        return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
+    }
+    
+    // Legacy mode: direction-based ladder types
+    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
+    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
+    return lowCanUp && highCanDown;
+}
+
+// Can climb DOWN from z to z-1 at position (x, y)?
+// Abstracted ladder connection logic for pathfinder extraction
+static inline bool CanClimbDownAt(int x, int y, int z) {
+    if (z - 1 < 0) return false;
+    CellType high = grid[z][y][x];
+    CellType low = grid[z-1][y][x];
+    
+    if (g_useDFWalkability) {
+        // DF mode: need ladder at both levels AND lower level must be walkable
+        bool hasLadderHere = CellIsLadder(high);
+        bool hasLadderBelow = CellIsLadder(low);
+        return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
+    }
+    
+    // Legacy mode: direction-based ladder types
+    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
+    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
+    return highCanDown && lowCanUp;
+}
+
 #endif // CELL_DEFS_H

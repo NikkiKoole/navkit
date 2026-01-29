@@ -62,42 +62,15 @@
 //   - Upper cell must have LADDER_DOWN or LADDER_BOTH (can come down)
 
 // Can transition UP from z to z+1?
+// Delegates to cell_defs.h for walkability-model-agnostic implementation
 static inline bool CanClimbUp(int x, int y, int z) {
-    if (z + 1 >= gridDepth) return false;
-    CellType low = grid[z][y][x];
-    CellType high = grid[z+1][y][x];
-    // Legacy CELL_LADDER acts like LADDER_BOTH
-    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
-    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
-    
-    // In DF mode, same as legacy: need ladder at both levels to climb
-    // The difference is only in what makes a cell "walkable", not in ladder mechanics
-    if (g_useDFWalkability) {
-        bool hasLadderHere = CellIsLadder(low);
-        bool hasLadderAbove = CellIsLadder(high);
-        return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
-    }
-    
-    return lowCanUp && highCanDown;
+    return CanClimbUpAt(x, y, z);
 }
 
 // Can transition DOWN from z to z-1?
+// Delegates to cell_defs.h for walkability-model-agnostic implementation
 static inline bool CanClimbDown(int x, int y, int z) {
-    if (z - 1 < 0) return false;
-    CellType high = grid[z][y][x];
-    CellType low = grid[z-1][y][x];
-    // Legacy CELL_LADDER acts like LADDER_BOTH
-    bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
-    bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
-    
-    // In DF mode, same as legacy: need ladder at both levels to climb
-    if (g_useDFWalkability) {
-        bool hasLadderHere = CellIsLadder(high);
-        bool hasLadderBelow = CellIsLadder(low);
-        return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
-    }
-    
-    return highCanDown && lowCanUp;
+    return CanClimbDownAt(x, y, z);
 }
 
 // Check if there's any valid ladder connection at this position (either direction)
@@ -476,10 +449,12 @@ void MarkChunkDirty(int cellX, int cellY, int cellZ) {
     if (cx >= 0 && cx < chunksX && cy >= 0 && cy < chunksY && cellZ >= 0 && cellZ < gridDepth) {
         chunkDirty[cellZ][cy][cx] = true;
         
-        // In DF mode, changing a cell affects walkability of the cell ABOVE it
-        // (because walkability depends on the cell below being solid)
-        if (g_useDFWalkability && cellZ + 1 < gridDepth) {
-            chunkDirty[cellZ + 1][cy][cx] = true;
+        // Mark any additional z-levels affected by this cell change
+        // (walkability model determines which levels are affected)
+        int additionalZ[4];
+        int count = GetAdditionalAffectedZLevels(cellZ, additionalZ);
+        for (int i = 0; i < count; i++) {
+            chunkDirty[additionalZ[i]][cy][cx] = true;
         }
         
         needsRebuild = true;
@@ -3161,15 +3136,10 @@ Point GetRandomWalkableCell(void) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
+        // Skip z-levels with no ladder connections (stranded spawns)
         if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
-        if (IsCellWalkableAt(p.z, p.y, p.x)) {
-            // Skip wall tops as destinations (air above wall) - they're traversable but not goals
-            // Movers can still walk on wall tops, just won't pick them as random destinations
-            if (g_useDFWalkability && p.z > 0 && 
-                grid[p.z][p.y][p.x] == CELL_AIR && 
-                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
-                continue;
-            }
+        // Use IsValidDestination to filter wall-tops and other non-goal cells
+        if (IsValidDestination(p.z, p.y, p.x)) {
             return p;
         }
     }
@@ -3182,14 +3152,9 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
+        // Skip z-levels with no ladder connections (stranded spawns)
         if (g_useDFWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
-        if (p.z != excludeZ && IsCellWalkableAt(p.z, p.y, p.x)) {
-            // Skip wall tops as destinations (see GetRandomWalkableCell)
-            if (g_useDFWalkability && p.z > 0 && 
-                grid[p.z][p.y][p.x] == CELL_AIR && 
-                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
-                continue;
-            }
+        if (p.z != excludeZ && IsValidDestination(p.z, p.y, p.x)) {
             return p;
         }
     }
@@ -3204,13 +3169,7 @@ Point GetRandomWalkableCellOnZ(int z) {
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
-        if (IsCellWalkableAt(p.z, p.y, p.x)) {
-            // Skip wall tops as destinations (see GetRandomWalkableCell)
-            if (g_useDFWalkability && p.z > 0 && 
-                grid[p.z][p.y][p.x] == CELL_AIR && 
-                grid[p.z - 1][p.y][p.x] == CELL_WALL) {
-                continue;
-            }
+        if (IsValidDestination(p.z, p.y, p.x)) {
             return p;
         }
     }
