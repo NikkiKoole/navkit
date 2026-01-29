@@ -438,9 +438,12 @@ int main(int argc, char** argv) {
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
     gridDepth = 6;
+    // z=0: dirt (solid ground) with grass overlay, z=1+: air (DF-style)
     for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            grid[0][y][x] = CELL_WALKABLE;
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+        }
     for (int z = 1; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)

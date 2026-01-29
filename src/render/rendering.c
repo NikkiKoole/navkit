@@ -27,27 +27,73 @@ void DrawCellGrid(void) {
         if (maxY > gridHeight) maxY = gridHeight;
     }
 
-    // Draw layer below with transparency (if viewing z > 0)
-    if (z > 0) {
-        Color tint = (Color){255, 255, 255, 128};
-        int zBelow = z - 1;
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                CellType cell = grid[zBelow][y][x];
-                if (cell == CELL_AIR) continue;  // Don't draw air from below
-                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(CellSprite(cell));
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+    if (g_useDFWalkability) {
+        // DF mode: draw floor from z-1 (the ground you're standing ON)
+        // At z=1, you see z=0's surface as the floor
+        if (z > 0) {
+            int zBelow = z - 1;
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cellBelow = grid[zBelow][y][x];
+                    CellType cellHere = grid[z][y][x];
+                    
+                    // Draw floor from below if the cell below is solid and current is air/walkable
+                    if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                        Rectangle src = SpriteGetRect(CellSprite(cellBelow));
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                    }
+                }
             }
         }
-    }
+        
+        // Draw current layer (walls, ladders, etc. - things that block or occupy the space)
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                CellType cell = grid[z][y][x];
+                // Skip air - floor was already drawn from z-1
+                if (cell == CELL_AIR) continue;
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                Rectangle src = SpriteGetRect(CellSprite(cell));
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+            }
+        }
+        
+        // Draw shadows from blocks above (z+1)
+        if (z + 1 < gridDepth) {
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cellAbove = grid[z + 1][y][x];
+                    if (CellIsSolid(cellAbove)) {
+                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                        DrawRectangleRec(dest, (Color){0, 0, 0, 80});
+                    }
+                }
+            }
+        }
+    } else {
+        // Legacy mode: draw layer below with transparency, then current layer
+        if (z > 0) {
+            Color tint = (Color){255, 255, 255, 128};
+            int zBelow = z - 1;
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cell = grid[zBelow][y][x];
+                    if (cell == CELL_AIR) continue;
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Rectangle src = SpriteGetRect(CellSprite(cell));
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                }
+            }
+        }
 
-    // Draw current layer
-    for (int y = minY; y < maxY; y++) {
-        for (int x = minX; x < maxX; x++) {
-            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            Rectangle src = SpriteGetRect(CellSprite(grid[z][y][x]));
-            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+        // Draw current layer
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                Rectangle src = SpriteGetRect(CellSprite(grid[z][y][x]));
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+            }
         }
     }
 }
@@ -75,27 +121,55 @@ void DrawGrassOverlay(void) {
         if (maxY > gridHeight) maxY = gridHeight;
     }
 
-    // Draw grass overlay on dirt tiles based on surface type
-    for (int y = minY; y < maxY; y++) {
-        for (int x = minX; x < maxX; x++) {
-            // Only draw overlay on dirt tiles
-            if (grid[z][y][x] != CELL_DIRT) continue;
-            
-            int surface = GET_CELL_SURFACE(x, y, z);
-            if (surface == SURFACE_BARE) continue;  // No overlay for bare dirt
-            
-            // Select sprite based on surface type
-            int sprite;
-            switch (surface) {
-                case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
-                case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
-                case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
-                default: continue;  // Unknown type, skip
+    if (g_useDFWalkability) {
+        // DF mode: grass overlay comes from z-1 (the floor you're standing ON)
+        if (z <= 0) return;  // No floor below z=0
+        
+        int zBelow = z - 1;
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                // Only draw overlay where floor is dirt and current cell is empty (air)
+                if (grid[zBelow][y][x] != CELL_DIRT) continue;
+                CellType cellHere = grid[z][y][x];
+                if (cellHere != CELL_AIR) continue;  // Don't draw grass under walls, ladders, etc.
+                
+                int surface = GET_CELL_SURFACE(x, y, zBelow);
+                if (surface == SURFACE_BARE) continue;
+                
+                int sprite;
+                switch (surface) {
+                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass;      break;  // Render tall grass as normal grass
+                    case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
+                    case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
+                    default: continue;
+                }
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                Rectangle src = SpriteGetRect(sprite);
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
             }
-            
-            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            Rectangle src = SpriteGetRect(sprite);
-            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+        }
+    } else {
+        // Legacy mode: grass overlay on current z
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (grid[z][y][x] != CELL_DIRT) continue;
+                
+                int surface = GET_CELL_SURFACE(x, y, z);
+                if (surface == SURFACE_BARE) continue;
+                
+                int sprite;
+                switch (surface) {
+                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
+                    case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
+                    case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
+                    default: continue;
+                }
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                Rectangle src = SpriteGetRect(sprite);
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+            }
         }
     }
 }

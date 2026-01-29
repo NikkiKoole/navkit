@@ -34,7 +34,8 @@ typedef enum {
     CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
     CELL_GRASS,        // Natural ground - can become dirt when trampled
     CELL_DIRT,         // Worn ground - can become grass when left alone
-    CELL_WOOD_WALL     // Flammable wall - burns and turns to floor
+    CELL_WOOD_WALL,    // Flammable wall - burns and turns to floor
+    CELL_BEDROCK       // Unmineable bottom layer
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

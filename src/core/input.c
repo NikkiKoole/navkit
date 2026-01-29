@@ -126,7 +126,7 @@ static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             if (grid[z][dy][dx] == CELL_DIRT) {
-                CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                CellType eraseType = (z == 0) ? CELL_BEDROCK : CELL_AIR;
                 grid[z][dy][dx] = eraseType;
                 MarkChunkDirty(dx, dy, z);
                 SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
@@ -147,7 +147,7 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                 EraseLadder(dx, dy, z);
                 count++;
             } else {
-                CellType eraseType = (z > 0) ? CELL_AIR : CELL_WALKABLE;
+                CellType eraseType = (z == 0) ? CELL_BEDROCK : CELL_AIR;
                 if (grid[z][dy][dx] != eraseType) {
                     grid[z][dy][dx] = eraseType;
                     MarkChunkDirty(dx, dy, z);

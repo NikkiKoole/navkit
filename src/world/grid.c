@@ -45,7 +45,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     for (int z = 0; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
-                grid[z][y][x] = CELL_WALKABLE;
+                grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
 
     // Clear cell flags
     memset(cellFlags, 0, sizeof(cellFlags));

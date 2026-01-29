@@ -13,11 +13,18 @@
 describe(grid_initialization) {
     it("should initialize grid to all walkable cells") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        int allWalkable = 1;
-        for (int y = 0; y < gridHeight && allWalkable; y++)
-            for (int x = 0; x < gridWidth && allWalkable; x++)
-                if (grid[0][y][x] != CELL_WALKABLE) allWalkable = 0;
-        expect(allWalkable == 1);
+        // z=0 should be dirt (solid ground), z=1+ should be air
+        int z0AllDirt = 1;
+        for (int y = 0; y < gridHeight && z0AllDirt; y++)
+            for (int x = 0; x < gridWidth && z0AllDirt; x++)
+                if (grid[0][y][x] != CELL_DIRT) z0AllDirt = 0;
+        expect(z0AllDirt == 1);
+        
+        int z1AllAir = 1;
+        for (int y = 0; y < gridHeight && z1AllAir; y++)
+            for (int x = 0; x < gridWidth && z1AllAir; x++)
+                if (grid[1][y][x] != CELL_AIR) z1AllAir = 0;
+        expect(z1AllAir == 1);
     }
 
     it("should mark chunks as dirty when walls are placed") {
@@ -2514,6 +2521,7 @@ describe(jps_plus_3d_pathfinding) {
 
 describe(jps_plus_vs_astar_consistency) {
     it("JPS+ should match A* on Labyrinth3D z=0") {
+        g_useDFWalkability = false;  // Use legacy mode for these tests
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateLabyrinth3D();
@@ -2712,6 +2720,7 @@ describe(jps_plus_vs_astar_consistency) {
     }
 
     it("JPS+ should match A* on Mixed terrain") {
+        g_useDFWalkability = false;  // Use legacy mode for this test
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateMixed();
@@ -3015,7 +3024,7 @@ describe(ladder_erase) {
         // Step 1: Add at z=1 (column 2 in diagram)
         // Expected: z=1=U, z=2=D
         PlaceLadder(2, 2, 1);
-        expect(grid[0][2][2] == CELL_WALKABLE);
+        expect(grid[0][2][2] == CELL_DIRT);
         expect(grid[1][2][2] == CELL_LADDER_UP);
         expect(grid[2][2][2] == CELL_LADDER_DOWN);
         expect(grid[3][2][2] == CELL_AIR);
@@ -3110,7 +3119,12 @@ describe(df_walkability) {
         g_useDFWalkability = true;
         expect(IsCellWalkableAt(1, 5, 5) == true);
         
-        // z=0 (solid dirt) should NOT be walkable in DF mode
+        // z=0 with air IS walkable in DF mode (implicit bedrock below)
+        grid[0][5][5] = CELL_AIR;
+        expect(IsCellWalkableAt(0, 5, 5) == true);
+        
+        // z=0 with solid (dirt) is NOT walkable (can't walk inside solid blocks)
+        grid[0][5][5] = CELL_DIRT;
         expect(IsCellWalkableAt(0, 5, 5) == false);
         
         // Clean up

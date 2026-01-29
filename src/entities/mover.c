@@ -647,10 +647,11 @@ int CountActiveMovers(void) {
 // Assign a new random goal to a mover and compute path
 static void AssignNewMoverGoal(Mover* m) {
     Point newGoal;
-    if (preferDifferentZ && gridDepth > 1) {
+    // Only pick different z-level if there are ladders connecting levels
+    if (preferDifferentZ && gridDepth > 1 && ladderLinkCount > 0) {
         newGoal = GetRandomWalkableCellDifferentZ((int)m->z);
     } else {
-        newGoal = GetRandomWalkableCell();
+        newGoal = GetRandomWalkableCellOnZ((int)m->z);
     }
     m->goal = newGoal;
 

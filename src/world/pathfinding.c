@@ -3169,3 +3169,16 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     }
     return GetRandomWalkableCell();
 }
+
+Point GetRandomWalkableCellOnZ(int z) {
+    Point p;
+    p.z = z;
+    for (int attempts = 0; attempts < 1000; attempts++) {
+        p.x = GetRandomValue(0, gridWidth - 1);
+        p.y = GetRandomValue(0, gridHeight - 1);
+        if (IsCellWalkableAt(p.z, p.y, p.x)) {
+            return p;
+        }
+    }
+    return (Point){-1, -1, z};
+}

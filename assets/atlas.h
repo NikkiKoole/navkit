@@ -18,6 +18,7 @@
     #define SPRITE_crate_orange SPRITE8X8_crate_orange
     #define SPRITE_carpet SPRITE8X8_carpet
     #define SPRITE_wood_floor SPRITE8X8_wood_floor
+    #define SPRITE_bedrock SPRITE8X8_bedrock
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_wood_block SPRITE8X8_wood_block
     #define SPRITE_air SPRITE8X8_air
@@ -52,6 +53,7 @@
     #define SPRITE_crate_orange SPRITE16X16_crate_orange
     #define SPRITE_carpet SPRITE16X16_carpet
     #define SPRITE_wood_floor SPRITE16X16_wood_floor
+    #define SPRITE_bedrock SPRITE16X16_bedrock
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_wood_block SPRITE16X16_wood_block
     #define SPRITE_air SPRITE16X16_air
