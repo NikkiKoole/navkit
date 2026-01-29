@@ -419,8 +419,13 @@ int main(int argc, char** argv) {
     // Check for --load option
     const char* loadFile = NULL;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--load") == 0 && i + 1 < argc) {
-            loadFile = argv[i + 1];
+        if (strcmp(argv[i], "--load") == 0) {
+            if (i + 1 < argc) {
+                loadFile = argv[i + 1];
+            } else {
+                printf("Warning: --load requires a filename\n");
+                printf("Usage: %s --load <savefile>\n", argv[0]);
+            }
             break;
         }
     }
