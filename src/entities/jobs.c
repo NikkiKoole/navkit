@@ -23,6 +23,31 @@
 // Radius search for finding idle movers near items (in pixels)
 #define MOVER_SEARCH_RADIUS (CELL_SIZE * 50)  // Search 50 tiles around item for idle mover
 
+// Direction offsets for cardinal neighbors (N, E, S, W)
+static const int DIR_DX[4] = {0, 1, 0, -1};
+static const int DIR_DY[4] = {-1, 0, 1, 0};
+
+// Find first adjacent tile that is both walkable and reachable from moverCell.
+// Returns true if found, storing result in outX/outY.
+static bool FindReachableAdjacentTile(int targetX, int targetY, int targetZ, 
+                                       Point moverCell, int* outX, int* outY) {
+    Point tempPath[MAX_PATH];
+    for (int dir = 0; dir < 4; dir++) {
+        int ax = targetX + DIR_DX[dir];
+        int ay = targetY + DIR_DY[dir];
+        if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
+        if (!IsCellWalkableAt(targetZ, ay, ax)) continue;
+        
+        Point adjCell = { ax, ay, targetZ };
+        if (FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH) > 0) {
+            *outX = ax;
+            *outY = ay;
+            return true;
+        }
+    }
+    return false;
+}
+
 // =============================================================================
 // Job Pool System
 // =============================================================================
@@ -509,23 +534,12 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
     }
     
     if (job->step == STEP_MOVING_TO_WORK) {
-        // Find adjacent walkable tile 
-        int adjX = -1, adjY = -1;
-        int dx4[] = {0, 1, 0, -1};
-        int dy4[] = {-1, 0, 1, 0};
-        for (int dir = 0; dir < 4; dir++) {
-            int ax = job->targetDigX + dx4[dir];
-            int ay = job->targetDigY + dy4[dir];
-            if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                if (IsCellWalkableAt(job->targetDigZ, ay, ax)) {
-                    adjX = ax;
-                    adjY = ay;
-                    break;
-                }
-            }
+        Point moverCell = { (int)(mover->x / CELL_SIZE), (int)(mover->y / CELL_SIZE), (int)mover->z };
+        int adjX, adjY;
+        if (!FindReachableAdjacentTile(job->targetDigX, job->targetDigY, job->targetDigZ, 
+                                        moverCell, &adjX, &adjY)) {
+            return JOBRUN_FAIL;
         }
-        
-        if (adjX < 0) return JOBRUN_FAIL;  // No adjacent walkable tile
         
         // Set goal if not already moving there
         if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != job->targetDigZ) {
@@ -2707,13 +2721,9 @@ int WorkGiver_Mining(int moverIdx) {
     
     if (bestDesigX < 0) return -1;
     
-    // Check reachability
-    Point adjCell = { bestAdjX, bestAdjY, bestDesigZ };
+    // Check reachability - try all adjacent walkable tiles until we find one with a valid path
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
-    
-    Point tempPath[MAX_PATH];
-    int tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
-    if (tempLen == 0) {
+    if (!FindReachableAdjacentTile(bestDesigX, bestDesigY, bestDesigZ, moverCell, &bestAdjX, &bestAdjY)) {
         Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
         if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
         return -1;
@@ -2737,7 +2747,7 @@ int WorkGiver_Mining(int moverIdx) {
     
     // Update mover
     m->currentJobId = jobId;
-    m->goal = adjCell;
+    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
     
     RemoveMoverFromIdleList(moverIdx);
