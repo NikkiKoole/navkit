@@ -83,6 +83,41 @@ void DestabilizeWater(int x, int y, int z) {
     if (WaterInBounds(x, y, z+1)) waterGrid[z+1][y][x].stable = false;
 }
 
+// Displace water from a cell before placing a wall
+void DisplaceWater(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return;
+    
+    int level = waterGrid[z][y][x].level;
+    if (level == 0) return;
+    
+    // Push water to horizontal neighbors first, then up
+    int dx[] = {-1, 1, 0, 0, 0};
+    int dy[] = {0, 0, -1, 1, 0};
+    int dz[] = {0, 0, 0, 0, 1};
+    
+    for (int i = 0; i < 5 && level > 0; i++) {
+        int nx = x + dx[i];
+        int ny = y + dy[i];
+        int nz = z + dz[i];
+        
+        if (!WaterInBounds(nx, ny, nz)) continue;
+        if (CellBlocksFluids(grid[nz][ny][nx])) continue;
+        
+        int space = WATER_MAX_LEVEL - waterGrid[nz][ny][nx].level;
+        if (space > 0) {
+            int transfer = (level < space) ? level : space;
+            AddWater(nx, ny, nz, transfer);
+            level -= transfer;
+        }
+    }
+    
+    // Clear remaining water and destabilize neighbors
+    SetWaterLevel(x, y, z, 0);
+    SetWaterSource(x, y, z, false);
+    SetWaterDrain(x, y, z, false);
+    DestabilizeWater(x, y, z);
+}
+
 // Set water level at a cell
 void SetWaterLevel(int x, int y, int z, int level) {
     if (!WaterInBounds(x, y, z)) return;

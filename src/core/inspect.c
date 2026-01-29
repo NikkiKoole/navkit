@@ -293,7 +293,10 @@ static void print_cell(int x, int y, int z) {
     printf("\n");
     
     // Water
-    printf("Water level: %d/7\n", water.level);
+    printf("Water level: %d/7", water.level);
+    if (water.stable) printf(" [STABLE]");
+    if (water.isFrozen) printf(" [FROZEN]");
+    printf("\n");
     if (water.isSource) printf("  IS SOURCE\n");
     if (water.isDrain) printf("  IS DRAIN\n");
     if (water.hasPressure) printf("  Has pressure from z%d\n", water.pressureSourceZ);

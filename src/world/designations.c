@@ -4,6 +4,7 @@
 #include "pathfinding.h"
 #include "../entities/items.h"
 #include "../entities/mover.h"  // for CELL_SIZE
+#include "../simulation/water.h"
 #include <string.h>
 #include <math.h>
 
@@ -115,6 +116,9 @@ void CompleteDigDesignation(int x, int y, int z) {
             SET_FLOOR(x, y, z);
         }
         MarkChunkDirty(x, y, z);
+        
+        // Destabilize water at this cell and neighbors so it can flow into the new space
+        DestabilizeWater(x, y, z);
         
         // Spawn an orange block (stone) from the mined wall
         SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_ORANGE);
@@ -282,10 +286,13 @@ void CompleteBlueprint(int blueprintIdx) {
     Blueprint* bp = &blueprints[blueprintIdx];
     if (!bp->active) return;
     
+    int x = bp->x, y = bp->y, z = bp->z;
+    
     // Convert floor to wall
-    if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
-        grid[bp->z][bp->y][bp->x] = CELL_WALL;
-        MarkChunkDirty(bp->x, bp->y, bp->z);
+    if (IsCellWalkableAt(z, y, x)) {
+        DisplaceWater(x, y, z);
+        grid[z][y][x] = CELL_WALL;
+        MarkChunkDirty(x, y, z);
     }
     
     // Remove blueprint

@@ -85,6 +85,10 @@ void UpdateWaterFreezing(void);                        // Check temps and freeze
 // Mark cell and neighbors as unstable (needs processing)
 void DestabilizeWater(int x, int y, int z);
 
+// Displace water from a cell (push to neighbors/up, then clear)
+// Call before placing a wall or other fluid-blocking structure
+void DisplaceWater(int x, int y, int z);
+
 // Speed multiplier for movers walking through water
 // Returns 1.0 for no water, lower values for deeper water
 float GetWaterSpeedMultiplier(int x, int y, int z);

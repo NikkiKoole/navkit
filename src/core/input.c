@@ -830,12 +830,9 @@ void HandleInput(void) {
                 if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
                     CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
                     if (grid[z][y][x] != wallType) {
+                        DisplaceWater(x, y, z);
                         grid[z][y][x] = wallType;
                         MarkChunkDirty(x, y, z);
-                        SetWaterLevel(x, y, z, 0);
-                        SetWaterSource(x, y, z, false);
-                        SetWaterDrain(x, y, z, false);
-                        DestabilizeWater(x, y, z);
                         for (int i = 0; i < moverCount; i++) {
                             Mover* m = &movers[i];
                             if (!m->active) continue;
