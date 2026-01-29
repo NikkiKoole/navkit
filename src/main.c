@@ -39,7 +39,8 @@ int currentTool = 0;
 const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "Set Start", "Set Goal"};
 
 int currentTerrain = 0;
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council"};
+// NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills"};
 
 bool sectionView = false;
 bool sectionPathfinding = false;
@@ -164,6 +165,7 @@ void GenerateCurrentTerrain(void) {
         case 14: GenerateLabyrinth3D(); break;
         case 15: GenerateSpiral3D(); break;
         case 16: GenerateCouncilEstate(); break;
+        case 17: GenerateHills(); break;
     }
 }
 

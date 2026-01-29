@@ -14,6 +14,9 @@ extern float timeOfDay;        // 0.0-24.0 hours
 extern int dayNumber;          // Current day (starts at 1)
 extern float dayLength;        // Game-seconds per full day
 
+// Get sky color for a given hour (0-24), used for ambient lighting
+Color GetSkyColorForTime(float hour);
+
 // Initialize time system
 void InitTime(void);
 

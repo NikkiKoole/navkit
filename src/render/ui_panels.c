@@ -7,7 +7,7 @@
 // ============================================================================
 
 // Get sky color based on time of day (0-24 hours)
-static Color GetSkyColorForTime(float hour) {
+Color GetSkyColorForTime(float hour) {
     // Time periods and their colors:
     // 0-4:   Night (dark blue)
     // 4-6:   Dawn (orange/pink gradient)
@@ -159,7 +159,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 17, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 18, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();

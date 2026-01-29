@@ -2,6 +2,7 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../core/input_mode.h"
+#include "../core/time.h"
 
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
@@ -28,6 +29,43 @@ void DrawCellGrid(void) {
     }
 
     if (g_useDFWalkability) {
+        // DF mode: draw deeper levels first (z-3, z-2) with blue tint for depth
+        // These show terrain dropping away below current view
+        Color depthTints[] = {
+            {100, 120, 160, 255},  // z-3: darker blue
+            {130, 150, 180, 255}   // z-2: lighter blue
+        };
+        int depthLevels[] = {z - 3, z - 2};
+        
+        for (int d = 0; d < 2; d++) {
+            int zDepth = depthLevels[d];
+            if (zDepth < 0) continue;
+            
+            Color tint = depthTints[d];
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cellAtDepth = grid[zDepth][y][x];
+                    // Only draw if this cell is solid AND there's air above it
+                    // (otherwise it's hidden by terrain above)
+                    if (!CellIsSolid(cellAtDepth)) continue;
+                    
+                    // Check if all cells between zDepth+1 and z-1 are air (visible from above, no floors blocking)
+                    bool visible = true;
+                    for (int zCheck = zDepth + 1; zCheck < z; zCheck++) {
+                        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
+                            visible = false;
+                            break;
+                        }
+                    }
+                    if (!visible) continue;
+                    
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Rectangle src = SpriteGetRect(CellSprite(cellAtDepth));
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                }
+            }
+        }
+        
         // DF mode: draw floor from z-1 (the ground you're standing ON)
         // At z=1, you see z=0's surface as the floor
         // At z=0, you see implicit bedrock as the floor (for dug holes)
@@ -42,7 +80,10 @@ void DrawCellGrid(void) {
                     if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         Rectangle src = SpriteGetRect(CellSprite(cellBelow));
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                        // Wall tops (looking down at a wall from above) tinted blue
+                        // to distinguish from walls at current level (depth cue)
+                        Color tint = CellBlocksMovement(cellBelow) ? (Color){140, 160, 200, 255} : WHITE;
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                     }
                 }
             }
@@ -83,10 +124,56 @@ void DrawCellGrid(void) {
             }
         }
         
+        // Draw wall cutaway effect - dark top with real wall texture visible at edges
+        // This shows you're looking at the "cut" top of walls at eye level
+        {
+            Color cutawayColor = (Color){30, 30, 35, 255};  // Dark gray/black
+            float edgeWidth = size * 0.2f;  // 20% of cell size - wall texture visible at edges
+            
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    CellType cell = grid[z][y][x];
+                    if (!CellBlocksMovement(cell)) continue;  // Only walls
+                    
+                    float px = offset.x + x * size;
+                    float py = offset.y + y * size;
+                    
+                    // Check which sides border non-walls (those show the wall edge)
+                    bool wallNorth = (y > 0) && CellBlocksMovement(grid[z][y-1][x]);
+                    bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(grid[z][y+1][x]);
+                    bool wallWest = (x > 0) && CellBlocksMovement(grid[z][y][x-1]);
+                    bool wallEast = (x < gridWidth-1) && CellBlocksMovement(grid[z][y][x+1]);
+                    
+                    // Calculate inset for dark fill - leave edge visible where no adjacent wall
+                    float insetN = wallNorth ? 0 : edgeWidth;
+                    float insetS = wallSouth ? 0 : edgeWidth;
+                    float insetW = wallWest ? 0 : edgeWidth;
+                    float insetE = wallEast ? 0 : edgeWidth;
+                    
+                    // Draw dark fill inset from edges (wall texture already drawn shows through at edges)
+                    // Add 1 pixel overlap to avoid gaps between adjacent tiles
+                    float overlap = 1.0f;
+                    float fillX = px + insetW;
+                    float fillY = py + insetN;
+                    float fillW = size - insetW - insetE + (wallEast ? overlap : 0);
+                    float fillH = size - insetN - insetS + (wallSouth ? overlap : 0);
+                    
+                    if (fillW > 0 && fillH > 0) {
+                        DrawRectangle((int)fillX, (int)fillY, (int)(fillW + 0.5f), (int)(fillH + 0.5f), cutawayColor);
+                    }
+                }
+            }
+        }
+        
         // Draw shadows from blocks above (z+1)
+        // Only on floors/air - walls are vertical surfaces, shadows fall on their tops (not visible)
         if (z + 1 < gridDepth) {
             for (int y = minY; y < maxY; y++) {
                 for (int x = minX; x < maxX; x++) {
+                    CellType cellHere = grid[z][y][x];
+                    // Skip walls - shadow falls on top of wall, not its face
+                    if (CellBlocksMovement(cellHere)) continue;
+                    
                     CellType cellAbove = grid[z + 1][y][x];
                     if (CellIsSolid(cellAbove)) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
@@ -146,6 +233,50 @@ void DrawGrassOverlay(void) {
     }
 
     if (g_useDFWalkability) {
+        // DF mode: draw grass for deeper levels (z-3, z-2) with blue tint
+        Color depthTints[] = {
+            {100, 120, 160, 255},  // z-3: darker blue
+            {130, 150, 180, 255}   // z-2: lighter blue
+        };
+        int depthLevels[] = {z - 3, z - 2};
+        
+        for (int d = 0; d < 2; d++) {
+            int zDepth = depthLevels[d];
+            if (zDepth < 0) continue;
+            
+            Color tint = depthTints[d];
+            for (int y = minY; y < maxY; y++) {
+                for (int x = minX; x < maxX; x++) {
+                    if (grid[zDepth][y][x] != CELL_DIRT) continue;
+                    
+                    // Check if visible from above (air all the way through, no floors blocking)
+                    bool visible = true;
+                    for (int zCheck = zDepth + 1; zCheck <= z; zCheck++) {
+                        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
+                            visible = false;
+                            break;
+                        }
+                    }
+                    if (!visible) continue;
+                    
+                    int surface = GET_CELL_SURFACE(x, y, zDepth);
+                    if (surface == SURFACE_BARE) continue;
+                    
+                    int sprite;
+                    switch (surface) {
+                        case SURFACE_TALL_GRASS: sprite = SPRITE_grass;      break;
+                        case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
+                        case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
+                        default: continue;
+                    }
+                    
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Rectangle src = SpriteGetRect(sprite);
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                }
+            }
+        }
+        
         // DF mode: grass overlay comes from z-1 (the floor you're standing ON)
         if (z <= 0) return;  // No floor below z=0
         
