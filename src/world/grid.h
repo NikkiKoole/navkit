@@ -92,6 +92,9 @@ void InitGridWithSize(int width, int height);
 // Initialize grid with specific dimensions and chunk size
 void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH);
 
+// Fill z=0 with dirt and grass surface (call after InitGridWithSize for DF-style terrain)
+void FillGroundLevel(void);
+
 // Initialize grid from ASCII map with default chunk size
 // '.' = walkable, '#' = wall, newlines separate rows
 // Dimensions are auto-detected from the string

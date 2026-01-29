@@ -13,18 +13,13 @@
 describe(grid_initialization) {
     it("should initialize grid to all walkable cells") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        // z=0 should be dirt (solid ground), z=1+ should be air
-        int z0AllDirt = 1;
-        for (int y = 0; y < gridHeight && z0AllDirt; y++)
-            for (int x = 0; x < gridWidth && z0AllDirt; x++)
-                if (grid[0][y][x] != CELL_DIRT) z0AllDirt = 0;
-        expect(z0AllDirt == 1);
-        
-        int z1AllAir = 1;
-        for (int y = 0; y < gridHeight && z1AllAir; y++)
-            for (int x = 0; x < gridWidth && z1AllAir; x++)
-                if (grid[1][y][x] != CELL_AIR) z1AllAir = 0;
-        expect(z1AllAir == 1);
+        // In DF mode: all z-levels are air (z=0 walkable via implicit bedrock)
+        int allAir = 1;
+        for (int z = 0; z < gridDepth && allAir; z++)
+            for (int y = 0; y < gridHeight && allAir; y++)
+                for (int x = 0; x < gridWidth && allAir; x++)
+                    if (grid[z][y][x] != CELL_AIR) allAir = 0;
+        expect(allAir == 1);
     }
 
     it("should mark chunks as dirty when walls are placed") {
@@ -117,8 +112,8 @@ describe(entrance_building) {
         int gapStart = 10;
         int gapWidth = 3;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALKABLE;
-            grid[0][borderY][x] = CELL_WALKABLE;
+            grid[0][borderY - 1][x] = CELL_AIR;
+            grid[0][borderY][x] = CELL_AIR;
         }
 
         BuildEntrances();
@@ -148,8 +143,8 @@ describe(entrance_building) {
         int gapStart = 5;
         int gapWidth = 15;
         for (int x = gapStart; x < gapStart + gapWidth; x++) {
-            grid[0][borderY - 1][x] = CELL_WALKABLE;
-            grid[0][borderY][x] = CELL_WALKABLE;
+            grid[0][borderY - 1][x] = CELL_AIR;
+            grid[0][borderY][x] = CELL_AIR;
         }
 
         BuildEntrances();
@@ -711,7 +706,7 @@ describe(hpa_star_pathfinding) {
             int y = path[i].y;
             if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
                 allWalkable = 0;
-            } else if (grid[0][y][x] != CELL_WALKABLE) {
+            } else if (!IsCellWalkableAt(0, y, x)) {
                 allWalkable = 0;
             }
         }
@@ -1193,7 +1188,7 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_AIR;
         
         startPos = (Point){1, 1, 0};
         goalPos = (Point){6, 3, 0};
@@ -1225,7 +1220,7 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_AIR;
         
         startPos = (Point){1, 1, 0};
         goalPos = (Point){6, 3, 0};
@@ -1266,14 +1261,14 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_AIR;
         
         startPos = (Point){2, 3, 0};
         goalPos = (Point){6, 6, 0};
         
         // Both cells are walkable
-        expect(grid[0][3][2] == CELL_WALKABLE);
-        expect(grid[0][6][6] == CELL_WALKABLE);
+        expect(IsCellWalkableAt(0, 3, 2));
+        expect(IsCellWalkableAt(0, 6, 6));
         
         RunAStar();
         
@@ -1311,7 +1306,7 @@ describe(diagonal_corner_cutting) {
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_WALKABLE;
+                grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : CELL_AIR;
         
         startPos = (Point){2, 3, 0};
         goalPos = (Point){6, 6, 0};
@@ -1468,7 +1463,9 @@ describe(string_pulling) {
 // ============== LADDER / Z-LEVEL TESTS ==============
 
 describe(ladder_pathfinding) {
+    // Ladder tests use legacy walkability - they test ladder mechanics, not DF walkability
     it("should parse multi-floor ASCII correctly") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "......\n"
@@ -1489,12 +1486,13 @@ describe(ladder_pathfinding) {
         expect(grid[0][1][1] == CELL_LADDER);
         expect(grid[1][1][1] == CELL_LADDER);
         
-        // Check other cells are walkable
+        // Check other cells are walkable (legacy mode uses CELL_WALKABLE)
         expect(grid[0][0][0] == CELL_WALKABLE);
         expect(grid[1][0][0] == CELL_WALKABLE);
     }
     
     it("should find path using ladder to reach upper floor") {
+        g_useDFWalkability = false;
         // Start on floor 0, goal on floor 1
         // Must climb ladder to reach goal
         const char* map =
@@ -1524,6 +1522,7 @@ describe(ladder_pathfinding) {
     }
     
     it("should stay on same floor when ladder not needed") {
+        g_useDFWalkability = false;
         // Start and goal on floor 0, ladder exists but not needed
         const char* map =
             "floor:0\n"
@@ -1553,6 +1552,7 @@ describe(ladder_pathfinding) {
     }
     
     it("should not find path when ladder only on one floor") {
+        g_useDFWalkability = false;
         // Ladder on floor 0 but not floor 1 - no connection
         const char* map =
             "floor:0\n"
@@ -1575,6 +1575,7 @@ describe(ladder_pathfinding) {
     }
     
     it("should choose closer ladder when multiple exist") {
+        g_useDFWalkability = false;
         // Two ladders - start near left, goal near right ladder
         // Make the right ladder clearly closer to goal
         const char* map =
@@ -1611,6 +1612,7 @@ describe(ladder_pathfinding) {
     }
     
     it("should find path when ladder destination is blocked but alternate route exists") {
+        g_useDFWalkability = false;
         // Ladder leads to blocked area but can go around
         const char* map =
             "floor:0\n"
@@ -1636,7 +1638,9 @@ describe(ladder_pathfinding) {
 // ============== HPA* LADDER / Z-LEVEL TESTS ==============
 
 describe(hpa_ladder_pathfinding) {
+    // HPA ladder tests use legacy walkability - they test ladder mechanics
     it("should build ladder links when entrances are built") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -1687,6 +1691,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("should connect ladder entrances in graph") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -1742,6 +1747,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("should find HPA* path using ladder to reach upper floor") {
+        g_useDFWalkability = false;
         // Grid with multiple chunks to ensure HPA* uses the abstract graph
         const char* map =
             "floor:0\n"
@@ -1798,6 +1804,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("HPA* should produce same z-level transitions as A*") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -1871,6 +1878,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("should find path after ladder added via incremental update") {
+        g_useDFWalkability = false;
         // Start with a map that has NO ladder - path between floors should fail
         const char* map =
             "floor:0\n"
@@ -1948,6 +1956,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("should update path when ladder is removed via incremental update") {
+        g_useDFWalkability = false;
         // Start with a map that has a ladder
         const char* map =
             "floor:0\n"
@@ -2016,6 +2025,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("should work when ladder added one piece at a time with ticks between") {
+        g_useDFWalkability = false;
         // Start with z=0 walkable, z=1 as air (like the demo)
         InitGridWithSizeAndChunkSize(32, 32, 8, 8);
         gridDepth = 2;
@@ -2091,6 +2101,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("incremental ladder update should match full rebuild") {
+        g_useDFWalkability = false;
         // Start with no ladder
         const char* map =
             "floor:0\n"
@@ -2167,6 +2178,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("repeated wall edits should not grow entrance count") {
+        g_useDFWalkability = false;
         // Bug: drawing walls repeatedly causes entrances to grow unbounded
         const char* map =
             "floor:0\n"
@@ -2237,6 +2249,7 @@ describe(hpa_ladder_pathfinding) {
     }
 
     it("repeated wall edits near ladders should not grow entrance count") {
+        g_useDFWalkability = false;
         // Bug: specifically when ladders are present, entrances leak
         const char* map =
             "floor:0\n"
@@ -2306,7 +2319,9 @@ describe(hpa_ladder_pathfinding) {
 // ============== JPS+ 3D LADDER TESTS ==============
 
 describe(jps_plus_3d_pathfinding) {
+    // JPS+ 3D tests use legacy walkability - they test JPS+ mechanics
     it("should find path on same z-level using JPS+") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -2346,6 +2361,7 @@ describe(jps_plus_3d_pathfinding) {
     }
 
     it("should find path across z-levels using ladder graph") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -2404,6 +2420,7 @@ describe(jps_plus_3d_pathfinding) {
     }
 
     it("JPS+ 3D should find same route as A* 3D") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -2470,6 +2487,7 @@ describe(jps_plus_3d_pathfinding) {
     }
 
     it("should not find path when no ladder connects levels") {
+        g_useDFWalkability = false;
         const char* map =
             "floor:0\n"
             "................\n"
@@ -2757,7 +2775,9 @@ describe(jps_plus_vs_astar_consistency) {
 // Legend: U = LADDER_UP, D = LADDER_DOWN, B = LADDER_BOTH
 
 describe(ladder_placement) {
+    // Ladder placement tests use legacy mode
     it("place_basic - Place ladder on empty ground creates UP and DOWN") {
+        g_useDFWalkability = false;
         // z=1:  .            D
         // z=0:  .  <- place  U
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
@@ -2775,6 +2795,7 @@ describe(ladder_placement) {
     }
     
     it("place_extend_up - Click on DOWN to extend shaft upward") {
+        g_useDFWalkability = false;
         // Start with: z=0 UP, z=1 DOWN
         // Click on z=1 (the DOWN/top piece) to extend upward
         // Result: z=0 UP, z=1 BOTH, z=2 DOWN
@@ -2803,6 +2824,7 @@ describe(ladder_placement) {
     }
     
     it("place_wall_above - Wall blocks auto-placement (orphan UP)") {
+        g_useDFWalkability = false;
         // z=1:  #            #
         // z=0:  .  <- place  U
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
@@ -2816,6 +2838,7 @@ describe(ladder_placement) {
     }
     
     it("place_connect_two_shafts - Placing connects to existing shaft above") {
+        g_useDFWalkability = false;
         // When placing at z=2 where z=1 has DOWN, we connect by becoming DOWN
         // (entry point from below into the shaft above)
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
@@ -2844,6 +2867,7 @@ describe(ladder_placement) {
     }
     
     it("place_extend_down - Place below existing ladder extends downward") {
+        g_useDFWalkability = false;
         // z=2:  .            D
         // z=1:  D  <- add    B
         // z=0:  U            U
@@ -2881,7 +2905,9 @@ describe(ladder_placement) {
 }
 
 describe(ladder_erase) {
+    // Ladder erase tests use legacy mode
     it("erase_both - Erase BOTH breaks upward connection") {
+        g_useDFWalkability = false;
         // z=4:  D            D
         // z=3:  B            U
         // z=2:  B  <- erase  D
@@ -2912,6 +2938,7 @@ describe(ladder_erase) {
     }
     
     it("erase_up - Erase UP cascades up, removes orphan DOWN") {
+        g_useDFWalkability = false;
         // z=1:  D            .
         // z=0:  U  <- erase  .
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
@@ -2931,6 +2958,7 @@ describe(ladder_erase) {
     }
     
     it("erase_down - Erase DOWN cascades down, removes orphan UP") {
+        g_useDFWalkability = false;
         // z=1:  D  <- erase  .
         // z=0:  U            .
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
@@ -2950,6 +2978,7 @@ describe(ladder_erase) {
     }
     
     it("erase_both_top - Erase BOTH at top of shaft") {
+        g_useDFWalkability = false;
         // z=2:  D            .  (removed - orphan DOWN)
         // z=1:  B  <- erase  D
         // z=0:  U            U
@@ -2974,6 +3003,7 @@ describe(ladder_erase) {
     }
     
     it("erase_both_bottom - Erase BOTH at bottom of shaft") {
+        g_useDFWalkability = false;
         // z=2:  D            D
         // z=1:  B  <- erase  U
         // z=0:  B            D
@@ -3005,6 +3035,7 @@ describe(ladder_erase) {
     }
     
     it("whiteboard_sequence - Full add/delete sequence from whiteboard") {
+        g_useDFWalkability = false;
         // Starting state and sequence (z=0 at bottom, z=4 at top):
         // □   □   □   □   D   D   D   D
         // □   D   D   D + B   U   U   B
@@ -3024,7 +3055,7 @@ describe(ladder_erase) {
         // Step 1: Add at z=1 (column 2 in diagram)
         // Expected: z=1=U, z=2=D
         PlaceLadder(2, 2, 1);
-        expect(grid[0][2][2] == CELL_DIRT);
+        expect(grid[0][2][2] == CELL_WALKABLE);  // z=0 unchanged (legacy mode)
         expect(grid[1][2][2] == CELL_LADDER_UP);
         expect(grid[2][2][2] == CELL_LADDER_DOWN);
         expect(grid[3][2][2] == CELL_AIR);
@@ -3259,6 +3290,104 @@ describe(df_ladder_pathfinding) {
     }
 }
 
+// =============================================================================
+// Fresh DF mode tests - starting simple to understand the system
+// =============================================================================
+
+describe(df_basics) {
+    it("z=1 is walkable above dirt at z=0") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        FillGroundLevel();  // z=0 = dirt, z=1+ = air
+        
+        // z=1 should be walkable (air above solid dirt)
+        expect(IsCellWalkableAt(1, 5, 5) == true);
+    }
+    
+    it("z=0 air is walkable (implicit bedrock below)") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        // No FillGroundLevel - z=0 is air, walkable via implicit bedrock
+        
+        expect(IsCellWalkableAt(0, 5, 5) == true);
+    }
+    
+    it("z=1 becomes unwalkable when z=0 is dug out") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+        
+        // Before digging: z=1 is walkable
+        expect(IsCellWalkableAt(1, 5, 5) == true);
+        
+        // Dig out z=0
+        grid[0][5][5] = CELL_AIR;
+        
+        // Now z=1 is NOT walkable (no solid below)
+        expect(IsCellWalkableAt(1, 5, 5) == false);
+    }
+    
+    it("simple pathfinding at z=1 across dirt floor") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+        
+        startPos = (Point){5, 5, 1};
+        goalPos = (Point){20, 20, 1};
+        RunAStar();
+        
+        expect(pathLength > 0);
+    }
+    
+    it("simple pathfinding at z=0 across bedrock") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        // No FillGroundLevel - z=0 is air, walkable via implicit bedrock
+        
+        startPos = (Point){5, 5, 0};
+        goalPos = (Point){20, 20, 0};
+        RunAStar();
+        
+        expect(pathLength > 0);
+    }
+    
+    it("wall at z=1 blocks movement") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+        
+        // Place a wall across the path at z=1
+        for (int y = 0; y < 32; y++) {
+            grid[1][y][15] = CELL_WALL;
+        }
+        
+        startPos = (Point){5, 10, 1};
+        goalPos = (Point){25, 10, 1};
+        RunAStar();
+        
+        // Should not find path (wall blocks)
+        expect(pathLength == 0);
+    }
+    
+    it("gap in wall at z=1 allows path") {
+        g_useDFWalkability = true;
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+        
+        // Place a wall with a gap at z=1
+        for (int y = 0; y < 32; y++) {
+            grid[1][y][15] = CELL_WALL;
+        }
+        grid[1][10][15] = CELL_AIR;  // Gap
+        
+        startPos = (Point){5, 10, 1};
+        goalPos = (Point){25, 10, 1};
+        RunAStar();
+        
+        expect(pathLength > 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -3269,9 +3398,8 @@ int main(int argc, char* argv[]) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Most tests use legacy terrain (z=0 walkable), so default to legacy mode
-    // DF-specific tests will enable DF mode explicitly
-    g_useDFWalkability = false;
+    // Default to DF mode - tests that need legacy mode will set it explicitly
+    g_useDFWalkability = true;
 
     test(grid_initialization);
     test(entrance_building);
@@ -3292,5 +3420,6 @@ int main(int argc, char* argv[]) {
     test(ladder_erase);
     test(df_walkability);
     test(df_ladder_pathfinding);
+    test(df_basics);
     return summary();
 }

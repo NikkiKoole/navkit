@@ -47,11 +47,12 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (z == 0) {
-                    grid[z][y][x] = CELL_DIRT;
-                    SET_CELL_SURFACE(x, y, z, SURFACE_TALL_GRASS);  // Start with grass
-                } else {
+                // In DF mode: all air (z=0 walkable via implicit bedrock)
+                // In legacy mode: z=0 walkable, higher levels air
+                if (g_useDFWalkability) {
                     grid[z][y][x] = CELL_AIR;
+                } else {
+                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
                 }
             }
         }
@@ -63,6 +64,15 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
 
 void InitGridWithSize(int width, int height) {
     InitGridWithSizeAndChunkSize(width, height, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
+}
+
+void FillGroundLevel(void) {
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+        }
+    }
 }
 
 int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
@@ -106,7 +116,8 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
                 if (*p == '#') {
                     grid[0][y][x] = CELL_WALL;
                 } else {
-                    grid[0][y][x] = CELL_WALKABLE;
+                    // Use CELL_AIR in DF mode, CELL_WALKABLE in legacy mode
+                    grid[0][y][x] = g_useDFWalkability ? CELL_AIR : CELL_WALKABLE;
                 }
             }
             x++;
@@ -378,7 +389,8 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
                 } else if (*p == 'X') {
                     grid[currentFloor][y][x] = CELL_LADDER_BOTH;
                 } else {
-                    grid[currentFloor][y][x] = CELL_WALKABLE;
+                    // Use CELL_AIR in DF mode, CELL_WALKABLE in legacy mode
+                    grid[currentFloor][y][x] = g_useDFWalkability ? CELL_AIR : CELL_WALKABLE;
                 }
             }
             x++;
