@@ -18,6 +18,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include <string.h>
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
 #include "../src/entities/items.h"
@@ -453,13 +454,16 @@ static void BenchAssignJobsAlgorithms(void) {
 // Main
 // =============================================================================
 int main(int argc, char* argv[]) {
-    (void)argc;
-    (void)argv;
+    bool legacyMode = false;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
+    }
     
     SetTraceLogLevel(LOG_NONE);
     
-    // Tests use legacy terrain (z=0 walkable), so use legacy mode
-    g_legacyWalkability = true;
+    // Standard (DF-style) walkability is the default
+    // z=0 is walkable via implicit bedrock in both modes
+    g_legacyWalkability = legacyMode;
     
     printf("\n=== JOB SYSTEM BENCHMARKS ===\n\n");
     

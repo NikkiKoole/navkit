@@ -1244,21 +1244,17 @@ describe(water_freezing) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool forceDF = false;
-    bool forceLegacy = false;
+    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--df") == 0) forceDF = true;
-        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
+        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // Default to DF mode, but allow override via command line
-    g_legacyWalkability = false;
-    if (forceLegacy) g_legacyWalkability = true;
-    if (forceDF) g_legacyWalkability = false;
+    // Standard (DF-style) walkability is the default
+    g_legacyWalkability = legacyMode;
     
     // Basic operations
     test(water_initialization);

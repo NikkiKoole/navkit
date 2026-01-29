@@ -3435,33 +3435,24 @@ static void run_all_tests(void) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool forceDF = false;
-    bool forceLegacy = false;
+    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--df") == 0) forceDF = true;
-        if (strcmp(argv[i], "--legacy") == 0) forceLegacy = true;
+        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // If a specific mode is forced, run only in that mode
-    if (forceLegacy) {
+    // If legacy mode specified, run only in legacy mode
+    if (legacyMode) {
         printf("\n=== Running tests in LEGACY walkability mode ===\n\n");
         g_legacyWalkability = true;
         run_all_tests();
         return summary();
     }
     
-    if (forceDF) {
-        printf("\n=== Running tests in STANDARD (DF) walkability mode ===\n\n");
-        g_legacyWalkability = false;
-        run_all_tests();
-        return summary();
-    }
-    
-    // Default: run tests in BOTH modes
+    // Default: run tests in BOTH modes (standard first, then legacy)
     printf("\n=== Running tests in STANDARD (DF) walkability mode ===\n\n");
     g_legacyWalkability = false;
     run_all_tests();

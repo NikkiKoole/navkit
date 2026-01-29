@@ -101,7 +101,7 @@ test_high_speed: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_high_speed
 
-# Run all tests (default: DF mode)
+# Run all tests in standard (DF-style) mode - this is the default
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed
 
 # Run all tests in legacy mode
@@ -120,24 +120,8 @@ test-legacy: $(BINDIR)
 	./$(BINDIR)/test_time_specs --legacy
 	./$(BINDIR)/test_high_speed --legacy
 
-# Run all tests in DF mode
-test-df: $(BINDIR)
-	@echo "=== Running all tests in DF mode ==="
-	./$(BINDIR)/test_pathing --df
-	./$(BINDIR)/test_mover --df
-	./$(BINDIR)/test_steering
-	./$(BINDIR)/test_jobs --df
-	./$(BINDIR)/test_water --df
-	./$(BINDIR)/test_groundwear --df
-	./$(BINDIR)/test_fire --df
-	./$(BINDIR)/test_temperature --df
-	./$(BINDIR)/test_steam --df
-	./$(BINDIR)/test_time --df
-	./$(BINDIR)/test_time_specs --df
-	./$(BINDIR)/test_high_speed --df
-
-# Run all tests in both modes
-test-both: test test-legacy test-df
+# Run all tests in both modes (standard first, then legacy)
+test-both: test test-legacy
 	@echo "=== All tests passed in both modes ==="
 
 # Benchmark targets - all use test_unity.c for shared game logic
@@ -205,4 +189,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
