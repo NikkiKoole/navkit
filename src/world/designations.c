@@ -108,7 +108,12 @@ void CompleteDigDesignation(int x, int y, int z) {
     
     // Convert wall to floor
     if (grid[z][y][x] == CELL_WALL) {
-        grid[z][y][x] = CELL_FLOOR;
+        if (g_legacyWalkability) {
+            grid[z][y][x] = CELL_FLOOR;
+        } else {
+            grid[z][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, z);
+        }
         MarkChunkDirty(x, y, z);
         
         // Spawn an orange block (stone) from the mined wall

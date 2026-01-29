@@ -1628,7 +1628,11 @@ void GenerateCastle(void) {
                 for (int px = tx; px < tx + towerSize; px++) {
                     bool isBorder = (px == tx || px == tx + towerSize - 1 ||
                                     py == ty || py == ty + towerSize - 1);
-                    grid[z][py][px] = isBorder ? CELL_WALL : CELL_FLOOR;
+                    if (isBorder) {
+                        grid[z][py][px] = CELL_WALL;
+                    } else {
+                        PlaceFloor(px, py, z);
+                    }
                 }
             }
         }
