@@ -15,8 +15,9 @@
 #include "../world/designations.h"
 #include "../entities/mover.h"
 #include "../entities/jobs.h"
+#include "../entities/workshops.h"
 
-#define INSPECT_SAVE_VERSION 7
+#define INSPECT_SAVE_VERSION 8
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -60,6 +61,7 @@ static Stockpile* insp_stockpiles = NULL;
 static int insp_gatherZoneCount = 0;
 static GatherZone* insp_gatherZones = NULL;
 static Blueprint* insp_blueprints = NULL;
+static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static int insp_jobHWM = 0, insp_activeJobCnt = 0;
@@ -202,6 +204,49 @@ static void print_stockpile(int idx) {
         }
     }
     if (!found) printf("  (none)\n");
+}
+
+static const char* workshopTypeNames[] = {"STONECUTTER"};
+static const char* billModeNames[] = {"DO_X_TIMES", "DO_UNTIL_X", "DO_FOREVER"};
+
+static void print_workshop(int idx) {
+    if (idx < 0 || idx >= MAX_WORKSHOPS) {
+        printf("Workshop %d out of range\n", idx);
+        return;
+    }
+    Workshop* ws = &insp_workshops[idx];
+    printf("\n=== WORKSHOP %d ===\n", idx);
+    printf("Active: %s\n", ws->active ? "YES" : "no");
+    if (!ws->active) return;
+    
+    printf("Type: %s\n", ws->type < 1 ? workshopTypeNames[ws->type] : "UNKNOWN");
+    printf("Position: (%d, %d, z%d)\n", ws->x, ws->y, ws->z);
+    printf("Size: %d x %d\n", ws->width, ws->height);
+    printf("Work tile: (%d, %d)\n", ws->workTileX, ws->workTileY);
+    printf("Output tile: (%d, %d)\n", ws->outputTileX, ws->outputTileY);
+    printf("Assigned crafter: %d%s\n", ws->assignedCrafter,
+           ws->assignedCrafter < 0 ? " (none)" : "");
+    
+    printf("\nBills: %d\n", ws->billCount);
+    for (int b = 0; b < ws->billCount; b++) {
+        Bill* bill = &ws->bills[b];
+        printf("  Bill %d: recipe=%d, mode=%s", b, bill->recipeIdx,
+               bill->mode < 3 ? billModeNames[bill->mode] : "?");
+        if (bill->suspended) printf(" [SUSPENDED]");
+        if (bill->mode == BILL_DO_X_TIMES) {
+            printf(" (%d/%d)", bill->completedCount, bill->targetCount);
+        } else if (bill->mode == BILL_DO_UNTIL_X) {
+            printf(" (until %d)", bill->targetCount);
+        } else {
+            printf(" (completed: %d)", bill->completedCount);
+        }
+        printf("\n");
+    }
+    
+    printf("\nLinked input stockpiles: %d\n", ws->linkedInputCount);
+    for (int i = 0; i < ws->linkedInputCount; i++) {
+        printf("  Stockpile %d\n", ws->linkedInputStockpiles[i]);
+    }
 }
 
 static void print_cell(int x, int y, int z) {
@@ -353,6 +398,7 @@ static void cleanup(void) {
     free(insp_stockpiles);
     free(insp_gatherZones);
     free(insp_blueprints);
+    free(insp_workshops);
     free(insp_movers);
     free(insp_jobs);
     free(insp_activeJobList);
@@ -379,7 +425,7 @@ static void get_basename_without_gz(const char* path, char* out, size_t outSize)
 int InspectSaveFile(int argc, char** argv) {
     // Parse arguments
     const char* filename = "saves/debug_save.bin";
-    int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1;
+    int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1, opt_workshop = -1;
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false;
     
@@ -388,6 +434,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--item") == 0 && i+1 < argc) opt_item = atoi(argv[++i]);
         else if (strcmp(argv[i], "--job") == 0 && i+1 < argc) opt_job = atoi(argv[++i]);
         else if (strcmp(argv[i], "--stockpile") == 0 && i+1 < argc) opt_stockpile = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--workshop") == 0 && i+1 < argc) opt_workshop = atoi(argv[++i]);
         else if (strcmp(argv[i], "--cell") == 0 && i+1 < argc) {
             sscanf(argv[++i], "%d,%d,%d", &opt_cell_x, &opt_cell_y, &opt_cell_z);
         }
@@ -504,6 +551,10 @@ int InspectSaveFile(int argc, char** argv) {
     insp_blueprints = malloc(MAX_BLUEPRINTS * sizeof(Blueprint));
     fread(insp_blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
     
+    // Workshops
+    insp_workshops = malloc(MAX_WORKSHOPS * sizeof(Workshop));
+    fread(insp_workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
+    
     // Movers
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
@@ -524,8 +575,8 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Print summary if no specific queries
     bool anyQuery = (opt_mover >= 0 || opt_item >= 0 || opt_job >= 0 || 
-                     opt_stockpile >= 0 || opt_cell_x >= 0 || opt_stuck || 
-                     opt_reserved || opt_jobs_active);
+                     opt_stockpile >= 0 || opt_workshop >= 0 || opt_cell_x >= 0 || 
+                     opt_stuck || opt_reserved || opt_jobs_active);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -537,14 +588,17 @@ int InspectSaveFile(int argc, char** argv) {
         for (int i = 0; i < insp_moverCount; i++) if (insp_movers[i].active) activeMovers++;
         for (int i = 0; i < MAX_STOCKPILES; i++) if (insp_stockpiles[i].active) activeStockpiles++;
         for (int i = 0; i < MAX_BLUEPRINTS; i++) if (insp_blueprints[i].active) activeBP++;
+        int activeWorkshops = 0;
+        for (int i = 0; i < MAX_WORKSHOPS; i++) if (insp_workshops[i].active) activeWorkshops++;
         
         printf("Items: %d active (of %d)\n", activeItems, insp_itemHWM);
         printf("Movers: %d active (of %d)\n", activeMovers, insp_moverCount);
         printf("Stockpiles: %d active\n", activeStockpiles);
         printf("Blueprints: %d active\n", activeBP);
+        printf("Workshops: %d active\n", activeWorkshops);
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
-        printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --cell X,Y,Z\n");
+        printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --cell X,Y,Z\n");
         printf("         --stuck, --reserved, --jobs-active\n");
     }
     
@@ -553,6 +607,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_item >= 0) print_item(opt_item);
     if (opt_job >= 0) print_job(opt_job);
     if (opt_stockpile >= 0) print_stockpile(opt_stockpile);
+    if (opt_workshop >= 0) print_workshop(opt_workshop);
     if (opt_cell_x >= 0) print_cell(opt_cell_x, opt_cell_y, opt_cell_z);
     if (opt_stuck) print_stuck_movers();
     if (opt_reserved) print_reserved_items();

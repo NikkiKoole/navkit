@@ -504,6 +504,9 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             b + 1, recipeName, modeName, statusStr);
     }
 
+    // Help text
+    snprintf(lines[lineCount++], sizeof(lines[0]), "B:add  X:remove  P:pause  D:delete");
+
     // Calculate box dimensions
     int maxW = 0;
     for (int i = 0; i < lineCount; i++) {
@@ -538,10 +541,16 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     y += lineH;
     
     // Bill lines
-    for (int i = 4; i < lineCount; i++) {
-        Bill* bill = &ws->bills[i - 4];
+    int billLines = ws->billCount;
+    for (int i = 0; i < billLines && (4 + i) < lineCount; i++) {
+        Bill* bill = &ws->bills[i];
         Color col = bill->suspended ? RED : (Color){200, 180, 140, 255};
-        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        DrawTextShadow(lines[4 + i], tx + padding, y, 14, col);
         y += lineH;
+    }
+    
+    // Help text (last line)
+    if (lineCount > 4 + billLines) {
+        DrawTextShadow(lines[4 + billLines], tx + padding, y, 14, GRAY);
     }
 }

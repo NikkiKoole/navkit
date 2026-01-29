@@ -59,6 +59,7 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_LADDER:     return "LADDER";
         case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
         case ACTION_DRAW_DIRT:       return "DIRT";
+        case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
         case ACTION_WORK_MINE:       return "DIG";
         case ACTION_WORK_CONSTRUCT:  return "CONSTRUCT";
         case ACTION_WORK_GATHER:     return "GATHER";
@@ -219,6 +220,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
                 n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
                 n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
+                n = AddItem(items, n, "sTone workshop", KEY_T, 1, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             case MODE_WORK:
@@ -264,6 +266,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_LADDER:    actionKey = KEY_L; break;
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
+        case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
         case ACTION_WORK_MINE:      actionKey = KEY_D; break;
         case ACTION_WORK_CONSTRUCT: actionKey = KEY_C; break;
         case ACTION_WORK_GATHER:    actionKey = KEY_G; break;
@@ -301,6 +304,9 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_STOCKPILE:
             n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
+            break;
+        case ACTION_DRAW_WORKSHOP:
+            n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             break;
         case ACTION_WORK_MINE:
         case ACTION_WORK_CONSTRUCT:

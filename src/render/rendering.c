@@ -1059,7 +1059,7 @@ void DrawWorkshops(void) {
         if (!ws->active) continue;
         if (ws->z != viewZ) continue;
 
-        // Draw workshop footprint using generic tile
+        // Draw workshop footprint based on template
         for (int dy = 0; dy < ws->height; dy++) {
             for (int dx = 0; dx < ws->width; dx++) {
                 int gx = ws->x + dx;
@@ -1068,25 +1068,29 @@ void DrawWorkshops(void) {
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
 
-                // Use generic sprite for workshop tiles
+                char tile = ws->template[dy * ws->width + dx];
+                Color tint = WHITE;
+                
+                switch (tile) {
+                    case WT_BLOCK:  // Machinery - dark brown tint
+                        tint = (Color){140, 100, 60, 255};
+                        break;
+                    case WT_WORK:   // Work tile - green tint
+                        tint = (Color){150, 220, 150, 255};
+                        break;
+                    case WT_OUTPUT: // Output tile - blue tint
+                        tint = (Color){150, 180, 220, 255};
+                        break;
+                    case WT_FLOOR:  // Floor - light brown tint
+                    default:
+                        tint = (Color){200, 180, 140, 255};
+                        break;
+                }
+
                 Rectangle src = SpriteGetRect(SPRITE_generic);
                 Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
             }
-        }
-
-        // Highlight work tile (where crafter stands) - green tint
-        {
-            float sx = offset.x + ws->workTileX * size;
-            float sy = offset.y + ws->workTileY * size;
-            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){0, 255, 0, 60});
-        }
-
-        // Highlight output tile (where items spawn) - blue tint
-        {
-            float sx = offset.x + ws->outputTileX * size;
-            float sy = offset.y + ws->outputTileY * size;
-            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){0, 100, 255, 60});
         }
 
         // Draw craft progress bar if crafter is working

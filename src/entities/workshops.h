@@ -7,6 +7,15 @@
 #define MAX_WORKSHOPS 256
 #define MAX_BILLS_PER_WORKSHOP 10
 #define MAX_LINKED_STOCKPILES 4
+#define MAX_WORKSHOP_SIZE 5  // max width/height for templates
+
+// Template tile types
+typedef enum {
+    WT_FLOOR = '.',   // walkable floor
+    WT_BLOCK = '#',   // non-walkable machinery
+    WT_WORK  = 'X',   // work tile (walkable)
+    WT_OUTPUT = 'O',  // output tile (walkable)
+} WorkshopTileType;
 
 // Workshop types
 typedef enum {
@@ -48,6 +57,9 @@ typedef struct {
     bool active;
     WorkshopType type;
     
+    // Layout template (local coords, row-major)
+    char template[MAX_WORKSHOP_SIZE * MAX_WORKSHOP_SIZE];
+    
     // Bills
     Bill bills[MAX_BILLS_PER_WORKSHOP];
     int billCount;
@@ -88,5 +100,7 @@ bool ShouldBillRun(Workshop* ws, Bill* bill);
 // Queries
 int FindWorkshopAt(int tileX, int tileY, int z);
 bool IsWorkshopTile(int tileX, int tileY, int z);
+char GetWorkshopTileAt(int wsIdx, int tileX, int tileY);  // returns template char at world pos
+bool IsWorkshopBlocking(int tileX, int tileY, int z);     // true if any workshop blocks this tile
 
 #endif

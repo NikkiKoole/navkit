@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "world/cell_defs.h"
 #include "core/input_mode.h"
+#include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
 
 // ============================================================================
@@ -599,6 +600,34 @@ int main(int argc, char** argv) {
             PROFILE_END(DrawMovers);
         }
 
+        // Draw workshop preview (3x3) when in workshop placement mode
+        if (inputAction == ACTION_DRAW_WORKSHOP && !isDragging) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int x = (int)gp.x, y = (int)gp.y;
+            float size = CELL_SIZE * zoom;
+            float px = offset.x + x * size;
+            float py = offset.y + y * size;
+            float pw = 3 * size;
+            float ph = 3 * size;
+            
+            // Check if placement is valid
+            bool valid = true;
+            for (int dy = 0; dy < 3 && valid; dy++) {
+                for (int dx = 0; dx < 3 && valid; dx++) {
+                    int cx = x + dx;
+                    int cy = y + dy;
+                    if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) valid = false;
+                    else if (!IsCellWalkableAt(currentViewZ, cy, cx)) valid = false;
+                    else if (FindWorkshopAt(cx, cy, currentViewZ) >= 0) valid = false;
+                }
+            }
+            
+            Color fillColor = valid ? (Color){180, 140, 80, 80} : (Color){200, 50, 50, 80};
+            Color lineColor = valid ? (Color){200, 160, 100, 255} : RED;
+            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
+            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
+        }
+        
         // Draw drag preview rectangle when dragging
         if (isDragging && inputAction != ACTION_NONE) {
             Vector2 gp = ScreenToGrid(GetMousePosition());

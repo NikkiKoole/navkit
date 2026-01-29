@@ -1,9 +1,10 @@
 // core/saveload.c - Save and Load functions
 #include "../game_state.h"
+#include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 
-#define SAVE_VERSION 7  // Added section markers
+#define SAVE_VERSION 8  // Added workshops
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -110,6 +111,9 @@ bool SaveWorld(const char* filename) {
     
     // Blueprints
     fwrite(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    
+    // Workshops
+    fwrite(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
     
     // Movers
     fwrite(&moverCount, sizeof(moverCount), 1, f);
@@ -330,6 +334,9 @@ bool LoadWorld(const char* filename) {
     
     // Blueprints
     fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    
+    // Workshops
+    fread(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);

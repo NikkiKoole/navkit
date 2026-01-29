@@ -114,6 +114,9 @@ static inline bool IsCellWalkableAt_Standard(int z, int y, int x) {
     // Can't walk through solid blocks (walls)
     if (CellBlocksMovement(cellHere)) return false;
     
+    // Can't walk through blocked structures (workshops, furniture, etc.)
+    if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
+    
     // Ladders are always walkable (special case - they provide their own support)
     if (CellIsLadder(cellHere)) return true;
     

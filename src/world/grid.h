@@ -53,7 +53,11 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define CELL_SURFACE_SHIFT  3
 // Bit 5: has constructed floor (can stand on even with air below)
 #define CELL_FLAG_HAS_FLOOR (1 << 5)
-// Bits 6-7: reserved for future flags
+// Bit 6: blocked by structure (workshops, furniture, machines, etc.)
+// Any structure with non-walkable tiles sets this flag on create, clears on delete.
+// Generic - not workshop-specific, can be reused for other blocking structures.
+#define CELL_FLAG_WORKSHOP_BLOCK (1 << 6)
+// Bit 7: reserved
 
 // Surface overlay types (for dirt tiles)
 #define SURFACE_BARE        0

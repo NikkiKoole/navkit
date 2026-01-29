@@ -1,6 +1,7 @@
 // core/input.c - Input handling with hierarchical mode system
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
@@ -274,6 +275,35 @@ static void ExecuteEraseStockpile(int x1, int y1, int x2, int y2, int z) {
     }
     if (erasedCells > 0) {
         AddMessage(TextFormat("Erased %d stockpile cell%s", erasedCells, erasedCells > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecutePlaceWorkshop(int x, int y, int z) {
+    // Check if area is clear (3x3 walkable, no other workshops)
+    for (int dy = 0; dy < 3; dy++) {
+        for (int dx = 0; dx < 3; dx++) {
+            int cx = x + dx;
+            int cy = y + dy;
+            if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) {
+                AddMessage("Workshop must be within map bounds", RED);
+                return;
+            }
+            if (!IsCellWalkableAt(z, cy, cx)) {
+                AddMessage("Workshop requires walkable terrain", RED);
+                return;
+            }
+            if (FindWorkshopAt(cx, cy, z) >= 0) {
+                AddMessage("Another workshop is already here", RED);
+                return;
+            }
+        }
+    }
+    
+    int idx = CreateWorkshop(x, y, z, WORKSHOP_STONECUTTER);
+    if (idx >= 0) {
+        AddMessage(TextFormat("Built stonecutter workshop #%d", idx), GREEN);
+    } else {
+        AddMessage(TextFormat("Failed to create workshop (max %d)", MAX_WORKSHOPS), RED);
     }
 }
 
@@ -632,6 +662,53 @@ void HandleInput(void) {
     }
 
     // ========================================================================
+    // Workshop hover controls (always active when hovering)
+    // ========================================================================
+    if (hoveredWorkshop >= 0 && inputMode == MODE_NORMAL) {
+        Workshop* ws = &workshops[hoveredWorkshop];
+        
+        // B = Add bill (Cut Stone Blocks, Do Forever)
+        if (IsKeyPressed(KEY_B)) {
+            if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
+                AddBill(hoveredWorkshop, 0, BILL_DO_FOREVER, 0);
+                AddMessage(TextFormat("Added bill: Cut Stone Blocks (Do Forever)"), GREEN);
+            } else {
+                AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
+            }
+            return;
+        }
+        
+        // X = Remove last bill
+        if (IsKeyPressed(KEY_X)) {
+            if (ws->billCount > 0) {
+                ws->billCount--;
+                AddMessage(TextFormat("Removed bill (now %d)", ws->billCount), ORANGE);
+            } else {
+                AddMessage("No bills to remove", RED);
+            }
+            return;
+        }
+        
+        // P = Toggle pause on first bill
+        if (IsKeyPressed(KEY_P)) {
+            if (ws->billCount > 0) {
+                ws->bills[0].suspended = !ws->bills[0].suspended;
+                AddMessage(TextFormat("Bill %s", ws->bills[0].suspended ? "PAUSED" : "RESUMED"), 
+                    ws->bills[0].suspended ? RED : GREEN);
+            }
+            return;
+        }
+        
+        // D = Delete workshop
+        if (IsKeyPressed(KEY_D)) {
+            DeleteWorkshop(hoveredWorkshop);
+            AddMessage("Workshop deleted", ORANGE);
+            hoveredWorkshop = -1;
+            return;
+        }
+    }
+
+    // ========================================================================
     // Global controls (always active)
     // ========================================================================
     
@@ -800,6 +877,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
                 if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
+                if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
                 break;
             case MODE_WORK:
                 if (CheckKey(KEY_D)) { inputAction = ACTION_WORK_MINE; }
@@ -833,6 +911,7 @@ void HandleInput(void) {
         case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
+        case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         // Work actions
         case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_D); break;
         case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
@@ -906,6 +985,9 @@ void HandleInput(void) {
             case ACTION_DRAW_DIRT:
                 if (leftClick) ExecuteBuildDirt(x1, y1, x2, y2, z);
                 else ExecuteEraseDirt(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_WORKSHOP:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z);
                 break;
             // Work actions
             case ACTION_WORK_MINE:
