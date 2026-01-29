@@ -1,6 +1,17 @@
-# Simple Crafting System
+# Simple Crafting System - IMPLEMENTED
 
-Current project: Add workshops and crafting to NavKit.
+Status: Core system complete and working. This doc preserved as technical reference.
+
+---
+
+## Implementation Status
+
+All core phases complete:
+- Phase 1: Core Workshop System - DONE
+- Phase 2: Bill System - DONE (all 3 modes)
+- Phase 3: Material Consumption - DONE
+- Phase 4: UI - DONE (placement + bill controls)
+- Phase 5: Polish - Partial (templates done, multi-type/construction/skills not started)
 
 ---
 
@@ -613,35 +624,38 @@ typedef enum {
 ## Implementation Steps
 
 ### Phase 1: Core Workshop System
-- [ ] Add `Workshop` struct and array
-- [ ] Add `Recipe` struct
-- [ ] Add workshop placement (hardcoded position for testing)
-- [ ] Add `JOBTYPE_CRAFT` and job driver
-- [ ] Add `WorkGiver_Craft` (or integrate into AssignJobs)
-- [ ] Test: mover walks to workshop, waits, item spawns
+- [x] Add `Workshop` struct and array
+- [x] Add `Recipe` struct
+- [x] Add workshop placement (T key in draw mode)
+- [x] Add `JOBTYPE_CRAFT` and job driver
+- [x] Add `WorkGiver_Craft` (integrated into AssignJobsHybrid)
+- [x] Test: mover walks to workshop, waits, item spawns
 
 ### Phase 2: Bill System
-- [ ] Add `Bill` struct to workshops
-- [ ] Implement `BILL_DO_X_TIMES` mode
-- [ ] Implement `BILL_DO_UNTIL_X` mode
-- [ ] Implement `BILL_DO_FOREVER` mode
-- [ ] Add bill suspend/resume
+- [x] Add `Bill` struct to workshops
+- [x] Implement `BILL_DO_X_TIMES` mode
+- [x] Implement `BILL_DO_UNTIL_X` mode
+- [x] Implement `BILL_DO_FOREVER` mode
+- [x] Add bill suspend/resume (P key)
 
 ### Phase 3: Material Consumption
-- [ ] Check for input items before starting craft
-- [ ] Consume input items when craft starts
-- [ ] Handle "not enough materials" state
-- [ ] Add ingredient search radius
+- [x] Check for input items before starting craft
+- [x] Consume input items when craft completes
+- [x] Handle "not enough materials" state (job not assigned)
+- [x] Add ingredient search radius (0 = unlimited)
 
 ### Phase 4: UI
-- [ ] Workshop placement UI (build menu)
-- [ ] Bill management panel
-- [ ] Workshop status display
-- [ ] Recipe selection UI
+- [x] Workshop placement UI (T key, 3x3 preview)
+- [x] Bill management (B=add, X=remove, P=pause, D=delete workshop)
+- [x] Workshop status display (tooltip)
+- [ ] Recipe selection UI (not needed yet - single recipe)
 
 ### Phase 5: Polish
-- [ ] Multiple workshop types (stonecutter, kitchen, etc.)
-- [ ] Workshop construction (blueprint + materials)
+- [x] Workshop templates (ASCII layout with blocked tiles)
+- [x] Pathfinding around workshop machinery (CELL_FLAG_WORKSHOP_BLOCK)
+- [x] Save/load support
+- [ ] Multiple workshop types (future)
+- [ ] Workshop construction (future)
 - [ ] Crafter skill affecting speed (future)
 - [ ] Quality system for outputs (future)
 
@@ -649,21 +663,21 @@ typedef enum {
 
 ## Testing Checklist
 
-- [ ] Mover finds workshop with runnable bill
-- [ ] Mover paths to workshop correctly
-- [ ] Craft progress increments over time
-- [ ] Output item spawns at correct position
-- [ ] Input items consumed correctly
-- [ ] Bill completedCount increments
-- [ ] DO_X_TIMES stops after N crafts
-- [ ] DO_UNTIL_X stops when stockpile target met
-- [ ] DO_UNTIL_X resumes when stockpile drops below target
-- [ ] DO_FOREVER keeps running
-- [ ] Suspended bills are skipped
-- [ ] No materials = no craft job assigned
-- [ ] Workshop with assigned crafter not double-assigned
-- [ ] Job cancellation releases workshop assignment
-- [ ] Multiple workshops work independently
+- [x] Mover finds workshop with runnable bill
+- [x] Mover paths to workshop correctly
+- [x] Craft progress increments over time
+- [x] Output item spawns at correct position
+- [x] Input items consumed correctly
+- [x] Bill completedCount increments
+- [x] DO_X_TIMES stops after N crafts
+- [x] DO_UNTIL_X stops when stockpile target met
+- [x] DO_UNTIL_X resumes when stockpile drops below target
+- [x] DO_FOREVER keeps running
+- [x] Suspended bills are skipped
+- [x] No materials = no craft job assigned
+- [x] Workshop with assigned crafter not double-assigned
+- [x] Job cancellation releases workshop assignment
+- [x] Multiple workshops work independently
 
 ---
 

@@ -1,107 +1,100 @@
-# Current Project: Crafting System
+# Crafting System - COMPLETE
 
-Adding DF-style workshops and crafting to NavKit.
-
-
-All open questions resolved, decisions documented. A new context can start with the README and know exactly what to build.
-
-Sources for DF behavior:
-- [Dwarf Fortress Wiki - Job item lost or destroyed](https://dwarffortresswiki.org/index.php/Dwarf_cancels_task:_Job_item_lost_or_destroyed)
-- [Dwarf Fortress Wiki - Work orders
+The DF-style crafting system has been implemented and is working.
 
 ---
 
-## Quick Start
+## Status: DONE
 
-**Read in this order:**
-
-1. **This README** - overview and key decisions
-2. **vertical-slice.md** - what we're building first, test scenario
-3. **crafting-plan.md** - technical spec, structs, job flow
-4. **materials-and-workshops.md** - big picture, future phases
-
----
-
-## What We're Building
-
-A crafting loop where:
+The vertical slice is complete. The crafting loop works end-to-end:
 
 ```
-Mine wall → ITEM_ORANGE → Hauler stocks near workshop
-                                    ↓
-                    Crafter fetches → Crafts → ITEM_STONE_BLOCKS
-                                                      ↓
-                              Hauler stocks → Builder uses for walls
+Mine wall -> ITEM_ORANGE -> Hauler stocks near workshop
+                                    |
+                    Crafter fetches -> Crafts -> ITEM_STONE_BLOCKS
+                                                      |
+                              Hauler stocks -> Builder uses for walls
 ```
 
-**DF-style:** Crafter fetches their own materials (walks to stockpile, picks up, carries to workshop). Haulers keep stockpiles filled. Bills don't generate hauling jobs.
-
 ---
 
-## Key Decisions
+## What Was Built
 
-| Question | Decision |
-|----------|----------|
-| Item consumption | Reserve at start, consume at end (DF-style) |
-| Interruption | Cancel, lose progress, drop item |
-| Workshop types | Enum (simple) |
-| Crafters per workshop | One for now, design for multiple |
-| ITEM_ORANGE | Keep as-is, no rename |
-| Test scenario | New terrain generator option |
-| Workshop spawn | Hardcoded first, then build menu |
-| Movers | 10 identical, all capabilities |
-
----
-
-## Vertical Slice Scope
-
-**Phase 1 only:** Orange → Stonecutter → Stone Blocks → Walls
-
-What's IN:
-- ITEM_STONE_BLOCKS (new item type)
-- Workshop struct (Stonecutter only)
-- Recipe + Bill (BILL_DO_FOREVER only)
+### Core System (Original Scope)
+- ITEM_STONE_BLOCKS item type
+- Workshop struct with Stonecutter type
+- Recipe + Bill system (all 3 modes: DO_X_TIMES, DO_UNTIL_X, DO_FOREVER)
 - JOBTYPE_CRAFT with 4-step state machine
+- WorkGiver_Craft for job assignment
 - Wall blueprint requires STONE_BLOCKS
-- Test terrain generator
 
-What's OUT:
-- Workshop placement UI
-- Bill UI
-- Multiple bill modes
+### Beyond Original Scope
+- Workshop placement UI (T key in draw mode, 3x3 preview)
+- Bill management (B=add, X=remove, P=pause)
+- Workshop delete (D key)
+- Workshop ASCII template system (##O / #X. / ...)
+- Tinted tile rendering based on template type
+- Blocked tiles prevent pathfinding (O(1) via CELL_FLAG_WORKSHOP_BLOCK)
+- Movers pushed out when workshop placed on them
+- Workshop tooltip with bill status
+- Save/load support (version 8)
+- Inspect support (--workshop N)
+
+---
+
+## Key Files
+
+| File | What it does |
+|------|--------------|
+| `src/entities/workshops.h` | Workshop, Recipe, Bill structs, template types |
+| `src/entities/workshops.c` | Workshop creation, deletion, bill management, templates |
+| `src/entities/jobs.c` | JOBTYPE_CRAFT driver, WorkGiver_Craft |
+| `src/core/input.c` | Workshop placement, bill controls (B/X/P/D keys) |
+| `src/render/rendering.c` | DrawWorkshops with template-based tinting |
+| `src/render/tooltips.c` | Workshop tooltip |
+| `src/world/grid.h` | CELL_FLAG_WORKSHOP_BLOCK for pathfinding |
+| `src/core/saveload.c` | Workshop save/load |
+| `src/core/inspect.c` | Workshop inspection |
+
+---
+
+## How It Works
+
+### Workshop Templates
+Workshops use ASCII templates to define their layout:
+```
+##O   # = machinery (blocked, dark brown)
+#X.   X = work tile (green tint)
+...   O = output tile (blue tint)
+      . = walkable floor (light brown)
+```
+
+### Job Flow
+1. WorkGiver_Craft finds workshop with runnable bill + available materials
+2. Reserves item + workshop
+3. CRAFT_STEP_FETCH: Walk to item location
+4. CRAFT_STEP_PICKUP: Pick up item
+5. CRAFT_STEP_MOVING: Carry to workshop work tile
+6. CRAFT_STEP_WORKING: Work until complete
+7. Consume input, spawn output at output tile
+
+### Pathfinding Integration
+- Blocked tiles (#) set CELL_FLAG_WORKSHOP_BLOCK in cellFlags grid
+- IsCellWalkableAt_Standard() checks this flag (O(1) lookup)
+- Movers path around workshop machinery
+
+---
+
+## Future Work (Not Started)
+
+From materials-and-workshops.md:
+- Phase 2: Food chain (farms, cooking)
+- Phase 3: Wood industry (forestry, sawmill)
 - Multiple workshop types
-- Linked stockpiles
-- Wood/forestry (Phase 3)
-
----
-
-## Existing Code References
-
-The new context should look at:
-
-| System | Location | Notes |
-|--------|----------|-------|
-| Items | `src/entities/items.c` | Item types, spawning, states |
-| Jobs | `src/entities/jobs.c` | Job pool, drivers, assignment |
-| Movers | `src/entities/mover.c` | Movement, carrying items |
-| Stockpiles | `src/entities/stockpiles.c` | Filters, priorities, slots |
-| Mining | `src/entities/jobs.c` | JOBTYPE_MINE as reference |
-| Building | `src/entities/jobs.c` | JOBTYPE_BUILD as reference |
-| Terrain gen | `src/world/terrain.c` | Where to add test scenario |
-
----
-
-## Implementation Order
-
-1. Add ITEM_STONE_BLOCKS
-2. Add Workshop struct + array
-3. Add Recipe + Bill (minimal)
-4. Add JOBTYPE_CRAFT enum
-5. Add craft job driver (4-step: fetch → pickup → walk → work)
-6. Add craft job assignment
-7. Change wall blueprint to require STONE_BLOCKS
-8. Create test terrain generator
-9. Test + debug
+- Linked stockpiles (workshop-specific input sources)
+- Workshop construction (blueprint + materials to build)
+- Crafter skill/speed modifiers
+- Quality system
 
 ---
 
@@ -109,7 +102,7 @@ The new context should look at:
 
 | File | Purpose |
 |------|---------|
-| README.md | This file - start here |
-| vertical-slice.md | Test scenario, success criteria |
-| crafting-plan.md | Technical spec, all the code details |
-| materials-and-workshops.md | Material loops, future phases |
+| README.md | This file - status overview |
+| vertical-slice.md | Original test scenario spec (now complete) |
+| crafting-plan.md | Technical spec reference |
+| materials-and-workshops.md | Future phases roadmap |
