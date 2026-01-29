@@ -295,6 +295,10 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                         wearGrid[z][y][x] = wearMax;
                         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                     }
+                } else if (currentCell == CELL_DIRT) {
+                    // DF mode: dirt with grass surface burns away the grass
+                    wearGrid[z][y][x] = wearMax;
+                    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                 }
                 
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
