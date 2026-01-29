@@ -822,57 +822,97 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t steamSize = sizeof(SteamCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t temperatureSize = sizeof(TempCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t cellFlagsSize = sizeof(uint8_t) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
-            size_t groundWearSize = sizeof(int) * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t groundWearSize = sizeof(int) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
 
             // Pathfinding
             size_t entrancesSize = sizeof(Entrance) * MAX_ENTRANCES;
-            size_t pathSize = sizeof(Point) * MAX_PATH;
+            size_t pathSize = sizeof(Point) * MAX_PATH;  // Global path scratch buffer
             size_t edgesSize = sizeof(GraphEdge) * MAX_EDGES;
+            size_t nodeDataSize = sizeof(AStarNode) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
+            size_t chunkDirtySize = sizeof(bool) * MAX_GRID_DEPTH * MAX_CHUNKS_Y * MAX_CHUNKS_X;
+            size_t ladderLinksSize = sizeof(LadderLink) * MAX_LADDERS;
+            size_t abstractNodesSize = sizeof(AbstractNode) * MAX_ABSTRACT_NODES;
+            size_t abstractPathSize = sizeof(int) * (MAX_ENTRANCES + 2);
 
             // Entities
             size_t moversSize = sizeof(Mover) * MAX_MOVERS;
+            size_t moverRenderSize = sizeof(MoverRenderData) * MAX_MOVERS;
             size_t itemsSize = sizeof(Item) * MAX_ITEMS;
             size_t jobsSize = sizeof(Job) * MAX_JOBS;
             size_t stockpilesSize = sizeof(Stockpile) * MAX_STOCKPILES;
             size_t blueprintsSize = sizeof(Blueprint) * MAX_BLUEPRINTS;
             size_t gatherZonesSize = sizeof(GatherZone) * MAX_GATHER_ZONES;
+            size_t workshopsSize = sizeof(Workshop) * MAX_WORKSHOPS;
 
             // Spatial grids (heap allocated)
             size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
             size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
 
             size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + steamSize + temperatureSize + cellFlagsSize + groundWearSize;
-            size_t totalPathfinding = entrancesSize + pathSize + edgesSize;
-            size_t totalEntities = moversSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize;
+            size_t totalPathfinding = entrancesSize + pathSize + edgesSize + nodeDataSize + chunkDirtySize + ladderLinksSize + abstractNodesSize + abstractPathSize;
+            size_t totalEntities = moversSize + moverRenderSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize + workshopsSize;
             size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
             size_t total = totalGrid + totalPathfinding + totalEntities + totalSpatial;
 
-            DrawTextShadow("-- Grid Data --", x, y, 14, GRAY); y += 16;
-            DrawTextShadow(TextFormat("  Cells:        %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Designations: %5.1f MB", designationsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Water:        %5.1f MB", waterSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Fire:         %5.1f MB", fireSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Smoke:        %5.1f MB", smokeSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Steam:        %5.1f MB", steamSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Temperature:  %5.1f MB", temperatureSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  CellFlags:    %5.1f MB", cellFlagsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            // Helper macro for subsection headers
+            #define MEM_SUBSECTION(label, sizeVar, boolVar) do { \
+                const char* hdr = boolVar ? TextFormat("[-] %s (%.1f MB)", label, (sizeVar) / (1024.0f * 1024.0f)) \
+                                          : TextFormat("[+] %s (%.1f MB)", label, (sizeVar) / (1024.0f * 1024.0f)); \
+                int hdrW = MeasureText(hdr, 14); \
+                float hdrX = rightEdge - hdrW; \
+                bool hovered = mouse.x >= hdrX && mouse.x < hdrX + hdrW + 10 && mouse.y >= y && mouse.y < y + 16; \
+                DrawTextShadow(hdr, (int)hdrX, (int)y, 14, hovered ? YELLOW : GRAY); \
+                if (hovered && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) boolVar = !boolVar; \
+                y += 16; \
+            } while(0)
 
-            DrawTextShadow("-- Pathfinding --", x, y, 14, GRAY); y += 16;
-            DrawTextShadow(TextFormat("  Entrances:    %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Path:         %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Edges:        %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            // Grid Data subsection
+            MEM_SUBSECTION("Grid", totalGrid, sectionMemGrid);
+            if (sectionMemGrid) {
+                DrawTextShadow(TextFormat("  Cells:        %5.1f MB", gridSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Designations: %5.1f MB", designationsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Water:        %5.1f MB", waterSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Fire:         %5.1f MB", fireSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Smoke:        %5.1f MB", smokeSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Steam:        %5.1f MB", steamSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Temperature:  %5.1f MB", temperatureSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  CellFlags:    %5.1f MB", cellFlagsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+            }
 
-            DrawTextShadow("-- Entities --", x, y, 14, GRAY); y += 16;
-            DrawTextShadow(TextFormat("  Movers:       %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Items:        %5.1f MB", itemsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Jobs:         %5.1f MB", jobsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Stockpiles:   %5.1f KB", stockpilesSize / 1024.0f), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  Blueprints:   %5.1f KB", blueprintsSize / 1024.0f), x, y, 14, WHITE); y += 16;
+            // Pathfinding subsection
+            MEM_SUBSECTION("Pathfinding", totalPathfinding, sectionMemPath);
+            if (sectionMemPath) {
+                DrawTextShadow(TextFormat("  NodeData:     %5.1f MB", nodeDataSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Path:         %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Entrances:    %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Edges:        %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  LadderLinks:  %5.1f KB", ladderLinksSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  AbstractNodes:%5.1f KB", abstractNodesSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  ChunkDirty:   %5.1f KB", chunkDirtySize / 1024.0f), x, y, 14, WHITE); y += 16;
+            }
 
-            DrawTextShadow("-- Spatial --", x, y, 14, GRAY); y += 16;
-            DrawTextShadow(TextFormat("  MoverGrid:    %5.1f KB", moverSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
-            DrawTextShadow(TextFormat("  ItemGrid:     %5.1f KB", itemSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            // Entities subsection
+            MEM_SUBSECTION("Entities", totalEntities, sectionMemEntities);
+            if (sectionMemEntities) {
+                DrawTextShadow(TextFormat("  Movers:       %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  MoverRender:  %5.1f KB", moverRenderSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Items:        %5.1f MB", itemsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Jobs:         %5.1f MB", jobsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Workshops:    %5.1f KB", workshopsSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Stockpiles:   %5.1f KB", stockpilesSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  Blueprints:   %5.1f KB", blueprintsSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  GatherZones:  %5.1f KB", gatherZonesSize / 1024.0f), x, y, 14, WHITE); y += 16;
+            }
+
+            // Spatial subsection
+            MEM_SUBSECTION("Spatial", totalSpatial, sectionMemSpatial);
+            if (sectionMemSpatial) {
+                DrawTextShadow(TextFormat("  MoverGrid:    %5.1f KB", moverSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  ItemGrid:     %5.1f KB", itemSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
+            }
+
+            #undef MEM_SUBSECTION
 
             DrawTextShadow(TextFormat("TOTAL:          %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
         }

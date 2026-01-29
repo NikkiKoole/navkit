@@ -117,6 +117,10 @@ extern bool sectionMoverWalls;
 extern bool sectionMoverDebug;
 extern bool sectionProfiler;
 extern bool sectionMemory;
+extern bool sectionMemGrid;
+extern bool sectionMemPath;
+extern bool sectionMemEntities;
+extern bool sectionMemSpatial;
 extern bool sectionJobs;
 extern bool sectionTime;
 

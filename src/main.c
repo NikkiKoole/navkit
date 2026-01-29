@@ -62,6 +62,10 @@ bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 bool sectionProfiler = false;
 bool sectionMemory = false;
+bool sectionMemGrid = false;
+bool sectionMemPath = false;
+bool sectionMemEntities = false;
+bool sectionMemSpatial = false;
 bool sectionJobs = false;
 bool sectionTime = false;
 
