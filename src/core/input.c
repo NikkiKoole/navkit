@@ -590,6 +590,7 @@ void HandleInput(void) {
     
     // Update hover states
     hoveredStockpile = GetStockpileAtGrid((int)mouseGrid.x, (int)mouseGrid.y, z);
+    hoveredWorkshop = FindWorkshopAt((int)mouseGrid.x, (int)mouseGrid.y, z);
     if (paused) {
         Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
@@ -626,6 +627,7 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_G)) { sp->allowedTypes[ITEM_GREEN] = !sp->allowedTypes[ITEM_GREEN]; AddMessage(TextFormat("Green: %s", sp->allowedTypes[ITEM_GREEN] ? "ON" : "OFF"), GREEN); return; }
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ORANGE] = !sp->allowedTypes[ITEM_ORANGE]; AddMessage(TextFormat("Orange: %s", sp->allowedTypes[ITEM_ORANGE] ? "ON" : "OFF"), ORANGE); return; }
+            if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
         }
     }
 

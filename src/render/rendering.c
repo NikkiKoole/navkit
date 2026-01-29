@@ -3,6 +3,7 @@
 #include "../world/cell_defs.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
+#include "../entities/workshops.h"
 
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
@@ -837,11 +838,12 @@ void DrawMovers(void) {
             Item* item = &items[carryingItem];
             int sprite;
             switch (item->type) {
-                case ITEM_RED:    sprite = SPRITE_crate_red;    break;
-                case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
-                case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
-                case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
-                default:          sprite = SPRITE_apple;        break;
+                case ITEM_RED:          sprite = SPRITE_crate_red;    break;
+                case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
+                case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
+                case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
+                case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
+                default:                sprite = SPRITE_apple;        break;
             }
             float itemSize = size * ITEM_SIZE_CARRIED;
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
@@ -928,11 +930,12 @@ void DrawItems(void) {
 
         int sprite;
         switch (item->type) {
-            case ITEM_RED:    sprite = SPRITE_crate_red;    break;
-            case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
-            case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
-            case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
-            default:          sprite = SPRITE_apple;        break;
+            case ITEM_RED:          sprite = SPRITE_crate_red;    break;
+            case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
+            case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
+            case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
+            case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
+            default:                sprite = SPRITE_apple;        break;
         }
 
         float itemSize = size * ITEM_SIZE_GROUND;
@@ -1023,11 +1026,12 @@ void DrawStockpileItems(void) {
                 ItemType type = sp->slotTypes[slotIdx];
                 int sprite;
                 switch (type) {
-                    case ITEM_RED:    sprite = SPRITE_crate_red;    break;
-                    case ITEM_GREEN:  sprite = SPRITE_crate_green;  break;
-                    case ITEM_BLUE:   sprite = SPRITE_crate_blue;   break;
-                    case ITEM_ORANGE: sprite = SPRITE_crate_orange; break;
-                    default:          sprite = SPRITE_apple;        break;
+                    case ITEM_RED:          sprite = SPRITE_crate_red;    break;
+                    case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
+                    case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
+                    case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
+                    case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
+                    default:                sprite = SPRITE_apple;        break;
                 }
 
                 int visibleCount = count > 5 ? 5 : count;
@@ -1040,6 +1044,65 @@ void DrawStockpileItems(void) {
                     Rectangle srcItem = SpriteGetRect(sprite);
                     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
                     DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
+                }
+            }
+        }
+    }
+}
+
+void DrawWorkshops(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < MAX_WORKSHOPS; i++) {
+        Workshop* ws = &workshops[i];
+        if (!ws->active) continue;
+        if (ws->z != viewZ) continue;
+
+        // Draw workshop footprint using generic tile
+        for (int dy = 0; dy < ws->height; dy++) {
+            for (int dx = 0; dx < ws->width; dx++) {
+                int gx = ws->x + dx;
+                int gy = ws->y + dy;
+
+                float sx = offset.x + gx * size;
+                float sy = offset.y + gy * size;
+
+                // Use generic sprite for workshop tiles
+                Rectangle src = SpriteGetRect(SPRITE_generic);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
+            }
+        }
+
+        // Highlight work tile (where crafter stands) - green tint
+        {
+            float sx = offset.x + ws->workTileX * size;
+            float sy = offset.y + ws->workTileY * size;
+            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){0, 255, 0, 60});
+        }
+
+        // Highlight output tile (where items spawn) - blue tint
+        {
+            float sx = offset.x + ws->outputTileX * size;
+            float sy = offset.y + ws->outputTileY * size;
+            DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){0, 100, 255, 60});
+        }
+
+        // Draw craft progress bar if crafter is working
+        if (ws->assignedCrafter >= 0) {
+            // Find the job to get progress
+            Mover* m = &movers[ws->assignedCrafter];
+            if (m->currentJobId >= 0) {
+                Job* job = GetJob(m->currentJobId);
+                if (job && job->type == JOBTYPE_CRAFT && job->step == CRAFT_STEP_WORKING) {
+                    float sx = offset.x + ws->x * size;
+                    float sy = offset.y + ws->y * size - 6;
+                    float barWidth = ws->width * size;
+                    float progress = job->progress;
+                    
+                    DrawRectangle((int)sx, (int)sy, (int)barWidth, 4, DARKGRAY);
+                    DrawRectangle((int)sx, (int)sy, (int)(barWidth * progress), 4, YELLOW);
                 }
             }
         }

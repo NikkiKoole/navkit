@@ -22,6 +22,7 @@ void GenerateLabyrinth3D(void);   // 3D layered maze with offset passages
 void GenerateSpiral3D(void);      // 3D concentric rings with spiral traversal
 void GenerateCouncilEstate(void); // UK council estate with tower blocks and low-rise
 void GenerateHills(void);         // Natural hills/mountains using Perlin heightmap
+void GenerateCraftingTest(void);  // Crafting system test scenario
 
 // Perlin noise utilities
 void InitPerlin(int seed);

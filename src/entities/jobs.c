@@ -1,6 +1,7 @@
 #include "jobs.h"
 #include "items.h"
 #include "mover.h"
+#include "workshops.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -751,6 +752,176 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Craft job driver: fetch item from stockpile/ground, carry to workshop, craft
+JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int moverIdx = job->assignedMover;
+    
+    // Check if workshop still exists
+    if (job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS) {
+        return JOBRUN_FAIL;
+    }
+    Workshop* ws = &workshops[job->targetWorkshop];
+    if (!ws->active) {
+        return JOBRUN_FAIL;
+    }
+    
+    // Check if bill still exists
+    if (job->targetBillIdx < 0 || job->targetBillIdx >= ws->billCount) {
+        return JOBRUN_FAIL;
+    }
+    Bill* bill = &ws->bills[job->targetBillIdx];
+    
+    // Get recipe
+    int recipeCount;
+    Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) {
+        return JOBRUN_FAIL;
+    }
+    Recipe* recipe = &recipes[bill->recipeIdx];
+    
+    switch (job->step) {
+        case CRAFT_STEP_MOVING_TO_INPUT: {
+            int itemIdx = job->targetItem;
+            
+            // Check if item still exists and is reserved by us
+            if (itemIdx < 0 || !items[itemIdx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item = &items[itemIdx];
+            if (item->reservedBy != moverIdx) {
+                return JOBRUN_FAIL;
+            }
+            
+            int itemCellX = (int)(item->x / CELL_SIZE);
+            int itemCellY = (int)(item->y / CELL_SIZE);
+            int itemCellZ = (int)(item->z);
+            
+            // Set goal to item
+            if (mover->goal.x != itemCellX || mover->goal.y != itemCellY || mover->goal.z != itemCellZ) {
+                mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+                mover->needsRepath = true;
+            }
+            
+            float dx = mover->x - item->x;
+            float dy = mover->y - item->y;
+            float distSq = dx*dx + dy*dy;
+            
+            // Check if stuck
+            if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+                return JOBRUN_FAIL;
+            }
+            
+            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                job->step = CRAFT_STEP_PICKING_UP;
+            }
+            break;
+        }
+        
+        case CRAFT_STEP_PICKING_UP: {
+            int itemIdx = job->targetItem;
+            if (itemIdx < 0 || !items[itemIdx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item = &items[itemIdx];
+            
+            // Pick up the item
+            if (item->state == ITEM_IN_STOCKPILE) {
+                // Find which stockpile it's in and clear the slot
+                for (int s = 0; s < MAX_STOCKPILES; s++) {
+                    Stockpile* sp = &stockpiles[s];
+                    if (!sp->active) continue;
+                    
+                    int localX = (int)(item->x / CELL_SIZE) - sp->x;
+                    int localY = (int)(item->y / CELL_SIZE) - sp->y;
+                    if (localX >= 0 && localX < sp->width && 
+                        localY >= 0 && localY < sp->height) {
+                        int slotIdx = localY * sp->width + localX;
+                        if (sp->slotCounts[slotIdx] > 0) {
+                            sp->slotCounts[slotIdx]--;
+                            if (sp->slotCounts[slotIdx] == 0) {
+                                sp->slotTypes[slotIdx] = -1;
+                                sp->slots[slotIdx] = -1;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = CRAFT_STEP_MOVING_TO_WORKSHOP;
+            break;
+        }
+        
+        case CRAFT_STEP_MOVING_TO_WORKSHOP: {
+            // Walk to workshop work tile
+            if (mover->goal.x != ws->workTileX || mover->goal.y != ws->workTileY || mover->goal.z != ws->z) {
+                mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+                mover->needsRepath = true;
+            }
+            
+            float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = mover->x - targetX;
+            float dy = mover->y - targetY;
+            float distSq = dx*dx + dy*dy;
+            
+            // Check if stuck
+            if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                return JOBRUN_FAIL;
+            }
+            
+            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                job->step = CRAFT_STEP_WORKING;
+                job->progress = 0.0f;
+                job->workRequired = recipe->workRequired;
+            }
+            break;
+        }
+        
+        case CRAFT_STEP_WORKING: {
+            // Progress crafting
+            job->progress += dt / job->workRequired;
+            
+            if (job->progress >= 1.0f) {
+                // Crafting complete!
+                
+                // Consume carried item
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    items[job->carryingItem].active = false;
+                    itemCount--;
+                }
+                job->carryingItem = -1;
+                
+                // Spawn output items at workshop output tile
+                float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                for (int i = 0; i < recipe->outputCount; i++) {
+                    SpawnItem(outX, outY, (float)ws->z, recipe->outputType);
+                }
+                
+                // Update bill progress
+                bill->completedCount++;
+                
+                // Release workshop
+                ws->assignedCrafter = -1;
+                
+                return JOBRUN_DONE;
+            }
+            break;
+        }
+        
+        default:
+            return JOBRUN_FAIL;
+    }
+    
+    return JOBRUN_RUNNING;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -759,6 +930,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_DIG] = RunJob_Dig,
     [JOBTYPE_HAUL_TO_BLUEPRINT] = RunJob_HaulToBlueprint,
     [JOBTYPE_BUILD] = RunJob_Build,
+    [JOBTYPE_CRAFT] = RunJob_Craft,
 };
 
 // Forward declaration for CancelJob (defined later in file)
@@ -969,6 +1141,14 @@ static void CancelJob(Mover* m, int moverIdx) {
             }
         }
         
+        // Release workshop reservation (for craft jobs)
+        if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
+            Workshop* ws = &workshops[job->targetWorkshop];
+            if (ws->active && ws->assignedCrafter == moverIdx) {
+                ws->assignedCrafter = -1;
+            }
+        }
+        
         // Release Job entry
         ReleaseJob(m->currentJobId);
     }
@@ -1129,10 +1309,13 @@ void AssignJobsWorkGivers(void) {
         // Priority 4: Mining (dig designations)
         if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
         
-        // Priority 5: Blueprint haul (materials to blueprints)
+        // Priority 5: Crafting (workshops with runnable bills)
+        if (jobId < 0) jobId = WorkGiver_Craft(moverIdx);
+        
+        // Priority 6: Blueprint haul (materials to blueprints)
         if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
         
-        // Priority 6: Build (construct at blueprints) - lowest
+        // Priority 7: Build (construct at blueprints) - lowest
         if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
         
         // jobId >= 0 means job was assigned, mover removed from idle list
@@ -1210,7 +1393,37 @@ void AssignJobsHybrid(void) {
     }
     
     // =========================================================================
-    // PRIORITY 2a: Stockpile-centric hauling - search items near each stockpile
+    // PRIORITY 2: Crafting - before hauling so crafters can claim materials
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        // Check for workshops with runnable bills
+        bool hasWorkshopWork = false;
+        for (int w = 0; w < MAX_WORKSHOPS && !hasWorkshopWork; w++) {
+            Workshop* ws = &workshops[w];
+            if (!ws->active) continue;
+            if (ws->assignedCrafter >= 0) continue;
+            if (ws->billCount > 0) hasWorkshopWork = true;
+        }
+        
+        if (hasWorkshopWork) {
+            // Copy idle list since WorkGiver modifies it
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+                
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_Craft(moverIdx);
+                }
+                free(idleCopy);
+            }
+        }
+    }
+    
+    // =========================================================================
+    // PRIORITY 3a: Stockpile-centric hauling - search items near each stockpile
     // This is more efficient because items are assigned to nearby stockpiles
     // =========================================================================
     if (idleMoverCount > 0 && anyTypeHasSlot && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
@@ -1419,6 +1632,7 @@ void AssignJobsHybrid(void) {
                 if (hasDigWork) {
                     jobId = WorkGiver_Mining(moverIdx);
                 }
+                
                 if (jobId < 0 && hasBlueprintWork) {
                     jobId = WorkGiver_BlueprintHaul(moverIdx);
                     if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
@@ -1437,7 +1651,7 @@ void AssignJobsHybrid(void) {
 // =============================================================================
 
 void AssignJobs(void) {
-    AssignJobsLegacy();
+    AssignJobsHybrid();
 }
 
 // =============================================================================
@@ -1799,7 +2013,7 @@ void AssignJobsLegacy(void) {
             for (int j = 0; j < MAX_ITEMS; j++) {
                 Item* item = &items[j];
                 if (!item->active) continue;
-                if (item->type != ITEM_ORANGE) continue;  // Only orange blocks for building
+                if (item->type != ITEM_STONE_BLOCKS) continue;  // Only stone blocks for building
                 if (item->reservedBy != -1) continue;
                 if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
@@ -2090,6 +2304,113 @@ int WorkGiver_Haul(int moverIdx) {
     RemoveMoverFromIdleList(moverIdx);
     
     return jobId;
+}
+
+// WorkGiver_Craft: Find workshop with runnable bill and available materials
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_Craft(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    int moverZ = (int)m->z;
+    
+    // Note: no canCraft capability check for now - any mover can craft
+    
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (ws->z != moverZ) continue;  // Same z-level
+        if (ws->assignedCrafter >= 0) continue;  // Already has crafter
+        
+        // Find first non-suspended bill that can run
+        for (int b = 0; b < ws->billCount; b++) {
+            Bill* bill = &ws->bills[b];
+            if (bill->suspended) continue;
+            if (!ShouldBillRun(ws, bill)) continue;
+            
+            // Get recipe for this bill
+            int recipeCount;
+            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
+            Recipe* recipe = &recipes[bill->recipeIdx];
+            
+            // Find an input item (search nearby or all if radius = 0)
+            int searchRadius = bill->ingredientSearchRadius;
+            if (searchRadius == 0) searchRadius = 100;  // Large default
+            
+            int itemIdx = -1;
+            
+            // Search for unreserved item of the required type
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                Item* item = &items[i];
+                if (!item->active) continue;
+                if (item->type != recipe->inputType) continue;
+                if (item->reservedBy != -1) continue;
+                if (item->unreachableCooldown > 0.0f) continue;
+                if ((int)item->z != ws->z) continue;
+                
+                // Check distance from workshop
+                int itemTileX = (int)(item->x / CELL_SIZE);
+                int itemTileY = (int)(item->y / CELL_SIZE);
+                int dx = itemTileX - ws->x;
+                int dy = itemTileY - ws->y;
+                if (dx * dx + dy * dy > searchRadius * searchRadius) continue;
+                
+                itemIdx = i;
+                break;
+            }
+            
+            if (itemIdx < 0) continue;  // No materials available
+            
+            Item* item = &items[itemIdx];
+            
+            // Check if mover can reach the item
+            Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
+            Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+            
+            Point tempPath[MAX_PATH];
+            int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+            if (tempLen == 0) {
+                SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+                continue;
+            }
+            
+            // Check if mover can reach the workshop work tile
+            Point workCell = { ws->workTileX, ws->workTileY, ws->z };
+            tempLen = FindPath(moverPathAlgorithm, itemCell, workCell, tempPath, MAX_PATH);
+            if (tempLen == 0) continue;
+            
+            // Reserve item and workshop
+            item->reservedBy = moverIdx;
+            ws->assignedCrafter = moverIdx;
+            
+            // Create job
+            int jobId = CreateJob(JOBTYPE_CRAFT);
+            if (jobId < 0) {
+                item->reservedBy = -1;
+                ws->assignedCrafter = -1;
+                return -1;
+            }
+            
+            Job* job = GetJob(jobId);
+            job->assignedMover = moverIdx;
+            job->targetWorkshop = w;
+            job->targetBillIdx = b;
+            job->targetItem = itemIdx;
+            job->step = CRAFT_STEP_MOVING_TO_INPUT;
+            job->progress = 0.0f;
+            job->carryingItem = -1;
+            
+            // Update mover
+            m->currentJobId = jobId;
+            m->goal = itemCell;
+            m->needsRepath = true;
+            
+            RemoveMoverFromIdleList(moverIdx);
+            
+            return jobId;
+        }
+    }
+    
+    return -1;
 }
 
 // WorkGiver_StockpileMaintenance: Handle ground items on stockpile tiles (absorb/clear)
@@ -2471,13 +2792,13 @@ int WorkGiver_Build(int moverIdx) {
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint
 // Returns job ID if successful, -1 if no job available
-// Filter for blueprint haul items (ITEM_ORANGE only)
+// Filter for blueprint haul items (ITEM_STONE_BLOCKS only)
 static bool BlueprintHaulItemFilter(int itemIdx, void* userData) {
     (void)userData;
     Item* item = &items[itemIdx];
     
     if (!item->active) return false;
-    if (item->type != ITEM_ORANGE) return false;  // Only orange blocks for building
+    if (item->type != ITEM_STONE_BLOCKS) return false;  // Only stone blocks for building
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;  // Spatial grid only has ground items
     if (item->unreachableCooldown > 0.0f) return false;
@@ -2509,7 +2830,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     int moverTileX = (int)(m->x / CELL_SIZE);
     int moverTileY = (int)(m->y / CELL_SIZE);
     
-    // Find nearest ITEM_ORANGE
+    // Find nearest ITEM_STONE_BLOCKS
     int bestItemIdx = -1;
     float bestDistSq = 1e30f;
     
@@ -2531,11 +2852,11 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
         }
     }
     
-    // Linear scan for all ITEM_ORANGE (fallback for tests, plus checks stockpile items)
+    // Linear scan for all ITEM_STONE_BLOCKS (fallback for tests, plus checks stockpile items)
     for (int j = 0; j < MAX_ITEMS; j++) {
         Item* item = &items[j];
         if (!item->active) continue;
-        if (item->type != ITEM_ORANGE) continue;
+        if (item->type != ITEM_STONE_BLOCKS) continue;
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;

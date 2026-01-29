@@ -35,6 +35,7 @@
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
     #define SPRITE_head SPRITE8X8_head
     #define SPRITE_wall SPRITE8X8_wall
+    #define SPRITE_generic SPRITE8X8_generic
     #define SPRITE_stockpile SPRITE8X8_stockpile
     #define SPRITE_floor SPRITE8X8_floor
     #define SPRITE_ice_block SPRITE8X8_ice_block
@@ -70,6 +71,7 @@
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
     #define SPRITE_head SPRITE16X16_head
     #define SPRITE_wall SPRITE16X16_wall
+    #define SPRITE_generic SPRITE16X16_generic
     #define SPRITE_stockpile SPRITE16X16_stockpile
     #define SPRITE_floor SPRITE16X16_floor
     #define SPRITE_ice_block SPRITE16X16_ice_block

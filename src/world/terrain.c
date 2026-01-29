@@ -1,5 +1,9 @@
 #include "terrain.h"
 #include "../../vendor/raylib.h"
+#include "../entities/workshops.h"
+#include "../entities/stockpiles.h"
+#include "../entities/items.h"
+#include "designations.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
@@ -2424,3 +2428,94 @@ void GenerateMixed(void) {
     }
     needsRebuild = true;
 }
+
+
+// ============================================================================
+// Crafting Test Scenario
+// Small map with stonecutter workshop, stockpiles, and walls to mine
+// Tests the full crafting loop: mine -> haul -> craft -> haul -> build
+// ============================================================================
+
+void GenerateCraftingTest(void) {
+    // Use small grid for testing
+    InitGridWithSizeAndChunkSize(30, 30, 16, 16);
+    
+    // Clear entities from previous map
+    ClearWorkshops();
+    ClearStockpiles();
+    ClearItems();
+    InitDesignations();
+    
+    // Clear blueprints
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        blueprints[i].active = false;
+    }
+    blueprintCount = 0;
+    
+    // Fill z=0 with dirt (ground) - this is the walkable level
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+        }
+    }
+    
+    // Add minable walls in a cluster (top-left area) at z=1 (above ground)
+    for (int y = 2; y <= 5; y++) {
+        for (int x = 2; x <= 5; x++) {
+            grid[1][y][x] = CELL_WALL;
+        }
+    }
+    
+    // Pre-designate some walls for mining
+    for (int y = 2; y <= 4; y++) {
+        for (int x = 2; x <= 4; x++) {
+            DesignateDig(x, y, 1);
+        }
+    }
+    
+    // Create stonecutter workshop at (15, 15) on z=1 (walking level)
+    // Workshop is 3x3, work tile at center, output tile to the right
+    int wsIdx = CreateWorkshop(15, 15, 1, WORKSHOP_STONECUTTER);
+    if (wsIdx >= 0) {
+        // Add a "Cut Stone Blocks" bill - DO_FOREVER
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
+    }
+    
+    // Create input stockpile (2x2) to the left of workshop - accepts ORANGE only
+    int inputSp = CreateStockpile(12, 15, 1, 2, 2);
+    if (inputSp >= 0) {
+        // Disable all types except ORANGE
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(inputSp, t, false);
+        }
+        SetStockpileFilter(inputSp, ITEM_ORANGE, true);
+        SetStockpilePriority(inputSp, 7);  // High priority
+    }
+    
+    // Create output stockpile (2x2) to the right of workshop - accepts STONE_BLOCKS only
+    int outputSp = CreateStockpile(19, 15, 1, 2, 2);
+    if (outputSp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(outputSp, t, false);
+        }
+        SetStockpileFilter(outputSp, ITEM_STONE_BLOCKS, true);
+        SetStockpilePriority(outputSp, 7);
+    }
+    
+    // Create construction stockpile (2x2) near build site - accepts STONE_BLOCKS
+    int buildSp = CreateStockpile(8, 10, 1, 2, 2);
+    if (buildSp >= 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(buildSp, t, false);
+        }
+        SetStockpileFilter(buildSp, ITEM_STONE_BLOCKS, true);
+        SetStockpilePriority(buildSp, 5);  // Normal priority
+    }
+    
+    // Create wall blueprint at (6, 10) - requires STONE_BLOCKS
+    CreateBuildBlueprint(6, 10, 1);
+    
+    needsRebuild = true;
+}
+

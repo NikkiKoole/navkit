@@ -122,6 +122,7 @@ extern bool sectionTime;
 
 // Hover state
 extern int hoveredStockpile;
+extern int hoveredWorkshop;
 extern int hoveredMover;
 extern int hoveredItemCell[16];
 extern int hoveredItemCount;

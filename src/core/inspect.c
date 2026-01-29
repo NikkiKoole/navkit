@@ -40,7 +40,7 @@ static const char* cellTypeNames[] = {
     "WOOD_WALL",     // 10
     "BEDROCK"        // 11
 };
-static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE"};
+static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE", "STONE_BLOCKS"};
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "DIG", "BUILD", "CLEAR", "HAUL_TO_BP"};
 
@@ -123,7 +123,7 @@ static void print_item(int idx) {
     printf("Position: (%.2f, %.2f, z%.0f) -> cell (%d, %d)\n",
            item->x, item->y, item->z, (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE));
     printf("Active: %s\n", item->active ? "YES" : "no");
-    printf("Type: %s\n", item->type < 4 ? itemTypeNames[item->type] : "?");
+    printf("Type: %s\n", item->type < 5 ? itemTypeNames[item->type] : "?");
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");

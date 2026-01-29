@@ -15,6 +15,7 @@ typedef enum {
     JOBTYPE_DIG,               // Mine a wall
     JOBTYPE_HAUL_TO_BLUEPRINT, // Pick up item, deliver to blueprint
     JOBTYPE_BUILD,             // Construct at blueprint
+    JOBTYPE_CRAFT,             // Fetch materials, craft at workshop
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -22,6 +23,12 @@ typedef enum {
 #define STEP_CARRYING          1  // Haul/Clear/HaulToBlueprint: carrying item to destination
 #define STEP_MOVING_TO_WORK    0  // Dig/Build: moving to work site
 #define STEP_WORKING           1  // Dig/Build: performing work
+
+// Craft job steps (4-step state machine)
+#define CRAFT_STEP_MOVING_TO_INPUT   0  // Walking to item location
+#define CRAFT_STEP_PICKING_UP        1  // At item, picking up
+#define CRAFT_STEP_MOVING_TO_WORKSHOP 2 // Carrying item to workshop
+#define CRAFT_STEP_WORKING           3  // At workshop, crafting
 
 // Job struct - contains all data for a single job
 typedef struct {
@@ -40,10 +47,15 @@ typedef struct {
     int targetDigZ;
     int targetBlueprint;    // Blueprint index
     
-    // Progress for timed work (digging, building)
+    // Craft job targets
+    int targetWorkshop;     // Workshop index
+    int targetBillIdx;      // Bill index within workshop
+    float workRequired;     // Work time from recipe (seconds)
+    
+    // Progress for timed work (digging, building, crafting)
     float progress;
     
-    // Carried item (for haul jobs)
+    // Carried item (for haul jobs and craft jobs)
     int carryingItem;
 } Job;
 
@@ -92,6 +104,7 @@ JobRunResult RunJob_Clear(Job* job, void* mover, float dt);
 JobRunResult RunJob_Dig(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
+JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
 
 
 
@@ -136,5 +149,6 @@ int WorkGiver_Rehaul(int moverIdx);
 int WorkGiver_Mining(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
+int WorkGiver_Craft(int moverIdx);
 
 #endif

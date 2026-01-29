@@ -1,6 +1,7 @@
 // render/tooltips.c - Tooltip drawing functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../entities/workshops.h"
 
 // Draw stockpile tooltip at mouse position
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
@@ -100,6 +101,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("B", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_ORANGE] ? "O" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_ORANGE] ? ORANGE : DARKGRAY);
+    fx += MeasureText("O", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_STONE_BLOCKS] ? "S" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_STONE_BLOCKS] ? GRAY : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
@@ -207,7 +211,7 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
     if (itemCount <= 0) return;
 
-    const char* typeNames[] = {"Red", "Green", "Blue"};
+    const char* typeNames[] = {"Red", "Green", "Blue", "Orange", "Stone Blocks"};
     const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
 
     char lines[17][64];
@@ -217,7 +221,7 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     for (int i = 0; i < itemCount && lineCount < 17; i++) {
         int idx = itemIndices[i];
         Item* item = &items[idx];
-        const char* typeName = (item->type >= 0 && item->type < 3) ? typeNames[item->type] : "?";
+        const char* typeName = (item->type >= 0 && item->type < 5) ? typeNames[item->type] : "?";
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
         lineCount++;
@@ -441,6 +445,102 @@ void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         else if (strstr(lines[i], "DRAIN")) col = (Color){80, 80, 120, 255};
         else if (strstr(lines[i], "Pressure")) col = YELLOW;
         else if (strstr(lines[i], "stable")) col = GRAY;
+        DrawTextShadow(lines[i], tx + padding, y, 14, col);
+        y += lineH;
+    }
+}
+
+// Draw workshop tooltip showing bills and status
+void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
+    if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS) return;
+    Workshop* ws = &workshops[wsIdx];
+    if (!ws->active) return;
+
+    const char* workshopTypeNames[] = {"Stonecutter"};
+    const char* billModeNames[] = {"Do X times", "Do until X", "Do forever"};
+
+    char lines[12][80];
+    int lineCount = 0;
+
+    // Header
+    const char* typeName = (ws->type < 1) ? workshopTypeNames[ws->type] : "Unknown";
+    snprintf(lines[lineCount++], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
+
+    // Position info
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Position: (%d, %d, z%d)", ws->x, ws->y, ws->z);
+
+    // Crafter status
+    if (ws->assignedCrafter >= 0) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Crafter: Mover #%d", ws->assignedCrafter);
+    } else {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Crafter: None");
+    }
+
+    // Bills
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Bills: %d", ws->billCount);
+
+    // Get recipes for this workshop type
+    int recipeCount;
+    Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+
+    for (int b = 0; b < ws->billCount && lineCount < 11; b++) {
+        Bill* bill = &ws->bills[b];
+        const char* recipeName = "Unknown";
+        if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
+            recipeName = recipes[bill->recipeIdx].name;
+        }
+        const char* modeName = (bill->mode < 3) ? billModeNames[bill->mode] : "?";
+        
+        char statusStr[32] = "";
+        if (bill->suspended) {
+            snprintf(statusStr, sizeof(statusStr), " [PAUSED]");
+        } else if (bill->mode == BILL_DO_X_TIMES) {
+            snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
+        } else if (bill->mode == BILL_DO_UNTIL_X) {
+            snprintf(statusStr, sizeof(statusStr), " (until %d)", bill->targetCount);
+        }
+
+        snprintf(lines[lineCount++], sizeof(lines[0]), " %d. %s (%s)%s", 
+            b + 1, recipeName, modeName, statusStr);
+    }
+
+    // Calculate box dimensions
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    // Position tooltip
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, (Color){40, 35, 30, 230});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){120, 100, 80, 255});
+
+    // Draw lines with color coding
+    int y = ty + padding;
+    DrawTextShadow(lines[0], tx + padding, y, 14, YELLOW);  // Header
+    y += lineH;
+    DrawTextShadow(lines[1], tx + padding, y, 14, WHITE);   // Position
+    y += lineH;
+    DrawTextShadow(lines[2], tx + padding, y, 14, ws->assignedCrafter >= 0 ? GREEN : GRAY);  // Crafter
+    y += lineH;
+    DrawTextShadow(lines[3], tx + padding, y, 14, WHITE);   // Bills count
+    y += lineH;
+    
+    // Bill lines
+    for (int i = 4; i < lineCount; i++) {
+        Bill* bill = &ws->bills[i - 4];
+        Color col = bill->suspended ? RED : (Color){200, 180, 140, 255};
         DrawTextShadow(lines[i], tx + padding, y, 14, col);
         y += lineH;
     }

@@ -17,7 +17,7 @@ Color GetSkyColorForTime(float hour) {
     // 16-18: Golden hour (warm golden)
     // 18-20: Dusk (orange/red/purple)
     // 20-24: Night (dark blue)
-    
+
     // Define key colors at specific hours
     typedef struct { float hour; Color color; } TimeColor;
     TimeColor keyframes[] = {
@@ -37,18 +37,18 @@ Color GetSkyColorForTime(float hour) {
         {24.0f,  (Color){ 15,  25,  50, 255} },  // Midnight again
     };
     int numKeyframes = sizeof(keyframes) / sizeof(keyframes[0]);
-    
+
     // Find the two keyframes to interpolate between
     int i;
     for (i = 0; i < numKeyframes - 1; i++) {
         if (hour < keyframes[i + 1].hour) break;
     }
-    
+
     // Interpolate
     float t = (hour - keyframes[i].hour) / (keyframes[i + 1].hour - keyframes[i].hour);
     Color c1 = keyframes[i].color;
     Color c2 = keyframes[i + 1].color;
-    
+
     return (Color){
         (unsigned char)(c1.r + t * (c2.r - c1.r)),
         (unsigned char)(c1.g + t * (c2.g - c1.g)),
@@ -63,29 +63,29 @@ void DrawTimeOfDayWidget(float x, float y) {
     int paddingY = 4;
     int fontSize = 16;
     int boxWidth = 140;  // Fixed width to accommodate "Day 999  23:59"
-    
+
     // Get current time info
     int hours = (int)timeOfDay;
     int minutes = (int)((timeOfDay - hours) * 60);
-    
+
     // Format time string
     char timeStr[32];
     snprintf(timeStr, sizeof(timeStr), "Day %d  %02d:%02d", dayNumber, hours, minutes);
-    
+
     // Measure text width (height is approximately fontSize for most fonts)
     int textWidth = MeasureTextUI(timeStr, fontSize);
     int boxHeight = fontSize + paddingY * 2;
-    
+
     // Draw sky-colored background rectangle
     Color skyColor = GetSkyColorForTime(timeOfDay);
     DrawRectangle((int)x, (int)y, boxWidth, boxHeight, skyColor);
     DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, (Color){100, 100, 100, 255});
-    
+
     // Draw time text centered in box
     int textX = (int)x + (boxWidth - textWidth) / 2;
     int textY = (int)y + paddingY;
     DrawTextShadow(timeStr, textX, textY, fontSize, WHITE);
-    
+
     // Block mouse clicks on widget area
     Vector2 mouse = GetMousePosition();
     Rectangle bounds = {x, y, (float)boxWidth, (float)boxHeight};
@@ -161,7 +161,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 18, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 19, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();
@@ -485,10 +485,10 @@ void DrawUI(void) {
             "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
         y += 22;
         DraggableFloatT(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
-            TextFormat("Game-seconds between evaporation attempts for shallow water. At %.0fs, puddles last ~%.0f seconds.", 
+            TextFormat("Game-seconds between evaporation attempts for shallow water. At %.0fs, puddles last ~%.0f seconds.",
                        waterEvapInterval, waterEvapInterval));
         y += 22;
-        
+
         // Speed multipliers subsection
         DrawTextShadow("Mover Speed in Water:", x, y, 14, GRAY);
         y += 18;
@@ -501,7 +501,7 @@ void DrawUI(void) {
         DraggableFloatT(x, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
             "Speed multiplier in deep water (levels 5-7). At 0.35, movers move at 35% speed. Lower = slower movement.");
         y += 22;
-        
+
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
         }
@@ -516,17 +516,17 @@ void DrawUI(void) {
             "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
         y += 22;
         DraggableFloatT(x, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
-            TextFormat("Game-seconds between fire spread attempts. At %.1fs, fire tries to spread %.1f times per second.", 
+            TextFormat("Game-seconds between fire spread attempts. At %.1fs, fire tries to spread %.1f times per second.",
                        fireSpreadInterval, 1.0f / fireSpreadInterval));
         y += 22;
         DraggableFloatT(x, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
-            TextFormat("Game-seconds between fuel consumption ticks. At %.1fs, fuel depletes %.1f times per second.", 
+            TextFormat("Game-seconds between fuel consumption ticks. At %.1fs, fuel depletes %.1f times per second.",
                        fireFuelInterval, 1.0f / fireFuelInterval));
         y += 22;
         DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
             "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
         y += 22;
-        
+
         // Spread chance formula subsection
         DrawTextShadow("Spread Chance Formula:", x, y, 14, GRAY);
         y += 18;
@@ -536,13 +536,13 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Per Level %", &fireSpreadPerLevel, 1.0f, 0, 30,
             "Additional spread chance per fire level. At 10%, level 2 fire has +20%, level 7 has +70%. Higher = intense fires spread much faster.");
         y += 22;
-        
+
         // Show calculated spread chances
         int minSpread = fireSpreadBase + (FIRE_MIN_SPREAD_LEVEL * fireSpreadPerLevel);
         int maxSpread = fireSpreadBase + (FIRE_MAX_LEVEL * fireSpreadPerLevel);
         DrawTextShadow(TextFormat("Level 2: %d%%, Level 7: %d%%", minSpread, maxSpread), x, y, 14, GRAY);
         y += 18;
-        
+
         if (PushButton(x, y, "Clear Fire")) {
             ClearFire();
         }
@@ -557,11 +557,11 @@ void DrawUI(void) {
             "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
         y += 22;
         DraggableFloatT(x, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
-            TextFormat("Game-seconds between smoke rise attempts. At %.2fs, smoke rises %.1f times per game-second.", 
+            TextFormat("Game-seconds between smoke rise attempts. At %.2fs, smoke rises %.1f times per game-second.",
                        smokeRiseInterval, 1.0f / smokeRiseInterval));
         y += 22;
         DraggableFloatT(x, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
-            TextFormat("Game-seconds for smoke to fully dissipate (all 7 levels). At %.1fs, each level fades in ~%.2fs.", 
+            TextFormat("Game-seconds for smoke to fully dissipate (all 7 levels). At %.1fs, each level fades in ~%.2fs.",
                        smokeDissipationTime, smokeDissipationTime / 7.0f));
         y += 22;
         DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
@@ -581,7 +581,7 @@ void DrawUI(void) {
             "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
         y += 22;
         DraggableFloatT(x, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
-            TextFormat("Game-seconds between steam rise attempts. At %.2fs, steam rises %.1f times per game-second.", 
+            TextFormat("Game-seconds between steam rise attempts. At %.2fs, steam rises %.1f times per game-second.",
                        steamRiseInterval, 1.0f / steamRiseInterval));
         y += 22;
         DraggableIntT(x, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
@@ -614,18 +614,18 @@ void DrawUI(void) {
             "Show temperature overlay: blue=cold, red=hot. Neutral temperatures are transparent.");
         y += 22;
         DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
-            TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.", 
+            TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.",
                        ambientSurfaceTemp));
         y += 22;
         DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
             "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
         y += 22;
         DraggableFloatT(x, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between heat transfer steps. At %.1fs, heat transfers %.1f times per second.", 
+            TextFormat("Game-seconds between heat transfer steps. At %.1fs, heat transfers %.1f times per second.",
                        heatTransferInterval, 1.0f / heatTransferInterval));
         y += 22;
         DraggableFloatT(x, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between temperature decay steps. At %.1fs, decay happens %.1f times per second.", 
+            TextFormat("Game-seconds between temperature decay steps. At %.1fs, decay happens %.1f times per second.",
                        tempDecayInterval, 1.0f / tempDecayInterval));
         y += 22;
         DraggableIntT(x, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
@@ -640,7 +640,7 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
             TextFormat("Temperature of cold sources (ice/freezer): %d C. Water freezes at 0C.", coldSourceTemp));
         y += 22;
-        
+
         // Heat physics subsection
         DrawTextShadow("Heat Physics:", x, y, 14, GRAY);
         y += 18;
@@ -656,7 +656,7 @@ void DrawUI(void) {
         DraggableIntT(x, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
             "Diagonal heat transfer as percentage of orthogonal. At 70%, diagonal neighbors receive 70% as much heat. Due to ~1.4x distance.");
         y += 22;
-        
+
         if (PushButton(x, y, "Reset to Ambient")) {
             ClearTemperature();
         }
@@ -683,10 +683,10 @@ void DrawUI(void) {
             "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
         y += 22;
         DraggableFloatT(x, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between wear decay ticks. At %.1fs, wear decays %.1f times per second.", 
+            TextFormat("Game-seconds between wear decay ticks. At %.1fs, wear decays %.1f times per second.",
                        wearRecoveryInterval, 1.0f / wearRecoveryInterval));
         y += 22;
-        
+
         // Calculate and display regrow time in game-seconds
         int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
         float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
@@ -696,7 +696,7 @@ void DrawUI(void) {
             DrawTextShadow(TextFormat("Regrow time: %.1fm game-time", gameSecondsToRegrow / 60.0f), x, y, 14, GRAY);
         }
         y += 18;
-        
+
         if (PushButton(x, y, "Clear Wear")) {
             ClearGroundWear();
         }
@@ -707,7 +707,7 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Time", &sectionTime)) {
         y += 18;
-        
+
         // Display current time
         int hours = (int)timeOfDay;
         int minutes = (int)((timeOfDay - hours) * 60);
@@ -715,17 +715,17 @@ void DrawUI(void) {
         y += 18;
         DrawTextShadow(TextFormat("Game time: %.1fs", (float)gameTime), x, y, 14, GRAY);
         y += 22;
-        
+
         // Game speed control
         DraggableFloatT(x, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f,
-            TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s", 
+            TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s",
                        gameSpeed, gameSpeed, gameSpeed == 0.0f ? " (PAUSED)" : ""));
         y += 22;
-        
+
         // Speed presets
         if (PushButton(x, y, "Pause")) gameSpeed = 0.0f;
         y += 22;
-        
+
         // Inline speed buttons: 1x 2x 3x
         {
             bool clicked = false;
@@ -737,7 +737,7 @@ void DrawUI(void) {
             PushButtonInline(bx, y, "3x", &clicked); if (clicked) gameSpeed = 3.0f;
         }
         y += 22;
-        
+
         // Inline speed buttons: 5x 10x 50x
         {
             bool clicked = false;
@@ -749,15 +749,15 @@ void DrawUI(void) {
             PushButtonInline(bx, y, "50x", &clicked); if (clicked) gameSpeed = 50.0f;
         }
         y += 22;
-        
+
         // Day length
         float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
         DraggableFloatT(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
-            TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.", 
+            TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
                        dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
                        gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f, realDuration < 60 ? "seconds" : "minutes"));
         y += 22;
-        
+
         // Day length presets
         DrawTextShadow("Presets:", x, y, 14, GRAY);
         y += 18;
@@ -823,12 +823,12 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t temperatureSize = sizeof(TempCell) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t cellFlagsSize = sizeof(uint8_t) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t groundWearSize = sizeof(int) * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
-            
+
             // Pathfinding
             size_t entrancesSize = sizeof(Entrance) * MAX_ENTRANCES;
             size_t pathSize = sizeof(Point) * MAX_PATH;
             size_t edgesSize = sizeof(GraphEdge) * MAX_EDGES;
-            
+
             // Entities
             size_t moversSize = sizeof(Mover) * MAX_MOVERS;
             size_t itemsSize = sizeof(Item) * MAX_ITEMS;
@@ -836,11 +836,11 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t stockpilesSize = sizeof(Stockpile) * MAX_STOCKPILES;
             size_t blueprintsSize = sizeof(Blueprint) * MAX_BLUEPRINTS;
             size_t gatherZonesSize = sizeof(GatherZone) * MAX_GATHER_ZONES;
-            
+
             // Spatial grids (heap allocated)
             size_t moverSpatialGrid = (moverGrid.cellCount + 1) * sizeof(int) * 2 + MAX_MOVERS * sizeof(int);
             size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
-            
+
             size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + steamSize + temperatureSize + cellFlagsSize + groundWearSize;
             size_t totalPathfinding = entrancesSize + pathSize + edgesSize;
             size_t totalEntities = moversSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize;
@@ -857,23 +857,23 @@ void DrawProfilerPanel(float rightEdge, float y) {
             DrawTextShadow(TextFormat("  Temperature:  %5.1f MB", temperatureSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  CellFlags:    %5.1f MB", cellFlagsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  GroundWear:   %5.1f MB", groundWearSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            
+
             DrawTextShadow("-- Pathfinding --", x, y, 14, GRAY); y += 16;
             DrawTextShadow(TextFormat("  Entrances:    %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Path:         %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Edges:        %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
-            
+
             DrawTextShadow("-- Entities --", x, y, 14, GRAY); y += 16;
             DrawTextShadow(TextFormat("  Movers:       %5.1f MB", moversSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Items:        %5.1f MB", itemsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Jobs:         %5.1f MB", jobsSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Stockpiles:   %5.1f KB", stockpilesSize / 1024.0f), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  Blueprints:   %5.1f KB", blueprintsSize / 1024.0f), x, y, 14, WHITE); y += 16;
-            
+
             DrawTextShadow("-- Spatial --", x, y, 14, GRAY); y += 16;
             DrawTextShadow(TextFormat("  MoverGrid:    %5.1f KB", moverSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
             DrawTextShadow(TextFormat("  ItemGrid:     %5.1f KB", itemSpatialGrid / 1024.0f), x, y, 14, WHITE); y += 16;
-            
+
             DrawTextShadow(TextFormat("TOTAL:          %5.1f MB", total / (1024.0f * 1024.0f)), x, y, 14, PINK); y += 20;
         }
 
@@ -1109,4 +1109,3 @@ void DrawProfilerPanel(float rightEdge, float y) {
     }
 }
 #endif
-

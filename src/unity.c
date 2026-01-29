@@ -28,6 +28,7 @@
 // Entity systems
 #include "entities/items.c"
 #include "entities/stockpiles.c"
+#include "entities/workshops.c"
 #include "entities/mover.c"
 #include "entities/jobs.c"
 

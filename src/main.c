@@ -41,7 +41,7 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "CraftTest"};
 
 bool sectionView = false;
 bool sectionPathfinding = false;
@@ -64,6 +64,7 @@ bool sectionJobs = false;
 bool sectionTime = false;
 
 int hoveredStockpile = -1;
+int hoveredWorkshop = -1;
 int hoveredMover = -1;
 int hoveredItemCell[16];
 int hoveredItemCount = 0;
@@ -167,6 +168,7 @@ void GenerateCurrentTerrain(void) {
         case 15: GenerateSpiral3D(); break;
         case 16: GenerateCouncilEstate(); break;
         case 17: GenerateHills(); break;
+        case 18: GenerateCraftingTest(); break;
     }
 }
 
@@ -384,12 +386,14 @@ void DrawItems(void);
 void DrawGatherZones(void);
 void DrawStockpileTiles(void);
 void DrawStockpileItems(void);
+void DrawWorkshops(void);
 void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
 
 // From render/tooltips.c
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid);
+void DrawWorkshopTooltip(int wsIdx, Vector2 mouse);
 void DrawMoverTooltip(int moverIdx, Vector2 mouse);
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY);
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
@@ -570,6 +574,7 @@ int main(int argc, char** argv) {
             DrawGatherZones();
         }
         DrawStockpileTiles();
+        DrawWorkshops();
         DrawHaulDestinations();
         DrawStockpileItems();
         DrawMiningDesignations();
@@ -862,6 +867,10 @@ int main(int argc, char** argv) {
 
         if (hoveredStockpile >= 0) {
             DrawStockpileTooltip(hoveredStockpile, GetMousePosition(), ScreenToGrid(GetMousePosition()));
+        }
+
+        if (hoveredWorkshop >= 0 && hoveredStockpile < 0) {
+            DrawWorkshopTooltip(hoveredWorkshop, GetMousePosition());
         }
 
         if (hoveredMover >= 0) {
