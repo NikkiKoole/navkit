@@ -417,6 +417,114 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2) {
     }
 }
 
+static void print_map(int cx, int cy, int cz, int radius) {
+    printf("\n=== MAP at z%d (center %d,%d, radius %d) ===\n", cz, cx, cy, radius);
+    
+    if (cz < 0 || cz >= insp_gridD) {
+        printf("Error: z-level out of bounds\n");
+        return;
+    }
+    
+    int minX = cx - radius;
+    int maxX = cx + radius;
+    int minY = cy - radius;
+    int maxY = cy + radius;
+    
+    // Clamp to grid bounds
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (maxX >= insp_gridW) maxX = insp_gridW - 1;
+    if (maxY >= insp_gridH) maxY = insp_gridH - 1;
+    
+    // Print column headers
+    printf("     ");
+    for (int x = minX; x <= maxX; x++) {
+        printf("%d", x % 10);
+    }
+    printf("\n");
+    
+    // Print map
+    for (int y = minY; y <= maxY; y++) {
+        printf("%3d  ", y);
+        for (int x = minX; x <= maxX; x++) {
+            int idx = cz * insp_gridH * insp_gridW + y * insp_gridW + x;
+            CellType cell = insp_gridCells[idx];
+            WaterCell water = insp_waterCells[idx];
+            Designation desig = insp_designations[idx];
+            
+            char c = '?';
+            if (water.level > 0) c = '~';
+            else if (desig.type == DESIGNATION_DIG) c = 'X';
+            else {
+                switch (cell) {
+                    case CELL_WALL:
+                    case CELL_WOOD_WALL:
+                    case CELL_BEDROCK:
+                        c = '#'; break;
+                    case CELL_AIR:
+                        c = ' '; break;
+                    case CELL_FLOOR:
+                        c = '.'; break;
+                    case CELL_GRASS:
+                    case CELL_WALKABLE:
+                        c = ','; break;
+                    case CELL_DIRT:
+                        c = ':'; break;
+                    case CELL_LADDER:
+                    case CELL_LADDER_UP:
+                    case CELL_LADDER_DOWN:
+                    case CELL_LADDER_BOTH:
+                        c = 'H'; break;
+                    default:
+                        c = '?'; break;
+                }
+            }
+            
+            // Mark center
+            if (x == cx && y == cy) {
+                printf("@");
+            } else {
+                printf("%c", c);
+            }
+        }
+        printf("\n");
+    }
+    
+    printf("\nLegend: # wall, . floor, , grass, : dirt, ~ water, X dig, H ladder, @ center\n");
+}
+
+static void print_designations(void) {
+    printf("\n=== DESIGNATIONS ===\n");
+    int found = 0;
+    
+    for (int z = 0; z < insp_gridD; z++) {
+        for (int y = 0; y < insp_gridH; y++) {
+            for (int x = 0; x < insp_gridW; x++) {
+                int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+                Designation* d = &insp_designations[idx];
+                if (d->type == DESIGNATION_NONE) continue;
+                
+                CellType cell = insp_gridCells[idx];
+                const char* cellName = cell < 12 ? cellTypeNames[cell] : "?";
+                
+                printf("(%d,%d,z%d) DIG %s", x, y, z, cellName);
+                if (d->assignedMover >= 0) {
+                    printf(" [mover %d, %.0f%%]", d->assignedMover, d->progress * 100);
+                } else if (d->unreachableCooldown > 0) {
+                    printf(" [UNREACHABLE %.1fs]", d->unreachableCooldown);
+                } else {
+                    printf(" [waiting]");
+                }
+                printf("\n");
+                found++;
+            }
+        }
+    }
+    
+    if (!found) printf("No designations found.\n");
+    else printf("\nTotal: %d designations\n", found);
+}
+
 static void print_stuck_movers(void) {
     printf("\n=== STUCK MOVERS (timeWithoutProgress > 2s) ===\n");
     int found = 0;
@@ -512,7 +620,8 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
     int opt_path_x1 = -1, opt_path_y1 = -1, opt_path_z1 = -1;
     int opt_path_x2 = -1, opt_path_y2 = -1, opt_path_z2 = -1;
-    bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false;
+    int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
+    bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
     
     for (int i = 2; i < argc; i++) {  // Start at 2, skip program name and --inspect
         if (strcmp(argv[i], "--mover") == 0 && i+1 < argc) opt_mover = atoi(argv[++i]);
@@ -527,6 +636,11 @@ int InspectSaveFile(int argc, char** argv) {
             sscanf(argv[++i], "%d,%d,%d", &opt_path_x1, &opt_path_y1, &opt_path_z1);
             sscanf(argv[++i], "%d,%d,%d", &opt_path_x2, &opt_path_y2, &opt_path_z2);
         }
+        else if (strcmp(argv[i], "--map") == 0 && i+1 < argc) {
+            sscanf(argv[++i], "%d,%d,%d", &opt_map_x, &opt_map_y, &opt_map_z);
+            if (i+1 < argc && argv[i+1][0] != '-') opt_map_r = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "--designations") == 0) opt_designations = true;
         else if (strcmp(argv[i], "--stuck") == 0) opt_stuck = true;
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
         else if (strcmp(argv[i], "--jobs-active") == 0) opt_jobs_active = true;
@@ -665,7 +779,8 @@ int InspectSaveFile(int argc, char** argv) {
     // Print summary if no specific queries
     bool anyQuery = (opt_mover >= 0 || opt_item >= 0 || opt_job >= 0 || 
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_cell_x >= 0 || 
-                     opt_path_x1 >= 0 || opt_stuck || opt_reserved || opt_jobs_active);
+                     opt_path_x1 >= 0 || opt_map_x >= 0 || opt_designations ||
+                     opt_stuck || opt_reserved || opt_jobs_active);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -688,12 +803,13 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --cell X,Y,Z\n");
-        printf("         --path X1,Y1,Z1 X2,Y2,Z2, --stuck, --reserved, --jobs-active\n");
+        printf("         --path X1,Y1,Z1 X2,Y2,Z2, --map X,Y,Z [R], --designations\n");
+        printf("         --stuck, --reserved, --jobs-active\n");
     }
     
     // Handle queries
     // Set up globals first if any query needs walkability/pathfinding
-    if (opt_cell_x >= 0 || opt_path_x1 >= 0) {
+    if (opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0) {
         setup_pathfinding_globals();
     }
     
@@ -704,6 +820,8 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_workshop >= 0) print_workshop(opt_workshop);
     if (opt_cell_x >= 0) print_cell(opt_cell_x, opt_cell_y, opt_cell_z);
     if (opt_path_x1 >= 0) print_path(opt_path_x1, opt_path_y1, opt_path_z1, opt_path_x2, opt_path_y2, opt_path_z2);
+    if (opt_map_x >= 0) print_map(opt_map_x, opt_map_y, opt_map_z, opt_map_r);
+    if (opt_designations) print_designations();
     if (opt_stuck) print_stuck_movers();
     if (opt_reserved) print_reserved_items();
     if (opt_jobs_active) print_active_jobs();
