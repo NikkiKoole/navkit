@@ -3,6 +3,8 @@
 
 #include "../../vendor/raylib.h"
 #include "../../assets/fonts/comic_embedded.h"
+#define UI_IMPLEMENTATION
+#include "../../shared/ui.h"
 #include <math.h>
 #include <string.h>
 
@@ -42,6 +44,13 @@ typedef struct {
 #define NUM_VOICES 8
 static Voice voices[NUM_VOICES];
 static float masterVolume = 0.5f;
+
+// Tweakable note parameters
+static float noteAttack = 0.01f;
+static float noteDecay = 0.1f;
+static float noteSustain = 0.5f;
+static float noteRelease = 0.3f;
+static float noteVolume = 0.5f;
 
 // Performance tracking
 static double audioTimeUs = 0.0;
@@ -215,20 +224,21 @@ static int findVoice(void) {
 }
 
 // Play a note with polyphony - finds free voice automatically
+// Uses global noteAttack/noteDecay/noteSustain/noteRelease/noteVolume
 static int playNote(float freq, WaveType wave) {
     int voiceIdx = findVoice();
     Voice *v = &voices[voiceIdx];
     
     v->frequency = freq;
     v->phase = 0.0f;
-    v->volume = 0.5f;
+    v->volume = noteVolume;
     v->wave = wave;
     v->pitchSlide = 0.0f;
     
-    v->attack = 0.01f;
-    v->decay = 0.1f;
-    v->sustain = 0.5f;
-    v->release = 0.3f;
+    v->attack = noteAttack;
+    v->decay = noteDecay;
+    v->sustain = noteSustain;
+    v->release = noteRelease;
     v->envPhase = 0.0f;
     v->envLevel = 0.0f;
     v->envStage = 1;
@@ -366,6 +376,7 @@ int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PixelSynth Demo");
     
     Font font = LoadEmbeddedFont();
+    ui_init(&font);
     
     SetAudioStreamBufferSizeDefault(MAX_SAMPLES_PER_UPDATE);
     InitAudioDevice();
@@ -388,9 +399,6 @@ int main(void) {
                               WAVE_SAW, WAVE_SAW, WAVE_SAW, WAVE_SAW, WAVE_SAW, WAVE_SAW, WAVE_SAW};
     
     while (!WindowShouldClose()) {
-        // Toggle randomization with R
-        if (IsKeyPressed(KEY_R)) sfxRandomize = !sfxRandomize;
-        
         // Sound effects (1-6)
         if (IsKeyPressed(KEY_ONE))   sfxJump();
         if (IsKeyPressed(KEY_TWO))   sfxCoin();
@@ -412,6 +420,7 @@ int main(void) {
         
         BeginDrawing();
         ClearBackground(DARKGRAY);
+        ui_begin_frame();
         
         DrawTextEx(font, "PixelSynth Demo", (Vector2){20, 20}, 30, 1, WHITE);
         DrawTextEx(font, "Polyphonic chiptune synthesizer", (Vector2){20, 55}, 16, 1, LIGHTGRAY);
@@ -419,7 +428,7 @@ int main(void) {
         DrawTextEx(font, "Sound Effects:", (Vector2){20, 100}, 20, 1, YELLOW);
         DrawTextEx(font, "1 - Jump    2 - Coin    3 - Hurt", (Vector2){20, 125}, 16, 1, WHITE);
         DrawTextEx(font, "4 - Explosion    5 - Powerup    6 - Blip", (Vector2){20, 145}, 16, 1, WHITE);
-        DrawTextEx(font, TextFormat("R - Toggle randomize: %s", sfxRandomize ? "ON" : "OFF"), (Vector2){20, 165}, 14, 1, sfxRandomize ? GREEN : GRAY);
+        ToggleBool(20, 165, "SFX Randomize", &sfxRandomize);
         
         DrawTextEx(font, "Notes (Square wave) - hold keys:", (Vector2){20, 200}, 20, 1, YELLOW);
         DrawTextEx(font, "Q W E R T Y U  =  C D E F G A B", (Vector2){20, 225}, 16, 1, WHITE);
@@ -428,23 +437,37 @@ int main(void) {
         DrawTextEx(font, "A S D F G H J  =  C D E F G A B", (Vector2){20, 285}, 16, 1, WHITE);
         
         // Show active voices
-        DrawTextEx(font, "Voices:", (Vector2){20, 340}, 16, 1, GRAY);
+        DrawTextEx(font, "Voices:", (Vector2){20, 320}, 16, 1, GRAY);
         for (int i = 0; i < NUM_VOICES; i++) {
             Color c = DARKGRAY;
             if (voices[i].envStage == 4) c = ORANGE;       // releasing
             else if (voices[i].envStage > 0) c = GREEN;   // active
-            DrawRectangle(90 + i * 25, 340, 20, 16, c);
+            DrawRectangle(90 + i * 25, 320, 20, 16, c);
         }
+        
+        // Envelope tweaking UI (right side)
+        float uiX = 450;
+        float uiY = 100;
+        DrawTextShadow("Note Envelope:", (int)uiX, (int)uiY, 20, YELLOW);
+        uiY += 28;
+        DraggableFloat(uiX, uiY, "Attack", &noteAttack, 0.5f, 0.001f, 2.0f); uiY += 22;
+        DraggableFloat(uiX, uiY, "Decay", &noteDecay, 0.5f, 0.0f, 2.0f); uiY += 22;
+        DraggableFloat(uiX, uiY, "Sustain", &noteSustain, 0.5f, 0.0f, 1.0f); uiY += 22;
+        DraggableFloat(uiX, uiY, "Release", &noteRelease, 0.5f, 0.01f, 3.0f); uiY += 22;
+        DraggableFloat(uiX, uiY, "Volume", &noteVolume, 0.5f, 0.0f, 1.0f); uiY += 28;
+        
+        DraggableFloat(uiX, uiY, "Master Vol", &masterVolume, 0.5f, 0.0f, 1.0f);
         
         // Performance stats
         double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
         double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
         DrawTextEx(font, TextFormat("Audio: %.1f us (%.1f%% of %.1fms buffer)", 
-                 audioTimeUs, cpuPercent, bufferTimeMs), (Vector2){20, 370}, 14, 1, LIGHTGRAY);
-        DrawTextEx(font, TextFormat("FPS: %d", GetFPS()), (Vector2){20, 390}, 14, 1, LIGHTGRAY);
+                 audioTimeUs, cpuPercent, bufferTimeMs), (Vector2){20, 355}, 14, 1, LIGHTGRAY);
+        DrawTextEx(font, TextFormat("FPS: %d", GetFPS()), (Vector2){20, 375}, 14, 1, LIGHTGRAY);
         
         DrawTextEx(font, "ESC to exit", (Vector2){20, SCREEN_HEIGHT - 30}, 14, 1, GRAY);
         
+        ui_update();
         EndDrawing();
     }
     
