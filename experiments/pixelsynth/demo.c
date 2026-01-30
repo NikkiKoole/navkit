@@ -36,6 +36,7 @@ typedef struct {
     float speed;
     float basePitch;
     float pitchVariation;
+    float intonation;  // -1.0 = falling (answer), 0 = flat, +1.0 = rising (question)
     bool active;
     int voiceIndex;
 } SpeechQueue;
@@ -67,8 +68,8 @@ static float charToPitch(char c) {
     return 1.0f + (val - 6) * 0.05f;
 }
 
-// Start speaking text
-static void speak(const char *text, float speed, float pitch, float variation) {
+// Start speaking text with intonation contour
+static void speakWithIntonation(const char *text, float speed, float pitch, float variation, float intonation) {
     SpeechQueue *sq = &speechQueue;
     
     int len = 0;
@@ -83,8 +84,14 @@ static void speak(const char *text, float speed, float pitch, float variation) {
     sq->speed = clampf(speed, 1.0f, 30.0f);
     sq->basePitch = clampf(pitch, 0.3f, 3.0f);
     sq->pitchVariation = clampf(variation, 0.0f, 1.0f);
+    sq->intonation = clampf(intonation, -1.0f, 1.0f);
     sq->active = true;
     sq->voiceIndex = NUM_VOICES - 1;
+}
+
+// Start speaking text (flat intonation)
+static void speak(const char *text, float speed, float pitch, float variation) {
+    speakWithIntonation(text, speed, pitch, variation, 0.0f);
 }
 
 // Generate random babble
@@ -121,6 +128,50 @@ static void babble(float duration, float pitch, float mood) {
     speak(text, speed, pitch, variation);
 }
 
+// Generate babble with intonation (call = rising, answer = falling)
+static void babbleWithIntonation(float duration, float pitch, float mood, float intonation) {
+    static const char* syllables[] = {
+        "ba", "da", "ga", "ma", "na", "pa", "ta", "ka", "wa", "ya",
+        "be", "de", "ge", "me", "ne", "pe", "te", "ke", "we", "ye",
+        "bi", "di", "gi", "mi", "ni", "pi", "ti", "ki", "wi", "yi",
+        "bo", "do", "go", "mo", "no", "po", "to", "ko", "wo", "yo",
+        "bu", "du", "gu", "mu", "nu", "pu", "tu", "ku", "wu", "yu",
+        "la", "ra", "sa", "za", "ha", "ja", "fa", "va",
+    };
+    int numSyllables = sizeof(syllables) / sizeof(syllables[0]);
+    
+    char text[SPEECH_MAX];
+    int pos = 0;
+    float speed = 8.0f + mood * 8.0f;
+    int targetSyllables = (int)(duration * speed / 2.0f);
+    
+    for (int i = 0; i < targetSyllables && pos < SPEECH_MAX - 4; i++) {
+        noiseState = noiseState * 1103515245 + 12345;
+        const char* syl = syllables[(noiseState >> 16) % numSyllables];
+        while (*syl && pos < SPEECH_MAX - 2) {
+            text[pos++] = *syl++;
+        }
+        noiseState = noiseState * 1103515245 + 12345;
+        if ((noiseState >> 16) % 4 == 0 && pos < SPEECH_MAX - 2) {
+            text[pos++] = ' ';
+        }
+    }
+    text[pos] = '\0';
+    
+    float variation = 0.1f + mood * 0.3f;
+    speakWithIntonation(text, speed, pitch, variation, intonation);
+}
+
+// Babble call (question - rising intonation)
+static void babbleCall(float duration, float pitch, float mood) {
+    babbleWithIntonation(duration, pitch, mood, 1.0f);
+}
+
+// Babble answer (response - falling intonation)
+static void babbleAnswer(float duration, float pitch, float mood) {
+    babbleWithIntonation(duration, pitch, mood, -1.0f);
+}
+
 // Process speech queue
 static void updateSpeech(float dt) {
     SpeechQueue *sq = &speechQueue;
@@ -150,7 +201,11 @@ static void updateSpeech(float dt) {
         noiseState = noiseState * 1103515245 + 12345;
         float randVar = 1.0f + ((float)(noiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
         
-        float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar;
+        // Apply intonation contour (position-based pitch shift)
+        float progress = (float)sq->index / (float)sq->length;
+        float intonationMod = 1.0f + sq->intonation * 0.3f * progress;  // Up to ±30% pitch shift at end
+        
+        float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar * intonationMod;
         
         Voice *v = &voices[sq->voiceIndex];
         
@@ -235,7 +290,7 @@ static const float NOTE_B4 = 493.88f;
 static int keyVoices[14] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
 
 // Waveform names for UI
-static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice"};
+static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck"};
 static int selectedWave = 0;
 
 // Vowel names for UI
@@ -311,6 +366,11 @@ int main(void) {
         // Voice/Speech
         if (IsKeyPressed(KEY_B)) babble(2.0f, voicePitch, 0.5f);
         if (IsKeyPressed(KEY_N)) speak("hello world", voiceSpeed, voicePitch, 0.3f);
+        if (IsKeyPressed(KEY_COMMA)) babbleCall(1.5f, voicePitch, 0.5f);    // Call (rising)
+        if (IsKeyPressed(KEY_PERIOD)) babbleAnswer(1.5f, voicePitch, 0.5f); // Answer (falling)
+        
+        // Pluck test (P key plays a plucked string)
+        if (IsKeyPressed(KEY_P)) playPluck(220.0f, pluckBrightness, pluckDamping);
         if (IsKeyPressed(KEY_V)) {
             vowelKeyVoice = playVowel(200.0f * voicePitch, (VowelType)voiceVowel);
         }
@@ -334,7 +394,11 @@ int main(void) {
         // Polyphonic notes
         for (int i = 0; i < 14; i++) {
             if (IsKeyPressed(keys[i])) {
-                keyVoices[i] = playNote(freqs[i], (WaveType)selectedWave);
+                if (selectedWave == WAVE_PLUCK) {
+                    keyVoices[i] = playPluck(freqs[i], pluckBrightness, pluckDamping);
+                } else {
+                    keyVoices[i] = playNote(freqs[i], (WaveType)selectedWave);
+                }
             }
             if (IsKeyReleased(keys[i]) && keyVoices[i] >= 0) {
                 releaseNote(keyVoices[i]);
@@ -380,7 +444,7 @@ int main(void) {
         UIColumn col1 = ui_column(250, 20, 20);
         
         ui_col_label(&col1, "Wave:", YELLOW);
-        ui_col_cycle(&col1, "Type", waveNames, 6, &selectedWave);
+        ui_col_cycle(&col1, "Type", waveNames, 7, &selectedWave);
         
         if (selectedWave == WAVE_SCW && scwCount > 0) {
             const char* scwNames[SCW_MAX_SLOTS];
@@ -427,6 +491,11 @@ int main(void) {
         ui_col_float(&col2, "Formant", &voiceFormantShift, 0.05f, 0.5f, 1.5f);
         ui_col_float(&col2, "Breath", &voiceBreathiness, 0.05f, 0.0f, 1.0f);
         ui_col_float(&col2, "Buzz", &voiceBuzziness, 0.05f, 0.0f, 1.0f);
+        ui_col_space(&col2, 4);
+        
+        ui_col_sublabel(&col2, "Pluck (P):", ORANGE);
+        ui_col_float(&col2, "Bright", &pluckBrightness, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col2, "Sustain", &pluckDamping, 0.0002f, 0.995f, 0.9998f);
         
         // === COLUMN 3: Drums ===
         UIColumn col3 = ui_column(610, 20, 20);

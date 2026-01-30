@@ -29,6 +29,7 @@ typedef enum {
     WAVE_NOISE,
     WAVE_SCW,        // Single Cycle Waveform (wavetable)
     WAVE_VOICE,      // Formant synthesis
+    WAVE_PLUCK,      // Karplus-Strong plucked string
 } WaveType;
 
 // Vowel types for formant synthesis
@@ -110,6 +111,14 @@ typedef struct {
     
     // Voice/formant synthesis
     VoiceSettings voiceSettings;
+    
+    // Karplus-Strong plucked string
+    float ksBuffer[2048];   // Delay line (enough for ~20Hz at 44.1kHz)
+    int ksLength;           // Current delay length in samples
+    int ksIndex;            // Current position in delay line
+    float ksDamping;        // Damping/decay factor (0.9-0.999)
+    float ksBrightness;     // Filter coefficient (0=muted, 1=bright)
+    float ksLastSample;     // For lowpass filter
 } Voice;
 
 // ============================================================================
@@ -171,7 +180,7 @@ static bool loadSCW(const char* path, const char* name) {
 // STATE
 // ============================================================================
 
-#define NUM_VOICES 8
+#define NUM_VOICES 16
 static Voice voices[NUM_VOICES];
 static float masterVolume = 0.5f;
 
@@ -297,6 +306,58 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
     }
     
     return out * 0.7f;
+}
+
+// Karplus-Strong plucked string oscillator
+static float processPluckOscillator(Voice *v, float sampleRate) {
+    if (v->ksLength <= 0) return 0.0f;
+    
+    // Read from delay line
+    float sample = v->ksBuffer[v->ksIndex];
+    
+    // Get next sample for averaging (Karplus-Strong lowpass)
+    int nextIndex = (v->ksIndex + 1) % v->ksLength;
+    float nextSample = v->ksBuffer[nextIndex];
+    
+    // Lowpass filter: average current and next sample, with brightness control
+    // brightness=1 keeps more highs, brightness=0 is more muted
+    float filtered = v->ksLastSample * (1.0f - v->ksBrightness) + 
+                     ((sample + nextSample) * 0.5f) * v->ksBrightness +
+                     ((sample + nextSample) * 0.5f) * (1.0f - v->ksBrightness);
+    filtered = (sample + nextSample) * 0.5f * v->ksBrightness + 
+               v->ksLastSample * (1.0f - v->ksBrightness * 0.5f);
+    filtered = (filtered + (sample + nextSample) * 0.5f) * 0.5f;
+    
+    // Simple averaging filter with damping
+    filtered = ((sample + nextSample) * 0.5f) * v->ksDamping;
+    
+    v->ksLastSample = filtered;
+    
+    // Write back to delay line
+    v->ksBuffer[v->ksIndex] = filtered;
+    
+    // Advance index
+    v->ksIndex = nextIndex;
+    
+    return sample;
+}
+
+// Initialize Karplus-Strong buffer with noise burst (called when note starts)
+static void initPluck(Voice *v, float frequency, float sampleRate, float brightness, float damping) {
+    // Calculate delay length from frequency
+    v->ksLength = (int)(sampleRate / frequency);
+    if (v->ksLength > 2047) v->ksLength = 2047;
+    if (v->ksLength < 2) v->ksLength = 2;
+    
+    v->ksIndex = 0;
+    v->ksBrightness = clampf(brightness, 0.0f, 1.0f);
+    v->ksDamping = clampf(damping, 0.9f, 0.9999f);
+    v->ksLastSample = 0.0f;
+    
+    // Fill buffer with noise burst (the "pluck" excitation)
+    for (int i = 0; i < v->ksLength; i++) {
+        v->ksBuffer[i] = noise();
+    }
 }
 
 // ============================================================================
@@ -442,6 +503,9 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_VOICE:
             sample = processVoiceOscillator(v, sampleRate);
             break;
+        case WAVE_PLUCK:
+            sample = processPluckOscillator(v, sampleRate);
+            break;
     }
     
     // Lowpass filter
@@ -503,6 +567,10 @@ static float voiceBuzziness = 0.6f;
 static float voiceSpeed = 10.0f;
 static float voicePitch = 1.0f;
 static int voiceVowel = VOWEL_A;
+
+// Pluck (Karplus-Strong) tweakables
+static float pluckBrightness = 0.5f;  // 0=muted/nylon, 1=bright/steel
+static float pluckDamping = 0.996f;   // 0.99=short decay, 0.999=long sustain
 
 // ============================================================================
 // PLAY FUNCTIONS
@@ -601,6 +669,47 @@ static int playVowel(float freq, VowelType vowel) {
         vs->formants[i].band = 0;
         vs->formants[i].high = 0;
     }
+    
+    return voiceIdx;
+}
+
+// Play a plucked string (Karplus-Strong)
+static int playPluck(float freq, float brightness, float damping) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_PLUCK;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = 0.0f;
+    v->vibratoDepth = 0.0f;
+    v->vibratoPhase = 0.0f;
+    
+    // Plucked strings: instant attack, long decay to zero (natural KS decay)
+    v->attack = 0.001f;
+    v->decay = 4.0f;      // Long decay time for envelope to fade
+    v->sustain = 0.0f;    // Decay to silence
+    v->release = 0.01f;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = 1.0f;  // KS has its own filtering
+    v->filterLp = 0.0f;
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    // Initialize Karplus-Strong
+    initPluck(v, freq, 44100.0f, brightness, damping);
     
     return voiceIdx;
 }
