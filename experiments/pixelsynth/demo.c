@@ -8,7 +8,7 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 800
+#define SCREEN_WIDTH 980
 #define SCREEN_HEIGHT 450
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -64,6 +64,147 @@ typedef struct {
     float bw;
     float low, band, high;
 } FormantFilter;
+
+// ============================================================================
+// 808-STYLE DRUM MACHINE
+// ============================================================================
+
+// Drum types
+typedef enum {
+    DRUM_KICK,
+    DRUM_SNARE,
+    DRUM_CLAP,
+    DRUM_CLOSED_HH,
+    DRUM_OPEN_HH,
+    DRUM_LOW_TOM,
+    DRUM_MID_TOM,
+    DRUM_HI_TOM,
+    DRUM_RIMSHOT,
+    DRUM_COWBELL,
+    DRUM_CLAVE,
+    DRUM_MARACAS,
+    DRUM_COUNT
+} DrumType;
+
+// Drum voice state (separate from synth voices for dedicated processing)
+typedef struct {
+    bool active;
+    float time;           // Time since trigger
+    float phase;          // Oscillator phase
+    float phase2;         // Second oscillator (for cowbell, etc.)
+    float pitchEnv;       // Pitch envelope value
+    float ampEnv;         // Amplitude envelope value
+    float noiseState;     // Noise filter state
+    float filterLp;       // Lowpass filter state
+    float filterHp;       // Highpass filter state
+    // Hihat specific - 6 oscillator phases
+    float hhPhases[6];
+} DrumVoice;
+
+// Parameters for each drum sound (user-tweakable)
+typedef struct {
+    // Kick parameters
+    float kickPitch;      // Base pitch (30-80 Hz)
+    float kickDecay;      // Decay time (0.1-1.0s)
+    float kickPunchPitch; // Starting pitch for pitch envelope (80-200 Hz)
+    float kickPunchDecay; // How fast pitch drops (0.01-0.1s)
+    float kickClick;      // Initial click amount (0-1)
+    float kickTone;       // Tone/distortion (0-1)
+    
+    // Snare parameters
+    float snarePitch;     // Tone pitch (100-300 Hz)
+    float snareDecay;     // Overall decay (0.1-0.5s)
+    float snareSnappy;    // Noise amount (0-1)
+    float snareTone;      // Tone vs noise balance (0-1)
+    
+    // Clap parameters
+    float clapDecay;      // Decay time
+    float clapTone;       // Filter brightness
+    float clapSpread;     // Timing spread of "hands"
+    
+    // Hihat parameters
+    float hhDecayClosed;  // Closed hihat decay (0.02-0.15s)
+    float hhDecayOpen;    // Open hihat decay (0.2-1.0s)
+    float hhTone;         // Brightness/filter (0-1)
+    
+    // Tom parameters
+    float tomPitch;       // Base pitch multiplier
+    float tomDecay;       // Decay time
+    float tomPunchDecay;  // Pitch envelope time
+    
+    // Rimshot parameters
+    float rimPitch;       // Click pitch
+    float rimDecay;       // Decay time
+    
+    // Cowbell parameters
+    float cowbellPitch;   // Base pitch
+    float cowbellDecay;   // Decay time
+    
+    // Clave parameters
+    float clavePitch;     // Pitch
+    float claveDecay;     // Decay (very short)
+    
+    // Maracas parameters
+    float maracasDecay;   // Decay time
+    float maracasTone;    // Brightness
+} DrumParams;
+
+// Drum machine state
+#define NUM_DRUM_VOICES 12  // One per drum type, allows overlapping
+static DrumVoice drumVoices[NUM_DRUM_VOICES];
+static DrumParams drumParams;
+static float drumVolume = 0.6f;
+
+// Forward declaration for audio callback
+static float processDrums(float dt);
+
+// Initialize drum parameters to 808-like defaults
+static void initDrumParams(void) {
+    // Kick - punchy 808 style
+    drumParams.kickPitch = 50.0f;
+    drumParams.kickDecay = 0.5f;
+    drumParams.kickPunchPitch = 150.0f;
+    drumParams.kickPunchDecay = 0.04f;
+    drumParams.kickClick = 0.3f;
+    drumParams.kickTone = 0.5f;
+    
+    // Snare
+    drumParams.snarePitch = 180.0f;
+    drumParams.snareDecay = 0.2f;
+    drumParams.snareSnappy = 0.6f;
+    drumParams.snareTone = 0.5f;
+    
+    // Clap
+    drumParams.clapDecay = 0.3f;
+    drumParams.clapTone = 0.6f;
+    drumParams.clapSpread = 0.012f;
+    
+    // Hihats
+    drumParams.hhDecayClosed = 0.05f;
+    drumParams.hhDecayOpen = 0.4f;
+    drumParams.hhTone = 0.7f;
+    
+    // Toms
+    drumParams.tomPitch = 1.0f;
+    drumParams.tomDecay = 0.3f;
+    drumParams.tomPunchDecay = 0.05f;
+    
+    // Rimshot
+    drumParams.rimPitch = 1700.0f;
+    drumParams.rimDecay = 0.03f;
+    
+    // Cowbell
+    drumParams.cowbellPitch = 560.0f;
+    drumParams.cowbellDecay = 0.3f;
+    
+    // Clave
+    drumParams.clavePitch = 2500.0f;
+    drumParams.claveDecay = 0.02f;
+    
+    // Maracas
+    drumParams.maracasDecay = 0.07f;
+    drumParams.maracasTone = 0.8f;
+}
 
 // Voice synthesis settings
 typedef struct {
@@ -501,13 +642,18 @@ static void SynthCallback(void *buffer, unsigned int frames) {
     double startTime = GetTime();
     
     short *d = (short *)buffer;
+    float dt = 1.0f / SAMPLE_RATE;
     
     for (unsigned int i = 0; i < frames; i++) {
         float sample = 0.0f;
         
+        // Process synth voices
         for (int v = 0; v < NUM_VOICES; v++) {
             sample += processVoice(&voices[v], SAMPLE_RATE);
         }
+        
+        // Process drum machine
+        sample += processDrums(dt);
         
         sample *= masterVolume;
         
@@ -655,31 +801,366 @@ static void sfxBlip(void) {
                  0.005f, mutate(0.05f, 0.15f), 0.02f, rndRange(-2.0f, 2.0f));
 }
 
-// === DRUM SOUNDS ===
+// ============================================================================
+// 808-STYLE DRUM SYNTHESIS
+// ============================================================================
 
-// Kick drum: sine wave with fast pitch drop + saturation
-static void drumKick(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(150.0f, 0.1f), WAVE_TRIANGLE, mutate(0.7f, 0.1f),
-                 0.005f, mutate(0.25f, 0.15f), 0.1f, mutate(-8.0f, 0.2f));
-    voices[v].filterCutoff = 0.6f;  // Warmer sound
+// Drum-specific noise generator (faster, independent state per voice)
+static float drumNoise(unsigned int *state) {
+    *state = *state * 1103515245 + 12345;
+    return (float)(*state >> 16) / 32768.0f - 1.0f;
 }
 
-// Snare drum: noise + triangle with filter
-static void drumSnare(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(200.0f, 0.15f), WAVE_NOISE, mutate(0.5f, 0.1f),
-                 0.005f, mutate(0.15f, 0.2f), 0.08f, mutate(-2.0f, 0.3f));
-    voices[v].filterCutoff = mutate(0.7f, 0.1f);
+// Exponential decay envelope
+static float expDecay(float time, float decay) {
+    if (decay <= 0.0f) return 0.0f;
+    return expf(-time / (decay * 0.368f));  // 0.368 = 1/e, so decay = time to reach ~37%
 }
 
-// Hi-hat: high-passed noise, very short
-static void drumHihat(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(8000.0f, 0.15f), WAVE_NOISE, mutate(0.3f, 0.1f),
-                 0.001f, mutate(0.05f, 0.2f), 0.02f, 0.0f);
-    voices[v].filterCutoff = 0.9f;  // Keep it bright
+// Trigger a drum sound
+static void triggerDrum(DrumType type) {
+    DrumVoice *dv = &drumVoices[type];
+    dv->active = true;
+    dv->time = 0.0f;
+    dv->phase = 0.0f;
+    dv->phase2 = 0.0f;
+    dv->pitchEnv = 1.0f;
+    dv->ampEnv = 1.0f;
+    dv->filterLp = 0.0f;
+    dv->filterHp = 0.0f;
+    
+    // Initialize hihat oscillator phases with metallic ratios
+    if (type == DRUM_CLOSED_HH || type == DRUM_OPEN_HH) {
+        for (int i = 0; i < 6; i++) {
+            dv->hhPhases[i] = 0.0f;
+        }
+    }
+    
+    // Open hihat chokes closed hihat
+    if (type == DRUM_CLOSED_HH) {
+        drumVoices[DRUM_OPEN_HH].active = false;
+    }
 }
+
+// Process kick drum - sine with pitch envelope + optional click
+static float processKick(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // Pitch envelope: exponential decay from punch pitch to base pitch
+    float pitchT = expDecay(dv->time, p->kickPunchDecay);
+    float freq = p->kickPitch + (p->kickPunchPitch - p->kickPitch) * pitchT;
+    
+    // Advance phase
+    dv->phase += freq * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    
+    // Pure sine oscillator
+    float osc = sinf(dv->phase * 2.0f * PI);
+    
+    // Add click transient (short noise burst at start)
+    float click = 0.0f;
+    if (p->kickClick > 0.0f && dv->time < 0.01f) {
+        unsigned int ns = (unsigned int)(dv->time * 1000000);
+        click = drumNoise(&ns) * (1.0f - dv->time / 0.01f) * p->kickClick;
+    }
+    
+    // Soft saturation for more tone/punch
+    float sample = osc + click;
+    if (p->kickTone > 0.0f) {
+        sample = tanhf(sample * (1.0f + p->kickTone * 3.0f));
+    }
+    
+    // Amplitude envelope
+    float amp = expDecay(dv->time, p->kickDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.8f;
+}
+
+// Process snare - tuned oscillators + filtered noise
+static float processSnare(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // Two tuned oscillators (body)
+    float freq1 = p->snarePitch;
+    float freq2 = p->snarePitch * 1.5f;  // Fifth above
+    
+    dv->phase += freq1 * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    dv->phase2 += freq2 * dt;
+    if (dv->phase2 >= 1.0f) dv->phase2 -= 1.0f;
+    
+    float tone = sinf(dv->phase * 2.0f * PI) * 0.6f + 
+                 sinf(dv->phase2 * 2.0f * PI) * 0.3f;
+    
+    // Noise component (snares)
+    unsigned int ns = (unsigned int)(dv->time * 1000000 + dv->phase * 10000);
+    float noiseSample = drumNoise(&ns);
+    
+    // Bandpass filter the noise (sounds more like real snares)
+    float cutoff = 0.15f + p->snareTone * 0.4f;
+    dv->filterLp += cutoff * (noiseSample - dv->filterLp);
+    dv->filterHp += 0.1f * (dv->filterLp - dv->filterHp);
+    float filteredNoise = dv->filterLp - dv->filterHp;
+    
+    // Mix tone and noise based on snappy parameter
+    float mix = tone * (1.0f - p->snareSnappy * 0.7f) + 
+                filteredNoise * p->snareSnappy * 1.5f;
+    
+    // Amplitude envelope - noise decays slightly slower
+    float toneAmp = expDecay(dv->time, p->snareDecay * 0.7f);
+    float noiseAmp = expDecay(dv->time, p->snareDecay);
+    float amp = toneAmp * (1.0f - p->snareSnappy * 0.5f) + noiseAmp * p->snareSnappy * 0.5f;
+    
+    if (amp < 0.001f) dv->active = false;
+    
+    return mix * amp * 0.7f;
+}
+
+// Process clap - multiple noise bursts
+static float processClap(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // 4 "hands" clapping with slight time offsets
+    float spread = p->clapSpread;
+    float offsets[4] = {0.0f, spread, spread * 2.2f, spread * 3.5f};
+    
+    float sample = 0.0f;
+    for (int i = 0; i < 4; i++) {
+        float t = dv->time - offsets[i];
+        if (t >= 0.0f) {
+            // Each clap is a short noise burst
+            unsigned int ns = (unsigned int)(t * 1000000 + i * 12345);
+            float n = drumNoise(&ns);
+            
+            // Very fast attack, quick decay per burst
+            float burstEnv = expDecay(t, 0.02f);
+            sample += n * burstEnv * 0.4f;
+        }
+    }
+    
+    // Overall envelope
+    float amp = expDecay(dv->time, p->clapDecay);
+    
+    // Bandpass filter for that clap character
+    float cutoff = 0.2f + p->clapTone * 0.3f;
+    dv->filterLp += cutoff * (sample - dv->filterLp);
+    dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
+    sample = (dv->filterLp - dv->filterHp) * 2.0f;
+    
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.6f;
+}
+
+// Process hihat - 6 square wave oscillators at metallic ratios
+static float processHihat(DrumVoice *dv, float dt, bool open) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // 808 hihat uses 6 square waves at these metallic (non-harmonic) frequencies
+    // Based on analysis of actual 808 circuits
+    static const float hhFreqRatios[6] = {
+        1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f
+    };
+    float baseFreq = 320.0f + p->hhTone * 200.0f;  // Higher tone = higher base freq
+    
+    float sample = 0.0f;
+    for (int i = 0; i < 6; i++) {
+        float freq = baseFreq * hhFreqRatios[i];
+        dv->hhPhases[i] += freq * dt;
+        if (dv->hhPhases[i] >= 1.0f) dv->hhPhases[i] -= 1.0f;
+        
+        // Square wave
+        float sq = dv->hhPhases[i] < 0.5f ? 1.0f : -1.0f;
+        sample += sq;
+    }
+    sample /= 6.0f;  // Normalize
+    
+    // Highpass filter - hihats are very bright
+    float hpCutoff = 0.3f + p->hhTone * 0.4f;
+    dv->filterHp += hpCutoff * (sample - dv->filterHp);
+    sample = sample - dv->filterHp;
+    
+    // Decay time depends on open/closed
+    float decay = open ? p->hhDecayOpen : p->hhDecayClosed;
+    float amp = expDecay(dv->time, decay);
+    
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.4f;
+}
+
+// Process tom - similar to kick but higher pitch, less pitch drop
+static float processTom(DrumVoice *dv, float dt, float pitchMult) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // Base frequencies for low/mid/high tom
+    float basePitch = 80.0f * pitchMult * p->tomPitch;
+    float punchPitch = basePitch * 2.0f;
+    
+    // Pitch envelope
+    float pitchT = expDecay(dv->time, p->tomPunchDecay);
+    float freq = basePitch + (punchPitch - basePitch) * pitchT;
+    
+    dv->phase += freq * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    
+    // Sine + slight triangle for more body
+    float osc = sinf(dv->phase * 2.0f * PI) * 0.8f +
+                (4.0f * fabsf(dv->phase - 0.5f) - 1.0f) * 0.2f;
+    
+    float amp = expDecay(dv->time, p->tomDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return osc * amp * 0.6f;
+}
+
+// Process rimshot - sharp click + high tone
+static float processRimshot(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // High frequency click
+    dv->phase += p->rimPitch * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    
+    float osc = sinf(dv->phase * 2.0f * PI);
+    
+    // Add noise click
+    unsigned int ns = (unsigned int)(dv->time * 1000000);
+    float click = drumNoise(&ns) * expDecay(dv->time, 0.005f);
+    
+    float amp = expDecay(dv->time, p->rimDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return (osc * 0.5f + click * 0.5f) * amp * 0.5f;
+}
+
+// Process cowbell - two square waves at non-harmonic intervals
+static float processCowbell(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // Two frequencies that create the cowbell "clank"
+    // 808 cowbell: ~560 Hz and ~845 Hz (ratio ~1.51)
+    float freq1 = p->cowbellPitch;
+    float freq2 = p->cowbellPitch * 1.508f;
+    
+    dv->phase += freq1 * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    dv->phase2 += freq2 * dt;
+    if (dv->phase2 >= 1.0f) dv->phase2 -= 1.0f;
+    
+    // Square waves
+    float sq1 = dv->phase < 0.5f ? 1.0f : -1.0f;
+    float sq2 = dv->phase2 < 0.5f ? 1.0f : -1.0f;
+    
+    float sample = (sq1 + sq2) * 0.5f;
+    
+    // Bandpass filter for that metallic sound
+    float cutoff = 0.15f;
+    dv->filterLp += cutoff * (sample - dv->filterLp);
+    sample = dv->filterLp;
+    
+    float amp = expDecay(dv->time, p->cowbellDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.4f;
+}
+
+// Process clave - very short filtered click
+static float processClave(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    // High pitched resonant click
+    dv->phase += p->clavePitch * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    
+    float osc = sinf(dv->phase * 2.0f * PI);
+    
+    // Very fast decay for that "click"
+    float amp = expDecay(dv->time, p->claveDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return osc * amp * 0.5f;
+}
+
+// Process maracas - filtered noise burst
+static float processMaracas(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    unsigned int ns = (unsigned int)(dv->time * 1000000);
+    float sample = drumNoise(&ns);
+    
+    // Highpass for brightness
+    float cutoff = 0.3f + p->maracasTone * 0.4f;
+    dv->filterHp += cutoff * (sample - dv->filterHp);
+    sample = sample - dv->filterHp;
+    
+    float amp = expDecay(dv->time, p->maracasDecay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.25f;
+}
+
+// Process all drum voices and return mixed sample
+static float processDrums(float dt) {
+    float sample = 0.0f;
+    
+    sample += processKick(&drumVoices[DRUM_KICK], dt);
+    sample += processSnare(&drumVoices[DRUM_SNARE], dt);
+    sample += processClap(&drumVoices[DRUM_CLAP], dt);
+    sample += processHihat(&drumVoices[DRUM_CLOSED_HH], dt, false);
+    sample += processHihat(&drumVoices[DRUM_OPEN_HH], dt, true);
+    sample += processTom(&drumVoices[DRUM_LOW_TOM], dt, 1.0f);
+    sample += processTom(&drumVoices[DRUM_MID_TOM], dt, 1.5f);
+    sample += processTom(&drumVoices[DRUM_HI_TOM], dt, 2.2f);
+    sample += processRimshot(&drumVoices[DRUM_RIMSHOT], dt);
+    sample += processCowbell(&drumVoices[DRUM_COWBELL], dt);
+    sample += processClave(&drumVoices[DRUM_CLAVE], dt);
+    sample += processMaracas(&drumVoices[DRUM_MARACAS], dt);
+    
+    return sample * drumVolume;
+}
+
+// Convenience functions to trigger drums by name
+static void drumKick(void) { triggerDrum(DRUM_KICK); }
+static void drumSnare(void) { triggerDrum(DRUM_SNARE); }
+static void drumClap(void) { triggerDrum(DRUM_CLAP); }
+static void drumClosedHH(void) { triggerDrum(DRUM_CLOSED_HH); }
+static void drumOpenHH(void) { triggerDrum(DRUM_OPEN_HH); }
+static void drumLowTom(void) { triggerDrum(DRUM_LOW_TOM); }
+static void drumMidTom(void) { triggerDrum(DRUM_MID_TOM); }
+static void drumHiTom(void) { triggerDrum(DRUM_HI_TOM); }
+static void drumRimshot(void) { triggerDrum(DRUM_RIMSHOT); }
+static void drumCowbell(void) { triggerDrum(DRUM_COWBELL); }
+static void drumClave(void) { triggerDrum(DRUM_CLAVE); }
+static void drumMaracas(void) { triggerDrum(DRUM_MARACAS); }
 
 // === VOICE/SPEECH FUNCTIONS ===
 
@@ -930,6 +1411,8 @@ int main(void) {
     PlayAudioStream(stream);
     
     memset(voices, 0, sizeof(voices));
+    memset(drumVoices, 0, sizeof(drumVoices));
+    initDrumParams();
     
     SetTargetFPS(60);
     
@@ -948,14 +1431,23 @@ int main(void) {
         if (IsKeyPressed(KEY_FIVE))  sfxPowerup();
         if (IsKeyPressed(KEY_SIX))   sfxBlip();
         
-        // Drums (7-9)
-        if (IsKeyPressed(KEY_SEVEN)) drumKick();
-        if (IsKeyPressed(KEY_EIGHT)) drumSnare();
-        if (IsKeyPressed(KEY_NINE))  drumHihat();
+        // Drums - Z row for main kit, X row for extras
+        if (IsKeyPressed(KEY_Z)) drumKick();
+        if (IsKeyPressed(KEY_X)) drumSnare();
+        if (IsKeyPressed(KEY_C)) drumClap();
+        if (IsKeyPressed(KEY_SEVEN)) drumClosedHH();
+        if (IsKeyPressed(KEY_EIGHT)) drumOpenHH();
+        if (IsKeyPressed(KEY_NINE))  drumLowTom();
+        if (IsKeyPressed(KEY_ZERO))  drumMidTom();
+        if (IsKeyPressed(KEY_MINUS)) drumHiTom();
+        if (IsKeyPressed(KEY_EQUAL)) drumRimshot();
+        if (IsKeyPressed(KEY_LEFT_BRACKET)) drumCowbell();
+        if (IsKeyPressed(KEY_RIGHT_BRACKET)) drumClave();
+        if (IsKeyPressed(KEY_BACKSLASH)) drumMaracas();
         
-        // Voice/Speech (0, SPACE, ENTER, hold V for vowel)
-        if (IsKeyPressed(KEY_ZERO)) babble(2.0f, voicePitch, 0.5f);
-        if (IsKeyPressed(KEY_SPACE)) speak("hello world", voiceSpeed, voicePitch, 0.3f);
+        // Voice/Speech (B=babble, SPACE=speak, hold V for vowel)
+        if (IsKeyPressed(KEY_B)) babble(2.0f, voicePitch, 0.5f);
+        if (IsKeyPressed(KEY_N)) speak("hello world", voiceSpeed, voicePitch, 0.3f);
         if (IsKeyPressed(KEY_V)) {
             vowelKeyVoice = playVowel(200.0f * voicePitch, (VowelType)voiceVowel);
         }
@@ -985,9 +1477,9 @@ int main(void) {
         DrawTextEx(font, "PixelSynth Demo", (Vector2){20, 20}, 30, 1, WHITE);
         
         // Left column - controls info (compact)
-        DrawTextEx(font, "SFX: 1-6  Drums: 7-9", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "Notes: QWERTYU / ASDFGHJ", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "Voice: V=vowel SPACE=speak 0=babble", (Vector2){20, 85}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "SFX: 1-6  Notes: QWERTYU/ASDFGHJ", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "Drums: Z=kick X=snare C=clap 7/8=HH", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "Voice: V=vowel B=babble N=speak", (Vector2){20, 85}, 12, 1, LIGHTGRAY);
         
         // Show active voices
         DrawTextEx(font, "Voices:", (Vector2){20, 105}, 12, 1, GRAY);
@@ -1069,6 +1561,39 @@ int main(void) {
         DraggableFloat(uiX, uiY, "Formant", &voiceFormantShift, 0.5f, 0.5f, 1.5f); uiY += 18;
         DraggableFloat(uiX, uiY, "Breath", &voiceBreathiness, 0.5f, 0.0f, 1.0f); uiY += 18;
         DraggableFloat(uiX, uiY, "Buzz", &voiceBuzziness, 0.5f, 0.0f, 1.0f);
+        
+        // === COLUMN 3: Drum Machine (808-style) ===
+        uiX = 610;
+        uiY = 20;
+        
+        DrawTextShadow("808 Drums:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
+        DraggableFloat(uiX, uiY, "Volume", &drumVolume, 0.5f, 0.0f, 1.0f); uiY += 22;
+        
+        // Kick
+        DrawTextShadow("Kick (Z):", (int)uiX, (int)uiY, 12, ORANGE); uiY += 16;
+        DraggableFloat(uiX, uiY, "Pitch", &drumParams.kickPitch, 5.0f, 30.0f, 100.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Decay", &drumParams.kickDecay, 0.5f, 0.1f, 1.5f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Punch", &drumParams.kickPunchPitch, 10.0f, 80.0f, 300.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Click", &drumParams.kickClick, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Tone", &drumParams.kickTone, 0.5f, 0.0f, 1.0f); uiY += 20;
+        
+        // Snare
+        DrawTextShadow("Snare (X):", (int)uiX, (int)uiY, 12, ORANGE); uiY += 16;
+        DraggableFloat(uiX, uiY, "Pitch", &drumParams.snarePitch, 10.0f, 100.0f, 350.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Decay", &drumParams.snareDecay, 0.5f, 0.05f, 0.6f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Snappy", &drumParams.snareSnappy, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Tone", &drumParams.snareTone, 0.5f, 0.0f, 1.0f); uiY += 20;
+        
+        // Hihat
+        DrawTextShadow("HiHat (7/8):", (int)uiX, (int)uiY, 12, ORANGE); uiY += 16;
+        DraggableFloat(uiX, uiY, "Closed", &drumParams.hhDecayClosed, 0.5f, 0.01f, 0.2f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Open", &drumParams.hhDecayOpen, 0.5f, 0.1f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Tone", &drumParams.hhTone, 0.5f, 0.0f, 1.0f); uiY += 20;
+        
+        // Clap
+        DrawTextShadow("Clap (C):", (int)uiX, (int)uiY, 12, ORANGE); uiY += 16;
+        DraggableFloat(uiX, uiY, "Decay", &drumParams.clapDecay, 0.5f, 0.1f, 0.6f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Spread", &drumParams.clapSpread, 0.01f, 0.005f, 0.03f);
         
         ui_update();
         EndDrawing();
