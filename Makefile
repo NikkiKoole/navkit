@@ -5,18 +5,19 @@ export MACOSX_DEPLOYMENT_TARGET
 # Set to 1 to generate 16x16 atlas, 0 for 8x8 only
 GENERATE_16X16 ?= 0
 
-CFLAGS  := -std=c11 -O2 -g -I. -Wall -Wextra
+CFLAGS  := -std=c11 -O2 -g -I. -Ivendor -Wall -Wextra
 LDFLAGS := $(shell pkg-config --libs raylib)
 
 BINDIR := bin
 
 # Define your targets here
-TARGETS := steer crowd path
+TARGETS := steer crowd path pixelsynth
 
 # Source files for each target (using unity build for path)
-steer_SRC := experiments/steering/demo.c experiments/steering/steering.c
-crowd_SRC := experiments/crowd/demo.c
-path_SRC  := src/unity.c
+steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
+crowd_SRC      := experiments/crowd/demo.c
+path_SRC       := src/unity.c
+pixelsynth_SRC := experiments/pixelsynth/demo.c
 
 # Test targets - all use test_unity.c for shared game logic
 test_pathing_SRC    := tests/test_pathfinding.c tests/test_unity.c
@@ -135,10 +136,11 @@ bench_jobs: $(BINDIR)
 # Run all benchmarks
 bench: bench_jobs
 
-# Aliases for convenience (make path, make steer, make crowd)
+# Aliases for convenience (make path, make steer, make crowd, make pixelsynth)
 path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
+pixelsynth: $(BINDIR) $(BINDIR)/pixelsynth
 
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
@@ -189,4 +191,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd pixelsynth asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
