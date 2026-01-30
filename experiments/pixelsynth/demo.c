@@ -312,8 +312,17 @@ static bool showDrumsColumn = true;
 static bool showEffectsColumn = true;
 
 // Waveform names for UI
-static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet", "Granular"};
+static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
 static int selectedWave = 0;
+
+// PD wave type names for UI
+static const char* pdWaveNames[] = {"Saw", "Square", "Pulse", "DblPulse", "SawPulse", "Reso1", "Reso2", "Reso3"};
+
+// Membrane preset names for UI
+static const char* membranePresetNames[] = {"Tabla", "Conga", "Bongo", "Djembe", "Tom"};
+
+// Bird type names for UI
+static const char* birdTypeNames[] = {"Chirp", "Trill", "Warble", "Tweet", "Whistle", "Cuckoo"};
 
 // Additive preset names for UI
 static const char* additivePresetNames[] = {"Sine", "Organ", "Bell", "Strings", "Brass", "Choir", "Custom"};
@@ -437,6 +446,14 @@ int main(void) {
                     pianoKeyVoices[i] = playVowel(freq, vowel);
                 } else if (selectedWave == WAVE_GRANULAR) {
                     pianoKeyVoices[i] = playGranular(freq, granularScwIndex);
+                } else if (selectedWave == WAVE_FM) {
+                    pianoKeyVoices[i] = playFM(freq);
+                } else if (selectedWave == WAVE_PD) {
+                    pianoKeyVoices[i] = playPD(freq);
+                } else if (selectedWave == WAVE_MEMBRANE) {
+                    pianoKeyVoices[i] = playMembrane(freq, (MembranePreset)membranePreset);
+                } else if (selectedWave == WAVE_BIRD) {
+                    pianoKeyVoices[i] = playBird(freq, (BirdType)birdType);
                 } else {
                     pianoKeyVoices[i] = playNote(freq, (WaveType)selectedWave);
                 }
@@ -496,7 +513,7 @@ int main(void) {
         
         if (SectionHeader(col1.x, col1.y, "Wave", &showWaveColumn)) {
             col1.y += 18;
-            ui_col_cycle(&col1, "Type", waveNames, 10, &selectedWave);
+            ui_col_cycle(&col1, "Type", waveNames, 14, &selectedWave);
             ui_col_space(&col1, 4);
             
             if (selectedWave == WAVE_SQUARE) {
@@ -580,6 +597,43 @@ int main(void) {
                 ui_col_float(&col1, "AmpRand", &granularAmpRandom, 0.05f, 0.0f, 1.0f);
                 ui_col_toggle(&col1, "Freeze", &granularFreeze);
             }
+            
+            if (selectedWave == WAVE_FM) {
+                ui_col_sublabel(&col1, "FM Synth:", ORANGE);
+                ui_col_float(&col1, "Ratio", &fmModRatio, 0.5f, 0.5f, 16.0f);
+                ui_col_float(&col1, "Index", &fmModIndex, 0.1f, 0.0f, 10.0f);
+                ui_col_float(&col1, "Feedback", &fmFeedback, 0.05f, 0.0f, 1.0f);
+            }
+            
+            if (selectedWave == WAVE_PD) {
+                ui_col_sublabel(&col1, "Phase Dist:", ORANGE);
+                ui_col_cycle(&col1, "Wave", pdWaveNames, PD_WAVE_COUNT, &pdWaveType);
+                ui_col_float(&col1, "Distort", &pdDistortion, 0.05f, 0.0f, 1.0f);
+            }
+            
+            if (selectedWave == WAVE_MEMBRANE) {
+                ui_col_sublabel(&col1, "Membrane:", ORANGE);
+                ui_col_cycle(&col1, "Preset", membranePresetNames, MEMBRANE_COUNT, &membranePreset);
+                ui_col_float(&col1, "Damping", &membraneDamping, 0.05f, 0.1f, 1.0f);
+                ui_col_float(&col1, "Strike", &membraneStrike, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Bend", &membraneBend, 0.02f, 0.0f, 0.5f);
+                ui_col_float(&col1, "BendDcy", &membraneBendDecay, 0.01f, 0.02f, 0.3f);
+            }
+            
+            if (selectedWave == WAVE_BIRD) {
+                ui_col_sublabel(&col1, "Bird:", ORANGE);
+                ui_col_cycle(&col1, "Type", birdTypeNames, BIRD_COUNT, &birdType);
+                ui_col_float(&col1, "Range", &birdChirpRange, 0.1f, 0.5f, 2.0f);
+                ui_col_float(&col1, "Harmonic", &birdHarmonics, 0.05f, 0.0f, 1.0f);
+                ui_col_space(&col1, 4);
+                ui_col_sublabel(&col1, "Trill:", ORANGE);
+                ui_col_float(&col1, "Rate", &birdTrillRate, 1.0f, 0.0f, 30.0f);
+                ui_col_float(&col1, "Depth", &birdTrillDepth, 0.2f, 0.0f, 5.0f);
+                ui_col_space(&col1, 4);
+                ui_col_sublabel(&col1, "Flutter:", ORANGE);
+                ui_col_float(&col1, "AM Rate", &birdAmRate, 1.0f, 0.0f, 20.0f);
+                ui_col_float(&col1, "AM Depth", &birdAmDepth, 0.05f, 0.0f, 1.0f);
+            }
         }
         
         // === COLUMN 2: Synth (shared settings) ===
@@ -612,6 +666,16 @@ int main(void) {
             ui_col_sublabel(&col2, "Volume:", ORANGE);
             ui_col_float(&col2, "Note", &noteVolume, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col2, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
+            
+            // Mono/Glide - only show for wave types that support it
+            if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
+                ui_col_space(&col2, 4);
+                ui_col_sublabel(&col2, "Mono/Glide:", ORANGE);
+                ui_col_toggle(&col2, "Mono", &monoMode);
+                if (monoMode) {
+                    ui_col_float(&col2, "Glide", &glideTime, 0.02f, 0.01f, 1.0f);
+                }
+            }
         }
         
         // === COLUMN 3: LFOs ===

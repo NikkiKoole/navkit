@@ -33,6 +33,10 @@ typedef enum {
     WAVE_ADDITIVE,   // Additive synthesis (sine harmonics)
     WAVE_MALLET,     // Two-mass mallet percussion (marimba/vibes)
     WAVE_GRANULAR,   // Granular synthesis using SCW tables
+    WAVE_FM,         // FM synthesis (2-operator)
+    WAVE_PD,         // Phase distortion (CZ-style)
+    WAVE_MEMBRANE,   // Pitched membrane (tabla/conga)
+    WAVE_BIRD,       // Bird vocalization synthesis
 } WaveType;
 
 // Vowel types for formant synthesis
@@ -177,10 +181,114 @@ typedef struct {
     bool freeze;              // When true, position doesn't follow note pitch
 } GranularSettings;
 
+// FM synthesis settings (2-operator)
+typedef struct {
+    float modRatio;      // Modulator frequency ratio (0.5-16)
+    float modIndex;      // Modulation index/depth (0-10)
+    float feedback;      // Self-modulation amount (0-1)
+    float modPhase;      // Modulator phase accumulator
+    float fbSample;      // Previous sample for feedback loop
+} FMSettings;
+
+// Phase distortion synthesis settings (CZ-style)
+typedef enum {
+    PD_WAVE_SAW,         // Sawtooth via phase distortion
+    PD_WAVE_SQUARE,      // Square/pulse via phase distortion
+    PD_WAVE_PULSE,       // Narrow pulse
+    PD_WAVE_DOUBLEPULSE, // Double pulse (sync-like)
+    PD_WAVE_SAWPULSE,    // Saw + pulse combo
+    PD_WAVE_RESO1,       // Resonant type 1 (triangle window)
+    PD_WAVE_RESO2,       // Resonant type 2 (trapezoid window)
+    PD_WAVE_RESO3,       // Resonant type 3 (sawtooth window)
+    PD_WAVE_COUNT
+} PDWaveType;
+
+typedef struct {
+    PDWaveType waveType; // Which CZ waveform
+    float distortion;    // Phase distortion amount (0-1)
+} PDSettings;
+
+// Membrane synthesis settings (tabla/conga)
+typedef enum {
+    MEMBRANE_TABLA,      // Tabla (bayan/dayan)
+    MEMBRANE_CONGA,      // Conga/tumbadora
+    MEMBRANE_BONGO,      // Bongo (higher, sharper)
+    MEMBRANE_DJEMBE,     // Djembe (wide range)
+    MEMBRANE_TOM,        // Floor tom style
+    MEMBRANE_COUNT
+} MembranePreset;
+
+typedef struct {
+    MembranePreset preset;
+    // Circular membrane has modes at ratios: 1.0, 1.59, 2.14, 2.30, 2.65, 2.92...
+    float modeFreqs[6];      // Frequency ratios for 6 modes
+    float modeAmps[6];       // Current amplitude per mode
+    float modeDecays[6];     // Decay time per mode
+    float modePhases[6];     // Phase accumulators
+    float tension;           // Membrane tension (affects pitch bend)
+    float damping;           // How quickly it dies out
+    float strikePos;         // Where struck (0=center, 1=edge)
+    float pitchBend;         // Initial pitch bend amount
+    float pitchBendDecay;    // How fast pitch settles
+    float pitchBendTime;     // Current bend time
+} MembraneSettings;
+
+// Bird vocalization synthesis settings
+typedef enum {
+    BIRD_CHIRP,          // Simple chirp (up or down sweep)
+    BIRD_TRILL,          // Rapid repeated notes
+    BIRD_WARBLE,         // Wandering pitch with AM
+    BIRD_TWEET,          // Short staccato call
+    BIRD_WHISTLE,        // Pure tone whistle
+    BIRD_CUCKOO,         // Two-tone call
+    BIRD_COUNT
+} BirdType;
+
+typedef struct {
+    BirdType type;
+    
+    // Chirp/sweep parameters
+    float startFreq;         // Chirp start frequency (Hz)
+    float endFreq;           // Chirp end frequency (Hz)  
+    float chirpTime;         // Current time in chirp
+    float chirpDuration;     // Total chirp duration (s)
+    float chirpCurve;        // Sweep curve (-1=log down, 0=linear, 1=log up)
+    
+    // Trill/warble modulation
+    float trillRate;         // Trill frequency (Hz) - pitch wobble
+    float trillDepth;        // Trill depth in semitones
+    float trillPhase;        // Trill LFO phase
+    
+    // Amplitude modulation (for warble/flutter)
+    float amRate;            // AM frequency (Hz)
+    float amDepth;           // AM depth (0-1)
+    float amPhase;           // AM LFO phase
+    
+    // Harmonics (birds aren't pure sine)
+    float harmonic2;         // 2nd harmonic amount (0-1)
+    float harmonic3;         // 3rd harmonic amount (0-1)
+    
+    // Envelope
+    float attackTime;        // Note attack
+    float holdTime;          // Sustain at peak
+    float decayTime;         // Decay time
+    float envTime;           // Current envelope time
+    float envLevel;          // Current envelope level
+    
+    // For multi-note patterns (cuckoo, trill)
+    int noteIndex;           // Current note in pattern
+    float noteTimer;         // Time since note start
+    float noteDuration;      // Duration per note
+    float noteGap;           // Gap between notes
+    bool inGap;              // Currently in gap between notes
+} BirdSettings;
+
 // Voice structure (polyphonic synth voice)
 typedef struct {
     float frequency;
     float baseFrequency;  // Original frequency (for vibrato)
+    float targetFrequency; // Target frequency for glide/portamento
+    float glideRate;       // Glide rate (frequency change per second, calculated from glideTime)
     float phase;
     float volume;
     WaveType wave;
@@ -280,6 +388,18 @@ typedef struct {
     
     // Granular synthesis
     GranularSettings granularSettings;
+    
+    // FM synthesis
+    FMSettings fmSettings;
+    
+    // Phase distortion synthesis
+    PDSettings pdSettings;
+    
+    // Membrane synthesis
+    MembraneSettings membraneSettings;
+    
+    // Bird synthesis
+    BirdSettings birdSettings;
 } Voice;
 
 // ============================================================================
@@ -1136,6 +1256,567 @@ static float processGranularOscillator(Voice *v, float sampleRate) {
     return out * 0.7f;  // Overall level scaling
 }
 
+// FM synthesis oscillator (2-operator: modulator -> carrier)
+static float processFMOscillator(Voice *v, float sampleRate) {
+    FMSettings *fm = &v->fmSettings;
+    float dt = 1.0f / sampleRate;
+    
+    // Modulator frequency
+    float modFreq = v->frequency * fm->modRatio;
+    
+    // Advance modulator phase
+    fm->modPhase += modFreq * dt;
+    if (fm->modPhase >= 1.0f) fm->modPhase -= 1.0f;
+    
+    // Modulator with feedback (self-modulation)
+    float fbAmount = fm->feedback * fm->fbSample * PI;
+    float modulator = sinf((fm->modPhase * 2.0f * PI) + fbAmount);
+    fm->fbSample = modulator;
+    
+    // Carrier phase modulated by modulator
+    // modIndex controls how many radians the modulator shifts the carrier
+    float carrierPhase = v->phase + modulator * fm->modIndex;
+    float carrier = sinf(carrierPhase * 2.0f * PI);
+    
+    return carrier;
+}
+
+// Phase distortion oscillator (CZ-style waveshaping)
+static float processPDOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
+    PDSettings *pd = &v->pdSettings;
+    float phase = v->phase;  // 0 to 1
+    float d = pd->distortion;
+    float out = 0.0f;
+    
+    switch (pd->waveType) {
+        case PD_WAVE_SAW: {
+            // Sawtooth: compress first half, stretch second half
+            float distPhase;
+            if (phase < 0.5f) {
+                distPhase = phase * (1.0f + d) * 0.5f / 0.5f;
+            } else {
+                float t = (phase - 0.5f) / 0.5f;
+                distPhase = 0.5f * (1.0f + d) + t * (1.0f - 0.5f * (1.0f + d));
+            }
+            distPhase = clampf(distPhase, 0.0f, 1.0f);
+            out = cosf(distPhase * PI);
+            break;
+        }
+        case PD_WAVE_SQUARE: {
+            // Square: sharpen transitions at 0.25 and 0.75
+            float distPhase;
+            float sharpness = 0.5f - d * 0.45f;  // How much of cycle for transition
+            if (phase < 0.25f) {
+                distPhase = phase / 0.25f * sharpness;
+            } else if (phase < 0.5f) {
+                distPhase = sharpness + (phase - 0.25f) / 0.25f * (0.5f - sharpness);
+            } else if (phase < 0.75f) {
+                distPhase = 0.5f + (phase - 0.5f) / 0.25f * sharpness;
+            } else {
+                distPhase = 0.5f + sharpness + (phase - 0.75f) / 0.25f * (0.5f - sharpness);
+            }
+            out = cosf(distPhase * 2.0f * PI);
+            break;
+        }
+        case PD_WAVE_PULSE: {
+            // Narrow pulse: compress active portion
+            float width = 0.5f - d * 0.45f;
+            float distPhase;
+            if (phase < width) {
+                distPhase = phase / width * 0.5f;
+            } else {
+                distPhase = 0.5f + (phase - width) / (1.0f - width) * 0.5f;
+            }
+            out = cosf(distPhase * 2.0f * PI);
+            break;
+        }
+        case PD_WAVE_DOUBLEPULSE: {
+            // Double pulse: two peaks per cycle (sync-like)
+            float distPhase = phase * 2.0f;
+            if (distPhase >= 1.0f) distPhase -= 1.0f;
+            float width = 0.5f - d * 0.4f;
+            if (distPhase < width) {
+                distPhase = distPhase / width * 0.5f;
+            } else {
+                distPhase = 0.5f + (distPhase - width) / (1.0f - width) * 0.5f;
+            }
+            out = cosf(distPhase * 2.0f * PI);
+            break;
+        }
+        case PD_WAVE_SAWPULSE: {
+            // Saw + pulse combination
+            float saw, pulse;
+            // Saw component
+            float distPhase1;
+            if (phase < 0.5f) {
+                distPhase1 = phase * (1.0f + d * 0.5f);
+            } else {
+                distPhase1 = 0.5f * (1.0f + d * 0.5f) + (phase - 0.5f) * (1.0f - d * 0.25f);
+            }
+            distPhase1 = clampf(distPhase1, 0.0f, 1.0f);
+            saw = cosf(distPhase1 * PI);
+            // Pulse component
+            float width = 0.5f - d * 0.3f;
+            float distPhase2;
+            if (phase < width) {
+                distPhase2 = phase / width * 0.5f;
+            } else {
+                distPhase2 = 0.5f + (phase - width) / (1.0f - width) * 0.5f;
+            }
+            pulse = cosf(distPhase2 * 2.0f * PI);
+            out = (saw + pulse) * 0.5f;
+            break;
+        }
+        case PD_WAVE_RESO1: {
+            // Resonant 1: triangle window modulating cosine
+            float window = 1.0f - fabsf(2.0f * phase - 1.0f);  // Triangle 0->1->0
+            float resoFreq = 1.0f + d * 7.0f;  // 1-8x resonance
+            out = window * cosf(phase * resoFreq * 2.0f * PI);
+            break;
+        }
+        case PD_WAVE_RESO2: {
+            // Resonant 2: trapezoid window
+            float window;
+            if (phase < 0.25f) {
+                window = phase * 4.0f;
+            } else if (phase < 0.75f) {
+                window = 1.0f;
+            } else {
+                window = (1.0f - phase) * 4.0f;
+            }
+            float resoFreq = 1.0f + d * 7.0f;
+            out = window * cosf(phase * resoFreq * 2.0f * PI);
+            break;
+        }
+        case PD_WAVE_RESO3: {
+            // Resonant 3: sawtooth window (classic CZ resonance)
+            float window = 1.0f - phase;  // Saw down 1->0
+            float resoFreq = 1.0f + d * 7.0f;
+            out = window * cosf(phase * resoFreq * 2.0f * PI);
+            break;
+        }
+        default:
+            out = cosf(phase * 2.0f * PI);
+            break;
+    }
+    
+    return out;
+}
+
+// Ideal circular membrane mode ratios (Bessel function zeros)
+static const float membraneRatios[6] = { 1.0f, 1.594f, 2.136f, 2.296f, 2.653f, 2.918f };
+
+// Initialize membrane with preset
+static void initMembranePreset(MembraneSettings *ms, MembranePreset preset) {
+    ms->preset = preset;
+    ms->pitchBendTime = 0.0f;
+    
+    // Reset phases
+    for (int i = 0; i < 6; i++) {
+        ms->modePhases[i] = 0.0f;
+        ms->modeFreqs[i] = membraneRatios[i];
+    }
+    
+    switch (preset) {
+        case MEMBRANE_TABLA:
+            // Tabla: strong fundamental, characteristic "singing" quality
+            ms->modeAmps[0] = 1.0f;
+            ms->modeAmps[1] = 0.6f;
+            ms->modeAmps[2] = 0.4f;
+            ms->modeAmps[3] = 0.3f;
+            ms->modeAmps[4] = 0.2f;
+            ms->modeAmps[5] = 0.1f;
+            ms->modeDecays[0] = 1.5f;
+            ms->modeDecays[1] = 1.2f;
+            ms->modeDecays[2] = 0.8f;
+            ms->modeDecays[3] = 0.5f;
+            ms->modeDecays[4] = 0.3f;
+            ms->modeDecays[5] = 0.2f;
+            ms->tension = 0.8f;
+            ms->damping = 0.3f;
+            ms->strikePos = 0.3f;
+            ms->pitchBend = 0.15f;      // Characteristic tabla pitch bend
+            ms->pitchBendDecay = 0.08f;
+            break;
+            
+        case MEMBRANE_CONGA:
+            // Conga: warm, longer sustain, less pitch bend
+            ms->modeAmps[0] = 1.0f;
+            ms->modeAmps[1] = 0.5f;
+            ms->modeAmps[2] = 0.3f;
+            ms->modeAmps[3] = 0.2f;
+            ms->modeAmps[4] = 0.1f;
+            ms->modeAmps[5] = 0.05f;
+            ms->modeDecays[0] = 2.0f;
+            ms->modeDecays[1] = 1.5f;
+            ms->modeDecays[2] = 1.0f;
+            ms->modeDecays[3] = 0.6f;
+            ms->modeDecays[4] = 0.4f;
+            ms->modeDecays[5] = 0.2f;
+            ms->tension = 0.6f;
+            ms->damping = 0.2f;
+            ms->strikePos = 0.4f;
+            ms->pitchBend = 0.08f;
+            ms->pitchBendDecay = 0.1f;
+            break;
+            
+        case MEMBRANE_BONGO:
+            // Bongo: bright, short, snappy
+            ms->modeAmps[0] = 1.0f;
+            ms->modeAmps[1] = 0.7f;
+            ms->modeAmps[2] = 0.5f;
+            ms->modeAmps[3] = 0.4f;
+            ms->modeAmps[4] = 0.3f;
+            ms->modeAmps[5] = 0.2f;
+            ms->modeDecays[0] = 0.6f;
+            ms->modeDecays[1] = 0.4f;
+            ms->modeDecays[2] = 0.3f;
+            ms->modeDecays[3] = 0.2f;
+            ms->modeDecays[4] = 0.15f;
+            ms->modeDecays[5] = 0.1f;
+            ms->tension = 0.9f;
+            ms->damping = 0.5f;
+            ms->strikePos = 0.2f;
+            ms->pitchBend = 0.05f;
+            ms->pitchBendDecay = 0.05f;
+            break;
+            
+        case MEMBRANE_DJEMBE:
+            // Djembe: wide dynamic range, bass to slap
+            ms->modeAmps[0] = 1.0f;
+            ms->modeAmps[1] = 0.4f;
+            ms->modeAmps[2] = 0.5f;
+            ms->modeAmps[3] = 0.3f;
+            ms->modeAmps[4] = 0.25f;
+            ms->modeAmps[5] = 0.15f;
+            ms->modeDecays[0] = 1.8f;
+            ms->modeDecays[1] = 1.0f;
+            ms->modeDecays[2] = 0.7f;
+            ms->modeDecays[3] = 0.5f;
+            ms->modeDecays[4] = 0.3f;
+            ms->modeDecays[5] = 0.2f;
+            ms->tension = 0.7f;
+            ms->damping = 0.25f;
+            ms->strikePos = 0.35f;
+            ms->pitchBend = 0.1f;
+            ms->pitchBendDecay = 0.12f;
+            break;
+            
+        case MEMBRANE_TOM:
+        default:
+            // Tom: deep, punchy
+            ms->modeAmps[0] = 1.0f;
+            ms->modeAmps[1] = 0.3f;
+            ms->modeAmps[2] = 0.2f;
+            ms->modeAmps[3] = 0.15f;
+            ms->modeAmps[4] = 0.1f;
+            ms->modeAmps[5] = 0.05f;
+            ms->modeDecays[0] = 1.2f;
+            ms->modeDecays[1] = 0.8f;
+            ms->modeDecays[2] = 0.5f;
+            ms->modeDecays[3] = 0.3f;
+            ms->modeDecays[4] = 0.2f;
+            ms->modeDecays[5] = 0.1f;
+            ms->tension = 0.5f;
+            ms->damping = 0.4f;
+            ms->strikePos = 0.5f;
+            ms->pitchBend = 0.2f;
+            ms->pitchBendDecay = 0.06f;
+            break;
+    }
+}
+
+// Process membrane oscillator
+static float processMembraneOscillator(Voice *v, float sampleRate) {
+    MembraneSettings *ms = &v->membraneSettings;
+    float dt = 1.0f / sampleRate;
+    float out = 0.0f;
+    
+    // Pitch bend envelope (characteristic of membranes - pitch drops after strike)
+    float bendMult = 1.0f;
+    if (ms->pitchBend > 0.0f && ms->pitchBendDecay > 0.0f) {
+        float bendEnv = expf(-ms->pitchBendTime / ms->pitchBendDecay);
+        bendMult = 1.0f + ms->pitchBend * bendEnv;
+        ms->pitchBendTime += dt;
+    }
+    
+    // Sum contribution from each membrane mode
+    for (int i = 0; i < 6; i++) {
+        float amp = ms->modeAmps[i];
+        if (amp < 0.001f) continue;
+        
+        // Calculate mode frequency
+        float modeFreq = v->frequency * ms->modeFreqs[i] * bendMult;
+        
+        // Skip if above Nyquist
+        if (modeFreq >= sampleRate * 0.5f) continue;
+        
+        // Advance phase
+        ms->modePhases[i] += modeFreq * dt;
+        if (ms->modePhases[i] >= 1.0f) ms->modePhases[i] -= 1.0f;
+        
+        // Generate sine for this mode
+        float modeSample = sinf(ms->modePhases[i] * 2.0f * PI);
+        
+        // Strike position affects mode amplitudes (center vs edge)
+        // Center strike emphasizes fundamental, edge emphasizes higher modes
+        float posScale = 1.0f;
+        if (i > 0) {
+            float edgeBoost = ms->strikePos * (float)i * 0.15f;
+            float centerBoost = (1.0f - ms->strikePos) * (1.0f / (float)(i + 1));
+            posScale = centerBoost + edgeBoost;
+        }
+        
+        out += modeSample * amp * posScale;
+        
+        // Per-mode decay
+        float decayRate = ms->damping / ms->modeDecays[i];
+        ms->modeAmps[i] *= (1.0f - decayRate * dt);
+        if (ms->modeAmps[i] < 0.0001f) ms->modeAmps[i] = 0.0f;
+    }
+    
+    return out * 0.6f;
+}
+
+// Initialize bird with preset
+static void initBirdPreset(BirdSettings *bs, BirdType type, float baseFreq) {
+    bs->type = type;
+    bs->chirpTime = 0.0f;
+    bs->trillPhase = 0.0f;
+    bs->amPhase = 0.0f;
+    bs->envTime = 0.0f;
+    bs->envLevel = 0.0f;
+    bs->noteIndex = 0;
+    bs->noteTimer = 0.0f;
+    bs->inGap = false;
+    
+    switch (type) {
+        case BIRD_CHIRP:
+            // Classic bird chirp - frequency sweep up or down
+            bs->startFreq = baseFreq * 0.7f;
+            bs->endFreq = baseFreq * 1.5f;
+            bs->chirpDuration = 0.15f;
+            bs->chirpCurve = 0.3f;  // Slight curve
+            bs->trillRate = 0.0f;
+            bs->trillDepth = 0.0f;
+            bs->amRate = 0.0f;
+            bs->amDepth = 0.0f;
+            bs->harmonic2 = 0.2f;
+            bs->harmonic3 = 0.1f;
+            bs->attackTime = 0.01f;
+            bs->holdTime = 0.08f;
+            bs->decayTime = 0.06f;
+            bs->noteDuration = 0.15f;
+            bs->noteGap = 0.0f;
+            break;
+            
+        case BIRD_TRILL:
+            // Rapid repeated notes (like a finch)
+            bs->startFreq = baseFreq;
+            bs->endFreq = baseFreq * 1.1f;
+            bs->chirpDuration = 0.05f;
+            bs->chirpCurve = 0.0f;
+            bs->trillRate = 25.0f;  // Fast pitch trill
+            bs->trillDepth = 1.5f;  // Semitones
+            bs->amRate = 0.0f;
+            bs->amDepth = 0.0f;
+            bs->harmonic2 = 0.15f;
+            bs->harmonic3 = 0.05f;
+            bs->attackTime = 0.005f;
+            bs->holdTime = 0.03f;
+            bs->decayTime = 0.02f;
+            bs->noteDuration = 0.05f;
+            bs->noteGap = 0.02f;
+            break;
+            
+        case BIRD_WARBLE:
+            // Wandering pitch with amplitude flutter (like a canary)
+            bs->startFreq = baseFreq;
+            bs->endFreq = baseFreq * 1.2f;
+            bs->chirpDuration = 0.4f;
+            bs->chirpCurve = 0.0f;
+            bs->trillRate = 8.0f;   // Slower warble
+            bs->trillDepth = 3.0f;  // Wide pitch variation
+            bs->amRate = 12.0f;     // Flutter
+            bs->amDepth = 0.3f;
+            bs->harmonic2 = 0.25f;
+            bs->harmonic3 = 0.15f;
+            bs->attackTime = 0.02f;
+            bs->holdTime = 0.3f;
+            bs->decayTime = 0.08f;
+            bs->noteDuration = 0.4f;
+            bs->noteGap = 0.0f;
+            break;
+            
+        case BIRD_TWEET:
+            // Short staccato call (like a sparrow)
+            bs->startFreq = baseFreq * 1.2f;
+            bs->endFreq = baseFreq * 0.9f;  // Down-chirp
+            bs->chirpDuration = 0.06f;
+            bs->chirpCurve = -0.5f;
+            bs->trillRate = 0.0f;
+            bs->trillDepth = 0.0f;
+            bs->amRate = 0.0f;
+            bs->amDepth = 0.0f;
+            bs->harmonic2 = 0.1f;
+            bs->harmonic3 = 0.05f;
+            bs->attackTime = 0.003f;
+            bs->holdTime = 0.03f;
+            bs->decayTime = 0.03f;
+            bs->noteDuration = 0.06f;
+            bs->noteGap = 0.1f;
+            break;
+            
+        case BIRD_WHISTLE:
+            // Pure sustained whistle (like a robin)
+            bs->startFreq = baseFreq;
+            bs->endFreq = baseFreq * 1.05f;  // Slight rise
+            bs->chirpDuration = 0.5f;
+            bs->chirpCurve = 0.0f;
+            bs->trillRate = 5.0f;   // Gentle vibrato
+            bs->trillDepth = 0.3f;
+            bs->amRate = 0.0f;
+            bs->amDepth = 0.0f;
+            bs->harmonic2 = 0.05f;  // Very pure
+            bs->harmonic3 = 0.02f;
+            bs->attackTime = 0.03f;
+            bs->holdTime = 0.4f;
+            bs->decayTime = 0.07f;
+            bs->noteDuration = 0.5f;
+            bs->noteGap = 0.0f;
+            break;
+            
+        case BIRD_CUCKOO:
+        default:
+            // Two-tone descending call
+            bs->startFreq = baseFreq;
+            bs->endFreq = baseFreq * 0.8f;  // Minor third down
+            bs->chirpDuration = 0.25f;
+            bs->chirpCurve = 0.0f;
+            bs->trillRate = 0.0f;
+            bs->trillDepth = 0.0f;
+            bs->amRate = 0.0f;
+            bs->amDepth = 0.0f;
+            bs->harmonic2 = 0.3f;
+            bs->harmonic3 = 0.1f;
+            bs->attackTime = 0.02f;
+            bs->holdTime = 0.18f;
+            bs->decayTime = 0.05f;
+            bs->noteDuration = 0.25f;
+            bs->noteGap = 0.15f;
+            break;
+    }
+}
+
+// Process bird oscillator
+static float processBirdOscillator(Voice *v, float sampleRate) {
+    BirdSettings *bs = &v->birdSettings;
+    float dt = 1.0f / sampleRate;
+    
+    // Update note timer (for patterns like trill, cuckoo)
+    bs->noteTimer += dt;
+    
+    // Handle gaps between notes
+    if (bs->inGap) {
+        if (bs->noteTimer >= bs->noteGap) {
+            bs->inGap = false;
+            bs->noteTimer = 0.0f;
+            bs->chirpTime = 0.0f;
+            bs->envTime = 0.0f;
+            bs->noteIndex++;
+            
+            // For cuckoo: alternate between two pitches
+            if (bs->type == BIRD_CUCKOO && bs->noteIndex == 1) {
+                bs->startFreq *= 0.75f;  // Drop to lower note
+                bs->endFreq *= 0.75f;
+            }
+        }
+        return 0.0f;
+    }
+    
+    // Check if note is done
+    float totalNoteTime = bs->attackTime + bs->holdTime + bs->decayTime;
+    if (bs->noteTimer >= totalNoteTime) {
+        if (bs->noteGap > 0.0f && bs->noteIndex < 5) {  // Max 5 repeats
+            bs->inGap = true;
+            bs->noteTimer = 0.0f;
+            return 0.0f;
+        }
+    }
+    
+    // Envelope (attack-hold-decay)
+    bs->envTime += dt;
+    if (bs->envTime < bs->attackTime) {
+        bs->envLevel = bs->envTime / bs->attackTime;
+    } else if (bs->envTime < bs->attackTime + bs->holdTime) {
+        bs->envLevel = 1.0f;
+    } else {
+        float decayProgress = (bs->envTime - bs->attackTime - bs->holdTime) / bs->decayTime;
+        bs->envLevel = 1.0f - decayProgress;
+        if (bs->envLevel < 0.0f) bs->envLevel = 0.0f;
+    }
+    
+    // Chirp time progression
+    bs->chirpTime += dt;
+    float chirpProgress = bs->chirpTime / bs->chirpDuration;
+    if (chirpProgress > 1.0f) chirpProgress = 1.0f;
+    
+    // Apply curve to chirp
+    float curvedProgress = chirpProgress;
+    if (bs->chirpCurve > 0.0f) {
+        // Exponential up (slow start, fast end)
+        curvedProgress = powf(chirpProgress, 1.0f + bs->chirpCurve * 2.0f);
+    } else if (bs->chirpCurve < 0.0f) {
+        // Exponential down (fast start, slow end)
+        curvedProgress = 1.0f - powf(1.0f - chirpProgress, 1.0f - bs->chirpCurve * 2.0f);
+    }
+    
+    // Calculate current frequency (log interpolation for musical pitch)
+    float logStart = logf(bs->startFreq);
+    float logEnd = logf(bs->endFreq);
+    float currentFreq = expf(logStart + (logEnd - logStart) * curvedProgress);
+    
+    // Apply trill modulation
+    if (bs->trillRate > 0.0f && bs->trillDepth > 0.0f) {
+        bs->trillPhase += bs->trillRate * dt;
+        if (bs->trillPhase >= 1.0f) bs->trillPhase -= 1.0f;
+        float trillMod = sinf(bs->trillPhase * 2.0f * PI) * bs->trillDepth;
+        currentFreq *= powf(2.0f, trillMod / 12.0f);
+    }
+    
+    // Update voice frequency and advance phase
+    v->frequency = currentFreq;
+    v->phase += currentFreq / sampleRate;
+    if (v->phase >= 1.0f) v->phase -= 1.0f;
+    
+    // Generate waveform (sine with harmonics)
+    float out = sinf(v->phase * 2.0f * PI);
+    if (bs->harmonic2 > 0.0f) {
+        out += sinf(v->phase * 4.0f * PI) * bs->harmonic2;
+    }
+    if (bs->harmonic3 > 0.0f) {
+        out += sinf(v->phase * 6.0f * PI) * bs->harmonic3;
+    }
+    
+    // Normalize
+    float harmonicSum = 1.0f + bs->harmonic2 + bs->harmonic3;
+    out /= harmonicSum;
+    
+    // Apply AM (flutter)
+    if (bs->amRate > 0.0f && bs->amDepth > 0.0f) {
+        bs->amPhase += bs->amRate * dt;
+        if (bs->amPhase >= 1.0f) bs->amPhase -= 1.0f;
+        float amMod = 1.0f - bs->amDepth * (0.5f + 0.5f * sinf(bs->amPhase * 2.0f * PI));
+        out *= amMod;
+    }
+    
+    // Apply envelope
+    out *= bs->envLevel;
+    
+    return out * 0.8f;
+}
+
 // Initialize Karplus-Strong buffer with noise burst (called when note starts)
 static void initPluck(Voice *v, float frequency, float sampleRate, float brightness, float damping) {
     // Calculate delay length from frequency
@@ -1237,6 +1918,33 @@ static float processVoice(Voice *v, float sampleRate) {
         }
     }
     
+    // Glide/portamento processing (exponential glide for musical feel)
+    if (v->glideRate > 0.0f) {
+        float ratio = v->baseFrequency / v->targetFrequency;
+        // Only process if we're not already at target
+        if (ratio < 0.9999f || ratio > 1.0001f) {
+            // Exponential interpolation: move a fraction of the remaining distance each frame
+            float glideSpeed = v->glideRate * dt * 6.0f;  // Scale factor for smooth glide
+            if (glideSpeed > 1.0f) glideSpeed = 1.0f;
+            
+            // Interpolate in log space for musical pitch glide
+            float logBase = logf(v->baseFrequency);
+            float logTarget = logf(v->targetFrequency);
+            float logNew = logBase + (logTarget - logBase) * glideSpeed;
+            v->baseFrequency = expf(logNew);
+            
+            // Snap to target when very close (avoid endless tiny adjustments)
+            ratio = v->baseFrequency / v->targetFrequency;
+            if (ratio > 0.9999f && ratio < 1.0001f) {
+                v->baseFrequency = v->targetFrequency;
+                v->glideRate = 0.0f;  // Glide complete
+            }
+        } else {
+            v->baseFrequency = v->targetFrequency;
+            v->glideRate = 0.0f;
+        }
+    }
+    
     // Start with base frequency
     float freq = v->baseFrequency;
     
@@ -1307,6 +2015,18 @@ static float processVoice(Voice *v, float sampleRate) {
             break;
         case WAVE_GRANULAR:
             sample = processGranularOscillator(v, sampleRate);
+            break;
+        case WAVE_FM:
+            sample = processFMOscillator(v, sampleRate);
+            break;
+        case WAVE_PD:
+            sample = processPDOscillator(v, sampleRate);
+            break;
+        case WAVE_MEMBRANE:
+            sample = processMembraneOscillator(v, sampleRate);
+            break;
+        case WAVE_BIRD:
+            sample = processBirdOscillator(v, sampleRate);
             break;
     }
     
@@ -1481,6 +2201,11 @@ static float malletDamp = 0.0f;           // Release damping (0=ring, 1=mute on 
 // Pluck tweakable for release damping
 static float pluckDamp = 0.0f;            // Release damping (0=ring, 1=mute on release)
 
+// Mono mode and glide/portamento
+static bool monoMode = false;             // Monophonic mode (reuse same voice)
+static float glideTime = 0.1f;            // Glide/portamento time in seconds (0.01-1.0)
+static int monoVoiceIdx = 0;              // Which voice to use in mono mode
+
 // Granular synthesis tweakables
 static int granularScwIndex = 0;          // Which SCW table to use
 static float granularGrainSize = 50.0f;   // Grain size in ms (10-500)
@@ -1492,6 +2217,31 @@ static float granularPitchRandom = 0.0f;  // Pitch randomization in semitones (0
 static float granularAmpRandom = 0.1f;    // Amplitude randomization (0-1)
 static float granularSpread = 0.5f;       // Stereo spread (0-1)
 static bool granularFreeze = false;       // Freeze position
+
+// FM synthesis tweakables
+static float fmModRatio = 2.0f;           // Modulator frequency ratio (0.5-16)
+static float fmModIndex = 1.0f;           // Modulation index/depth (0-10)
+static float fmFeedback = 0.0f;           // Self-modulation amount (0-1)
+
+// Phase distortion (CZ-style) tweakables
+static int pdWaveType = PD_WAVE_SAW;      // Which PD waveform (0-7)
+static float pdDistortion = 0.5f;         // Phase distortion amount (0-1)
+
+// Membrane (tabla/conga) tweakables
+static int membranePreset = MEMBRANE_TABLA;
+static float membraneDamping = 0.3f;      // Overall damping (0.1-1)
+static float membraneStrike = 0.3f;       // Strike position (0=center, 1=edge)
+static float membraneBend = 0.15f;        // Pitch bend amount (0-0.5)
+static float membraneBendDecay = 0.08f;   // Pitch bend decay time (0.02-0.3)
+
+// Bird synthesis tweakables
+static int birdType = BIRD_CHIRP;
+static float birdChirpRange = 1.0f;       // Chirp frequency range multiplier (0.5-2)
+static float birdTrillRate = 0.0f;        // Trill rate Hz (0-30)
+static float birdTrillDepth = 0.0f;       // Trill depth semitones (0-5)
+static float birdAmRate = 0.0f;           // AM/flutter rate Hz (0-20)
+static float birdAmDepth = 0.0f;          // AM depth (0-1)
+static float birdHarmonics = 0.2f;        // Harmonic content (0-1)
 
 // ============================================================================
 // VOICE INIT HELPERS
@@ -1560,13 +2310,41 @@ static void resetFilterEnvelope(Voice *v, bool useGlobalParams) {
 
 // Play a note using global parameters
 static int playNote(float freq, WaveType wave) {
-    int voiceIdx = findVoice();
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        // Check if voice is already playing (for glide)
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
     Voice *v = &voices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
+    if (isGlide && glideTime > 0.0f) {
+        // Glide: keep current frequency, set target
+        v->targetFrequency = freq;
+        // Calculate glide rate (we'll do exponential glide in processVoice)
+        v->glideRate = 1.0f / glideTime;
+        // Don't reset phase or envelope - continue playing
+        // Use baseFrequency (not frequency which has LFO applied)
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq; // Safety check
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+    }
+    
     v->volume = noteVolume;
     v->wave = wave;
     v->pitchSlide = 0.0f;
@@ -1584,17 +2362,19 @@ static int playNote(float freq, WaveType wave) {
     v->decay = noteDecay;
     v->sustain = noteSustain;
     v->release = noteRelease;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
+    if (!isGlide) {
+        // Only reset envelope on new note, not on glide
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, true);
+        resetVoiceLfos(v, true);
+    }
     
     v->filterCutoff = noteFilterCutoff;
     v->filterResonance = noteFilterResonance;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, true);
-    resetVoiceLfos(v, true);
     
     v->arpEnabled = false;
     v->scwIndex = noteScwIndex;
@@ -1604,13 +2384,33 @@ static int playNote(float freq, WaveType wave) {
 
 // Play a vowel sound
 static int playVowel(float freq, VowelType vowel) {
-    int voiceIdx = findVoice();
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
     Voice *v = &voices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
+    if (isGlide && glideTime > 0.0f) {
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / glideTime;
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+    }
+    
     v->volume = noteVolume;
     v->wave = WAVE_VOICE;
     v->pitchSlide = 0.0f;
@@ -1628,17 +2428,18 @@ static int playVowel(float freq, VowelType vowel) {
     v->decay = 0.05f;
     v->sustain = 0.7f;
     v->release = 0.25f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
+    if (!isGlide) {
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, false);
+        resetVoiceLfos(v, false);
+    }
     
     v->filterCutoff = 0.7f;
     v->filterResonance = 0.0f;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, false);
-    resetVoiceLfos(v, false);
     
     v->arpEnabled = false;
     v->scwIndex = -1;
@@ -1729,13 +2530,33 @@ static int playPluck(float freq, float brightness, float damping) {
 
 // Play additive synthesis note
 static int playAdditive(float freq, AdditivePreset preset) {
-    int voiceIdx = findVoice();
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
     Voice *v = &voices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
+    if (isGlide && glideTime > 0.0f) {
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / glideTime;
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+    }
+    
     v->volume = noteVolume;
     v->wave = WAVE_ADDITIVE;
     v->pitchSlide = 0.0f;
@@ -1753,17 +2574,18 @@ static int playAdditive(float freq, AdditivePreset preset) {
     v->decay = noteDecay;
     v->sustain = noteSustain;
     v->release = noteRelease;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
+    if (!isGlide) {
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, true);
+        resetVoiceLfos(v, true);
+    }
     
     v->filterCutoff = noteFilterCutoff;
     v->filterResonance = noteFilterResonance;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, true);
-    resetVoiceLfos(v, true);
     
     v->arpEnabled = false;
     v->scwIndex = -1;
@@ -1830,13 +2652,33 @@ static int playMallet(float freq, MalletPreset preset) {
 
 // Play granular synthesis note
 static int playGranular(float freq, int scwIndex) {
-    int voiceIdx = findVoice();
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
     Voice *v = &voices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
+    if (isGlide && glideTime > 0.0f) {
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / glideTime;
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+    }
+    
     v->volume = noteVolume;
     v->wave = WAVE_GRANULAR;
     v->pitchSlide = 0.0f;
@@ -1854,17 +2696,18 @@ static int playGranular(float freq, int scwIndex) {
     v->decay = noteDecay;
     v->sustain = noteSustain;
     v->release = noteRelease;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
+    if (!isGlide) {
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, true);
+        resetVoiceLfos(v, true);
+    }
     
     v->filterCutoff = noteFilterCutoff;
     v->filterResonance = noteFilterResonance;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, true);
-    resetVoiceLfos(v, true);
     
     v->arpEnabled = false;
     v->scwIndex = scwIndex;
@@ -1882,6 +2725,260 @@ static int playGranular(float freq, int scwIndex) {
     v->granularSettings.ampRandom = granularAmpRandom;
     v->granularSettings.spread = granularSpread;
     v->granularSettings.freeze = granularFreeze;
+    
+    return voiceIdx;
+}
+
+// Play FM synthesis note
+static int playFM(float freq) {
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    if (isGlide && glideTime > 0.0f) {
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / glideTime;
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+    }
+    
+    v->volume = noteVolume;
+    v->wave = WAVE_FM;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = noteVibratoRate;
+    v->vibratoDepth = noteVibratoDepth;
+    v->vibratoPhase = 0.0f;
+    
+    v->attack = noteAttack;
+    v->decay = noteDecay;
+    v->sustain = noteSustain;
+    v->release = noteRelease;
+    if (!isGlide) {
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, true);
+        resetVoiceLfos(v, true);
+    }
+    
+    v->filterCutoff = noteFilterCutoff;
+    v->filterResonance = noteFilterResonance;
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    // Initialize FM settings
+    v->fmSettings.modRatio = fmModRatio;
+    v->fmSettings.modIndex = fmModIndex;
+    v->fmSettings.feedback = fmFeedback;
+    v->fmSettings.modPhase = 0.0f;
+    v->fmSettings.fbSample = 0.0f;
+    
+    return voiceIdx;
+}
+
+// Play phase distortion (CZ-style) note
+static int playPD(float freq) {
+    int voiceIdx;
+    bool isGlide = false;
+    
+    if (monoMode) {
+        voiceIdx = monoVoiceIdx;
+        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+            isGlide = true;
+        }
+    } else {
+        voiceIdx = findVoice();
+    }
+    
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    if (isGlide && glideTime > 0.0f) {
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / glideTime;
+        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
+    } else {
+        v->frequency = freq;
+        v->baseFrequency = freq;
+        v->targetFrequency = freq;
+        v->glideRate = 0.0f;
+        v->phase = 0.0f;
+    }
+    
+    v->volume = noteVolume;
+    v->wave = WAVE_PD;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = noteVibratoRate;
+    v->vibratoDepth = noteVibratoDepth;
+    v->vibratoPhase = 0.0f;
+    
+    v->attack = noteAttack;
+    v->decay = noteDecay;
+    v->sustain = noteSustain;
+    v->release = noteRelease;
+    if (!isGlide) {
+        v->envPhase = 0.0f;
+        v->envLevel = 0.0f;
+        v->envStage = 1;
+        v->filterLp = oldFilterLp * 0.3f;
+        v->filterBp = 0.0f;
+        resetFilterEnvelope(v, true);
+        resetVoiceLfos(v, true);
+    }
+    
+    v->filterCutoff = noteFilterCutoff;
+    v->filterResonance = noteFilterResonance;
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    // Initialize PD settings
+    v->pdSettings.waveType = (PDWaveType)pdWaveType;
+    v->pdSettings.distortion = pdDistortion;
+    
+    return voiceIdx;
+}
+
+// Play membrane (tabla/conga) note
+static int playMembrane(float freq, MembranePreset preset) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_MEMBRANE;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = 0.0f;
+    v->vibratoDepth = 0.0f;
+    v->vibratoPhase = 0.0f;
+    
+    // Membrane: instant attack, decay handled by modal synthesis
+    v->attack = 0.002f;
+    v->decay = 3.0f;
+    v->sustain = 0.0f;
+    v->release = 0.05f;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = 1.0f;
+    v->filterResonance = 0.0f;
+    v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    // Initialize membrane with preset, then apply tweakables
+    initMembranePreset(&v->membraneSettings, preset);
+    v->membraneSettings.damping = membraneDamping;
+    v->membraneSettings.strikePos = membraneStrike;
+    v->membraneSettings.pitchBend = membraneBend;
+    v->membraneSettings.pitchBendDecay = membraneBendDecay;
+    
+    return voiceIdx;
+}
+
+// Play bird vocalization
+static int playBird(float freq, BirdType type) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_BIRD;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = 0.0f;
+    v->vibratoDepth = 0.0f;
+    v->vibratoPhase = 0.0f;
+    
+    // Bird has its own envelope, but we need ADSR active
+    v->attack = 0.001f;
+    v->decay = 2.0f;
+    v->sustain = 1.0f;
+    v->release = 0.05f;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = 1.0f;
+    v->filterResonance = 0.0f;
+    v->filterLp = 0.0f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    // Initialize bird preset then apply tweakables
+    initBirdPreset(&v->birdSettings, type, freq);
+    
+    // Apply tweakable overrides
+    v->birdSettings.startFreq *= (2.0f - birdChirpRange);  // Inverse for start
+    v->birdSettings.endFreq *= birdChirpRange;
+    if (birdTrillRate > 0.0f) {
+        v->birdSettings.trillRate = birdTrillRate;
+        v->birdSettings.trillDepth = birdTrillDepth;
+    }
+    if (birdAmRate > 0.0f) {
+        v->birdSettings.amRate = birdAmRate;
+        v->birdSettings.amDepth = birdAmDepth;
+    }
+    v->birdSettings.harmonic2 = birdHarmonics * 0.5f;
+    v->birdSettings.harmonic3 = birdHarmonics * 0.3f;
     
     return voiceIdx;
 }
