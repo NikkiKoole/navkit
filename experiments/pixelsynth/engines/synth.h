@@ -32,6 +32,7 @@ typedef enum {
     WAVE_PLUCK,      // Karplus-Strong plucked string
     WAVE_ADDITIVE,   // Additive synthesis (sine harmonics)
     WAVE_MALLET,     // Two-mass mallet percussion (marimba/vibes)
+    WAVE_GRANULAR,   // Granular synthesis using SCW tables
 } WaveType;
 
 // Vowel types for formant synthesis
@@ -121,6 +122,44 @@ typedef struct {
     
     MalletPreset preset;
 } MalletSettings;
+
+// Granular synthesis settings
+#define GRANULAR_MAX_GRAINS 32
+
+typedef struct {
+    float position;           // Position in grain (0-1)
+    float positionInc;        // Playback speed (pitch)
+    float envPhase;           // Envelope phase (0-1)
+    float envInc;             // Envelope increment per sample
+    float amplitude;          // Grain amplitude
+    float pan;                // Stereo pan (-1 to 1), for future stereo support
+    int bufferPos;            // Starting position in SCW buffer (in samples)
+    bool active;              // Is this grain playing?
+} Grain;
+
+typedef struct {
+    Grain grains[GRANULAR_MAX_GRAINS];
+    int scwIndex;             // Which SCW table to use as source
+    
+    // Grain parameters
+    float grainSize;          // Grain duration in ms (10-500)
+    float grainDensity;       // Grains per second (1-100)
+    float position;           // Read position in buffer (0-1)
+    float positionRandom;     // Position randomization amount (0-1)
+    float pitch;              // Playback pitch multiplier (0.25-4.0)
+    float pitchRandom;        // Pitch randomization in semitones (0-12)
+    float amplitude;          // Overall amplitude (0-1)
+    float ampRandom;          // Amplitude randomization (0-1)
+    float spread;             // Stereo spread (0-1), for future use
+    
+    // Internal state
+    float spawnTimer;         // Time until next grain spawn
+    float spawnInterval;      // Interval between grains (derived from density)
+    int nextGrain;            // Index of next grain slot to use
+    
+    // Freeze mode
+    bool freeze;              // When true, position doesn't follow note pitch
+} GranularSettings;
 
 // Voice structure (polyphonic synth voice)
 typedef struct {
@@ -222,6 +261,9 @@ typedef struct {
     
     // Mallet percussion
     MalletSettings malletSettings;
+    
+    // Granular synthesis
+    GranularSettings granularSettings;
 } Voice;
 
 // ============================================================================
@@ -229,7 +271,7 @@ typedef struct {
 // ============================================================================
 
 #define SCW_MAX_SIZE 2048
-#define SCW_MAX_SLOTS 8
+#define SCW_MAX_SLOTS 256
 
 typedef struct {
     float data[SCW_MAX_SIZE];
@@ -864,6 +906,145 @@ static float processMalletOscillator(Voice *v, float sampleRate) {
     return out;
 }
 
+// ============================================================================
+// GRANULAR SYNTHESIS
+// ============================================================================
+
+// Hanning window for grain envelope (smooth, click-free)
+static float grainEnvelope(float phase) {
+    // Hanning window: 0.5 * (1 - cos(2*PI*phase))
+    return 0.5f * (1.0f - cosf(phase * 2.0f * PI));
+}
+
+// Initialize granular settings
+static void initGranularSettings(GranularSettings *gs, int scwIndex) {
+    gs->scwIndex = scwIndex;
+    gs->grainSize = 50.0f;        // 50ms default
+    gs->grainDensity = 20.0f;     // 20 grains/sec
+    gs->position = 0.5f;          // Middle of buffer
+    gs->positionRandom = 0.1f;    // 10% randomization
+    gs->pitch = 1.0f;             // Normal pitch
+    gs->pitchRandom = 0.0f;       // No pitch randomization
+    gs->amplitude = 0.7f;
+    gs->ampRandom = 0.1f;
+    gs->spread = 0.5f;
+    gs->freeze = false;
+    
+    gs->spawnTimer = 0.0f;
+    gs->spawnInterval = 1.0f / gs->grainDensity;
+    gs->nextGrain = 0;
+    
+    // Initialize all grains as inactive
+    for (int i = 0; i < GRANULAR_MAX_GRAINS; i++) {
+        gs->grains[i].active = false;
+    }
+}
+
+// Spawn a new grain
+static void spawnGrain(GranularSettings *gs, float sampleRate) {
+    // Find the next grain slot (round-robin)
+    Grain *g = &gs->grains[gs->nextGrain];
+    gs->nextGrain = (gs->nextGrain + 1) % GRANULAR_MAX_GRAINS;
+    
+    // Get source table
+    if (gs->scwIndex < 0 || gs->scwIndex >= scwCount || !scwTables[gs->scwIndex].loaded) {
+        return;
+    }
+    SCWTable *table = &scwTables[gs->scwIndex];
+    
+    // Calculate grain parameters with randomization
+    float posRand = (noise() * 0.5f + 0.5f) * gs->positionRandom;
+    float grainPos = gs->position + posRand - gs->positionRandom * 0.5f;
+    grainPos = clampf(grainPos, 0.0f, 1.0f);
+    
+    // Pitch randomization in semitones
+    float pitchRand = noise() * gs->pitchRandom;
+    float pitch = gs->pitch * powf(2.0f, pitchRand / 12.0f);
+    
+    // Amplitude randomization
+    float ampRand = 1.0f + noise() * gs->ampRandom;
+    
+    // Setup grain
+    g->active = true;
+    g->bufferPos = (int)(grainPos * (table->size - 1));
+    g->position = 0.0f;
+    g->positionInc = pitch / (float)table->size;  // Normalized increment
+    g->envPhase = 0.0f;
+    
+    // Calculate envelope increment based on grain size
+    float grainSamples = (gs->grainSize / 1000.0f) * sampleRate;
+    g->envInc = 1.0f / grainSamples;
+    
+    g->amplitude = gs->amplitude * ampRand;
+    g->pan = noise() * gs->spread;  // Random pan within spread
+}
+
+// Process granular oscillator
+static float processGranularOscillator(Voice *v, float sampleRate) {
+    GranularSettings *gs = &v->granularSettings;
+    float dt = 1.0f / sampleRate;
+    
+    // Get source table
+    if (gs->scwIndex < 0 || gs->scwIndex >= scwCount || !scwTables[gs->scwIndex].loaded) {
+        return 0.0f;
+    }
+    SCWTable *table = &scwTables[gs->scwIndex];
+    
+    // Update spawn interval based on density
+    gs->spawnInterval = 1.0f / gs->grainDensity;
+    
+    // Spawn new grains
+    gs->spawnTimer += dt;
+    while (gs->spawnTimer >= gs->spawnInterval) {
+        gs->spawnTimer -= gs->spawnInterval;
+        spawnGrain(gs, sampleRate);
+    }
+    
+    // Process all active grains
+    float out = 0.0f;
+    
+    for (int i = 0; i < GRANULAR_MAX_GRAINS; i++) {
+        Grain *g = &gs->grains[i];
+        if (!g->active) continue;
+        
+        // Read from buffer with linear interpolation
+        float readPos = g->bufferPos + g->position * table->size;
+        
+        // Wrap around buffer
+        while (readPos >= table->size) readPos -= table->size;
+        while (readPos < 0) readPos += table->size;
+        
+        int i0 = (int)readPos % table->size;
+        int i1 = (i0 + 1) % table->size;
+        float frac = readPos - (int)readPos;
+        float sample = table->data[i0] * (1.0f - frac) + table->data[i1] * frac;
+        
+        // Apply grain envelope
+        float env = grainEnvelope(g->envPhase);
+        
+        // Accumulate
+        out += sample * env * g->amplitude;
+        
+        // Advance grain position and envelope
+        g->position += g->positionInc;
+        g->envPhase += g->envInc;
+        
+        // Deactivate grain when envelope completes
+        if (g->envPhase >= 1.0f) {
+            g->active = false;
+        }
+    }
+    
+    // Normalize output based on expected overlap
+    // With density D and grain size S (in seconds), expected overlap is D*S
+    float expectedOverlap = gs->grainDensity * (gs->grainSize / 1000.0f);
+    if (expectedOverlap > 1.0f) {
+        out /= sqrtf(expectedOverlap);  // sqrt for more natural loudness scaling
+    }
+    
+    return out * 0.7f;  // Overall level scaling
+}
+
 // Initialize Karplus-Strong buffer with noise burst (called when note starts)
 static void initPluck(Voice *v, float frequency, float sampleRate, float brightness, float damping) {
     // Calculate delay length from frequency
@@ -1033,6 +1214,9 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_MALLET:
             sample = processMalletOscillator(v, sampleRate);
             break;
+        case WAVE_GRANULAR:
+            sample = processGranularOscillator(v, sampleRate);
+            break;
     }
     
     // Process filter envelope
@@ -1198,6 +1382,18 @@ static float malletDamp = 0.0f;           // Release damping (0=ring, 1=mute on 
 
 // Pluck tweakable for release damping
 static float pluckDamp = 0.0f;            // Release damping (0=ring, 1=mute on release)
+
+// Granular synthesis tweakables
+static int granularScwIndex = 0;          // Which SCW table to use
+static float granularGrainSize = 50.0f;   // Grain size in ms (10-500)
+static float granularDensity = 20.0f;     // Grains per second (1-100)
+static float granularPosition = 0.5f;     // Read position in buffer (0-1)
+static float granularPosRandom = 0.1f;    // Position randomization (0-1)
+static float granularPitch = 1.0f;        // Pitch multiplier (0.25-4.0)
+static float granularPitchRandom = 0.0f;  // Pitch randomization in semitones (0-12)
+static float granularAmpRandom = 0.1f;    // Amplitude randomization (0-1)
+static float granularSpread = 0.5f;       // Stereo spread (0-1)
+static bool granularFreeze = false;       // Freeze position
 
 // ============================================================================
 // VOICE INIT HELPERS
@@ -1513,6 +1709,64 @@ static int playMallet(float freq, MalletPreset preset) {
     v->malletSettings.resonance = malletResonance;
     v->malletSettings.tremolo = malletTremolo;
     v->malletSettings.tremoloRate = malletTremoloRate;
+    
+    return voiceIdx;
+}
+
+// Play granular synthesis note
+static int playGranular(float freq, int scwIndex) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_GRANULAR;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = noteVibratoRate;
+    v->vibratoDepth = noteVibratoDepth;
+    v->vibratoPhase = 0.0f;
+    
+    v->attack = noteAttack;
+    v->decay = noteDecay;
+    v->sustain = noteSustain;
+    v->release = noteRelease;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = noteFilterCutoff;
+    v->filterResonance = noteFilterResonance;
+    v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, true);
+    resetVoiceLfos(v, true);
+    
+    v->arpEnabled = false;
+    v->scwIndex = scwIndex;
+    
+    // Initialize granular settings
+    initGranularSettings(&v->granularSettings, scwIndex);
+    v->granularSettings.grainSize = granularGrainSize;
+    v->granularSettings.grainDensity = granularDensity;
+    v->granularSettings.position = granularPosition;
+    v->granularSettings.positionRandom = granularPosRandom;
+    // Pitch from keyboard (relative to middle C) * manual pitch control
+    float pitchFromNote = freq / 261.63f;
+    v->granularSettings.pitch = granularPitch * pitchFromNote;
+    v->granularSettings.pitchRandom = granularPitchRandom;
+    v->granularSettings.ampRandom = granularAmpRandom;
+    v->granularSettings.spread = granularSpread;
+    v->granularSettings.freeze = granularFreeze;
     
     return voiceIdx;
 }

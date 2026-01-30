@@ -154,6 +154,13 @@ embed_font: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/font_embed $(font_embed_SRC)
 	./$(BINDIR)/font_embed assets/fonts/comic.fnt assets/fonts/comic_embedded.h
 
+# SCW (Single Cycle Waveform) embedder for pixelsynth
+scw_embed_SRC := experiments/pixelsynth/tools/scw_embed.c
+scw_embed: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/scw_embed $(scw_embed_SRC)
+	./$(BINDIR)/scw_embed experiments/pixelsynth/cycles > experiments/pixelsynth/engines/scw_data.h
+	@echo "Generated experiments/pixelsynth/engines/scw_data.h"
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 
@@ -191,4 +198,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd pixelsynth asan debug fast release atlas embed_font embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd pixelsynth asan debug fast release atlas embed_font embed scw_embed path8 path16 bench bench_jobs
