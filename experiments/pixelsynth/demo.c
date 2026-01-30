@@ -99,6 +99,9 @@ typedef struct {
     float filterHp;       // Highpass filter state
     // Hihat specific - 6 oscillator phases
     float hhPhases[6];
+    // Per-hit parameters (set at trigger time)
+    float velocity;       // Volume multiplier (0.0-1.0)
+    float pitchMod;       // Pitch multiplier (0.5-2.0, 1.0 = normal)
 } DrumVoice;
 
 // Parameters for each drum sound (user-tweakable)
@@ -163,6 +166,11 @@ static void drumKick(void);
 static void drumSnare(void);
 static void drumClosedHH(void);
 static void drumClap(void);
+// Full versions with velocity and pitch for sequencer
+static void drumKickFull(float vel, float pitch);
+static void drumSnareFull(float vel, float pitch);
+static void drumClosedHHFull(float vel, float pitch);
+static void drumClapFull(float vel, float pitch);
 
 // Noise state needs to be declared early for sequencer random
 static unsigned int noiseState = 12345;
@@ -605,6 +613,8 @@ typedef struct {
 
 typedef struct {
     bool steps[SEQ_TRACKS][SEQ_MAX_STEPS];  // Which steps are active
+    float velocity[SEQ_TRACKS][SEQ_MAX_STEPS]; // Velocity per step (0.0-1.0)
+    float pitch[SEQ_TRACKS][SEQ_MAX_STEPS];    // Pitch offset per step (-1.0 to +1.0, 0 = normal)
     int trackLength[SEQ_TRACKS];            // Length per track (for polyrhythm)
     int trackStep[SEQ_TRACKS];              // Current step per track (0 to length-1)
     int trackTick[SEQ_TRACKS];              // Current tick within step per track (for polyrhythm)
@@ -622,7 +632,7 @@ typedef struct {
     
     // Track names and trigger functions
     const char* trackNames[SEQ_TRACKS];
-    void (*triggers[SEQ_TRACKS])(void);
+    void (*triggersFull[SEQ_TRACKS])(float vel, float pitch);  // Trigger with velocity and pitch
 } DrumSequencer;
 
 static DrumSequencer seq = {0};
@@ -680,16 +690,24 @@ static void initSequencer(void) {
     seq.bpm = 120.0f;
     seq.tickTimer = 0.0f;
     
+    // Initialize all velocities and pitches to default
+    for (int t = 0; t < SEQ_TRACKS; t++) {
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+            seq.velocity[t][s] = 0.8f;
+            seq.pitch[t][s] = 0.0f;  // 0 = no offset (1.0x pitch)
+        }
+    }
+    
     // Setup tracks - all start at 16 steps
     seq.trackNames[0] = "Kick";
     seq.trackNames[1] = "Snare";
     seq.trackNames[2] = "HiHat";
     seq.trackNames[3] = "Clap";
     
-    seq.triggers[0] = drumKick;
-    seq.triggers[1] = drumSnare;
-    seq.triggers[2] = drumClosedHH;
-    seq.triggers[3] = drumClap;
+    seq.triggersFull[0] = drumKickFull;
+    seq.triggersFull[1] = drumSnareFull;
+    seq.triggersFull[2] = drumClosedHHFull;
+    seq.triggersFull[3] = drumClapFull;
     
     for (int i = 0; i < SEQ_TRACKS; i++) {
         seq.trackLength[i] = 16;
@@ -728,7 +746,9 @@ static void updateSequencer(float dt) {
             // Check if we should trigger on this tick
             if (seq.steps[track][step] && !seq.trackTriggered[track]) {
                 if (tick >= seq.trackTriggerTick[track]) {
-                    seq.triggers[track]();
+                    // Convert pitch offset (-1 to +1) to multiplier (0.5 to 2.0)
+                    float pitchMod = powf(2.0f, seq.pitch[track][step]);
+                    seq.triggersFull[track](seq.velocity[track][step], pitchMod);
                     seq.trackTriggered[track] = true;
                 }
             }
@@ -1195,8 +1215,8 @@ static float expDecay(float time, float decay) {
     return expf(-time / (decay * 0.368f));  // 0.368 = 1/e, so decay = time to reach ~37%
 }
 
-// Trigger a drum sound
-static void triggerDrum(DrumType type) {
+// Trigger a drum sound with velocity and pitch
+static void triggerDrumFull(DrumType type, float velocity, float pitchMod) {
     DrumVoice *dv = &drumVoices[type];
     dv->active = true;
     dv->time = 0.0f;
@@ -1206,6 +1226,8 @@ static void triggerDrum(DrumType type) {
     dv->ampEnv = 1.0f;
     dv->filterLp = 0.0f;
     dv->filterHp = 0.0f;
+    dv->velocity = velocity;
+    dv->pitchMod = pitchMod;
     
     // Initialize hihat oscillator phases with metallic ratios
     if (type == DRUM_CLOSED_HH || type == DRUM_OPEN_HH) {
@@ -1220,6 +1242,16 @@ static void triggerDrum(DrumType type) {
     }
 }
 
+// Trigger a drum sound with velocity (normal pitch)
+static void triggerDrumWithVel(DrumType type, float velocity) {
+    triggerDrumFull(type, velocity, 1.0f);
+}
+
+// Trigger a drum sound (full velocity, normal pitch)
+static void triggerDrum(DrumType type) {
+    triggerDrumFull(type, 1.0f, 1.0f);
+}
+
 // Process kick drum - sine with pitch envelope + optional click
 static float processKick(DrumVoice *dv, float dt) {
     if (!dv->active) return 0.0f;
@@ -1229,7 +1261,7 @@ static float processKick(DrumVoice *dv, float dt) {
     
     // Pitch envelope: exponential decay from punch pitch to base pitch
     float pitchT = expDecay(dv->time, p->kickPunchDecay);
-    float freq = p->kickPitch + (p->kickPunchPitch - p->kickPitch) * pitchT;
+    float freq = (p->kickPitch + (p->kickPunchPitch - p->kickPitch) * pitchT) * dv->pitchMod;
     
     // Advance phase
     dv->phase += freq * dt;
@@ -1265,9 +1297,9 @@ static float processSnare(DrumVoice *dv, float dt) {
     DrumParams *p = &drumParams;
     dv->time += dt;
     
-    // Two tuned oscillators (body)
-    float freq1 = p->snarePitch;
-    float freq2 = p->snarePitch * 1.5f;  // Fifth above
+    // Two tuned oscillators (body) - apply pitch mod
+    float freq1 = p->snarePitch * dv->pitchMod;
+    float freq2 = p->snarePitch * 1.5f * dv->pitchMod;  // Fifth above
     
     dv->phase += freq1 * dt;
     if (dv->phase >= 1.0f) dv->phase -= 1.0f;
@@ -1352,7 +1384,7 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     static const float hhFreqRatios[6] = {
         1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f
     };
-    float baseFreq = 320.0f + p->hhTone * 200.0f;  // Higher tone = higher base freq
+    float baseFreq = (320.0f + p->hhTone * 200.0f) * dv->pitchMod;  // Higher tone = higher base freq
     
     float sample = 0.0f;
     for (int i = 0; i < 6; i++) {
@@ -1510,23 +1542,23 @@ static float processMaracas(DrumVoice *dv, float dt) {
 static float processDrums(float dt) {
     float sample = 0.0f;
     
-    sample += processKick(&drumVoices[DRUM_KICK], dt);
-    sample += processSnare(&drumVoices[DRUM_SNARE], dt);
-    sample += processClap(&drumVoices[DRUM_CLAP], dt);
-    sample += processHihat(&drumVoices[DRUM_CLOSED_HH], dt, false);
-    sample += processHihat(&drumVoices[DRUM_OPEN_HH], dt, true);
-    sample += processTom(&drumVoices[DRUM_LOW_TOM], dt, 1.0f);
-    sample += processTom(&drumVoices[DRUM_MID_TOM], dt, 1.5f);
-    sample += processTom(&drumVoices[DRUM_HI_TOM], dt, 2.2f);
-    sample += processRimshot(&drumVoices[DRUM_RIMSHOT], dt);
-    sample += processCowbell(&drumVoices[DRUM_COWBELL], dt);
-    sample += processClave(&drumVoices[DRUM_CLAVE], dt);
-    sample += processMaracas(&drumVoices[DRUM_MARACAS], dt);
+    sample += processKick(&drumVoices[DRUM_KICK], dt) * drumVoices[DRUM_KICK].velocity;
+    sample += processSnare(&drumVoices[DRUM_SNARE], dt) * drumVoices[DRUM_SNARE].velocity;
+    sample += processClap(&drumVoices[DRUM_CLAP], dt) * drumVoices[DRUM_CLAP].velocity;
+    sample += processHihat(&drumVoices[DRUM_CLOSED_HH], dt, false) * drumVoices[DRUM_CLOSED_HH].velocity;
+    sample += processHihat(&drumVoices[DRUM_OPEN_HH], dt, true) * drumVoices[DRUM_OPEN_HH].velocity;
+    sample += processTom(&drumVoices[DRUM_LOW_TOM], dt, 1.0f) * drumVoices[DRUM_LOW_TOM].velocity;
+    sample += processTom(&drumVoices[DRUM_MID_TOM], dt, 1.5f) * drumVoices[DRUM_MID_TOM].velocity;
+    sample += processTom(&drumVoices[DRUM_HI_TOM], dt, 2.2f) * drumVoices[DRUM_HI_TOM].velocity;
+    sample += processRimshot(&drumVoices[DRUM_RIMSHOT], dt) * drumVoices[DRUM_RIMSHOT].velocity;
+    sample += processCowbell(&drumVoices[DRUM_COWBELL], dt) * drumVoices[DRUM_COWBELL].velocity;
+    sample += processClave(&drumVoices[DRUM_CLAVE], dt) * drumVoices[DRUM_CLAVE].velocity;
+    sample += processMaracas(&drumVoices[DRUM_MARACAS], dt) * drumVoices[DRUM_MARACAS].velocity;
     
     return sample * drumVolume;
 }
 
-// Convenience functions to trigger drums by name
+// Convenience functions to trigger drums by name (full velocity)
 static void drumKick(void) { triggerDrum(DRUM_KICK); }
 static void drumSnare(void) { triggerDrum(DRUM_SNARE); }
 static void drumClap(void) { triggerDrum(DRUM_CLAP); }
@@ -1539,6 +1571,12 @@ static void drumRimshot(void) { triggerDrum(DRUM_RIMSHOT); }
 static void drumCowbell(void) { triggerDrum(DRUM_COWBELL); }
 static void drumClave(void) { triggerDrum(DRUM_CLAVE); }
 static void drumMaracas(void) { triggerDrum(DRUM_MARACAS); }
+
+// Convenience functions with velocity and pitch (for sequencer)
+static void drumKickFull(float vel, float pitch) { triggerDrumFull(DRUM_KICK, vel, pitch); }
+static void drumSnareFull(float vel, float pitch) { triggerDrumFull(DRUM_SNARE, vel, pitch); }
+static void drumClosedHHFull(float vel, float pitch) { triggerDrumFull(DRUM_CLOSED_HH, vel, pitch); }
+static void drumClapFull(float vel, float pitch) { triggerDrumFull(DRUM_CLAP, vel, pitch); }
 
 // Include generative music system (after drums and before voice functions)
 #include "genmusic.h"
@@ -1928,7 +1966,7 @@ int main(void) {
             if (rootNote != oldRoot) setGenMusicRoot(rootNote);
             
             DraggableFloat(20, 271, "BPM", &genMusic.bpm, 5.0f, 60.0f, 180.0f);
-            DraggableFloat(20, 289, "Swing", &genMusic.swing, 0.5f, 0.0f, 0.5f);
+            DraggableFloat(20, 289, "Swing", &genMusic.swing, 0.025f, 0.0f, 0.5f);
         }
         
         // Show speaking indicator
@@ -1960,9 +1998,9 @@ int main(void) {
         // PWM (only for square)
         if (selectedWave == WAVE_SQUARE) {
             ui_col_sublabel(&col1, "PWM:", ORANGE);
-            ui_col_float(&col1, "Width", &notePulseWidth, 0.5f, 0.1f, 0.9f);
+            ui_col_float(&col1, "Width", &notePulseWidth, 0.05f, 0.1f, 0.9f);
             ui_col_float(&col1, "Rate", &notePwmRate, 0.5f, 0.1f, 20.0f);
-            ui_col_float(&col1, "Depth", &notePwmDepth, 0.5f, 0.0f, 0.4f);
+            ui_col_float(&col1, "Depth", &notePwmDepth, 0.02f, 0.0f, 0.4f);
             ui_col_space(&col1, 4);
         }
         
@@ -1972,23 +2010,23 @@ int main(void) {
         ui_col_space(&col1, 4);
         
         ui_col_sublabel(&col1, "Filter:", ORANGE);
-        ui_col_float(&col1, "Cutoff", &noteFilterCutoff, 0.5f, 0.05f, 1.0f);
+        ui_col_float(&col1, "Cutoff", &noteFilterCutoff, 0.05f, 0.05f, 1.0f);
         ui_col_space(&col1, 4);
         
         ui_col_sublabel(&col1, "Volume:", ORANGE);
-        ui_col_float(&col1, "Note", &noteVolume, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col1, "Master", &masterVolume, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col1, "Note", &noteVolume, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col1, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
         
         // === COLUMN 2: Voice/Speech ===
         UIColumn col2 = ui_column(430, 20, 20);
         
         ui_col_label(&col2, "Vox:", YELLOW);
         ui_col_cycle(&col2, "Vowel", vowelNames, 5, &voiceVowel);
-        ui_col_float(&col2, "Pitch", &voicePitch, 0.5f, 0.3f, 2.0f);
+        ui_col_float(&col2, "Pitch", &voicePitch, 0.1f, 0.3f, 2.0f);
         ui_col_float(&col2, "Speed", &voiceSpeed, 1.0f, 4.0f, 20.0f);
-        ui_col_float(&col2, "Formant", &voiceFormantShift, 0.5f, 0.5f, 1.5f);
-        ui_col_float(&col2, "Breath", &voiceBreathiness, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col2, "Buzz", &voiceBuzziness, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col2, "Formant", &voiceFormantShift, 0.05f, 0.5f, 1.5f);
+        ui_col_float(&col2, "Breath", &voiceBreathiness, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col2, "Buzz", &voiceBuzziness, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col2, 8);
         
         // Gen music instrument params (if shown)
@@ -1998,50 +2036,50 @@ int main(void) {
             ui_col_sublabel(&col2, "Gen Instruments:", ORANGE);
             ui_col_sublabel(&col2, "Bass:", SKYBLUE);
             ui_col_cycle(&col2, "Wave", genWaveNames, 6, &genMusic.bass.wave);
-            ui_col_float(&col2, "Vol", &genMusic.bass.volume, 0.5f, 0.0f, 1.0f);
-            ui_col_float(&col2, "Oct", &genMusic.bass.pitchOctave, 0.5f, -2.0f, 2.0f);
+            ui_col_float(&col2, "Vol", &genMusic.bass.volume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Oct", &genMusic.bass.pitchOctave, 0.2f, -2.0f, 2.0f);
             
             ui_col_sublabel(&col2, "Melody:", SKYBLUE);
             ui_col_cycle(&col2, "Wave", genWaveNames, 6, &genMusic.melody.wave);
-            ui_col_float(&col2, "Vol", &genMusic.melody.volume, 0.5f, 0.0f, 1.0f);
-            ui_col_float(&col2, "Oct", &genMusic.melody.pitchOctave, 0.5f, -1.0f, 4.0f);
+            ui_col_float(&col2, "Vol", &genMusic.melody.volume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Oct", &genMusic.melody.pitchOctave, 0.25f, -1.0f, 4.0f);
             
             ui_col_sublabel(&col2, "Vox:", SKYBLUE);
-            ui_col_float(&col2, "Vol", &genMusic.vox.volume, 0.5f, 0.0f, 1.0f);
-            ui_col_float(&col2, "Oct", &genMusic.vox.pitchOctave, 0.5f, -1.0f, 3.0f);
+            ui_col_float(&col2, "Vol", &genMusic.vox.volume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Oct", &genMusic.vox.pitchOctave, 0.2f, -1.0f, 3.0f);
         }
         
         // === COLUMN 3: Drums (808-style) ===
         UIColumn col3 = ui_column(610, 20, 20);
         
         ui_col_label(&col3, "Drums:", YELLOW);
-        ui_col_float(&col3, "Volume", &drumVolume, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Volume", &drumVolume, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col3, 4);
         
         ui_col_sublabel(&col3, "Kick (Z):", ORANGE);
-        ui_col_float(&col3, "Pitch", &drumParams.kickPitch, 5.0f, 30.0f, 100.0f);
-        ui_col_float(&col3, "Decay", &drumParams.kickDecay, 0.5f, 0.1f, 1.5f);
+        ui_col_float(&col3, "Pitch", &drumParams.kickPitch, 3.0f, 30.0f, 100.0f);
+        ui_col_float(&col3, "Decay", &drumParams.kickDecay, 0.07f, 0.1f, 1.5f);
         ui_col_float(&col3, "Punch", &drumParams.kickPunchPitch, 10.0f, 80.0f, 300.0f);
-        ui_col_float(&col3, "Click", &drumParams.kickClick, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col3, "Tone", &drumParams.kickTone, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Click", &drumParams.kickClick, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Tone", &drumParams.kickTone, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col3, 4);
         
         ui_col_sublabel(&col3, "Snare (X):", ORANGE);
         ui_col_float(&col3, "Pitch", &drumParams.snarePitch, 10.0f, 100.0f, 350.0f);
-        ui_col_float(&col3, "Decay", &drumParams.snareDecay, 0.5f, 0.05f, 0.6f);
-        ui_col_float(&col3, "Snappy", &drumParams.snareSnappy, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col3, "Tone", &drumParams.snareTone, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Decay", &drumParams.snareDecay, 0.03f, 0.05f, 0.6f);
+        ui_col_float(&col3, "Snappy", &drumParams.snareSnappy, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Tone", &drumParams.snareTone, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col3, 4);
         
         ui_col_sublabel(&col3, "HiHat (7/8):", ORANGE);
-        ui_col_float(&col3, "Closed", &drumParams.hhDecayClosed, 0.5f, 0.01f, 0.2f);
-        ui_col_float(&col3, "Open", &drumParams.hhDecayOpen, 0.5f, 0.1f, 1.0f);
-        ui_col_float(&col3, "Tone", &drumParams.hhTone, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col3, "Closed", &drumParams.hhDecayClosed, 0.01f, 0.01f, 0.2f);
+        ui_col_float(&col3, "Open", &drumParams.hhDecayOpen, 0.05f, 0.1f, 1.0f);
+        ui_col_float(&col3, "Tone", &drumParams.hhTone, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col3, 4);
         
         ui_col_sublabel(&col3, "Clap (C):", ORANGE);
-        ui_col_float(&col3, "Decay", &drumParams.clapDecay, 0.5f, 0.1f, 0.6f);
-        ui_col_float(&col3, "Spread", &drumParams.clapSpread, 0.01f, 0.005f, 0.03f);
+        ui_col_float(&col3, "Decay", &drumParams.clapDecay, 0.03f, 0.1f, 0.6f);
+        ui_col_float(&col3, "Spread", &drumParams.clapSpread, 0.001f, 0.005f, 0.03f);
         
         // === COLUMN 4: Effects Pedals ===
         UIColumn col4 = ui_column(790, 20, 20);
@@ -2051,34 +2089,42 @@ int main(void) {
         ui_col_sublabel(&col4, "Distortion:", ORANGE);
         ui_col_toggle(&col4, "On", &fx.distEnabled);
         ui_col_float(&col4, "Drive", &fx.distDrive, 0.5f, 1.0f, 20.0f);
-        ui_col_float(&col4, "Tone", &fx.distTone, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col4, "Mix", &fx.distMix, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Tone", &fx.distTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Mix", &fx.distMix, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col4, 4);
         
         ui_col_sublabel(&col4, "Delay:", ORANGE);
         ui_col_toggle(&col4, "On", &fx.delayEnabled);
-        ui_col_float(&col4, "Time", &fx.delayTime, 0.5f, 0.05f, 1.0f);
-        ui_col_float(&col4, "Feedback", &fx.delayFeedback, 0.5f, 0.0f, 0.9f);
-        ui_col_float(&col4, "Tone", &fx.delayTone, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col4, "Mix", &fx.delayMix, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Time", &fx.delayTime, 0.05f, 0.05f, 1.0f);
+        ui_col_float(&col4, "Feedback", &fx.delayFeedback, 0.05f, 0.0f, 0.9f);
+        ui_col_float(&col4, "Tone", &fx.delayTone, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Mix", &fx.delayMix, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col4, 4);
         
         ui_col_sublabel(&col4, "Tape:", ORANGE);
         ui_col_toggle(&col4, "On", &fx.tapeEnabled);
-        ui_col_float(&col4, "Saturation", &fx.tapeSaturation, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col4, "Wow", &fx.tapeWow, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col4, "Flutter", &fx.tapeFlutter, 0.5f, 0.0f, 1.0f);
-        ui_col_float(&col4, "Hiss", &fx.tapeHiss, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Saturation", &fx.tapeSaturation, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Wow", &fx.tapeWow, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Flutter", &fx.tapeFlutter, 0.05f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Hiss", &fx.tapeHiss, 0.05f, 0.0f, 1.0f);
         ui_col_space(&col4, 4);
         
         ui_col_sublabel(&col4, "Bitcrusher:", ORANGE);
         ui_col_toggle(&col4, "On", &fx.crushEnabled);
-        ui_col_float(&col4, "Bits", &fx.crushBits, 1.0f, 2.0f, 16.0f);
+        ui_col_float(&col4, "Bits", &fx.crushBits, 0.5f, 2.0f, 16.0f);
         ui_col_float(&col4, "Rate", &fx.crushRate, 1.0f, 1.0f, 32.0f);
-        ui_col_float(&col4, "Mix", &fx.crushMix, 0.5f, 0.0f, 1.0f);
+        ui_col_float(&col4, "Mix", &fx.crushMix, 0.05f, 0.0f, 1.0f);
         
         // === DRUM SEQUENCER GRID (bottom of screen) ===
         {
+            // Drag state (persists across frames)
+            static bool isDragging = false;
+            static bool isDraggingPitch = false;  // true = pitch, false = velocity
+            static int dragTrack = -1;
+            static int dragStep = -1;
+            static float dragStartY = 0.0f;
+            static float dragStartVal = 0.0f;
+            
             int gridX = 20;
             int gridY = SCREEN_HEIGHT - 130;
             int cellW = 24;
@@ -2087,7 +2133,7 @@ int main(void) {
             int lengthW = 30;  // Width for length control
             
             // Header
-            DrawTextShadow("Drum Sequencer (polyrhythm)", gridX, gridY - 25, 14, YELLOW);
+            DrawTextShadow("Drum Sequencer - drag=velocity, shift+drag=pitch, right-click=delete", gridX, gridY - 25, 14, YELLOW);
             
             // Play/Stop button
             if (PushButton(gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW + 15, gridY - 25, seq.playing ? "Stop" : "Play")) {
@@ -2114,7 +2160,30 @@ int main(void) {
             // Grid
             Vector2 mouse = GetMousePosition();
             bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+            bool mouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+            bool mouseReleased = IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
             bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+            
+            // Handle drag release
+            if (mouseReleased && isDragging) {
+                isDragging = false;
+                dragTrack = -1;
+                dragStep = -1;
+            }
+            
+            // Update value while dragging
+            if (isDragging && mouseDown && dragTrack >= 0 && dragStep >= 0) {
+                float deltaY = dragStartY - mouse.y;  // Up = increase
+                if (isDraggingPitch) {
+                    // Pitch: -1 to +1 (one octave down to one octave up)
+                    float newPitch = dragStartVal + deltaY * 0.01f;
+                    seq.pitch[dragTrack][dragStep] = clampf(newPitch, -1.0f, 1.0f);
+                } else {
+                    // Velocity: 0.1 to 1.0
+                    float newVel = dragStartVal + deltaY * 0.01f;
+                    seq.velocity[dragTrack][dragStep] = clampf(newVel, 0.1f, 1.0f);
+                }
+            }
             
             for (int track = 0; track < SEQ_TRACKS; track++) {
                 int y = gridY + track * cellH;
@@ -2131,6 +2200,8 @@ int main(void) {
                     bool isActive = seq.steps[track][step] && isInRange;
                     bool isCurrent = (step == seq.trackStep[track]) && seq.playing && isInRange;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
+                    bool isBeingDragged = isDragging && dragTrack == track && dragStep == step;
+                    bool hasPitchOffset = isActive && fabsf(seq.pitch[track][step]) > 0.01f;
                     
                     // Beat grouping: darker background every 4 steps
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){40, 40, 40, 255} : (Color){30, 30, 30, 255};
@@ -2140,30 +2211,105 @@ int main(void) {
                         bgColor = (Color){20, 20, 20, 255};
                     }
                     
-                    // Cell color
+                    // Cell color - velocity affects brightness, pitch shifts hue
                     Color cellColor = bgColor;
                     if (isActive) {
-                        cellColor = (Color){80, 180, 80, 255};  // Green for active
-                        if (isCurrent) cellColor = (Color){120, 255, 120, 255};  // Bright when playing
+                        float vel = seq.velocity[track][step];
+                        float pit = seq.pitch[track][step];
+                        // Base green color scaled by velocity
+                        unsigned char baseG = (unsigned char)(80 + vel * 100);
+                        unsigned char baseR = (unsigned char)(30 + vel * 50);
+                        unsigned char baseB = (unsigned char)(30 + vel * 50);
+                        // Shift color based on pitch: negative = more blue, positive = more orange/red
+                        if (pit < 0) {
+                            baseB = (unsigned char)fminf(255, baseB + (-pit) * 80);
+                            baseG = (unsigned char)(baseG * (1.0f + pit * 0.3f));
+                        } else if (pit > 0) {
+                            baseR = (unsigned char)fminf(255, baseR + pit * 100);
+                            baseG = (unsigned char)(baseG * (1.0f - pit * 0.2f));
+                        }
+                        cellColor = (Color){baseR, baseG, baseB, 255};
+                        if (isCurrent) {
+                            // Brighten when playing
+                            cellColor.r = (unsigned char)fminf(255, cellColor.r + 40);
+                            cellColor.g = (unsigned char)fminf(255, cellColor.g + 75);
+                            cellColor.b = (unsigned char)fminf(255, cellColor.b + 40);
+                        }
                     } else if (isCurrent) {
                         cellColor = (Color){60, 60, 80, 255};  // Dim highlight for playhead
                     }
-                    if (isHovered && isInRange) {
+                    if (isHovered && isInRange && !isDragging) {
                         cellColor.r = (unsigned char)fminf(255, cellColor.r + 30);
                         cellColor.g = (unsigned char)fminf(255, cellColor.g + 30);
                         cellColor.b = (unsigned char)fminf(255, cellColor.b + 30);
+                    }
+                    if (isBeingDragged) {
+                        // Highlight cell being dragged
+                        cellColor.r = (unsigned char)fminf(255, cellColor.r + 50);
+                        cellColor.g = (unsigned char)fminf(255, cellColor.g + 50);
+                        cellColor.b = (unsigned char)fminf(255, cellColor.b + 50);
                     }
                     
                     DrawRectangleRec(cell, cellColor);
                     DrawRectangleLinesEx(cell, 1, isInRange ? (Color){60, 60, 60, 255} : (Color){35, 35, 35, 255});
                     
-                    // Click to toggle (only within track length)
-                    if (isHovered && mouseClicked && isInRange) {
-                        seq.steps[track][step] = !seq.steps[track][step];
-                        ui_consume_click();
-                        // Preview sound when toggling on
-                        if (seq.steps[track][step]) {
-                            seq.triggers[track]();
+                    // Show pitch indicator (small triangle) on cells with pitch offset
+                    if (hasPitchOffset) {
+                        float pit = seq.pitch[track][step];
+                        int triX = x + cellW - 8;
+                        int triY = y + 3;
+                        Color triColor = pit > 0 ? (Color){255, 150, 50, 255} : (Color){100, 150, 255, 255};
+                        if (pit > 0) {
+                            // Up triangle for higher pitch
+                            DrawTriangle((Vector2){(float)triX + 3, (float)triY}, 
+                                        (Vector2){(float)triX, (float)triY + 5}, 
+                                        (Vector2){(float)triX + 6, (float)triY + 5}, triColor);
+                        } else {
+                            // Down triangle for lower pitch
+                            DrawTriangle((Vector2){(float)triX, (float)triY}, 
+                                        (Vector2){(float)triX + 6, (float)triY}, 
+                                        (Vector2){(float)triX + 3, (float)triY + 5}, triColor);
+                        }
+                    }
+                    
+                    // Show value on active cells when hovered or dragging
+                    if (isActive && (isHovered || isBeingDragged)) {
+                        if (isBeingDragged && isDraggingPitch) {
+                            // Show pitch as semitones
+                            int semitones = (int)(seq.pitch[track][step] * 12);
+                            DrawTextShadow(TextFormat("%+d", semitones), x + 2, y + 5, 10, WHITE);
+                        } else {
+                            // Show velocity percentage
+                            int velPercent = (int)(seq.velocity[track][step] * 100);
+                            DrawTextShadow(TextFormat("%d", velPercent), x + 3, y + 5, 10, WHITE);
+                        }
+                    }
+                    
+                    // Click handling (only within track length)
+                    if (isHovered && isInRange && !isDragging) {
+                        if (mouseClicked) {
+                            if (isActive) {
+                                // Start drag on active step
+                                isDragging = true;
+                                isDraggingPitch = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                                dragTrack = track;
+                                dragStep = step;
+                                dragStartY = mouse.y;
+                                dragStartVal = isDraggingPitch ? seq.pitch[track][step] : seq.velocity[track][step];
+                                ui_consume_click();
+                            } else {
+                                // Toggle step on
+                                seq.steps[track][step] = true;
+                                ui_consume_click();
+                                // Preview sound when toggling on
+                                float pitchMod = powf(2.0f, seq.pitch[track][step]);
+                                seq.triggersFull[track](seq.velocity[track][step], pitchMod);
+                            }
+                        }
+                        if (rightClicked && isActive) {
+                            // Right-click to toggle off
+                            seq.steps[track][step] = false;
+                            ui_consume_click();
                         }
                     }
                 }
