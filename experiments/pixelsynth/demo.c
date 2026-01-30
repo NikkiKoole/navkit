@@ -1,5 +1,6 @@
-// PixelSynth Demo - Simple chiptune synth using raylib audio callbacks
-// Press 1-6 for sound effects, Q-U for notes
+// PixelSynth Demo - Chiptune synth with 808 drums
+// Notes: ASDFGHJKL (white) + WERTYUIOP (black), Z/X = octave
+// SFX: 1-6, Drums: 7-0,-,=
 
 #include "../../vendor/raylib.h"
 #include "../../assets/fonts/comic_embedded.h"
@@ -8,684 +9,44 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 450
+#define SCREEN_WIDTH 1140
+#define SCREEN_HEIGHT 700
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
 
-// Oscillator types
-typedef enum {
-    WAVE_SQUARE,
-    WAVE_SAW,
-    WAVE_TRIANGLE,
-    WAVE_NOISE,
-    WAVE_SCW,        // Single Cycle Waveform (wavetable)
-    WAVE_VOICE,      // Formant synthesis for character voices
-} WaveType;
+// ============================================================================
+// INCLUDE ENGINES
+// ============================================================================
 
-// Vowel types for formant synthesis
-typedef enum {
-    VOWEL_A,    // "ah" as in father
-    VOWEL_E,    // "eh" as in bed
-    VOWEL_I,    // "ee" as in see
-    VOWEL_O,    // "oh" as in go
-    VOWEL_U,    // "oo" as in boot
-    VOWEL_COUNT
-} VowelType;
+#include "engines/synth.h"    // Synth voices, wavetables, formant, SFX
+#include "engines/drums.h"    // 808-style drum machine
+#include "engines/effects.h"  // Distortion, delay, tape, bitcrusher
+#include "sequencer.h"        // Drum step sequencer
 
-// Formant data - frequencies (F1, F2, F3) for each vowel
-static const float formantFreq[VOWEL_COUNT][3] = {
-    { 800,  1200,  2500 },  // A - "ah"
-    { 400,  2000,  2550 },  // E - "eh"  
-    { 280,  2300,  2900 },  // I - "ee"
-    { 450,   800,  2500 },  // O - "oh"
-    { 325,   700,  2500 },  // U - "oo"
-};
+// ============================================================================
+// SPEECH SYSTEM
+// ============================================================================
 
-static const float formantBw[VOWEL_COUNT][3] = {
-    { 80,   90,  120 },  // A
-    { 70,  100,  120 },  // E
-    { 50,   90,  120 },  // I
-    { 70,   80,  120 },  // O
-    { 50,   60,  120 },  // U
-};
-
-static const float formantAmp[VOWEL_COUNT][3] = {
-    { 1.0f, 0.5f, 0.3f },  // A
-    { 1.0f, 0.7f, 0.3f },  // E
-    { 1.0f, 0.4f, 0.2f },  // I
-    { 1.0f, 0.3f, 0.2f },  // O
-    { 1.0f, 0.2f, 0.1f },  // U
-};
-
-// Formant filter (bandpass for voice synthesis)
-typedef struct {
-    float freq;
-    float bw;
-    float low, band, high;
-} FormantFilter;
-
-// Voice synthesis settings
-typedef struct {
-    VowelType vowel;
-    VowelType nextVowel;
-    float vowelBlend;
-    float formantShift;    // 0.5 = child, 1.0 = normal, 1.5 = deep
-    float breathiness;     // Mix in noise (0-1)
-    float buzziness;       // Pulse vs smooth source (0-1)
-    float vibratoRate;
-    float vibratoDepth;
-    float vibratoPhase;
-    FormantFilter formants[3];
-} VoiceSettings;
-
-// Voice structure
-typedef struct {
-    float frequency;
-    float baseFrequency;  // Original frequency (for vibrato)
-    float phase;
-    float volume;
-    WaveType wave;
-    
-    // Pulse width (for square wave, 0.1-0.9, 0.5 = square)
-    float pulseWidth;
-    float pwmRate;        // PWM LFO rate in Hz
-    float pwmDepth;       // PWM modulation depth (0-0.4)
-    float pwmPhase;       // PWM LFO phase
-    
-    // Vibrato (pitch LFO)
-    float vibratoRate;    // Vibrato speed in Hz
-    float vibratoDepth;   // Vibrato depth in semitones
-    float vibratoPhase;   // Vibrato LFO phase
-    
-    // Simple ADSR envelope
-    float attack;
-    float decay;
-    float sustain;
-    float release;
-    float envPhase;
-    float envLevel;       // current envelope level (for smooth release)
-    int envStage;         // 0=off, 1=attack, 2=decay, 3=sustain, 4=release
-    
-    // For pitch slides (SFX)
-    float pitchSlide;
-    
-    // Simple lowpass filter (per-voice)
-    float filterCutoff;   // 0.0-1.0
-    float filterLp;       // Filter state (lowpass output)
-    
-    // Arpeggiator
-    bool arpEnabled;
-    float arpNotes[4];    // Up to 4 notes
-    int arpCount;         // Number of notes in arp
-    int arpIndex;         // Current note index
-    float arpRate;        // Notes per second
-    float arpTimer;       // Time accumulator
-    
-    // SCW (wavetable) index
-    int scwIndex;         // Which loaded SCW to use
-    
-    // Voice/formant synthesis
-    VoiceSettings voiceSettings;
-} Voice;
-
-#define NUM_VOICES 8
-static Voice voices[NUM_VOICES];
-static float masterVolume = 0.5f;
-
-// SCW (Single Cycle Waveform) wavetables
-#define SCW_MAX_SIZE 2048
-#define SCW_MAX_SLOTS 8
-typedef struct {
-    float data[SCW_MAX_SIZE];
-    int size;
-    bool loaded;
-    const char* name;
-} SCWTable;
-static SCWTable scwTables[SCW_MAX_SLOTS];
-static int scwCount = 0;
-
-// Load a .wav file as SCW (assumes mono, any bit depth raylib supports)
-static bool loadSCW(const char* path, const char* name) {
-    if (scwCount >= SCW_MAX_SLOTS) return false;
-    
-    Wave wav = LoadWave(path);
-    if (wav.data == NULL) return false;
-    
-    // Convert to float samples
-    int samples = wav.frameCount;
-    if (samples > SCW_MAX_SIZE) samples = SCW_MAX_SIZE;
-    
-    SCWTable* table = &scwTables[scwCount];
-    
-    // Convert based on sample format
-    if (wav.sampleSize == 16) {
-        short* src = (short*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = (float)src[i] / 32768.0f;
-        }
-    } else if (wav.sampleSize == 8) {
-        unsigned char* src = (unsigned char*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = ((float)src[i] - 128.0f) / 128.0f;
-        }
-    } else if (wav.sampleSize == 32) {
-        float* src = (float*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = src[i];
-        }
-    }
-    
-    table->size = samples;
-    table->loaded = true;
-    table->name = name;
-    scwCount++;
-    
-    UnloadWave(wav);
-    return true;
-}
-
-// Speech queue for speaking text
 #define SPEECH_MAX 64
+
 typedef struct {
     char text[SPEECH_MAX];
     int index;
     int length;
     float timer;
-    float speed;           // Phonemes per second
-    float basePitch;       // Base frequency multiplier
-    float pitchVariation;  // Random pitch variation
+    float speed;
+    float basePitch;
+    float pitchVariation;
+    float intonation;  // -1.0 = falling (answer), 0 = flat, +1.0 = rising (question)
     bool active;
     int voiceIndex;
 } SpeechQueue;
+
 static SpeechQueue speechQueue = {0};
-
-// Voice synthesis parameters (tweakable)
-static float voiceFormantShift = 1.0f;
-static float voiceBreathiness = 0.1f;
-static float voiceBuzziness = 0.6f;
-static float voiceSpeed = 10.0f;
-static float voicePitch = 1.0f;
-static int voiceVowel = VOWEL_A;
-
-// Tweakable note parameters
-static float noteAttack = 0.01f;
-static float noteDecay = 0.1f;
-static float noteSustain = 0.5f;
-static float noteRelease = 0.3f;
-static float noteVolume = 0.5f;
-
-// Tweakable PWM parameters
-static float notePulseWidth = 0.5f;
-static float notePwmRate = 3.0f;
-static float notePwmDepth = 0.0f;
-
-// Tweakable vibrato parameters
-static float noteVibratoRate = 5.0f;
-static float noteVibratoDepth = 0.0f;
-
-// Tweakable filter
-static float noteFilterCutoff = 1.0f;
-
-// Selected SCW for notes (0 = first loaded, -1 = none)
-static int noteScwIndex = 0;
-
-// Performance tracking
-static double audioTimeUs = 0.0;
-static int audioFrameCount = 0;
-
-// Simple noise generator
-static unsigned int noiseState = 12345;
-static float noise(void) {
-    noiseState = noiseState * 1103515245 + 12345;
-    return (float)(noiseState >> 16) / 32768.0f - 1.0f;
-}
-
-// Clamp float to range
-static float clampf(float x, float min, float max) {
-    if (x < min) return min;
-    if (x > max) return max;
-    return x;
-}
-
-// Linear interpolation
-static float lerpf(float a, float b, float t) {
-    return a * (1.0f - t) + b * t;
-}
-
-// Formant filter (bandpass) processing
-static float processFormantFilter(FormantFilter *f, float input, float sampleRate) {
-    float fc = clampf(2.0f * sinf(PI * f->freq / sampleRate), 0.001f, 0.99f);
-    float q = clampf(f->freq / (f->bw + 1.0f), 0.5f, 20.0f);
-    
-    f->low += fc * f->band;
-    f->high = input - f->low - f->band / q;
-    f->band += fc * f->high;
-    
-    return f->band;
-}
-
-// Voice oscillator (formant synthesis)
-static float processVoiceOscillator(Voice *v, float sampleRate) {
-    VoiceSettings *vs = &v->voiceSettings;
-    float dt = 1.0f / sampleRate;
-    
-    // Decay formant filter states during release to prevent pops
-    if (v->envStage == 4) {
-        float decay = 0.995f;
-        for (int i = 0; i < 3; i++) {
-            vs->formants[i].low *= decay;
-            vs->formants[i].band *= decay;
-            vs->formants[i].high *= decay;
-        }
-    }
-    
-    // Apply vibrato
-    float vibrato = 1.0f;
-    if (vs->vibratoDepth > 0.0f) {
-        vs->vibratoPhase += vs->vibratoRate * dt;
-        if (vs->vibratoPhase > 1.0f) vs->vibratoPhase -= 1.0f;
-        float semitones = sinf(vs->vibratoPhase * 2.0f * PI) * vs->vibratoDepth;
-        vibrato = powf(2.0f, semitones / 12.0f);
-    }
-    
-    // Advance phase
-    float actualFreq = v->frequency * vibrato;
-    v->phase += actualFreq / sampleRate;
-    if (v->phase >= 1.0f) v->phase -= 1.0f;
-    
-    // Generate source signal (glottal pulse simulation)
-    float smooth = 2.0f * fabsf(2.0f * v->phase - 1.0f) - 1.0f;
-    float t = v->phase;
-    float glottal = (t < 0.4f) ? sinf(t * PI / 0.4f) : -0.3f * sinf((t - 0.4f) * PI / 0.6f);
-    float source = smooth * (1.0f - vs->buzziness) + glottal * vs->buzziness;
-    
-    // Mix in breathiness (noise)
-    if (vs->breathiness > 0.0f) {
-        source = source * (1.0f - vs->breathiness * 0.7f) + noise() * vs->breathiness * 0.5f;
-    }
-    
-    // Interpolate formant parameters and apply filters
-    VowelType v1 = vs->vowel;
-    VowelType v2 = vs->nextVowel;
-    float blend = vs->vowelBlend;
-    
-    float out = 0.0f;
-    for (int i = 0; i < 3; i++) {
-        float freq = lerpf(formantFreq[v1][i], formantFreq[v2][i], blend) * vs->formantShift;
-        float bw = lerpf(formantBw[v1][i], formantBw[v2][i], blend);
-        float amp = lerpf(formantAmp[v1][i], formantAmp[v2][i], blend);
-        
-        vs->formants[i].freq = freq;
-        vs->formants[i].bw = bw;
-        out += processFormantFilter(&vs->formants[i], source, sampleRate) * amp;
-    }
-    
-    return out * 0.7f;
-}
-
-// SFX randomization toggle
-static bool sfxRandomize = true;
-
-// Random float in range [min, max] for SFX variation (sfxr-style)
-static float rndRange(float min, float max) {
-    if (!sfxRandomize) return (min + max) * 0.5f;
-    noiseState = noiseState * 1103515245 + 12345;
-    float t = (float)(noiseState >> 16) / 65535.0f;
-    return min + t * (max - min);
-}
-
-// Mutate a value by a small percentage (sfxr-style mutation)
-static float mutate(float value, float amount) {
-    if (!sfxRandomize) return value;
-    return value * rndRange(1.0f - amount, 1.0f + amount);
-}
-
-// Process envelope, returns amplitude 0-1
-static float processEnvelope(Voice *v, float dt) {
-    if (v->envStage == 0) return 0.0f;
-    
-    v->envPhase += dt;
-    
-    switch (v->envStage) {
-        case 1: // Attack
-            if (v->attack <= 0.0f) {
-                v->envPhase = 0.0f;
-                v->envStage = 2;
-                v->envLevel = 1.0f;
-            } else {
-                v->envLevel = v->envPhase / v->attack;
-                if (v->envPhase >= v->attack) {
-                    v->envPhase = 0.0f;
-                    v->envStage = 2;
-                    v->envLevel = 1.0f;
-                }
-            }
-            break;
-        case 2: // Decay
-            if (v->decay <= 0.0f) {
-                v->envPhase = 0.0f;
-                v->envLevel = v->sustain;
-                v->envStage = (v->sustain > 0.001f) ? 3 : 4;
-            } else {
-                v->envLevel = 1.0f - (1.0f - v->sustain) * (v->envPhase / v->decay);
-                if (v->envPhase >= v->decay) {
-                    v->envPhase = 0.0f;
-                    v->envLevel = v->sustain;
-                    // Skip sustain if sustain level is ~0
-                    v->envStage = (v->sustain > 0.001f) ? 3 : 4;
-                }
-            }
-            break;
-        case 3: // Sustain (hold until released)
-            v->envLevel = v->sustain;
-            break;
-        case 4: // Release - fade from current level to 0
-            if (v->release <= 0.0f || v->envLevel <= 0.0f) {
-                v->envStage = 0;
-                v->envLevel = 0.0f;
-            } else {
-                // Linear fade from envLevel at start of release
-                float releaseProgress = v->envPhase / v->release;
-                if (releaseProgress >= 1.0f) {
-                    v->envStage = 0;
-                    v->envLevel = 0.0f;
-                } else {
-                    v->envLevel *= (1.0f - dt / v->release);
-                    if (v->envLevel < 0.001f) {
-                        v->envStage = 0;
-                        v->envLevel = 0.0f;
-                    }
-                }
-            }
-            break;
-    }
-    
-    return v->envLevel;
-}
-
-// Generate one sample from a voice
-static float processVoice(Voice *v, float sampleRate) {
-    if (v->envStage == 0) return 0.0f;
-    
-    float dt = 1.0f / sampleRate;
-    
-    // Arpeggiator
-    if (v->arpEnabled && v->arpCount > 0) {
-        v->arpTimer += dt;
-        if (v->arpTimer >= 1.0f / v->arpRate) {
-            v->arpTimer = 0.0f;
-            v->arpIndex = (v->arpIndex + 1) % v->arpCount;
-            v->baseFrequency = v->arpNotes[v->arpIndex];
-        }
-    }
-    
-    // Start with base frequency
-    float freq = v->baseFrequency;
-    
-    // Apply pitch slide (modifies baseFrequency for SFX)
-    if (v->pitchSlide != 0.0f) {
-        v->baseFrequency = clampf(v->baseFrequency + v->pitchSlide, 20.0f, 20000.0f);
-        freq = v->baseFrequency;
-    }
-    
-    // Vibrato (pitch LFO)
-    if (v->vibratoDepth > 0.0f) {
-        v->vibratoPhase += v->vibratoRate * dt;
-        if (v->vibratoPhase >= 1.0f) v->vibratoPhase -= 1.0f;
-        // Convert semitones to frequency multiplier
-        float vibrato = sinf(v->vibratoPhase * 2.0f * PI) * v->vibratoDepth;
-        freq *= powf(2.0f, vibrato / 12.0f);
-    }
-    
-    v->frequency = freq;
-    
-    // Advance phase
-    float phaseInc = v->frequency / sampleRate;
-    v->phase += phaseInc;
-    if (v->phase >= 1.0f) v->phase -= 1.0f;
-    
-    // PWM modulation (for square wave)
-    float pw = v->pulseWidth;
-    if (v->pwmDepth > 0.0f && v->wave == WAVE_SQUARE) {
-        v->pwmPhase += v->pwmRate * dt;
-        if (v->pwmPhase >= 1.0f) v->pwmPhase -= 1.0f;
-        pw = clampf(pw + sinf(v->pwmPhase * 2.0f * PI) * v->pwmDepth, 0.1f, 0.9f);
-    }
-    
-    // Generate waveform
-    float sample = 0.0f;
-    switch (v->wave) {
-        case WAVE_SQUARE:
-            sample = v->phase < pw ? 1.0f : -1.0f;
-            break;
-        case WAVE_SAW:
-            sample = 2.0f * v->phase - 1.0f;
-            break;
-        case WAVE_TRIANGLE:
-            sample = 4.0f * fabsf(v->phase - 0.5f) - 1.0f;
-            break;
-        case WAVE_NOISE:
-            sample = noise();
-            break;
-        case WAVE_SCW:
-            // Wavetable lookup with linear interpolation
-            if (v->scwIndex >= 0 && v->scwIndex < scwCount && scwTables[v->scwIndex].loaded) {
-                SCWTable* table = &scwTables[v->scwIndex];
-                float pos = v->phase * table->size;
-                int i0 = (int)pos % table->size;
-                int i1 = (i0 + 1) % table->size;
-                float frac = pos - (int)pos;
-                sample = table->data[i0] * (1.0f - frac) + table->data[i1] * frac;
-            }
-            break;
-        case WAVE_VOICE:
-            // Formant synthesis - uses its own phase advancement
-            sample = processVoiceOscillator(v, sampleRate);
-            break;
-    }
-    
-    // Simple lowpass filter (one-pole) - always active to smooth DC offsets
-    float cutoff = v->filterCutoff * v->filterCutoff; // Quadratic response feels better
-    if (cutoff > 0.99f) cutoff = 0.99f;  // Always some filtering to prevent pops
-    v->filterLp += cutoff * (sample - v->filterLp);
-    sample = v->filterLp;
-    
-    // Apply envelope and volume
-    float env = processEnvelope(v, dt);
-    return sample * env * v->volume;
-}
-
-// Audio callback - called by raylib's audio thread
-static void SynthCallback(void *buffer, unsigned int frames) {
-    double startTime = GetTime();
-    
-    short *d = (short *)buffer;
-    
-    for (unsigned int i = 0; i < frames; i++) {
-        float sample = 0.0f;
-        
-        for (int v = 0; v < NUM_VOICES; v++) {
-            sample += processVoice(&voices[v], SAMPLE_RATE);
-        }
-        
-        sample *= masterVolume;
-        
-        // Clamp
-        if (sample > 1.0f) sample = 1.0f;
-        if (sample < -1.0f) sample = -1.0f;
-        
-        d[i] = (short)(sample * 32000.0f);
-    }
-    
-    double elapsed = (GetTime() - startTime) * 1000000.0;  // microseconds
-    audioTimeUs = audioTimeUs * 0.95 + elapsed * 0.05;     // smoothed
-    audioFrameCount = frames;
-}
-
-// Find a free voice or steal one in release
-static int findVoice(void) {
-    // First look for completely free voice
-    for (int i = 0; i < NUM_VOICES; i++) {
-        if (voices[i].envStage == 0) return i;
-    }
-    // Then look for one in release stage
-    for (int i = 0; i < NUM_VOICES; i++) {
-        if (voices[i].envStage == 4) return i;
-    }
-    return NUM_VOICES - 1;  // Steal last voice
-}
-
-// Play a note with polyphony - finds free voice automatically
-// Uses global tweakable parameters
-static int playNote(float freq, WaveType wave) {
-    int voiceIdx = findVoice();
-    Voice *v = &voices[voiceIdx];
-    
-    // Preserve filter state for smooth transition (anti-pop)
-    float oldFilterLp = v->filterLp;
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = wave;
-    v->pitchSlide = 0.0f;
-    
-    // PWM
-    v->pulseWidth = notePulseWidth;
-    v->pwmRate = notePwmRate;
-    v->pwmDepth = notePwmDepth;
-    v->pwmPhase = 0.0f;
-    
-    // Vibrato
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    // Envelope
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    // Filter - preserve some state to avoid pops
-    v->filterCutoff = noteFilterCutoff;
-    v->filterLp = oldFilterLp * 0.3f;
-    
-    // Arp disabled for regular notes
-    v->arpEnabled = false;
-    
-    // SCW index
-    v->scwIndex = noteScwIndex;
-    
-    return voiceIdx;
-}
-
-// Release a note (trigger release stage)
-static void releaseNote(int voiceIdx) {
-    if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
-    if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-        voices[voiceIdx].envStage = 4;
-        voices[voiceIdx].envPhase = 0.0f;
-    }
-}
-
-// Helper to init a voice for SFX (sets all fields to safe defaults)
-static void initSfxVoice(Voice *v, float freq, WaveType wave, float vol,
-                         float attack, float decay, float release, float pitchSlide) {
-    // Preserve filter state for smooth transition (anti-pop)
-    float oldFilterLp = v->filterLp;
-    
-    memset(v, 0, sizeof(Voice));
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->volume = vol;
-    v->wave = wave;
-    v->pulseWidth = 0.5f;
-    v->attack = attack;
-    v->decay = decay;
-    v->sustain = 0.0f;  // SFX always auto-release
-    v->release = release;
-    v->envStage = 1;
-    v->pitchSlide = pitchSlide;
-    v->filterCutoff = 1.0f;
-    v->filterLp = oldFilterLp * 0.5f;  // Fade old filter state
-}
-
-// Sound effects - all use sustain=0 so they auto-release after decay
-// Each has sfxr-style randomization for subtle variation
-
-static void sfxJump(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(150.0f, 0.15f), WAVE_SQUARE, mutate(0.5f, 0.1f),
-                 0.01f, mutate(0.15f, 0.1f), 0.05f, mutate(10.0f, 0.2f));
-}
-
-static void sfxCoin(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(1200.0f, 0.08f), WAVE_SQUARE, mutate(0.4f, 0.1f),
-                 0.005f, mutate(0.1f, 0.15f), 0.05f, mutate(20.0f, 0.15f));
-}
-
-static void sfxHurt(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(200.0f, 0.25f), WAVE_NOISE, mutate(0.5f, 0.1f),
-                 0.01f, mutate(0.2f, 0.2f), mutate(0.1f, 0.2f), mutate(-3.0f, 0.3f));
-}
-
-static void sfxExplosion(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(80.0f, 0.3f), WAVE_NOISE, mutate(0.6f, 0.1f),
-                 0.01f, mutate(0.5f, 0.25f), mutate(0.3f, 0.2f), mutate(-1.0f, 0.4f));
-}
-
-static void sfxPowerup(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(300.0f, 0.12f), WAVE_TRIANGLE, mutate(0.4f, 0.1f),
-                 0.01f, mutate(0.3f, 0.15f), mutate(0.2f, 0.1f), mutate(8.0f, 0.2f));
-}
-
-static void sfxBlip(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(800.0f, 0.1f), WAVE_SQUARE, mutate(0.3f, 0.1f),
-                 0.005f, mutate(0.05f, 0.15f), 0.02f, rndRange(-2.0f, 2.0f));
-}
-
-// === DRUM SOUNDS ===
-
-// Kick drum: sine wave with fast pitch drop + saturation
-static void drumKick(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(150.0f, 0.1f), WAVE_TRIANGLE, mutate(0.7f, 0.1f),
-                 0.005f, mutate(0.25f, 0.15f), 0.1f, mutate(-8.0f, 0.2f));
-    voices[v].filterCutoff = 0.6f;  // Warmer sound
-}
-
-// Snare drum: noise + triangle with filter
-static void drumSnare(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(200.0f, 0.15f), WAVE_NOISE, mutate(0.5f, 0.1f),
-                 0.005f, mutate(0.15f, 0.2f), 0.08f, mutate(-2.0f, 0.3f));
-    voices[v].filterCutoff = mutate(0.7f, 0.1f);
-}
-
-// Hi-hat: high-passed noise, very short
-static void drumHihat(void) {
-    int v = findVoice();
-    initSfxVoice(&voices[v], mutate(8000.0f, 0.15f), WAVE_NOISE, mutate(0.3f, 0.1f),
-                 0.001f, mutate(0.05f, 0.2f), 0.02f, 0.0f);
-    voices[v].filterCutoff = 0.9f;  // Keep it bright
-}
-
-// === VOICE/SPEECH FUNCTIONS ===
 
 // Map character to vowel sound
 static VowelType charToVowel(char c) {
-    if (c >= 'A' && c <= 'Z') c += 32; // tolower
+    if (c >= 'A' && c <= 'Z') c += 32;
     switch (c) {
         case 'a': return VOWEL_A;
         case 'e': return VOWEL_E;
@@ -701,77 +62,15 @@ static VowelType charToVowel(char c) {
     }
 }
 
-// Get pitch variation for melodic speech
+// Pitch variation for melodic speech
 static float charToPitch(char c) {
     if (c >= 'A' && c <= 'Z') c += 32;
     int val = (c * 7) % 12;
     return 1.0f + (val - 6) * 0.05f;
 }
 
-// Play a single vowel sound on a specific voice
-static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
-    Voice *v = &voices[voiceIdx];
-    
-    float oldFilterLp = v->filterLp;
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = WAVE_VOICE;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = 5.0f;
-    v->vibratoDepth = 0.1f;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = 0.02f;
-    v->decay = 0.05f;
-    v->sustain = 0.7f;
-    v->release = 0.25f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    v->filterCutoff = 0.7f;  // Lower cutoff to smooth formant filter artifacts
-    v->filterLp = oldFilterLp * 0.3f;
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    // Setup voice settings
-    VoiceSettings *vs = &v->voiceSettings;
-    vs->vowel = vowel;
-    vs->nextVowel = vowel;
-    vs->vowelBlend = 0.0f;
-    vs->formantShift = voiceFormantShift;
-    vs->breathiness = voiceBreathiness;
-    vs->buzziness = voiceBuzziness;
-    vs->vibratoRate = 5.0f;
-    vs->vibratoDepth = 0.15f;
-    vs->vibratoPhase = 0.0f;
-    
-    // Clear formant filter states
-    for (int i = 0; i < 3; i++) {
-        vs->formants[i].low = 0;
-        vs->formants[i].band = 0;
-        vs->formants[i].high = 0;
-    }
-}
-
-// Play a single vowel sound (finds a free voice)
-static int playVowel(float freq, VowelType vowel) {
-    int voiceIdx = findVoice();
-    playVowelOnVoice(voiceIdx, freq, vowel);
-    return voiceIdx;
-}
-
-// Start speaking text
-static void speak(const char *text, float speed, float pitch, float variation) {
+// Start speaking text with intonation contour
+static void speakWithIntonation(const char *text, float speed, float pitch, float variation, float intonation) {
     SpeechQueue *sq = &speechQueue;
     
     int len = 0;
@@ -786,22 +85,29 @@ static void speak(const char *text, float speed, float pitch, float variation) {
     sq->speed = clampf(speed, 1.0f, 30.0f);
     sq->basePitch = clampf(pitch, 0.3f, 3.0f);
     sq->pitchVariation = clampf(variation, 0.0f, 1.0f);
+    sq->intonation = clampf(intonation, -1.0f, 1.0f);
     sq->active = true;
     sq->voiceIndex = NUM_VOICES - 1;
 }
 
-// Generate random babble
-static void babble(float duration, float pitch, float mood) {
-    static const char* syllables[] = {
-        "ba", "da", "ga", "ma", "na", "pa", "ta", "ka", "wa", "ya",
-        "be", "de", "ge", "me", "ne", "pe", "te", "ke", "we", "ye",
-        "bi", "di", "gi", "mi", "ni", "pi", "ti", "ki", "wi", "yi",
-        "bo", "do", "go", "mo", "no", "po", "to", "ko", "wo", "yo",
-        "bu", "du", "gu", "mu", "nu", "pu", "tu", "ku", "wu", "yu",
-        "la", "ra", "sa", "za", "ha", "ja", "fa", "va",
-    };
-    int numSyllables = sizeof(syllables) / sizeof(syllables[0]);
-    
+// Start speaking text (flat intonation)
+static void speak(const char *text, float speed, float pitch, float variation) {
+    speakWithIntonation(text, speed, pitch, variation, 0.0f);
+}
+
+// Syllables for babble generation
+static const char* babbleSyllables[] = {
+    "ba", "da", "ga", "ma", "na", "pa", "ta", "ka", "wa", "ya",
+    "be", "de", "ge", "me", "ne", "pe", "te", "ke", "we", "ye",
+    "bi", "di", "gi", "mi", "ni", "pi", "ti", "ki", "wi", "yi",
+    "bo", "do", "go", "mo", "no", "po", "to", "ko", "wo", "yo",
+    "bu", "du", "gu", "mu", "nu", "pu", "tu", "ku", "wu", "yu",
+    "la", "ra", "sa", "za", "ha", "ja", "fa", "va",
+};
+static const int numBabbleSyllables = sizeof(babbleSyllables) / sizeof(babbleSyllables[0]);
+
+// Generate babble with optional intonation
+static void babbleWithIntonation(float duration, float pitch, float mood, float intonation) {
     char text[SPEECH_MAX];
     int pos = 0;
     float speed = 8.0f + mood * 8.0f;
@@ -809,7 +115,7 @@ static void babble(float duration, float pitch, float mood) {
     
     for (int i = 0; i < targetSyllables && pos < SPEECH_MAX - 4; i++) {
         noiseState = noiseState * 1103515245 + 12345;
-        const char* syl = syllables[(noiseState >> 16) % numSyllables];
+        const char* syl = babbleSyllables[(noiseState >> 16) % numBabbleSyllables];
         while (*syl && pos < SPEECH_MAX - 2) {
             text[pos++] = *syl++;
         }
@@ -821,10 +127,25 @@ static void babble(float duration, float pitch, float mood) {
     text[pos] = '\0';
     
     float variation = 0.1f + mood * 0.3f;
-    speak(text, speed, pitch, variation);
+    speakWithIntonation(text, speed, pitch, variation, intonation);
 }
 
-// Process speech queue (call every frame)
+// Generate random babble (flat intonation)
+static void babble(float duration, float pitch, float mood) {
+    babbleWithIntonation(duration, pitch, mood, 0.0f);
+}
+
+// Babble call (question - rising intonation)
+static void babbleCall(float duration, float pitch, float mood) {
+    babbleWithIntonation(duration, pitch, mood, 1.0f);
+}
+
+// Babble answer (response - falling intonation)
+static void babbleAnswer(float duration, float pitch, float mood) {
+    babbleWithIntonation(duration, pitch, mood, -1.0f);
+}
+
+// Process speech queue
 static void updateSpeech(float dt) {
     SpeechQueue *sq = &speechQueue;
     if (!sq->active) return;
@@ -853,7 +174,11 @@ static void updateSpeech(float dt) {
         noiseState = noiseState * 1103515245 + 12345;
         float randVar = 1.0f + ((float)(noiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
         
-        float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar;
+        // Apply intonation contour (position-based pitch shift)
+        float progress = (float)sq->index / (float)sq->length;
+        float intonationMod = 1.0f + sq->intonation * 0.3f * progress;  // Up to ±30% pitch shift at end
+        
+        float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar * intonationMod;
         
         Voice *v = &voices[sq->voiceIndex];
         
@@ -863,7 +188,6 @@ static void updateSpeech(float dt) {
             v->frequency = baseFreq;
             v->baseFrequency = baseFreq;
         } else {
-            // Start a new vowel on the dedicated speech voice
             playVowelOnVoice(sq->voiceIndex, baseFreq, vowel);
         }
         
@@ -881,26 +205,125 @@ static void updateSpeech(float dt) {
     }
 }
 
-// Note frequencies (A4 = 440Hz)
-static const float NOTE_C4 = 261.63f;
-static const float NOTE_D4 = 293.66f;
-static const float NOTE_E4 = 329.63f;
-static const float NOTE_F4 = 349.23f;
-static const float NOTE_G4 = 392.00f;
-static const float NOTE_A4 = 440.00f;
-static const float NOTE_B4 = 493.88f;
+// ============================================================================
+// AUDIO CALLBACK
+// ============================================================================
 
-// Track which voice is playing each key (-1 = not playing)
-static int keyVoices[14] = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
+static double audioTimeUs = 0.0;
+static int audioFrameCount = 0;
+
+static void SynthCallback(void *buffer, unsigned int frames) {
+    double startTime = GetTime();
+    
+    short *d = (short *)buffer;
+    float dt = 1.0f / SAMPLE_RATE;
+    
+    for (unsigned int i = 0; i < frames; i++) {
+        float sample = 0.0f;
+        
+        // Process synth voices
+        for (int v = 0; v < NUM_VOICES; v++) {
+            sample += processVoice(&voices[v], SAMPLE_RATE);
+        }
+        
+        // Process drums
+        sample += processDrums(dt);
+        
+        sample *= masterVolume;
+        
+        // Process effects
+        sample = processEffects(sample, dt);
+        
+        // Clamp
+        if (sample > 1.0f) sample = 1.0f;
+        if (sample < -1.0f) sample = -1.0f;
+        
+        d[i] = (short)(sample * 32000.0f);
+    }
+    
+    double elapsed = (GetTime() - startTime) * 1000000.0;
+    audioTimeUs = audioTimeUs * 0.95 + elapsed * 0.05;
+    audioFrameCount = frames;
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
+// ============================================================================
+// PIANO KEYBOARD SYSTEM
+// ============================================================================
+
+// Octave control
+static int currentOctave = 4;  // Default to octave 4 (middle C = C4)
+#define MIN_OCTAVE 1
+#define MAX_OCTAVE 7
+
+// Piano-style key mapping (white keys on ASDFGHJKL, black keys on WERTYUIOP)
+// Semitone offsets from C: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
+typedef struct {
+    int key;
+    int semitone;  // Semitones above C of the current octave
+} PianoKey;
+
+static const PianoKey pianoKeys[] = {
+    // White keys (bottom row) - ASDFGHJKL
+    {KEY_A, 0},   // C
+    {KEY_S, 2},   // D
+    {KEY_D, 4},   // E
+    {KEY_F, 5},   // F
+    {KEY_G, 7},   // G
+    {KEY_H, 9},   // A
+    {KEY_J, 11},  // B
+    {KEY_K, 12},  // C+1
+    {KEY_L, 14},  // D+1
+    // Black keys (top row) - WERTYUIOP
+    {KEY_W, 1},   // C#
+    {KEY_E, 3},   // D#
+    {KEY_R, 6},   // F#
+    {KEY_T, 8},   // G#
+    {KEY_Y, 10},  // A#
+    {KEY_U, 13},  // C#+1
+    {KEY_I, 15},  // D#+1
+    {KEY_O, 18},  // F#+1
+    {KEY_P, 20},  // G#+1
+};
+#define NUM_PIANO_KEYS (sizeof(pianoKeys) / sizeof(pianoKeys[0]))
+
+// Track which voice is playing each piano key
+static int pianoKeyVoices[NUM_PIANO_KEYS];
+
+// Calculate frequency from semitone offset and octave
+static float semitoneToFreq(int semitone, int octave) {
+    // C0 = 16.35 Hz (MIDI note 12)
+    float c0 = 16.351597831287414f;
+    int totalSemitones = octave * 12 + semitone;
+    return c0 * powf(2.0f, totalSemitones / 12.0f);
+}
+
+// ============================================================================
+// UI COLUMN VISIBILITY
+// ============================================================================
+
+static bool showWaveColumn = true;
+static bool showLfoColumn = true;
+static bool showDrumsColumn = true;
+static bool showEffectsColumn = true;
 
 // Waveform names for UI
-static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice"};
+static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet"};
 static int selectedWave = 0;
+
+// Additive preset names for UI
+static const char* additivePresetNames[] = {"Sine", "Organ", "Bell", "Strings", "Brass", "Choir", "Custom"};
+
+// Mallet preset names for UI
+static const char* malletPresetNames[] = {"Marimba", "Vibes", "Xylo", "Glock", "Tubular"};
 
 // Vowel names for UI
 static const char* vowelNames[] = {"A (ah)", "E (eh)", "I (ee)", "O (oh)", "U (oo)"};
 
-// Voice key tracking for vowel hold
+// Voice key tracking
 static int vowelKeyVoice = -1;
 
 int main(void) {
@@ -912,7 +335,7 @@ int main(void) {
     SetAudioStreamBufferSizeDefault(MAX_SAMPLES_PER_UPDATE);
     InitAudioDevice();
     
-    // Load SCW wavetables (curated selection)
+    // Load SCW wavetables
     loadSCW("experiments/pixelsynth/cycles/Analog Waveforms in C/001-Analog Pulse50 1.wav", "Pulse");
     loadSCW("experiments/pixelsynth/cycles/Analog Waveforms in C/003-Analog Saw 1.wav", "Saw");
     loadSCW("experiments/pixelsynth/cycles/Analog Waveforms in C/006-Analog Sine 1.wav", "Sine");
@@ -924,23 +347,27 @@ int main(void) {
     loadSCW("experiments/pixelsynth/cycles/Analog Waveforms in C/Fr4 - Polivoks 1.wav", "Polivoks");
     loadSCW("experiments/pixelsynth/cycles/Analog Waveforms in C/Fr4 - SH101 1.wav", "SH101");
     
-    // Create audio stream: 44100 Hz, 16-bit, mono
+    // Create audio stream
     AudioStream stream = LoadAudioStream(SAMPLE_RATE, 16, 1);
     SetAudioStreamCallback(stream, SynthCallback);
     PlayAudioStream(stream);
     
+    // Initialize engines
     memset(voices, 0, sizeof(voices));
+    memset(drumVoices, 0, sizeof(drumVoices));
+    initDrumParams();
+    initEffects();
+    initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
     
     SetTargetFPS(60);
     
-    // Key mappings for polyphonic play
-    const int keys[] = {KEY_Q, KEY_W, KEY_E, KEY_R, KEY_T, KEY_Y, KEY_U,
-                        KEY_A, KEY_S, KEY_D, KEY_F, KEY_G, KEY_H, KEY_J};
-    const float freqs[] = {NOTE_C4, NOTE_D4, NOTE_E4, NOTE_F4, NOTE_G4, NOTE_A4, NOTE_B4,
-                           NOTE_C4*0.5f, NOTE_D4*0.5f, NOTE_E4*0.5f, NOTE_F4*0.5f, NOTE_G4*0.5f, NOTE_A4*0.5f, NOTE_B4*0.5f};
+    // Initialize piano key voices
+    for (size_t i = 0; i < NUM_PIANO_KEYS; i++) {
+        pianoKeyVoices[i] = -1;
+    }
     
     while (!WindowShouldClose()) {
-        // Sound effects (1-6)
+        // SFX (1-6)
         if (IsKeyPressed(KEY_ONE))   sfxJump();
         if (IsKeyPressed(KEY_TWO))   sfxCoin();
         if (IsKeyPressed(KEY_THREE)) sfxHurt();
@@ -948,14 +375,30 @@ int main(void) {
         if (IsKeyPressed(KEY_FIVE))  sfxPowerup();
         if (IsKeyPressed(KEY_SIX))   sfxBlip();
         
-        // Drums (7-9)
-        if (IsKeyPressed(KEY_SEVEN)) drumKick();
-        if (IsKeyPressed(KEY_EIGHT)) drumSnare();
-        if (IsKeyPressed(KEY_NINE))  drumHihat();
+        // Drums (7-0, -, = or numpad)
+        if (IsKeyPressed(KEY_SEVEN) || IsKeyPressed(KEY_KP_7)) drumKick();
+        if (IsKeyPressed(KEY_EIGHT) || IsKeyPressed(KEY_KP_8)) drumSnare();
+        if (IsKeyPressed(KEY_NINE)  || IsKeyPressed(KEY_KP_9)) drumClap();
+        if (IsKeyPressed(KEY_ZERO)  || IsKeyPressed(KEY_KP_0)) drumClosedHH();
+        if (IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) drumOpenHH();
+        if (IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) drumLowTom();
+        // Additional drums (numpad only)
+        if (IsKeyPressed(KEY_KP_4)) drumMidTom();
+        if (IsKeyPressed(KEY_KP_1)) drumHiTom();
+        if (IsKeyPressed(KEY_KP_5)) drumRimshot();
+        if (IsKeyPressed(KEY_KP_6)) drumCowbell();
+        if (IsKeyPressed(KEY_KP_2)) drumClave();
+        if (IsKeyPressed(KEY_KP_3)) drumMaracas();
         
-        // Voice/Speech (0, SPACE, ENTER, hold V for vowel)
-        if (IsKeyPressed(KEY_ZERO)) babble(2.0f, voicePitch, 0.5f);
-        if (IsKeyPressed(KEY_SPACE)) speak("hello world", voiceSpeed, voicePitch, 0.3f);
+        // Octave control (Z/X)
+        if (IsKeyPressed(KEY_Z) && currentOctave > MIN_OCTAVE) {
+            currentOctave--;
+        }
+        if (IsKeyPressed(KEY_X) && currentOctave < MAX_OCTAVE) {
+            currentOctave++;
+        }
+        
+        // Voice/Speech (bottom row: V B N , .)
         if (IsKeyPressed(KEY_V)) {
             vowelKeyVoice = playVowel(200.0f * voicePitch, (VowelType)voiceVowel);
         }
@@ -963,18 +406,51 @@ int main(void) {
             releaseNote(vowelKeyVoice);
             vowelKeyVoice = -1;
         }
+        if (IsKeyPressed(KEY_B)) babble(2.0f, voicePitch, 0.5f);
+        if (IsKeyPressed(KEY_N)) speak("hello world", voiceSpeed, voicePitch, 0.3f);
+        if (IsKeyPressed(KEY_COMMA)) babbleCall(1.5f, voicePitch, 0.5f);    // Call (rising)
+        if (IsKeyPressed(KEY_PERIOD)) babbleAnswer(1.5f, voicePitch, 0.5f); // Answer (falling)
         
-        // Update speech system
+        // Update speech
         updateSpeech(GetFrameTime());
         
-        // Polyphonic notes - press to play, release to stop
-        for (int i = 0; i < 14; i++) {
-            if (IsKeyPressed(keys[i])) {
-                keyVoices[i] = playNote(freqs[i], (WaveType)selectedWave);
+        // Sequencer play/stop
+        if (IsKeyPressed(KEY_SPACE)) {
+            seq.playing = !seq.playing;
+            if (seq.playing) {
+                resetSequencer();
             }
-            if (IsKeyReleased(keys[i]) && keyVoices[i] >= 0) {
-                releaseNote(keyVoices[i]);
-                keyVoices[i] = -1;
+        }
+        updateSequencer(GetFrameTime());
+        
+        // Piano keyboard input (ASDFGHJKL = white keys, WERTYUIOP = black keys)
+        for (size_t i = 0; i < NUM_PIANO_KEYS; i++) {
+            if (IsKeyPressed(pianoKeys[i].key)) {
+                float freq = semitoneToFreq(pianoKeys[i].semitone, currentOctave);
+                if (selectedWave == WAVE_PLUCK) {
+                    pianoKeyVoices[i] = playPluck(freq, pluckBrightness, pluckDamping);
+                } else if (selectedWave == WAVE_ADDITIVE) {
+                    pianoKeyVoices[i] = playAdditive(freq, (AdditivePreset)additivePreset);
+                } else if (selectedWave == WAVE_MALLET) {
+                    pianoKeyVoices[i] = playMallet(freq, (MalletPreset)malletPreset);
+                } else if (selectedWave == WAVE_VOICE) {
+                    pianoKeyVoices[i] = playVowel(freq, (VowelType)voiceVowel);
+                } else {
+                    pianoKeyVoices[i] = playNote(freq, (WaveType)selectedWave);
+                }
+            }
+            if (IsKeyReleased(pianoKeys[i].key) && pianoKeyVoices[i] >= 0) {
+                // Pluck and Mallet can ring out or be damped based on damp setting
+                if (selectedWave == WAVE_PLUCK && pluckDamp > 0.01f) {
+                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - pluckDamp) * 0.5f;
+                    releaseNote(pianoKeyVoices[i]);
+                } else if (selectedWave == WAVE_MALLET && malletDamp > 0.01f) {
+                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - malletDamp) * 0.5f;
+                    releaseNote(pianoKeyVoices[i]);
+                } else if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
+                    releaseNote(pianoKeyVoices[i]);
+                }
+                pianoKeyVoices[i] = -1;
             }
         }
         
@@ -984,91 +460,435 @@ int main(void) {
         
         DrawTextEx(font, "PixelSynth Demo", (Vector2){20, 20}, 30, 1, WHITE);
         
-        // Left column - controls info (compact)
-        DrawTextEx(font, "SFX: 1-6  Drums: 7-9", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "Notes: QWERTYU / ASDFGHJ", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "Voice: V=vowel SPACE=speak 0=babble", (Vector2){20, 85}, 12, 1, LIGHTGRAY);
+        // Controls info
+        DrawTextEx(font, "SFX: 1-6  Drums: 7-0,-,= or Numpad", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "Notes: ASDFGHJKL + WERTYUIOP", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, TextFormat("Octave: %d (Z/X)", currentOctave), (Vector2){20, 85}, 12, 1, YELLOW);
+        DrawTextEx(font, "Voice: V=vowel B=babble N=speak", (Vector2){20, 100}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "SPACE = Play/Stop Sequencer", (Vector2){20, 115}, 12, 1, seq.playing ? GREEN : LIGHTGRAY);
         
-        // Show active voices
-        DrawTextEx(font, "Voices:", (Vector2){20, 105}, 12, 1, GRAY);
+        // Voice indicators
+        DrawTextEx(font, "Voices:", (Vector2){20, 135}, 12, 1, GRAY);
         for (int i = 0; i < NUM_VOICES; i++) {
             Color c = DARKGRAY;
             if (voices[i].envStage == 4) c = ORANGE;
             else if (voices[i].envStage > 0) c = GREEN;
-            DrawRectangle(75 + i * 18, 105, 14, 12, c);
+            DrawRectangle(75 + i * 18, 135, 14, 12, c);
         }
         
         // Performance stats
         double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
         double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
         DrawTextEx(font, TextFormat("Audio: %.0fus (%.1f%%)  FPS: %d", 
-                 audioTimeUs, cpuPercent, GetFPS()), (Vector2){20, 125}, 12, 1, GRAY);
+                 audioTimeUs, cpuPercent, GetFPS()), (Vector2){20, 155}, 12, 1, GRAY);
         
-        ToggleBool(20, 145, "SFX Randomize", &sfxRandomize);
+        ToggleBool(20, 175, "SFX Randomize", &sfxRandomize);
         
-        // Show speaking indicator
+        // Speaking indicator
         if (speechQueue.active) {
-            DrawTextEx(font, "Speaking...", (Vector2){20, 170}, 14, 1, GREEN);
+            DrawTextEx(font, "Speaking...", (Vector2){20, 200}, 14, 1, GREEN);
         }
         
-        // === COLUMN 1: Wave & Envelope ===
-        float uiX = 250;
-        float uiY = 20;
+        // === COLUMN 1: Wave Type + Wave-specific settings ===
+        UIColumn col1 = ui_column(250, 170, 20);
         
-        // Waveform selector
-        CycleOption(uiX, uiY, "Wave", waveNames, 6, &selectedWave);
-        uiY += 22;
-        
-        // SCW selector (only if SCW wave selected)
-        if (selectedWave == WAVE_SCW && scwCount > 0) {
-            const char* scwNames[SCW_MAX_SLOTS];
-            for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
-            CycleOption(uiX, uiY, "SCW", scwNames, scwCount, &noteScwIndex);
-            uiY += 22;
+        if (SectionHeader(col1.x, col1.y, "Wave", &showWaveColumn)) {
+            col1.y += 18;
+            ui_col_cycle(&col1, "Type", waveNames, 9, &selectedWave);
+            ui_col_space(&col1, 4);
+            
+            if (selectedWave == WAVE_SQUARE) {
+                ui_col_sublabel(&col1, "PWM:", ORANGE);
+                ui_col_float(&col1, "Width", &notePulseWidth, 0.05f, 0.1f, 0.9f);
+                ui_col_float(&col1, "Rate", &notePwmRate, 0.5f, 0.1f, 20.0f);
+                ui_col_float(&col1, "Depth", &notePwmDepth, 0.02f, 0.0f, 0.4f);
+            }
+            
+            if (selectedWave == WAVE_SCW && scwCount > 0) {
+                ui_col_sublabel(&col1, "Wavetable:", ORANGE);
+                const char* scwNames[SCW_MAX_SLOTS];
+                for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
+                ui_col_cycle(&col1, "SCW", scwNames, scwCount, &noteScwIndex);
+            }
+            
+            if (selectedWave == WAVE_VOICE) {
+                ui_col_sublabel(&col1, "Formant:", ORANGE);
+                ui_col_cycle(&col1, "Vowel", vowelNames, 5, &voiceVowel);
+                ui_col_float(&col1, "Pitch", &voicePitch, 0.1f, 0.3f, 2.0f);
+                ui_col_float(&col1, "Speed", &voiceSpeed, 1.0f, 4.0f, 20.0f);
+                ui_col_float(&col1, "Formant", &voiceFormantShift, 0.05f, 0.5f, 1.5f);
+                ui_col_float(&col1, "Breath", &voiceBreathiness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Buzz", &voiceBuzziness, 0.05f, 0.0f, 1.0f);
+            }
+            
+            if (selectedWave == WAVE_PLUCK) {
+                ui_col_sublabel(&col1, "Pluck:", ORANGE);
+                ui_col_float(&col1, "Bright", &pluckBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Sustain", &pluckDamping, 0.0002f, 0.995f, 0.9998f);
+                ui_col_float(&col1, "Damp", &pluckDamp, 0.05f, 0.0f, 1.0f);
+            }
+            
+            if (selectedWave == WAVE_ADDITIVE) {
+                ui_col_sublabel(&col1, "Additive:", ORANGE);
+                ui_col_cycle(&col1, "Preset", additivePresetNames, ADDITIVE_PRESET_COUNT, &additivePreset);
+                ui_col_float(&col1, "Bright", &additiveBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Shimmer", &additiveShimmer, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Inharm", &additiveInharmonicity, 0.005f, 0.0f, 0.1f);
+            }
+            
+            if (selectedWave == WAVE_MALLET) {
+                ui_col_sublabel(&col1, "Mallet:", ORANGE);
+                ui_col_cycle(&col1, "Preset", malletPresetNames, MALLET_PRESET_COUNT, &malletPreset);
+                ui_col_float(&col1, "Stiff", &malletStiffness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Hard", &malletHardness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Strike", &malletStrikePos, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Reson", &malletResonance, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Damp", &malletDamp, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Tremolo", &malletTremolo, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "TremSpd", &malletTremoloRate, 0.5f, 1.0f, 12.0f);
+            }
         }
-        uiY += 4;
         
-        // Envelope
-        DrawTextShadow("Envelope:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-        DraggableFloat(uiX, uiY, "Attack", &noteAttack, 0.5f, 0.001f, 2.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Decay", &noteDecay, 0.5f, 0.0f, 2.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Sustain", &noteSustain, 0.5f, 0.0f, 1.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Release", &noteRelease, 0.5f, 0.01f, 3.0f); uiY += 22;
+        // === COLUMN 2: Synth (shared settings) ===
+        UIColumn col2 = ui_column(430, 20, 20);
         
-        // PWM (only for square)
-        if (selectedWave == WAVE_SQUARE) {
-            DrawTextShadow("PWM:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-            DraggableFloat(uiX, uiY, "Width", &notePulseWidth, 0.5f, 0.1f, 0.9f); uiY += 18;
-            DraggableFloat(uiX, uiY, "Rate", &notePwmRate, 0.5f, 0.1f, 20.0f); uiY += 18;
-            DraggableFloat(uiX, uiY, "Depth", &notePwmDepth, 0.5f, 0.0f, 0.4f); uiY += 22;
+        {
+            DrawTextEx(font, "[-] Synth", (Vector2){(float)col2.x, (float)col2.y}, 14, 1, WHITE);
+            col2.y += 18;
+            
+            ui_col_sublabel(&col2, "Envelope:", ORANGE);
+            ui_col_float(&col2, "Attack", &noteAttack, 0.5f, 0.001f, 2.0f);
+            ui_col_float(&col2, "Decay", &noteDecay, 0.5f, 0.0f, 2.0f);
+            ui_col_float(&col2, "Sustain", &noteSustain, 0.5f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Release", &noteRelease, 0.5f, 0.01f, 3.0f);
+            ui_col_space(&col2, 4);
+            
+            ui_col_sublabel(&col2, "Vibrato:", ORANGE);
+            ui_col_float(&col2, "Rate", &noteVibratoRate, 0.5f, 0.5f, 15.0f);
+            ui_col_float(&col2, "Depth", &noteVibratoDepth, 0.2f, 0.0f, 2.0f);
+            ui_col_space(&col2, 4);
+            
+            ui_col_sublabel(&col2, "Filter:", ORANGE);
+            ui_col_float(&col2, "Cutoff", &noteFilterCutoff, 0.05f, 0.01f, 1.0f);
+            ui_col_float(&col2, "Reso", &noteFilterResonance, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "EnvAmt", &noteFilterEnvAmt, 0.05f, -1.0f, 1.0f);
+            ui_col_float(&col2, "EnvAtk", &noteFilterEnvAttack, 0.01f, 0.001f, 0.5f);
+            ui_col_float(&col2, "EnvDcy", &noteFilterEnvDecay, 0.05f, 0.01f, 2.0f);
+            ui_col_space(&col2, 4);
+            
+            ui_col_sublabel(&col2, "Volume:", ORANGE);
+            ui_col_float(&col2, "Note", &noteVolume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
         }
         
-        // Vibrato
-        DrawTextShadow("Vibrato:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-        DraggableFloat(uiX, uiY, "Rate", &noteVibratoRate, 0.5f, 0.5f, 15.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Depth", &noteVibratoDepth, 0.2f, 0.0f, 2.0f); uiY += 22;
+        // === COLUMN 3: LFOs ===
+        UIColumn col3 = ui_column(610, 20, 20);
         
-        // Filter
-        DrawTextShadow("Filter:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-        DraggableFloat(uiX, uiY, "Cutoff", &noteFilterCutoff, 0.5f, 0.05f, 1.0f);
+        if (SectionHeader(col3.x, col3.y, "LFOs", &showLfoColumn)) {
+            col3.y += 18;
+            
+            static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
+            
+            ui_col_sublabel(&col3, "Filter:", ORANGE);
+            ui_col_float(&col3, "Rate", &noteFilterLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &noteFilterLfoDepth, 0.05f, 0.0f, 2.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteFilterLfoShape);
+            ui_col_space(&col3, 4);
+            
+            ui_col_sublabel(&col3, "Resonance:", ORANGE);
+            ui_col_float(&col3, "Rate", &noteResoLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &noteResoLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteResoLfoShape);
+            ui_col_space(&col3, 4);
+            
+            ui_col_sublabel(&col3, "Amplitude:", ORANGE);
+            ui_col_float(&col3, "Rate", &noteAmpLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &noteAmpLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteAmpLfoShape);
+            ui_col_space(&col3, 4);
+            
+            ui_col_sublabel(&col3, "Pitch:", ORANGE);
+            ui_col_float(&col3, "Rate", &notePitchLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &notePitchLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &notePitchLfoShape);
+        }
         
-        // === COLUMN 2: Volume & Voice ===
-        uiX = 430;
-        uiY = 20;
+        // === COLUMN 4: Drums ===
+        UIColumn col4 = ui_column(790, 20, 20);
         
-        // Volume
-        DrawTextShadow("Volume:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-        DraggableFloat(uiX, uiY, "Note", &noteVolume, 0.5f, 0.0f, 1.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Master", &masterVolume, 0.5f, 0.0f, 1.0f); uiY += 26;
+        if (SectionHeader(col4.x, col4.y, "Drums", &showDrumsColumn)) {
+            col4.y += 18;
+            ui_col_float(&col4, "Volume", &drumVolume, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col4, 4);
+            
+            ui_col_sublabel(&col4, "Kick (7):", ORANGE);
+            ui_col_float(&col4, "Pitch", &drumParams.kickPitch, 3.0f, 30.0f, 100.0f);
+            ui_col_float(&col4, "Decay", &drumParams.kickDecay, 0.07f, 0.1f, 1.5f);
+            ui_col_float(&col4, "Punch", &drumParams.kickPunchPitch, 10.0f, 80.0f, 300.0f);
+            ui_col_float(&col4, "Click", &drumParams.kickClick, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col4, "Tone", &drumParams.kickTone, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col4, 4);
+            
+            ui_col_sublabel(&col4, "Snare (8):", ORANGE);
+            ui_col_float(&col4, "Pitch", &drumParams.snarePitch, 10.0f, 100.0f, 350.0f);
+            ui_col_float(&col4, "Decay", &drumParams.snareDecay, 0.03f, 0.05f, 0.6f);
+            ui_col_float(&col4, "Snappy", &drumParams.snareSnappy, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col4, "Tone", &drumParams.snareTone, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col4, 4);
+            
+            ui_col_sublabel(&col4, "HiHat (0/-):", ORANGE);
+            ui_col_float(&col4, "Closed", &drumParams.hhDecayClosed, 0.01f, 0.01f, 0.2f);
+            ui_col_float(&col4, "Open", &drumParams.hhDecayOpen, 0.05f, 0.1f, 1.0f);
+            ui_col_float(&col4, "Tone", &drumParams.hhTone, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col4, 4);
+            
+            ui_col_sublabel(&col4, "Clap (9):", ORANGE);
+            ui_col_float(&col4, "Decay", &drumParams.clapDecay, 0.03f, 0.1f, 0.6f);
+            ui_col_float(&col4, "Spread", &drumParams.clapSpread, 0.001f, 0.005f, 0.03f);
+        }
         
-        // Voice/Speech controls
-        DrawTextShadow("Voice:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 18;
-        CycleOption(uiX, uiY, "Vowel", vowelNames, 5, &voiceVowel); uiY += 22;
-        DraggableFloat(uiX, uiY, "Pitch", &voicePitch, 0.5f, 0.3f, 2.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Speed", &voiceSpeed, 1.0f, 4.0f, 20.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Formant", &voiceFormantShift, 0.5f, 0.5f, 1.5f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Breath", &voiceBreathiness, 0.5f, 0.0f, 1.0f); uiY += 18;
-        DraggableFloat(uiX, uiY, "Buzz", &voiceBuzziness, 0.5f, 0.0f, 1.0f);
+        // === COLUMN 5: Effects ===
+        UIColumn col5 = ui_column(970, 20, 20);
+        
+        if (SectionHeader(col5.x, col5.y, "Effects", &showEffectsColumn)) {
+            col5.y += 18;
+            
+            ui_col_sublabel(&col5, "Distortion:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.distEnabled);
+            ui_col_float(&col5, "Drive", &fx.distDrive, 0.5f, 1.0f, 20.0f);
+            ui_col_float(&col5, "Tone", &fx.distTone, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Mix", &fx.distMix, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col5, 4);
+            
+            ui_col_sublabel(&col5, "Delay:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.delayEnabled);
+            ui_col_float(&col5, "Time", &fx.delayTime, 0.05f, 0.05f, 1.0f);
+            ui_col_float(&col5, "Feedback", &fx.delayFeedback, 0.05f, 0.0f, 0.9f);
+            ui_col_float(&col5, "Tone", &fx.delayTone, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Mix", &fx.delayMix, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col5, 4);
+            
+            ui_col_sublabel(&col5, "Tape:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.tapeEnabled);
+            ui_col_float(&col5, "Saturation", &fx.tapeSaturation, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Wow", &fx.tapeWow, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Flutter", &fx.tapeFlutter, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Hiss", &fx.tapeHiss, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col5, 4);
+            
+            ui_col_sublabel(&col5, "Bitcrusher:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.crushEnabled);
+            ui_col_float(&col5, "Bits", &fx.crushBits, 0.5f, 2.0f, 16.0f);
+            ui_col_float(&col5, "Rate", &fx.crushRate, 1.0f, 1.0f, 32.0f);
+            ui_col_float(&col5, "Mix", &fx.crushMix, 0.05f, 0.0f, 1.0f);
+        }
+        
+        // === DRUM SEQUENCER GRID ===
+        {
+            static bool isDragging = false;
+            static bool isDraggingPitch = false;
+            static int dragTrack = -1;
+            static int dragStep = -1;
+            static float dragStartY = 0.0f;
+            static float dragStartVal = 0.0f;
+            
+            int gridX = 20;
+            int gridY = SCREEN_HEIGHT - 130;
+            int cellW = 24;
+            int cellH = 22;
+            int labelW = 50;
+            int lengthW = 30;
+            
+            DrawTextShadow("Drum Sequencer - drag=velocity, shift+drag=pitch, right-click=delete", gridX, gridY - 25, 14, YELLOW);
+            
+            // Play/Stop button
+            if (PushButton(gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW + 15, gridY - 25, seq.playing ? "Stop" : "Play")) {
+                seq.playing = !seq.playing;
+                if (seq.playing) resetSequencer();
+            }
+            
+            // BPM control
+            DraggableFloat(gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW + 75, gridY - 25, "BPM", &seq.bpm, 2.0f, 60.0f, 200.0f);
+            
+            // Beat markers
+            for (int i = 0; i < 4; i++) {
+                int x = gridX + labelW + i * 4 * cellW + 2;
+                DrawTextShadow(TextFormat("%d", i + 1), x, gridY - 10, 10, GRAY);
+            }
+            
+            DrawTextShadow("Len", gridX + labelW + SEQ_MAX_STEPS * cellW + 5, gridY - 10, 10, GRAY);
+            
+            Vector2 mouse = GetMousePosition();
+            bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+            bool mouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+            bool mouseReleased = IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
+            bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+            
+            if (mouseReleased && isDragging) {
+                isDragging = false;
+                dragTrack = -1;
+                dragStep = -1;
+            }
+            
+            if (isDragging && mouseDown && dragTrack >= 0 && dragStep >= 0) {
+                float deltaY = dragStartY - mouse.y;
+                if (isDraggingPitch) {
+                    float newPitch = dragStartVal + deltaY * 0.01f;
+                    seq.pitch[dragTrack][dragStep] = clampf(newPitch, -1.0f, 1.0f);
+                } else {
+                    float newVel = dragStartVal + deltaY * 0.01f;
+                    seq.velocity[dragTrack][dragStep] = clampf(newVel, 0.1f, 1.0f);
+                }
+            }
+            
+            for (int track = 0; track < SEQ_TRACKS; track++) {
+                int y = gridY + track * cellH;
+                int trackLen = seq.trackLength[track];
+                
+                DrawTextShadow(seq.trackNames[track], gridX, y + 4, 12, LIGHTGRAY);
+                
+                for (int step = 0; step < SEQ_MAX_STEPS; step++) {
+                    int x = gridX + labelW + step * cellW;
+                    Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
+                    
+                    bool isInRange = step < trackLen;
+                    bool isActive = seq.steps[track][step] && isInRange;
+                    bool isCurrent = (step == seq.trackStep[track]) && seq.playing && isInRange;
+                    bool isHovered = CheckCollisionPointRec(mouse, cell);
+                    bool isBeingDragged = isDragging && dragTrack == track && dragStep == step;
+                    bool hasPitchOffset = isActive && fabsf(seq.pitch[track][step]) > 0.01f;
+                    
+                    Color bgColor = (step / 4) % 2 == 0 ? (Color){40, 40, 40, 255} : (Color){30, 30, 30, 255};
+                    if (!isInRange) bgColor = (Color){20, 20, 20, 255};
+                    
+                    Color cellColor = bgColor;
+                    if (isActive) {
+                        float vel = seq.velocity[track][step];
+                        float pit = seq.pitch[track][step];
+                        unsigned char baseG = (unsigned char)(80 + vel * 100);
+                        unsigned char baseR = (unsigned char)(30 + vel * 50);
+                        unsigned char baseB = (unsigned char)(30 + vel * 50);
+                        if (pit < 0) {
+                            baseB = (unsigned char)fminf(255, baseB + (-pit) * 80);
+                            baseG = (unsigned char)(baseG * (1.0f + pit * 0.3f));
+                        } else if (pit > 0) {
+                            baseR = (unsigned char)fminf(255, baseR + pit * 100);
+                            baseG = (unsigned char)(baseG * (1.0f - pit * 0.2f));
+                        }
+                        cellColor = (Color){baseR, baseG, baseB, 255};
+                        if (isCurrent) {
+                            cellColor.r = (unsigned char)fminf(255, cellColor.r + 40);
+                            cellColor.g = (unsigned char)fminf(255, cellColor.g + 75);
+                            cellColor.b = (unsigned char)fminf(255, cellColor.b + 40);
+                        }
+                    } else if (isCurrent) {
+                        cellColor = (Color){60, 60, 80, 255};
+                    }
+                    if (isHovered && isInRange && !isDragging) {
+                        cellColor.r = (unsigned char)fminf(255, cellColor.r + 30);
+                        cellColor.g = (unsigned char)fminf(255, cellColor.g + 30);
+                        cellColor.b = (unsigned char)fminf(255, cellColor.b + 30);
+                    }
+                    if (isBeingDragged) {
+                        cellColor.r = (unsigned char)fminf(255, cellColor.r + 50);
+                        cellColor.g = (unsigned char)fminf(255, cellColor.g + 50);
+                        cellColor.b = (unsigned char)fminf(255, cellColor.b + 50);
+                    }
+                    
+                    DrawRectangleRec(cell, cellColor);
+                    DrawRectangleLinesEx(cell, 1, isInRange ? (Color){60, 60, 60, 255} : (Color){35, 35, 35, 255});
+                    
+                    if (hasPitchOffset) {
+                        float pit = seq.pitch[track][step];
+                        int triX = x + cellW - 8;
+                        int triY = y + 3;
+                        Color triColor = pit > 0 ? (Color){255, 150, 50, 255} : (Color){100, 150, 255, 255};
+                        if (pit > 0) {
+                            DrawTriangle((Vector2){(float)triX + 3, (float)triY}, 
+                                        (Vector2){(float)triX, (float)triY + 5}, 
+                                        (Vector2){(float)triX + 6, (float)triY + 5}, triColor);
+                        } else {
+                            DrawTriangle((Vector2){(float)triX, (float)triY}, 
+                                        (Vector2){(float)triX + 6, (float)triY}, 
+                                        (Vector2){(float)triX + 3, (float)triY + 5}, triColor);
+                        }
+                    }
+                    
+                    if (isActive && (isHovered || isBeingDragged)) {
+                        if (isBeingDragged && isDraggingPitch) {
+                            int semitones = (int)(seq.pitch[track][step] * 12);
+                            DrawTextShadow(TextFormat("%+d", semitones), x + 2, y + 5, 10, WHITE);
+                        } else {
+                            int velPercent = (int)(seq.velocity[track][step] * 100);
+                            DrawTextShadow(TextFormat("%d", velPercent), x + 3, y + 5, 10, WHITE);
+                        }
+                    }
+                    
+                    if (isHovered && isInRange && !isDragging) {
+                        if (mouseClicked) {
+                            if (isActive) {
+                                isDragging = true;
+                                isDraggingPitch = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                                dragTrack = track;
+                                dragStep = step;
+                                dragStartY = mouse.y;
+                                dragStartVal = isDraggingPitch ? seq.pitch[track][step] : seq.velocity[track][step];
+                                ui_consume_click();
+                            } else {
+                                seq.steps[track][step] = true;
+                                ui_consume_click();
+                                float pitchMod = powf(2.0f, seq.pitch[track][step]);
+                                seq.triggersFull[track](seq.velocity[track][step], pitchMod);
+                            }
+                        }
+                        if (rightClicked && isActive) {
+                            seq.steps[track][step] = false;
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Length control
+                int lenX = gridX + labelW + SEQ_MAX_STEPS * cellW + 5;
+                Rectangle lenRect = {(float)lenX, (float)y, (float)lengthW - 2, (float)cellH - 2};
+                bool lenHovered = CheckCollisionPointRec(mouse, lenRect);
+                
+                Color lenColor = lenHovered ? YELLOW : LIGHTGRAY;
+                DrawRectangleRec(lenRect, (Color){50, 50, 50, 255});
+                DrawRectangleLinesEx(lenRect, 1, (Color){80, 80, 80, 255});
+                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 4, 12, lenColor);
+                
+                if (lenHovered) {
+                    if (mouseClicked) {
+                        seq.trackLength[track]++;
+                        if (seq.trackLength[track] > SEQ_MAX_STEPS) seq.trackLength[track] = 1;
+                        ui_consume_click();
+                    }
+                    if (rightClicked) {
+                        seq.trackLength[track]--;
+                        if (seq.trackLength[track] < 1) seq.trackLength[track] = SEQ_MAX_STEPS;
+                        ui_consume_click();
+                    }
+                }
+            }
+            
+            // Dilla timing controls
+            int dillaX = gridX + labelW;
+            int dillaY = gridY + SEQ_TRACKS * cellH + 10;
+            
+            DrawTextShadow("Dilla Timing:", dillaX, dillaY, 12, YELLOW);
+            
+            DraggableInt(dillaX + 100, dillaY, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
+            DraggableInt(dillaX + 200, dillaY, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
+            DraggableInt(dillaX + 310, dillaY, "HiHat", &seq.dilla.hatNudge, 0.3f, -12, 12);
+            DraggableInt(dillaX + 420, dillaY, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
+            DraggableInt(dillaX + 520, dillaY, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
+            DraggableInt(dillaX + 630, dillaY, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
+            
+            if (PushButton(dillaX + 730, dillaY, "Reset")) {
+                seqResetTiming();
+            }
+        }
         
         ui_update();
         EndDrawing();
