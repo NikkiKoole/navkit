@@ -97,6 +97,48 @@ void DrawTooltip(void);
 // Measure text width using UI font
 int MeasureTextUI(const char* text, int size);
 
+// ============================================================================
+// COLUMN LAYOUT HELPERS
+// ============================================================================
+
+// Column state - tracks position for auto-layout
+typedef struct {
+    float x;           // Column X position
+    float y;           // Current Y position (advances with each element)
+    float startY;      // Starting Y (for reset)
+    float spacing;     // Vertical spacing between elements
+} UIColumn;
+
+// Create a new column layout
+UIColumn ui_column(float x, float y, float spacing);
+
+// Reset column to starting position
+void ui_col_reset(UIColumn* col);
+
+// Add vertical space
+void ui_col_space(UIColumn* col, float pixels);
+
+// Draw a label/header
+void ui_col_label(UIColumn* col, const char* text, Color color);
+
+// Draw a smaller sub-label
+void ui_col_sublabel(UIColumn* col, const char* text, Color color);
+
+// Draggable float control
+bool ui_col_float(UIColumn* col, const char* label, float* value, float speed, float min, float max);
+
+// Draggable int control
+bool ui_col_int(UIColumn* col, const char* label, int* value, float speed, int min, int max);
+
+// Toggle boolean control
+void ui_col_toggle(UIColumn* col, const char* label, bool* value);
+
+// Cycle through options control
+void ui_col_cycle(UIColumn* col, const char* label, const char** options, int count, int* value);
+
+// Push button - returns true when clicked
+bool ui_col_button(UIColumn* col, const char* label);
+
 #endif // UI_H
 
 // ============================================================================
@@ -752,6 +794,65 @@ void ToggleBoolT(float x, float y, const char* label, bool* value, const char* t
         *value = !*value;
         g_ui_clickConsumed = true;
     }
+}
+
+// ============================================================================
+// COLUMN LAYOUT IMPLEMENTATION
+// ============================================================================
+
+UIColumn ui_column(float x, float y, float spacing) {
+    UIColumn col;
+    col.x = x;
+    col.y = y;
+    col.startY = y;
+    col.spacing = spacing;
+    return col;
+}
+
+void ui_col_reset(UIColumn* col) {
+    col->y = col->startY;
+}
+
+void ui_col_space(UIColumn* col, float pixels) {
+    col->y += pixels;
+}
+
+void ui_col_label(UIColumn* col, const char* text, Color color) {
+    DrawTextShadow(text, (int)col->x, (int)col->y, 14, color);
+    col->y += col->spacing;
+}
+
+void ui_col_sublabel(UIColumn* col, const char* text, Color color) {
+    DrawTextShadow(text, (int)col->x, (int)col->y, 12, color);
+    col->y += col->spacing - 2;
+}
+
+bool ui_col_float(UIColumn* col, const char* label, float* value, float speed, float min, float max) {
+    bool changed = DraggableFloat(col->x, col->y, label, value, speed, min, max);
+    col->y += col->spacing;
+    return changed;
+}
+
+bool ui_col_int(UIColumn* col, const char* label, int* value, float speed, int min, int max) {
+    bool changed = DraggableInt(col->x, col->y, label, value, speed, min, max);
+    col->y += col->spacing;
+    return changed;
+}
+
+void ui_col_toggle(UIColumn* col, const char* label, bool* value) {
+    ToggleBool(col->x, col->y, label, value);
+    col->y += col->spacing;
+}
+
+void ui_col_cycle(UIColumn* col, const char* label, const char** options, int count, int* value) {
+    CycleOption(col->x, col->y, label, options, count, value);
+    col->y += col->spacing + 2;  // Cycles are slightly taller
+}
+
+bool ui_col_button(UIColumn* col, const char* label) {
+    bool clicked = PushButton(col->x, col->y, label);
+    col->y += col->spacing;
+    return clicked;
 }
 
 #endif // UI_IMPLEMENTATION
