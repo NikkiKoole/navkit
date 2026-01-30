@@ -8,7 +8,7 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 980
+#define SCREEN_WIDTH 1150
 #define SCREEN_HEIGHT 450
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -155,8 +155,9 @@ static DrumVoice drumVoices[NUM_DRUM_VOICES];
 static DrumParams drumParams;
 static float drumVolume = 0.6f;
 
-// Forward declaration for audio callback
+// Forward declarations
 static float processDrums(float dt);
+static int playVowel(float freq, VowelType vowel);
 
 // Initialize drum parameters to 808-like defaults
 static void initDrumParams(void) {
@@ -1162,6 +1163,9 @@ static void drumCowbell(void) { triggerDrum(DRUM_COWBELL); }
 static void drumClave(void) { triggerDrum(DRUM_CLAVE); }
 static void drumMaracas(void) { triggerDrum(DRUM_MARACAS); }
 
+// Include generative music system (after drums and before voice functions)
+#include "genmusic.h"
+
 // === VOICE/SPEECH FUNCTIONS ===
 
 // Map character to vowel sound
@@ -1459,6 +1463,10 @@ int main(void) {
         // Update speech system
         updateSpeech(GetFrameTime());
         
+        // Generative music (SPACE to toggle)
+        if (IsKeyPressed(KEY_SPACE)) toggleGenMusic();
+        updateGenMusic(GetFrameTime());
+        
         // Polyphonic notes - press to play, release to stop
         for (int i = 0; i < 14; i++) {
             if (IsKeyPressed(keys[i])) {
@@ -1480,27 +1488,65 @@ int main(void) {
         DrawTextEx(font, "SFX: 1-6  Notes: QWERTYU/ASDFGHJ", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
         DrawTextEx(font, "Drums: Z=kick X=snare C=clap 7/8=HH", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
         DrawTextEx(font, "Voice: V=vowel B=babble N=speak", (Vector2){20, 85}, 12, 1, LIGHTGRAY);
+        DrawTextEx(font, "SPACE = Toggle Generative Music", (Vector2){20, 100}, 12, 1, genMusic.active ? GREEN : LIGHTGRAY);
         
         // Show active voices
-        DrawTextEx(font, "Voices:", (Vector2){20, 105}, 12, 1, GRAY);
+        DrawTextEx(font, "Voices:", (Vector2){20, 120}, 12, 1, GRAY);
         for (int i = 0; i < NUM_VOICES; i++) {
             Color c = DARKGRAY;
             if (voices[i].envStage == 4) c = ORANGE;
             else if (voices[i].envStage > 0) c = GREEN;
-            DrawRectangle(75 + i * 18, 105, 14, 12, c);
+            DrawRectangle(75 + i * 18, 120, 14, 12, c);
         }
         
         // Performance stats
         double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
         double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
         DrawTextEx(font, TextFormat("Audio: %.0fus (%.1f%%)  FPS: %d", 
-                 audioTimeUs, cpuPercent, GetFPS()), (Vector2){20, 125}, 12, 1, GRAY);
+                 audioTimeUs, cpuPercent, GetFPS()), (Vector2){20, 140}, 12, 1, GRAY);
         
-        ToggleBool(20, 145, "SFX Randomize", &sfxRandomize);
+        ToggleBool(20, 160, "SFX Randomize", &sfxRandomize);
+        
+        // Generative music info
+        if (genMusic.active) {
+            // Key display
+            int rootIdx = (genMusic.rootNote - 36) % 12;
+            if (rootIdx < 0) rootIdx += 12;
+            DrawTextEx(font, TextFormat("%s | %s %s | Bar %d", 
+                     STYLE_NAMES[genMusic.style],
+                     ROOT_NAMES[rootIdx], SCALES[genMusic.scaleIndex].name,
+                     genMusic.bar + 1), 
+                     (Vector2){20, 185}, 12, 1, GREEN);
+            
+            // Style selector
+            int oldStyle = genMusic.style;
+            CycleOption(20, 205, "Style", STYLE_NAMES, STYLE_COUNT, &genMusic.style);
+            if (genMusic.style != oldStyle) setGenMusicStyle(genMusic.style);
+            
+            // Scale selector
+            static const char* scaleNames[NUM_SCALES];
+            static bool scaleNamesInit = false;
+            if (!scaleNamesInit) {
+                for (int i = 0; i < NUM_SCALES; i++) scaleNames[i] = SCALES[i].name;
+                scaleNamesInit = true;
+            }
+            int oldScale = genMusic.scaleIndex;
+            CycleOption(20, 227, "Scale", scaleNames, NUM_SCALES, &genMusic.scaleIndex);
+            if (genMusic.scaleIndex != oldScale) setGenMusicScale(genMusic.scaleIndex);
+            
+            // Root note selector
+            int rootNote = rootIdx;
+            int oldRoot = rootNote;
+            CycleOption(20, 249, "Root", ROOT_NAMES, 12, &rootNote);
+            if (rootNote != oldRoot) setGenMusicRoot(rootNote);
+            
+            DraggableFloat(20, 271, "BPM", &genMusic.bpm, 5.0f, 60.0f, 180.0f);
+            DraggableFloat(20, 289, "Swing", &genMusic.swing, 0.5f, 0.0f, 0.5f);
+        }
         
         // Show speaking indicator
         if (speechQueue.active) {
-            DrawTextEx(font, "Speaking...", (Vector2){20, 170}, 14, 1, GREEN);
+            DrawTextEx(font, "Speaking...", (Vector2){20, 315}, 14, 1, GREEN);
         }
         
         // === COLUMN 1: Wave & Envelope ===
@@ -1594,6 +1640,40 @@ int main(void) {
         DrawTextShadow("Clap (C):", (int)uiX, (int)uiY, 12, ORANGE); uiY += 16;
         DraggableFloat(uiX, uiY, "Decay", &drumParams.clapDecay, 0.5f, 0.1f, 0.6f); uiY += 16;
         DraggableFloat(uiX, uiY, "Spread", &drumParams.clapSpread, 0.01f, 0.005f, 0.03f);
+        
+        // === COLUMN 4: Generated Instrument Params ===
+        uiX = 790;
+        uiY = 20;
+        
+        DrawTextShadow("Gen Instruments:", (int)uiX, (int)uiY, 14, YELLOW); uiY += 20;
+        
+        // Bass params
+        DrawTextShadow("Bass:", (int)uiX, (int)uiY, 12, SKYBLUE); uiY += 16;
+        static const char* bassWaveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice"};
+        CycleOption(uiX, uiY, "Wave", bassWaveNames, 6, &genMusic.bass.wave); uiY += 20;
+        DraggableFloat(uiX, uiY, "Volume", &genMusic.bass.volume, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Attack", &genMusic.bass.attack, 0.5f, 0.001f, 0.5f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Decay", &genMusic.bass.decay, 0.5f, 0.01f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Sustain", &genMusic.bass.sustain, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Release", &genMusic.bass.release, 0.5f, 0.01f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Filter", &genMusic.bass.filterCutoff, 0.5f, 0.05f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Octave", &genMusic.bass.pitchOctave, 0.5f, -2.0f, 2.0f); uiY += 22;
+        
+        // Melody params
+        DrawTextShadow("Melody:", (int)uiX, (int)uiY, 12, SKYBLUE); uiY += 16;
+        CycleOption(uiX, uiY, "Wave", bassWaveNames, 6, &genMusic.melody.wave); uiY += 20;
+        DraggableFloat(uiX, uiY, "Volume", &genMusic.melody.volume, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Attack", &genMusic.melody.attack, 0.5f, 0.001f, 0.5f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Decay", &genMusic.melody.decay, 0.5f, 0.01f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Sustain", &genMusic.melody.sustain, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Release", &genMusic.melody.release, 0.5f, 0.01f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Filter", &genMusic.melody.filterCutoff, 0.5f, 0.05f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Octave", &genMusic.melody.pitchOctave, 0.5f, -1.0f, 4.0f); uiY += 22;
+        
+        // Vox params (simplified)
+        DrawTextShadow("Vox:", (int)uiX, (int)uiY, 12, SKYBLUE); uiY += 16;
+        DraggableFloat(uiX, uiY, "Volume", &genMusic.vox.volume, 0.5f, 0.0f, 1.0f); uiY += 16;
+        DraggableFloat(uiX, uiY, "Octave", &genMusic.vox.pitchOctave, 0.5f, -1.0f, 3.0f);
         
         ui_update();
         EndDrawing();
