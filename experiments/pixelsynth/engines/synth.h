@@ -64,6 +64,22 @@ typedef struct VoiceSettings {
     float vibratoDepth;
     float vibratoPhase;
     FormantFilter formants[3];
+    
+    // Consonant/plosive attack
+    bool consonantEnabled;
+    float consonantTime;   // Time since note start (for attack envelope)
+    float consonantAmount; // Strength of consonant (0-1)
+    
+    // Nasality (anti-formant)
+    bool nasalEnabled;
+    float nasalAmount;     // Strength of nasal character (0-1)
+    float nasalLow, nasalBand; // Nasal filter state
+    
+    // Pitch envelope (intonation)
+    float pitchEnvAmount;  // Semitones to bend (-12 to +12)
+    float pitchEnvTime;    // How long the bend takes (0.05 - 0.5s)
+    float pitchEnvCurve;   // Curve shape: 0=linear, <0=fast-then-slow, >0=slow-then-fast
+    float pitchEnvTimer;   // Current time in envelope
 } VoiceSettings;
 
 // Additive synthesis settings
@@ -431,6 +447,9 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
     VoiceSettings *vs = &v->voiceSettings;
     float dt = 1.0f / sampleRate;
     
+    // Track time for consonant attack
+    vs->consonantTime += dt;
+    
     // Decay formant filter states during release
     if (v->envStage == 4) {
         float decay = 0.995f;
@@ -439,6 +458,8 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
             vs->formants[i].band *= decay;
             vs->formants[i].high *= decay;
         }
+        vs->nasalLow *= decay;
+        vs->nasalBand *= decay;
     }
     
     // Apply vibrato
@@ -450,8 +471,42 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
         vibrato = powf(2.0f, semitones / 12.0f);
     }
     
+    // Consonant attack: pitch bend down at start
+    float consonantPitchMod = 1.0f;
+    if (vs->consonantEnabled && vs->consonantTime < 0.05f) {
+        // Quick pitch drop then rise (like "ba" or "da")
+        float t = vs->consonantTime / 0.05f;
+        consonantPitchMod = 1.0f + (1.0f - t) * (1.0f - t) * 0.5f * vs->consonantAmount;
+    }
+    
+    // Pitch envelope (intonation)
+    float pitchEnvMod = 1.0f;
+    if (fabsf(vs->pitchEnvAmount) > 0.01f && vs->pitchEnvTimer < vs->pitchEnvTime) {
+        vs->pitchEnvTimer += dt;
+        float t = vs->pitchEnvTimer / vs->pitchEnvTime;
+        if (t > 1.0f) t = 1.0f;
+        
+        // Apply curve: negative = fast then slow, positive = slow then fast
+        float curved;
+        if (vs->pitchEnvCurve < 0.0f) {
+            // Fast then slow (exponential out)
+            float power = 1.0f + fabsf(vs->pitchEnvCurve) * 2.0f;
+            curved = 1.0f - powf(1.0f - t, power);
+        } else if (vs->pitchEnvCurve > 0.0f) {
+            // Slow then fast (exponential in)
+            float power = 1.0f + vs->pitchEnvCurve * 2.0f;
+            curved = powf(t, power);
+        } else {
+            curved = t; // Linear
+        }
+        
+        // Envelope goes from pitchEnvAmount semitones toward 0
+        float semitones = vs->pitchEnvAmount * (1.0f - curved);
+        pitchEnvMod = powf(2.0f, semitones / 12.0f);
+    }
+    
     // Advance phase
-    float actualFreq = v->frequency * vibrato;
+    float actualFreq = v->frequency * vibrato * consonantPitchMod * pitchEnvMod;
     v->phase += actualFreq / sampleRate;
     if (v->phase >= 1.0f) v->phase -= 1.0f;
     
@@ -464,6 +519,15 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
     // Mix in breathiness (noise)
     if (vs->breathiness > 0.0f) {
         source = source * (1.0f - vs->breathiness * 0.7f) + noise() * vs->breathiness * 0.5f;
+    }
+    
+    // Consonant attack: add noise burst at start
+    float consonantNoise = 0.0f;
+    if (vs->consonantEnabled && vs->consonantTime < 0.03f) {
+        // Sharp noise burst that fades quickly
+        float env = 1.0f - (vs->consonantTime / 0.03f);
+        env = env * env * env; // Cubic falloff for snappy attack
+        consonantNoise = noise() * env * vs->consonantAmount * 0.8f;
     }
     
     // Interpolate formant parameters and apply filters
@@ -481,6 +545,33 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
         vs->formants[i].bw = bw;
         out += processFormantFilter(&vs->formants[i], source, sampleRate) * amp;
     }
+    
+    // Nasality: apply anti-formant (notch filter around 250-450Hz)
+    if (vs->nasalEnabled && vs->nasalAmount > 0.0f) {
+        // Nasal anti-formant centered around 350Hz
+        float nasalFreq = 350.0f * vs->formantShift;
+        float nasalBw = 100.0f;
+        float fc = clampf(2.0f * sinf(PI * nasalFreq / sampleRate), 0.001f, 0.99f);
+        float q = clampf(nasalFreq / (nasalBw + 1.0f), 0.5f, 10.0f);
+        
+        // Run notch filter
+        vs->nasalLow += fc * vs->nasalBand;
+        float nasalHigh = out - vs->nasalLow - vs->nasalBand / q;
+        vs->nasalBand += fc * nasalHigh;
+        
+        // Notch = low + high (removes the band)
+        float notched = vs->nasalLow + nasalHigh;
+        
+        // Also add a slight nasal resonance around 250Hz and 2500Hz
+        float nasalResonance = sinf(v->phase * 2.0f * PI * 250.0f / v->frequency) * 0.1f;
+        nasalResonance += sinf(v->phase * 2.0f * PI * 2500.0f / v->frequency) * 0.05f;
+        
+        // Blend between normal and nasal
+        out = lerpf(out, notched + nasalResonance * vs->nasalAmount, vs->nasalAmount);
+    }
+    
+    // Add consonant noise on top
+    out += consonantNoise;
     
     return out * 0.7f;
 }
@@ -1359,6 +1450,13 @@ static float voiceBuzziness = 0.6f;
 static float voiceSpeed = 10.0f;
 static float voicePitch = 1.0f;
 static int voiceVowel = VOWEL_A;
+static bool voiceConsonant = false;      // Enable consonant/plosive attack
+static float voiceConsonantAmt = 0.5f;   // Consonant strength (0-1)
+static bool voiceNasal = false;          // Enable nasality
+static float voiceNasalAmt = 0.5f;       // Nasal strength (0-1)
+static float voicePitchEnv = 0.0f;       // Pitch envelope amount in semitones (-12 to +12)
+static float voicePitchEnvTime = 0.15f;  // Pitch envelope time (0.05 - 0.5s)
+static float voicePitchEnvCurve = 0.0f;  // Curve shape (-1 to +1)
 
 // Pluck (Karplus-Strong) tweakables
 static float pluckBrightness = 0.5f;  // 0=muted/nylon, 1=bright/steel
@@ -1556,6 +1654,23 @@ static int playVowel(float freq, VowelType vowel) {
     vs->vibratoRate = 5.0f;
     vs->vibratoDepth = 0.15f;
     vs->vibratoPhase = 0.0f;
+    
+    // Consonant attack
+    vs->consonantEnabled = voiceConsonant;
+    vs->consonantTime = 0.0f;
+    vs->consonantAmount = voiceConsonantAmt;
+    
+    // Nasality
+    vs->nasalEnabled = voiceNasal;
+    vs->nasalAmount = voiceNasalAmt;
+    vs->nasalLow = 0.0f;
+    vs->nasalBand = 0.0f;
+    
+    // Pitch envelope
+    vs->pitchEnvAmount = voicePitchEnv;
+    vs->pitchEnvTime = voicePitchEnvTime;
+    vs->pitchEnvCurve = voicePitchEnvCurve;
+    vs->pitchEnvTimer = 0.0f;
     
     for (int i = 0; i < 3; i++) {
         vs->formants[i].low = 0;
@@ -1816,6 +1931,23 @@ static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     vs->vibratoRate = 5.0f;
     vs->vibratoDepth = 0.15f;
     vs->vibratoPhase = 0.0f;
+    
+    // Consonant attack
+    vs->consonantEnabled = voiceConsonant;
+    vs->consonantTime = 0.0f;
+    vs->consonantAmount = voiceConsonantAmt;
+    
+    // Nasality
+    vs->nasalEnabled = voiceNasal;
+    vs->nasalAmount = voiceNasalAmt;
+    vs->nasalLow = 0.0f;
+    vs->nasalBand = 0.0f;
+    
+    // Pitch envelope
+    vs->pitchEnvAmount = voicePitchEnv;
+    vs->pitchEnvTime = voicePitchEnvTime;
+    vs->pitchEnvCurve = voicePitchEnvCurve;
+    vs->pitchEnvTimer = 0.0f;
     
     for (int i = 0; i < 3; i++) {
         vs->formants[i].low = 0;

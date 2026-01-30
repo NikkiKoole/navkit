@@ -327,6 +327,9 @@ static const char* vowelNames[] = {"A (ah)", "E (eh)", "I (ee)", "O (oh)", "U (o
 // Voice key tracking
 static int vowelKeyVoice = -1;
 
+// Random vowel mode for sung melodies
+static bool voiceRandomVowel = false;
+
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "PixelSynth Demo");
     
@@ -426,7 +429,12 @@ int main(void) {
                 } else if (selectedWave == WAVE_MALLET) {
                     pianoKeyVoices[i] = playMallet(freq, (MalletPreset)malletPreset);
                 } else if (selectedWave == WAVE_VOICE) {
-                    pianoKeyVoices[i] = playVowel(freq, (VowelType)voiceVowel);
+                    VowelType vowel = (VowelType)voiceVowel;
+                    if (voiceRandomVowel) {
+                        noiseState = noiseState * 1103515245 + 12345;
+                        vowel = (VowelType)((noiseState >> 16) % 5);
+                    }
+                    pianoKeyVoices[i] = playVowel(freq, vowel);
                 } else if (selectedWave == WAVE_GRANULAR) {
                     pianoKeyVoices[i] = playGranular(freq, granularScwIndex);
                 } else {
@@ -508,11 +516,27 @@ int main(void) {
             if (selectedWave == WAVE_VOICE) {
                 ui_col_sublabel(&col1, "Formant:", ORANGE);
                 ui_col_cycle(&col1, "Vowel", vowelNames, 5, &voiceVowel);
+                ui_col_toggle(&col1, "Random", &voiceRandomVowel);
                 ui_col_float(&col1, "Pitch", &voicePitch, 0.1f, 0.3f, 2.0f);
                 ui_col_float(&col1, "Speed", &voiceSpeed, 1.0f, 4.0f, 20.0f);
                 ui_col_float(&col1, "Formant", &voiceFormantShift, 0.05f, 0.5f, 1.5f);
                 ui_col_float(&col1, "Breath", &voiceBreathiness, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&col1, "Buzz", &voiceBuzziness, 0.05f, 0.0f, 1.0f);
+                ui_col_space(&col1, 4);
+                ui_col_sublabel(&col1, "Extras:", ORANGE);
+                ui_col_toggle(&col1, "Consonant", &voiceConsonant);
+                if (voiceConsonant) {
+                    ui_col_float(&col1, "ConsAmt", &voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
+                }
+                ui_col_toggle(&col1, "Nasal", &voiceNasal);
+                if (voiceNasal) {
+                    ui_col_float(&col1, "NasalAmt", &voiceNasalAmt, 0.05f, 0.0f, 1.0f);
+                }
+                ui_col_space(&col1, 4);
+                ui_col_sublabel(&col1, "Pitch Env:", ORANGE);
+                ui_col_float(&col1, "Bend", &voicePitchEnv, 0.5f, -12.0f, 12.0f);
+                ui_col_float(&col1, "Time", &voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
+                ui_col_float(&col1, "Curve", &voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_PLUCK) {
