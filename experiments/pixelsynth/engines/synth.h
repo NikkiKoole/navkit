@@ -30,6 +30,8 @@ typedef enum {
     WAVE_SCW,        // Single Cycle Waveform (wavetable)
     WAVE_VOICE,      // Formant synthesis
     WAVE_PLUCK,      // Karplus-Strong plucked string
+    WAVE_ADDITIVE,   // Additive synthesis (sine harmonics)
+    WAVE_MALLET,     // Two-mass mallet percussion (marimba/vibes)
 } WaveType;
 
 // Vowel types for formant synthesis
@@ -63,6 +65,63 @@ typedef struct VoiceSettings {
     FormantFilter formants[3];
 } VoiceSettings;
 
+// Additive synthesis settings
+#define ADDITIVE_MAX_HARMONICS 16
+
+typedef enum {
+    ADDITIVE_PRESET_SINE,       // Pure sine (fundamental only)
+    ADDITIVE_PRESET_ORGAN,      // Drawbar organ (odd harmonics)
+    ADDITIVE_PRESET_BELL,       // Bell/chime (inharmonic partials)
+    ADDITIVE_PRESET_STRINGS,    // String ensemble
+    ADDITIVE_PRESET_BRASS,      // Brass-like
+    ADDITIVE_PRESET_CHOIR,      // Choir pad
+    ADDITIVE_PRESET_CUSTOM,     // User-defined
+    ADDITIVE_PRESET_COUNT
+} AdditivePreset;
+
+typedef struct {
+    int numHarmonics;                       // Number of active harmonics (1-16)
+    float harmonicAmps[ADDITIVE_MAX_HARMONICS];   // Amplitude per harmonic (0-1)
+    float harmonicPhases[ADDITIVE_MAX_HARMONICS]; // Phase offset per harmonic
+    float harmonicRatios[ADDITIVE_MAX_HARMONICS]; // Frequency ratio (1=fundamental, 2=octave, etc.)
+    float harmonicDecays[ADDITIVE_MAX_HARMONICS]; // Per-harmonic decay rate multiplier
+    float brightness;                       // High harmonic emphasis (0-1)
+    float evenOddMix;                       // 0=odd only, 0.5=both, 1=even only
+    float inharmonicity;                    // Stretch partials for bell-like sounds (0-0.1)
+    float shimmer;                          // Random phase modulation for movement
+    AdditivePreset preset;
+} AdditiveSettings;
+
+// Mallet percussion synthesis settings (two-mass bar model)
+typedef enum {
+    MALLET_PRESET_MARIMBA,    // Warm, woody marimba
+    MALLET_PRESET_VIBES,      // Metallic vibraphone
+    MALLET_PRESET_XYLOPHONE,  // Bright, sharp xylophone
+    MALLET_PRESET_GLOCKEN,    // Glockenspiel/bells
+    MALLET_PRESET_TUBULAR,    // Tubular bells
+    MALLET_PRESET_COUNT
+} MalletPreset;
+
+typedef struct {
+    // Two-mass modal model: bar vibration modes
+    float modeFreqs[4];       // Frequency ratios for 4 modes (1.0, 2.76, 5.4, 8.9 for ideal bar)
+    float modeAmpsInit[4];    // Initial amplitude of each mode (from preset)
+    float modeAmps[4];        // Current amplitude (decays over time)
+    float modeDecays[4];      // Decay time per mode in seconds (higher modes decay faster)
+    float modePhases[4];      // Phase accumulators for each mode
+    
+    // Tone shaping
+    float stiffness;          // Bar stiffness - affects inharmonicity (0=soft wood, 1=metal)
+    float hardness;           // Mallet hardness - affects attack brightness (0=soft, 1=hard)
+    float strikePos;          // Strike position along bar (0=center, 1=edge) - affects mode mix
+    float resonance;          // Resonator coupling (0=dry, 1=full resonance)
+    float tremolo;            // Motor tremolo for vibes (0=off, 1=full)
+    float tremoloRate;        // Tremolo speed in Hz
+    float tremoloPhase;       // Tremolo LFO phase
+    
+    MalletPreset preset;
+} MalletSettings;
+
 // Voice structure (polyphonic synth voice)
 typedef struct {
     float frequency;
@@ -94,9 +153,47 @@ typedef struct {
     // For pitch slides (SFX)
     float pitchSlide;
     
-    // Simple lowpass filter (per-voice)
-    float filterCutoff;   // 0.0-1.0
-    float filterLp;       // Filter state
+    // Resonant lowpass filter (per-voice)
+    float filterCutoff;   // Base cutoff 0.0-1.0
+    float filterResonance;// Resonance 0.0-1.0
+    float filterLp;       // Filter state (lowpass)
+    float filterBp;       // Filter state (bandpass, for resonance)
+    
+    // Filter envelope
+    float filterEnvAmt;   // Envelope amount (-1 to 1)
+    float filterEnvAttack;
+    float filterEnvDecay;
+    float filterEnvLevel; // Current envelope level
+    float filterEnvPhase; // Time in current stage
+    int filterEnvStage;   // 0=off, 1=attack, 2=decay
+    
+    // Filter LFO
+    float filterLfoRate;  // LFO rate in Hz
+    float filterLfoDepth; // LFO depth (0-1)
+    float filterLfoPhase; // LFO phase (0-1)
+    int filterLfoShape;   // 0=sine, 1=tri, 2=square, 3=saw, 4=S&H
+    float filterLfoSH;    // Sample & Hold current value
+    
+    // Resonance LFO
+    float resoLfoRate;
+    float resoLfoDepth;
+    float resoLfoPhase;
+    int resoLfoShape;
+    float resoLfoSH;
+    
+    // Amplitude LFO (tremolo)
+    float ampLfoRate;
+    float ampLfoDepth;
+    float ampLfoPhase;
+    int ampLfoShape;
+    float ampLfoSH;
+    
+    // Pitch LFO
+    float pitchLfoRate;
+    float pitchLfoDepth;  // In semitones
+    float pitchLfoPhase;
+    int pitchLfoShape;
+    float pitchLfoSH;
     
     // Arpeggiator
     bool arpEnabled;
@@ -119,6 +216,12 @@ typedef struct {
     float ksDamping;        // Damping/decay factor (0.9-0.999)
     float ksBrightness;     // Filter coefficient (0=muted, 1=bright)
     float ksLastSample;     // For lowpass filter
+    
+    // Additive synthesis
+    AdditiveSettings additiveSettings;
+    
+    // Mallet percussion
+    MalletSettings malletSettings;
 } Voice;
 
 // ============================================================================
@@ -204,6 +307,38 @@ static float clampf(float x, float min, float max) {
 
 static float lerpf(float a, float b, float t) {
     return a * (1.0f - t) + b * t;
+}
+
+// Process an LFO and return modulation value (-1 to 1 range, scaled by depth)
+static float processLfo(float *phase, float *shValue, float rate, float depth, int shape, float dt) {
+    if (rate <= 0.0f || depth <= 0.0f) return 0.0f;
+    
+    float prevPhase = *phase;
+    *phase += rate * dt;
+    if (*phase >= 1.0f) *phase -= 1.0f;
+    
+    float lfoVal = 0.0f;
+    switch (shape) {
+        case 0:  // Sine
+            lfoVal = sinf(*phase * 2.0f * PI);
+            break;
+        case 1:  // Triangle
+            lfoVal = 4.0f * fabsf(*phase - 0.5f) - 1.0f;
+            break;
+        case 2:  // Square
+            lfoVal = *phase < 0.5f ? 1.0f : -1.0f;
+            break;
+        case 3:  // Saw (ramp down)
+            lfoVal = 1.0f - 2.0f * (*phase);
+            break;
+        case 4:  // Sample & Hold
+            if (*phase < prevPhase) {
+                *shValue = noise();
+            }
+            lfoVal = *shValue;
+            break;
+    }
+    return lfoVal * depth;
 }
 
 // ============================================================================
@@ -310,6 +445,7 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
 
 // Karplus-Strong plucked string oscillator
 static float processPluckOscillator(Voice *v, float sampleRate) {
+    (void)sampleRate;
     if (v->ksLength <= 0) return 0.0f;
     
     // Read from delay line
@@ -319,27 +455,413 @@ static float processPluckOscillator(Voice *v, float sampleRate) {
     int nextIndex = (v->ksIndex + 1) % v->ksLength;
     float nextSample = v->ksBuffer[nextIndex];
     
-    // Lowpass filter: average current and next sample, with brightness control
-    // brightness=1 keeps more highs, brightness=0 is more muted
-    float filtered = v->ksLastSample * (1.0f - v->ksBrightness) + 
-                     ((sample + nextSample) * 0.5f) * v->ksBrightness +
-                     ((sample + nextSample) * 0.5f) * (1.0f - v->ksBrightness);
-    filtered = (sample + nextSample) * 0.5f * v->ksBrightness + 
-               v->ksLastSample * (1.0f - v->ksBrightness * 0.5f);
-    filtered = (filtered + (sample + nextSample) * 0.5f) * 0.5f;
-    
     // Simple averaging filter with damping
-    filtered = ((sample + nextSample) * 0.5f) * v->ksDamping;
-    
+    float filtered = ((sample + nextSample) * 0.5f) * v->ksDamping;
     v->ksLastSample = filtered;
     
     // Write back to delay line
     v->ksBuffer[v->ksIndex] = filtered;
-    
-    // Advance index
     v->ksIndex = nextIndex;
     
     return sample;
+}
+
+// Additive synthesis oscillator
+static float processAdditiveOscillator(Voice *v, float sampleRate) {
+    AdditiveSettings *as = &v->additiveSettings;
+    float dt = 1.0f / sampleRate;
+    float out = 0.0f;
+    float totalAmp = 0.0f;
+    
+    for (int i = 0; i < as->numHarmonics && i < ADDITIVE_MAX_HARMONICS; i++) {
+        float amp = as->harmonicAmps[i];
+        if (amp < 0.001f) continue;
+        
+        // Calculate harmonic frequency with optional inharmonicity (for bells)
+        float ratio = as->harmonicRatios[i];
+        float stretch = 1.0f + as->inharmonicity * (ratio - 1.0f) * (ratio - 1.0f);
+        float harmFreq = v->frequency * ratio * stretch;
+        
+        // Skip if above Nyquist
+        if (harmFreq >= sampleRate * 0.5f) continue;
+        
+        // Advance phase for this harmonic
+        as->harmonicPhases[i] += harmFreq * dt;
+        if (as->harmonicPhases[i] >= 1.0f) as->harmonicPhases[i] -= 1.0f;
+        
+        // Add shimmer (subtle random phase modulation)
+        float shimmerOffset = 0.0f;
+        if (as->shimmer > 0.0f) {
+            shimmerOffset = noise() * as->shimmer * 0.01f * (float)(i + 1);
+        }
+        
+        // Generate sine for this harmonic
+        float phase = as->harmonicPhases[i] + shimmerOffset;
+        float harmSample = sinf(phase * 2.0f * PI);
+        
+        // Apply brightness scaling (higher harmonics emphasized/reduced)
+        float brightnessScale = 1.0f;
+        if (i > 0) {
+            float falloff = 1.0f - as->brightness;
+            brightnessScale = powf(1.0f / (float)(i + 1), falloff);
+        }
+        
+        out += harmSample * amp * brightnessScale;
+        totalAmp += amp * brightnessScale;
+    }
+    
+    // Normalize to prevent clipping
+    if (totalAmp > 1.0f) {
+        out /= totalAmp;
+    }
+    
+    return out;
+}
+
+// Initialize additive synthesis with a preset
+static void initAdditivePreset(AdditiveSettings *as, AdditivePreset preset) {
+    as->preset = preset;
+    as->brightness = 0.5f;
+    as->evenOddMix = 0.5f;
+    as->inharmonicity = 0.0f;
+    as->shimmer = 0.0f;
+    
+    // Reset all harmonics
+    for (int i = 0; i < ADDITIVE_MAX_HARMONICS; i++) {
+        as->harmonicAmps[i] = 0.0f;
+        as->harmonicPhases[i] = 0.0f;
+        as->harmonicRatios[i] = (float)(i + 1);  // Default: integer harmonics
+        as->harmonicDecays[i] = 1.0f;
+    }
+    
+    switch (preset) {
+        case ADDITIVE_PRESET_SINE:
+            // Pure sine - just the fundamental
+            as->numHarmonics = 1;
+            as->harmonicAmps[0] = 1.0f;
+            break;
+            
+        case ADDITIVE_PRESET_ORGAN:
+            // Drawbar organ - odd harmonics prominent (like Hammond)
+            as->numHarmonics = 9;
+            as->harmonicAmps[0] = 1.0f;   // 8' (fundamental)
+            as->harmonicAmps[1] = 0.8f;   // 4'
+            as->harmonicAmps[2] = 0.6f;   // 2 2/3' (3rd harmonic)
+            as->harmonicAmps[3] = 0.5f;   // 2'
+            as->harmonicAmps[4] = 0.4f;   // 1 3/5' (5th harmonic)
+            as->harmonicAmps[5] = 0.3f;   // 1 1/3'
+            as->harmonicAmps[6] = 0.25f;  // 1 1/7'
+            as->harmonicAmps[7] = 0.2f;   // 1'
+            as->harmonicAmps[8] = 0.15f;  // 9th harmonic
+            as->brightness = 0.7f;
+            break;
+            
+        case ADDITIVE_PRESET_BELL:
+            // Bell - inharmonic partials for metallic sound
+            as->numHarmonics = 12;
+            as->harmonicAmps[0] = 1.0f;
+            as->harmonicAmps[1] = 0.7f;
+            as->harmonicAmps[2] = 0.5f;
+            as->harmonicAmps[3] = 0.4f;
+            as->harmonicAmps[4] = 0.3f;
+            as->harmonicAmps[5] = 0.25f;
+            as->harmonicAmps[6] = 0.2f;
+            as->harmonicAmps[7] = 0.15f;
+            as->harmonicAmps[8] = 0.12f;
+            as->harmonicAmps[9] = 0.1f;
+            as->harmonicAmps[10] = 0.08f;
+            as->harmonicAmps[11] = 0.06f;
+            // Bell-like frequency ratios (slightly inharmonic)
+            as->harmonicRatios[0] = 1.0f;
+            as->harmonicRatios[1] = 2.0f;
+            as->harmonicRatios[2] = 2.4f;   // Not exactly 2.5
+            as->harmonicRatios[3] = 3.0f;
+            as->harmonicRatios[4] = 4.5f;   // Sharp
+            as->harmonicRatios[5] = 5.2f;
+            as->harmonicRatios[6] = 6.8f;
+            as->harmonicRatios[7] = 8.0f;
+            as->harmonicRatios[8] = 9.5f;
+            as->harmonicRatios[9] = 11.0f;
+            as->harmonicRatios[10] = 13.2f;
+            as->harmonicRatios[11] = 15.5f;
+            as->inharmonicity = 0.02f;
+            as->brightness = 0.8f;
+            break;
+            
+        case ADDITIVE_PRESET_STRINGS:
+            // String ensemble - rich, smooth
+            as->numHarmonics = 10;
+            as->harmonicAmps[0] = 1.0f;
+            as->harmonicAmps[1] = 0.5f;
+            as->harmonicAmps[2] = 0.33f;
+            as->harmonicAmps[3] = 0.25f;
+            as->harmonicAmps[4] = 0.2f;
+            as->harmonicAmps[5] = 0.16f;
+            as->harmonicAmps[6] = 0.14f;
+            as->harmonicAmps[7] = 0.12f;
+            as->harmonicAmps[8] = 0.1f;
+            as->harmonicAmps[9] = 0.08f;
+            as->shimmer = 0.3f;  // Subtle movement
+            as->brightness = 0.4f;
+            break;
+            
+        case ADDITIVE_PRESET_BRASS:
+            // Brass - strong odd harmonics
+            as->numHarmonics = 12;
+            as->harmonicAmps[0] = 1.0f;
+            as->harmonicAmps[1] = 0.3f;   // Weak 2nd
+            as->harmonicAmps[2] = 0.8f;   // Strong 3rd
+            as->harmonicAmps[3] = 0.2f;   // Weak 4th
+            as->harmonicAmps[4] = 0.7f;   // Strong 5th
+            as->harmonicAmps[5] = 0.15f;
+            as->harmonicAmps[6] = 0.5f;   // Strong 7th
+            as->harmonicAmps[7] = 0.1f;
+            as->harmonicAmps[8] = 0.35f;
+            as->harmonicAmps[9] = 0.08f;
+            as->harmonicAmps[10] = 0.25f;
+            as->harmonicAmps[11] = 0.05f;
+            as->brightness = 0.8f;
+            break;
+            
+        case ADDITIVE_PRESET_CHOIR:
+            // Choir/pad - warm, evolving
+            as->numHarmonics = 8;
+            as->harmonicAmps[0] = 1.0f;
+            as->harmonicAmps[1] = 0.6f;
+            as->harmonicAmps[2] = 0.4f;
+            as->harmonicAmps[3] = 0.3f;
+            as->harmonicAmps[4] = 0.2f;
+            as->harmonicAmps[5] = 0.15f;
+            as->harmonicAmps[6] = 0.1f;
+            as->harmonicAmps[7] = 0.08f;
+            as->shimmer = 0.5f;  // More movement
+            as->brightness = 0.3f;
+            break;
+            
+        case ADDITIVE_PRESET_CUSTOM:
+        default:
+            // Default to simple saw-like spectrum
+            as->numHarmonics = 8;
+            for (int i = 0; i < 8; i++) {
+                as->harmonicAmps[i] = 1.0f / (float)(i + 1);
+            }
+            break;
+    }
+}
+
+// ============================================================================
+// MALLET PERCUSSION SYNTHESIS
+// ============================================================================
+
+// Ideal bar frequency ratios (from physics of vibrating bars)
+// For a uniform bar: f_n = f_1 * (n^2) where modes are 1, 2.76, 5.4, 8.9 approximately
+static const float idealBarRatios[4] = { 1.0f, 2.758f, 5.406f, 8.936f };
+
+// Initialize mallet with preset
+static void initMalletPreset(MalletSettings *ms, MalletPreset preset) {
+    ms->preset = preset;
+    
+    // Reset phases
+    for (int i = 0; i < 4; i++) {
+        ms->modePhases[i] = 0.0f;
+    }
+    
+    // Default mode frequency ratios (ideal bar)
+    for (int i = 0; i < 4; i++) {
+        ms->modeFreqs[i] = idealBarRatios[i];
+    }
+    
+    ms->tremolo = 0.0f;
+    ms->tremoloRate = 5.0f;
+    ms->tremoloPhase = 0.0f;
+    
+    switch (preset) {
+        case MALLET_PRESET_MARIMBA:
+            // Marimba: warm, woody, strong fundamental, resonant tubes
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.25f;
+            ms->modeAmpsInit[2] = 0.08f;
+            ms->modeAmpsInit[3] = 0.02f;
+            ms->modeDecays[0] = 2.5f;   // Long fundamental decay
+            ms->modeDecays[1] = 1.2f;
+            ms->modeDecays[2] = 0.5f;
+            ms->modeDecays[3] = 0.2f;
+            ms->stiffness = 0.2f;       // Wood - less stiff
+            ms->hardness = 0.4f;        // Medium-soft mallets
+            ms->strikePos = 0.3f;       // Slightly off-center
+            ms->resonance = 0.8f;       // Strong resonator tubes
+            break;
+            
+        case MALLET_PRESET_VIBES:
+            // Vibraphone: metallic, sustaining, motor tremolo
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.4f;
+            ms->modeAmpsInit[2] = 0.2f;
+            ms->modeAmpsInit[3] = 0.1f;
+            ms->modeDecays[0] = 4.0f;   // Very long sustain
+            ms->modeDecays[1] = 3.0f;
+            ms->modeDecays[2] = 2.0f;
+            ms->modeDecays[3] = 1.0f;
+            ms->stiffness = 0.7f;       // Metal bars
+            ms->hardness = 0.5f;        // Medium mallets
+            ms->strikePos = 0.25f;
+            ms->resonance = 0.9f;
+            ms->tremolo = 0.5f;         // Motor tremolo on
+            ms->tremoloRate = 5.5f;
+            break;
+            
+        case MALLET_PRESET_XYLOPHONE:
+            // Xylophone: bright, sharp attack, short decay
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.5f;
+            ms->modeAmpsInit[2] = 0.3f;
+            ms->modeAmpsInit[3] = 0.15f;
+            ms->modeDecays[0] = 0.8f;   // Short decay
+            ms->modeDecays[1] = 0.5f;
+            ms->modeDecays[2] = 0.3f;
+            ms->modeDecays[3] = 0.15f;
+            ms->stiffness = 0.4f;       // Rosewood
+            ms->hardness = 0.8f;        // Hard mallets
+            ms->strikePos = 0.2f;
+            ms->resonance = 0.5f;       // Smaller resonators
+            break;
+            
+        case MALLET_PRESET_GLOCKEN:
+            // Glockenspiel: very bright, bell-like, inharmonic
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.6f;
+            ms->modeAmpsInit[2] = 0.4f;
+            ms->modeAmpsInit[3] = 0.25f;
+            ms->modeDecays[0] = 3.0f;
+            ms->modeDecays[1] = 2.5f;
+            ms->modeDecays[2] = 2.0f;
+            ms->modeDecays[3] = 1.5f;
+            // Slightly inharmonic for bell character
+            ms->modeFreqs[0] = 1.0f;
+            ms->modeFreqs[1] = 2.9f;
+            ms->modeFreqs[2] = 5.8f;
+            ms->modeFreqs[3] = 9.5f;
+            ms->stiffness = 0.95f;      // Steel bars
+            ms->hardness = 0.9f;        // Hard brass mallets
+            ms->strikePos = 0.15f;
+            ms->resonance = 0.3f;       // No resonators
+            break;
+            
+        case MALLET_PRESET_TUBULAR:
+            // Tubular bells: deep, church bell character
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.7f;
+            ms->modeAmpsInit[2] = 0.5f;
+            ms->modeAmpsInit[3] = 0.35f;
+            ms->modeDecays[0] = 5.0f;   // Very long
+            ms->modeDecays[1] = 4.0f;
+            ms->modeDecays[2] = 3.0f;
+            ms->modeDecays[3] = 2.0f;
+            // Tubular bell partials (different from bars)
+            ms->modeFreqs[0] = 1.0f;
+            ms->modeFreqs[1] = 2.0f;
+            ms->modeFreqs[2] = 3.0f;
+            ms->modeFreqs[3] = 4.2f;
+            ms->stiffness = 0.85f;
+            ms->hardness = 0.7f;
+            ms->strikePos = 0.1f;
+            ms->resonance = 0.6f;
+            break;
+            
+        default:
+            // Default to marimba-like
+            ms->modeAmpsInit[0] = 1.0f;
+            ms->modeAmpsInit[1] = 0.3f;
+            ms->modeAmpsInit[2] = 0.1f;
+            ms->modeAmpsInit[3] = 0.05f;
+            ms->modeDecays[0] = 2.0f;
+            ms->modeDecays[1] = 1.0f;
+            ms->modeDecays[2] = 0.5f;
+            ms->modeDecays[3] = 0.25f;
+            ms->stiffness = 0.5f;
+            ms->hardness = 0.5f;
+            ms->strikePos = 0.25f;
+            ms->resonance = 0.5f;
+            break;
+    }
+    
+    // Copy initial amps to current amps (reset for new note)
+    for (int i = 0; i < 4; i++) {
+        ms->modeAmps[i] = ms->modeAmpsInit[i];
+    }
+}
+
+// Process mallet percussion oscillator
+static float processMalletOscillator(Voice *v, float sampleRate) {
+    MalletSettings *ms = &v->malletSettings;
+    float dt = 1.0f / sampleRate;
+    float out = 0.0f;
+    
+    // Process tremolo LFO (vibraphone motor)
+    float tremoloMod = 1.0f;
+    if (ms->tremolo > 0.0f) {
+        ms->tremoloPhase += ms->tremoloRate * dt;
+        if (ms->tremoloPhase >= 1.0f) ms->tremoloPhase -= 1.0f;
+        // Tremolo modulates amplitude
+        tremoloMod = 1.0f - ms->tremolo * 0.5f * (1.0f + sinf(ms->tremoloPhase * 2.0f * PI));
+    }
+    
+    // Sum contribution from each vibration mode
+    for (int i = 0; i < 4; i++) {
+        float amp = ms->modeAmps[i];
+        if (amp < 0.001f) continue;
+        
+        // Calculate mode frequency with stiffness-based inharmonicity
+        float ratio = ms->modeFreqs[i];
+        // Stiffness increases inharmonicity for higher modes
+        float stiffnessStretch = 1.0f + ms->stiffness * 0.02f * (ratio - 1.0f) * (ratio - 1.0f);
+        float modeFreq = v->frequency * ratio * stiffnessStretch;
+        
+        // Skip if above Nyquist
+        if (modeFreq >= sampleRate * 0.5f) continue;
+        
+        // Advance phase for this mode
+        ms->modePhases[i] += modeFreq * dt;
+        if (ms->modePhases[i] >= 1.0f) ms->modePhases[i] -= 1.0f;
+        
+        // Generate sine for this mode
+        float modeSample = sinf(ms->modePhases[i] * 2.0f * PI);
+        
+        // Per-mode exponential decay (this is the key for realistic mallet sounds!)
+        // Higher modes decay faster than fundamental
+        float decayRate = 1.0f / ms->modeDecays[i];  // Convert decay time to rate
+        ms->modeAmps[i] *= (1.0f - decayRate * dt);
+        // Very low threshold to avoid pops
+        if (ms->modeAmps[i] < 0.00001f) ms->modeAmps[i] = 0.0f;
+        
+        // Strike position affects mode amplitudes (nodes/antinodes)
+        // Center strike (0) emphasizes odd modes, edge strike (1) emphasizes all
+        float posScale = 1.0f;
+        if (i > 0) {
+            // Approximate node pattern - modes have different node positions
+            float nodeEffect = cosf(ms->strikePos * PI * (float)(i + 1));
+            posScale = 0.5f + 0.5f * fabsf(nodeEffect);
+        }
+        
+        // Hardness affects high mode amplitudes (hard mallet = more highs)
+        float hardnessScale = 1.0f;
+        if (i > 0) {
+            hardnessScale = ms->hardness + (1.0f - ms->hardness) * (1.0f / (float)(i + 1));
+        }
+        
+        out += modeSample * amp * posScale * hardnessScale;
+    }
+    
+    // Apply resonance (simulates resonator tube coupling - boosts and sustains)
+    out *= (0.5f + ms->resonance * 0.5f);
+    
+    // Apply tremolo
+    out *= tremoloMod;
+    
+    // Normalize
+    out *= 0.5f;
+    
+    return out;
 }
 
 // Initialize Karplus-Strong buffer with noise burst (called when note starts)
@@ -402,20 +924,20 @@ static float processEnvelope(Voice *v, float dt) {
             v->envLevel = v->sustain;
             break;
         case 4: // Release
-            if (v->release <= 0.0f || v->envLevel <= 0.0f) {
-                v->envStage = 0;
-                v->envLevel = 0.0f;
-            } else {
-                float releaseProgress = v->envPhase / v->release;
-                if (releaseProgress >= 1.0f) {
+            if (v->release <= 0.0f) {
+                // Even with zero release, do a quick anti-click fade (~1ms)
+                v->envLevel *= 0.99f;
+                if (v->envLevel < 0.0001f) {
                     v->envStage = 0;
                     v->envLevel = 0.0f;
-                } else {
-                    v->envLevel *= (1.0f - dt / v->release);
-                    if (v->envLevel < 0.001f) {
-                        v->envStage = 0;
-                        v->envLevel = 0.0f;
-                    }
+                }
+            } else {
+                // Exponential decay for smooth release
+                v->envLevel *= (1.0f - dt / v->release);
+                // Use very low threshold to avoid pops (0.0001 = -80dB, inaudible)
+                if (v->envLevel < 0.0001f) {
+                    v->envStage = 0;
+                    v->envLevel = 0.0f;
                 }
             }
             break;
@@ -452,12 +974,11 @@ static float processVoice(Voice *v, float sampleRate) {
         freq = v->baseFrequency;
     }
     
-    // Vibrato
-    if (v->vibratoDepth > 0.0f) {
-        v->vibratoPhase += v->vibratoRate * dt;
-        if (v->vibratoPhase >= 1.0f) v->vibratoPhase -= 1.0f;
-        float vibrato = sinf(v->vibratoPhase * 2.0f * PI) * v->vibratoDepth;
-        freq *= powf(2.0f, vibrato / 12.0f);
+    // Pitch LFO (replaces simple vibrato with shape options)
+    float pitchLfoMod = processLfo(&v->pitchLfoPhase, &v->pitchLfoSH,
+                                    v->pitchLfoRate, v->pitchLfoDepth, v->pitchLfoShape, dt);
+    if (pitchLfoMod != 0.0f) {
+        freq *= powf(2.0f, pitchLfoMod / 12.0f);  // pitchLfoDepth is in semitones
     }
     
     v->frequency = freq;
@@ -506,17 +1027,81 @@ static float processVoice(Voice *v, float sampleRate) {
         case WAVE_PLUCK:
             sample = processPluckOscillator(v, sampleRate);
             break;
+        case WAVE_ADDITIVE:
+            sample = processAdditiveOscillator(v, sampleRate);
+            break;
+        case WAVE_MALLET:
+            sample = processMalletOscillator(v, sampleRate);
+            break;
     }
     
-    // Lowpass filter
-    float cutoff = v->filterCutoff * v->filterCutoff;
-    if (cutoff > 0.99f) cutoff = 0.99f;
-    v->filterLp += cutoff * (sample - v->filterLp);
-    sample = v->filterLp;
+    // Process filter envelope
+    if (v->filterEnvStage > 0) {
+        v->filterEnvPhase += dt;
+        if (v->filterEnvStage == 1) {  // Attack
+            if (v->filterEnvAttack <= 0.0f) {
+                v->filterEnvLevel = 1.0f;
+                v->filterEnvStage = 2;
+                v->filterEnvPhase = 0.0f;
+            } else {
+                v->filterEnvLevel = v->filterEnvPhase / v->filterEnvAttack;
+                if (v->filterEnvLevel >= 1.0f) {
+                    v->filterEnvLevel = 1.0f;
+                    v->filterEnvStage = 2;
+                    v->filterEnvPhase = 0.0f;
+                }
+            }
+        } else if (v->filterEnvStage == 2) {  // Decay
+            if (v->filterEnvDecay <= 0.0f) {
+                v->filterEnvLevel = 0.0f;
+                v->filterEnvStage = 0;
+            } else {
+                v->filterEnvLevel = 1.0f - (v->filterEnvPhase / v->filterEnvDecay);
+                if (v->filterEnvLevel <= 0.0f) {
+                    v->filterEnvLevel = 0.0f;
+                    v->filterEnvStage = 0;
+                }
+            }
+        }
+    }
     
-    // Apply envelope
+    // Process LFOs
+    float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH, 
+                                     v->filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
+    float resoLfoMod = processLfo(&v->resoLfoPhase, &v->resoLfoSH,
+                                   v->resoLfoRate, v->resoLfoDepth, v->resoLfoShape, dt);
+    float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
+                                  v->ampLfoRate, v->ampLfoDepth, v->ampLfoShape, dt);
+    
+    // Calculate effective cutoff with envelope and LFO modulation
+    float cutoff = v->filterCutoff + v->filterEnvAmt * v->filterEnvLevel + filterLfoMod;
+    cutoff = clampf(cutoff, 0.01f, 1.0f);
+    cutoff = cutoff * cutoff;  // Exponential curve for more musical feel
+    
+    // Calculate effective resonance with LFO
+    float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.0f);
+    float q = 1.0f - res * 0.9f;  // Resonance affects damping (0.1 to 1.0)
+    
+    // SVF coefficients
+    float f = cutoff * 1.5f;  // Scale for better range
+    if (f > 0.99f) f = 0.99f;
+    
+    // Process SVF
+    v->filterLp += f * v->filterBp;
+    float hp = sample - v->filterLp - q * v->filterBp;
+    v->filterBp += f * hp;
+    
+    // Mix in resonance (bandpass adds the "peak")
+    sample = v->filterLp + res * v->filterBp * 0.5f;
+    
+    // Apply amplitude envelope
     float env = processEnvelope(v, dt);
-    return sample * env * v->volume;
+    
+    // Apply amplitude LFO (tremolo) - modulates between 1.0 and (1.0 - depth)
+    float ampMod = 1.0f - ampLfoMod * 0.5f - 0.5f * v->ampLfoDepth;  // Center the modulation
+    ampMod = clampf(ampMod, 0.0f, 1.0f);
+    
+    return sample * env * v->volume * ampMod;
 }
 
 // ============================================================================
@@ -558,6 +1143,29 @@ static float notePwmDepth = 0.0f;
 static float noteVibratoRate = 5.0f;
 static float noteVibratoDepth = 0.0f;
 static float noteFilterCutoff = 1.0f;
+static float noteFilterResonance = 0.0f;   // Filter resonance (0-1)
+static float noteFilterEnvAmt = 0.0f;      // Filter envelope amount (-1 to 1)
+static float noteFilterEnvAttack = 0.01f;  // Filter envelope attack
+static float noteFilterEnvDecay = 0.2f;    // Filter envelope decay
+static float noteFilterLfoRate = 0.0f;     // Filter LFO rate in Hz (0 = off)
+static float noteFilterLfoDepth = 0.0f;    // Filter LFO depth (0-1)
+static int noteFilterLfoShape = 0;         // 0=sine, 1=tri, 2=square, 3=saw, 4=S&H
+
+// Resonance LFO
+static float noteResoLfoRate = 0.0f;
+static float noteResoLfoDepth = 0.0f;
+static int noteResoLfoShape = 0;
+
+// Amplitude LFO (tremolo)
+static float noteAmpLfoRate = 0.0f;
+static float noteAmpLfoDepth = 0.0f;
+static int noteAmpLfoShape = 0;
+
+// Pitch LFO (vibrato with shapes)
+static float notePitchLfoRate = 5.0f;
+static float notePitchLfoDepth = 0.0f;     // In semitones
+static int notePitchLfoShape = 0;
+
 static int noteScwIndex = 0;
 
 // Voice synthesis parameters
@@ -572,6 +1180,86 @@ static int voiceVowel = VOWEL_A;
 static float pluckBrightness = 0.5f;  // 0=muted/nylon, 1=bright/steel
 static float pluckDamping = 0.996f;   // 0.99=short decay, 0.999=long sustain
 
+// Additive synthesis tweakables
+static int additivePreset = ADDITIVE_PRESET_ORGAN;
+static float additiveBrightness = 0.5f;   // High harmonic emphasis
+static float additiveShimmer = 0.0f;      // Phase modulation for movement
+static float additiveInharmonicity = 0.0f; // Stretch partials for bells
+
+// Mallet percussion tweakables
+static int malletPreset = MALLET_PRESET_MARIMBA;
+static float malletStiffness = 0.3f;      // Bar material (0=wood, 1=metal)
+static float malletHardness = 0.5f;       // Mallet hardness (0=soft, 1=hard)
+static float malletStrikePos = 0.25f;     // Strike position (0=center, 1=edge)
+static float malletResonance = 0.7f;      // Resonator coupling
+static float malletTremolo = 0.0f;        // Vibraphone motor tremolo
+static float malletTremoloRate = 5.5f;    // Tremolo speed Hz
+static float malletDamp = 0.0f;           // Release damping (0=ring, 1=mute on release)
+
+// Pluck tweakable for release damping
+static float pluckDamp = 0.0f;            // Release damping (0=ring, 1=mute on release)
+
+// ============================================================================
+// VOICE INIT HELPERS
+// ============================================================================
+
+// Helper to reset all LFO state on a voice
+static void resetVoiceLfos(Voice *v, bool useGlobalParams) {
+    v->filterLfoPhase = 0.0f;
+    v->filterLfoSH = 0.0f;
+    v->resoLfoPhase = 0.0f;
+    v->resoLfoSH = 0.0f;
+    v->ampLfoPhase = 0.0f;
+    v->ampLfoSH = 0.0f;
+    v->pitchLfoPhase = 0.0f;
+    v->pitchLfoSH = 0.0f;
+    
+    if (useGlobalParams) {
+        v->filterLfoRate = noteFilterLfoRate;
+        v->filterLfoDepth = noteFilterLfoDepth;
+        v->filterLfoShape = noteFilterLfoShape;
+        v->resoLfoRate = noteResoLfoRate;
+        v->resoLfoDepth = noteResoLfoDepth;
+        v->resoLfoShape = noteResoLfoShape;
+        v->ampLfoRate = noteAmpLfoRate;
+        v->ampLfoDepth = noteAmpLfoDepth;
+        v->ampLfoShape = noteAmpLfoShape;
+        v->pitchLfoRate = notePitchLfoRate;
+        v->pitchLfoDepth = notePitchLfoDepth;
+        v->pitchLfoShape = notePitchLfoShape;
+    } else {
+        v->filterLfoRate = 0.0f;
+        v->filterLfoDepth = 0.0f;
+        v->filterLfoShape = 0;
+        v->resoLfoRate = 0.0f;
+        v->resoLfoDepth = 0.0f;
+        v->resoLfoShape = 0;
+        v->ampLfoRate = 0.0f;
+        v->ampLfoDepth = 0.0f;
+        v->ampLfoShape = 0;
+        v->pitchLfoRate = 0.0f;
+        v->pitchLfoDepth = 0.0f;
+        v->pitchLfoShape = 0;
+    }
+}
+
+// Helper to reset filter envelope state
+static void resetFilterEnvelope(Voice *v, bool useGlobalParams) {
+    v->filterEnvLevel = 0.0f;
+    v->filterEnvPhase = 0.0f;
+    if (useGlobalParams) {
+        v->filterEnvAmt = noteFilterEnvAmt;
+        v->filterEnvAttack = noteFilterEnvAttack;
+        v->filterEnvDecay = noteFilterEnvDecay;
+        v->filterEnvStage = (noteFilterEnvAmt != 0.0f) ? 1 : 0;
+    } else {
+        v->filterEnvAmt = 0.0f;
+        v->filterEnvAttack = 0.0f;
+        v->filterEnvDecay = 0.0f;
+        v->filterEnvStage = 0;
+    }
+}
+
 // ============================================================================
 // PLAY FUNCTIONS
 // ============================================================================
@@ -580,7 +1268,6 @@ static float pluckDamping = 0.996f;   // 0.99=short decay, 0.999=long sustain
 static int playNote(float freq, WaveType wave) {
     int voiceIdx = findVoice();
     Voice *v = &voices[voiceIdx];
-    
     float oldFilterLp = v->filterLp;
     
     v->frequency = freq;
@@ -608,7 +1295,12 @@ static int playNote(float freq, WaveType wave) {
     v->envStage = 1;
     
     v->filterCutoff = noteFilterCutoff;
+    v->filterResonance = noteFilterResonance;
     v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, true);
+    resetVoiceLfos(v, true);
     
     v->arpEnabled = false;
     v->scwIndex = noteScwIndex;
@@ -620,7 +1312,6 @@ static int playNote(float freq, WaveType wave) {
 static int playVowel(float freq, VowelType vowel) {
     int voiceIdx = findVoice();
     Voice *v = &voices[voiceIdx];
-    
     float oldFilterLp = v->filterLp;
     
     v->frequency = freq;
@@ -648,7 +1339,13 @@ static int playVowel(float freq, VowelType vowel) {
     v->envStage = 1;
     
     v->filterCutoff = 0.7f;
+    v->filterResonance = 0.0f;
     v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
+    
     v->arpEnabled = false;
     v->scwIndex = -1;
     
@@ -696,20 +1393,126 @@ static int playPluck(float freq, float brightness, float damping) {
     
     // Plucked strings: instant attack, long decay to zero (natural KS decay)
     v->attack = 0.001f;
-    v->decay = 4.0f;      // Long decay time for envelope to fade
-    v->sustain = 0.0f;    // Decay to silence
+    v->decay = 4.0f;
+    v->sustain = 0.0f;
     v->release = 0.01f;
     v->envPhase = 0.0f;
     v->envLevel = 0.0f;
     v->envStage = 1;
     
     v->filterCutoff = 1.0f;  // KS has its own filtering
+    v->filterResonance = 0.0f;
     v->filterLp = 0.0f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
+    
     v->arpEnabled = false;
     v->scwIndex = -1;
     
-    // Initialize Karplus-Strong
     initPluck(v, freq, 44100.0f, brightness, damping);
+    
+    return voiceIdx;
+}
+
+// Play additive synthesis note
+static int playAdditive(float freq, AdditivePreset preset) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_ADDITIVE;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = noteVibratoRate;
+    v->vibratoDepth = noteVibratoDepth;
+    v->vibratoPhase = 0.0f;
+    
+    v->attack = noteAttack;
+    v->decay = noteDecay;
+    v->sustain = noteSustain;
+    v->release = noteRelease;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = noteFilterCutoff;
+    v->filterResonance = noteFilterResonance;
+    v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, true);
+    resetVoiceLfos(v, true);
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    initAdditivePreset(&v->additiveSettings, preset);
+    v->additiveSettings.brightness = additiveBrightness;
+    v->additiveSettings.shimmer = additiveShimmer;
+    v->additiveSettings.inharmonicity = additiveInharmonicity;
+    
+    return voiceIdx;
+}
+
+// Play mallet percussion note
+static int playMallet(float freq, MalletPreset preset) {
+    int voiceIdx = findVoice();
+    Voice *v = &voices[voiceIdx];
+    float oldFilterLp = v->filterLp;
+    
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->phase = 0.0f;
+    v->volume = noteVolume;
+    v->wave = WAVE_MALLET;
+    v->pitchSlide = 0.0f;
+    
+    v->pulseWidth = 0.5f;
+    v->pwmRate = 0.0f;
+    v->pwmDepth = 0.0f;
+    v->pwmPhase = 0.0f;
+    
+    v->vibratoRate = 0.0f;
+    v->vibratoDepth = 0.0f;
+    v->vibratoPhase = 0.0f;
+    
+    v->attack = 0.002f;
+    v->decay = 3.0f;
+    v->sustain = 0.0f;
+    v->release = 0.1f;
+    v->envPhase = 0.0f;
+    v->envLevel = 0.0f;
+    v->envStage = 1;
+    
+    v->filterCutoff = 1.0f;
+    v->filterResonance = 0.0f;
+    v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
+    
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
+    
+    v->arpEnabled = false;
+    v->scwIndex = -1;
+    
+    initMalletPreset(&v->malletSettings, preset);
+    v->malletSettings.stiffness = malletStiffness;
+    v->malletSettings.hardness = malletHardness;
+    v->malletSettings.strikePos = malletStrikePos;
+    v->malletSettings.resonance = malletResonance;
+    v->malletSettings.tremolo = malletTremolo;
+    v->malletSettings.tremoloRate = malletTremoloRate;
     
     return voiceIdx;
 }
