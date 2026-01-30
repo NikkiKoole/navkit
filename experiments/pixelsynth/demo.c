@@ -241,19 +241,25 @@ static float noise(void) {
     return (float)(noiseState >> 16) / 32768.0f - 1.0f;
 }
 
+// Clamp float to range
+static float clampf(float x, float min, float max) {
+    if (x < min) return min;
+    if (x > max) return max;
+    return x;
+}
+
+// Linear interpolation
+static float lerpf(float a, float b, float t) {
+    return a * (1.0f - t) + b * t;
+}
+
 // Formant filter (bandpass) processing
 static float processFormantFilter(FormantFilter *f, float input, float sampleRate) {
-    float fc = 2.0f * sinf(PI * f->freq / sampleRate);
-    if (fc < 0.001f) fc = 0.001f;
-    if (fc > 0.99f) fc = 0.99f;
-    
-    float q = f->freq / (f->bw + 1.0f);
-    if (q < 0.5f) q = 0.5f;
-    if (q > 20.0f) q = 20.0f;
-    float qInv = 1.0f / q;
+    float fc = clampf(2.0f * sinf(PI * f->freq / sampleRate), 0.001f, 0.99f);
+    float q = clampf(f->freq / (f->bw + 1.0f), 0.5f, 20.0f);
     
     f->low += fc * f->band;
-    f->high = input - f->low - qInv * f->band;
+    f->high = input - f->low - f->band / q;
     f->band += fc * f->high;
     
     return f->band;
@@ -299,41 +305,21 @@ static float processVoiceOscillator(Voice *v, float sampleRate) {
         source = source * (1.0f - vs->breathiness * 0.7f) + noise() * vs->breathiness * 0.5f;
     }
     
-    // Interpolate formant parameters between vowels
+    // Interpolate formant parameters and apply filters
     VowelType v1 = vs->vowel;
     VowelType v2 = vs->nextVowel;
     float blend = vs->vowelBlend;
     
-    float f1_freq = formantFreq[v1][0] * (1.0f - blend) + formantFreq[v2][0] * blend;
-    float f2_freq = formantFreq[v1][1] * (1.0f - blend) + formantFreq[v2][1] * blend;
-    float f3_freq = formantFreq[v1][2] * (1.0f - blend) + formantFreq[v2][2] * blend;
-    
-    float f1_bw = formantBw[v1][0] * (1.0f - blend) + formantBw[v2][0] * blend;
-    float f2_bw = formantBw[v1][1] * (1.0f - blend) + formantBw[v2][1] * blend;
-    float f3_bw = formantBw[v1][2] * (1.0f - blend) + formantBw[v2][2] * blend;
-    
-    float f1_amp = formantAmp[v1][0] * (1.0f - blend) + formantAmp[v2][0] * blend;
-    float f2_amp = formantAmp[v1][1] * (1.0f - blend) + formantAmp[v2][1] * blend;
-    float f3_amp = formantAmp[v1][2] * (1.0f - blend) + formantAmp[v2][2] * blend;
-    
-    // Apply formant shift
-    f1_freq *= vs->formantShift;
-    f2_freq *= vs->formantShift;
-    f3_freq *= vs->formantShift;
-    
-    // Update filter frequencies
-    vs->formants[0].freq = f1_freq;
-    vs->formants[0].bw = f1_bw;
-    vs->formants[1].freq = f2_freq;
-    vs->formants[1].bw = f2_bw;
-    vs->formants[2].freq = f3_freq;
-    vs->formants[2].bw = f3_bw;
-    
-    // Apply formant filters and sum
     float out = 0.0f;
-    out += processFormantFilter(&vs->formants[0], source, sampleRate) * f1_amp;
-    out += processFormantFilter(&vs->formants[1], source, sampleRate) * f2_amp;
-    out += processFormantFilter(&vs->formants[2], source, sampleRate) * f3_amp;
+    for (int i = 0; i < 3; i++) {
+        float freq = lerpf(formantFreq[v1][i], formantFreq[v2][i], blend) * vs->formantShift;
+        float bw = lerpf(formantBw[v1][i], formantBw[v2][i], blend);
+        float amp = lerpf(formantAmp[v1][i], formantAmp[v2][i], blend);
+        
+        vs->formants[i].freq = freq;
+        vs->formants[i].bw = bw;
+        out += processFormantFilter(&vs->formants[i], source, sampleRate) * amp;
+    }
     
     return out * 0.7f;
 }
@@ -439,9 +425,7 @@ static float processVoice(Voice *v, float sampleRate) {
     
     // Apply pitch slide (modifies baseFrequency for SFX)
     if (v->pitchSlide != 0.0f) {
-        v->baseFrequency += v->pitchSlide;
-        if (v->baseFrequency < 20.0f) v->baseFrequency = 20.0f;
-        if (v->baseFrequency > 20000.0f) v->baseFrequency = 20000.0f;
+        v->baseFrequency = clampf(v->baseFrequency + v->pitchSlide, 20.0f, 20000.0f);
         freq = v->baseFrequency;
     }
     
@@ -466,9 +450,7 @@ static float processVoice(Voice *v, float sampleRate) {
     if (v->pwmDepth > 0.0f && v->wave == WAVE_SQUARE) {
         v->pwmPhase += v->pwmRate * dt;
         if (v->pwmPhase >= 1.0f) v->pwmPhase -= 1.0f;
-        pw += sinf(v->pwmPhase * 2.0f * PI) * v->pwmDepth;
-        if (pw < 0.1f) pw = 0.1f;
-        if (pw > 0.9f) pw = 0.9f;
+        pw = clampf(pw + sinf(v->pwmPhase * 2.0f * PI) * v->pwmDepth, 0.1f, 0.9f);
     }
     
     // Generate waveform
@@ -801,11 +783,11 @@ static void speak(const char *text, float speed, float pitch, float variation) {
     sq->length = len;
     sq->index = -1;
     sq->timer = 0.0f;
-    sq->speed = speed < 1.0f ? 1.0f : (speed > 30.0f ? 30.0f : speed);
-    sq->basePitch = pitch < 0.3f ? 0.3f : (pitch > 3.0f ? 3.0f : pitch);
-    sq->pitchVariation = variation < 0.0f ? 0.0f : (variation > 1.0f ? 1.0f : variation);
+    sq->speed = clampf(speed, 1.0f, 30.0f);
+    sq->basePitch = clampf(pitch, 0.3f, 3.0f);
+    sq->pitchVariation = clampf(variation, 0.0f, 1.0f);
     sq->active = true;
-    sq->voiceIndex = NUM_VOICES - 1;  // Use last voice for speech
+    sq->voiceIndex = NUM_VOICES - 1;
 }
 
 // Generate random babble
