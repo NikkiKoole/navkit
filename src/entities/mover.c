@@ -644,6 +644,30 @@ int CountActiveMovers(void) {
     return count;
 }
 
+void PushMoversOutOfCell(int x, int y, int z) {
+    int dx[] = {0, 0, -1, 1};
+    int dy[] = {-1, 1, 0, 0};
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        int mx = (int)(m->x / CELL_SIZE);
+        int my = (int)(m->y / CELL_SIZE);
+        int mz = (int)m->z;
+        if (mx == x && my == y && mz == z) {
+            for (int d = 0; d < 4; d++) {
+                int nx = x + dx[d];
+                int ny = y + dy[d];
+                if (IsCellWalkableAt(z, ny, nx)) {
+                    m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->needsRepath = true;
+                    break;
+                }
+            }
+        }
+    }
+}
+
 // Assign a new random goal to a mover and compute path
 static void AssignNewMoverGoal(Mover* m) {
     Point newGoal;

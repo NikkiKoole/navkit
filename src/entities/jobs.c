@@ -1048,6 +1048,11 @@ void RebuildIdleMoverList(void) {
     
     for (int i = 0; i < moverCount; i++) {
         if (movers[i].active && movers[i].currentJobId < 0) {
+            // Skip movers stuck in unwalkable cells (e.g. built themselves into a wall)
+            int mx = (int)(movers[i].x / CELL_SIZE);
+            int my = (int)(movers[i].y / CELL_SIZE);
+            if (!IsCellWalkableAt((int)movers[i].z, my, mx)) continue;
+            
             idleMoverList[idleMoverCount++] = i;
             moverIsInIdleList[i] = true;
         }

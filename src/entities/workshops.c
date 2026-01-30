@@ -76,29 +76,7 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                         int tileX = x + tx;
                         int tileY = y + ty;
                         SET_CELL_FLAG(tileX, tileY, z, CELL_FLAG_WORKSHOP_BLOCK);
-                        
-                        // Push any movers out of this tile
-                        for (int m = 0; m < moverCount; m++) {
-                            Mover* mover = &movers[m];
-                            if (!mover->active) continue;
-                            int mx = (int)(mover->x / CELL_SIZE);
-                            int my = (int)(mover->y / CELL_SIZE);
-                            int mz = (int)mover->z;
-                            if (mx == tileX && my == tileY && mz == z) {
-                                // Find nearest walkable tile
-                                int dirs[] = {0, -1, 0, 1, -1, 0, 1, 0};
-                                for (int d = 0; d < 4; d++) {
-                                    int nx = tileX + dirs[d*2];
-                                    int ny = tileY + dirs[d*2+1];
-                                    if (IsCellWalkableAt(z, ny, nx)) {
-                                        mover->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
-                                        mover->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
-                                        mover->needsRepath = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        PushMoversOutOfCell(tileX, tileY, z);
                     }
                 }
             }

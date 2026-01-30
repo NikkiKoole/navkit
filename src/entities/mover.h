@@ -165,4 +165,7 @@ static inline bool GetMoverNeedsRepath(int moverIdx) { return movers[moverIdx].n
 static inline void SetMoverNeedsRepath(int moverIdx, bool needsRepath) { movers[moverIdx].needsRepath = needsRepath; }
 static inline void ClearMoverPath(int moverIdx) { movers[moverIdx].pathLength = 0; movers[moverIdx].pathIndex = -1; }
 
+// Push all movers out of a cell to nearest walkable neighbor
+void PushMoversOutOfCell(int x, int y, int z);
+
 #endif
