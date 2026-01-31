@@ -10,6 +10,10 @@
 #include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
 
+#ifdef USE_SOUNDSYSTEM
+#include "soundsystem/soundsystem.h"
+#endif
+
 // ============================================================================
 // Global State Definitions
 // ============================================================================

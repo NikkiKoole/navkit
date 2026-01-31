@@ -172,6 +172,10 @@ path8 $(BINDIR)/path8: $(BINDIR)
 path16 $(BINDIR)/path16: $(BINDIR)
 	$(CC) $(CFLAGS) -DTILE_SIZE=16 -o $(BINDIR)/path16 $(path_SRC) $(LDFLAGS)
 
+# Build with soundsystem enabled
+path-sound: $(BINDIR)
+	$(CC) $(CFLAGS) -DUSE_SOUNDSYSTEM -o $(BINDIR)/path_sound $(path_SRC) $(LDFLAGS)
+
 clean:
 	rm -rf $(BINDIR)
 
@@ -198,4 +202,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 path-sound bench bench_jobs
