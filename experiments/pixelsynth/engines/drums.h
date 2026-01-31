@@ -11,6 +11,9 @@
 #define PI 3.14159265358979323846f
 #endif
 
+// Helper: use P-lock value if set (>= 0), otherwise use default
+#define PLOCK_OR(plock, def) ((plock) >= 0.0f ? (plock) : (def))
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -45,6 +48,11 @@ typedef struct {
     float hhPhases[6];    // Hihat oscillator phases (6 metallic squares)
     float velocity;       // Volume multiplier (0.0-1.0)
     float pitchMod;       // Pitch multiplier (0.5-2.0, 1.0 = normal)
+    
+    // Per-voice P-lock overrides (-1 = use global drumParams)
+    float plockDecay;     // Decay override
+    float plockTone;      // Tone override  
+    float plockPunch;     // Punch/snap override
 } DrumVoice;
 
 // Parameters for each drum sound (user-tweakable)
@@ -189,6 +197,11 @@ static void triggerDrumFull(DrumType type, float velocity, float pitchMod) {
     dv->velocity = velocity;
     dv->pitchMod = pitchMod;
     
+    // Reset P-lock overrides to "use global"
+    dv->plockDecay = -1.0f;
+    dv->plockTone = -1.0f;
+    dv->plockPunch = -1.0f;
+    
     // Initialize hihat oscillator phases
     if (type == DRUM_CLOSED_HH || type == DRUM_OPEN_HH) {
         for (int i = 0; i < 6; i++) {
@@ -223,8 +236,12 @@ static float processKick(DrumVoice *dv, float dt) {
     DrumParams *p = &drumParams;
     dv->time += dt;
     
+    float decay = PLOCK_OR(dv->plockDecay, p->kickDecay);
+    float tone = PLOCK_OR(dv->plockTone, p->kickTone);
+    float punchPitch = dv->plockPunch >= 0.0f ? (50.0f + dv->plockPunch * 250.0f) : p->kickPunchPitch;
+    
     float pitchT = expDecay(dv->time, p->kickPunchDecay);
-    float freq = (p->kickPitch + (p->kickPunchPitch - p->kickPitch) * pitchT) * dv->pitchMod;
+    float freq = (p->kickPitch + (punchPitch - p->kickPitch) * pitchT) * dv->pitchMod;
     
     dv->phase += freq * dt;
     if (dv->phase >= 1.0f) dv->phase -= 1.0f;
@@ -239,11 +256,11 @@ static float processKick(DrumVoice *dv, float dt) {
     }
     
     float sample = osc + click;
-    if (p->kickTone > 0.0f) {
-        sample = tanhf(sample * (1.0f + p->kickTone * 3.0f));
+    if (tone > 0.0f) {
+        sample = tanhf(sample * (1.0f + tone * 3.0f));
     }
     
-    float amp = expDecay(dv->time, p->kickDecay);
+    float amp = expDecay(dv->time, decay);
     if (amp < 0.001f) dv->active = false;
     
     return sample * amp * 0.8f;
@@ -255,6 +272,10 @@ static float processSnare(DrumVoice *dv, float dt) {
     
     DrumParams *p = &drumParams;
     dv->time += dt;
+    
+    float decay = PLOCK_OR(dv->plockDecay, p->snareDecay);
+    float snareTone = PLOCK_OR(dv->plockTone, p->snareTone);
+    float snappy = PLOCK_OR(dv->plockPunch, p->snareSnappy);
     
     float freq1 = p->snarePitch * dv->pitchMod;
     float freq2 = p->snarePitch * 1.5f * dv->pitchMod;
@@ -270,17 +291,17 @@ static float processSnare(DrumVoice *dv, float dt) {
     unsigned int ns = (unsigned int)(dv->time * 1000000 + dv->phase * 10000);
     float noiseSample = drumNoise(&ns);
     
-    float cutoff = 0.15f + p->snareTone * 0.4f;
+    float cutoff = 0.15f + snareTone * 0.4f;
     dv->filterLp += cutoff * (noiseSample - dv->filterLp);
     dv->filterHp += 0.1f * (dv->filterLp - dv->filterHp);
     float filteredNoise = dv->filterLp - dv->filterHp;
     
-    float mix = tone * (1.0f - p->snareSnappy * 0.7f) + 
-                filteredNoise * p->snareSnappy * 1.5f;
+    float mix = tone * (1.0f - snappy * 0.7f) + 
+                filteredNoise * snappy * 1.5f;
     
-    float toneAmp = expDecay(dv->time, p->snareDecay * 0.7f);
-    float noiseAmp = expDecay(dv->time, p->snareDecay);
-    float amp = toneAmp * (1.0f - p->snareSnappy * 0.5f) + noiseAmp * p->snareSnappy * 0.5f;
+    float toneAmp = expDecay(dv->time, decay * 0.7f);
+    float noiseAmp = expDecay(dv->time, decay);
+    float amp = toneAmp * (1.0f - snappy * 0.5f) + noiseAmp * snappy * 0.5f;
     
     if (amp < 0.001f) dv->active = false;
     
@@ -294,7 +315,10 @@ static float processClap(DrumVoice *dv, float dt) {
     DrumParams *p = &drumParams;
     dv->time += dt;
     
-    float spread = p->clapSpread;
+    float decay = PLOCK_OR(dv->plockDecay, p->clapDecay);
+    float clapTone = PLOCK_OR(dv->plockTone, p->clapTone);
+    float spread = dv->plockPunch >= 0.0f ? (dv->plockPunch * 0.03f) : p->clapSpread;
+    
     float offsets[4] = {0.0f, spread, spread * 2.2f, spread * 3.5f};
     
     float sample = 0.0f;
@@ -308,9 +332,9 @@ static float processClap(DrumVoice *dv, float dt) {
         }
     }
     
-    float amp = expDecay(dv->time, p->clapDecay);
+    float amp = expDecay(dv->time, decay);
     
-    float cutoff = 0.2f + p->clapTone * 0.3f;
+    float cutoff = 0.2f + clapTone * 0.3f;
     dv->filterLp += cutoff * (sample - dv->filterLp);
     dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
     sample = (dv->filterLp - dv->filterHp) * 2.0f;
@@ -327,10 +351,13 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     DrumParams *p = &drumParams;
     dv->time += dt;
     
+    float hhTone = PLOCK_OR(dv->plockTone, p->hhTone);
+    float decay = PLOCK_OR(dv->plockDecay, open ? p->hhDecayOpen : p->hhDecayClosed);
+    
     static const float hhFreqRatios[6] = {
         1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f
     };
-    float baseFreq = (320.0f + p->hhTone * 200.0f) * dv->pitchMod;
+    float baseFreq = (320.0f + hhTone * 200.0f) * dv->pitchMod;
     
     float sample = 0.0f;
     for (int i = 0; i < 6; i++) {
@@ -342,11 +369,10 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     }
     sample /= 6.0f;
     
-    float hpCutoff = 0.3f + p->hhTone * 0.4f;
+    float hpCutoff = 0.3f + hhTone * 0.4f;
     dv->filterHp += hpCutoff * (sample - dv->filterHp);
     sample = sample - dv->filterHp;
     
-    float decay = open ? p->hhDecayOpen : p->hhDecayClosed;
     float amp = expDecay(dv->time, decay);
     
     if (amp < 0.001f) dv->active = false;

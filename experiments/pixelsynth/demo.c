@@ -681,6 +681,52 @@ static int playNoteWithPatch(float freq, SynthPatch *p) {
     }
 }
 
+// ============================================================================
+// DRUM SEQUENCER TRIGGERS (with P-lock support)
+// ============================================================================
+
+// Generic drum trigger with P-lock support
+// drumType: DRUM_KICK, DRUM_SNARE, etc.
+static void drumTriggerWithPLocks(DrumType drumType, float vel, float pitch) {
+    // Apply P-lock volume
+    float effectiveVel = plockValue(PLOCK_VOLUME, vel);
+    
+    // Apply P-lock pitch offset (in semitones, added to existing pitch)
+    float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
+    float effectivePitch = pitch * powf(2.0f, pitchOffset / 12.0f);
+    
+    // Trigger the drum first (this resets plock fields to -1)
+    triggerDrumFull(drumType, effectiveVel, effectivePitch);
+    
+    // Now set P-lock overrides on the voice (these persist for the duration of the sound)
+    DrumVoice *dv = &drumVoices[drumType];
+    
+    float pDecay = plockValue(PLOCK_DECAY, -1.0f);
+    if (pDecay >= 0.0f) {
+        dv->plockDecay = pDecay;
+    }
+    
+    float pTone = plockValue(PLOCK_TONE, -1.0f);
+    if (pTone >= 0.0f) {
+        dv->plockTone = pTone;
+    }
+    
+    float pPunch = plockValue(PLOCK_PUNCH, -1.0f);
+    if (pPunch >= 0.0f) {
+        dv->plockPunch = pPunch;
+    }
+}
+
+// Sequencer callbacks for drums (with P-lock support)
+static void seqDrumKick(float vel, float pitch) { drumTriggerWithPLocks(DRUM_KICK, vel, pitch); }
+static void seqDrumSnare(float vel, float pitch) { drumTriggerWithPLocks(DRUM_SNARE, vel, pitch); }
+static void seqDrumClosedHH(float vel, float pitch) { drumTriggerWithPLocks(DRUM_CLOSED_HH, vel, pitch); }
+static void seqDrumClap(float vel, float pitch) { drumTriggerWithPLocks(DRUM_CLAP, vel, pitch); }
+
+// ============================================================================
+// MELODIC SEQUENCER TRIGGERS
+// ============================================================================
+
 // Unified melodic trigger with 303-style slide and accent support
 // trackIdx: 0=Bass, 1=Lead, 2=Chord
 // patchIdx: PATCH_BASS, PATCH_LEAD, PATCH_CHORD
@@ -703,7 +749,9 @@ static void melodyTriggerGeneric(int trackIdx, int patchIdx, float freqMult,
     
     // Get p-lock values for filter (use patch values as defaults)
     SynthPatch *p = &patches[patchIdx];
-    float pCutoff = plockValue(PLOCK_FILTER_CUTOFF, p->filterCutoff);
+    // PLOCK_TONE acts as alias for cutoff on melody (check tone first, then cutoff)
+    float pTone = plockValue(PLOCK_TONE, -1.0f);
+    float pCutoff = (pTone >= 0.0f) ? pTone : plockValue(PLOCK_FILTER_CUTOFF, p->filterCutoff);
     float pReso = plockValue(PLOCK_FILTER_RESO, p->filterResonance);
     float pFilterEnv = plockValue(PLOCK_FILTER_ENV, p->filterEnvAmt) + accentFilterBoost;
     float pDecay = plockValue(PLOCK_DECAY, p->decay);
@@ -835,7 +883,7 @@ int main(void) {
     initDrumParams();
     initEffects();
     initPatches();
-    initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
+    initSequencer(seqDrumKick, seqDrumSnare, seqDrumClosedHH, seqDrumClap);
     
     // Set up melodic track callbacks
     setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
@@ -1739,7 +1787,9 @@ int main(void) {
             if (showDrumInspector) {
                 int inspX = gridX;
                 int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
-                int inspH = 45;
+                int absTrack = selectedTrack;  // Drums use tracks 0-3 directly
+                bool hasPLocks = seqHasPLocks(p, absTrack, selectedStep);
+                int inspH = hasPLocks ? 70 : 45;  // Taller when p-locks present
                 
                 DrawRectangle(inspX, inspY, inspW, inspH, (Color){35, 35, 40, 255});
                 DrawRectangleLinesEx((Rectangle){(float)inspX, (float)inspY, (float)inspW, (float)inspH}, 1, ORANGE);
@@ -1777,12 +1827,199 @@ int main(void) {
                         ui_consume_click();
                     }
                 }
+                
+                // P-Lock row for drums
+                int row2Y = row1Y + 22;
+                DrawTextShadow("P-Lock:", inspX + 10, row2Y, 10, (Color){255, 180, 100, 255});
+                
+                // P-lock: Decay (maps to drum-specific decay param)
+                {
+                    int px = inspX + 60;
+                    float decay = seqGetPLock(p, absTrack, selectedStep, PLOCK_DECAY, -1.0f);
+                    bool isLocked = (decay >= 0.0f);
+                    if (!isLocked) {
+                        // Get default decay based on drum type
+                        switch (selectedTrack) {
+                            case 0: decay = drumParams.kickDecay; break;
+                            case 1: decay = drumParams.snareDecay; break;
+                            case 2: decay = drumParams.hhDecayClosed; break;
+                            case 3: decay = drumParams.clapDecay; break;
+                            default: decay = 0.3f; break;
+                        }
+                    }
+                    
+                    DrawTextShadow("Dec:", px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 50, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", decay), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            decay = fminf(2.0f, fmaxf(0.01f, decay + wheel * 0.05f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_DECAY, decay);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_DECAY);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Pitch offset
+                {
+                    int px = inspX + 145;
+                    float pitch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
+                    bool isLocked = (pitch > -99.0f);
+                    if (!isLocked) pitch = 0.0f;
+                    
+                    DrawTextShadow("Pit:", px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 25), (float)(row2Y - 2), 45, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%+.1f", pitch), px + 28, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            pitch = fminf(12.0f, fmaxf(-12.0f, pitch + wheel * 0.5f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, pitch);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Volume
+                {
+                    int px = inspX + 220;
+                    float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
+                    bool isLocked = (vol >= 0.0f);
+                    if (!isLocked) vol = p->drumVelocity[selectedTrack][selectedStep];
+                    
+                    DrawTextShadow("Vol:", px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 45, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", vol), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            vol = fminf(1.0f, fmaxf(0.0f, vol + wheel * 0.02f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, vol);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_VOLUME);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Tone (brightness/character)
+                {
+                    int px = inspX + 295;
+                    float tone = seqGetPLock(p, absTrack, selectedStep, PLOCK_TONE, -1.0f);
+                    bool isLocked = (tone >= 0.0f);
+                    if (!isLocked) {
+                        // Get default tone based on drum type
+                        switch (selectedTrack) {
+                            case 0: tone = drumParams.kickTone; break;
+                            case 1: tone = drumParams.snareTone; break;
+                            case 2: tone = drumParams.hhTone; break;
+                            case 3: tone = drumParams.clapTone; break;
+                            default: tone = 0.5f; break;
+                        }
+                    }
+                    
+                    DrawTextShadow("Tone:", px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 35), (float)(row2Y - 2), 45, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", tone), px + 39, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            tone = fminf(1.0f, fmaxf(0.0f, tone + wheel * 0.02f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_TONE, tone);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_TONE);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Punch (kick: punch pitch, snare: snappy, clap: spread)
+                // Only show for kick, snare, clap (tracks 0, 1, 3)
+                if (selectedTrack == 0 || selectedTrack == 1 || selectedTrack == 3) {
+                    int px = inspX + 380;
+                    float punch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PUNCH, -1.0f);
+                    bool isLocked = (punch >= 0.0f);
+                    if (!isLocked) {
+                        // Get default punch based on drum type
+                        switch (selectedTrack) {
+                            case 0: punch = (drumParams.kickPunchPitch - 50.0f) / 250.0f; break;  // Normalize from 50-300
+                            case 1: punch = drumParams.snareSnappy; break;
+                            case 3: punch = drumParams.clapSpread / 0.03f; break;  // Normalize from 0-0.03
+                            default: punch = 0.5f; break;
+                        }
+                    }
+                    
+                    const char* punchLabel;
+                    switch (selectedTrack) {
+                        case 0:  punchLabel = "Punch:"; break;
+                        case 1:  punchLabel = "Snap:"; break;
+                        default: punchLabel = "Spread:"; break;
+                    }
+                    DrawTextShadow(punchLabel, px, row2Y, 10, isLocked ? (Color){255, 180, 100, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 42), (float)(row2Y - 2), 45, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 180, 100, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", punch), px + 46, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            punch = fminf(1.0f, fmaxf(0.0f, punch + wheel * 0.02f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_PUNCH, punch);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_PUNCH);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Clear all p-locks button
+                if (hasPLocks) {
+                    int clearX = inspX + 480;
+                    Rectangle clearRect = {(float)clearX, (float)(row2Y - 2), 50, 14};
+                    bool clearHovered = CheckCollisionPointRec(mouse, clearRect);
+                    DrawRectangleRec(clearRect, clearHovered ? (Color){80, 50, 50, 255} : (Color){50, 35, 35, 255});
+                    DrawRectangleLinesEx(clearRect, 1, (Color){150, 80, 80, 255});
+                    DrawTextShadow("Clear", clearX + 10, row2Y, 9, (Color){200, 100, 100, 255});
+                    if (clearHovered && mouseClicked) {
+                        seqClearStepPLocks(p, absTrack, selectedStep);
+                        ui_consume_click();
+                    }
+                }
             }
             
             if (showMelodyInspector) {
                 int inspX = gridX;
                 int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
-                bool hasPLocks = seqHasPLocks(p, selectedTrack, selectedStep);
+                int absTrack = SEQ_DRUM_TRACKS + selectedTrack;  // Absolute track index for P-locks
+                bool hasPLocks = seqHasPLocks(p, absTrack, selectedStep);
                 int inspH = hasPLocks ? 70 : 45;  // Taller when p-locks present
                 
                 DrawRectangle(inspX, inspY, inspW, inspH, (Color){35, 38, 45, 255});
@@ -1904,7 +2141,7 @@ int main(void) {
                 // P-lock: Cutoff
                 {
                     int px = inspX + 60;
-                    float cutoff = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF, -1.0f);
+                    float cutoff = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_CUTOFF, -1.0f);
                     bool isLocked = (cutoff >= 0.0f);
                     if (!isLocked) cutoff = patch->filterCutoff;
                     
@@ -1919,10 +2156,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             cutoff = fminf(1.0f, fmaxf(0.0f, cutoff + wheel * 0.02f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF, cutoff);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_FILTER_CUTOFF, cutoff);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_FILTER_CUTOFF);
                             ui_consume_click();
                         }
                     }
@@ -1931,7 +2168,7 @@ int main(void) {
                 // P-lock: Resonance
                 {
                     int px = inspX + 145;
-                    float reso = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO, -1.0f);
+                    float reso = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_RESO, -1.0f);
                     bool isLocked = (reso >= 0.0f);
                     if (!isLocked) reso = patch->filterResonance;
                     
@@ -1946,10 +2183,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             reso = fminf(1.0f, fmaxf(0.0f, reso + wheel * 0.02f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO, reso);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_FILTER_RESO, reso);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_FILTER_RESO);
                             ui_consume_click();
                         }
                     }
@@ -1958,7 +2195,7 @@ int main(void) {
                 // P-lock: Filter Env
                 {
                     int px = inspX + 220;
-                    float fenv = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV, -1.0f);
+                    float fenv = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_ENV, -1.0f);
                     bool isLocked = (fenv >= 0.0f);
                     if (!isLocked) fenv = patch->filterEnvAmt;
                     
@@ -1973,10 +2210,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             fenv = fminf(1.0f, fmaxf(0.0f, fenv + wheel * 0.02f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV, fenv);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_FILTER_ENV, fenv);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_FILTER_ENV);
                             ui_consume_click();
                         }
                     }
@@ -1985,7 +2222,7 @@ int main(void) {
                 // P-lock: Decay
                 {
                     int px = inspX + 305;
-                    float decay = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_DECAY, -1.0f);
+                    float decay = seqGetPLock(p, absTrack, selectedStep, PLOCK_DECAY, -1.0f);
                     bool isLocked = (decay >= 0.0f);
                     if (!isLocked) decay = patch->decay;
                     
@@ -2000,10 +2237,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             decay = fminf(2.0f, fmaxf(0.01f, decay + wheel * 0.05f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_DECAY, decay);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_DECAY, decay);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_DECAY);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_DECAY);
                             ui_consume_click();
                         }
                     }
@@ -2012,7 +2249,7 @@ int main(void) {
                 // P-lock: Pitch offset
                 {
                     int px = inspX + 380;
-                    float pitch = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
+                    float pitch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
                     bool isLocked = (pitch > -99.0f);
                     if (!isLocked) pitch = 0.0f;
                     
@@ -2027,10 +2264,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             pitch = fminf(12.0f, fmaxf(-12.0f, pitch + wheel * 0.5f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET, pitch);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, pitch);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET);
                             ui_consume_click();
                         }
                     }
@@ -2039,7 +2276,7 @@ int main(void) {
                 // P-lock: Volume
                 {
                     int px = inspX + 455;
-                    float vol = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME, -1.0f);
+                    float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
                     bool isLocked = (vol >= 0.0f);
                     if (!isLocked) vol = p->melodyVelocity[selectedTrack][selectedStep];
                     
@@ -2054,10 +2291,10 @@ int main(void) {
                         float wheel = GetMouseWheelMove();
                         if (fabsf(wheel) > 0.1f) {
                             vol = fminf(1.0f, fmaxf(0.0f, vol + wheel * 0.02f));
-                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME, vol);
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, vol);
                         }
                         if (rightClicked) {
-                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_VOLUME);
                             ui_consume_click();
                         }
                     }
@@ -2072,7 +2309,7 @@ int main(void) {
                     DrawRectangleLinesEx(clearRect, 1, (Color){150, 80, 80, 255});
                     DrawTextShadow("Clear", clearX + 10, row2Y, 9, (Color){200, 100, 100, 255});
                     if (clearHovered && mouseClicked) {
-                        seqClearStepPLocks(p, selectedTrack, selectedStep);
+                        seqClearStepPLocks(p, absTrack, selectedStep);
                         ui_consume_click();
                     }
                 }

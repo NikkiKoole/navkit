@@ -3,6 +3,27 @@ NOW WE ARE COOKING
 
 UX Analysis: From Current State to Full-Featured Tool
 
+---
+
+## Implementation Status (Updated 2026-01-31)
+
+From the "Implementation Order" at the bottom of this doc:
+
+1. ✓ **Pattern switching** - Done (seqSwitchPattern, seqQueuePattern), but no visual pattern bar yet
+2. ✓ **Basic Step Inspector** - Done in demo.c (~line 1730), includes:
+   - Page 1: Trigger conditions (TriggerCondition selector)
+   - Page 2: Parameter locks editor
+3. ✓ **Melodic tracks** - Done (3 melody tracks: bass, lead, chord with slide/accent)
+4. ✗ **Separate PATTERN view** - Not a separate view yet (single-screen UI)
+5. ✗ **PIANO view** - Not implemented
+6. ✗ **Live recording** - Not implemented
+7. ✗ **MIX view** - Not implemented
+8. ✗ **SONG view** - Not implemented
+
+The UI is still a **single-screen instrument** as described below. The "Views" concept hasn't been implemented yet - all functionality is accessible from the main screen.
+
+---
+
 ### What You Have Now
 
 A **single-screen instrument** with:

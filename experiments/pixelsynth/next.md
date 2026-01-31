@@ -66,19 +66,26 @@ Added Schroeder-style algorithmic reverb to `effects.h`:
   - Slide/accent display in melody sequencer view ✓
   - Keyboard now respects scale lock ✓
 
+- **Conditional triggers** ✓
+  - `TriggerCondition` enum with 12 conditions: ALWAYS, ONE_TWO, TWO_TWO, ONE_THREE, etc.
+  - `drumCondition[SEQ_DRUM_TRACKS][SEQ_MAX_STEPS]` and `melodyCondition[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS]`
+  - Fill condition support with `seqFillActive` flag
+  - Helper functions: `seqSetDrumCondition()`, `seqSetMelodyCondition()`, `seqShouldTrigger()`
+  - UI in step inspector (Page 1: trigger conditions with left/right selection)
+
+- **Parameter locks (P-locks)** ✓
+  - `PLock` struct with target, track, step, value fields
+  - Up to `SEQ_MAX_PLOCKS` (256) locks per pattern
+  - Targets: filter cutoff, resonance, delay send, reverb send, accent, panning
+  - Helper functions: `seqSetPLock()`, `seqClearPLock()`, `seqGetPLock()`, `plockValue()`
+  - UI in step inspector (Page 2: parameter lock editor)
+
 ### Next Priorities
 
-1. **Conditional triggers** (from roadmap 1.1)
-   - Pattern repeat conditions (1:2, 2:4, etc.)
-   - Fill condition
-
-2. **Parameter locks (P-locks)** (from roadmap 1.2)
-   - Lock any parameter to a specific step
-
-3. **Scenes + crossfader** (from roadmap 2.4)
+1. **Scenes + crossfader** (from roadmap 2.4)
    - Scene A/B parameter snapshots
    - Morphing between scenes
 
-4. **Game state system** (from roadmap 1.5)
+2. **Game state system** (from roadmap 1.5)
    - Intensity/danger/health parameters
    - State-driven parameter modulation

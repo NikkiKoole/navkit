@@ -75,24 +75,26 @@ typedef struct {
 
 // Which parameters can be locked
 typedef enum {
-    PLOCK_FILTER_CUTOFF,    // Filter cutoff frequency
-    PLOCK_FILTER_RESO,      // Filter resonance
-    PLOCK_FILTER_ENV,       // Filter envelope amount
-    PLOCK_DECAY,            // Amplitude decay
-    PLOCK_VOLUME,           // Step volume multiplier
-    PLOCK_PITCH_OFFSET,     // Pitch detune in semitones
-    PLOCK_PULSE_WIDTH,      // PWM width
+    PLOCK_FILTER_CUTOFF,    // Filter cutoff frequency (melody) 
+    PLOCK_FILTER_RESO,      // Filter resonance (melody)
+    PLOCK_FILTER_ENV,       // Filter envelope amount (melody)
+    PLOCK_DECAY,            // Amplitude decay (all)
+    PLOCK_VOLUME,           // Step volume multiplier (all)
+    PLOCK_PITCH_OFFSET,     // Pitch detune in semitones (all)
+    PLOCK_PULSE_WIDTH,      // PWM width (melody)
+    PLOCK_TONE,             // Tone/brightness (drums: per-drum tone, melody: alias for cutoff)
+    PLOCK_PUNCH,            // Punch amount (kick: punchPitch depth, snare: snappy amount)
     PLOCK_COUNT
 } PLockParam;
 
 static const char* plockParamNames[] = {
-    "Cutoff", "Reso", "FiltEnv", "Decay", "Volume", "Pitch", "PW"
+    "Cutoff", "Reso", "FiltEnv", "Decay", "Volume", "Pitch", "PW", "Tone", "Punch"
 };
 
 // A single parameter lock entry
 typedef struct {
     uint8_t step;           // Which step (0-15)
-    uint8_t track;          // Which track (0 = Bass, 1 = Lead, 2 = Chord for melody)
+    uint8_t track;          // Absolute track index: 0-3 = drums, 4-6 = melody (Bass, Lead, Chord)
     uint8_t param;          // Which parameter (PLockParam)
     float value;            // The locked value
 } PLock;
@@ -607,6 +609,8 @@ static void updateSequencer(float dt) {
                         // Convert pitch offset (-1 to +1) to multiplier (0.5 to 2.0)
                         float pitchMod = powf(2.0f, p->drumPitch[track][step]);
                         if (seq.drumTriggers[track]) {
+                            // Prepare p-locks for this step (drums use tracks 0-3)
+                            seqPreparePLocks(p, track, step);
                             seq.drumTriggers[track](p->drumVelocity[track][step], pitchMod);
                         }
                     }
@@ -686,8 +690,8 @@ static void updateSequencer(float dt) {
                     if (seq.melodyTriggers[track]) {
                         bool slide = p->melodySlide[track][step];
                         bool accent = p->melodyAccent[track][step];
-                        // Prepare p-locks for this step (accessible via plockValue() in callback)
-                        seqPreparePLocks(p, track, step);
+                        // Prepare p-locks for this step (melody uses tracks 4-6, offset by SEQ_DRUM_TRACKS)
+                        seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, step);
                         seq.melodyTriggers[track](note, p->melodyVelocity[track][step], gateTime, slide, accent);
                     }
                     seq.melodyCurrentNote[track] = note;

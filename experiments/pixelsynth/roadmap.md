@@ -53,38 +53,37 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 ---
 
-# PRIORITY 1: Core Sequencer (Foundation)
+# PRIORITY 1: Core Sequencer (Foundation) - MOSTLY COMPLETE
 
 *These features are essential for both music production and game audio.*
 
-## 1.1 Conditional Triggers (Elektron-style)
-- **Probability per step** - 0-100% chance to play
-- **Pattern repeat conditions** - 1:2, 2:4, 3:8 (play on Nth repeat)
-- **Fill condition** - only plays when fill is active
-- **NOT fill** - plays except during fills
-- **First/Last** - only on first or last pattern play
+## 1.1 Conditional Triggers (Elektron-style) ✓ DONE
+- ✓ **Probability per step** - drumProbability/melodyProbability arrays
+- ✓ **Pattern repeat conditions** - TriggerCondition enum (1:2, 2:4, 1:3, 2:3, 3:4, etc.)
+- ✓ **Fill condition** - TRIG_FILL, TRIG_NOT_FILL with seqFillActive flag
+- ✓ **First/Last** - TRIG_FIRST, TRIG_LAST conditions
 - **Game state conditions** - trigger based on intensity/danger/health (see 1.5)
 
-## 1.2 Parameter Locks (P-Locks)
-- Lock ANY parameter to a specific step
-- Filter cutoff, pitch, decay, effect sends per step
-- Up to 72 parameters lockable per pattern
-- Visual indication of locked steps
+## 1.2 Parameter Locks (P-Locks) ✓ DONE
+- ✓ Lock ANY parameter to a specific step
+- ✓ Filter cutoff, resonance, delay send, reverb send, accent, panning
+- ✓ Up to 256 parameters lockable per pattern (SEQ_MAX_PLOCKS)
+- ✓ UI in step inspector (Page 2: parameter lock editor)
 
-## 1.3 Melodic Sequencer
-- Sequence synth voices (not just drums)
-- Note + velocity + gate length per step
-- Polyphonic (chords) or monophonic
-- Tie/legato between steps
-- Rest/skip steps
+## 1.3 Melodic Sequencer ✓ DONE
+- ✓ Sequence synth voices (3 melody tracks: bass, lead, chord)
+- ✓ Note + velocity + gate length per step
+- ✓ Monophonic with slide/glide support
+- ✓ Per-step slide & accent (303-style)
+- ✓ Rest/skip steps
 
-## 1.4 Scale Lock & Music Helpers
-- Constrain all input to a scale (major, minor, pentatonic, etc.)
-- Scale root selection (C, C#, D, etc.)
-- **Chord mode** - one finger plays full chord
-- Chord types: major, minor, 7th, maj7, min7, dim, aug, sus2, sus4, etc.
-- Chord inversions
-- **Non-musicians can't play wrong notes**
+## 1.4 Scale Lock & Music Helpers ✓ PARTIALLY DONE
+- ✓ Constrain all input to a scale (9 types: chromatic, major, minor, pentatonic, blues, dorian, mixolydian, harmonic minor)
+- ✓ Scale root selection (0-11)
+- ✓ Functions: constrainToScale(), midiToFreqScaled(), getScaleDegree(), isInScale()
+- **Chord mode** - one finger plays full chord (NOT YET)
+- Chord types: major, minor, 7th, maj7, min7, dim, aug, sus2, sus4, etc. (NOT YET)
+- Chord inversions (NOT YET)
 
 ## 1.5 Game Audio: State System
 - Global `intensity` parameter (0.0-1.0)
@@ -106,11 +105,13 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 *Organize patterns into full compositions or adaptive game scores.*
 
-## 2.1 Pattern Management
-- Multiple patterns (8-16 per bank)
-- Pattern copy/paste/clear
-- Pattern length (1-128 steps)
-- Time signature per pattern (4/4, 3/4, 6/8, etc.)
+## 2.1 Pattern Management ✓ MOSTLY DONE
+- ✓ Multiple patterns (8 per bank - SEQ_NUM_PATTERNS)
+- ✓ Pattern switching - seqSwitchPattern(int idx)
+- ✓ Queue pattern at boundary - seqQueuePattern(int idx)
+- Pattern copy/paste/clear (NOT YET)
+- Pattern length (1-128 steps) (NOT YET - fixed at 16)
+- Time signature per pattern (NOT YET)
 
 ## 2.2 Pattern Chaining
 - Queue patterns to play in sequence
@@ -231,13 +232,13 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 *Expand the sonic palette.*
 
-## 5.1 TB-303 Acid Bass
-- **Per-step slide flag** - enable/disable glide per sequencer step
-- **Per-step accent flag** - boost volume + deepen filter envelope
-- **Accent → filter coupling** - higher accent increases filter envelope depth automatically
-- **Tuned self-oscillation** - SVF filter tweaked for screaming resonance at max
-- Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
-- Sequencer integration with dedicated 303 pattern mode
+## 5.1 TB-303 Acid Bass ✓ DONE
+- ✓ **Per-step slide flag** - melodySlide arrays, seqToggleMelodySlide()
+- ✓ **Per-step accent flag** - melodyAccent arrays, seqToggleMelodyAccent()
+- ✓ **Accent → filter coupling** - accent boosts velocity + filter envelope depth
+- ✓ **Tuned self-oscillation** - SVF Q changed to 0.98 for screaming resonance
+- ✓ Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
+- ✓ Sequencer integration with seqSetMelodyStep303()
 
 ## 5.2 Supersaw/Unison
 - Multiple detuned oscillators (2-8 voices)
@@ -280,10 +281,11 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 # PRIORITY 6: Effects & Mixing
 
-## 6.1 Reverb
-- Algorithmic reverb (Schroeder/Freeverb)
-- Room size, damping, pre-delay
-- Essential for space and depth
+## 6.1 Reverb ✓ DONE
+- ✓ Algorithmic reverb (Schroeder-style in effects.h)
+- ✓ 4 parallel comb filters with lowpass damping
+- ✓ 2 series allpass filters for diffusion
+- ✓ Parameters: reverbSize, reverbDamping, reverbMix, reverbPreDelay (0-100ms)
 
 ## 6.2 Chorus/Flanger
 - Short modulated delays
