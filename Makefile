@@ -11,13 +11,13 @@ LDFLAGS := $(shell pkg-config --libs raylib)
 BINDIR := bin
 
 # Define your targets here
-TARGETS := steer crowd path pixelsynth
+TARGETS := steer crowd path soundsystem-demo
 
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c
-pixelsynth_SRC := experiments/pixelsynth/demo.c
+soundsystem-demo_SRC := soundsystem/demo/demo.c
 
 # Test targets - all use test_unity.c for shared game logic
 test_pathing_SRC    := tests/test_pathfinding.c tests/test_unity.c
@@ -136,11 +136,11 @@ bench_jobs: $(BINDIR)
 # Run all benchmarks
 bench: bench_jobs
 
-# Aliases for convenience (make path, make steer, make crowd, make pixelsynth)
+# Aliases for convenience (make path, make steer, make crowd, make soundsystem-demo)
 path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
-pixelsynth: $(BINDIR) $(BINDIR)/pixelsynth
+soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
 
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
@@ -154,12 +154,12 @@ embed_font: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/font_embed $(font_embed_SRC)
 	./$(BINDIR)/font_embed assets/fonts/comic.fnt assets/fonts/comic_embedded.h
 
-# SCW (Single Cycle Waveform) embedder for pixelsynth
-scw_embed_SRC := experiments/pixelsynth/tools/scw_embed.c
+# SCW (Single Cycle Waveform) embedder for soundsystem
+scw_embed_SRC := soundsystem/tools/scw_embed.c
 scw_embed: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/scw_embed $(scw_embed_SRC)
-	./$(BINDIR)/scw_embed experiments/pixelsynth/cycles > experiments/pixelsynth/engines/scw_data.h
-	@echo "Generated experiments/pixelsynth/engines/scw_data.h"
+	./$(BINDIR)/scw_embed soundsystem/cycles > soundsystem/engines/scw_data.h
+	@echo "Generated soundsystem/engines/scw_data.h"
 
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
@@ -198,4 +198,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd pixelsynth asan debug fast release atlas embed_font embed scw_embed path8 path16 bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 bench bench_jobs

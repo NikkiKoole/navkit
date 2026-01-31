@@ -18,11 +18,11 @@
 // INCLUDE ENGINES
 // ============================================================================
 
-#include "engines/synth.h"    // Synth voices, wavetables, formant, SFX
-#include "engines/scw_data.h" // Embedded single-cycle waveforms (run `make scw_embed` to regenerate)
-#include "engines/drums.h"    // 808-style drum machine
-#include "engines/effects.h"  // Distortion, delay, tape, bitcrusher
-#include "sequencer.h"        // Drum step sequencer
+#include "../engines/synth.h"    // Synth voices, wavetables, formant, SFX
+#include "../engines/scw_data.h" // Embedded single-cycle waveforms (run `make scw_embed` to regenerate)
+#include "../engines/drums.h"    // 808-style drum machine
+#include "../engines/effects.h"  // Distortion, delay, tape, bitcrusher
+#include "../engines/sequencer.h" // Drum step sequencer
 
 // ============================================================================
 // SPEECH SYSTEM
