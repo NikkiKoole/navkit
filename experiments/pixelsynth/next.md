@@ -1,32 +1,84 @@
-Based on the roadmap and UX analysis, here's my take on the **best path forward**:
+# PixelSynth: Next Build - COMPLETED
+
+All features from this build have been implemented.
 
 ---
 
-**Start with: Pattern switching + Step Inspector**
+## Implemented Features
 
-Why this is the sweet spot:
+### 1. Probability Per Step - ALREADY EXISTED
+Found that `drumProbability` and `melodyProbability` were already implemented in the Pattern struct and used in `updateSequencer()`.
 
-1. **Minimal disruption** - Your current single-screen UI stays intact
-2. **Immediate value** - Multiple patterns unlocks real song-making
-3. **Foundation for everything** - Conditional triggers, p-locks, and melodic sequencing all build on this
+### 2. Gate Length Per Step - ALREADY EXISTED
+Found that `melodyGate` was already implemented and used for note-off timing.
 
-**Concrete first steps:**
+### 3. Filter Self-Oscillation Tuning - DONE
+Changed SVF Q calculation from `q = 1.0f - res * 0.9f` to `q = 1.0f - res * 0.98f` in `synth.h:2076`. At max resonance, the filter now reaches Q of 0.02 for screaming 303-style self-oscillation.
 
-1. **Pattern bar at top** - 8 clickable slots, copy/paste, current pattern highlighted
-2. **Step Inspector panel** - Click a drum step, see/edit: velocity, probability (0-100%), condition dropdown (always, 1:2, fill, etc.)
-3. **One melodic track** - Add a 5th row to your drum sequencer that stores note+velocity per step (step mode, not piano roll yet)
+### 4. Per-Step Slide & Accent - DONE
+- Added `melodySlide[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS]` to Pattern struct
+- Added `melodyAccent[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS]` to Pattern struct
+- Updated `MelodyTriggerFunc` signature to include `bool slide, bool accent`
+- Updated melody callbacks in `demo.c` to handle slide (glide to note) and accent (boost velocity + filter envelope)
+- Added helper functions: `seqSetMelodyStep303()`, `seqToggleMelodySlide()`, `seqToggleMelodyAccent()`
 
-This keeps you in "jam mode" (everything visible) while adding the core Elektron-style features that make patterns interesting.
+### 5. Scale Lock - DONE
+Added complete scale lock system to `synth.h`:
+- 9 scale types: Chromatic, Major, Minor, Pentatonic, Minor Pentatonic, Blues, Dorian, Mixolydian, Harmonic Minor
+- Global state: `scaleLockEnabled`, `scaleRoot` (0-11), `scaleType`
+- Functions: `constrainToScale()`, `midiToFreqScaled()`, `getScaleDegree()`, `isInScale()`
+
+### 6. Pattern Switching - ALREADY EXISTED
+Found that pattern switching was already fully implemented:
+- `seqSwitchPattern(int idx)` - immediate switch
+- `seqQueuePattern(int idx)` - queued switch at pattern boundary
+- 8 patterns available (`SEQ_NUM_PATTERNS`)
+
+### 7. Reverb - DONE
+Added Schroeder-style algorithmic reverb to `effects.h`:
+- 4 parallel comb filters with lowpass damping
+- 2 series allpass filters for diffusion
+- Pre-delay (0-100ms)
+- Parameters: `reverbEnabled`, `reverbSize`, `reverbDamping`, `reverbMix`, `reverbPreDelay`
 
 ---
 
-**What to avoid for now:**
+## Summary
 
-- Full piano roll (complex, needs its own view)
-- Song/arrangement mode (needs patterns first)
-- Mod matrix (deep rabbit hole)
-- Live recording (needs melodic tracks first)
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Probability per step | Already existed | In sequencer.h |
+| Gate length per step | Already existed | In sequencer.h |
+| Filter self-oscillation | Implemented | ~2 line change in synth.h |
+| Per-step slide & accent | Implemented | ~100 lines across sequencer.h, demo.c |
+| Scale lock | Implemented | ~100 lines in synth.h |
+| Pattern switching | Already existed | In sequencer.h |
+| Reverb | Implemented | ~150 lines in effects.h |
 
 ---
 
-**TL;DR:** Add pattern slots + step probability/conditions. That's where the magic happens for both music and game audio, and it fits your current UI.
+## What's Next
+
+### Recently Completed
+- **UI for new features** - All done:
+  - Scale lock UI (root + scale type selector) ✓
+  - Reverb parameters UI ✓
+  - Slide/accent display in melody sequencer view ✓
+  - Keyboard now respects scale lock ✓
+
+### Next Priorities
+
+1. **Conditional triggers** (from roadmap 1.1)
+   - Pattern repeat conditions (1:2, 2:4, etc.)
+   - Fill condition
+
+2. **Parameter locks (P-locks)** (from roadmap 1.2)
+   - Lock any parameter to a specific step
+
+3. **Scenes + crossfader** (from roadmap 2.4)
+   - Scene A/B parameter snapshots
+   - Morphing between scenes
+
+4. **Game state system** (from roadmap 1.5)
+   - Intensity/danger/health parameters
+   - State-driven parameter modulation

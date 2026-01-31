@@ -53,6 +53,13 @@ typedef struct {
     float crushMix;       // Dry/wet (0-1)
     float crushHold;      // Sample hold value
     int crushCounter;     // Sample counter for rate reduction
+    
+    // Reverb (Schroeder-style)
+    bool reverbEnabled;
+    float reverbSize;     // Room size (0-1, affects delay times)
+    float reverbDamping;  // High frequency damping (0-1)
+    float reverbMix;      // Dry/wet (0-1)
+    float reverbPreDelay; // Pre-delay in seconds (0-0.1)
 } Effects;
 
 // ============================================================================
@@ -65,6 +72,31 @@ static Effects fx = {0};
 #define DELAY_BUFFER_SIZE (SAMPLE_RATE * 2)
 static float delayBuffer[DELAY_BUFFER_SIZE];
 static int delayWritePos = 0;
+
+// Reverb buffers (Schroeder reverberator: 4 parallel comb filters + 2 series allpass)
+// Comb filter delay times (in samples, tuned for ~44100Hz, prime-ish numbers)
+#define REVERB_COMB_1 1557
+#define REVERB_COMB_2 1617
+#define REVERB_COMB_3 1491
+#define REVERB_COMB_4 1422
+#define REVERB_ALLPASS_1 225
+#define REVERB_ALLPASS_2 556
+#define REVERB_PREDELAY_MAX 4410  // Max 100ms pre-delay
+
+static float reverbComb1[REVERB_COMB_1];
+static float reverbComb2[REVERB_COMB_2];
+static float reverbComb3[REVERB_COMB_3];
+static float reverbComb4[REVERB_COMB_4];
+static float reverbAllpass1[REVERB_ALLPASS_1];
+static float reverbAllpass2[REVERB_ALLPASS_2];
+static float reverbPreDelayBuf[REVERB_PREDELAY_MAX];
+
+static int reverbCombPos1 = 0, reverbCombPos2 = 0, reverbCombPos3 = 0, reverbCombPos4 = 0;
+static int reverbAllpassPos1 = 0, reverbAllpassPos2 = 0;
+static int reverbPreDelayPos = 0;
+
+// Comb filter lowpass states (for damping)
+static float reverbCombLp1 = 0, reverbCombLp2 = 0, reverbCombLp3 = 0, reverbCombLp4 = 0;
 
 // We need a noise function for tape hiss - can be overridden
 #ifndef FX_NOISE_FUNC
@@ -114,9 +146,29 @@ static void initEffects(void) {
     fx.crushHold = 0.0f;
     fx.crushCounter = 0;
     
+    // Reverb - off by default
+    fx.reverbEnabled = false;
+    fx.reverbSize = 0.5f;
+    fx.reverbDamping = 0.5f;
+    fx.reverbMix = 0.3f;
+    fx.reverbPreDelay = 0.02f;
+    
     // Clear delay buffer
     memset(delayBuffer, 0, sizeof(delayBuffer));
     delayWritePos = 0;
+    
+    // Clear reverb buffers
+    memset(reverbComb1, 0, sizeof(reverbComb1));
+    memset(reverbComb2, 0, sizeof(reverbComb2));
+    memset(reverbComb3, 0, sizeof(reverbComb3));
+    memset(reverbComb4, 0, sizeof(reverbComb4));
+    memset(reverbAllpass1, 0, sizeof(reverbAllpass1));
+    memset(reverbAllpass2, 0, sizeof(reverbAllpass2));
+    memset(reverbPreDelayBuf, 0, sizeof(reverbPreDelayBuf));
+    reverbCombPos1 = reverbCombPos2 = reverbCombPos3 = reverbCombPos4 = 0;
+    reverbAllpassPos1 = reverbAllpassPos2 = 0;
+    reverbPreDelayPos = 0;
+    reverbCombLp1 = reverbCombLp2 = reverbCombLp3 = reverbCombLp4 = 0;
 }
 
 // ============================================================================
@@ -224,6 +276,76 @@ static float processBitcrusher(float sample) {
     return dry * (1.0f - fx.crushMix) + fx.crushHold * fx.crushMix;
 }
 
+// Helper: process a single comb filter with lowpass damping
+static float processCombFilter(float input, float *buffer, int *pos, int size, 
+                               float *lpState, float feedback, float damping) {
+    float output = buffer[*pos];
+    
+    // Lowpass filter for damping (darker reverb tails)
+    float dampCoef = 1.0f - damping * 0.4f;  // 0.6 to 1.0
+    *lpState = output * dampCoef + *lpState * (1.0f - dampCoef);
+    
+    // Write input + filtered feedback to buffer
+    buffer[*pos] = input + *lpState * feedback;
+    
+    *pos = (*pos + 1) % size;
+    return output;
+}
+
+// Helper: process allpass filter
+static float processAllpass(float input, float *buffer, int *pos, int size, float coef) {
+    float delayed = buffer[*pos];
+    float output = delayed - coef * input;
+    buffer[*pos] = input + coef * delayed;
+    *pos = (*pos + 1) % size;
+    return output;
+}
+
+// Reverb - Schroeder-style algorithmic reverb
+static float processReverb(float sample) {
+    if (!fx.reverbEnabled) return sample;
+    
+    float dry = sample;
+    
+    // Pre-delay
+    int preDelaySamples = (int)(fx.reverbPreDelay * SAMPLE_RATE);
+    if (preDelaySamples > REVERB_PREDELAY_MAX - 1) preDelaySamples = REVERB_PREDELAY_MAX - 1;
+    if (preDelaySamples < 1) preDelaySamples = 1;
+    
+    int preDelayReadPos = (reverbPreDelayPos - preDelaySamples + REVERB_PREDELAY_MAX) % REVERB_PREDELAY_MAX;
+    float preDelayed = reverbPreDelayBuf[preDelayReadPos];
+    reverbPreDelayBuf[reverbPreDelayPos] = sample;
+    reverbPreDelayPos = (reverbPreDelayPos + 1) % REVERB_PREDELAY_MAX;
+    
+    // Feedback amount based on room size (longer decay for larger rooms)
+    float feedback = 0.7f + fx.reverbSize * 0.25f;  // 0.7 to 0.95
+    
+    // Scale delay lengths by room size (affects density and character)
+    // For simplicity, we use fixed delays but vary feedback
+    
+    // 4 parallel comb filters (create dense echo pattern)
+    float comb1 = processCombFilter(preDelayed, reverbComb1, &reverbCombPos1, REVERB_COMB_1, 
+                                    &reverbCombLp1, feedback, fx.reverbDamping);
+    float comb2 = processCombFilter(preDelayed, reverbComb2, &reverbCombPos2, REVERB_COMB_2,
+                                    &reverbCombLp2, feedback, fx.reverbDamping);
+    float comb3 = processCombFilter(preDelayed, reverbComb3, &reverbCombPos3, REVERB_COMB_3,
+                                    &reverbCombLp3, feedback, fx.reverbDamping);
+    float comb4 = processCombFilter(preDelayed, reverbComb4, &reverbCombPos4, REVERB_COMB_4,
+                                    &reverbCombLp4, feedback, fx.reverbDamping);
+    
+    // Sum combs
+    float combSum = (comb1 + comb2 + comb3 + comb4) * 0.25f;
+    
+    // 2 series allpass filters (diffuse and smooth the reverb)
+    float allpass1Out = processAllpass(combSum, reverbAllpass1, &reverbAllpassPos1, 
+                                       REVERB_ALLPASS_1, 0.5f);
+    float wet = processAllpass(allpass1Out, reverbAllpass2, &reverbAllpassPos2,
+                               REVERB_ALLPASS_2, 0.5f);
+    
+    // Mix
+    return dry * (1.0f - fx.reverbMix) + wet * fx.reverbMix;
+}
+
 // ============================================================================
 // MAIN EFFECT CHAIN
 // ============================================================================
@@ -233,6 +355,7 @@ static float processEffects(float sample, float dt) {
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processTape(sample, dt);
+    sample = processReverb(sample);
     sample = processDelay(sample, dt);
     return sample;
 }

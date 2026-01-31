@@ -2075,7 +2075,9 @@ static float processVoice(Voice *v, float sampleRate) {
     
     // Calculate effective resonance with LFO
     float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.0f);
-    float q = 1.0f - res * 0.9f;  // Resonance affects damping (0.1 to 1.0)
+    // Resonance affects damping - at max resonance (1.0), q approaches 0.02 for self-oscillation
+    // This gives a screaming 303-style filter at high resonance
+    float q = 1.0f - res * 0.98f;  // Range: 1.0 (no reso) to 0.02 (self-oscillating)
     
     // SVF coefficients
     float f = cutoff * 1.5f;  // Scale for better range
@@ -2305,89 +2307,41 @@ static void resetFilterEnvelope(Voice *v, bool useGlobalParams) {
 }
 
 // ============================================================================
-// PLAY FUNCTIONS
+// UNIFIED VOICE INIT (reduces repetition across play functions)
 // ============================================================================
 
-// Play a note using global parameters
-static int playNote(float freq, WaveType wave) {
-    int voiceIdx;
-    bool isGlide = false;
-    
-    if (monoMode) {
-        voiceIdx = monoVoiceIdx;
-        // Check if voice is already playing (for glide)
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-            isGlide = true;
-        }
-    } else {
-        voiceIdx = findVoice();
-    }
-    
-    Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    if (isGlide && glideTime > 0.0f) {
-        // Glide: keep current frequency, set target
-        v->targetFrequency = freq;
-        // Calculate glide rate (we'll do exponential glide in processVoice)
-        v->glideRate = 1.0f / glideTime;
-        // Don't reset phase or envelope - continue playing
-        // Use baseFrequency (not frequency which has LFO applied)
-        if (v->baseFrequency < 20.0f) v->baseFrequency = freq; // Safety check
-    } else {
-        v->frequency = freq;
-        v->baseFrequency = freq;
-        v->targetFrequency = freq;
-        v->glideRate = 0.0f;
-        v->phase = 0.0f;
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-    }
-    
-    v->volume = noteVolume;
-    v->wave = wave;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = notePulseWidth;
-    v->pwmRate = notePwmRate;
-    v->pwmDepth = notePwmDepth;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    if (!isGlide) {
-        // Only reset envelope on new note, not on glide
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
-        resetFilterEnvelope(v, true);
-        resetVoiceLfos(v, true);
-    }
-    
-    v->filterCutoff = noteFilterCutoff;
-    v->filterResonance = noteFilterResonance;
-    
-    v->arpEnabled = false;
-    v->scwIndex = noteScwIndex;
-    
-    return voiceIdx;
-}
+typedef struct {
+    float attack, decay, sustain, release;
+    float filterCutoff, filterResonance;
+    float vibratoRate, vibratoDepth;
+    bool useGlobalEnvelope;      // Use noteAttack/noteDecay/etc globals
+    bool useGlobalFilter;        // Use noteFilterCutoff/noteFilterResonance globals
+    bool useGlobalLfos;          // Reset LFOs with global params
+    bool supportsMono;           // Can use mono mode + glide
+} VoiceInitParams;
 
-// Play a vowel sound
-static int playVowel(float freq, VowelType vowel) {
+// Default params for synth voices (uses globals)
+static const VoiceInitParams VOICE_INIT_SYNTH = {
+    .attack = 0, .decay = 0, .sustain = 0, .release = 0,  // Ignored when useGlobalEnvelope=true
+    .filterCutoff = 0, .filterResonance = 0,               // Ignored when useGlobalFilter=true
+    .vibratoRate = 0, .vibratoDepth = 0,                   // Uses noteVibratoRate/Depth
+    .useGlobalEnvelope = true, .useGlobalFilter = true, .useGlobalLfos = true, .supportsMono = true
+};
+
+// Default params for percussion (fixed envelope, no LFOs)
+static const VoiceInitParams VOICE_INIT_PERC = {
+    .attack = 0.002f, .decay = 3.0f, .sustain = 0.0f, .release = 0.1f,
+    .filterCutoff = 1.0f, .filterResonance = 0.0f,
+    .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+};
+
+// Unified voice initialization - returns voice index, sets isGlide output
+static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *params, bool *outIsGlide) {
     int voiceIdx;
     bool isGlide = false;
     
-    if (monoMode) {
+    if (params->supportsMono && monoMode) {
         voiceIdx = monoVoiceIdx;
         if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
             isGlide = true;
@@ -2399,6 +2353,7 @@ static int playVowel(float freq, VowelType vowel) {
     Voice *v = &voices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
+    // Frequency setup (with glide support)
     if (isGlide && glideTime > 0.0f) {
         v->targetFrequency = freq;
         v->glideRate = 1.0f / glideTime;
@@ -2412,40 +2367,68 @@ static int playVowel(float freq, VowelType vowel) {
     }
     
     v->volume = noteVolume;
-    v->wave = WAVE_VOICE;
+    v->wave = wave;
     v->pitchSlide = 0.0f;
     
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
+    // PWM (reset for all voices)
+    v->pulseWidth = params->useGlobalEnvelope ? notePulseWidth : 0.5f;
+    v->pwmRate = params->useGlobalEnvelope ? notePwmRate : 0.0f;
+    v->pwmDepth = params->useGlobalEnvelope ? notePwmDepth : 0.0f;
     v->pwmPhase = 0.0f;
     
-    v->vibratoRate = 5.0f;
-    v->vibratoDepth = 0.1f;
+    // Vibrato
+    v->vibratoRate = params->useGlobalEnvelope ? noteVibratoRate : params->vibratoRate;
+    v->vibratoDepth = params->useGlobalEnvelope ? noteVibratoDepth : params->vibratoDepth;
     v->vibratoPhase = 0.0f;
     
-    v->attack = 0.02f;
-    v->decay = 0.05f;
-    v->sustain = 0.7f;
-    v->release = 0.25f;
+    // Envelope
+    v->attack = params->useGlobalEnvelope ? noteAttack : params->attack;
+    v->decay = params->useGlobalEnvelope ? noteDecay : params->decay;
+    v->sustain = params->useGlobalEnvelope ? noteSustain : params->sustain;
+    v->release = params->useGlobalEnvelope ? noteRelease : params->release;
+    
     if (!isGlide) {
         v->envPhase = 0.0f;
         v->envLevel = 0.0f;
         v->envStage = 1;
         v->filterLp = oldFilterLp * 0.3f;
         v->filterBp = 0.0f;
-        resetFilterEnvelope(v, false);
-        resetVoiceLfos(v, false);
+        resetFilterEnvelope(v, params->useGlobalLfos);
+        resetVoiceLfos(v, params->useGlobalLfos);
     }
     
-    v->filterCutoff = 0.7f;
-    v->filterResonance = 0.0f;
+    // Filter
+    v->filterCutoff = params->useGlobalFilter ? noteFilterCutoff : params->filterCutoff;
+    v->filterResonance = params->useGlobalFilter ? noteFilterResonance : params->filterResonance;
     
     v->arpEnabled = false;
     v->scwIndex = -1;
     
-    // Setup voice settings
-    VoiceSettings *vs = &v->voiceSettings;
+    if (outIsGlide) *outIsGlide = isGlide;
+    return voiceIdx;
+}
+
+// ============================================================================
+// PLAY FUNCTIONS
+// ============================================================================
+
+// Play a note using global parameters
+static int playNote(float freq, WaveType wave) {
+    int voiceIdx = initVoiceCommon(freq, wave, &VOICE_INIT_SYNTH, NULL);
+    voices[voiceIdx].scwIndex = noteScwIndex;
+    return voiceIdx;
+}
+
+// Voice init params (custom envelope for voice synthesis)
+static const VoiceInitParams VOICE_INIT_VOWEL = {
+    .attack = 0.02f, .decay = 0.05f, .sustain = 0.7f, .release = 0.25f,
+    .filterCutoff = 0.7f, .filterResonance = 0.0f,
+    .vibratoRate = 5.0f, .vibratoDepth = 0.1f,
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = true
+};
+
+// Helper to setup voice settings (used by playVowel and playVowelOnVoice)
+static void setupVoiceSettings(VoiceSettings *vs, VowelType vowel) {
     vs->vowel = vowel;
     vs->nextVowel = vowel;
     vs->vowelBlend = 0.0f;
@@ -2455,190 +2438,61 @@ static int playVowel(float freq, VowelType vowel) {
     vs->vibratoRate = 5.0f;
     vs->vibratoDepth = 0.15f;
     vs->vibratoPhase = 0.0f;
-    
-    // Consonant attack
     vs->consonantEnabled = voiceConsonant;
     vs->consonantTime = 0.0f;
     vs->consonantAmount = voiceConsonantAmt;
-    
-    // Nasality
     vs->nasalEnabled = voiceNasal;
     vs->nasalAmount = voiceNasalAmt;
     vs->nasalLow = 0.0f;
     vs->nasalBand = 0.0f;
-    
-    // Pitch envelope
     vs->pitchEnvAmount = voicePitchEnv;
     vs->pitchEnvTime = voicePitchEnvTime;
     vs->pitchEnvCurve = voicePitchEnvCurve;
     vs->pitchEnvTimer = 0.0f;
-    
     for (int i = 0; i < 3; i++) {
         vs->formants[i].low = 0;
         vs->formants[i].band = 0;
         vs->formants[i].high = 0;
     }
-    
+}
+
+// Play a vowel sound
+static int playVowel(float freq, VowelType vowel) {
+    int voiceIdx = initVoiceCommon(freq, WAVE_VOICE, &VOICE_INIT_VOWEL, NULL);
+    setupVoiceSettings(&voices[voiceIdx].voiceSettings, vowel);
     return voiceIdx;
 }
 
+// Pluck init params (instant attack, natural KS decay)
+static const VoiceInitParams VOICE_INIT_PLUCK = {
+    .attack = 0.001f, .decay = 4.0f, .sustain = 0.0f, .release = 0.01f,
+    .filterCutoff = 1.0f, .filterResonance = 0.0f,
+    .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+};
+
 // Play a plucked string (Karplus-Strong)
 static int playPluck(float freq, float brightness, float damping) {
-    int voiceIdx = findVoice();
-    Voice *v = &voices[voiceIdx];
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = WAVE_PLUCK;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = 0.0f;
-    v->vibratoDepth = 0.0f;
-    v->vibratoPhase = 0.0f;
-    
-    // Plucked strings: instant attack, long decay to zero (natural KS decay)
-    v->attack = 0.001f;
-    v->decay = 4.0f;
-    v->sustain = 0.0f;
-    v->release = 0.01f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    v->filterCutoff = 1.0f;  // KS has its own filtering
-    v->filterResonance = 0.0f;
-    v->filterLp = 0.0f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, false);
-    resetVoiceLfos(v, false);
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    initPluck(v, freq, 44100.0f, brightness, damping);
-    
+    int voiceIdx = initVoiceCommon(freq, WAVE_PLUCK, &VOICE_INIT_PLUCK, NULL);
+    initPluck(&voices[voiceIdx], freq, 44100.0f, brightness, damping);
     return voiceIdx;
 }
 
 // Play additive synthesis note
 static int playAdditive(float freq, AdditivePreset preset) {
-    int voiceIdx;
-    bool isGlide = false;
-    
-    if (monoMode) {
-        voiceIdx = monoVoiceIdx;
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-            isGlide = true;
-        }
-    } else {
-        voiceIdx = findVoice();
-    }
-    
+    int voiceIdx = initVoiceCommon(freq, WAVE_ADDITIVE, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    if (isGlide && glideTime > 0.0f) {
-        v->targetFrequency = freq;
-        v->glideRate = 1.0f / glideTime;
-        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
-    } else {
-        v->frequency = freq;
-        v->baseFrequency = freq;
-        v->targetFrequency = freq;
-        v->glideRate = 0.0f;
-        v->phase = 0.0f;
-    }
-    
-    v->volume = noteVolume;
-    v->wave = WAVE_ADDITIVE;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    if (!isGlide) {
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
-        resetFilterEnvelope(v, true);
-        resetVoiceLfos(v, true);
-    }
-    
-    v->filterCutoff = noteFilterCutoff;
-    v->filterResonance = noteFilterResonance;
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
     initAdditivePreset(&v->additiveSettings, preset);
     v->additiveSettings.brightness = additiveBrightness;
     v->additiveSettings.shimmer = additiveShimmer;
     v->additiveSettings.inharmonicity = additiveInharmonicity;
-    
     return voiceIdx;
 }
 
 // Play mallet percussion note
 static int playMallet(float freq, MalletPreset preset) {
-    int voiceIdx = findVoice();
+    int voiceIdx = initVoiceCommon(freq, WAVE_MALLET, &VOICE_INIT_PERC, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = WAVE_MALLET;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = 0.0f;
-    v->vibratoDepth = 0.0f;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = 0.002f;
-    v->decay = 3.0f;
-    v->sustain = 0.0f;
-    v->release = 0.1f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    v->filterCutoff = 1.0f;
-    v->filterResonance = 0.0f;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, false);
-    resetVoiceLfos(v, false);
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
     initMalletPreset(&v->malletSettings, preset);
     v->malletSettings.stiffness = malletStiffness;
     v->malletSettings.hardness = malletHardness;
@@ -2646,328 +2500,83 @@ static int playMallet(float freq, MalletPreset preset) {
     v->malletSettings.resonance = malletResonance;
     v->malletSettings.tremolo = malletTremolo;
     v->malletSettings.tremoloRate = malletTremoloRate;
-    
     return voiceIdx;
 }
 
 // Play granular synthesis note
 static int playGranular(float freq, int scwIndex) {
-    int voiceIdx;
-    bool isGlide = false;
-    
-    if (monoMode) {
-        voiceIdx = monoVoiceIdx;
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-            isGlide = true;
-        }
-    } else {
-        voiceIdx = findVoice();
-    }
-    
+    int voiceIdx = initVoiceCommon(freq, WAVE_GRANULAR, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    if (isGlide && glideTime > 0.0f) {
-        v->targetFrequency = freq;
-        v->glideRate = 1.0f / glideTime;
-        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
-    } else {
-        v->frequency = freq;
-        v->baseFrequency = freq;
-        v->targetFrequency = freq;
-        v->glideRate = 0.0f;
-        v->phase = 0.0f;
-    }
-    
-    v->volume = noteVolume;
-    v->wave = WAVE_GRANULAR;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    if (!isGlide) {
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
-        resetFilterEnvelope(v, true);
-        resetVoiceLfos(v, true);
-    }
-    
-    v->filterCutoff = noteFilterCutoff;
-    v->filterResonance = noteFilterResonance;
-    
-    v->arpEnabled = false;
     v->scwIndex = scwIndex;
     
-    // Initialize granular settings
     initGranularSettings(&v->granularSettings, scwIndex);
     v->granularSettings.grainSize = granularGrainSize;
     v->granularSettings.grainDensity = granularDensity;
     v->granularSettings.position = granularPosition;
     v->granularSettings.positionRandom = granularPosRandom;
-    // Pitch from keyboard (relative to middle C) * manual pitch control
-    float pitchFromNote = freq / 261.63f;
-    v->granularSettings.pitch = granularPitch * pitchFromNote;
+    v->granularSettings.pitch = granularPitch * (freq / 261.63f);  // Pitch from keyboard * manual control
     v->granularSettings.pitchRandom = granularPitchRandom;
     v->granularSettings.ampRandom = granularAmpRandom;
     v->granularSettings.spread = granularSpread;
     v->granularSettings.freeze = granularFreeze;
-    
     return voiceIdx;
 }
 
 // Play FM synthesis note
 static int playFM(float freq) {
-    int voiceIdx;
-    bool isGlide = false;
-    
-    if (monoMode) {
-        voiceIdx = monoVoiceIdx;
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-            isGlide = true;
-        }
-    } else {
-        voiceIdx = findVoice();
-    }
-    
+    int voiceIdx = initVoiceCommon(freq, WAVE_FM, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    if (isGlide && glideTime > 0.0f) {
-        v->targetFrequency = freq;
-        v->glideRate = 1.0f / glideTime;
-        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
-    } else {
-        v->frequency = freq;
-        v->baseFrequency = freq;
-        v->targetFrequency = freq;
-        v->glideRate = 0.0f;
-        v->phase = 0.0f;
-    }
-    
-    v->volume = noteVolume;
-    v->wave = WAVE_FM;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    if (!isGlide) {
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
-        resetFilterEnvelope(v, true);
-        resetVoiceLfos(v, true);
-    }
-    
-    v->filterCutoff = noteFilterCutoff;
-    v->filterResonance = noteFilterResonance;
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    // Initialize FM settings
     v->fmSettings.modRatio = fmModRatio;
     v->fmSettings.modIndex = fmModIndex;
     v->fmSettings.feedback = fmFeedback;
     v->fmSettings.modPhase = 0.0f;
     v->fmSettings.fbSample = 0.0f;
-    
     return voiceIdx;
 }
 
 // Play phase distortion (CZ-style) note
 static int playPD(float freq) {
-    int voiceIdx;
-    bool isGlide = false;
-    
-    if (monoMode) {
-        voiceIdx = monoVoiceIdx;
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-            isGlide = true;
-        }
-    } else {
-        voiceIdx = findVoice();
-    }
-    
+    int voiceIdx = initVoiceCommon(freq, WAVE_PD, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    if (isGlide && glideTime > 0.0f) {
-        v->targetFrequency = freq;
-        v->glideRate = 1.0f / glideTime;
-        if (v->baseFrequency < 20.0f) v->baseFrequency = freq;
-    } else {
-        v->frequency = freq;
-        v->baseFrequency = freq;
-        v->targetFrequency = freq;
-        v->glideRate = 0.0f;
-        v->phase = 0.0f;
-    }
-    
-    v->volume = noteVolume;
-    v->wave = WAVE_PD;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = noteVibratoRate;
-    v->vibratoDepth = noteVibratoDepth;
-    v->vibratoPhase = 0.0f;
-    
-    v->attack = noteAttack;
-    v->decay = noteDecay;
-    v->sustain = noteSustain;
-    v->release = noteRelease;
-    if (!isGlide) {
-        v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
-        v->envStage = 1;
-        v->filterLp = oldFilterLp * 0.3f;
-        v->filterBp = 0.0f;
-        resetFilterEnvelope(v, true);
-        resetVoiceLfos(v, true);
-    }
-    
-    v->filterCutoff = noteFilterCutoff;
-    v->filterResonance = noteFilterResonance;
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    // Initialize PD settings
     v->pdSettings.waveType = (PDWaveType)pdWaveType;
     v->pdSettings.distortion = pdDistortion;
-    
     return voiceIdx;
 }
 
+// Membrane init params (short release for percussion)
+static const VoiceInitParams VOICE_INIT_MEMBRANE = {
+    .attack = 0.002f, .decay = 3.0f, .sustain = 0.0f, .release = 0.05f,
+    .filterCutoff = 1.0f, .filterResonance = 0.0f,
+    .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+};
+
+// Bird init params (has its own internal envelope)
+static const VoiceInitParams VOICE_INIT_BIRD = {
+    .attack = 0.001f, .decay = 2.0f, .sustain = 1.0f, .release = 0.05f,
+    .filterCutoff = 1.0f, .filterResonance = 0.0f,
+    .vibratoRate = 0.0f, .vibratoDepth = 0.0f,
+    .useGlobalEnvelope = false, .useGlobalFilter = false, .useGlobalLfos = false, .supportsMono = false
+};
+
 // Play membrane (tabla/conga) note
 static int playMembrane(float freq, MembranePreset preset) {
-    int voiceIdx = findVoice();
+    int voiceIdx = initVoiceCommon(freq, WAVE_MEMBRANE, &VOICE_INIT_MEMBRANE, NULL);
     Voice *v = &voices[voiceIdx];
-    float oldFilterLp = v->filterLp;
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = WAVE_MEMBRANE;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = 0.0f;
-    v->vibratoDepth = 0.0f;
-    v->vibratoPhase = 0.0f;
-    
-    // Membrane: instant attack, decay handled by modal synthesis
-    v->attack = 0.002f;
-    v->decay = 3.0f;
-    v->sustain = 0.0f;
-    v->release = 0.05f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    v->filterCutoff = 1.0f;
-    v->filterResonance = 0.0f;
-    v->filterLp = oldFilterLp * 0.3f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, false);
-    resetVoiceLfos(v, false);
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    // Initialize membrane with preset, then apply tweakables
     initMembranePreset(&v->membraneSettings, preset);
     v->membraneSettings.damping = membraneDamping;
     v->membraneSettings.strikePos = membraneStrike;
     v->membraneSettings.pitchBend = membraneBend;
     v->membraneSettings.pitchBendDecay = membraneBendDecay;
-    
     return voiceIdx;
 }
 
 // Play bird vocalization
 static int playBird(float freq, BirdType type) {
-    int voiceIdx = findVoice();
+    int voiceIdx = initVoiceCommon(freq, WAVE_BIRD, &VOICE_INIT_BIRD, NULL);
     Voice *v = &voices[voiceIdx];
-    
-    v->frequency = freq;
-    v->baseFrequency = freq;
-    v->phase = 0.0f;
-    v->volume = noteVolume;
-    v->wave = WAVE_BIRD;
-    v->pitchSlide = 0.0f;
-    
-    v->pulseWidth = 0.5f;
-    v->pwmRate = 0.0f;
-    v->pwmDepth = 0.0f;
-    v->pwmPhase = 0.0f;
-    
-    v->vibratoRate = 0.0f;
-    v->vibratoDepth = 0.0f;
-    v->vibratoPhase = 0.0f;
-    
-    // Bird has its own envelope, but we need ADSR active
-    v->attack = 0.001f;
-    v->decay = 2.0f;
-    v->sustain = 1.0f;
-    v->release = 0.05f;
-    v->envPhase = 0.0f;
-    v->envLevel = 0.0f;
-    v->envStage = 1;
-    
-    v->filterCutoff = 1.0f;
-    v->filterResonance = 0.0f;
-    v->filterLp = 0.0f;
-    v->filterBp = 0.0f;
-    
-    resetFilterEnvelope(v, false);
-    resetVoiceLfos(v, false);
-    
-    v->arpEnabled = false;
-    v->scwIndex = -1;
-    
-    // Initialize bird preset then apply tweakables
     initBirdPreset(&v->birdSettings, type, freq);
-    
-    // Apply tweakable overrides
-    v->birdSettings.startFreq *= (2.0f - birdChirpRange);  // Inverse for start
+    v->birdSettings.startFreq *= (2.0f - birdChirpRange);
     v->birdSettings.endFreq *= birdChirpRange;
     if (birdTrillRate > 0.0f) {
         v->birdSettings.trillRate = birdTrillRate;
@@ -2979,32 +2588,28 @@ static int playBird(float freq, BirdType type) {
     }
     v->birdSettings.harmonic2 = birdHarmonics * 0.5f;
     v->birdSettings.harmonic3 = birdHarmonics * 0.3f;
-    
     return voiceIdx;
 }
 
-// Play vowel on a specific voice
+// Play vowel on a specific voice (for speech system)
 static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     Voice *v = &voices[voiceIdx];
-    
     float oldFilterLp = v->filterLp;
     
+    // Basic voice setup
     v->frequency = freq;
     v->baseFrequency = freq;
     v->phase = 0.0f;
     v->volume = noteVolume;
     v->wave = WAVE_VOICE;
     v->pitchSlide = 0.0f;
-    
     v->pulseWidth = 0.5f;
     v->pwmRate = 0.0f;
     v->pwmDepth = 0.0f;
     v->pwmPhase = 0.0f;
-    
     v->vibratoRate = 5.0f;
     v->vibratoDepth = 0.1f;
     v->vibratoPhase = 0.0f;
-    
     v->attack = 0.02f;
     v->decay = 0.05f;
     v->sustain = 0.7f;
@@ -3012,45 +2617,12 @@ static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     v->envPhase = 0.0f;
     v->envLevel = 0.0f;
     v->envStage = 1;
-    
     v->filterCutoff = 0.7f;
     v->filterLp = oldFilterLp * 0.3f;
     v->arpEnabled = false;
     v->scwIndex = -1;
     
-    VoiceSettings *vs = &v->voiceSettings;
-    vs->vowel = vowel;
-    vs->nextVowel = vowel;
-    vs->vowelBlend = 0.0f;
-    vs->formantShift = voiceFormantShift;
-    vs->breathiness = voiceBreathiness;
-    vs->buzziness = voiceBuzziness;
-    vs->vibratoRate = 5.0f;
-    vs->vibratoDepth = 0.15f;
-    vs->vibratoPhase = 0.0f;
-    
-    // Consonant attack
-    vs->consonantEnabled = voiceConsonant;
-    vs->consonantTime = 0.0f;
-    vs->consonantAmount = voiceConsonantAmt;
-    
-    // Nasality
-    vs->nasalEnabled = voiceNasal;
-    vs->nasalAmount = voiceNasalAmt;
-    vs->nasalLow = 0.0f;
-    vs->nasalBand = 0.0f;
-    
-    // Pitch envelope
-    vs->pitchEnvAmount = voicePitchEnv;
-    vs->pitchEnvTime = voicePitchEnvTime;
-    vs->pitchEnvCurve = voicePitchEnvCurve;
-    vs->pitchEnvTimer = 0.0f;
-    
-    for (int i = 0; i < 3; i++) {
-        vs->formants[i].low = 0;
-        vs->formants[i].band = 0;
-        vs->formants[i].high = 0;
-    }
+    setupVoiceSettings(&v->voiceSettings, vowel);
 }
 
 // ============================================================================
@@ -3127,6 +2699,113 @@ static void sfxBlip(void) {
     int v = findVoice();
     initSfxVoice(&voices[v], mutate(800.0f, 0.1f), WAVE_SQUARE, mutate(0.3f, 0.1f),
                  0.005f, mutate(0.05f, 0.15f), 0.02f, rndRange(-2.0f, 2.0f));
+}
+
+// ============================================================================
+// SCALE LOCK SYSTEM
+// ============================================================================
+
+typedef enum {
+    SCALE_CHROMATIC,    // All 12 notes (no constraint)
+    SCALE_MAJOR,        // Major scale (Ionian)
+    SCALE_MINOR,        // Natural minor (Aeolian)
+    SCALE_PENTATONIC,   // Major pentatonic
+    SCALE_MINOR_PENTA,  // Minor pentatonic
+    SCALE_BLUES,        // Blues scale
+    SCALE_DORIAN,       // Dorian mode
+    SCALE_MIXOLYDIAN,   // Mixolydian mode
+    SCALE_HARMONIC_MIN, // Harmonic minor
+    SCALE_COUNT
+} ScaleType;
+
+static const char* scaleNames[] = {
+    "Chromatic", "Major", "Minor", "Penta", "MinPenta", 
+    "Blues", "Dorian", "Mixolyd", "HarmMin"
+};
+
+// Scale intervals (1 = note in scale, 0 = not in scale)
+// Index 0 = root, 1 = minor 2nd, 2 = major 2nd, etc.
+static const int scaleIntervals[SCALE_COUNT][12] = {
+    {1,1,1,1,1,1,1,1,1,1,1,1},  // Chromatic
+    {1,0,1,0,1,1,0,1,0,1,0,1},  // Major: C D E F G A B
+    {1,0,1,1,0,1,0,1,1,0,1,0},  // Minor: C D Eb F G Ab Bb
+    {1,0,1,0,1,0,0,1,0,1,0,0},  // Pentatonic: C D E G A
+    {1,0,0,1,0,1,0,1,0,0,1,0},  // Minor Pentatonic: C Eb F G Bb
+    {1,0,0,1,0,1,1,1,0,0,1,0},  // Blues: C Eb F F# G Bb
+    {1,0,1,1,0,1,0,1,0,1,1,0},  // Dorian: C D Eb F G A Bb
+    {1,0,1,0,1,1,0,1,0,1,1,0},  // Mixolydian: C D E F G A Bb
+    {1,0,1,1,0,1,0,1,1,0,0,1},  // Harmonic Minor: C D Eb F G Ab B
+};
+
+// Scale lock state
+static bool scaleLockEnabled = false;
+static int scaleRoot = 0;         // 0=C, 1=C#, 2=D, etc.
+static ScaleType scaleType = SCALE_MAJOR;
+
+// Root note names
+static const char* rootNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+
+// Constrain a MIDI note to the current scale
+// Returns the nearest note in the scale (prefers rounding down to root)
+static int constrainToScale(int midiNote) {
+    if (!scaleLockEnabled || scaleType == SCALE_CHROMATIC) return midiNote;
+    
+    // Get the note's position relative to root (0-11)
+    int noteInOctave = ((midiNote % 12) - scaleRoot + 12) % 12;
+    int octave = midiNote / 12;
+    
+    // If already in scale, return as-is
+    if (scaleIntervals[scaleType][noteInOctave]) return midiNote;
+    
+    // Find nearest note in scale (prefer going down)
+    for (int offset = 1; offset < 12; offset++) {
+        // Check below first
+        int below = (noteInOctave - offset + 12) % 12;
+        if (scaleIntervals[scaleType][below]) {
+            int result = octave * 12 + ((below + scaleRoot) % 12);
+            // Handle octave boundary
+            if (below > noteInOctave) result -= 12;
+            return result;
+        }
+        // Then check above
+        int above = (noteInOctave + offset) % 12;
+        if (scaleIntervals[scaleType][above]) {
+            int result = octave * 12 + ((above + scaleRoot) % 12);
+            // Handle octave boundary
+            if (above < noteInOctave) result += 12;
+            return result;
+        }
+    }
+    
+    return midiNote;  // Fallback (shouldn't happen)
+}
+
+// Convert MIDI note to frequency with optional scale lock
+static float midiToFreqScaled(int midiNote) {
+    int constrained = constrainToScale(midiNote);
+    return 440.0f * powf(2.0f, (constrained - 69) / 12.0f);
+}
+
+// Get scale degree (1-7 for diatonic scales, 0 if not in scale)
+static int getScaleDegree(int midiNote) {
+    if (scaleType == SCALE_CHROMATIC) return (midiNote % 12) + 1;
+    
+    int noteInOctave = ((midiNote % 12) - scaleRoot + 12) % 12;
+    if (!scaleIntervals[scaleType][noteInOctave]) return 0;
+    
+    // Count how many scale notes are below this one
+    int degree = 1;
+    for (int i = 0; i < noteInOctave; i++) {
+        if (scaleIntervals[scaleType][i]) degree++;
+    }
+    return degree;
+}
+
+// Check if a note is in the current scale
+static bool isInScale(int midiNote) {
+    if (!scaleLockEnabled || scaleType == SCALE_CHROMATIC) return true;
+    int noteInOctave = ((midiNote % 12) - scaleRoot + 12) % 12;
+    return scaleIntervals[scaleType][noteInOctave] != 0;
 }
 
 #endif // PIXELSYNTH_SYNTH_H

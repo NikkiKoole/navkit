@@ -231,39 +231,47 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 
 *Expand the sonic palette.*
 
-## 5.1 Supersaw/Unison
+## 5.1 TB-303 Acid Bass
+- **Per-step slide flag** - enable/disable glide per sequencer step
+- **Per-step accent flag** - boost volume + deepen filter envelope
+- **Accent → filter coupling** - higher accent increases filter envelope depth automatically
+- **Tuned self-oscillation** - SVF filter tweaked for screaming resonance at max
+- Classic acid bassline workflow: sawtooth/square + resonant filter + slides + accents
+- Sequencer integration with dedicated 303 pattern mode
+
+## 5.2 Supersaw/Unison
 - Multiple detuned oscillators (2-8 voices)
 - Detune amount, spread
 - JP-8000/Virus style massive leads
 
-## 5.2 Wavefolder
+## 5.3 Wavefolder
 - Triangle through wavefolder
 - Fold amount (drive)
 - Metallic, squelchy, West Coast tones
 
-## 5.3 Hard Sync
+## 5.4 Hard Sync
 - Two oscillators with hard sync
 - Sync sweep for classic tearing sound
 
-## 5.4 Ring Modulation
+## 5.5 Ring Modulation
 - Carrier x Modulator
 - Metallic, bell-like, atonal textures
 
-## 5.5 Speech (8-bit)
+## 5.6 Speech (8-bit)
 - Speak & Spell style synthesis
 - Different from formant voice
 - Robotic, lo-fi speech
 
-## 5.6 Bass (Waveshaping)
+## 5.7 Bass (Waveshaping)
 - Non-linear waveshaping for heavy digital bass
 - Noise Engineering style
 
-## 5.7 Physical Modeling Extensions
+## 5.8 Physical Modeling Extensions
 - **Bowed String** - bow pressure, velocity, position
 - **Wind/Flute** - breath noise + resonant tube model
 - **Blown Bottle** - simple wind instrument
 
-## 5.8 Vocoder
+## 5.9 Vocoder
 - 8-16 band vocoder
 - External input or internal carrier
 - Robot voice effects

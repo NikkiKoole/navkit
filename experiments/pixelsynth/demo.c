@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define SCREEN_WIDTH 1140
-#define SCREEN_HEIGHT 700
+#define SCREEN_HEIGHT 780
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
 
@@ -299,8 +299,481 @@ static float semitoneToFreq(int semitone, int octave) {
     // C0 = 16.35 Hz (MIDI note 12)
     float c0 = 16.351597831287414f;
     int totalSemitones = octave * 12 + semitone;
+    // Apply scale lock if enabled
+    if (scaleLockEnabled) {
+        totalSemitones = constrainToScale(totalSemitones);
+    }
     return c0 * powf(2.0f, totalSemitones / 12.0f);
 }
+
+// ============================================================================
+// SYNTH PATCHES (Per-track synth settings)
+// ============================================================================
+
+typedef struct {
+    // Wave type
+    int waveType;
+    int scwIndex;
+    
+    // Envelope
+    float attack;
+    float decay;
+    float sustain;
+    float release;
+    float volume;
+    
+    // PWM (for square wave)
+    float pulseWidth;
+    float pwmRate;
+    float pwmDepth;
+    
+    // Vibrato
+    float vibratoRate;
+    float vibratoDepth;
+    
+    // Filter
+    float filterCutoff;
+    float filterResonance;
+    float filterEnvAmt;
+    float filterEnvAttack;
+    float filterEnvDecay;
+    
+    // Filter LFO
+    float filterLfoRate;
+    float filterLfoDepth;
+    int filterLfoShape;
+    
+    // Resonance LFO
+    float resoLfoRate;
+    float resoLfoDepth;
+    int resoLfoShape;
+    
+    // Amplitude LFO
+    float ampLfoRate;
+    float ampLfoDepth;
+    int ampLfoShape;
+    
+    // Pitch LFO
+    float pitchLfoRate;
+    float pitchLfoDepth;
+    int pitchLfoShape;
+    
+    // Mono/Glide
+    bool monoMode;
+    float glideTime;
+    
+    // Pluck settings
+    float pluckBrightness;
+    float pluckDamping;
+    float pluckDamp;
+    
+    // Additive
+    int additivePreset;
+    float additiveBrightness;
+    float additiveShimmer;
+    float additiveInharmonicity;
+    
+    // Mallet
+    int malletPreset;
+    float malletStiffness;
+    float malletHardness;
+    float malletStrikePos;
+    float malletResonance;
+    float malletTremolo;
+    float malletTremoloRate;
+    float malletDamp;
+    
+    // Voice (formant)
+    int voiceVowel;
+    float voiceFormantShift;
+    float voiceBreathiness;
+    float voiceBuzziness;
+    float voiceSpeed;
+    float voicePitch;
+    bool voiceConsonant;
+    float voiceConsonantAmt;
+    bool voiceNasal;
+    float voiceNasalAmt;
+    float voicePitchEnv;
+    float voicePitchEnvTime;
+    float voicePitchEnvCurve;
+    
+    // Granular
+    int granularScwIndex;
+    float granularGrainSize;
+    float granularDensity;
+    float granularPosition;
+    float granularPosRandom;
+    float granularPitch;
+    float granularPitchRandom;
+    float granularAmpRandom;
+    float granularSpread;
+    bool granularFreeze;
+    
+    // FM
+    float fmModRatio;
+    float fmModIndex;
+    float fmFeedback;
+    
+    // Phase Distortion
+    int pdWaveType;
+    float pdDistortion;
+    
+    // Membrane
+    int membranePreset;
+    float membraneDamping;
+    float membraneStrike;
+    float membraneBend;
+    float membraneBendDecay;
+    
+    // Bird
+    int birdType;
+    float birdChirpRange;
+    float birdTrillRate;
+    float birdTrillDepth;
+    float birdAmRate;
+    float birdAmDepth;
+    float birdHarmonics;
+} SynthPatch;
+
+// Default patch initializer
+static SynthPatch createDefaultPatch(int waveType) {
+    return (SynthPatch){
+        .waveType = waveType,
+        .scwIndex = 0,
+        .attack = 0.01f,
+        .decay = 0.1f,
+        .sustain = 0.5f,
+        .release = 0.3f,
+        .volume = 0.5f,
+        .pulseWidth = 0.5f,
+        .pwmRate = 3.0f,
+        .pwmDepth = 0.0f,
+        .vibratoRate = 5.0f,
+        .vibratoDepth = 0.0f,
+        .filterCutoff = 1.0f,
+        .filterResonance = 0.0f,
+        .filterEnvAmt = 0.0f,
+        .filterEnvAttack = 0.01f,
+        .filterEnvDecay = 0.2f,
+        .filterLfoRate = 0.0f,
+        .filterLfoDepth = 0.0f,
+        .filterLfoShape = 0,
+        .resoLfoRate = 0.0f,
+        .resoLfoDepth = 0.0f,
+        .resoLfoShape = 0,
+        .ampLfoRate = 0.0f,
+        .ampLfoDepth = 0.0f,
+        .ampLfoShape = 0,
+        .pitchLfoRate = 5.0f,
+        .pitchLfoDepth = 0.0f,
+        .pitchLfoShape = 0,
+        .monoMode = false,
+        .glideTime = 0.1f,
+        .pluckBrightness = 0.5f,
+        .pluckDamping = 0.996f,
+        .pluckDamp = 0.0f,
+        .additivePreset = ADDITIVE_PRESET_ORGAN,
+        .additiveBrightness = 0.5f,
+        .additiveShimmer = 0.0f,
+        .additiveInharmonicity = 0.0f,
+        .malletPreset = MALLET_PRESET_MARIMBA,
+        .malletStiffness = 0.3f,
+        .malletHardness = 0.5f,
+        .malletStrikePos = 0.25f,
+        .malletResonance = 0.7f,
+        .malletTremolo = 0.0f,
+        .malletTremoloRate = 5.5f,
+        .malletDamp = 0.0f,
+        .voiceVowel = VOWEL_A,
+        .voiceFormantShift = 1.0f,
+        .voiceBreathiness = 0.1f,
+        .voiceBuzziness = 0.6f,
+        .voiceSpeed = 10.0f,
+        .voicePitch = 1.0f,
+        .voiceConsonant = false,
+        .voiceConsonantAmt = 0.5f,
+        .voiceNasal = false,
+        .voiceNasalAmt = 0.5f,
+        .voicePitchEnv = 0.0f,
+        .voicePitchEnvTime = 0.15f,
+        .voicePitchEnvCurve = 0.0f,
+        .granularScwIndex = 0,
+        .granularGrainSize = 50.0f,
+        .granularDensity = 20.0f,
+        .granularPosition = 0.5f,
+        .granularPosRandom = 0.1f,
+        .granularPitch = 1.0f,
+        .granularPitchRandom = 0.0f,
+        .granularAmpRandom = 0.1f,
+        .granularSpread = 0.5f,
+        .granularFreeze = false,
+        .fmModRatio = 2.0f,
+        .fmModIndex = 1.0f,
+        .fmFeedback = 0.0f,
+        .pdWaveType = PD_WAVE_SAW,
+        .pdDistortion = 0.5f,
+        .membranePreset = MEMBRANE_TABLA,
+        .membraneDamping = 0.3f,
+        .membraneStrike = 0.3f,
+        .membraneBend = 0.15f,
+        .membraneBendDecay = 0.08f,
+        .birdType = BIRD_CHIRP,
+        .birdChirpRange = 1.0f,
+        .birdTrillRate = 0.0f,
+        .birdTrillDepth = 0.0f,
+        .birdAmRate = 0.0f,
+        .birdAmDepth = 0.0f,
+        .birdHarmonics = 0.2f,
+    };
+}
+
+// 5 patches: Preview (jamming), Bass, Lead, Chord + copy targets
+#define PATCH_PREVIEW 0
+#define PATCH_BASS 1
+#define PATCH_LEAD 2
+#define PATCH_CHORD 3
+#define NUM_PATCHES 4
+
+static const char* patchNames[NUM_PATCHES] = {"Preview", "Bass", "Lead", "Chord"};
+static SynthPatch patches[NUM_PATCHES];
+static int selectedPatch = PATCH_PREVIEW;
+
+
+
+// Initialize patches with different default wave types
+static void initPatches(void) {
+    patches[PATCH_PREVIEW] = createDefaultPatch(WAVE_SAW);  // Scratchpad for jamming
+    patches[PATCH_BASS] = createDefaultPatch(WAVE_SAW);
+    patches[PATCH_BASS].filterCutoff = 0.4f;  // Bass: darker
+    patches[PATCH_BASS].release = 0.15f;
+    patches[PATCH_LEAD] = createDefaultPatch(WAVE_SQUARE);
+    patches[PATCH_LEAD].filterCutoff = 0.8f;
+    patches[PATCH_LEAD].vibratoDepth = 0.2f;
+    patches[PATCH_CHORD] = createDefaultPatch(WAVE_TRIANGLE);
+    patches[PATCH_CHORD].attack = 0.05f;
+    patches[PATCH_CHORD].release = 0.5f;
+}
+
+// Copy one patch to another
+static void copyPatch(SynthPatch *src, SynthPatch *dst) {
+    *dst = *src;
+}
+
+// Apply a patch's settings to the global synth parameters
+static void applyPatchToGlobals(SynthPatch *p) {
+    noteAttack = p->attack;
+    noteDecay = p->decay;
+    noteSustain = p->sustain;
+    noteRelease = p->release;
+    noteVolume = p->volume;
+    notePulseWidth = p->pulseWidth;
+    notePwmRate = p->pwmRate;
+    notePwmDepth = p->pwmDepth;
+    noteVibratoRate = p->vibratoRate;
+    noteVibratoDepth = p->vibratoDepth;
+    noteFilterCutoff = p->filterCutoff;
+    noteFilterResonance = p->filterResonance;
+    noteFilterEnvAmt = p->filterEnvAmt;
+    noteFilterEnvAttack = p->filterEnvAttack;
+    noteFilterEnvDecay = p->filterEnvDecay;
+    noteFilterLfoRate = p->filterLfoRate;
+    noteFilterLfoDepth = p->filterLfoDepth;
+    noteFilterLfoShape = p->filterLfoShape;
+    noteResoLfoRate = p->resoLfoRate;
+    noteResoLfoDepth = p->resoLfoDepth;
+    noteResoLfoShape = p->resoLfoShape;
+    noteAmpLfoRate = p->ampLfoRate;
+    noteAmpLfoDepth = p->ampLfoDepth;
+    noteAmpLfoShape = p->ampLfoShape;
+    notePitchLfoRate = p->pitchLfoRate;
+    notePitchLfoDepth = p->pitchLfoDepth;
+    notePitchLfoShape = p->pitchLfoShape;
+    monoMode = p->monoMode;
+    glideTime = p->glideTime;
+    pluckBrightness = p->pluckBrightness;
+    pluckDamping = p->pluckDamping;
+    pluckDamp = p->pluckDamp;
+    additivePreset = p->additivePreset;
+    additiveBrightness = p->additiveBrightness;
+    additiveShimmer = p->additiveShimmer;
+    additiveInharmonicity = p->additiveInharmonicity;
+    malletPreset = p->malletPreset;
+    malletStiffness = p->malletStiffness;
+    malletHardness = p->malletHardness;
+    malletStrikePos = p->malletStrikePos;
+    malletResonance = p->malletResonance;
+    malletTremolo = p->malletTremolo;
+    malletTremoloRate = p->malletTremoloRate;
+    malletDamp = p->malletDamp;
+    voiceVowel = p->voiceVowel;
+    voiceFormantShift = p->voiceFormantShift;
+    voiceBreathiness = p->voiceBreathiness;
+    voiceBuzziness = p->voiceBuzziness;
+    voiceSpeed = p->voiceSpeed;
+    voicePitch = p->voicePitch;
+    voiceConsonant = p->voiceConsonant;
+    voiceConsonantAmt = p->voiceConsonantAmt;
+    voiceNasal = p->voiceNasal;
+    voiceNasalAmt = p->voiceNasalAmt;
+    voicePitchEnv = p->voicePitchEnv;
+    voicePitchEnvTime = p->voicePitchEnvTime;
+    voicePitchEnvCurve = p->voicePitchEnvCurve;
+    granularScwIndex = p->granularScwIndex;
+    granularGrainSize = p->granularGrainSize;
+    granularDensity = p->granularDensity;
+    granularPosition = p->granularPosition;
+    granularPosRandom = p->granularPosRandom;
+    granularPitch = p->granularPitch;
+    granularPitchRandom = p->granularPitchRandom;
+    granularAmpRandom = p->granularAmpRandom;
+    granularSpread = p->granularSpread;
+    granularFreeze = p->granularFreeze;
+    fmModRatio = p->fmModRatio;
+    fmModIndex = p->fmModIndex;
+    fmFeedback = p->fmFeedback;
+    pdWaveType = p->pdWaveType;
+    pdDistortion = p->pdDistortion;
+    membranePreset = p->membranePreset;
+    membraneDamping = p->membraneDamping;
+    membraneStrike = p->membraneStrike;
+    membraneBend = p->membraneBend;
+    membraneBendDecay = p->membraneBendDecay;
+    birdType = p->birdType;
+    birdChirpRange = p->birdChirpRange;
+    birdTrillRate = p->birdTrillRate;
+    birdTrillDepth = p->birdTrillDepth;
+    birdAmRate = p->birdAmRate;
+    birdAmDepth = p->birdAmDepth;
+    birdHarmonics = p->birdHarmonics;
+}
+
+// ============================================================================
+// MELODIC SEQUENCER VOICES
+// ============================================================================
+
+// Each melodic track gets a dedicated voice index to avoid conflicts
+static int melodyVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+
+// Convert MIDI note to frequency
+static float midiNoteToFreq(int note) {
+    return 440.0f * powf(2.0f, (note - 69) / 12.0f);
+}
+
+// Play a note using a specific patch's settings
+static int playNoteWithPatch(float freq, SynthPatch *p) {
+    // Set globals from patch (play functions in synth.h read these)
+    applyPatchToGlobals(p);
+    
+    WaveType wave = (WaveType)p->waveType;
+    
+    switch (wave) {
+        case WAVE_PLUCK:    return playPluck(freq, p->pluckBrightness, p->pluckDamping);
+        case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->additivePreset);
+        case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->malletPreset);
+        case WAVE_VOICE:    return playVowel(freq, (VowelType)p->voiceVowel);
+        case WAVE_GRANULAR: return playGranular(freq, p->granularScwIndex);
+        case WAVE_FM:       return playFM(freq);
+        case WAVE_PD:       return playPD(freq);
+        case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->membranePreset);
+        case WAVE_BIRD:     return playBird(freq, (BirdType)p->birdType);
+        default:            return playNote(freq, wave);
+    }
+}
+
+// Unified melodic trigger with 303-style slide and accent support
+// trackIdx: 0=Bass, 1=Lead, 2=Chord
+// patchIdx: PATCH_BASS, PATCH_LEAD, PATCH_CHORD
+// freqMult: octave multiplier (0.5 for bass, 1.0 for others)
+static void melodyTriggerGeneric(int trackIdx, int patchIdx, float freqMult,
+                                  int note, float vel, bool slide, bool accent) {
+    float freq = midiNoteToFreq(note);
+    
+    // Apply p-lock pitch offset (in semitones)
+    float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
+    if (pitchOffset != 0.0f) {
+        freq *= powf(2.0f, pitchOffset / 12.0f);
+    }
+    freq *= freqMult;
+    
+    // Apply accent: boost velocity and filter envelope
+    float effectiveVel = plockValue(PLOCK_VOLUME, vel);
+    float accentFilterBoost = accent ? 0.3f : 0.0f;
+    if (accent) effectiveVel = fminf(effectiveVel * 1.3f, 1.0f);
+    
+    // Get p-lock values for filter (use patch values as defaults)
+    SynthPatch *p = &patches[patchIdx];
+    float pCutoff = plockValue(PLOCK_FILTER_CUTOFF, p->filterCutoff);
+    float pReso = plockValue(PLOCK_FILTER_RESO, p->filterResonance);
+    float pFilterEnv = plockValue(PLOCK_FILTER_ENV, p->filterEnvAmt) + accentFilterBoost;
+    float pDecay = plockValue(PLOCK_DECAY, p->decay);
+    
+    // Apply slide: enable glide instead of retriggering
+    if (slide && melodyVoiceIdx[trackIdx] >= 0 && voices[melodyVoiceIdx[trackIdx]].envStage > 0) {
+        Voice *v = &voices[melodyVoiceIdx[trackIdx]];
+        v->targetFrequency = freq;
+        v->glideRate = 1.0f / 0.06f;  // Fast 303-style glide (~60ms)
+        v->volume = effectiveVel * p->volume;
+        v->filterCutoff = pCutoff;
+        v->filterResonance = pReso;
+        v->filterEnvAmt = pFilterEnv;
+        v->decay = pDecay;
+        if (accent || currentPLocks.locked[PLOCK_FILTER_ENV]) {
+            v->filterEnvLevel = 1.0f;
+            v->filterEnvStage = 2;
+            v->filterEnvPhase = 0.0f;
+        }
+    } else {
+        // New note - release previous and play new
+        if (melodyVoiceIdx[trackIdx] >= 0) releaseNote(melodyVoiceIdx[trackIdx]);
+        
+        // Temporarily apply p-lock values to patch
+        float origCutoff = p->filterCutoff, origReso = p->filterResonance;
+        float origFilterEnvAmt = p->filterEnvAmt, origDecay = p->decay;
+        
+        p->filterCutoff = pCutoff;
+        p->filterResonance = pReso;
+        p->filterEnvAmt = pFilterEnv;
+        p->decay = pDecay;
+        p->volume = effectiveVel * 0.5f;
+        
+        melodyVoiceIdx[trackIdx] = playNoteWithPatch(freq, p);
+        
+        // Restore original patch values
+        p->filterCutoff = origCutoff;
+        p->filterResonance = origReso;
+        p->filterEnvAmt = origFilterEnvAmt;
+        p->decay = origDecay;
+        p->volume = 0.5f;
+    }
+}
+
+// Release helper
+static void melodyReleaseGeneric(int trackIdx) {
+    if (melodyVoiceIdx[trackIdx] >= 0) {
+        releaseNote(melodyVoiceIdx[trackIdx]);
+        melodyVoiceIdx[trackIdx] = -1;
+    }
+}
+
+// Thin wrappers for sequencer callbacks
+static void melodyTriggerBass(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime;
+    melodyTriggerGeneric(0, PATCH_BASS, 0.5f, note, vel, slide, accent);
+}
+static void melodyReleaseBass(void) { melodyReleaseGeneric(0); }
+
+static void melodyTriggerLead(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime;
+    melodyTriggerGeneric(1, PATCH_LEAD, 1.0f, note, vel, slide, accent);
+}
+static void melodyReleaseLead(void) { melodyReleaseGeneric(1); }
+
+static void melodyTriggerChord(int note, float vel, float gateTime, bool slide, bool accent) {
+    (void)gateTime;
+    melodyTriggerGeneric(2, PATCH_CHORD, 1.0f, note, vel, slide, accent);
+}
+static void melodyReleaseChord(void) { melodyReleaseGeneric(2); }
 
 // ============================================================================
 // UI COLUMN VISIBILITY
@@ -361,7 +834,13 @@ int main(void) {
     memset(drumVoices, 0, sizeof(drumVoices));
     initDrumParams();
     initEffects();
+    initPatches();
     initSequencer(drumKickFull, drumSnareFull, drumClosedHHFull, drumClapFull);
+    
+    // Set up melodic track callbacks
+    setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
+    setMelodyCallbacks(1, melodyTriggerLead, melodyReleaseLead);
+    setMelodyCallbacks(2, melodyTriggerChord, melodyReleaseChord);
     
     SetTargetFPS(60);
     
@@ -428,43 +907,29 @@ int main(void) {
         updateSequencer(GetFrameTime());
         
         // Piano keyboard input (ASDFGHJKL = white keys, WERTYUIOP = black keys)
+        // Uses the currently selected patch settings
+        SynthPatch *keyboardPatch = &patches[selectedPatch];
         for (size_t i = 0; i < NUM_PIANO_KEYS; i++) {
             if (IsKeyPressed(pianoKeys[i].key)) {
                 float freq = semitoneToFreq(pianoKeys[i].semitone, currentOctave);
-                if (selectedWave == WAVE_PLUCK) {
-                    pianoKeyVoices[i] = playPluck(freq, pluckBrightness, pluckDamping);
-                } else if (selectedWave == WAVE_ADDITIVE) {
-                    pianoKeyVoices[i] = playAdditive(freq, (AdditivePreset)additivePreset);
-                } else if (selectedWave == WAVE_MALLET) {
-                    pianoKeyVoices[i] = playMallet(freq, (MalletPreset)malletPreset);
-                } else if (selectedWave == WAVE_VOICE) {
-                    VowelType vowel = (VowelType)voiceVowel;
-                    if (voiceRandomVowel) {
-                        noiseState = noiseState * 1103515245 + 12345;
-                        vowel = (VowelType)((noiseState >> 16) % 5);
-                    }
-                    pianoKeyVoices[i] = playVowel(freq, vowel);
-                } else if (selectedWave == WAVE_GRANULAR) {
-                    pianoKeyVoices[i] = playGranular(freq, granularScwIndex);
-                } else if (selectedWave == WAVE_FM) {
-                    pianoKeyVoices[i] = playFM(freq);
-                } else if (selectedWave == WAVE_PD) {
-                    pianoKeyVoices[i] = playPD(freq);
-                } else if (selectedWave == WAVE_MEMBRANE) {
-                    pianoKeyVoices[i] = playMembrane(freq, (MembranePreset)membranePreset);
-                } else if (selectedWave == WAVE_BIRD) {
-                    pianoKeyVoices[i] = playBird(freq, (BirdType)birdType);
+                // Handle voice random vowel mode specially
+                if (selectedWave == WAVE_VOICE && voiceRandomVowel) {
+                    noiseState = noiseState * 1103515245 + 12345;
+                    int savedVowel = keyboardPatch->voiceVowel;
+                    keyboardPatch->voiceVowel = (noiseState >> 16) % 5;
+                    pianoKeyVoices[i] = playNoteWithPatch(freq, keyboardPatch);
+                    keyboardPatch->voiceVowel = savedVowel;
                 } else {
-                    pianoKeyVoices[i] = playNote(freq, (WaveType)selectedWave);
+                    pianoKeyVoices[i] = playNoteWithPatch(freq, keyboardPatch);
                 }
             }
             if (IsKeyReleased(pianoKeys[i].key) && pianoKeyVoices[i] >= 0) {
                 // Pluck and Mallet can ring out or be damped based on damp setting
-                if (selectedWave == WAVE_PLUCK && pluckDamp > 0.01f) {
-                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - pluckDamp) * 0.5f;
+                if (selectedWave == WAVE_PLUCK && keyboardPatch->pluckDamp > 0.01f) {
+                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->pluckDamp) * 0.5f;
                     releaseNote(pianoKeyVoices[i]);
-                } else if (selectedWave == WAVE_MALLET && malletDamp > 0.01f) {
-                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - malletDamp) * 0.5f;
+                } else if (selectedWave == WAVE_MALLET && keyboardPatch->malletDamp > 0.01f) {
+                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->malletDamp) * 0.5f;
                     releaseNote(pianoKeyVoices[i]);
                 } else if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
                     releaseNote(pianoKeyVoices[i]);
@@ -511,128 +976,162 @@ int main(void) {
         // === COLUMN 1: Wave Type + Wave-specific settings ===
         UIColumn col1 = ui_column(250, 170, 20);
         
+        // Current patch pointer - UI edits patch directly, no globals sync
+        SynthPatch *cp = &patches[selectedPatch];
+        
         if (SectionHeader(col1.x, col1.y, "Wave", &showWaveColumn)) {
             col1.y += 18;
+            
+            // Patch selector
+            int prevPatch = selectedPatch;
+            ui_col_cycle(&col1, "Patch", patchNames, NUM_PATCHES, &selectedPatch);
+            
+            // When switching patches, update cp pointer and wave selector
+            if (selectedPatch != prevPatch) {
+                cp = &patches[selectedPatch];
+                selectedWave = cp->waveType;
+            }
+            
+            // Copy buttons (only show when on Preview)
+            if (selectedPatch == PATCH_PREVIEW) {
+                if (ui_col_button(&col1, "-> Bass")) {
+                    copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_BASS]);
+                }
+                if (ui_col_button(&col1, "-> Lead")) {
+                    copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_LEAD]);
+                }
+                if (ui_col_button(&col1, "-> Chord")) {
+                    copyPatch(&patches[PATCH_PREVIEW], &patches[PATCH_CHORD]);
+                }
+            }
+            
+            ui_col_space(&col1, 4);
+            
+            // Track wave type changes back to the patch
+            int prevWave = selectedWave;
             ui_col_cycle(&col1, "Type", waveNames, 14, &selectedWave);
+            if (selectedWave != prevWave) {
+                patches[selectedPatch].waveType = selectedWave;
+            }
             ui_col_space(&col1, 4);
             
             if (selectedWave == WAVE_SQUARE) {
                 ui_col_sublabel(&col1, "PWM:", ORANGE);
-                ui_col_float(&col1, "Width", &notePulseWidth, 0.05f, 0.1f, 0.9f);
-                ui_col_float(&col1, "Rate", &notePwmRate, 0.5f, 0.1f, 20.0f);
-                ui_col_float(&col1, "Depth", &notePwmDepth, 0.02f, 0.0f, 0.4f);
+                ui_col_float(&col1, "Width", &cp->pulseWidth, 0.05f, 0.1f, 0.9f);
+                ui_col_float(&col1, "Rate", &cp->pwmRate, 0.5f, 0.1f, 20.0f);
+                ui_col_float(&col1, "Depth", &cp->pwmDepth, 0.02f, 0.0f, 0.4f);
             }
             
             if (selectedWave == WAVE_SCW && scwCount > 0) {
                 ui_col_sublabel(&col1, "Wavetable:", ORANGE);
                 const char* scwNames[SCW_MAX_SLOTS];
                 for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
-                ui_col_cycle(&col1, "SCW", scwNames, scwCount, &noteScwIndex);
+                ui_col_cycle(&col1, "SCW", scwNames, scwCount, &cp->scwIndex);
             }
             
             if (selectedWave == WAVE_VOICE) {
                 ui_col_sublabel(&col1, "Formant:", ORANGE);
-                ui_col_cycle(&col1, "Vowel", vowelNames, 5, &voiceVowel);
+                ui_col_cycle(&col1, "Vowel", vowelNames, 5, &cp->voiceVowel);
                 ui_col_toggle(&col1, "Random", &voiceRandomVowel);
-                ui_col_float(&col1, "Pitch", &voicePitch, 0.1f, 0.3f, 2.0f);
-                ui_col_float(&col1, "Speed", &voiceSpeed, 1.0f, 4.0f, 20.0f);
-                ui_col_float(&col1, "Formant", &voiceFormantShift, 0.05f, 0.5f, 1.5f);
-                ui_col_float(&col1, "Breath", &voiceBreathiness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Buzz", &voiceBuzziness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Pitch", &cp->voicePitch, 0.1f, 0.3f, 2.0f);
+                ui_col_float(&col1, "Speed", &cp->voiceSpeed, 1.0f, 4.0f, 20.0f);
+                ui_col_float(&col1, "Formant", &cp->voiceFormantShift, 0.05f, 0.5f, 1.5f);
+                ui_col_float(&col1, "Breath", &cp->voiceBreathiness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Buzz", &cp->voiceBuzziness, 0.05f, 0.0f, 1.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Extras:", ORANGE);
-                ui_col_toggle(&col1, "Consonant", &voiceConsonant);
-                if (voiceConsonant) {
-                    ui_col_float(&col1, "ConsAmt", &voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Consonant", &cp->voiceConsonant);
+                if (cp->voiceConsonant) {
+                    ui_col_float(&col1, "ConsAmt", &cp->voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
                 }
-                ui_col_toggle(&col1, "Nasal", &voiceNasal);
-                if (voiceNasal) {
-                    ui_col_float(&col1, "NasalAmt", &voiceNasalAmt, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Nasal", &cp->voiceNasal);
+                if (cp->voiceNasal) {
+                    ui_col_float(&col1, "NasalAmt", &cp->voiceNasalAmt, 0.05f, 0.0f, 1.0f);
                 }
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Pitch Env:", ORANGE);
-                ui_col_float(&col1, "Bend", &voicePitchEnv, 0.5f, -12.0f, 12.0f);
-                ui_col_float(&col1, "Time", &voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
-                ui_col_float(&col1, "Curve", &voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
+                ui_col_float(&col1, "Bend", &cp->voicePitchEnv, 0.5f, -12.0f, 12.0f);
+                ui_col_float(&col1, "Time", &cp->voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
+                ui_col_float(&col1, "Curve", &cp->voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_PLUCK) {
                 ui_col_sublabel(&col1, "Pluck:", ORANGE);
-                ui_col_float(&col1, "Bright", &pluckBrightness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Sustain", &pluckDamping, 0.0002f, 0.995f, 0.9998f);
-                ui_col_float(&col1, "Damp", &pluckDamp, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Bright", &cp->pluckBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Sustain", &cp->pluckDamping, 0.0002f, 0.995f, 0.9998f);
+                ui_col_float(&col1, "Damp", &cp->pluckDamp, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_ADDITIVE) {
                 ui_col_sublabel(&col1, "Additive:", ORANGE);
-                ui_col_cycle(&col1, "Preset", additivePresetNames, ADDITIVE_PRESET_COUNT, &additivePreset);
-                ui_col_float(&col1, "Bright", &additiveBrightness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Shimmer", &additiveShimmer, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Inharm", &additiveInharmonicity, 0.005f, 0.0f, 0.1f);
+                ui_col_cycle(&col1, "Preset", additivePresetNames, ADDITIVE_PRESET_COUNT, &cp->additivePreset);
+                ui_col_float(&col1, "Bright", &cp->additiveBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Shimmer", &cp->additiveShimmer, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Inharm", &cp->additiveInharmonicity, 0.005f, 0.0f, 0.1f);
             }
             
             if (selectedWave == WAVE_MALLET) {
                 ui_col_sublabel(&col1, "Mallet:", ORANGE);
-                ui_col_cycle(&col1, "Preset", malletPresetNames, MALLET_PRESET_COUNT, &malletPreset);
-                ui_col_float(&col1, "Stiff", &malletStiffness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Hard", &malletHardness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Strike", &malletStrikePos, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Reson", &malletResonance, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Damp", &malletDamp, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Tremolo", &malletTremolo, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "TremSpd", &malletTremoloRate, 0.5f, 1.0f, 12.0f);
+                ui_col_cycle(&col1, "Preset", malletPresetNames, MALLET_PRESET_COUNT, &cp->malletPreset);
+                ui_col_float(&col1, "Stiff", &cp->malletStiffness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Hard", &cp->malletHardness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Strike", &cp->malletStrikePos, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Reson", &cp->malletResonance, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Damp", &cp->malletDamp, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Tremolo", &cp->malletTremolo, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "TremSpd", &cp->malletTremoloRate, 0.5f, 1.0f, 12.0f);
             }
             
             if (selectedWave == WAVE_GRANULAR && scwCount > 0) {
                 ui_col_sublabel(&col1, "Granular:", ORANGE);
                 const char* scwNames[SCW_MAX_SLOTS];
                 for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
-                ui_col_cycle(&col1, "Source", scwNames, scwCount, &granularScwIndex);
-                ui_col_float(&col1, "Size", &granularGrainSize, 5.0f, 10.0f, 200.0f);
-                ui_col_float(&col1, "Density", &granularDensity, 2.0f, 1.0f, 100.0f);
-                ui_col_float(&col1, "Position", &granularPosition, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "PosRand", &granularPosRandom, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Pitch", &granularPitch, 0.1f, 0.25f, 4.0f);
-                ui_col_float(&col1, "PitRand", &granularPitchRandom, 0.5f, 0.0f, 12.0f);
-                ui_col_float(&col1, "AmpRand", &granularAmpRandom, 0.05f, 0.0f, 1.0f);
-                ui_col_toggle(&col1, "Freeze", &granularFreeze);
+                ui_col_cycle(&col1, "Source", scwNames, scwCount, &cp->granularScwIndex);
+                ui_col_float(&col1, "Size", &cp->granularGrainSize, 5.0f, 10.0f, 200.0f);
+                ui_col_float(&col1, "Density", &cp->granularDensity, 2.0f, 1.0f, 100.0f);
+                ui_col_float(&col1, "Position", &cp->granularPosition, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "PosRand", &cp->granularPosRandom, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Pitch", &cp->granularPitch, 0.1f, 0.25f, 4.0f);
+                ui_col_float(&col1, "PitRand", &cp->granularPitchRandom, 0.5f, 0.0f, 12.0f);
+                ui_col_float(&col1, "AmpRand", &cp->granularAmpRandom, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Freeze", &cp->granularFreeze);
             }
             
             if (selectedWave == WAVE_FM) {
                 ui_col_sublabel(&col1, "FM Synth:", ORANGE);
-                ui_col_float(&col1, "Ratio", &fmModRatio, 0.5f, 0.5f, 16.0f);
-                ui_col_float(&col1, "Index", &fmModIndex, 0.1f, 0.0f, 10.0f);
-                ui_col_float(&col1, "Feedback", &fmFeedback, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Ratio", &cp->fmModRatio, 0.5f, 0.5f, 16.0f);
+                ui_col_float(&col1, "Index", &cp->fmModIndex, 0.1f, 0.0f, 10.0f);
+                ui_col_float(&col1, "Feedback", &cp->fmFeedback, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_PD) {
                 ui_col_sublabel(&col1, "Phase Dist:", ORANGE);
-                ui_col_cycle(&col1, "Wave", pdWaveNames, PD_WAVE_COUNT, &pdWaveType);
-                ui_col_float(&col1, "Distort", &pdDistortion, 0.05f, 0.0f, 1.0f);
+                ui_col_cycle(&col1, "Wave", pdWaveNames, PD_WAVE_COUNT, &cp->pdWaveType);
+                ui_col_float(&col1, "Distort", &cp->pdDistortion, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_MEMBRANE) {
                 ui_col_sublabel(&col1, "Membrane:", ORANGE);
-                ui_col_cycle(&col1, "Preset", membranePresetNames, MEMBRANE_COUNT, &membranePreset);
-                ui_col_float(&col1, "Damping", &membraneDamping, 0.05f, 0.1f, 1.0f);
-                ui_col_float(&col1, "Strike", &membraneStrike, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Bend", &membraneBend, 0.02f, 0.0f, 0.5f);
-                ui_col_float(&col1, "BendDcy", &membraneBendDecay, 0.01f, 0.02f, 0.3f);
+                ui_col_cycle(&col1, "Preset", membranePresetNames, MEMBRANE_COUNT, &cp->membranePreset);
+                ui_col_float(&col1, "Damping", &cp->membraneDamping, 0.05f, 0.1f, 1.0f);
+                ui_col_float(&col1, "Strike", &cp->membraneStrike, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Bend", &cp->membraneBend, 0.02f, 0.0f, 0.5f);
+                ui_col_float(&col1, "BendDcy", &cp->membraneBendDecay, 0.01f, 0.02f, 0.3f);
             }
             
             if (selectedWave == WAVE_BIRD) {
                 ui_col_sublabel(&col1, "Bird:", ORANGE);
-                ui_col_cycle(&col1, "Type", birdTypeNames, BIRD_COUNT, &birdType);
-                ui_col_float(&col1, "Range", &birdChirpRange, 0.1f, 0.5f, 2.0f);
-                ui_col_float(&col1, "Harmonic", &birdHarmonics, 0.05f, 0.0f, 1.0f);
+                ui_col_cycle(&col1, "Type", birdTypeNames, BIRD_COUNT, &cp->birdType);
+                ui_col_float(&col1, "Range", &cp->birdChirpRange, 0.1f, 0.5f, 2.0f);
+                ui_col_float(&col1, "Harmonic", &cp->birdHarmonics, 0.05f, 0.0f, 1.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Trill:", ORANGE);
-                ui_col_float(&col1, "Rate", &birdTrillRate, 1.0f, 0.0f, 30.0f);
-                ui_col_float(&col1, "Depth", &birdTrillDepth, 0.2f, 0.0f, 5.0f);
+                ui_col_float(&col1, "Rate", &cp->birdTrillRate, 1.0f, 0.0f, 30.0f);
+                ui_col_float(&col1, "Depth", &cp->birdTrillDepth, 0.2f, 0.0f, 5.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Flutter:", ORANGE);
-                ui_col_float(&col1, "AM Rate", &birdAmRate, 1.0f, 0.0f, 20.0f);
-                ui_col_float(&col1, "AM Depth", &birdAmDepth, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "AM Rate", &cp->birdAmRate, 1.0f, 0.0f, 20.0f);
+                ui_col_float(&col1, "AM Depth", &cp->birdAmDepth, 0.05f, 0.0f, 1.0f);
             }
         }
         
@@ -644,37 +1143,47 @@ int main(void) {
             col2.y += 18;
             
             ui_col_sublabel(&col2, "Envelope:", ORANGE);
-            ui_col_float(&col2, "Attack", &noteAttack, 0.5f, 0.001f, 2.0f);
-            ui_col_float(&col2, "Decay", &noteDecay, 0.5f, 0.0f, 2.0f);
-            ui_col_float(&col2, "Sustain", &noteSustain, 0.5f, 0.0f, 1.0f);
-            ui_col_float(&col2, "Release", &noteRelease, 0.5f, 0.01f, 3.0f);
+            ui_col_float(&col2, "Attack", &cp->attack, 0.5f, 0.001f, 2.0f);
+            ui_col_float(&col2, "Decay", &cp->decay, 0.5f, 0.0f, 2.0f);
+            ui_col_float(&col2, "Sustain", &cp->sustain, 0.5f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Release", &cp->release, 0.5f, 0.01f, 3.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Vibrato:", ORANGE);
-            ui_col_float(&col2, "Rate", &noteVibratoRate, 0.5f, 0.5f, 15.0f);
-            ui_col_float(&col2, "Depth", &noteVibratoDepth, 0.2f, 0.0f, 2.0f);
+            ui_col_float(&col2, "Rate", &cp->vibratoRate, 0.5f, 0.5f, 15.0f);
+            ui_col_float(&col2, "Depth", &cp->vibratoDepth, 0.2f, 0.0f, 2.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Filter:", ORANGE);
-            ui_col_float(&col2, "Cutoff", &noteFilterCutoff, 0.05f, 0.01f, 1.0f);
-            ui_col_float(&col2, "Reso", &noteFilterResonance, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&col2, "EnvAmt", &noteFilterEnvAmt, 0.05f, -1.0f, 1.0f);
-            ui_col_float(&col2, "EnvAtk", &noteFilterEnvAttack, 0.01f, 0.001f, 0.5f);
-            ui_col_float(&col2, "EnvDcy", &noteFilterEnvDecay, 0.05f, 0.01f, 2.0f);
+            ui_col_float(&col2, "Cutoff", &cp->filterCutoff, 0.05f, 0.01f, 1.0f);
+            ui_col_float(&col2, "Reso", &cp->filterResonance, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "EnvAmt", &cp->filterEnvAmt, 0.05f, -1.0f, 1.0f);
+            ui_col_float(&col2, "EnvAtk", &cp->filterEnvAttack, 0.01f, 0.001f, 0.5f);
+            ui_col_float(&col2, "EnvDcy", &cp->filterEnvDecay, 0.05f, 0.01f, 2.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Volume:", ORANGE);
-            ui_col_float(&col2, "Note", &noteVolume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Note", &cp->volume, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col2, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
             
             // Mono/Glide - only show for wave types that support it
             if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
                 ui_col_space(&col2, 4);
                 ui_col_sublabel(&col2, "Mono/Glide:", ORANGE);
-                ui_col_toggle(&col2, "Mono", &monoMode);
-                if (monoMode) {
-                    ui_col_float(&col2, "Glide", &glideTime, 0.02f, 0.01f, 1.0f);
+                ui_col_toggle(&col2, "Mono", &cp->monoMode);
+                if (cp->monoMode) {
+                    ui_col_float(&col2, "Glide", &cp->glideTime, 0.02f, 0.01f, 1.0f);
                 }
+            }
+            
+            ui_col_space(&col2, 4);
+            ui_col_sublabel(&col2, "Scale Lock:", ORANGE);
+            ui_col_toggle(&col2, "Enabled", &scaleLockEnabled);
+            if (scaleLockEnabled) {
+                ui_col_cycle(&col2, "Root", rootNoteNames, 12, &scaleRoot);
+                int scaleIdx = (int)scaleType;
+                ui_col_cycle(&col2, "Scale", scaleNames, SCALE_COUNT, &scaleIdx);
+                scaleType = (ScaleType)scaleIdx;
             }
         }
         
@@ -687,27 +1196,27 @@ int main(void) {
             static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
             
             ui_col_sublabel(&col3, "Filter:", ORANGE);
-            ui_col_float(&col3, "Rate", &noteFilterLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &noteFilterLfoDepth, 0.05f, 0.0f, 2.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteFilterLfoShape);
+            ui_col_float(&col3, "Rate", &cp->filterLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->filterLfoDepth, 0.05f, 0.0f, 2.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->filterLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Resonance:", ORANGE);
-            ui_col_float(&col3, "Rate", &noteResoLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &noteResoLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteResoLfoShape);
+            ui_col_float(&col3, "Rate", &cp->resoLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->resoLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->resoLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Amplitude:", ORANGE);
-            ui_col_float(&col3, "Rate", &noteAmpLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &noteAmpLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &noteAmpLfoShape);
+            ui_col_float(&col3, "Rate", &cp->ampLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->ampLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->ampLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Pitch:", ORANGE);
-            ui_col_float(&col3, "Rate", &notePitchLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &notePitchLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &notePitchLfoShape);
+            ui_col_float(&col3, "Rate", &cp->pitchLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->pitchLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->pitchLfoShape);
         }
         
         // === COLUMN 4: Drums ===
@@ -778,34 +1287,124 @@ int main(void) {
             ui_col_float(&col5, "Bits", &fx.crushBits, 0.5f, 2.0f, 16.0f);
             ui_col_float(&col5, "Rate", &fx.crushRate, 1.0f, 1.0f, 32.0f);
             ui_col_float(&col5, "Mix", &fx.crushMix, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col5, 4);
+            
+            ui_col_sublabel(&col5, "Reverb:", ORANGE);
+            ui_col_toggle(&col5, "On", &fx.reverbEnabled);
+            ui_col_float(&col5, "Size", &fx.reverbSize, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "Damping", &fx.reverbDamping, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col5, "PreDly", &fx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
+            ui_col_float(&col5, "Mix", &fx.reverbMix, 0.05f, 0.0f, 1.0f);
         }
         
-        // === DRUM SEQUENCER GRID ===
+        // === SEQUENCER GRID (Drums + Melodic) ===
         {
             static bool isDragging = false;
             static bool isDraggingPitch = false;
             static int dragTrack = -1;
             static int dragStep = -1;
+            static bool dragIsMelody = false;
             static float dragStartY = 0.0f;
             static float dragStartVal = 0.0f;
             
+            // Step inspector selection state
+            static int selectedTrack = -1;
+            static int selectedStep = -1;
+            static bool selectedIsMelody = false;
+            
+            Pattern *p = seqCurrentPattern();
+            
             int gridX = 20;
-            int gridY = SCREEN_HEIGHT - 130;
+            int gridY = SCREEN_HEIGHT - 270;  // Moved up more for melodic tracks
             int cellW = 24;
-            int cellH = 22;
+            int cellH = 20;
             int labelW = 50;
             int lengthW = 30;
+            int patternBarY = gridY - 45;
             
-            DrawTextShadow("Drum Sequencer - drag=velocity, shift+drag=pitch, right-click=delete", gridX, gridY - 25, 14, YELLOW);
-            
-            // Play/Stop button
-            if (PushButton(gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW + 15, gridY - 25, seq.playing ? "Stop" : "Play")) {
-                seq.playing = !seq.playing;
-                if (seq.playing) resetSequencer();
+            // === PATTERN BAR ===
+            {
+                int patW = 28;
+                int patH = 20;
+                int patX = gridX + labelW;
+                
+                DrawTextShadow("Pattern:", gridX, patternBarY + 4, 12, YELLOW);
+                
+                Vector2 mouse = GetMousePosition();
+                bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+                bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+                bool shiftHeld = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                
+                for (int i = 0; i < SEQ_NUM_PATTERNS; i++) {
+                    int px = patX + i * (patW + 4);
+                    Rectangle patRect = {(float)px, (float)patternBarY, (float)patW, (float)patH};
+                    bool isHovered = CheckCollisionPointRec(mouse, patRect);
+                    bool isCurrent = (i == seq.currentPattern);
+                    bool isQueued = (i == seq.nextPattern);
+                    
+                    // Check if pattern has any content (drums or melody)
+                    bool hasContent = false;
+                    for (int t = 0; t < SEQ_DRUM_TRACKS && !hasContent; t++) {
+                        for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
+                            if (seq.patterns[i].drumSteps[t][s]) hasContent = true;
+                        }
+                    }
+                    for (int t = 0; t < SEQ_MELODY_TRACKS && !hasContent; t++) {
+                        for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
+                            if (seq.patterns[i].melodyNote[t][s] != SEQ_NOTE_OFF) hasContent = true;
+                        }
+                    }
+                    
+                    Color bgColor = {40, 40, 40, 255};
+                    if (isCurrent) bgColor = (Color){60, 100, 60, 255};
+                    else if (isQueued) bgColor = (Color){80, 80, 40, 255};
+                    else if (hasContent) bgColor = (Color){50, 50, 60, 255};
+                    
+                    if (isHovered) {
+                        bgColor.r = (unsigned char)fminf(255, bgColor.r + 30);
+                        bgColor.g = (unsigned char)fminf(255, bgColor.g + 30);
+                        bgColor.b = (unsigned char)fminf(255, bgColor.b + 30);
+                    }
+                    
+                    DrawRectangleRec(patRect, bgColor);
+                    DrawRectangleLinesEx(patRect, 1, isCurrent ? GREEN : (isQueued ? YELLOW : (Color){80, 80, 80, 255}));
+                    
+                    Color textColor = isCurrent ? WHITE : (isQueued ? YELLOW : (hasContent ? LIGHTGRAY : GRAY));
+                    DrawTextShadow(TextFormat("%d", i + 1), px + 10, patternBarY + 4, 12, textColor);
+                    
+                    if (isHovered) {
+                        if (mouseClicked) {
+                            if (shiftHeld) {
+                                seqCopyPatternTo(i);
+                            } else {
+                                seqQueuePattern(i);
+                            }
+                            ui_consume_click();
+                        }
+                        if (rightClicked) {
+                            clearPattern(&seq.patterns[i]);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Pattern controls
+                int ctrlX = patX + SEQ_NUM_PATTERNS * (patW + 4) + 20;
+                
+                if (PushButton(ctrlX, patternBarY, seq.playing ? "Stop" : "Play")) {
+                    seq.playing = !seq.playing;
+                    if (seq.playing) resetSequencer();
+                }
+                
+                DraggableFloat(ctrlX + 60, patternBarY, "BPM", &seq.bpm, 2.0f, 60.0f, 200.0f);
+                ToggleBool(ctrlX + 170, patternBarY, "Fill", &seq.fillMode);
+                
+                if (seq.nextPattern >= 0) {
+                    DrawTextShadow(TextFormat("-> %d", seq.nextPattern + 1), ctrlX + 240, patternBarY + 4, 12, YELLOW);
+                }
             }
             
-            // BPM control
-            DraggableFloat(gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW + 75, gridY - 25, "BPM", &seq.bpm, 2.0f, 60.0f, 200.0f);
+            DrawTextShadow("Drums: click=toggle, drag=vel | Melody: click=note, scroll=octave", gridX, gridY - 12, 12, GRAY);
             
             // Beat markers
             for (int i = 0; i < 4; i++) {
@@ -820,6 +1419,7 @@ int main(void) {
             bool mouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
             bool mouseReleased = IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
             bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+            float mouseWheel = GetMouseWheelMove();
             
             if (mouseReleased && isDragging) {
                 isDragging = false;
@@ -827,51 +1427,48 @@ int main(void) {
                 dragStep = -1;
             }
             
-            if (isDragging && mouseDown && dragTrack >= 0 && dragStep >= 0) {
+            // Handle drum dragging
+            if (isDragging && !dragIsMelody && mouseDown && dragTrack >= 0 && dragStep >= 0) {
                 float deltaY = dragStartY - mouse.y;
                 if (isDraggingPitch) {
                     float newPitch = dragStartVal + deltaY * 0.01f;
-                    seq.pitch[dragTrack][dragStep] = clampf(newPitch, -1.0f, 1.0f);
+                    p->drumPitch[dragTrack][dragStep] = clampf(newPitch, -1.0f, 1.0f);
                 } else {
                     float newVel = dragStartVal + deltaY * 0.01f;
-                    seq.velocity[dragTrack][dragStep] = clampf(newVel, 0.1f, 1.0f);
+                    p->drumVelocity[dragTrack][dragStep] = clampf(newVel, 0.1f, 1.0f);
                 }
             }
             
-            for (int track = 0; track < SEQ_TRACKS; track++) {
+            // === DRUM TRACKS ===
+            for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
                 int y = gridY + track * cellH;
-                int trackLen = seq.trackLength[track];
+                int trackLen = p->drumTrackLength[track];
                 
-                DrawTextShadow(seq.trackNames[track], gridX, y + 4, 12, LIGHTGRAY);
+                DrawTextShadow(seq.drumTrackNames[track], gridX, y + 3, 12, LIGHTGRAY);
                 
                 for (int step = 0; step < SEQ_MAX_STEPS; step++) {
                     int x = gridX + labelW + step * cellW;
                     Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
                     
                     bool isInRange = step < trackLen;
-                    bool isActive = seq.steps[track][step] && isInRange;
-                    bool isCurrent = (step == seq.trackStep[track]) && seq.playing && isInRange;
+                    bool isActive = p->drumSteps[track][step] && isInRange;
+                    bool isCurrent = (step == seq.drumStep[track]) && seq.playing && isInRange;
                     bool isHovered = CheckCollisionPointRec(mouse, cell);
-                    bool isBeingDragged = isDragging && dragTrack == track && dragStep == step;
-                    bool hasPitchOffset = isActive && fabsf(seq.pitch[track][step]) > 0.01f;
+                    bool isBeingDragged = isDragging && !dragIsMelody && dragTrack == track && dragStep == step;
+                    bool isSelected = !selectedIsMelody && selectedTrack == track && selectedStep == step;
+                    bool hasPitchOffset = isActive && fabsf(p->drumPitch[track][step]) > 0.01f;
+                    bool hasProb = isActive && p->drumProbability[track][step] < 1.0f;
+                    bool hasCond = isActive && p->drumCondition[track][step] != COND_ALWAYS;
                     
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){40, 40, 40, 255} : (Color){30, 30, 30, 255};
                     if (!isInRange) bgColor = (Color){20, 20, 20, 255};
                     
                     Color cellColor = bgColor;
                     if (isActive) {
-                        float vel = seq.velocity[track][step];
-                        float pit = seq.pitch[track][step];
+                        float vel = p->drumVelocity[track][step];
                         unsigned char baseG = (unsigned char)(80 + vel * 100);
                         unsigned char baseR = (unsigned char)(30 + vel * 50);
                         unsigned char baseB = (unsigned char)(30 + vel * 50);
-                        if (pit < 0) {
-                            baseB = (unsigned char)fminf(255, baseB + (-pit) * 80);
-                            baseG = (unsigned char)(baseG * (1.0f + pit * 0.3f));
-                        } else if (pit > 0) {
-                            baseR = (unsigned char)fminf(255, baseR + pit * 100);
-                            baseG = (unsigned char)(baseG * (1.0f - pit * 0.2f));
-                        }
                         cellColor = (Color){baseR, baseG, baseB, 255};
                         if (isCurrent) {
                             cellColor.r = (unsigned char)fminf(255, cellColor.r + 40);
@@ -886,60 +1483,58 @@ int main(void) {
                         cellColor.g = (unsigned char)fminf(255, cellColor.g + 30);
                         cellColor.b = (unsigned char)fminf(255, cellColor.b + 30);
                     }
-                    if (isBeingDragged) {
-                        cellColor.r = (unsigned char)fminf(255, cellColor.r + 50);
-                        cellColor.g = (unsigned char)fminf(255, cellColor.g + 50);
-                        cellColor.b = (unsigned char)fminf(255, cellColor.b + 50);
-                    }
                     
                     DrawRectangleRec(cell, cellColor);
-                    DrawRectangleLinesEx(cell, 1, isInRange ? (Color){60, 60, 60, 255} : (Color){35, 35, 35, 255});
                     
+                    Color borderColor = isInRange ? (Color){60, 60, 60, 255} : (Color){35, 35, 35, 255};
+                    if (isSelected) borderColor = ORANGE;
+                    DrawRectangleLinesEx(cell, isSelected ? 2 : 1, borderColor);
+                    
+                    // Indicators
                     if (hasPitchOffset) {
-                        float pit = seq.pitch[track][step];
-                        int triX = x + cellW - 8;
-                        int triY = y + 3;
+                        float pit = p->drumPitch[track][step];
                         Color triColor = pit > 0 ? (Color){255, 150, 50, 255} : (Color){100, 150, 255, 255};
-                        if (pit > 0) {
-                            DrawTriangle((Vector2){(float)triX + 3, (float)triY}, 
-                                        (Vector2){(float)triX, (float)triY + 5}, 
-                                        (Vector2){(float)triX + 6, (float)triY + 5}, triColor);
-                        } else {
-                            DrawTriangle((Vector2){(float)triX, (float)triY}, 
-                                        (Vector2){(float)triX + 6, (float)triY}, 
-                                        (Vector2){(float)triX + 3, (float)triY + 5}, triColor);
-                        }
+                        DrawRectangle(x + cellW - 6, y + 2, 3, 3, triColor);
                     }
-                    
-                    if (isActive && (isHovered || isBeingDragged)) {
-                        if (isBeingDragged && isDraggingPitch) {
-                            int semitones = (int)(seq.pitch[track][step] * 12);
-                            DrawTextShadow(TextFormat("%+d", semitones), x + 2, y + 5, 10, WHITE);
-                        } else {
-                            int velPercent = (int)(seq.velocity[track][step] * 100);
-                            DrawTextShadow(TextFormat("%d", velPercent), x + 3, y + 5, 10, WHITE);
-                        }
+                    if (hasProb) {
+                        DrawCircle(x + 4, y + cellH - 5, 2, (Color){150, 100, 200, 200});
+                    }
+                    if (hasCond) {
+                        DrawRectangle(x + cellW - 6, y + cellH - 5, 3, 3, (Color){200, 150, 50, 255});
                     }
                     
                     if (isHovered && isInRange && !isDragging) {
                         if (mouseClicked) {
                             if (isActive) {
+                                selectedTrack = track;
+                                selectedStep = step;
+                                selectedIsMelody = false;
                                 isDragging = true;
+                                dragIsMelody = false;
                                 isDraggingPitch = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
                                 dragTrack = track;
                                 dragStep = step;
                                 dragStartY = mouse.y;
-                                dragStartVal = isDraggingPitch ? seq.pitch[track][step] : seq.velocity[track][step];
+                                dragStartVal = isDraggingPitch ? p->drumPitch[track][step] : p->drumVelocity[track][step];
                                 ui_consume_click();
                             } else {
-                                seq.steps[track][step] = true;
+                                p->drumSteps[track][step] = true;
+                                selectedTrack = track;
+                                selectedStep = step;
+                                selectedIsMelody = false;
                                 ui_consume_click();
-                                float pitchMod = powf(2.0f, seq.pitch[track][step]);
-                                seq.triggersFull[track](seq.velocity[track][step], pitchMod);
+                                float pitchMod = powf(2.0f, p->drumPitch[track][step]);
+                                if (seq.drumTriggers[track]) {
+                                    seq.drumTriggers[track](p->drumVelocity[track][step], pitchMod);
+                                }
                             }
                         }
                         if (rightClicked && isActive) {
-                            seq.steps[track][step] = false;
+                            p->drumSteps[track][step] = false;
+                            if (!selectedIsMelody && selectedTrack == track && selectedStep == step) {
+                                selectedTrack = -1;
+                                selectedStep = -1;
+                            }
                             ui_consume_click();
                         }
                     }
@@ -950,20 +1545,534 @@ int main(void) {
                 Rectangle lenRect = {(float)lenX, (float)y, (float)lengthW - 2, (float)cellH - 2};
                 bool lenHovered = CheckCollisionPointRec(mouse, lenRect);
                 
-                Color lenColor = lenHovered ? YELLOW : LIGHTGRAY;
                 DrawRectangleRec(lenRect, (Color){50, 50, 50, 255});
                 DrawRectangleLinesEx(lenRect, 1, (Color){80, 80, 80, 255});
-                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 4, 12, lenColor);
+                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 3, 10, lenHovered ? YELLOW : LIGHTGRAY);
                 
                 if (lenHovered) {
                     if (mouseClicked) {
-                        seq.trackLength[track]++;
-                        if (seq.trackLength[track] > SEQ_MAX_STEPS) seq.trackLength[track] = 1;
+                        p->drumTrackLength[track] = (p->drumTrackLength[track] % SEQ_MAX_STEPS) + 1;
                         ui_consume_click();
                     }
                     if (rightClicked) {
-                        seq.trackLength[track]--;
-                        if (seq.trackLength[track] < 1) seq.trackLength[track] = SEQ_MAX_STEPS;
+                        p->drumTrackLength[track]--;
+                        if (p->drumTrackLength[track] < 1) p->drumTrackLength[track] = SEQ_MAX_STEPS;
+                        ui_consume_click();
+                    }
+                }
+            }
+            
+            // Separator line between drums and melody
+            int sepY = gridY + SEQ_DRUM_TRACKS * cellH + 2;
+            DrawLine(gridX, sepY, gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW, sepY, (Color){80, 80, 80, 255});
+            
+            // === MELODIC TRACKS ===
+            int melodyStartY = sepY + 4;
+            Color melodyTrackColors[3] = {
+                {60, 80, 120, 255},   // Bass - blue tint
+                {120, 80, 60, 255},   // Lead - orange tint  
+                {80, 100, 80, 255}    // Chord - green tint
+            };
+            
+            for (int track = 0; track < SEQ_MELODY_TRACKS; track++) {
+                int y = melodyStartY + track * cellH;
+                int trackLen = p->melodyTrackLength[track];
+                
+                DrawTextShadow(seq.melodyTrackNames[track], gridX, y + 3, 12, melodyTrackColors[track]);
+                
+                for (int step = 0; step < SEQ_MAX_STEPS; step++) {
+                    int x = gridX + labelW + step * cellW;
+                    Rectangle cell = {(float)x, (float)y, (float)cellW - 2, (float)cellH - 2};
+                    
+                    bool isInRange = step < trackLen;
+                    int note = p->melodyNote[track][step];
+                    bool hasNote = (note != SEQ_NOTE_OFF) && isInRange;
+                    bool isCurrent = (step == seq.melodyStep[track]) && seq.playing && isInRange;
+                    bool isHovered = CheckCollisionPointRec(mouse, cell);
+                    bool isSelected = selectedIsMelody && selectedTrack == track && selectedStep == step;
+                    bool hasProb = hasNote && p->melodyProbability[track][step] < 1.0f;
+                    bool hasCond = hasNote && p->melodyCondition[track][step] != COND_ALWAYS;
+                    bool hasSlide = hasNote && p->melodySlide[track][step];
+                    bool hasAccent = hasNote && p->melodyAccent[track][step];
+                    
+                    Color bgColor = (step / 4) % 2 == 0 ? (Color){35, 38, 45, 255} : (Color){28, 30, 38, 255};
+                    if (!isInRange) bgColor = (Color){20, 20, 22, 255};
+                    
+                    Color cellColor = bgColor;
+                    if (hasNote) {
+                        float vel = p->melodyVelocity[track][step];
+                        cellColor = melodyTrackColors[track];
+                        cellColor.r = (unsigned char)(cellColor.r * (0.5f + vel * 0.5f));
+                        cellColor.g = (unsigned char)(cellColor.g * (0.5f + vel * 0.5f));
+                        cellColor.b = (unsigned char)(cellColor.b * (0.5f + vel * 0.5f));
+                        if (isCurrent) {
+                            cellColor.r = (unsigned char)fminf(255, cellColor.r + 50);
+                            cellColor.g = (unsigned char)fminf(255, cellColor.g + 50);
+                            cellColor.b = (unsigned char)fminf(255, cellColor.b + 50);
+                        }
+                    } else if (isCurrent) {
+                        cellColor = (Color){50, 50, 60, 255};
+                    }
+                    if (isHovered && isInRange) {
+                        cellColor.r = (unsigned char)fminf(255, cellColor.r + 25);
+                        cellColor.g = (unsigned char)fminf(255, cellColor.g + 25);
+                        cellColor.b = (unsigned char)fminf(255, cellColor.b + 25);
+                    }
+                    
+                    DrawRectangleRec(cell, cellColor);
+                    
+                    Color borderColor = isInRange ? (Color){55, 55, 65, 255} : (Color){30, 30, 35, 255};
+                    if (isSelected) borderColor = ORANGE;
+                    DrawRectangleLinesEx(cell, isSelected ? 2 : 1, borderColor);
+                    
+                    // Note name display
+                    if (hasNote) {
+                        const char* noteName = seqNoteName(note);
+                        DrawTextShadow(noteName, x + 2, y + 3, 9, WHITE);
+                    }
+                    
+                    // Indicators
+                    if (hasProb) {
+                        DrawCircle(x + 4, y + cellH - 4, 2, (Color){150, 100, 200, 200});
+                    }
+                    if (hasCond) {
+                        DrawRectangle(x + cellW - 6, y + cellH - 5, 3, 3, (Color){200, 150, 50, 255});
+                    }
+                    // Slide indicator (arrow/line on left)
+                    if (hasSlide) {
+                        DrawLine(x + 1, y + 3, x + 1, y + cellH - 4, (Color){100, 200, 255, 255});
+                        DrawTriangle(
+                            (Vector2){(float)(x + 1), (float)(y + 3)},
+                            (Vector2){(float)(x + 4), (float)(y + 6)},
+                            (Vector2){(float)(x - 2), (float)(y + 6)},
+                            (Color){100, 200, 255, 255}
+                        );
+                    }
+                    // Accent indicator (bright top bar)
+                    if (hasAccent) {
+                        DrawRectangle(x + 1, y + 1, cellW - 4, 2, (Color){255, 100, 100, 255});
+                    }
+                    // P-lock indicator (purple diamond in bottom-right)
+                    if (hasNote && seqHasPLocks(p, track, step)) {
+                        int dx = x + cellW - 8;
+                        int dy = y + cellH - 8;
+                        DrawTriangle(
+                            (Vector2){(float)dx, (float)(dy + 3)},
+                            (Vector2){(float)(dx + 3), (float)dy},
+                            (Vector2){(float)(dx + 6), (float)(dy + 3)},
+                            (Color){180, 120, 255, 255}
+                        );
+                        DrawTriangle(
+                            (Vector2){(float)dx, (float)(dy + 3)},
+                            (Vector2){(float)(dx + 3), (float)(dy + 6)},
+                            (Vector2){(float)(dx + 6), (float)(dy + 3)},
+                            (Color){180, 120, 255, 255}
+                        );
+                    }
+                    
+                    // Note input via scroll wheel
+                    if (isHovered && isInRange && fabsf(mouseWheel) > 0.1f) {
+                        if (hasNote) {
+                            // Adjust note by semitone or octave (shift)
+                            int delta = (int)mouseWheel;
+                            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+                                delta *= 12;  // Octave
+                            }
+                            p->melodyNote[track][step] = clampf(note + delta, 24, 96);  // C1 to C7
+                        }
+                    }
+                    
+                    if (isHovered && isInRange) {
+                        if (mouseClicked) {
+                            selectedTrack = track;
+                            selectedStep = step;
+                            selectedIsMelody = true;
+                            if (!hasNote) {
+                                // Default note based on track: Bass=C2, Lead=C4, Chord=C3
+                                int defaultNotes[3] = {36, 60, 48};
+                                p->melodyNote[track][step] = defaultNotes[track];
+                            }
+                            ui_consume_click();
+                        }
+                        if (rightClicked && hasNote) {
+                            p->melodyNote[track][step] = SEQ_NOTE_OFF;
+                            if (selectedIsMelody && selectedTrack == track && selectedStep == step) {
+                                selectedTrack = -1;
+                                selectedStep = -1;
+                            }
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Length control
+                int lenX = gridX + labelW + SEQ_MAX_STEPS * cellW + 5;
+                Rectangle lenRect = {(float)lenX, (float)y, (float)lengthW - 2, (float)cellH - 2};
+                bool lenHovered = CheckCollisionPointRec(mouse, lenRect);
+                
+                DrawRectangleRec(lenRect, (Color){45, 45, 50, 255});
+                DrawRectangleLinesEx(lenRect, 1, (Color){70, 70, 80, 255});
+                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 3, 10, lenHovered ? YELLOW : LIGHTGRAY);
+                
+                if (lenHovered) {
+                    if (mouseClicked) {
+                        p->melodyTrackLength[track] = (p->melodyTrackLength[track] % SEQ_MAX_STEPS) + 1;
+                        ui_consume_click();
+                    }
+                    if (rightClicked) {
+                        p->melodyTrackLength[track]--;
+                        if (p->melodyTrackLength[track] < 1) p->melodyTrackLength[track] = SEQ_MAX_STEPS;
+                        ui_consume_click();
+                    }
+                }
+            }
+            
+            // === STEP INSPECTOR PANEL ===
+            int totalRows = SEQ_DRUM_TRACKS + SEQ_MELODY_TRACKS + 1;  // +1 for separator
+            int inspY = melodyStartY + SEQ_MELODY_TRACKS * cellH + 8;
+            
+            bool showDrumInspector = !selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0 
+                                     && p->drumSteps[selectedTrack][selectedStep];
+            bool showMelodyInspector = selectedIsMelody && selectedTrack >= 0 && selectedStep >= 0 
+                                       && p->melodyNote[selectedTrack][selectedStep] != SEQ_NOTE_OFF;
+            
+            if (showDrumInspector) {
+                int inspX = gridX;
+                int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
+                int inspH = 45;
+                
+                DrawRectangle(inspX, inspY, inspW, inspH, (Color){35, 35, 40, 255});
+                DrawRectangleLinesEx((Rectangle){(float)inspX, (float)inspY, (float)inspW, (float)inspH}, 1, ORANGE);
+                
+                DrawTextShadow(TextFormat("Step %d - %s", selectedStep + 1, seq.drumTrackNames[selectedTrack]), 
+                             inspX + 8, inspY + 4, 12, ORANGE);
+                
+                int row1Y = inspY + 18;
+                int colSpacing = 130;
+                
+                DraggableFloat(inspX + 10, row1Y, "Vel", &p->drumVelocity[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                
+                float pitchSemitones = p->drumPitch[selectedTrack][selectedStep] * 12.0f;
+                DraggableFloat(inspX + 10 + colSpacing, row1Y, "Pitch", &pitchSemitones, 0.5f, -12.0f, 12.0f);
+                p->drumPitch[selectedTrack][selectedStep] = pitchSemitones / 12.0f;
+                
+                DraggableFloat(inspX + 10 + colSpacing * 2, row1Y, "Prob", &p->drumProbability[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                
+                // Condition
+                {
+                    int condX = inspX + 10 + colSpacing * 3;
+                    DrawTextShadow("Cond:", condX, row1Y, 12, LIGHTGRAY);
+                    Rectangle condRect = {(float)(condX + 40), (float)(row1Y - 2), 55, 16};
+                    bool condHovered = CheckCollisionPointRec(mouse, condRect);
+                    DrawRectangleRec(condRect, condHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
+                    DrawRectangleLinesEx(condRect, 1, condHovered ? YELLOW : (Color){80, 80, 80, 255});
+                    int cond = p->drumCondition[selectedTrack][selectedStep];
+                    DrawTextShadow(conditionNames[cond], condX + 44, row1Y, 10, WHITE);
+                    if (condHovered && mouseClicked) {
+                        p->drumCondition[selectedTrack][selectedStep] = (cond + 1) % COND_COUNT;
+                        ui_consume_click();
+                    }
+                    if (condHovered && rightClicked) {
+                        p->drumCondition[selectedTrack][selectedStep] = (cond - 1 + COND_COUNT) % COND_COUNT;
+                        ui_consume_click();
+                    }
+                }
+            }
+            
+            if (showMelodyInspector) {
+                int inspX = gridX;
+                int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
+                bool hasPLocks = seqHasPLocks(p, selectedTrack, selectedStep);
+                int inspH = hasPLocks ? 70 : 45;  // Taller when p-locks present
+                
+                DrawRectangle(inspX, inspY, inspW, inspH, (Color){35, 38, 45, 255});
+                DrawRectangleLinesEx((Rectangle){(float)inspX, (float)inspY, (float)inspW, (float)inspH}, 1, melodyTrackColors[selectedTrack]);
+                
+                int note = p->melodyNote[selectedTrack][selectedStep];
+                DrawTextShadow(TextFormat("Step %d - %s [%s]", selectedStep + 1, seq.melodyTrackNames[selectedTrack], seqNoteName(note)), 
+                             inspX + 8, inspY + 4, 12, melodyTrackColors[selectedTrack]);
+                
+                int row1Y = inspY + 18;
+                int colSpacing = 110;
+                
+                // Note (as int for simplicity)
+                {
+                    DrawTextShadow("Note:", inspX + 10, row1Y, 12, LIGHTGRAY);
+                    Rectangle noteRect = {(float)(inspX + 50), (float)(row1Y - 2), 40, 16};
+                    bool noteHovered = CheckCollisionPointRec(mouse, noteRect);
+                    DrawRectangleRec(noteRect, noteHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
+                    DrawRectangleLinesEx(noteRect, 1, noteHovered ? YELLOW : (Color){80, 80, 80, 255});
+                    DrawTextShadow(seqNoteName(note), inspX + 54, row1Y, 10, WHITE);
+                    if (noteHovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            int delta = (int)wheel;
+                            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) delta *= 12;
+                            p->melodyNote[selectedTrack][selectedStep] = clampf(note + delta, 24, 96);
+                        }
+                    }
+                }
+                
+                DraggableFloat(inspX + 10 + colSpacing, row1Y, "Vel", &p->melodyVelocity[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                
+                // Gate length
+                {
+                    int gateX = inspX + 10 + colSpacing * 2;
+                    DrawTextShadow("Gate:", gateX, row1Y, 12, LIGHTGRAY);
+                    Rectangle gateRect = {(float)(gateX + 40), (float)(row1Y - 2), 30, 16};
+                    bool gateHovered = CheckCollisionPointRec(mouse, gateRect);
+                    DrawRectangleRec(gateRect, gateHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
+                    DrawRectangleLinesEx(gateRect, 1, gateHovered ? YELLOW : (Color){80, 80, 80, 255});
+                    int gate = p->melodyGate[selectedTrack][selectedStep];
+                    DrawTextShadow(TextFormat("%d", gate), gateX + 48, row1Y, 10, WHITE);
+                    if (gateHovered && mouseClicked) {
+                        p->melodyGate[selectedTrack][selectedStep] = (gate % 16) + 1;
+                        ui_consume_click();
+                    }
+                    if (gateHovered && rightClicked) {
+                        p->melodyGate[selectedTrack][selectedStep]--;
+                        if (p->melodyGate[selectedTrack][selectedStep] < 1) p->melodyGate[selectedTrack][selectedStep] = 16;
+                        ui_consume_click();
+                    }
+                }
+                
+                DraggableFloat(inspX + 10 + colSpacing * 3, row1Y, "Prob", &p->melodyProbability[selectedTrack][selectedStep], 0.02f, 0.0f, 1.0f);
+                
+                // Condition
+                {
+                    int condX = inspX + 10 + colSpacing * 4;
+                    DrawTextShadow("Cond:", condX, row1Y, 12, LIGHTGRAY);
+                    Rectangle condRect = {(float)(condX + 40), (float)(row1Y - 2), 55, 16};
+                    bool condHovered = CheckCollisionPointRec(mouse, condRect);
+                    DrawRectangleRec(condRect, condHovered ? (Color){60, 60, 70, 255} : (Color){45, 45, 55, 255});
+                    DrawRectangleLinesEx(condRect, 1, condHovered ? YELLOW : (Color){80, 80, 80, 255});
+                    int cond = p->melodyCondition[selectedTrack][selectedStep];
+                    DrawTextShadow(conditionNames[cond], condX + 44, row1Y, 10, WHITE);
+                    if (condHovered && mouseClicked) {
+                        p->melodyCondition[selectedTrack][selectedStep] = (cond + 1) % COND_COUNT;
+                        ui_consume_click();
+                    }
+                    if (condHovered && rightClicked) {
+                        p->melodyCondition[selectedTrack][selectedStep] = (cond - 1 + COND_COUNT) % COND_COUNT;
+                        ui_consume_click();
+                    }
+                }
+                
+                // 303-style Slide toggle
+                {
+                    int slideX = inspX + 10 + colSpacing * 5;
+                    bool hasSlide = p->melodySlide[selectedTrack][selectedStep];
+                    Rectangle slideRect = {(float)slideX, (float)(row1Y - 2), 45, 16};
+                    bool slideHovered = CheckCollisionPointRec(mouse, slideRect);
+                    Color slideBg = hasSlide ? (Color){60, 100, 130, 255} : (Color){45, 45, 55, 255};
+                    if (slideHovered) slideBg = (Color){70, 110, 140, 255};
+                    DrawRectangleRec(slideRect, slideBg);
+                    DrawRectangleLinesEx(slideRect, 1, hasSlide ? (Color){100, 200, 255, 255} : (Color){80, 80, 80, 255});
+                    DrawTextShadow("Slide", slideX + 6, row1Y, 10, hasSlide ? (Color){100, 200, 255, 255} : LIGHTGRAY);
+                    if (slideHovered && mouseClicked) {
+                        p->melodySlide[selectedTrack][selectedStep] = !hasSlide;
+                        ui_consume_click();
+                    }
+                }
+                
+                // 303-style Accent toggle
+                {
+                    int accentX = inspX + 10 + colSpacing * 5 + 50;
+                    bool hasAccent = p->melodyAccent[selectedTrack][selectedStep];
+                    Rectangle accentRect = {(float)accentX, (float)(row1Y - 2), 50, 16};
+                    bool accentHovered = CheckCollisionPointRec(mouse, accentRect);
+                    Color accentBg = hasAccent ? (Color){130, 60, 60, 255} : (Color){45, 45, 55, 255};
+                    if (accentHovered) accentBg = (Color){150, 70, 70, 255};
+                    DrawRectangleRec(accentRect, accentBg);
+                    DrawRectangleLinesEx(accentRect, 1, hasAccent ? (Color){255, 100, 100, 255} : (Color){80, 80, 80, 255});
+                    DrawTextShadow("Accent", accentX + 4, row1Y, 10, hasAccent ? (Color){255, 100, 100, 255} : LIGHTGRAY);
+                    if (accentHovered && mouseClicked) {
+                        p->melodyAccent[selectedTrack][selectedStep] = !hasAccent;
+                        ui_consume_click();
+                    }
+                }
+                
+                // P-Lock row (second row)
+                int row2Y = row1Y + 22;
+                DrawTextShadow("P-Lock:", inspX + 10, row2Y, 10, (Color){180, 120, 255, 255});
+                
+                // Get patch index for this track
+                int patchIdx = (selectedTrack == 0) ? PATCH_BASS : 
+                               (selectedTrack == 1) ? PATCH_LEAD : PATCH_CHORD;
+                SynthPatch *patch = &patches[patchIdx];
+                
+                // P-lock: Cutoff
+                {
+                    int px = inspX + 60;
+                    float cutoff = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF, -1.0f);
+                    bool isLocked = (cutoff >= 0.0f);
+                    if (!isLocked) cutoff = patch->filterCutoff;
+                    
+                    DrawTextShadow("Cut:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 50, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.0f", cutoff * 8000.0f), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            cutoff = fminf(1.0f, fmaxf(0.0f, cutoff + wheel * 0.02f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF, cutoff);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_CUTOFF);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Resonance
+                {
+                    int px = inspX + 145;
+                    float reso = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO, -1.0f);
+                    bool isLocked = (reso >= 0.0f);
+                    if (!isLocked) reso = patch->filterResonance;
+                    
+                    DrawTextShadow("Res:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", reso), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            reso = fminf(1.0f, fmaxf(0.0f, reso + wheel * 0.02f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO, reso);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_RESO);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Filter Env
+                {
+                    int px = inspX + 220;
+                    float fenv = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV, -1.0f);
+                    bool isLocked = (fenv >= 0.0f);
+                    if (!isLocked) fenv = patch->filterEnvAmt;
+                    
+                    DrawTextShadow("FEnv:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 35), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", fenv), px + 39, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            fenv = fminf(1.0f, fmaxf(0.0f, fenv + wheel * 0.02f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV, fenv);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_FILTER_ENV);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Decay
+                {
+                    int px = inspX + 305;
+                    float decay = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_DECAY, -1.0f);
+                    bool isLocked = (decay >= 0.0f);
+                    if (!isLocked) decay = patch->decay;
+                    
+                    DrawTextShadow("Dec:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", decay), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            decay = fminf(2.0f, fmaxf(0.01f, decay + wheel * 0.05f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_DECAY, decay);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_DECAY);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Pitch offset
+                {
+                    int px = inspX + 380;
+                    float pitch = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
+                    bool isLocked = (pitch > -99.0f);
+                    if (!isLocked) pitch = 0.0f;
+                    
+                    DrawTextShadow("Pit:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 25), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%+.1f", pitch), px + 28, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            pitch = fminf(12.0f, fmaxf(-12.0f, pitch + wheel * 0.5f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET, pitch);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_PITCH_OFFSET);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Volume
+                {
+                    int px = inspX + 455;
+                    float vol = seqGetPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME, -1.0f);
+                    bool isLocked = (vol >= 0.0f);
+                    if (!isLocked) vol = p->melodyVelocity[selectedTrack][selectedStep];
+                    
+                    DrawTextShadow("Vol:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){180, 120, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%.2f", vol), px + 32, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            vol = fminf(1.0f, fmaxf(0.0f, vol + wheel * 0.02f));
+                            seqSetPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME, vol);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, selectedTrack, selectedStep, PLOCK_VOLUME);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Clear all p-locks button
+                if (hasPLocks) {
+                    int clearX = inspX + 530;
+                    Rectangle clearRect = {(float)clearX, (float)(row2Y - 2), 50, 14};
+                    bool clearHovered = CheckCollisionPointRec(mouse, clearRect);
+                    DrawRectangleRec(clearRect, clearHovered ? (Color){80, 50, 50, 255} : (Color){50, 35, 35, 255});
+                    DrawRectangleLinesEx(clearRect, 1, (Color){150, 80, 80, 255});
+                    DrawTextShadow("Clear", clearX + 10, row2Y, 9, (Color){200, 100, 100, 255});
+                    if (clearHovered && mouseClicked) {
+                        seqClearStepPLocks(p, selectedTrack, selectedStep);
                         ui_consume_click();
                     }
                 }
@@ -971,21 +2080,24 @@ int main(void) {
             
             // Dilla timing controls
             int dillaX = gridX + labelW;
-            int dillaY = gridY + SEQ_TRACKS * cellH + 10;
+            int dillaY = inspY + 52;
             
-            DrawTextShadow("Dilla Timing:", dillaX, dillaY, 12, YELLOW);
+            DrawTextShadow("Timing:", dillaX, dillaY, 12, YELLOW);
             
-            DraggableInt(dillaX + 100, dillaY, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
-            DraggableInt(dillaX + 200, dillaY, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
-            DraggableInt(dillaX + 310, dillaY, "HiHat", &seq.dilla.hatNudge, 0.3f, -12, 12);
-            DraggableInt(dillaX + 420, dillaY, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
-            DraggableInt(dillaX + 520, dillaY, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
-            DraggableInt(dillaX + 630, dillaY, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
+            DraggableInt(dillaX + 60, dillaY, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
+            DraggableInt(dillaX + 150, dillaY, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
+            DraggableInt(dillaX + 250, dillaY, "HH", &seq.dilla.hatNudge, 0.3f, -12, 12);
+            DraggableInt(dillaX + 330, dillaY, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
+            DraggableInt(dillaX + 420, dillaY, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
+            DraggableInt(dillaX + 520, dillaY, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
             
-            if (PushButton(dillaX + 730, dillaY, "Reset")) {
+            if (PushButton(dillaX + 610, dillaY, "Reset")) {
                 seqResetTiming();
             }
         }
+        
+        // Keep wave type in sync with selector
+        cp->waveType = selectedWave;
         
         ui_update();
         EndDrawing();
