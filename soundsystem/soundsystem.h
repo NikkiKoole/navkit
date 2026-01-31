@@ -30,4 +30,85 @@
 #include "engines/scw_data.h"
 #endif
 
+// Silence unused function warnings by referencing all public APIs
+static inline void soundsystem_suppress_warnings(void) {
+    // synth.h
+    (void)loadSCW;
+    (void)processVoice;
+    (void)releaseNote;
+    (void)playNote;
+    (void)playVowel;
+    (void)playVowelOnVoice;
+    (void)playPluck;
+    (void)playAdditive;
+    (void)playMallet;
+    (void)playGranular;
+    (void)playFM;
+    (void)playPD;
+    (void)playMembrane;
+    (void)playBird;
+    (void)midiToFreqScaled;
+    (void)getScaleDegree;
+    (void)isInScale;
+    (void)sfxJump;
+    (void)sfxCoin;
+    (void)sfxHurt;
+    (void)sfxExplosion;
+    (void)sfxPowerup;
+    (void)sfxBlip;
+    // drums.h
+    (void)triggerDrum;
+    (void)triggerDrumFull;
+    (void)triggerDrumWithVel;
+    (void)drumKick;
+    (void)drumSnare;
+    (void)drumClap;
+    (void)drumClosedHH;
+    (void)drumOpenHH;
+    (void)drumLowTom;
+    (void)drumMidTom;
+    (void)drumHiTom;
+    (void)drumRimshot;
+    (void)drumCowbell;
+    (void)drumClave;
+    (void)drumMaracas;
+    (void)drumKickFull;
+    (void)drumSnareFull;
+    (void)drumClosedHHFull;
+    (void)drumClapFull;
+    (void)initDrumParams;
+    (void)processDrums;
+    // effects.h
+    (void)initEffects;
+    (void)processEffects;
+    // sequencer.h
+    (void)initSequencer;
+    (void)resetSequencer;
+    (void)updateSequencer;
+    (void)setMelodyCallbacks;
+    (void)seqSetPLock;
+    (void)seqGetPLock;
+    (void)seqHasPLocks;
+    (void)seqClearPLock;
+    (void)seqClearStepPLocks;
+    (void)seqGetStepPLocks;
+    (void)plockValue;
+    (void)seqNoteName;
+    (void)seqToggleDrumStep;
+    (void)seqSetDrumStep;
+    (void)seqSetMelodyStep;
+    (void)seqSetMelodyStep303;
+    (void)seqToggleMelodySlide;
+    (void)seqToggleMelodyAccent;
+    (void)seqClearPattern;
+    (void)seqCopyPatternTo;
+    (void)seqQueuePattern;
+    (void)seqSwitchPattern;
+    (void)seqResetTiming;
+    (void)midiToFreq;
+#if __has_include("engines/scw_data.h")
+    (void)loadEmbeddedSCWs;
+#endif
+}
+
 #endif // SOUNDSYSTEM_H
