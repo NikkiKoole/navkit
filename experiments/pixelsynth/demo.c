@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define SCREEN_WIDTH 1140
-#define SCREEN_HEIGHT 780
+#define SCREEN_HEIGHT 860
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
 
@@ -539,7 +539,307 @@ static const char* patchNames[NUM_PATCHES] = {"Preview", "Bass", "Lead", "Chord"
 static SynthPatch patches[NUM_PATCHES];
 static int selectedPatch = PATCH_PREVIEW;
 
+// ============================================================================
+// SCENES (Snapshots of all sound parameters)
+// ============================================================================
 
+#define NUM_SCENES 8
+
+typedef struct {
+    SynthPatch patches[NUM_PATCHES];  // All 4 synth patches
+    DrumParams drums;                  // Drum parameters
+    Effects effects;                   // Effect parameters
+    float masterVol;                   // Master volume
+    float drumVol;                     // Drum volume
+    bool initialized;                  // Has this scene been saved?
+} Scene;
+
+static Scene scenes[NUM_SCENES];
+static int currentScene = -1;  // -1 = no scene loaded, 0-7 = active scene
+
+// Save current state to a scene slot
+static void saveScene(int idx) {
+    if (idx < 0 || idx >= NUM_SCENES) return;
+    Scene *s = &scenes[idx];
+    
+    // Copy all patches
+    for (int i = 0; i < NUM_PATCHES; i++) {
+        s->patches[i] = patches[i];
+    }
+    
+    // Copy drums and effects
+    s->drums = drumParams;
+    s->effects = fx;
+    
+    // Copy volumes
+    s->masterVol = masterVolume;
+    s->drumVol = drumVolume;
+    
+    s->initialized = true;
+    currentScene = idx;
+}
+
+// Load a scene instantly
+static void loadScene(int idx) {
+    if (idx < 0 || idx >= NUM_SCENES) return;
+    Scene *s = &scenes[idx];
+    if (!s->initialized) return;
+    
+    // Restore all patches
+    for (int i = 0; i < NUM_PATCHES; i++) {
+        patches[i] = s->patches[i];
+    }
+    
+    // Restore drums and effects
+    drumParams = s->drums;
+    fx = s->effects;
+    
+    // Restore volumes
+    masterVolume = s->masterVol;
+    drumVolume = s->drumVol;
+    
+    currentScene = idx;
+}
+
+// Clear a scene slot
+static void clearScene(int idx) {
+    if (idx < 0 || idx >= NUM_SCENES) return;
+    scenes[idx].initialized = false;
+    if (currentScene == idx) currentScene = -1;
+}
+
+// ============================================================================
+// CROSSFADER (A/B Scene Blending)
+// ============================================================================
+
+typedef struct {
+    int sceneA;         // Scene index for A side (0-7)
+    int sceneB;         // Scene index for B side (0-7)
+    float position;     // 0.0 = full A, 1.0 = full B
+} CrossfaderState;
+
+static CrossfaderState crossfader = {0, 1, 0.0f};
+static bool crossfaderEnabled = false;  // When enabled, blending is active
+
+// Note: lerpf() already defined in synth.h
+
+// Threshold switch for integers (switch at 50%)
+static int switchInt(int a, int b, float t) {
+    return t < 0.5f ? a : b;
+}
+
+// Threshold switch for bools
+static bool switchBool(bool a, bool b, float t) {
+    return t < 0.5f ? a : b;
+}
+
+// Blend two SynthPatch structs
+static void blendSynthPatch(SynthPatch *out, const SynthPatch *a, const SynthPatch *b, float t) {
+    // Discrete params (switch at 50%)
+    out->waveType = switchInt(a->waveType, b->waveType, t);
+    out->scwIndex = switchInt(a->scwIndex, b->scwIndex, t);
+    out->filterLfoShape = switchInt(a->filterLfoShape, b->filterLfoShape, t);
+    out->resoLfoShape = switchInt(a->resoLfoShape, b->resoLfoShape, t);
+    out->ampLfoShape = switchInt(a->ampLfoShape, b->ampLfoShape, t);
+    out->pitchLfoShape = switchInt(a->pitchLfoShape, b->pitchLfoShape, t);
+    out->additivePreset = switchInt(a->additivePreset, b->additivePreset, t);
+    out->malletPreset = switchInt(a->malletPreset, b->malletPreset, t);
+    out->voiceVowel = switchInt(a->voiceVowel, b->voiceVowel, t);
+    out->granularScwIndex = switchInt(a->granularScwIndex, b->granularScwIndex, t);
+    out->pdWaveType = switchInt(a->pdWaveType, b->pdWaveType, t);
+    out->membranePreset = switchInt(a->membranePreset, b->membranePreset, t);
+    out->birdType = switchInt(a->birdType, b->birdType, t);
+    out->monoMode = switchBool(a->monoMode, b->monoMode, t);
+    out->voiceConsonant = switchBool(a->voiceConsonant, b->voiceConsonant, t);
+    out->voiceNasal = switchBool(a->voiceNasal, b->voiceNasal, t);
+    out->granularFreeze = switchBool(a->granularFreeze, b->granularFreeze, t);
+    
+    // Continuous params (linear interpolation)
+    out->attack = lerpf(a->attack, b->attack, t);
+    out->decay = lerpf(a->decay, b->decay, t);
+    out->sustain = lerpf(a->sustain, b->sustain, t);
+    out->release = lerpf(a->release, b->release, t);
+    out->volume = lerpf(a->volume, b->volume, t);
+    out->pulseWidth = lerpf(a->pulseWidth, b->pulseWidth, t);
+    out->pwmRate = lerpf(a->pwmRate, b->pwmRate, t);
+    out->pwmDepth = lerpf(a->pwmDepth, b->pwmDepth, t);
+    out->vibratoRate = lerpf(a->vibratoRate, b->vibratoRate, t);
+    out->vibratoDepth = lerpf(a->vibratoDepth, b->vibratoDepth, t);
+    out->filterCutoff = lerpf(a->filterCutoff, b->filterCutoff, t);
+    out->filterResonance = lerpf(a->filterResonance, b->filterResonance, t);
+    out->filterEnvAmt = lerpf(a->filterEnvAmt, b->filterEnvAmt, t);
+    out->filterEnvAttack = lerpf(a->filterEnvAttack, b->filterEnvAttack, t);
+    out->filterEnvDecay = lerpf(a->filterEnvDecay, b->filterEnvDecay, t);
+    out->filterLfoRate = lerpf(a->filterLfoRate, b->filterLfoRate, t);
+    out->filterLfoDepth = lerpf(a->filterLfoDepth, b->filterLfoDepth, t);
+    out->resoLfoRate = lerpf(a->resoLfoRate, b->resoLfoRate, t);
+    out->resoLfoDepth = lerpf(a->resoLfoDepth, b->resoLfoDepth, t);
+    out->ampLfoRate = lerpf(a->ampLfoRate, b->ampLfoRate, t);
+    out->ampLfoDepth = lerpf(a->ampLfoDepth, b->ampLfoDepth, t);
+    out->pitchLfoRate = lerpf(a->pitchLfoRate, b->pitchLfoRate, t);
+    out->pitchLfoDepth = lerpf(a->pitchLfoDepth, b->pitchLfoDepth, t);
+    out->glideTime = lerpf(a->glideTime, b->glideTime, t);
+    out->pluckBrightness = lerpf(a->pluckBrightness, b->pluckBrightness, t);
+    out->pluckDamping = lerpf(a->pluckDamping, b->pluckDamping, t);
+    out->pluckDamp = lerpf(a->pluckDamp, b->pluckDamp, t);
+    out->additiveBrightness = lerpf(a->additiveBrightness, b->additiveBrightness, t);
+    out->additiveShimmer = lerpf(a->additiveShimmer, b->additiveShimmer, t);
+    out->additiveInharmonicity = lerpf(a->additiveInharmonicity, b->additiveInharmonicity, t);
+    out->malletStiffness = lerpf(a->malletStiffness, b->malletStiffness, t);
+    out->malletHardness = lerpf(a->malletHardness, b->malletHardness, t);
+    out->malletStrikePos = lerpf(a->malletStrikePos, b->malletStrikePos, t);
+    out->malletResonance = lerpf(a->malletResonance, b->malletResonance, t);
+    out->malletTremolo = lerpf(a->malletTremolo, b->malletTremolo, t);
+    out->malletTremoloRate = lerpf(a->malletTremoloRate, b->malletTremoloRate, t);
+    out->malletDamp = lerpf(a->malletDamp, b->malletDamp, t);
+    out->voiceFormantShift = lerpf(a->voiceFormantShift, b->voiceFormantShift, t);
+    out->voiceBreathiness = lerpf(a->voiceBreathiness, b->voiceBreathiness, t);
+    out->voiceBuzziness = lerpf(a->voiceBuzziness, b->voiceBuzziness, t);
+    out->voiceSpeed = lerpf(a->voiceSpeed, b->voiceSpeed, t);
+    out->voicePitch = lerpf(a->voicePitch, b->voicePitch, t);
+    out->voiceConsonantAmt = lerpf(a->voiceConsonantAmt, b->voiceConsonantAmt, t);
+    out->voiceNasalAmt = lerpf(a->voiceNasalAmt, b->voiceNasalAmt, t);
+    out->voicePitchEnv = lerpf(a->voicePitchEnv, b->voicePitchEnv, t);
+    out->voicePitchEnvTime = lerpf(a->voicePitchEnvTime, b->voicePitchEnvTime, t);
+    out->voicePitchEnvCurve = lerpf(a->voicePitchEnvCurve, b->voicePitchEnvCurve, t);
+    out->granularGrainSize = lerpf(a->granularGrainSize, b->granularGrainSize, t);
+    out->granularDensity = lerpf(a->granularDensity, b->granularDensity, t);
+    out->granularPosition = lerpf(a->granularPosition, b->granularPosition, t);
+    out->granularPosRandom = lerpf(a->granularPosRandom, b->granularPosRandom, t);
+    out->granularPitch = lerpf(a->granularPitch, b->granularPitch, t);
+    out->granularPitchRandom = lerpf(a->granularPitchRandom, b->granularPitchRandom, t);
+    out->granularAmpRandom = lerpf(a->granularAmpRandom, b->granularAmpRandom, t);
+    out->granularSpread = lerpf(a->granularSpread, b->granularSpread, t);
+    out->fmModRatio = lerpf(a->fmModRatio, b->fmModRatio, t);
+    out->fmModIndex = lerpf(a->fmModIndex, b->fmModIndex, t);
+    out->fmFeedback = lerpf(a->fmFeedback, b->fmFeedback, t);
+    out->pdDistortion = lerpf(a->pdDistortion, b->pdDistortion, t);
+    out->membraneDamping = lerpf(a->membraneDamping, b->membraneDamping, t);
+    out->membraneStrike = lerpf(a->membraneStrike, b->membraneStrike, t);
+    out->membraneBend = lerpf(a->membraneBend, b->membraneBend, t);
+    out->membraneBendDecay = lerpf(a->membraneBendDecay, b->membraneBendDecay, t);
+    out->birdChirpRange = lerpf(a->birdChirpRange, b->birdChirpRange, t);
+    out->birdTrillRate = lerpf(a->birdTrillRate, b->birdTrillRate, t);
+    out->birdTrillDepth = lerpf(a->birdTrillDepth, b->birdTrillDepth, t);
+    out->birdAmRate = lerpf(a->birdAmRate, b->birdAmRate, t);
+    out->birdAmDepth = lerpf(a->birdAmDepth, b->birdAmDepth, t);
+    out->birdHarmonics = lerpf(a->birdHarmonics, b->birdHarmonics, t);
+}
+
+// Blend two DrumParams structs
+static void blendDrumParams(DrumParams *out, const DrumParams *a, const DrumParams *b, float t) {
+    out->kickPitch = lerpf(a->kickPitch, b->kickPitch, t);
+    out->kickDecay = lerpf(a->kickDecay, b->kickDecay, t);
+    out->kickPunchPitch = lerpf(a->kickPunchPitch, b->kickPunchPitch, t);
+    out->kickPunchDecay = lerpf(a->kickPunchDecay, b->kickPunchDecay, t);
+    out->kickClick = lerpf(a->kickClick, b->kickClick, t);
+    out->kickTone = lerpf(a->kickTone, b->kickTone, t);
+    out->snarePitch = lerpf(a->snarePitch, b->snarePitch, t);
+    out->snareDecay = lerpf(a->snareDecay, b->snareDecay, t);
+    out->snareSnappy = lerpf(a->snareSnappy, b->snareSnappy, t);
+    out->snareTone = lerpf(a->snareTone, b->snareTone, t);
+    out->clapDecay = lerpf(a->clapDecay, b->clapDecay, t);
+    out->clapTone = lerpf(a->clapTone, b->clapTone, t);
+    out->clapSpread = lerpf(a->clapSpread, b->clapSpread, t);
+    out->hhDecayClosed = lerpf(a->hhDecayClosed, b->hhDecayClosed, t);
+    out->hhDecayOpen = lerpf(a->hhDecayOpen, b->hhDecayOpen, t);
+    out->hhTone = lerpf(a->hhTone, b->hhTone, t);
+    out->tomPitch = lerpf(a->tomPitch, b->tomPitch, t);
+    out->tomDecay = lerpf(a->tomDecay, b->tomDecay, t);
+    out->tomPunchDecay = lerpf(a->tomPunchDecay, b->tomPunchDecay, t);
+    out->rimPitch = lerpf(a->rimPitch, b->rimPitch, t);
+    out->rimDecay = lerpf(a->rimDecay, b->rimDecay, t);
+    out->cowbellPitch = lerpf(a->cowbellPitch, b->cowbellPitch, t);
+    out->cowbellDecay = lerpf(a->cowbellDecay, b->cowbellDecay, t);
+    out->clavePitch = lerpf(a->clavePitch, b->clavePitch, t);
+    out->claveDecay = lerpf(a->claveDecay, b->claveDecay, t);
+    out->maracasDecay = lerpf(a->maracasDecay, b->maracasDecay, t);
+    out->maracasTone = lerpf(a->maracasTone, b->maracasTone, t);
+}
+
+// Blend two Effects structs (only user parameters, not internal state)
+static void blendEffects(Effects *out, const Effects *a, const Effects *b, float t) {
+    // Booleans switch at 50%
+    out->distEnabled = switchBool(a->distEnabled, b->distEnabled, t);
+    out->delayEnabled = switchBool(a->delayEnabled, b->delayEnabled, t);
+    out->tapeEnabled = switchBool(a->tapeEnabled, b->tapeEnabled, t);
+    out->crushEnabled = switchBool(a->crushEnabled, b->crushEnabled, t);
+    out->reverbEnabled = switchBool(a->reverbEnabled, b->reverbEnabled, t);
+    
+    // Continuous params
+    out->distDrive = lerpf(a->distDrive, b->distDrive, t);
+    out->distTone = lerpf(a->distTone, b->distTone, t);
+    out->distMix = lerpf(a->distMix, b->distMix, t);
+    out->delayTime = lerpf(a->delayTime, b->delayTime, t);
+    out->delayFeedback = lerpf(a->delayFeedback, b->delayFeedback, t);
+    out->delayMix = lerpf(a->delayMix, b->delayMix, t);
+    out->delayTone = lerpf(a->delayTone, b->delayTone, t);
+    out->tapeWow = lerpf(a->tapeWow, b->tapeWow, t);
+    out->tapeFlutter = lerpf(a->tapeFlutter, b->tapeFlutter, t);
+    out->tapeSaturation = lerpf(a->tapeSaturation, b->tapeSaturation, t);
+    out->tapeHiss = lerpf(a->tapeHiss, b->tapeHiss, t);
+    out->crushBits = lerpf(a->crushBits, b->crushBits, t);
+    out->crushRate = lerpf(a->crushRate, b->crushRate, t);
+    out->crushMix = lerpf(a->crushMix, b->crushMix, t);
+    out->reverbSize = lerpf(a->reverbSize, b->reverbSize, t);
+    out->reverbDamping = lerpf(a->reverbDamping, b->reverbDamping, t);
+    out->reverbMix = lerpf(a->reverbMix, b->reverbMix, t);
+    out->reverbPreDelay = lerpf(a->reverbPreDelay, b->reverbPreDelay, t);
+    // Note: internal state fields (filter states, phases, counters) are NOT blended
+}
+
+// Apply crossfader blend to global state
+static void updateCrossfaderBlend(void) {
+    if (!crossfaderEnabled) return;
+    
+    Scene *a = &scenes[crossfader.sceneA];
+    Scene *b = &scenes[crossfader.sceneB];
+    
+    // Both scenes must be initialized
+    if (!a->initialized || !b->initialized) return;
+    
+    float t = crossfader.position;
+    
+    // Blend all patches
+    for (int i = 0; i < NUM_PATCHES; i++) {
+        blendSynthPatch(&patches[i], &a->patches[i], &b->patches[i], t);
+    }
+    
+    // Blend drums
+    blendDrumParams(&drumParams, &a->drums, &b->drums, t);
+    
+    // Blend effects (preserve internal state)
+    Effects blendedFx;
+    blendEffects(&blendedFx, &a->effects, &b->effects, t);
+    // Copy only user params, keep internal state
+    fx.distEnabled = blendedFx.distEnabled;
+    fx.distDrive = blendedFx.distDrive;
+    fx.distTone = blendedFx.distTone;
+    fx.distMix = blendedFx.distMix;
+    fx.delayEnabled = blendedFx.delayEnabled;
+    fx.delayTime = blendedFx.delayTime;
+    fx.delayFeedback = blendedFx.delayFeedback;
+    fx.delayMix = blendedFx.delayMix;
+    fx.delayTone = blendedFx.delayTone;
+    fx.tapeEnabled = blendedFx.tapeEnabled;
+    fx.tapeWow = blendedFx.tapeWow;
+    fx.tapeFlutter = blendedFx.tapeFlutter;
+    fx.tapeSaturation = blendedFx.tapeSaturation;
+    fx.tapeHiss = blendedFx.tapeHiss;
+    fx.crushEnabled = blendedFx.crushEnabled;
+    fx.crushBits = blendedFx.crushBits;
+    fx.crushRate = blendedFx.crushRate;
+    fx.crushMix = blendedFx.crushMix;
+    fx.reverbEnabled = blendedFx.reverbEnabled;
+    fx.reverbSize = blendedFx.reverbSize;
+    fx.reverbDamping = blendedFx.reverbDamping;
+    fx.reverbMix = blendedFx.reverbMix;
+    fx.reverbPreDelay = blendedFx.reverbPreDelay;
+    
+    // Blend volumes
+    masterVolume = lerpf(a->masterVol, b->masterVol, t);
+    drumVolume = lerpf(a->drumVol, b->drumVol, t);
+}
 
 // Initialize patches with different default wave types
 static void initPatches(void) {
@@ -717,11 +1017,57 @@ static void drumTriggerWithPLocks(DrumType drumType, float vel, float pitch) {
     }
 }
 
-// Sequencer callbacks for drums (with P-lock support)
-static void seqDrumKick(float vel, float pitch) { drumTriggerWithPLocks(DRUM_KICK, vel, pitch); }
-static void seqDrumSnare(float vel, float pitch) { drumTriggerWithPLocks(DRUM_SNARE, vel, pitch); }
-static void seqDrumClosedHH(float vel, float pitch) { drumTriggerWithPLocks(DRUM_CLOSED_HH, vel, pitch); }
-static void seqDrumClap(float vel, float pitch) { drumTriggerWithPLocks(DRUM_CLAP, vel, pitch); }
+// ============================================================================
+// DRUM KIT ASSIGNMENT
+// ============================================================================
+
+// Names for all drum types (for UI display)
+static const char* drumTypeNames[DRUM_COUNT] = {
+    "808 Kick", "808 Snare", "808 Clap", "808 CH", "808 OH",
+    "808 LTom", "808 MTom", "808 HTom", "Rimshot", "Cowbell",
+    "Clave", "Maracas",
+    "CR78 Kick", "CR78 Snare", "CR78 HH", "CR78 Metal"
+};
+
+// Short names for track labels
+static const char* drumTypeShortNames[DRUM_COUNT] = {
+    "Kick", "Snare", "Clap", "CH", "OH",
+    "LTom", "MTom", "HTom", "Rim", "Bell",
+    "Clave", "Shaker",
+    "78Kick", "78Snr", "78HH", "78Met"
+};
+
+// Which drum sound is assigned to each track (user configurable)
+static DrumType drumTrackSound[SEQ_DRUM_TRACKS] = {
+    DRUM_KICK,      // Track 0 default
+    DRUM_SNARE,     // Track 1 default
+    DRUM_CLOSED_HH, // Track 2 default
+    DRUM_CLAP       // Track 3 default
+};
+
+// Generic sequencer drum callback - looks up which sound to play
+static void seqDrumTrack0(float vel, float pitch) { drumTriggerWithPLocks(drumTrackSound[0], vel, pitch); }
+static void seqDrumTrack1(float vel, float pitch) { drumTriggerWithPLocks(drumTrackSound[1], vel, pitch); }
+static void seqDrumTrack2(float vel, float pitch) { drumTriggerWithPLocks(drumTrackSound[2], vel, pitch); }
+static void seqDrumTrack3(float vel, float pitch) { drumTriggerWithPLocks(drumTrackSound[3], vel, pitch); }
+
+// Update track name when sound changes
+static void updateDrumTrackName(int track) {
+    if (track >= 0 && track < SEQ_DRUM_TRACKS) {
+        seq.drumTrackNames[track] = drumTypeShortNames[drumTrackSound[track]];
+    }
+}
+
+// Cycle to next drum sound for a track
+static void cycleDrumTrackSound(int track, int direction) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    int current = (int)drumTrackSound[track];
+    current += direction;
+    if (current < 0) current = DRUM_COUNT - 1;
+    if (current >= DRUM_COUNT) current = 0;
+    drumTrackSound[track] = (DrumType)current;
+    updateDrumTrackName(track);
+}
 
 // ============================================================================
 // MELODIC SEQUENCER TRIGGERS
@@ -883,7 +1229,12 @@ int main(void) {
     initDrumParams();
     initEffects();
     initPatches();
-    initSequencer(seqDrumKick, seqDrumSnare, seqDrumClosedHH, seqDrumClap);
+    initSequencer(seqDrumTrack0, seqDrumTrack1, seqDrumTrack2, seqDrumTrack3);
+    
+    // Update track names to match initial drum assignments
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        updateDrumTrackName(i);
+    }
     
     // Set up melodic track callbacks
     setMelodyCallbacks(0, melodyTriggerBass, melodyReleaseBass);
@@ -953,6 +1304,9 @@ int main(void) {
             }
         }
         updateSequencer(GetFrameTime());
+        
+        // Apply crossfader blending if enabled
+        updateCrossfaderBlend();
         
         // Piano keyboard input (ASDFGHJKL = white keys, WERTYUIOP = black keys)
         // Uses the currently selected patch settings
@@ -1275,30 +1629,95 @@ int main(void) {
             ui_col_float(&col4, "Volume", &drumVolume, 0.05f, 0.0f, 1.0f);
             ui_col_space(&col4, 4);
             
-            ui_col_sublabel(&col4, "Kick (7):", ORANGE);
-            ui_col_float(&col4, "Pitch", &drumParams.kickPitch, 3.0f, 30.0f, 100.0f);
-            ui_col_float(&col4, "Decay", &drumParams.kickDecay, 0.07f, 0.1f, 1.5f);
-            ui_col_float(&col4, "Punch", &drumParams.kickPunchPitch, 10.0f, 80.0f, 300.0f);
-            ui_col_float(&col4, "Click", &drumParams.kickClick, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&col4, "Tone", &drumParams.kickTone, 0.05f, 0.0f, 1.0f);
-            ui_col_space(&col4, 4);
+            // Show params for drums currently assigned to tracks
+            // Track which drum types we've already shown to avoid duplicates
+            bool shownDrumType[DRUM_COUNT] = {false};
             
-            ui_col_sublabel(&col4, "Snare (8):", ORANGE);
-            ui_col_float(&col4, "Pitch", &drumParams.snarePitch, 10.0f, 100.0f, 350.0f);
-            ui_col_float(&col4, "Decay", &drumParams.snareDecay, 0.03f, 0.05f, 0.6f);
-            ui_col_float(&col4, "Snappy", &drumParams.snareSnappy, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&col4, "Tone", &drumParams.snareTone, 0.05f, 0.0f, 1.0f);
-            ui_col_space(&col4, 4);
-            
-            ui_col_sublabel(&col4, "HiHat (0/-):", ORANGE);
-            ui_col_float(&col4, "Closed", &drumParams.hhDecayClosed, 0.01f, 0.01f, 0.2f);
-            ui_col_float(&col4, "Open", &drumParams.hhDecayOpen, 0.05f, 0.1f, 1.0f);
-            ui_col_float(&col4, "Tone", &drumParams.hhTone, 0.05f, 0.0f, 1.0f);
-            ui_col_space(&col4, 4);
-            
-            ui_col_sublabel(&col4, "Clap (9):", ORANGE);
-            ui_col_float(&col4, "Decay", &drumParams.clapDecay, 0.03f, 0.1f, 0.6f);
-            ui_col_float(&col4, "Spread", &drumParams.clapSpread, 0.001f, 0.005f, 0.03f);
+            for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
+                DrumType dt = drumTrackSound[track];
+                if (shownDrumType[dt]) continue;  // Skip if already shown
+                shownDrumType[dt] = true;
+                
+                ui_col_sublabel(&col4, TextFormat("%s:", drumTypeShortNames[dt]), ORANGE);
+                
+                switch (dt) {
+                    case DRUM_KICK:
+                        ui_col_float(&col4, "Pitch", &drumParams.kickPitch, 3.0f, 30.0f, 100.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.kickDecay, 0.07f, 0.1f, 1.5f);
+                        ui_col_float(&col4, "Punch", &drumParams.kickPunchPitch, 10.0f, 80.0f, 300.0f);
+                        ui_col_float(&col4, "Click", &drumParams.kickClick, 0.05f, 0.0f, 1.0f);
+                        ui_col_float(&col4, "Tone", &drumParams.kickTone, 0.05f, 0.0f, 1.0f);
+                        break;
+                    case DRUM_SNARE:
+                        ui_col_float(&col4, "Pitch", &drumParams.snarePitch, 10.0f, 100.0f, 350.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.snareDecay, 0.03f, 0.05f, 0.6f);
+                        ui_col_float(&col4, "Snappy", &drumParams.snareSnappy, 0.05f, 0.0f, 1.0f);
+                        ui_col_float(&col4, "Tone", &drumParams.snareTone, 0.05f, 0.0f, 1.0f);
+                        break;
+                    case DRUM_CLAP:
+                        ui_col_float(&col4, "Decay", &drumParams.clapDecay, 0.03f, 0.1f, 0.6f);
+                        ui_col_float(&col4, "Tone", &drumParams.clapTone, 0.05f, 0.0f, 1.0f);
+                        ui_col_float(&col4, "Spread", &drumParams.clapSpread, 0.001f, 0.005f, 0.03f);
+                        break;
+                    case DRUM_CLOSED_HH:
+                    case DRUM_OPEN_HH:
+                        ui_col_float(&col4, "Closed", &drumParams.hhDecayClosed, 0.01f, 0.01f, 0.2f);
+                        ui_col_float(&col4, "Open", &drumParams.hhDecayOpen, 0.05f, 0.1f, 1.0f);
+                        ui_col_float(&col4, "Tone", &drumParams.hhTone, 0.05f, 0.0f, 1.0f);
+                        // Mark both as shown since they share params
+                        shownDrumType[DRUM_CLOSED_HH] = true;
+                        shownDrumType[DRUM_OPEN_HH] = true;
+                        break;
+                    case DRUM_LOW_TOM:
+                    case DRUM_MID_TOM:
+                    case DRUM_HI_TOM:
+                        ui_col_float(&col4, "Pitch", &drumParams.tomPitch, 0.1f, 0.5f, 2.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.tomDecay, 0.03f, 0.1f, 0.8f);
+                        ui_col_float(&col4, "PunchDcy", &drumParams.tomPunchDecay, 0.01f, 0.01f, 0.2f);
+                        // Mark all toms as shown since they share params
+                        shownDrumType[DRUM_LOW_TOM] = true;
+                        shownDrumType[DRUM_MID_TOM] = true;
+                        shownDrumType[DRUM_HI_TOM] = true;
+                        break;
+                    case DRUM_RIMSHOT:
+                        ui_col_float(&col4, "Pitch", &drumParams.rimPitch, 100.0f, 800.0f, 3000.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.rimDecay, 0.005f, 0.01f, 0.1f);
+                        break;
+                    case DRUM_COWBELL:
+                        ui_col_float(&col4, "Pitch", &drumParams.cowbellPitch, 20.0f, 400.0f, 1000.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.cowbellDecay, 0.03f, 0.1f, 0.6f);
+                        break;
+                    case DRUM_CLAVE:
+                        ui_col_float(&col4, "Pitch", &drumParams.clavePitch, 100.0f, 1500.0f, 4000.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.claveDecay, 0.005f, 0.01f, 0.1f);
+                        break;
+                    case DRUM_MARACAS:
+                        ui_col_float(&col4, "Decay", &drumParams.maracasDecay, 0.01f, 0.02f, 0.2f);
+                        ui_col_float(&col4, "Tone", &drumParams.maracasTone, 0.05f, 0.0f, 1.0f);
+                        break;
+                    case DRUM_CR78_KICK:
+                        ui_col_float(&col4, "Pitch", &drumParams.cr78KickPitch, 5.0f, 50.0f, 120.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.cr78KickDecay, 0.03f, 0.1f, 0.5f);
+                        ui_col_float(&col4, "Reso", &drumParams.cr78KickResonance, 0.05f, 0.5f, 0.99f);
+                        break;
+                    case DRUM_CR78_SNARE:
+                        ui_col_float(&col4, "Pitch", &drumParams.cr78SnarePitch, 10.0f, 150.0f, 350.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.cr78SnareDecay, 0.02f, 0.05f, 0.4f);
+                        ui_col_float(&col4, "Snappy", &drumParams.cr78SnareSnappy, 0.05f, 0.0f, 1.0f);
+                        break;
+                    case DRUM_CR78_HIHAT:
+                        ui_col_float(&col4, "Decay", &drumParams.cr78HHDecay, 0.01f, 0.02f, 0.2f);
+                        ui_col_float(&col4, "Tone", &drumParams.cr78HHTone, 0.05f, 0.0f, 1.0f);
+                        break;
+                    case DRUM_CR78_METAL:
+                        ui_col_float(&col4, "Pitch", &drumParams.cr78MetalPitch, 50.0f, 400.0f, 1500.0f);
+                        ui_col_float(&col4, "Decay", &drumParams.cr78MetalDecay, 0.02f, 0.05f, 0.4f);
+                        break;
+                    default:
+                        break;
+                }
+                ui_col_space(&col4, 4);
+            }
         }
         
         // === COLUMN 5: Effects ===
@@ -1368,7 +1787,8 @@ int main(void) {
             int cellH = 20;
             int labelW = 50;
             int lengthW = 30;
-            int patternBarY = gridY - 45;
+            int patternBarY = gridY - 28;
+            int sceneBarY = patternBarY - 28;
             
             // === PATTERN BAR ===
             {
@@ -1452,6 +1872,132 @@ int main(void) {
                 }
             }
             
+            // === SCENE BAR ===
+            {
+                int btnW = 24;
+                int btnH = 20;
+                int sceneX = gridX + labelW;
+                
+                DrawTextShadow("Scenes:", gridX, sceneBarY + 4, 12, YELLOW);
+                
+                Vector2 mouse = GetMousePosition();
+                bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+                bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+                bool shiftHeld = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                
+                for (int i = 0; i < NUM_SCENES; i++) {
+                    int sx = sceneX + i * (btnW + 4);
+                    Rectangle sceneRect = {(float)sx, (float)sceneBarY, (float)btnW, (float)btnH};
+                    bool isHovered = CheckCollisionPointRec(mouse, sceneRect);
+                    bool isCurrent = (i == currentScene);
+                    bool hasContent = scenes[i].initialized;
+                    
+                    Color bgColor = {40, 40, 40, 255};
+                    if (isCurrent) bgColor = (Color){60, 60, 120, 255};  // Blue for active
+                    else if (hasContent) bgColor = (Color){50, 60, 70, 255};  // Subtle blue for saved
+                    
+                    if (isHovered) {
+                        bgColor.r = (unsigned char)fminf(255, bgColor.r + 30);
+                        bgColor.g = (unsigned char)fminf(255, bgColor.g + 30);
+                        bgColor.b = (unsigned char)fminf(255, bgColor.b + 30);
+                    }
+                    
+                    DrawRectangleRec(sceneRect, bgColor);
+                    DrawRectangleLinesEx(sceneRect, 1, isCurrent ? (Color){100, 100, 200, 255} : (hasContent ? LIGHTGRAY : (Color){80, 80, 80, 255}));
+                    
+                    Color textColor = isCurrent ? WHITE : (hasContent ? LIGHTGRAY : GRAY);
+                    DrawTextShadow(TextFormat("%d", i + 1), sx + 8, sceneBarY + 4, 12, textColor);
+                    
+                    if (isHovered) {
+                        if (mouseClicked) {
+                            if (shiftHeld) {
+                                saveScene(i);  // Shift+Click = Save
+                            } else if (hasContent) {
+                                loadScene(i);  // Click = Load (if has content)
+                            }
+                            ui_consume_click();
+                        }
+                        if (rightClicked) {
+                            clearScene(i);  // Right-click = Clear
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // Save button
+                int saveX = sceneX + NUM_SCENES * (btnW + 4) + 10;
+                if (PushButton(saveX, sceneBarY, "Save")) {
+                    if (currentScene >= 0) {
+                        saveScene(currentScene);  // Save to current scene
+                    } else {
+                        // Find first empty slot or use slot 0
+                        int slot = 0;
+                        for (int i = 0; i < NUM_SCENES; i++) {
+                            if (!scenes[i].initialized) { slot = i; break; }
+                        }
+                        saveScene(slot);
+                    }
+                }
+                
+                // Crossfader toggle and controls
+                int xfadeX = saveX + 50;
+                ToggleBool(xfadeX, sceneBarY, "XFade", &crossfaderEnabled);
+                
+                if (crossfaderEnabled) {
+                    xfadeX += 60;
+                    
+                    // A scene selector
+                    DrawTextShadow(TextFormat("A:%d", crossfader.sceneA + 1), xfadeX, sceneBarY + 4, 12, 
+                                   scenes[crossfader.sceneA].initialized ? (Color){100, 150, 255, 255} : GRAY);
+                    
+                    // Click to cycle A
+                    Rectangle aRect = {(float)xfadeX, (float)sceneBarY, 30, (float)btnH};
+                    if (CheckCollisionPointRec(mouse, aRect) && mouseClicked) {
+                        crossfader.sceneA = (crossfader.sceneA + 1) % NUM_SCENES;
+                        ui_consume_click();
+                    }
+                    xfadeX += 35;
+                    
+                    // Crossfader slider
+                    int sliderW = 120;
+                    int sliderH = 14;
+                    int sliderY = sceneBarY + 3;
+                    
+                    Rectangle sliderBg = {(float)xfadeX, (float)sliderY, (float)sliderW, (float)sliderH};
+                    DrawRectangleRec(sliderBg, (Color){30, 30, 30, 255});
+                    DrawRectangleLinesEx(sliderBg, 1, (Color){80, 80, 80, 255});
+                    
+                    // Filled portion based on position
+                    float fillW = crossfader.position * sliderW;
+                    DrawRectangle(xfadeX, sliderY, (int)fillW, sliderH, (Color){60, 80, 120, 255});
+                    
+                    // Center line
+                    DrawLine(xfadeX + sliderW/2, sliderY, xfadeX + sliderW/2, sliderY + sliderH, (Color){100, 100, 100, 255});
+                    
+                    // Handle
+                    float handleX = xfadeX + crossfader.position * sliderW - 4;
+                    DrawRectangle((int)handleX, sliderY - 2, 8, sliderH + 4, (Color){200, 200, 200, 255});
+                    
+                    // Slider interaction
+                    if (CheckCollisionPointRec(mouse, sliderBg) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                        float newPos = (mouse.x - xfadeX) / (float)sliderW;
+                        crossfader.position = fminf(1.0f, fmaxf(0.0f, newPos));
+                    }
+                    xfadeX += sliderW + 5;
+                    
+                    // B scene selector
+                    DrawTextShadow(TextFormat("B:%d", crossfader.sceneB + 1), xfadeX, sceneBarY + 4, 12,
+                                   scenes[crossfader.sceneB].initialized ? (Color){255, 150, 100, 255} : GRAY);
+                    
+                    // Click to cycle B
+                    Rectangle bRect = {(float)xfadeX, (float)sceneBarY, 30, (float)btnH};
+                    if (CheckCollisionPointRec(mouse, bRect) && mouseClicked) {
+                        crossfader.sceneB = (crossfader.sceneB + 1) % NUM_SCENES;
+                        ui_consume_click();
+                    }
+                }
+            }
+            
             DrawTextShadow("Drums: click=toggle, drag=vel | Melody: click=note, scroll=octave", gridX, gridY - 12, 12, GRAY);
             
             // Beat markers
@@ -1492,7 +2038,15 @@ int main(void) {
                 int y = gridY + track * cellH;
                 int trackLen = p->drumTrackLength[track];
                 
-                DrawTextShadow(seq.drumTrackNames[track], gridX, y + 3, 12, LIGHTGRAY);
+                // Clickable track label to change drum sound
+                Rectangle labelRect = {(float)gridX, (float)y, (float)labelW - 4, (float)cellH - 2};
+                bool labelHovered = CheckCollisionPointRec(mouse, labelRect);
+                Color labelColor = labelHovered ? WHITE : LIGHTGRAY;
+                DrawTextShadow(seq.drumTrackNames[track], gridX, y + 3, 12, labelColor);
+                
+                if (labelHovered && mouseWheel != 0) {
+                    cycleDrumTrackSound(track, mouseWheel > 0 ? -1 : 1);
+                }
                 
                 for (int step = 0; step < SEQ_MAX_STEPS; step++) {
                     int x = gridX + labelW + step * cellW;
@@ -1622,11 +2176,23 @@ int main(void) {
                 {80, 100, 80, 255}    // Chord - green tint
             };
             
+            // Mapping: melody track -> patch index
+            static const int melodyTrackToPatch[SEQ_MELODY_TRACKS] = {PATCH_BASS, PATCH_LEAD, PATCH_CHORD};
+            
             for (int track = 0; track < SEQ_MELODY_TRACKS; track++) {
                 int y = melodyStartY + track * cellH;
                 int trackLen = p->melodyTrackLength[track];
                 
-                DrawTextShadow(seq.melodyTrackNames[track], gridX, y + 3, 12, melodyTrackColors[track]);
+                // Clickable label to select patch
+                Rectangle labelRect = {(float)gridX, (float)y, (float)labelW - 4, (float)cellH - 2};
+                bool labelHovered = CheckCollisionPointRec(mouse, labelRect);
+                Color labelColor = labelHovered ? WHITE : melodyTrackColors[track];
+                DrawTextShadow(seq.melodyTrackNames[track], gridX, y + 3, 12, labelColor);
+                
+                if (labelHovered && mouseClicked) {
+                    selectedPatch = melodyTrackToPatch[track];
+                    ui_consume_click();
+                }
                 
                 for (int step = 0; step < SEQ_MAX_STEPS; step++) {
                     int x = gridX + labelW + step * cellW;

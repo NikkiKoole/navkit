@@ -19,6 +19,7 @@
 // ============================================================================
 
 typedef enum {
+    // 808-style drums
     DRUM_KICK,
     DRUM_SNARE,
     DRUM_CLAP,
@@ -31,6 +32,11 @@ typedef enum {
     DRUM_COWBELL,
     DRUM_CLAVE,
     DRUM_MARACAS,
+    // CR-78 style drums
+    DRUM_CR78_KICK,
+    DRUM_CR78_SNARE,
+    DRUM_CR78_HIHAT,
+    DRUM_CR78_METAL,     // "Metallic beat" - 3 filtered square waves
     DRUM_COUNT
 } DrumType;
 
@@ -101,13 +107,31 @@ typedef struct {
     // Maracas
     float maracasDecay;   // Decay time
     float maracasTone;    // Brightness
+    
+    // CR-78 Kick
+    float cr78KickPitch;  // Base pitch (higher than 808, ~60-100Hz)
+    float cr78KickDecay;  // Shorter decay than 808
+    float cr78KickResonance; // Bridged-T filter resonance
+    
+    // CR-78 Snare
+    float cr78SnarePitch; // Resonant ping pitch
+    float cr78SnareDecay; // Decay time
+    float cr78SnareSnappy; // Noise amount
+    
+    // CR-78 Hihat
+    float cr78HHDecay;    // Decay time
+    float cr78HHTone;     // Filter brightness
+    
+    // CR-78 Metallic beat
+    float cr78MetalPitch; // Base pitch for square waves
+    float cr78MetalDecay; // Decay time
 } DrumParams;
 
 // ============================================================================
 // STATE
 // ============================================================================
 
-#define NUM_DRUM_VOICES 12
+#define NUM_DRUM_VOICES 16  // 12 original + 4 CR-78
 static DrumVoice drumVoices[NUM_DRUM_VOICES];
 static DrumParams drumParams;
 static float drumVolume = 0.6f;
@@ -177,6 +201,24 @@ static void initDrumParams(void) {
     // Maracas
     drumParams.maracasDecay = 0.07f;
     drumParams.maracasTone = 0.8f;
+    
+    // CR-78 Kick - higher pitch, tighter, bridged-T character
+    drumParams.cr78KickPitch = 80.0f;
+    drumParams.cr78KickDecay = 0.25f;
+    drumParams.cr78KickResonance = 0.9f;
+    
+    // CR-78 Snare - resonant ping + noise
+    drumParams.cr78SnarePitch = 220.0f;
+    drumParams.cr78SnareDecay = 0.15f;
+    drumParams.cr78SnareSnappy = 0.5f;
+    
+    // CR-78 Hihat
+    drumParams.cr78HHDecay = 0.08f;
+    drumParams.cr78HHTone = 0.6f;
+    
+    // CR-78 Metallic beat - 3 square waves
+    drumParams.cr78MetalPitch = 800.0f;
+    drumParams.cr78MetalDecay = 0.15f;
 }
 
 // ============================================================================
@@ -495,6 +537,141 @@ static float processMaracas(DrumVoice *dv, float dt) {
 }
 
 // ============================================================================
+// CR-78 STYLE PROCESSORS
+// ============================================================================
+
+// Helper: sum of square wave oscillators at given frequency ratios
+static float squareOscillators(DrumVoice *dv, float baseFreq, float dt,
+                               const float *ratios, int count, const float *levels) {
+    float sample = 0.0f;
+    for (int i = 0; i < count; i++) {
+        dv->hhPhases[i] += baseFreq * ratios[i] * dt;
+        if (dv->hhPhases[i] >= 1.0f) dv->hhPhases[i] -= 1.0f;
+        float sq = dv->hhPhases[i] < 0.5f ? 1.0f : -1.0f;
+        sample += sq * (levels ? levels[i] : 1.0f);
+    }
+    return sample / count;
+}
+
+// CR-78 Kick - Bridged-T resonant filter: damped sine with subtle harmonics
+static float processCR78Kick(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    float pitch = p->cr78KickPitch * dv->pitchMod;
+    float decay = PLOCK_OR(dv->plockDecay, p->cr78KickDecay);
+    float damping = 1.0f - p->cr78KickResonance * 0.95f;
+    
+    // Slight pitch drop (less dramatic than 808)
+    float pitchEnv = expDecay(dv->time, 0.02f);
+    float freq = pitch * (1.0f + pitchEnv * 0.3f);
+    
+    dv->phase += freq * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    
+    float sample = sinf(dv->phase * 2.0f * PI) + sinf(dv->phase * 4.0f * PI) * 0.15f;
+    
+    // Soft click transient
+    if (dv->time < 0.005f) {
+        unsigned int ns = (unsigned int)(dv->time * 1000000);
+        sample += drumNoise(&ns) * (1.0f - dv->time / 0.005f) * 0.2f;
+    }
+    
+    float amp = expDecay(dv->time, decay * damping);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.7f;
+}
+
+// CR-78 Snare - Resonant ping + bandpassed noise
+static float processCR78Snare(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    float pitch = p->cr78SnarePitch * dv->pitchMod;
+    float decay = PLOCK_OR(dv->plockDecay, p->cr78SnareDecay);
+    float snappy = PLOCK_OR(dv->plockPunch, p->cr78SnareSnappy);
+    
+    // Resonant ping
+    dv->phase += pitch * dt;
+    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    float ping = sinf(dv->phase * 2.0f * PI);
+    float pingAmp = expDecay(dv->time, decay * 0.5f);
+    
+    // Bandpassed noise
+    unsigned int ns = (unsigned int)(dv->time * 1000000 + dv->phase * 10000);
+    float noise = drumNoise(&ns);
+    dv->filterLp += 0.25f * (noise - dv->filterLp);
+    dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
+    float noiseAmp = expDecay(dv->time, decay);
+    
+    float sample = ping * pingAmp * (1.0f - snappy * 0.6f) +
+                   (dv->filterLp - dv->filterHp) * 1.5f * noiseAmp * snappy;
+    
+    if (noiseAmp < 0.001f && pingAmp < 0.001f) dv->active = false;
+    
+    return sample * 0.6f;
+}
+
+// CR-78 Hihat - 3 square oscillators + noise through LC-style bandpass
+static float processCR78Hihat(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    float decay = PLOCK_OR(dv->plockDecay, p->cr78HHDecay);
+    float tone = PLOCK_OR(dv->plockTone, p->cr78HHTone);
+    float baseFreq = (400.0f + tone * 300.0f) * dv->pitchMod;
+    
+    static const float ratios[3] = {1.0f, 1.34f, 1.68f};
+    float sample = squareOscillators(dv, baseFreq, dt, ratios, 3, NULL);
+    
+    // Add noise for sizzle
+    unsigned int ns = (unsigned int)(dv->time * 1000000);
+    sample += drumNoise(&ns) * 0.3f;
+    
+    // LC-style bandpass
+    float cutoff = 0.15f + tone * 0.25f;
+    dv->filterLp += cutoff * (sample - dv->filterLp);
+    dv->filterHp += 0.05f * (dv->filterLp - dv->filterHp);
+    sample = (dv->filterLp - dv->filterHp) * 2.5f;
+    
+    float amp = expDecay(dv->time, decay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.35f;
+}
+
+// CR-78 Metallic Beat - 3 square waves (octave+fifth) through inductor-style lowpass
+static float processCR78Metal(DrumVoice *dv, float dt) {
+    if (!dv->active) return 0.0f;
+    
+    DrumParams *p = &drumParams;
+    dv->time += dt;
+    
+    float pitch = p->cr78MetalPitch * dv->pitchMod;
+    float decay = PLOCK_OR(dv->plockDecay, p->cr78MetalDecay);
+    
+    static const float ratios[3] = {1.0f, 1.5f, 2.0f};
+    static const float levels[3] = {1.0f, 0.8f, 0.6f};
+    float sample = squareOscillators(dv, pitch, dt, ratios, 3, levels);
+    
+    // Inductor-style lowpass with dry blend for attack
+    dv->filterLp += 0.08f * (sample - dv->filterLp);
+    sample = dv->filterLp * 2.0f + sample * 0.3f;
+    
+    float amp = expDecay(dv->time, decay);
+    if (amp < 0.001f) dv->active = false;
+    
+    return sample * amp * 0.4f;
+}
+
+// ============================================================================
 // MAIN PROCESSOR
 // ============================================================================
 
@@ -514,6 +691,12 @@ static float processDrums(float dt) {
     sample += processCowbell(&drumVoices[DRUM_COWBELL], dt) * drumVoices[DRUM_COWBELL].velocity;
     sample += processClave(&drumVoices[DRUM_CLAVE], dt) * drumVoices[DRUM_CLAVE].velocity;
     sample += processMaracas(&drumVoices[DRUM_MARACAS], dt) * drumVoices[DRUM_MARACAS].velocity;
+    
+    // CR-78 style drums
+    sample += processCR78Kick(&drumVoices[DRUM_CR78_KICK], dt) * drumVoices[DRUM_CR78_KICK].velocity;
+    sample += processCR78Snare(&drumVoices[DRUM_CR78_SNARE], dt) * drumVoices[DRUM_CR78_SNARE].velocity;
+    sample += processCR78Hihat(&drumVoices[DRUM_CR78_HIHAT], dt) * drumVoices[DRUM_CR78_HIHAT].velocity;
+    sample += processCR78Metal(&drumVoices[DRUM_CR78_METAL], dt) * drumVoices[DRUM_CR78_METAL].velocity;
     
     return sample * drumVolume;
 }
