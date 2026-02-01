@@ -773,6 +773,10 @@ void DrawMovers(void) {
         // Screen position
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
+        if (usePixelPerfectMovers) {
+            sx = roundf(sx);
+            sy = roundf(sy);
+        }
 
         // Choose color based on mover state or debug mode
         Color moverColor;

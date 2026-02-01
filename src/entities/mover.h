@@ -94,6 +94,7 @@ void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float sp
 void UpdateMovers(void);
 void ProcessMoverRepaths(void);
 void Tick(void);
+void TickWithDt(float dt);  // Tick with custom delta time (for variable timestep)
 void RunTicks(int count);
 void ClearMovers(void);
 

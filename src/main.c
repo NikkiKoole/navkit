@@ -27,6 +27,7 @@ bool showGraph = false;
 bool showEntrances = false;
 bool showChunkBoundaries = false;
 bool showMovers = true;
+bool usePixelPerfectMovers = true;
 bool showMoverPaths = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
@@ -548,24 +549,31 @@ int main(int argc, char** argv) {
         }
         UpdateMessages(frameTime, paused);
 
-        if (!paused && accumulator >= TICK_DT) {
-            PROFILE_BEGIN(Tick);
-            Tick();
-            PROFILE_END(Tick);
-            PROFILE_BEGIN(ItemsTick);
-            ItemsTick(TICK_DT);
-            PROFILE_END(ItemsTick);
-            DesignationsTick(TICK_DT);
-            PROFILE_BEGIN(AssignJobs);
-            AssignJobs();
-            PROFILE_END(AssignJobs);
-            PROFILE_BEGIN(JobsTick);
-            JobsTick();
-            PROFILE_END(JobsTick);
-            accumulator -= TICK_DT;
-
-            if (accumulator > TICK_DT) {
-                accumulator = TICK_DT;
+        if (!paused) {
+            bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
+            float tickDt = useFixedTimestep ? TICK_DT : frameTime;
+            
+            if (shouldTick) {
+                PROFILE_BEGIN(Tick);
+                TickWithDt(tickDt);
+                PROFILE_END(Tick);
+                PROFILE_BEGIN(ItemsTick);
+                ItemsTick(tickDt);
+                PROFILE_END(ItemsTick);
+                DesignationsTick(tickDt);
+                PROFILE_BEGIN(AssignJobs);
+                AssignJobs();
+                PROFILE_END(AssignJobs);
+                PROFILE_BEGIN(JobsTick);
+                JobsTick();
+                PROFILE_END(JobsTick);
+                
+                if (useFixedTimestep) {
+                    accumulator -= TICK_DT;
+                    if (accumulator > TICK_DT) {
+                        accumulator = TICK_DT;
+                    }
+                }
             }
         }
 

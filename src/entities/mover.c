@@ -1112,9 +1112,9 @@ void ProcessMoverRepaths(void) {
     }
 }
 
-void Tick(void) {
+void TickWithDt(float dt) {
     // Update game time (handles pause)
-    if (!UpdateTime(TICK_DT)) {
+    if (!UpdateTime(dt)) {
         return;  // Paused - skip simulation
     }
     
@@ -1164,6 +1164,10 @@ void Tick(void) {
     UpdateMovers();  // Already profiled internally (LOS, Avoid, Move)
     
     currentTick++;
+}
+
+void Tick(void) {
+    TickWithDt(TICK_DT);
 }
 
 void RunTicks(int count) {

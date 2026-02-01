@@ -7,6 +7,7 @@
 float gameSpeed = 1.0f;
 double gameTime = 0.0;
 float gameDeltaTime = TICK_DT;  // Default to one tick for systems called directly
+bool useFixedTimestep = true;   // Default to fixed 60Hz ticks
 
 // World clock
 float timeOfDay = 6.0f;        // Start at 6am

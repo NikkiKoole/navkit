@@ -75,6 +75,7 @@ extern bool showGraph;
 extern bool showEntrances;
 extern bool showChunkBoundaries;
 extern bool showMovers;
+extern bool usePixelPerfectMovers;
 extern bool showMoverPaths;
 extern bool showNeighborCounts;
 extern bool showOpenArea;

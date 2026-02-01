@@ -620,6 +620,8 @@ typedef struct {
 
 static CrossfaderState crossfader = {0, 1, 0.0f};
 static bool crossfaderEnabled = false;  // When enabled, blending is active
+static bool g_showHelpOverlay = false;  // Help tooltip overlay state
+static bool g_showSeqHelpOverlay = false;  // Sequencer help overlay state
 
 // Note: lerpf() already defined in synth.h
 
@@ -1346,29 +1348,194 @@ int main(void) {
         
         DrawTextEx(font, "PixelSynth Demo", (Vector2){20, 20}, 30, 1, WHITE);
         
-        // Controls info
-        DrawTextEx(font, "SFX: 1-6  Drums: 7-0,-,= or Numpad", (Vector2){20, 55}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "Notes: ASDFGHJKL + WERTYUIOP", (Vector2){20, 70}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, TextFormat("Octave: %d (Z/X)", currentOctave), (Vector2){20, 85}, 12, 1, YELLOW);
-        DrawTextEx(font, "Voice: V=vowel B=babble N=speak", (Vector2){20, 100}, 12, 1, LIGHTGRAY);
-        DrawTextEx(font, "SPACE = Play/Stop Sequencer", (Vector2){20, 115}, 12, 1, seq.playing ? GREEN : LIGHTGRAY);
-        
-        // Voice indicators
-        DrawTextEx(font, "Voices:", (Vector2){20, 135}, 12, 1, GRAY);
-        for (int i = 0; i < NUM_VOICES; i++) {
-            Color c = DARKGRAY;
-            if (voices[i].envStage == 4) c = ORANGE;
-            else if (voices[i].envStage > 0) c = GREEN;
-            DrawRectangle(75 + i * 18, 135, 14, 12, c);
+        // === TOP BAR: Transport, BPM, Groove, Scenes, Help ===
+        {
+            static bool grooveExpanded = false;
+            static bool scenesExpanded = false;
+            static bool polyExpanded = false;
+            Vector2 mouse = GetMousePosition();
+            
+            int topBarY = 25;
+            float x = 300;  // Start after "PixelSynth Demo" title
+            
+            // [?] Help button
+            {
+                const char* helpLabel = "[?]";
+                int w = MeasureText(helpLabel, 18);
+                Rectangle helpRect = {x, (float)topBarY, (float)w, 20};
+                bool helpHovered = CheckCollisionPointRec(mouse, helpRect);
+                DrawTextShadow(helpLabel, (int)x, topBarY, 18, helpHovered ? YELLOW : LIGHTGRAY);
+                g_showHelpOverlay = helpHovered;  // Set global for overlay drawing at end of frame
+                x += w + 10;
+            }
+            
+            // [Play] / [Stop] button
+            if (PushButton(x, topBarY, seq.playing ? "Stop" : "Play")) {
+                seq.playing = !seq.playing;
+                if (seq.playing) resetSequencer();
+            }
+            x += MeasureText(seq.playing ? "[Stop]" : "[Play]", 18) + 15;
+            
+            // BPM
+            DraggableFloat(x, topBarY, "BPM", &seq.bpm, 2.0f, 60.0f, 200.0f);
+            
+            // Fixed position for Groove/Scenes/Poly
+            x = 560;
+            
+            // [+] Groove section header (same style as columns)
+            if (SectionHeader(x, topBarY, "Groove", &grooveExpanded)) {
+                int gx = 330;  // Start position for expanded settings
+                int gy = topBarY + 20;  // Below the top bar
+                DraggableInt(gx, gy, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
+                DraggableInt(gx + 95, gy, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
+                DraggableInt(gx + 185, gy, "HH", &seq.dilla.hatNudge, 0.3f, -12, 12);
+                DraggableInt(gx + 250, gy, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
+                DraggableInt(gx + 325, gy, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
+                DraggableInt(gx + 415, gy, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
+            }
+            x += MeasureText("[+] Groove", 18) + 15;
+            
+            // [+] Scenes section header
+            if (SectionHeader(x, topBarY, "Scenes", &scenesExpanded)) {
+                int sx = 330;
+                int sy = topBarY + 20;
+                if (grooveExpanded) sy += 20;  // Move down if Groove is also expanded
+                
+                bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+                bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+                bool shiftHeld = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+                
+                // Scene buttons 1-8 using PushButton style
+                for (int i = 0; i < NUM_SCENES; i++) {
+                    bool isCurrent = (i == currentScene);
+                    bool hasContent = scenes[i].initialized;
+                    
+                    const char* label = TextFormat("%d", i + 1);
+                    int btnW = MeasureText(TextFormat("[%s]", label), 18);
+                    Rectangle btnRect = {(float)sx, (float)sy, (float)btnW, 20};
+                    bool isHovered = CheckCollisionPointRec(mouse, btnRect);
+                    
+                    // Draw button with clearer state-dependent colors
+                    Color textColor = GRAY;  // Empty slot
+                    if (isCurrent) textColor = GREEN;  // Currently active scene
+                    else if (hasContent) textColor = (Color){100, 150, 255, 255};  // Has content (blue)
+                    if (isHovered) textColor = YELLOW;
+                    
+                    DrawTextShadow(TextFormat("[%s]", label), sx, sy, 18, textColor);
+                    
+                    if (isHovered) {
+                        if (mouseClicked) {
+                            if (shiftHeld) {
+                                saveScene(i);  // Shift+Click = Save
+                            } else if (hasContent) {
+                                loadScene(i);  // Click = Load (if has content)
+                            }
+                            ui_consume_click();
+                        }
+                        if (rightClicked) {
+                            clearScene(i);  // Right-click = Clear
+                            ui_consume_click();
+                        }
+                    }
+                    sx += btnW + 10;  // More spacing between buttons
+                }
+                
+                sx += 15;
+                
+                // Save button
+                if (PushButton(sx, sy, "Save")) {
+                    if (currentScene >= 0) {
+                        saveScene(currentScene);
+                    } else {
+                        int slot = 0;
+                        for (int i = 0; i < NUM_SCENES; i++) {
+                            if (!scenes[i].initialized) { slot = i; break; }
+                        }
+                        saveScene(slot);
+                    }
+                }
+                sx += MeasureText("[Save]", 18) + 20;
+                
+                // XFade toggle and controls: [X] A:1 XFade: 0.50 B:2
+                ToggleBool(sx, sy, "X", &crossfaderEnabled);
+                sx += 40;
+                
+                DrawTextShadow(TextFormat("A:%d", crossfader.sceneA + 1), sx, sy + 2, 12, 
+                               scenes[crossfader.sceneA].initialized ? (Color){100, 150, 255, 255} : GRAY);
+                Rectangle aRect = {(float)sx, (float)sy, 25, 20};
+                if (CheckCollisionPointRec(mouse, aRect) && mouseClicked) {
+                    crossfader.sceneA = (crossfader.sceneA + 1) % NUM_SCENES;
+                    ui_consume_click();
+                }
+                sx += 30;
+                
+                DraggableFloat(sx, sy, "XFade", &crossfader.position, 0.02f, 0.0f, 1.0f);
+                sx += 110;
+                
+                DrawTextShadow(TextFormat("B:%d", crossfader.sceneB + 1), sx, sy + 2, 12,
+                               scenes[crossfader.sceneB].initialized ? (Color){255, 150, 100, 255} : GRAY);
+                Rectangle bRect = {(float)sx, (float)sy, 25, 20};
+                if (CheckCollisionPointRec(mouse, bRect) && mouseClicked) {
+                    crossfader.sceneB = (crossfader.sceneB + 1) % NUM_SCENES;
+                    ui_consume_click();
+                }
+            }
+            x += MeasureText("[-] Scenes", 18) + 15;
+            
+            // [+] Poly section header (per-track lengths for polyrhythm)
+            if (SectionHeader(x, topBarY, "Poly", &polyExpanded)) {
+                int px = 330;
+                int py = topBarY + 20;
+                if (grooveExpanded) py += 20;
+                if (scenesExpanded) py += 20;
+                
+                // Drum track lengths
+                const char* drumNames[] = {"Kick", "Snare", "HH", "Clap"};
+                for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+                    DraggableInt(px, py, drumNames[i], &seq.patterns[seq.currentPattern].drumTrackLength[i], 0.3f, 1, SEQ_MAX_STEPS);
+                    px += 80;
+                }
+                
+                px += 10;
+                
+                // Melody track lengths
+                const char* melodyNames[] = {"Bass", "Lead", "Chord"};
+                for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
+                    DraggableInt(px, py, melodyNames[i], &seq.patterns[seq.currentPattern].melodyTrackLength[i], 0.3f, 1, SEQ_MAX_STEPS);
+                    px += 85;
+                }
+            }
+            
+            // Audio stats (right side, stacked vertically)
+            double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
+            double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
+            int statsX = SCREEN_WIDTH - 80;
+            DrawTextShadow(TextFormat("%.1f%%", cpuPercent), statsX, topBarY, 10, GRAY);
+            DrawTextShadow(TextFormat("FPS: %d", GetFPS()), statsX, topBarY + 12, 10, GRAY);
+            
+            // Synth voice indicators (2 rows of 8)
+            int voiceY = topBarY + 26;
+            for (int i = 0; i < NUM_VOICES; i++) {
+                Color c = (Color){50, 50, 50, 255};
+                if (voices[i].envStage == 4) c = ORANGE;
+                else if (voices[i].envStage > 0) c = GREEN;
+                int row = i / 8;
+                int col = i % 8;
+                DrawRectangle(statsX + col * 7, voiceY + row * 8, 5, 6, c);
+            }
+            
+            // Drum voice indicators (2 rows of 8)
+            int drumVoiceY = voiceY + 20;
+            for (int i = 0; i < NUM_DRUM_VOICES; i++) {
+                Color c = (Color){50, 50, 50, 255};
+                if (drumVoices[i].active) c = (Color){255, 150, 50, 255};  // Orange for active drums
+                int row = i / 8;
+                int col = i % 8;
+                DrawRectangle(statsX + col * 7, drumVoiceY + row * 8, 5, 6, c);
+            }
         }
         
-        // Performance stats
-        double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
-        double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
-        DrawTextEx(font, TextFormat("Audio: %.0fus (%.1f%%)  FPS: %d", 
-                 audioTimeUs, cpuPercent, GetFPS()), (Vector2){20, 155}, 12, 1, GRAY);
-        
-        ToggleBool(20, 175, "SFX Randomize", &sfxRandomize);
+        ToggleBool(20, 68, "SFX Randomize", &sfxRandomize);
         
         // Speaking indicator
         if (speechQueue.active) {
@@ -1376,7 +1543,7 @@ int main(void) {
         }
         
         // === COLUMN 1: Wave Type + Wave-specific settings ===
-        UIColumn col1 = ui_column(250, 170, 20);
+        UIColumn col1 = ui_column(70, 220, 20);
         
         // Current patch pointer - UI edits patch directly, no globals sync
         SynthPatch *cp = &patches[selectedPatch];
@@ -1538,7 +1705,7 @@ int main(void) {
         }
         
         // === COLUMN 2: Synth (shared settings) ===
-        UIColumn col2 = ui_column(430, 20, 20);
+        UIColumn col2 = ui_column(250, 75, 20);
         
         {
             DrawTextEx(font, "[-] Synth", (Vector2){(float)col2.x, (float)col2.y}, 14, 1, WHITE);
@@ -1590,7 +1757,7 @@ int main(void) {
         }
         
         // === COLUMN 3: LFOs ===
-        UIColumn col3 = ui_column(610, 20, 20);
+        UIColumn col3 = ui_column(430, 125, 20);
         
         if (SectionHeader(col3.x, col3.y, "LFOs", &showLfoColumn)) {
             col3.y += 18;
@@ -1622,7 +1789,7 @@ int main(void) {
         }
         
         // === COLUMN 4: Drums ===
-        UIColumn col4 = ui_column(790, 20, 20);
+        UIColumn col4 = ui_column(610, 125, 20);
         
         if (SectionHeader(col4.x, col4.y, "Drums", &showDrumsColumn)) {
             col4.y += 18;
@@ -1721,7 +1888,7 @@ int main(void) {
         }
         
         // === COLUMN 5: Effects ===
-        UIColumn col5 = ui_column(970, 20, 20);
+        UIColumn col5 = ui_column(790, 125, 20);
         
         if (SectionHeader(col5.x, col5.y, "Effects", &showEffectsColumn)) {
             col5.y += 18;
@@ -1782,13 +1949,12 @@ int main(void) {
             Pattern *p = seqCurrentPattern();
             
             int gridX = 20;
-            int gridY = SCREEN_HEIGHT - 270;  // Moved up more for melodic tracks
-            int cellW = 24;
+            int gridY = SCREEN_HEIGHT - 240;  // Moved down 30px
+            int cellW = 32;  // Wider cells for better visibility
             int cellH = 20;
-            int labelW = 50;
+            int labelW = 80;  // Increased to fit volume slider
             int lengthW = 30;
             int patternBarY = gridY - 28;
-            int sceneBarY = patternBarY - 28;
             
             // === PATTERN BAR ===
             {
@@ -1810,7 +1976,7 @@ int main(void) {
                     bool isCurrent = (i == seq.currentPattern);
                     bool isQueued = (i == seq.nextPattern);
                     
-                    // Check if pattern has any content (drums or melody)
+                    // Check if pattern has any content
                     bool hasContent = false;
                     for (int t = 0; t < SEQ_DRUM_TRACKS && !hasContent; t++) {
                         for (int s = 0; s < SEQ_MAX_STEPS && !hasContent; s++) {
@@ -1856,149 +2022,27 @@ int main(void) {
                     }
                 }
                 
-                // Pattern controls
+                // Fill toggle
                 int ctrlX = patX + SEQ_NUM_PATTERNS * (patW + 4) + 20;
-                
-                if (PushButton(ctrlX, patternBarY, seq.playing ? "Stop" : "Play")) {
-                    seq.playing = !seq.playing;
-                    if (seq.playing) resetSequencer();
-                }
-                
-                DraggableFloat(ctrlX + 60, patternBarY, "BPM", &seq.bpm, 2.0f, 60.0f, 200.0f);
-                ToggleBool(ctrlX + 170, patternBarY, "Fill", &seq.fillMode);
+                ToggleBool(ctrlX, patternBarY, "Fill", &seq.fillMode);
                 
                 if (seq.nextPattern >= 0) {
-                    DrawTextShadow(TextFormat("-> %d", seq.nextPattern + 1), ctrlX + 240, patternBarY + 4, 12, YELLOW);
+                    DrawTextShadow(TextFormat("-> %d", seq.nextPattern + 1), ctrlX + 70, patternBarY + 4, 12, YELLOW);
                 }
             }
             
-            // === SCENE BAR ===
+            // Sequencer [?] help button
             {
-                int btnW = 24;
-                int btnH = 20;
-                int sceneX = gridX + labelW;
-                
-                DrawTextShadow("Scenes:", gridX, sceneBarY + 4, 12, YELLOW);
-                
+                int helpX = gridX + labelW + SEQ_MAX_STEPS * cellW + 10;
+                int helpY = gridY - 10;
+                const char* helpLabel = "[?]";
+                int w = MeasureText(helpLabel, 14);
+                Rectangle helpRect = {(float)helpX, (float)helpY, (float)w, 16};
                 Vector2 mouse = GetMousePosition();
-                bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
-                bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
-                bool shiftHeld = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-                
-                for (int i = 0; i < NUM_SCENES; i++) {
-                    int sx = sceneX + i * (btnW + 4);
-                    Rectangle sceneRect = {(float)sx, (float)sceneBarY, (float)btnW, (float)btnH};
-                    bool isHovered = CheckCollisionPointRec(mouse, sceneRect);
-                    bool isCurrent = (i == currentScene);
-                    bool hasContent = scenes[i].initialized;
-                    
-                    Color bgColor = {40, 40, 40, 255};
-                    if (isCurrent) bgColor = (Color){60, 60, 120, 255};  // Blue for active
-                    else if (hasContent) bgColor = (Color){50, 60, 70, 255};  // Subtle blue for saved
-                    
-                    if (isHovered) {
-                        bgColor.r = (unsigned char)fminf(255, bgColor.r + 30);
-                        bgColor.g = (unsigned char)fminf(255, bgColor.g + 30);
-                        bgColor.b = (unsigned char)fminf(255, bgColor.b + 30);
-                    }
-                    
-                    DrawRectangleRec(sceneRect, bgColor);
-                    DrawRectangleLinesEx(sceneRect, 1, isCurrent ? (Color){100, 100, 200, 255} : (hasContent ? LIGHTGRAY : (Color){80, 80, 80, 255}));
-                    
-                    Color textColor = isCurrent ? WHITE : (hasContent ? LIGHTGRAY : GRAY);
-                    DrawTextShadow(TextFormat("%d", i + 1), sx + 8, sceneBarY + 4, 12, textColor);
-                    
-                    if (isHovered) {
-                        if (mouseClicked) {
-                            if (shiftHeld) {
-                                saveScene(i);  // Shift+Click = Save
-                            } else if (hasContent) {
-                                loadScene(i);  // Click = Load (if has content)
-                            }
-                            ui_consume_click();
-                        }
-                        if (rightClicked) {
-                            clearScene(i);  // Right-click = Clear
-                            ui_consume_click();
-                        }
-                    }
-                }
-                
-                // Save button
-                int saveX = sceneX + NUM_SCENES * (btnW + 4) + 10;
-                if (PushButton(saveX, sceneBarY, "Save")) {
-                    if (currentScene >= 0) {
-                        saveScene(currentScene);  // Save to current scene
-                    } else {
-                        // Find first empty slot or use slot 0
-                        int slot = 0;
-                        for (int i = 0; i < NUM_SCENES; i++) {
-                            if (!scenes[i].initialized) { slot = i; break; }
-                        }
-                        saveScene(slot);
-                    }
-                }
-                
-                // Crossfader toggle and controls
-                int xfadeX = saveX + 50;
-                ToggleBool(xfadeX, sceneBarY, "XFade", &crossfaderEnabled);
-                
-                if (crossfaderEnabled) {
-                    xfadeX += 60;
-                    
-                    // A scene selector
-                    DrawTextShadow(TextFormat("A:%d", crossfader.sceneA + 1), xfadeX, sceneBarY + 4, 12, 
-                                   scenes[crossfader.sceneA].initialized ? (Color){100, 150, 255, 255} : GRAY);
-                    
-                    // Click to cycle A
-                    Rectangle aRect = {(float)xfadeX, (float)sceneBarY, 30, (float)btnH};
-                    if (CheckCollisionPointRec(mouse, aRect) && mouseClicked) {
-                        crossfader.sceneA = (crossfader.sceneA + 1) % NUM_SCENES;
-                        ui_consume_click();
-                    }
-                    xfadeX += 35;
-                    
-                    // Crossfader slider
-                    int sliderW = 120;
-                    int sliderH = 14;
-                    int sliderY = sceneBarY + 3;
-                    
-                    Rectangle sliderBg = {(float)xfadeX, (float)sliderY, (float)sliderW, (float)sliderH};
-                    DrawRectangleRec(sliderBg, (Color){30, 30, 30, 255});
-                    DrawRectangleLinesEx(sliderBg, 1, (Color){80, 80, 80, 255});
-                    
-                    // Filled portion based on position
-                    float fillW = crossfader.position * sliderW;
-                    DrawRectangle(xfadeX, sliderY, (int)fillW, sliderH, (Color){60, 80, 120, 255});
-                    
-                    // Center line
-                    DrawLine(xfadeX + sliderW/2, sliderY, xfadeX + sliderW/2, sliderY + sliderH, (Color){100, 100, 100, 255});
-                    
-                    // Handle
-                    float handleX = xfadeX + crossfader.position * sliderW - 4;
-                    DrawRectangle((int)handleX, sliderY - 2, 8, sliderH + 4, (Color){200, 200, 200, 255});
-                    
-                    // Slider interaction
-                    if (CheckCollisionPointRec(mouse, sliderBg) && IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                        float newPos = (mouse.x - xfadeX) / (float)sliderW;
-                        crossfader.position = fminf(1.0f, fmaxf(0.0f, newPos));
-                    }
-                    xfadeX += sliderW + 5;
-                    
-                    // B scene selector
-                    DrawTextShadow(TextFormat("B:%d", crossfader.sceneB + 1), xfadeX, sceneBarY + 4, 12,
-                                   scenes[crossfader.sceneB].initialized ? (Color){255, 150, 100, 255} : GRAY);
-                    
-                    // Click to cycle B
-                    Rectangle bRect = {(float)xfadeX, (float)sceneBarY, 30, (float)btnH};
-                    if (CheckCollisionPointRec(mouse, bRect) && mouseClicked) {
-                        crossfader.sceneB = (crossfader.sceneB + 1) % NUM_SCENES;
-                        ui_consume_click();
-                    }
-                }
+                bool helpHovered = CheckCollisionPointRec(mouse, helpRect);
+                DrawTextShadow(helpLabel, helpX, helpY, 14, helpHovered ? YELLOW : GRAY);
+                g_showSeqHelpOverlay = helpHovered;
             }
-            
-            DrawTextShadow("Drums: click=toggle, drag=vel | Melody: click=note, scroll=octave", gridX, gridY - 12, 12, GRAY);
             
             // Beat markers
             for (int i = 0; i < 4; i++) {
@@ -2006,7 +2050,7 @@ int main(void) {
                 DrawTextShadow(TextFormat("%d", i + 1), x, gridY - 10, 10, GRAY);
             }
             
-            DrawTextShadow("Len", gridX + labelW + SEQ_MAX_STEPS * cellW + 5, gridY - 10, 10, GRAY);
+
             
             Vector2 mouse = GetMousePosition();
             bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
@@ -2039,13 +2083,41 @@ int main(void) {
                 int trackLen = p->drumTrackLength[track];
                 
                 // Clickable track label to change drum sound
-                Rectangle labelRect = {(float)gridX, (float)y, (float)labelW - 4, (float)cellH - 2};
+                Rectangle labelRect = {(float)gridX, (float)y, 40, (float)cellH - 2};
                 bool labelHovered = CheckCollisionPointRec(mouse, labelRect);
                 Color labelColor = labelHovered ? WHITE : LIGHTGRAY;
                 DrawTextShadow(seq.drumTrackNames[track], gridX, y + 3, 12, labelColor);
                 
                 if (labelHovered && mouseWheel != 0) {
                     cycleDrumTrackSound(track, mouseWheel > 0 ? -1 : 1);
+                }
+                
+                // Track volume slider
+                {
+                    int volX = gridX + 38;
+                    int volW = labelW - 42;
+                    float vol = seq.trackVolume[track];
+                    Rectangle volRect = {(float)volX, (float)(y + 2), (float)volW, (float)(cellH - 4)};
+                    bool volHovered = CheckCollisionPointRec(mouse, volRect);
+                    
+                    // Background
+                    DrawRectangleRec(volRect, (Color){15, 15, 15, 255});
+                    // Fill based on volume
+                    int fillW = (int)((volW - 2) * vol);
+                    if (fillW > 0) {
+                        DrawRectangle(volX + 1, y + 3, fillW, cellH - 6, volHovered ? (Color){80, 200, 80, 255} : (Color){50, 150, 50, 255});
+                    }
+                    DrawRectangleLinesEx(volRect, 1, volHovered ? GREEN : (Color){40, 80, 40, 255});
+                    
+                    if (volHovered) {
+                        if (mouseDown) {
+                            float newVol = (mouse.x - volX) / (float)volW;
+                            seq.trackVolume[track] = clampf(newVol, 0.0f, 1.0f);
+                        }
+                        if (mouseWheel != 0) {
+                            seq.trackVolume[track] = clampf(vol + mouseWheel * 0.05f, 0.0f, 1.0f);
+                        }
+                    }
                 }
                 
                 for (int step = 0; step < SEQ_MAX_STEPS; step++) {
@@ -2061,9 +2133,11 @@ int main(void) {
                     bool hasPitchOffset = isActive && fabsf(p->drumPitch[track][step]) > 0.01f;
                     bool hasProb = isActive && p->drumProbability[track][step] < 1.0f;
                     bool hasCond = isActive && p->drumCondition[track][step] != COND_ALWAYS;
+                    bool hasFlam = isActive && seqGetPLock(p, track, step, PLOCK_FLAM_TIME, 0.0f) > 0.0f;
+                    bool hasNudge = isActive && fabsf(seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f)) > 0.1f;
                     
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){40, 40, 40, 255} : (Color){30, 30, 30, 255};
-                    if (!isInRange) bgColor = (Color){20, 20, 20, 255};
+                    if (!isInRange) bgColor = (Color){55, 55, 55, 255};  // Light gray for out-of-range
                     
                     Color cellColor = bgColor;
                     if (isActive) {
@@ -2104,6 +2178,25 @@ int main(void) {
                     if (hasCond) {
                         DrawRectangle(x + cellW - 6, y + cellH - 5, 3, 3, (Color){200, 150, 50, 255});
                     }
+                    if (hasFlam) {
+                        // Double-strike indicator (two small lines)
+                        DrawRectangle(x + 2, y + 2, 2, 5, (Color){255, 100, 180, 255});
+                        DrawRectangle(x + 5, y + 2, 2, 5, (Color){255, 100, 180, 200});
+                    }
+                    if (hasNudge) {
+                        // Timing arrow indicator
+                        float nudgeVal = seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f);
+                        Color nudgeColor = (Color){100, 180, 255, 255};
+                        int arrowX = x + cellW/2 - 2;
+                        int arrowY = y + cellH - 4;
+                        if (nudgeVal > 0) {
+                            // Late: arrow pointing right
+                            DrawTriangle((Vector2){arrowX, arrowY-2}, (Vector2){arrowX, arrowY+2}, (Vector2){arrowX+4, arrowY}, nudgeColor);
+                        } else {
+                            // Early: arrow pointing left
+                            DrawTriangle((Vector2){arrowX+4, arrowY-2}, (Vector2){arrowX+4, arrowY+2}, (Vector2){arrowX, arrowY}, nudgeColor);
+                        }
+                    }
                     
                     if (isHovered && isInRange && !isDragging) {
                         if (mouseClicked) {
@@ -2142,31 +2235,11 @@ int main(void) {
                     }
                 }
                 
-                // Length control
-                int lenX = gridX + labelW + SEQ_MAX_STEPS * cellW + 5;
-                Rectangle lenRect = {(float)lenX, (float)y, (float)lengthW - 2, (float)cellH - 2};
-                bool lenHovered = CheckCollisionPointRec(mouse, lenRect);
-                
-                DrawRectangleRec(lenRect, (Color){50, 50, 50, 255});
-                DrawRectangleLinesEx(lenRect, 1, (Color){80, 80, 80, 255});
-                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 3, 10, lenHovered ? YELLOW : LIGHTGRAY);
-                
-                if (lenHovered) {
-                    if (mouseClicked) {
-                        p->drumTrackLength[track] = (p->drumTrackLength[track] % SEQ_MAX_STEPS) + 1;
-                        ui_consume_click();
-                    }
-                    if (rightClicked) {
-                        p->drumTrackLength[track]--;
-                        if (p->drumTrackLength[track] < 1) p->drumTrackLength[track] = SEQ_MAX_STEPS;
-                        ui_consume_click();
-                    }
-                }
             }
             
             // Separator line between drums and melody
             int sepY = gridY + SEQ_DRUM_TRACKS * cellH + 2;
-            DrawLine(gridX, sepY, gridX + labelW + SEQ_MAX_STEPS * cellW + lengthW, sepY, (Color){80, 80, 80, 255});
+            DrawLine(gridX, sepY, gridX + labelW + SEQ_MAX_STEPS * cellW, sepY, (Color){80, 80, 80, 255});
             
             // === MELODIC TRACKS ===
             int melodyStartY = sepY + 4;
@@ -2184,7 +2257,7 @@ int main(void) {
                 int trackLen = p->melodyTrackLength[track];
                 
                 // Clickable label to select patch
-                Rectangle labelRect = {(float)gridX, (float)y, (float)labelW - 4, (float)cellH - 2};
+                Rectangle labelRect = {(float)gridX, (float)y, 40, (float)cellH - 2};
                 bool labelHovered = CheckCollisionPointRec(mouse, labelRect);
                 Color labelColor = labelHovered ? WHITE : melodyTrackColors[track];
                 DrawTextShadow(seq.melodyTrackNames[track], gridX, y + 3, 12, labelColor);
@@ -2192,6 +2265,39 @@ int main(void) {
                 if (labelHovered && mouseClicked) {
                     selectedPatch = melodyTrackToPatch[track];
                     ui_consume_click();
+                }
+                
+                // Track volume slider
+                {
+                    int absTrack = SEQ_DRUM_TRACKS + track;
+                    int volX = gridX + 38;
+                    int volW = labelW - 42;
+                    float vol = seq.trackVolume[absTrack];
+                    Rectangle volRect = {(float)volX, (float)(y + 2), (float)volW, (float)(cellH - 4)};
+                    bool volHovered = CheckCollisionPointRec(mouse, volRect);
+                    
+                    // Background
+                    DrawRectangleRec(volRect, (Color){15, 15, 15, 255});
+                    // Fill based on volume (use track color tint)
+                    int fillW = (int)((volW - 2) * vol);
+                    if (fillW > 0) {
+                        Color fillColor = melodyTrackColors[track];
+                        fillColor.r = (unsigned char)fminf(255, fillColor.r * (volHovered ? 1.5f : 1.2f));
+                        fillColor.g = (unsigned char)fminf(255, fillColor.g * (volHovered ? 1.5f : 1.2f));
+                        fillColor.b = (unsigned char)fminf(255, fillColor.b * (volHovered ? 1.5f : 1.2f));
+                        DrawRectangle(volX + 1, y + 3, fillW, cellH - 6, fillColor);
+                    }
+                    DrawRectangleLinesEx(volRect, 1, volHovered ? WHITE : (Color){50, 50, 60, 255});
+                    
+                    if (volHovered) {
+                        if (mouseDown) {
+                            float newVol = (mouse.x - volX) / (float)volW;
+                            seq.trackVolume[absTrack] = clampf(newVol, 0.0f, 1.0f);
+                        }
+                        if (mouseWheel != 0) {
+                            seq.trackVolume[absTrack] = clampf(vol + mouseWheel * 0.05f, 0.0f, 1.0f);
+                        }
+                    }
                 }
                 
                 for (int step = 0; step < SEQ_MAX_STEPS; step++) {
@@ -2210,7 +2316,7 @@ int main(void) {
                     bool hasAccent = hasNote && p->melodyAccent[track][step];
                     
                     Color bgColor = (step / 4) % 2 == 0 ? (Color){35, 38, 45, 255} : (Color){28, 30, 38, 255};
-                    if (!isInRange) bgColor = (Color){20, 20, 22, 255};
+                    if (!isInRange) bgColor = (Color){55, 55, 58, 255};  // Light gray for out-of-range
                     
                     Color cellColor = bgColor;
                     if (hasNote) {
@@ -2318,27 +2424,6 @@ int main(void) {
                         }
                     }
                 }
-                
-                // Length control
-                int lenX = gridX + labelW + SEQ_MAX_STEPS * cellW + 5;
-                Rectangle lenRect = {(float)lenX, (float)y, (float)lengthW - 2, (float)cellH - 2};
-                bool lenHovered = CheckCollisionPointRec(mouse, lenRect);
-                
-                DrawRectangleRec(lenRect, (Color){45, 45, 50, 255});
-                DrawRectangleLinesEx(lenRect, 1, (Color){70, 70, 80, 255});
-                DrawTextShadow(TextFormat("%d", trackLen), lenX + 8, y + 3, 10, lenHovered ? YELLOW : LIGHTGRAY);
-                
-                if (lenHovered) {
-                    if (mouseClicked) {
-                        p->melodyTrackLength[track] = (p->melodyTrackLength[track] % SEQ_MAX_STEPS) + 1;
-                        ui_consume_click();
-                    }
-                    if (rightClicked) {
-                        p->melodyTrackLength[track]--;
-                        if (p->melodyTrackLength[track] < 1) p->melodyTrackLength[track] = SEQ_MAX_STEPS;
-                        ui_consume_click();
-                    }
-                }
             }
             
             // === STEP INSPECTOR PANEL ===
@@ -2352,7 +2437,7 @@ int main(void) {
             
             if (showDrumInspector) {
                 int inspX = gridX;
-                int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
+                int inspW = labelW + SEQ_MAX_STEPS * cellW;
                 int absTrack = selectedTrack;  // Drums use tracks 0-3 directly
                 bool hasPLocks = seqHasPLocks(p, absTrack, selectedStep);
                 int inspH = hasPLocks ? 70 : 45;  // Taller when p-locks present
@@ -2400,7 +2485,7 @@ int main(void) {
                 
                 // P-lock: Decay (maps to drum-specific decay param)
                 {
-                    int px = inspX + 60;
+                    int px = inspX + 65;
                     float decay = seqGetPLock(p, absTrack, selectedStep, PLOCK_DECAY, -1.0f);
                     bool isLocked = (decay >= 0.0f);
                     if (!isLocked) {
@@ -2436,7 +2521,7 @@ int main(void) {
                 
                 // P-lock: Pitch offset
                 {
-                    int px = inspX + 145;
+                    int px = inspX + 160;
                     float pitch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
                     bool isLocked = (pitch > -99.0f);
                     if (!isLocked) pitch = 0.0f;
@@ -2463,7 +2548,7 @@ int main(void) {
                 
                 // P-lock: Volume
                 {
-                    int px = inspX + 220;
+                    int px = inspX + 245;
                     float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
                     bool isLocked = (vol >= 0.0f);
                     if (!isLocked) vol = p->drumVelocity[selectedTrack][selectedStep];
@@ -2490,7 +2575,7 @@ int main(void) {
                 
                 // P-lock: Tone (brightness/character)
                 {
-                    int px = inspX + 295;
+                    int px = inspX + 330;
                     float tone = seqGetPLock(p, absTrack, selectedStep, PLOCK_TONE, -1.0f);
                     bool isLocked = (tone >= 0.0f);
                     if (!isLocked) {
@@ -2527,7 +2612,7 @@ int main(void) {
                 // P-lock: Punch (kick: punch pitch, snare: snappy, clap: spread)
                 // Only show for kick, snare, clap (tracks 0, 1, 3)
                 if (selectedTrack == 0 || selectedTrack == 1 || selectedTrack == 3) {
-                    int px = inspX + 380;
+                    int px = inspX + 425;
                     float punch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PUNCH, -1.0f);
                     bool isLocked = (punch >= 0.0f);
                     if (!isLocked) {
@@ -2566,9 +2651,70 @@ int main(void) {
                     }
                 }
                 
+                // P-lock: Nudge (per-step timing offset)
+                {
+                    int px = inspX + 525;
+                    float nudge = seqGetPLock(p, absTrack, selectedStep, PLOCK_TIME_NUDGE, -100.0f);
+                    bool isLocked = (nudge > -99.0f);
+                    if (!isLocked) nudge = 0.0f;
+                    
+                    DrawTextShadow("Nudge:", px, row2Y, 10, isLocked ? (Color){100, 180, 255, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 40), (float)(row2Y - 2), 40, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){100, 180, 255, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(TextFormat("%+.0f", nudge), px + 48, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            nudge = fminf(12.0f, fmaxf(-12.0f, nudge + wheel * 1.0f));
+                            seqSetPLock(p, absTrack, selectedStep, PLOCK_TIME_NUDGE, nudge);
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_TIME_NUDGE);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
+                // P-lock: Flam (ghost note before main hit)
+                {
+                    int px = inspX + 615;
+                    float flamTime = seqGetPLock(p, absTrack, selectedStep, PLOCK_FLAM_TIME, 0.0f);
+                    float flamVel = seqGetPLock(p, absTrack, selectedStep, PLOCK_FLAM_VELOCITY, 0.5f);
+                    bool isLocked = (flamTime > 0.0f);
+                    
+                    DrawTextShadow("Flam:", px, row2Y, 10, isLocked ? (Color){255, 100, 180, 255} : DARKGRAY);
+                    Rectangle rect = {(float)(px + 32), (float)(row2Y - 2), 35, 14};
+                    bool hovered = CheckCollisionPointRec(mouse, rect);
+                    DrawRectangleRec(rect, hovered ? (Color){50, 50, 60, 255} : (Color){35, 35, 45, 255});
+                    DrawRectangleLinesEx(rect, 1, isLocked ? (Color){255, 100, 180, 255} : (Color){60, 60, 70, 255});
+                    DrawTextShadow(isLocked ? TextFormat("%.0f", flamTime) : "off", px + 36, row2Y, 9, isLocked ? WHITE : DARKGRAY);
+                    
+                    if (hovered) {
+                        float wheel = GetMouseWheelMove();
+                        if (fabsf(wheel) > 0.1f) {
+                            if (!isLocked && wheel > 0) {
+                                // Turn on flam with default 30ms
+                                seqSetPLock(p, absTrack, selectedStep, PLOCK_FLAM_TIME, 30.0f);
+                                seqSetPLock(p, absTrack, selectedStep, PLOCK_FLAM_VELOCITY, 0.5f);
+                            } else if (isLocked) {
+                                flamTime = fminf(80.0f, fmaxf(10.0f, flamTime + wheel * 5.0f));
+                                seqSetPLock(p, absTrack, selectedStep, PLOCK_FLAM_TIME, flamTime);
+                            }
+                        }
+                        if (rightClicked) {
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_FLAM_TIME);
+                            seqClearPLock(p, absTrack, selectedStep, PLOCK_FLAM_VELOCITY);
+                            ui_consume_click();
+                        }
+                    }
+                }
+                
                 // Clear all p-locks button
                 if (hasPLocks) {
-                    int clearX = inspX + 480;
+                    int clearX = inspX + 700;
                     Rectangle clearRect = {(float)clearX, (float)(row2Y - 2), 50, 14};
                     bool clearHovered = CheckCollisionPointRec(mouse, clearRect);
                     DrawRectangleRec(clearRect, clearHovered ? (Color){80, 50, 50, 255} : (Color){50, 35, 35, 255});
@@ -2583,7 +2729,7 @@ int main(void) {
             
             if (showMelodyInspector) {
                 int inspX = gridX;
-                int inspW = labelW + SEQ_MAX_STEPS * cellW + lengthW;
+                int inspW = labelW + SEQ_MAX_STEPS * cellW;
                 int absTrack = SEQ_DRUM_TRACKS + selectedTrack;  // Absolute track index for P-locks
                 bool hasPLocks = seqHasPLocks(p, absTrack, selectedStep);
                 int inspH = hasPLocks ? 70 : 45;  // Taller when p-locks present
@@ -2706,7 +2852,7 @@ int main(void) {
                 
                 // P-lock: Cutoff
                 {
-                    int px = inspX + 60;
+                    int px = inspX + 65;
                     float cutoff = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_CUTOFF, -1.0f);
                     bool isLocked = (cutoff >= 0.0f);
                     if (!isLocked) cutoff = patch->filterCutoff;
@@ -2733,7 +2879,7 @@ int main(void) {
                 
                 // P-lock: Resonance
                 {
-                    int px = inspX + 145;
+                    int px = inspX + 160;
                     float reso = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_RESO, -1.0f);
                     bool isLocked = (reso >= 0.0f);
                     if (!isLocked) reso = patch->filterResonance;
@@ -2760,7 +2906,7 @@ int main(void) {
                 
                 // P-lock: Filter Env
                 {
-                    int px = inspX + 220;
+                    int px = inspX + 245;
                     float fenv = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_ENV, -1.0f);
                     bool isLocked = (fenv >= 0.0f);
                     if (!isLocked) fenv = patch->filterEnvAmt;
@@ -2787,7 +2933,7 @@ int main(void) {
                 
                 // P-lock: Decay
                 {
-                    int px = inspX + 305;
+                    int px = inspX + 340;
                     float decay = seqGetPLock(p, absTrack, selectedStep, PLOCK_DECAY, -1.0f);
                     bool isLocked = (decay >= 0.0f);
                     if (!isLocked) decay = patch->decay;
@@ -2814,7 +2960,7 @@ int main(void) {
                 
                 // P-lock: Pitch offset
                 {
-                    int px = inspX + 380;
+                    int px = inspX + 430;
                     float pitch = seqGetPLock(p, absTrack, selectedStep, PLOCK_PITCH_OFFSET, -100.0f);
                     bool isLocked = (pitch > -99.0f);
                     if (!isLocked) pitch = 0.0f;
@@ -2841,7 +2987,7 @@ int main(void) {
                 
                 // P-lock: Volume
                 {
-                    int px = inspX + 455;
+                    int px = inspX + 520;
                     float vol = seqGetPLock(p, absTrack, selectedStep, PLOCK_VOLUME, -1.0f);
                     bool isLocked = (vol >= 0.0f);
                     if (!isLocked) vol = p->melodyVelocity[selectedTrack][selectedStep];
@@ -2868,7 +3014,7 @@ int main(void) {
                 
                 // Clear all p-locks button
                 if (hasPLocks) {
-                    int clearX = inspX + 530;
+                    int clearX = inspX + 610;
                     Rectangle clearRect = {(float)clearX, (float)(row2Y - 2), 50, 14};
                     bool clearHovered = CheckCollisionPointRec(mouse, clearRect);
                     DrawRectangleRec(clearRect, clearHovered ? (Color){80, 50, 50, 255} : (Color){50, 35, 35, 255});
@@ -2881,28 +3027,47 @@ int main(void) {
                 }
             }
             
-            // Dilla timing controls
-            int dillaX = gridX + labelW;
-            int dillaY = inspY + 52;
-            
-            DrawTextShadow("Timing:", dillaX, dillaY, 12, YELLOW);
-            
-            DraggableInt(dillaX + 60, dillaY, "Kick", &seq.dilla.kickNudge, 0.3f, -12, 12);
-            DraggableInt(dillaX + 150, dillaY, "Snare", &seq.dilla.snareDelay, 0.3f, -12, 12);
-            DraggableInt(dillaX + 250, dillaY, "HH", &seq.dilla.hatNudge, 0.3f, -12, 12);
-            DraggableInt(dillaX + 330, dillaY, "Clap", &seq.dilla.clapDelay, 0.3f, -12, 12);
-            DraggableInt(dillaX + 420, dillaY, "Swing", &seq.dilla.swing, 0.3f, 0, 12);
-            DraggableInt(dillaX + 520, dillaY, "Jitter", &seq.dilla.jitter, 0.3f, 0, 6);
-            
-            if (PushButton(dillaX + 610, dillaY, "Reset")) {
-                seqResetTiming();
-            }
+            // Dilla timing controls moved to top bar [Groove] dropdown
         }
         
         // Keep wave type in sync with selector
         cp->waveType = selectedWave;
         
         ui_update();
+        
+        // Help tooltip overlay (drawn last so it's on top of everything)
+        if (g_showHelpOverlay) {
+            int helpBoxX = 430;
+            int helpBoxY = 47;
+            DrawRectangle(helpBoxX, helpBoxY, 250, 110, (Color){25, 25, 30, 255});
+            DrawRectangleLinesEx((Rectangle){(float)helpBoxX, (float)helpBoxY, 250, 110}, 2, (Color){100, 100, 120, 255});
+            DrawTextShadow("SFX: 1-6  Drums: 7-0,-,=", helpBoxX + 10, helpBoxY + 10, 12, LIGHTGRAY);
+            DrawTextShadow("Notes: ASDFGHJKL + WERTYUIOP", helpBoxX + 10, helpBoxY + 26, 12, LIGHTGRAY);
+            DrawTextShadow(TextFormat("Octave: %d (Z/X)", currentOctave), helpBoxX + 10, helpBoxY + 42, 12, YELLOW);
+            DrawTextShadow("Voice: V=vowel B=babble N=speak", helpBoxX + 10, helpBoxY + 58, 12, LIGHTGRAY);
+            DrawTextShadow("SPACE = Play/Stop", helpBoxX + 10, helpBoxY + 74, 12, LIGHTGRAY);
+            DrawTextShadow("Drag values, scroll to adjust", helpBoxX + 10, helpBoxY + 90, 12, GRAY);
+        }
+        
+        // Sequencer help overlay
+        if (g_showSeqHelpOverlay) {
+            int helpBoxX = 20;
+            int helpBoxY = SCREEN_HEIGHT - 420;
+            int helpW = 320;
+            int helpH = 145;
+            DrawRectangle(helpBoxX, helpBoxY, helpW, helpH, (Color){25, 25, 30, 255});
+            DrawRectangleLinesEx((Rectangle){(float)helpBoxX, (float)helpBoxY, (float)helpW, (float)helpH}, 2, (Color){100, 100, 120, 255});
+            DrawTextShadow("SEQUENCER", helpBoxX + 10, helpBoxY + 8, 12, ORANGE);
+            DrawTextShadow("Drums: click=toggle, drag=velocity", helpBoxX + 10, helpBoxY + 26, 11, LIGHTGRAY);
+            DrawTextShadow("Drums: shift+drag=pitch", helpBoxX + 10, helpBoxY + 40, 11, LIGHTGRAY);
+            DrawTextShadow("Melody: click=add note, scroll=pitch", helpBoxX + 10, helpBoxY + 54, 11, LIGHTGRAY);
+            DrawTextShadow("Melody: right-click=delete note", helpBoxX + 10, helpBoxY + 68, 11, LIGHTGRAY);
+            DrawTextShadow("Pattern: click=queue, shift+click=copy", helpBoxX + 10, helpBoxY + 86, 11, (Color){100, 200, 100, 255});
+            DrawTextShadow("Pattern: right-click=clear", helpBoxX + 10, helpBoxY + 100, 11, (Color){100, 200, 100, 255});
+            DrawTextShadow("P-Lock: scroll to edit, right-click=clear", helpBoxX + 10, helpBoxY + 118, 11, (Color){255, 180, 100, 255});
+            DrawTextShadow("Scene: click=load, shift+click=save", helpBoxX + 10, helpBoxY + 132, 11, (Color){100, 150, 255, 255});
+        }
+        
         EndDrawing();
     }
     

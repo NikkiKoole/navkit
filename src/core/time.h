@@ -8,6 +8,7 @@
 extern float gameSpeed;        // Multiplier: 1.0 = real-time, 10.0 = 10x speed, 0 = paused
 extern double gameTime;        // Total elapsed game-seconds (double for precision over long sessions)
 extern float gameDeltaTime;    // Game-seconds elapsed this tick
+extern bool useFixedTimestep;  // true = fixed 60Hz ticks, false = variable timestep (smoother but less deterministic)
 
 // World clock
 extern float timeOfDay;        // 0.0-24.0 hours

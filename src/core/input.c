@@ -44,8 +44,14 @@ static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
     CellType wallType = (selectedMaterial == 2) ? CELL_WOOD_WALL : CELL_WALL;
     int count = 0;
+    int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
+            // Don't allow walls on workshop tiles
+            if (IsWorkshopTile(dx, dy, z)) {
+                skipped++;
+                continue;
+            }
             if (grid[z][dy][dx] != wallType) {
                 grid[z][dy][dx] = wallType;
                 MarkChunkDirty(dx, dy, z);
@@ -72,6 +78,9 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
     if (count > 0) {
         const char* matName = (selectedMaterial == 2) ? "wood" : "stone";
         AddMessage(TextFormat("Placed %d %s wall%s", count, matName, count > 1 ? "s" : ""), GREEN);
+    }
+    if (skipped > 0) {
+        AddMessage(TextFormat("Skipped %d cell%s (workshop)", skipped, skipped > 1 ? "s" : ""), ORANGE);
     }
 }
 
@@ -828,18 +837,23 @@ void HandleInput(void) {
             int x = (int)gp.x, y = (int)gp.y;
             if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
                 if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-                    CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
-                    if (grid[z][y][x] != wallType) {
-                        DisplaceWater(x, y, z);
-                        grid[z][y][x] = wallType;
-                        MarkChunkDirty(x, y, z);
-                        for (int i = 0; i < moverCount; i++) {
-                            Mover* m = &movers[i];
-                            if (!m->active) continue;
-                            for (int j = m->pathIndex; j >= 0; j--) {
-                                if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
-                                    m->needsRepath = true;
-                                    break;
+                    // Don't allow walls on workshop tiles
+                    if (IsWorkshopTile(x, y, z)) {
+                        // Skip silently in quick-edit mode
+                    } else {
+                        CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
+                        if (grid[z][y][x] != wallType) {
+                            DisplaceWater(x, y, z);
+                            grid[z][y][x] = wallType;
+                            MarkChunkDirty(x, y, z);
+                            for (int i = 0; i < moverCount; i++) {
+                                Mover* m = &movers[i];
+                                if (!m->active) continue;
+                                for (int j = m->pathIndex; j >= 0; j--) {
+                                    if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
+                                        m->needsRepath = true;
+                                        break;
+                                    }
                                 }
                             }
                         }

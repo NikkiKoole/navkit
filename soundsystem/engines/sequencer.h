@@ -84,11 +84,15 @@ typedef enum {
     PLOCK_PULSE_WIDTH,      // PWM width (melody)
     PLOCK_TONE,             // Tone/brightness (drums: per-drum tone, melody: alias for cutoff)
     PLOCK_PUNCH,            // Punch amount (kick: punchPitch depth, snare: snappy amount)
+    PLOCK_TIME_NUDGE,       // Per-step timing offset in ticks (-12 to +12)
+    PLOCK_FLAM_TIME,        // Flam timing in ms (0 = off, 10-50ms typical)
+    PLOCK_FLAM_VELOCITY,    // Flam ghost note velocity multiplier (0.3-0.7 typical)
     PLOCK_COUNT
 } PLockParam;
 
 static const char* plockParamNames[] = {
-    "Cutoff", "Reso", "FiltEnv", "Decay", "Volume", "Pitch", "PW", "Tone", "Punch"
+    "Cutoff", "Reso", "FiltEnv", "Decay", "Volume", "Pitch", "PW", "Tone", "Punch",
+    "Nudge", "FlamTime", "FlamVel"
 };
 
 // A single parameter lock entry
@@ -176,6 +180,15 @@ typedef struct {
     
     // Dilla timing
     DillaTiming dilla;
+    
+    // Per-track volume (0.0-1.0, default 1.0)
+    float trackVolume[SEQ_TOTAL_TRACKS];
+    
+    // Flam state for pending ghost hits
+    bool flamPending[SEQ_DRUM_TRACKS];
+    float flamTime[SEQ_DRUM_TRACKS];       // Time until flam triggers (in seconds)
+    float flamVelocity[SEQ_DRUM_TRACKS];   // Velocity for flam hit
+    float flamPitch[SEQ_DRUM_TRACKS];      // Pitch for flam hit
     
     // Track configuration
     const char* drumTrackNames[SEQ_DRUM_TRACKS];
@@ -388,13 +401,18 @@ static int calcDrumTriggerTick(int track) {
     int step = seq.drumStep[track];
     int baseTick = 0;
     
-    // Apply per-instrument offset
+    // Apply per-instrument offset (Dilla timing)
     switch (track) {
         case 0: baseTick += seq.dilla.kickNudge; break;
         case 1: baseTick += seq.dilla.snareDelay; break;
         case 2: baseTick += seq.dilla.hatNudge; break;
         case 3: baseTick += seq.dilla.clapDelay; break;
     }
+    
+    // Apply per-step nudge (p-lock)
+    Pattern *p = seqCurrentPattern();
+    float stepNudge = seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f);
+    baseTick += (int)stepNudge;
     
     // Apply swing to off-beats (odd steps)
     if (step % 2 == 1) {
@@ -517,6 +535,19 @@ static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn,
     memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
     memset(seq.melodyStepPlayCount, 0, sizeof(seq.melodyStepPlayCount));
     
+    // Initialize per-track volumes to 1.0 (full volume)
+    for (int i = 0; i < SEQ_TOTAL_TRACKS; i++) {
+        seq.trackVolume[i] = 1.0f;
+    }
+    
+    // Clear flam state
+    for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
+        seq.flamPending[i] = false;
+        seq.flamTime[i] = 0.0f;
+        seq.flamVelocity[i] = 0.0f;
+        seq.flamPitch[i] = 1.0f;
+    }
+    
     // Setup drum track names
     seq.drumTrackNames[0] = "Kick";
     seq.drumTrackNames[1] = "Snare";
@@ -583,6 +614,21 @@ static void updateSequencer(float dt) {
     float tickDuration = 60.0f / seq.bpm / (float)SEQ_PPQ;
     float stepDuration = tickDuration * SEQ_TICKS_PER_STEP;
     
+    // Process pending flams (time-based, outside tick loop)
+    for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
+        if (seq.flamPending[track]) {
+            seq.flamTime[track] -= dt;
+            if (seq.flamTime[track] <= 0.0f) {
+                // Trigger the main hit (flam ghost was already triggered)
+                if (seq.drumTriggers[track]) {
+                    seq.drumTriggers[track](seq.flamVelocity[track] * seq.trackVolume[track], 
+                                            seq.flamPitch[track]);
+                }
+                seq.flamPending[track] = false;
+            }
+        }
+    }
+    
     seq.tickTimer += dt;
     
     while (seq.tickTimer >= tickDuration) {
@@ -606,12 +652,32 @@ static void updateSequencer(float dt) {
                     bool passedCond = seqEvalDrumCondition(track, step);
                     
                     if (passedProb && passedCond) {
+                        // Prepare p-locks for this step (drums use tracks 0-3)
+                        seqPreparePLocks(p, track, step);
+                        
                         // Convert pitch offset (-1 to +1) to multiplier (0.5 to 2.0)
                         float pitchMod = powf(2.0f, p->drumPitch[track][step]);
-                        if (seq.drumTriggers[track]) {
-                            // Prepare p-locks for this step (drums use tracks 0-3)
-                            seqPreparePLocks(p, track, step);
-                            seq.drumTriggers[track](p->drumVelocity[track][step], pitchMod);
+                        float velocity = p->drumVelocity[track][step] * seq.trackVolume[track];
+                        
+                        // Check for flam effect
+                        float flamTimeMs = plockValue(PLOCK_FLAM_TIME, 0.0f);
+                        
+                        if (flamTimeMs > 0.0f && seq.drumTriggers[track]) {
+                            // Flam: trigger ghost note now (softer), main hit later
+                            float flamVelMult = plockValue(PLOCK_FLAM_VELOCITY, 0.5f);
+                            float ghostVel = velocity * flamVelMult;
+                            
+                            // Trigger ghost note immediately
+                            seq.drumTriggers[track](ghostVel, pitchMod);
+                            
+                            // Schedule main hit
+                            seq.flamPending[track] = true;
+                            seq.flamTime[track] = flamTimeMs / 1000.0f;  // Convert ms to seconds
+                            seq.flamVelocity[track] = p->drumVelocity[track][step];  // Store original, will apply trackVolume on trigger
+                            seq.flamPitch[track] = pitchMod;
+                        } else if (seq.drumTriggers[track]) {
+                            // Normal trigger (no flam)
+                            seq.drumTriggers[track](velocity, pitchMod);
                         }
                     }
                     seq.drumTriggered[track] = true;
@@ -692,7 +758,9 @@ static void updateSequencer(float dt) {
                         bool accent = p->melodyAccent[track][step];
                         // Prepare p-locks for this step (melody uses tracks 4-6, offset by SEQ_DRUM_TRACKS)
                         seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, step);
-                        seq.melodyTriggers[track](note, p->melodyVelocity[track][step], gateTime, slide, accent);
+                        // Apply track volume to velocity
+                        float velocity = p->melodyVelocity[track][step] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
+                        seq.melodyTriggers[track](note, velocity, gateTime, slide, accent);
                     }
                     seq.melodyCurrentNote[track] = note;
                     seq.melodyGateRemaining[track] = gateSteps * SEQ_TICKS_PER_STEP;
@@ -816,6 +884,100 @@ static void seqResetTiming(void) {
     seq.dilla.clapDelay = 3;
     seq.dilla.swing = 6;
     seq.dilla.jitter = 2;
+}
+
+// ============================================================================
+// TRACK VOLUME
+// ============================================================================
+
+// Set volume for a track (0 = kick, 1 = snare, 2 = hihat, 3 = clap, 4 = bass, 5 = lead, 6 = chord)
+static void seqSetTrackVolume(int track, float volume) {
+    if (track < 0 || track >= SEQ_TOTAL_TRACKS) return;
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 1.0f) volume = 1.0f;
+    seq.trackVolume[track] = volume;
+}
+
+// Get volume for a track
+static float seqGetTrackVolume(int track) {
+    if (track < 0 || track >= SEQ_TOTAL_TRACKS) return 1.0f;
+    return seq.trackVolume[track];
+}
+
+// Convenience: set drum track volume by index (0-3)
+static void seqSetDrumVolume(int drumTrack, float volume) {
+    seqSetTrackVolume(drumTrack, volume);
+}
+
+// Convenience: set melody track volume by index (0-2)
+static void seqSetMelodyVolume(int melodyTrack, float volume) {
+    seqSetTrackVolume(SEQ_DRUM_TRACKS + melodyTrack, volume);
+}
+
+// ============================================================================
+// PER-STEP NUDGE (Dilla-style per-step timing)
+// ============================================================================
+
+// Set timing nudge for a specific step (in ticks, -12 to +12 typical)
+static void seqSetStepNudge(int track, int step, float nudgeTicks) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    // Clamp nudge to reasonable range
+    if (nudgeTicks < -12.0f) nudgeTicks = -12.0f;
+    if (nudgeTicks > 12.0f) nudgeTicks = 12.0f;
+    Pattern *p = seqCurrentPattern();
+    seqSetPLock(p, track, step, PLOCK_TIME_NUDGE, nudgeTicks);
+}
+
+// Clear timing nudge for a specific step
+static void seqClearStepNudge(int track, int step) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    seqClearPLock(p, track, step, PLOCK_TIME_NUDGE);
+}
+
+// Get nudge value for a step (returns 0 if not set)
+static float seqGetStepNudge(int track, int step) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return 0.0f;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;
+    Pattern *p = seqCurrentPattern();
+    return seqGetPLock(p, track, step, PLOCK_TIME_NUDGE, 0.0f);
+}
+
+// ============================================================================
+// FLAM EFFECT
+// ============================================================================
+
+// Set flam for a specific step (time in ms, velocity multiplier 0-1)
+static void seqSetStepFlam(int track, int step, float timeMs, float velocityMult) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    // Clamp values
+    if (timeMs < 0.0f) timeMs = 0.0f;
+    if (timeMs > 100.0f) timeMs = 100.0f;
+    if (velocityMult < 0.0f) velocityMult = 0.0f;
+    if (velocityMult > 1.0f) velocityMult = 1.0f;
+    Pattern *p = seqCurrentPattern();
+    seqSetPLock(p, track, step, PLOCK_FLAM_TIME, timeMs);
+    seqSetPLock(p, track, step, PLOCK_FLAM_VELOCITY, velocityMult);
+}
+
+// Clear flam for a specific step
+static void seqClearStepFlam(int track, int step) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    seqClearPLock(p, track, step, PLOCK_FLAM_TIME);
+    seqClearPLock(p, track, step, PLOCK_FLAM_VELOCITY);
+}
+
+// Check if step has flam
+static bool seqHasStepFlam(int track, int step) {
+    if (track < 0 || track >= SEQ_DRUM_TRACKS) return false;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return false;
+    Pattern *p = seqCurrentPattern();
+    return seqGetPLock(p, track, step, PLOCK_FLAM_TIME, 0.0f) > 0.0f;
 }
 
 // ============================================================================

@@ -331,6 +331,8 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Movers", &showMovers);
         y += 22;
+        ToggleBool(x, y, "Pixel Perfect", &usePixelPerfectMovers);
+        y += 22;
         ToggleBool(x, y, "Show Paths", &showMoverPaths);
         y += 22;
         ToggleBool(x, y, "String Pulling", &useStringPulling);
@@ -766,6 +768,10 @@ void DrawUI(void) {
         if (PushButton(x, y, "Normal (60s)")) dayLength = 60.0f;
         y += 22;
         if (PushButton(x, y, "Slow (12m)")) dayLength = 720.0f;
+        y += 22;
+        
+        // Timestep mode
+        ToggleBool(x, y, "Fixed Timestep", &useFixedTimestep);
     }
     y += 22;
 
