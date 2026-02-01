@@ -23,6 +23,7 @@
 #include "../engines/drums.h"    // 808-style drum machine
 #include "../engines/effects.h"  // Distortion, delay, tape, bitcrusher, chorus
 #include "../engines/sequencer.h" // Drum step sequencer
+#include "../engines/rhythm_patterns.h" // Classic rhythm pattern generator
 #include "../engines/sampler.h"  // WAV sample playback
 #include "../engines/sample_data.h" // Embedded samples (run `make sample_embed` to regenerate)
 #include "../engines/piku_presets.h" // Pikuniku-style "sillycore" presets
@@ -1659,6 +1660,10 @@ static bool showEffectsColumn = true;
 static bool showTapeFxColumn = true;
 static bool showMixerStrip = true;
 
+// Rhythm pattern generator state
+static RhythmGenerator rhythmGen;
+static bool rhythmGenInitialized = false;
+
 // Waveform names for UI
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
 static int selectedWave = 0;
@@ -2927,6 +2932,99 @@ int main(void) {
                 
                 if (seq.nextPattern >= 0) {
                     DrawTextShadow(TextFormat("-> %d", seq.nextPattern + 1), ctrlX + 70, patternBarY + 4, 12, YELLOW);
+                }
+                
+                // Rhythm Generator controls
+                ctrlX += 100;
+                
+                // Initialize rhythm generator if needed
+                if (!rhythmGenInitialized) {
+                    initRhythmGenerator(&rhythmGen);
+                    rhythmGenInitialized = true;
+                }
+                
+                // Style selector
+                DrawTextShadow("Rhythm:", ctrlX, patternBarY + 4, 12, PINK);
+                ctrlX += 55;
+                
+                {
+                    int styleIdx = (int)rhythmGen.style;
+                    const char* styleName = rhythmStyleNames[styleIdx];
+                    int styleW = MeasureText(TextFormat("[%s]", styleName), 12);
+                    Rectangle styleRect = {(float)ctrlX, (float)patternBarY, (float)styleW + 4, 20};
+                    bool styleHovered = CheckCollisionPointRec(mouse, styleRect);
+                    
+                    DrawTextShadow(TextFormat("[%s]", styleName), ctrlX, patternBarY + 4, 12, 
+                                   styleHovered ? YELLOW : WHITE);
+                    
+                    if (styleHovered) {
+                        if (mouseClicked) {
+                            rhythmGen.style = (RhythmStyle)((styleIdx + 1) % RHYTHM_COUNT);
+                            ui_consume_click();
+                        }
+                        if (rightClicked) {
+                            rhythmGen.style = (RhythmStyle)((styleIdx + RHYTHM_COUNT - 1) % RHYTHM_COUNT);
+                            ui_consume_click();
+                        }
+                        // Mouse wheel to cycle styles
+                        float wheel = GetMouseWheelMove();
+                        if (wheel != 0) {
+                            int newStyle = styleIdx + (wheel > 0 ? -1 : 1);
+                            if (newStyle < 0) newStyle = RHYTHM_COUNT - 1;
+                            if (newStyle >= RHYTHM_COUNT) newStyle = 0;
+                            rhythmGen.style = (RhythmStyle)newStyle;
+                        }
+                    }
+                    ctrlX += styleW + 10;
+                }
+                
+                // Variation selector
+                {
+                    int varIdx = (int)rhythmGen.variation;
+                    const char* varName = rhythmVariationNames[varIdx];
+                    int varW = MeasureText(TextFormat("[%s]", varName), 12);
+                    Rectangle varRect = {(float)ctrlX, (float)patternBarY, (float)varW + 4, 20};
+                    bool varHovered = CheckCollisionPointRec(mouse, varRect);
+                    
+                    DrawTextShadow(TextFormat("[%s]", varName), ctrlX, patternBarY + 4, 12,
+                                   varHovered ? YELLOW : LIGHTGRAY);
+                    
+                    if (varHovered) {
+                        if (mouseClicked) {
+                            rhythmGen.variation = (RhythmVariation)((varIdx + 1) % RHYTHM_VAR_COUNT);
+                            ui_consume_click();
+                        }
+                        if (rightClicked) {
+                            rhythmGen.variation = (RhythmVariation)((varIdx + RHYTHM_VAR_COUNT - 1) % RHYTHM_VAR_COUNT);
+                            ui_consume_click();
+                        }
+                    }
+                    ctrlX += varW + 10;
+                }
+                
+                // Generate button
+                {
+                    const char* genLabel = "[Gen]";
+                    int genW = MeasureText(genLabel, 12);
+                    Rectangle genRect = {(float)ctrlX, (float)patternBarY, (float)genW, 20};
+                    bool genHovered = CheckCollisionPointRec(mouse, genRect);
+                    
+                    DrawTextShadow(genLabel, ctrlX, patternBarY + 4, 12, 
+                                   genHovered ? GREEN : (Color){100, 200, 100, 255});
+                    
+                    if (genHovered && mouseClicked) {
+                        applyRhythmPattern(seqCurrentPattern(), &rhythmGen);
+                        // Optionally apply the style's recommended swing
+                        seq.dilla.swing = getRhythmSwing(&rhythmGen);
+                        ui_consume_click();
+                    }
+                    ctrlX += genW + 8;
+                }
+                
+                // BPM suggestion hint
+                {
+                    int suggestedBpm = getRhythmRecommendedBpm(&rhythmGen);
+                    DrawTextShadow(TextFormat("~%d", suggestedBpm), ctrlX, patternBarY + 4, 10, GRAY);
                 }
             }
             
