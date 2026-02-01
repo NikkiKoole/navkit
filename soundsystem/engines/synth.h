@@ -8,9 +8,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <string.h>
-// Note: raylib.h must be included before this header for LoadWave/UnloadWave
-// This header assumes raylib types (Wave) are already available
-
 #ifndef PI
 #define PI 3.14159265358979323846f
 #endif
@@ -747,45 +744,6 @@ static void _ensureSynthCtx(void) {
 #define birdAmDepth (synthCtx->birdAmDepth)
 #define birdHarmonics (synthCtx->birdHarmonics)
 #define sfxRandomize (synthCtx->sfxRandomize)
-
-// Load a .wav file as SCW
-static bool loadSCW(const char* path, const char* name) {
-    _ensureSynthCtx();
-    if (scwCount >= SCW_MAX_SLOTS) return false;
-    
-    Wave wav = LoadWave(path);
-    if (wav.data == NULL) return false;
-    
-    int samples = wav.frameCount;
-    if (samples > SCW_MAX_SIZE) samples = SCW_MAX_SIZE;
-    
-    SCWTable* table = &scwTables[scwCount];
-    
-    if (wav.sampleSize == 16) {
-        short* src = (short*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = (float)src[i] / 32768.0f;
-        }
-    } else if (wav.sampleSize == 8) {
-        unsigned char* src = (unsigned char*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = ((float)src[i] - 128.0f) / 128.0f;
-        }
-    } else if (wav.sampleSize == 32) {
-        float* src = (float*)wav.data;
-        for (int i = 0; i < samples; i++) {
-            table->data[i] = src[i];
-        }
-    }
-    
-    table->size = samples;
-    table->loaded = true;
-    table->name = name;
-    scwCount++;
-    
-    UnloadWave(wav);
-    return true;
-}
 
 // ============================================================================
 // HELPERS
