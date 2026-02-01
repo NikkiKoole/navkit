@@ -2772,12 +2772,19 @@ static const VoiceInitParams VOICE_INIT_PERC = {
 static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *params, bool *outIsGlide) {
     int voiceIdx;
     bool isGlide = false;
+    bool isMonoRetrigger = false;  // Retrigger during release - keep some state
     
     if (params->supportsMono && monoMode) {
         voiceIdx = monoVoiceIdx;
-        if (synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
+        Voice *monoV = &synthVoices[voiceIdx];
+        if (monoV->envStage > 0 && monoV->envStage < 4) {
+            // Active note (not released) - do legato glide
             isGlide = true;
+        } else if (monoV->envStage == 4 && monoV->envLevel > 0.001f) {
+            // In release but still audible - retrigger but preserve phase for smooth transition
+            isMonoRetrigger = true;
         }
+        // envStage == 0: normal retrigger
     } else {
         voiceIdx = findVoice();
     }
@@ -2795,7 +2802,10 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
         v->baseFrequency = freq;
         v->targetFrequency = freq;
         v->glideRate = 0.0f;
-        v->phase = 0.0f;
+        // Preserve phase on mono retrigger to avoid clicks, reset otherwise
+        if (!isMonoRetrigger) {
+            v->phase = 0.0f;
+        }
     }
     
     v->volume = noteVolume;
@@ -2821,7 +2831,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     
     if (!isGlide) {
         v->envPhase = 0.0f;
-        v->envLevel = 0.0f;
+        // On mono retrigger, preserve some envelope level for smooth transition
+        // This prevents the "note didn't trigger" feeling
+        if (isMonoRetrigger && v->envLevel > 0.0f) {
+            // Keep current level but restart attack from there
+            v->envLevel = fmaxf(v->envLevel, 0.1f);  // At least 10% to be audible
+        } else {
+            v->envLevel = 0.0f;
+        }
         v->envStage = 1;
         v->filterLp = oldFilterLp * 0.3f;
         v->filterBp = 0.0f;
