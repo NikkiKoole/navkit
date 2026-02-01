@@ -63,7 +63,6 @@ static void useSoundSystem(SoundSystem* ss) {
 // Silence unused function warnings by referencing all public APIs
 static inline void soundsystem_suppress_warnings(void) {
     // synth.h
-    (void)loadSCW;
     (void)processVoice;
     (void)releaseNote;
     (void)playNote;

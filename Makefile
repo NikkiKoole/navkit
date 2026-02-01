@@ -33,6 +33,9 @@ test_time_SRC        := tests/test_time.c tests/test_unity.c
 test_time_specs_SRC  := tests/test_time_specs.c tests/test_unity.c
 test_high_speed_SRC  := tests/test_high_speed.c tests/test_unity.c
 
+# Soundsystem test - standalone, no test_unity.c needed
+test_soundsystem_SRC := tests/test_soundsystem.c
+
 all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
 $(BINDIR):
@@ -102,8 +105,13 @@ test_high_speed: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_high_speed
 
+# Soundsystem tests - standalone audio library tests
+test_soundsystem: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
+	./$(BINDIR)/test_soundsystem
+
 # Run all tests in standard (DF-style) mode - this is the default
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
 # Run all tests in legacy mode
 test-legacy: $(BINDIR)
@@ -202,4 +210,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 path-sound bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 path-sound bench bench_jobs

@@ -2904,7 +2904,7 @@ static const int scaleIntervals[SCALE_COUNT][12] = {
 static const char* rootNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 
 // Constrain a MIDI note to the current scale
-// Returns the nearest note in the scale (prefers rounding down to root)
+// Returns the nearest note in the scale (checks below first as tiebreaker)
 static int constrainToScale(int midiNote) {
     if (!scaleLockEnabled || scaleType == SCALE_CHROMATIC) return midiNote;
     
