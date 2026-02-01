@@ -11,6 +11,20 @@
 #define PI 3.14159265358979323846f
 #endif
 
+// Audio constants
+#define SILENCE_THRESHOLD 0.001f      // Amplitude below which voice is deactivated
+#define ONE_OVER_E 0.368f             // 1/e for exponential decay normalization
+#define KICK_CLICK_DURATION 0.01f     // Kick click transient time in seconds
+
+// Hihat frequency constants
+#define HIHAT_BASE_FREQ 320.0f        // 808-style hihat base frequency (Hz)
+#define HIHAT_TONE_RANGE 200.0f       // Hihat tone adjustment range (Hz)
+#define CR78_HIHAT_BASE_FREQ 400.0f   // CR-78 style hihat base frequency (Hz)
+#define CR78_HIHAT_TONE_RANGE 300.0f  // CR-78 hihat tone adjustment range (Hz)
+
+// CR-78 constants
+#define CR78_KICK_DAMP_RANGE 0.95f    // CR-78 kick resonance damping range
+
 // Helper: use P-lock value if set (>= 0), otherwise use default
 #define PLOCK_OR(plock, def) ((plock) >= 0.0f ? (plock) : (def))
 
@@ -128,13 +142,106 @@ typedef struct {
 } DrumParams;
 
 // ============================================================================
-// STATE
+// DRUMS CONTEXT (all drum state in one struct)
 // ============================================================================
 
 #define NUM_DRUM_VOICES 16  // 12 original + 4 CR-78
-static DrumVoice drumVoices[NUM_DRUM_VOICES];
-static DrumParams drumParams;
-static float drumVolume = 0.6f;
+
+typedef struct DrumsContext {
+    DrumVoice voices[NUM_DRUM_VOICES];
+    DrumParams params;
+    float volume;
+} DrumsContext;
+
+// Initialize a drums context with default values
+static void initDrumsContext(DrumsContext* ctx) {
+    memset(ctx, 0, sizeof(DrumsContext));
+    ctx->volume = 0.6f;
+    
+    // Kick - punchy 808 style
+    ctx->params.kickPitch = 50.0f;
+    ctx->params.kickDecay = 0.5f;
+    ctx->params.kickPunchPitch = 150.0f;
+    ctx->params.kickPunchDecay = 0.04f;
+    ctx->params.kickClick = 0.3f;
+    ctx->params.kickTone = 0.5f;
+    
+    // Snare
+    ctx->params.snarePitch = 180.0f;
+    ctx->params.snareDecay = 0.2f;
+    ctx->params.snareSnappy = 0.6f;
+    ctx->params.snareTone = 0.5f;
+    
+    // Clap
+    ctx->params.clapDecay = 0.3f;
+    ctx->params.clapTone = 0.6f;
+    ctx->params.clapSpread = 0.012f;
+    
+    // Hihats
+    ctx->params.hhDecayClosed = 0.05f;
+    ctx->params.hhDecayOpen = 0.4f;
+    ctx->params.hhTone = 0.7f;
+    
+    // Toms
+    ctx->params.tomPitch = 1.0f;
+    ctx->params.tomDecay = 0.3f;
+    ctx->params.tomPunchDecay = 0.05f;
+    
+    // Rimshot
+    ctx->params.rimPitch = 1700.0f;
+    ctx->params.rimDecay = 0.03f;
+    
+    // Cowbell
+    ctx->params.cowbellPitch = 560.0f;
+    ctx->params.cowbellDecay = 0.3f;
+    
+    // Clave
+    ctx->params.clavePitch = 2500.0f;
+    ctx->params.claveDecay = 0.02f;
+    
+    // Maracas
+    ctx->params.maracasDecay = 0.07f;
+    ctx->params.maracasTone = 0.8f;
+    
+    // CR-78 Kick
+    ctx->params.cr78KickPitch = 80.0f;
+    ctx->params.cr78KickDecay = 0.25f;
+    ctx->params.cr78KickResonance = 0.9f;
+    
+    // CR-78 Snare
+    ctx->params.cr78SnarePitch = 220.0f;
+    ctx->params.cr78SnareDecay = 0.15f;
+    ctx->params.cr78SnareSnappy = 0.5f;
+    
+    // CR-78 Hihat
+    ctx->params.cr78HHDecay = 0.08f;
+    ctx->params.cr78HHTone = 0.6f;
+    
+    // CR-78 Metallic beat
+    ctx->params.cr78MetalPitch = 800.0f;
+    ctx->params.cr78MetalDecay = 0.15f;
+}
+
+// ============================================================================
+// GLOBAL CONTEXT (for backward compatibility)
+// ============================================================================
+
+static DrumsContext _drumsCtx;
+static DrumsContext* drumsCtx = &_drumsCtx;
+static bool _drumsCtxInitialized = false;
+
+// Ensure context is initialized (called internally)
+static void _ensureDrumsCtx(void) {
+    if (!_drumsCtxInitialized) {
+        initDrumsContext(drumsCtx);
+        _drumsCtxInitialized = true;
+    }
+}
+
+// Backward-compatible macros that reference the global context
+#define drumVoices (drumsCtx->voices)
+#define drumParams (drumsCtx->params)
+#define drumVolume (drumsCtx->volume)
 
 // ============================================================================
 // HELPERS
@@ -149,76 +256,15 @@ static float drumNoise(unsigned int *state) {
 // Exponential decay envelope
 static float expDecay(float time, float decay) {
     if (decay <= 0.0f) return 0.0f;
-    return expf(-time / (decay * 0.368f));  // 0.368 = 1/e
+    return expf(-time / (decay * ONE_OVER_E));
 }
 
 // ============================================================================
-// INIT
+// INIT (backward compatibility wrapper)
 // ============================================================================
 
 static void initDrumParams(void) {
-    // Kick - punchy 808 style
-    drumParams.kickPitch = 50.0f;
-    drumParams.kickDecay = 0.5f;
-    drumParams.kickPunchPitch = 150.0f;
-    drumParams.kickPunchDecay = 0.04f;
-    drumParams.kickClick = 0.3f;
-    drumParams.kickTone = 0.5f;
-    
-    // Snare
-    drumParams.snarePitch = 180.0f;
-    drumParams.snareDecay = 0.2f;
-    drumParams.snareSnappy = 0.6f;
-    drumParams.snareTone = 0.5f;
-    
-    // Clap
-    drumParams.clapDecay = 0.3f;
-    drumParams.clapTone = 0.6f;
-    drumParams.clapSpread = 0.012f;
-    
-    // Hihats
-    drumParams.hhDecayClosed = 0.05f;
-    drumParams.hhDecayOpen = 0.4f;
-    drumParams.hhTone = 0.7f;
-    
-    // Toms
-    drumParams.tomPitch = 1.0f;
-    drumParams.tomDecay = 0.3f;
-    drumParams.tomPunchDecay = 0.05f;
-    
-    // Rimshot
-    drumParams.rimPitch = 1700.0f;
-    drumParams.rimDecay = 0.03f;
-    
-    // Cowbell
-    drumParams.cowbellPitch = 560.0f;
-    drumParams.cowbellDecay = 0.3f;
-    
-    // Clave
-    drumParams.clavePitch = 2500.0f;
-    drumParams.claveDecay = 0.02f;
-    
-    // Maracas
-    drumParams.maracasDecay = 0.07f;
-    drumParams.maracasTone = 0.8f;
-    
-    // CR-78 Kick - higher pitch, tighter, bridged-T character
-    drumParams.cr78KickPitch = 80.0f;
-    drumParams.cr78KickDecay = 0.25f;
-    drumParams.cr78KickResonance = 0.9f;
-    
-    // CR-78 Snare - resonant ping + noise
-    drumParams.cr78SnarePitch = 220.0f;
-    drumParams.cr78SnareDecay = 0.15f;
-    drumParams.cr78SnareSnappy = 0.5f;
-    
-    // CR-78 Hihat
-    drumParams.cr78HHDecay = 0.08f;
-    drumParams.cr78HHTone = 0.6f;
-    
-    // CR-78 Metallic beat - 3 square waves
-    drumParams.cr78MetalPitch = 800.0f;
-    drumParams.cr78MetalDecay = 0.15f;
+    _ensureDrumsCtx();
 }
 
 // ============================================================================
@@ -227,6 +273,7 @@ static void initDrumParams(void) {
 
 // Trigger a drum with velocity and pitch
 static void triggerDrumFull(DrumType type, float velocity, float pitchMod) {
+    _ensureDrumsCtx();
     DrumVoice *dv = &drumVoices[type];
     dv->active = true;
     dv->time = 0.0f;
@@ -292,9 +339,9 @@ static float processKick(DrumVoice *dv, float dt) {
     
     // Click transient
     float click = 0.0f;
-    if (p->kickClick > 0.0f && dv->time < 0.01f) {
+    if (p->kickClick > 0.0f && dv->time < KICK_CLICK_DURATION) {
         unsigned int ns = (unsigned int)(dv->time * 1000000);
-        click = drumNoise(&ns) * (1.0f - dv->time / 0.01f) * p->kickClick;
+        click = drumNoise(&ns) * (1.0f - dv->time / KICK_CLICK_DURATION) * p->kickClick;
     }
     
     float sample = osc + click;
@@ -303,7 +350,7 @@ static float processKick(DrumVoice *dv, float dt) {
     }
     
     float amp = expDecay(dv->time, decay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.8f;
 }
@@ -345,7 +392,7 @@ static float processSnare(DrumVoice *dv, float dt) {
     float noiseAmp = expDecay(dv->time, decay);
     float amp = toneAmp * (1.0f - snappy * 0.5f) + noiseAmp * snappy * 0.5f;
     
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return mix * amp * 0.7f;
 }
@@ -381,7 +428,7 @@ static float processClap(DrumVoice *dv, float dt) {
     dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
     sample = (dv->filterLp - dv->filterHp) * 2.0f;
     
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.6f;
 }
@@ -399,7 +446,7 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     static const float hhFreqRatios[6] = {
         1.0f, 1.4471f, 1.6170f, 1.9265f, 2.5028f, 2.6637f
     };
-    float baseFreq = (320.0f + hhTone * 200.0f) * dv->pitchMod;
+    float baseFreq = (HIHAT_BASE_FREQ + hhTone * HIHAT_TONE_RANGE) * dv->pitchMod;
     
     float sample = 0.0f;
     for (int i = 0; i < 6; i++) {
@@ -417,7 +464,7 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     
     float amp = expDecay(dv->time, decay);
     
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.4f;
 }
@@ -442,7 +489,7 @@ static float processTom(DrumVoice *dv, float dt, float pitchMult) {
                 (4.0f * fabsf(dv->phase - 0.5f) - 1.0f) * 0.2f;
     
     float amp = expDecay(dv->time, p->tomDecay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return osc * amp * 0.6f;
 }
@@ -463,7 +510,7 @@ static float processRimshot(DrumVoice *dv, float dt) {
     float click = drumNoise(&ns) * expDecay(dv->time, 0.005f);
     
     float amp = expDecay(dv->time, p->rimDecay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return (osc * 0.5f + click * 0.5f) * amp * 0.5f;
 }
@@ -493,7 +540,7 @@ static float processCowbell(DrumVoice *dv, float dt) {
     sample = dv->filterLp;
     
     float amp = expDecay(dv->time, p->cowbellDecay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.4f;
 }
@@ -511,7 +558,7 @@ static float processClave(DrumVoice *dv, float dt) {
     float osc = sinf(dv->phase * 2.0f * PI);
     
     float amp = expDecay(dv->time, p->claveDecay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return osc * amp * 0.5f;
 }
@@ -531,7 +578,7 @@ static float processMaracas(DrumVoice *dv, float dt) {
     sample = sample - dv->filterHp;
     
     float amp = expDecay(dv->time, p->maracasDecay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.25f;
 }
@@ -562,7 +609,7 @@ static float processCR78Kick(DrumVoice *dv, float dt) {
     
     float pitch = p->cr78KickPitch * dv->pitchMod;
     float decay = PLOCK_OR(dv->plockDecay, p->cr78KickDecay);
-    float damping = 1.0f - p->cr78KickResonance * 0.95f;
+    float damping = 1.0f - p->cr78KickResonance * CR78_KICK_DAMP_RANGE;
     
     // Slight pitch drop (less dramatic than 808)
     float pitchEnv = expDecay(dv->time, 0.02f);
@@ -580,7 +627,7 @@ static float processCR78Kick(DrumVoice *dv, float dt) {
     }
     
     float amp = expDecay(dv->time, decay * damping);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.7f;
 }
@@ -612,7 +659,7 @@ static float processCR78Snare(DrumVoice *dv, float dt) {
     float sample = ping * pingAmp * (1.0f - snappy * 0.6f) +
                    (dv->filterLp - dv->filterHp) * 1.5f * noiseAmp * snappy;
     
-    if (noiseAmp < 0.001f && pingAmp < 0.001f) dv->active = false;
+    if (noiseAmp < SILENCE_THRESHOLD && pingAmp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * 0.6f;
 }
@@ -626,7 +673,7 @@ static float processCR78Hihat(DrumVoice *dv, float dt) {
     
     float decay = PLOCK_OR(dv->plockDecay, p->cr78HHDecay);
     float tone = PLOCK_OR(dv->plockTone, p->cr78HHTone);
-    float baseFreq = (400.0f + tone * 300.0f) * dv->pitchMod;
+    float baseFreq = (CR78_HIHAT_BASE_FREQ + tone * CR78_HIHAT_TONE_RANGE) * dv->pitchMod;
     
     static const float ratios[3] = {1.0f, 1.34f, 1.68f};
     float sample = squareOscillators(dv, baseFreq, dt, ratios, 3, NULL);
@@ -642,7 +689,7 @@ static float processCR78Hihat(DrumVoice *dv, float dt) {
     sample = (dv->filterLp - dv->filterHp) * 2.5f;
     
     float amp = expDecay(dv->time, decay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.35f;
 }
@@ -666,7 +713,7 @@ static float processCR78Metal(DrumVoice *dv, float dt) {
     sample = dv->filterLp * 2.0f + sample * 0.3f;
     
     float amp = expDecay(dv->time, decay);
-    if (amp < 0.001f) dv->active = false;
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return sample * amp * 0.4f;
 }
@@ -677,6 +724,7 @@ static float processCR78Metal(DrumVoice *dv, float dt) {
 
 // Process all drum voices and return mixed sample
 static float processDrums(float dt) {
+    _ensureDrumsCtx();
     float sample = 0.0f;
     
     sample += processKick(&drumVoices[DRUM_KICK], dt) * drumVoices[DRUM_KICK].velocity;

@@ -409,6 +409,9 @@ typedef struct {
 #define SCW_MAX_SIZE 2048
 #define SCW_MAX_SLOTS 256
 
+// Filter constants
+#define FILTER_RESONANCE_SCALE 0.98f  // Resonance multiplier (range: 1.0 no reso to ~0.02 self-oscillating)
+
 typedef struct {
     float data[SCW_MAX_SIZE];
     int size;
@@ -416,11 +419,338 @@ typedef struct {
     const char* name;
 } SCWTable;
 
-static SCWTable scwTables[SCW_MAX_SLOTS];
-static int scwCount = 0;
+// ============================================================================
+// SYNTH CONTEXT (all synth state in one struct)
+// ============================================================================
+
+#define NUM_VOICES 16
+
+typedef struct SynthContext {
+    // Voices
+    Voice voices[NUM_VOICES];
+    float masterVolume;
+    
+    // Wavetables
+    SCWTable scwTables[SCW_MAX_SLOTS];
+    int scwCount;
+    
+    // Noise generator state
+    unsigned int noiseState;
+    
+    // Scale lock state
+    bool scaleLockEnabled;
+    int scaleRoot;           // 0=C, 1=C#, 2=D, etc.
+    int scaleType;           // ScaleType enum value
+    
+    // Mono mode state
+    bool monoMode;
+    float glideTime;
+    int monoVoiceIdx;
+    
+    // Global note parameters (used by playNote, etc.)
+    float noteAttack;
+    float noteDecay;
+    float noteSustain;
+    float noteRelease;
+    float noteVolume;
+    float notePulseWidth;
+    float notePwmRate;
+    float notePwmDepth;
+    float noteVibratoRate;
+    float noteVibratoDepth;
+    float noteFilterCutoff;
+    float noteFilterResonance;
+    float noteFilterEnvAmt;
+    float noteFilterEnvAttack;
+    float noteFilterEnvDecay;
+    float noteFilterLfoRate;
+    float noteFilterLfoDepth;
+    int noteFilterLfoShape;
+    float noteResoLfoRate;
+    float noteResoLfoDepth;
+    int noteResoLfoShape;
+    float noteAmpLfoRate;
+    float noteAmpLfoDepth;
+    int noteAmpLfoShape;
+    float notePitchLfoRate;
+    float notePitchLfoDepth;
+    int notePitchLfoShape;
+    int noteScwIndex;
+    
+    // Voice synthesis parameters
+    float voiceFormantShift;
+    float voiceBreathiness;
+    float voiceBuzziness;
+    float voiceSpeed;
+    float voicePitch;
+    int voiceVowel;
+    bool voiceConsonant;
+    float voiceConsonantAmt;
+    bool voiceNasal;
+    float voiceNasalAmt;
+    float voicePitchEnv;
+    float voicePitchEnvTime;
+    float voicePitchEnvCurve;
+    
+    // Pluck tweakables
+    float pluckBrightness;
+    float pluckDamping;
+    float pluckDamp;
+    
+    // Additive tweakables
+    int additivePreset;
+    float additiveBrightness;
+    float additiveShimmer;
+    float additiveInharmonicity;
+    
+    // Mallet tweakables
+    int malletPreset;
+    float malletStiffness;
+    float malletHardness;
+    float malletStrikePos;
+    float malletResonance;
+    float malletTremolo;
+    float malletTremoloRate;
+    float malletDamp;
+    
+    // Granular tweakables
+    int granularScwIndex;
+    float granularGrainSize;
+    float granularDensity;
+    float granularPosition;
+    float granularPosRandom;
+    float granularPitch;
+    float granularPitchRandom;
+    float granularAmpRandom;
+    float granularSpread;
+    bool granularFreeze;
+    
+    // FM tweakables
+    float fmModRatio;
+    float fmModIndex;
+    float fmFeedback;
+    
+    // PD tweakables
+    int pdWaveType;
+    float pdDistortion;
+    
+    // Membrane tweakables
+    int membranePreset;
+    float membraneDamping;
+    float membraneStrike;
+    float membraneBend;
+    float membraneBendDecay;
+    
+    // Bird tweakables
+    int birdType;
+    float birdChirpRange;
+    float birdTrillRate;
+    float birdTrillDepth;
+    float birdAmRate;
+    float birdAmDepth;
+    float birdHarmonics;
+    
+    // SFX randomization
+    bool sfxRandomize;
+} SynthContext;
+
+// Initialize a synth context with default values
+static void initSynthContext(SynthContext* ctx) {
+    memset(ctx, 0, sizeof(SynthContext));
+    
+    ctx->masterVolume = 0.5f;
+    ctx->noiseState = 12345;
+    ctx->scaleType = 1;  // SCALE_MAJOR
+    
+    // Default note parameters
+    ctx->noteAttack = 0.01f;
+    ctx->noteDecay = 0.1f;
+    ctx->noteSustain = 0.5f;
+    ctx->noteRelease = 0.3f;
+    ctx->noteVolume = 0.5f;
+    ctx->notePulseWidth = 0.5f;
+    ctx->notePwmRate = 3.0f;
+    ctx->noteVibratoRate = 5.0f;
+    ctx->noteFilterCutoff = 1.0f;
+    ctx->noteFilterEnvAttack = 0.01f;
+    ctx->noteFilterEnvDecay = 0.2f;
+    ctx->notePitchLfoRate = 5.0f;
+    
+    // Voice defaults
+    ctx->voiceFormantShift = 1.0f;
+    ctx->voiceBreathiness = 0.1f;
+    ctx->voiceBuzziness = 0.6f;
+    ctx->voiceSpeed = 10.0f;
+    ctx->voicePitch = 1.0f;
+    ctx->voiceConsonantAmt = 0.5f;
+    ctx->voiceNasalAmt = 0.5f;
+    ctx->voicePitchEnvTime = 0.15f;
+    
+    // Pluck defaults
+    ctx->pluckBrightness = 0.5f;
+    ctx->pluckDamping = 0.996f;
+    
+    // Additive defaults
+    ctx->additivePreset = 1;  // ADDITIVE_PRESET_ORGAN
+    ctx->additiveBrightness = 0.5f;
+    
+    // Mallet defaults
+    ctx->malletStiffness = 0.3f;
+    ctx->malletHardness = 0.5f;
+    ctx->malletStrikePos = 0.25f;
+    ctx->malletResonance = 0.7f;
+    ctx->malletTremoloRate = 5.5f;
+    
+    // Granular defaults
+    ctx->granularGrainSize = 50.0f;
+    ctx->granularDensity = 20.0f;
+    ctx->granularPosition = 0.5f;
+    ctx->granularPosRandom = 0.1f;
+    ctx->granularPitch = 1.0f;
+    ctx->granularAmpRandom = 0.1f;
+    ctx->granularSpread = 0.5f;
+    
+    // FM defaults
+    ctx->fmModRatio = 2.0f;
+    ctx->fmModIndex = 1.0f;
+    
+    // PD defaults
+    ctx->pdDistortion = 0.5f;
+    
+    // Membrane defaults
+    ctx->membraneDamping = 0.3f;
+    ctx->membraneStrike = 0.3f;
+    ctx->membraneBend = 0.15f;
+    ctx->membraneBendDecay = 0.08f;
+    
+    // Bird defaults
+    ctx->birdChirpRange = 1.0f;
+    ctx->birdHarmonics = 0.2f;
+    
+    // Glide
+    ctx->glideTime = 0.1f;
+    
+    // SFX randomization
+    ctx->sfxRandomize = true;
+}
+
+// ============================================================================
+// GLOBAL CONTEXT (for backward compatibility)
+// ============================================================================
+
+static SynthContext _synthCtx;
+static SynthContext* synthCtx = &_synthCtx;
+static bool _synthCtxInitialized = false;
+
+// Ensure context is initialized (called internally)
+static void _ensureSynthCtx(void) {
+    if (!_synthCtxInitialized) {
+        initSynthContext(synthCtx);
+        _synthCtxInitialized = true;
+    }
+}
+
+// Backward-compatible macros that reference the global context
+// NOTE: Using prefixed names to avoid collisions with struct member names in other files
+#define scwTables (synthCtx->scwTables)
+#define scwCount (synthCtx->scwCount)
+#define synthVoices (synthCtx->voices)
+#define masterVolume (synthCtx->masterVolume)
+#define synthNoiseState (synthCtx->noiseState)
+#define scaleLockEnabled (synthCtx->scaleLockEnabled)
+#define scaleRoot (synthCtx->scaleRoot)
+#define scaleType (synthCtx->scaleType)
+#define monoMode (synthCtx->monoMode)
+#define glideTime (synthCtx->glideTime)
+#define monoVoiceIdx (synthCtx->monoVoiceIdx)
+#define noteAttack (synthCtx->noteAttack)
+#define noteDecay (synthCtx->noteDecay)
+#define noteSustain (synthCtx->noteSustain)
+#define noteRelease (synthCtx->noteRelease)
+#define noteVolume (synthCtx->noteVolume)
+#define notePulseWidth (synthCtx->notePulseWidth)
+#define notePwmRate (synthCtx->notePwmRate)
+#define notePwmDepth (synthCtx->notePwmDepth)
+#define noteVibratoRate (synthCtx->noteVibratoRate)
+#define noteVibratoDepth (synthCtx->noteVibratoDepth)
+#define noteFilterCutoff (synthCtx->noteFilterCutoff)
+#define noteFilterResonance (synthCtx->noteFilterResonance)
+#define noteFilterEnvAmt (synthCtx->noteFilterEnvAmt)
+#define noteFilterEnvAttack (synthCtx->noteFilterEnvAttack)
+#define noteFilterEnvDecay (synthCtx->noteFilterEnvDecay)
+#define noteFilterLfoRate (synthCtx->noteFilterLfoRate)
+#define noteFilterLfoDepth (synthCtx->noteFilterLfoDepth)
+#define noteFilterLfoShape (synthCtx->noteFilterLfoShape)
+#define noteResoLfoRate (synthCtx->noteResoLfoRate)
+#define noteResoLfoDepth (synthCtx->noteResoLfoDepth)
+#define noteResoLfoShape (synthCtx->noteResoLfoShape)
+#define noteAmpLfoRate (synthCtx->noteAmpLfoRate)
+#define noteAmpLfoDepth (synthCtx->noteAmpLfoDepth)
+#define noteAmpLfoShape (synthCtx->noteAmpLfoShape)
+#define notePitchLfoRate (synthCtx->notePitchLfoRate)
+#define notePitchLfoDepth (synthCtx->notePitchLfoDepth)
+#define notePitchLfoShape (synthCtx->notePitchLfoShape)
+#define noteScwIndex (synthCtx->noteScwIndex)
+#define voiceFormantShift (synthCtx->voiceFormantShift)
+#define voiceBreathiness (synthCtx->voiceBreathiness)
+#define voiceBuzziness (synthCtx->voiceBuzziness)
+#define voiceSpeed (synthCtx->voiceSpeed)
+#define voicePitch (synthCtx->voicePitch)
+#define voiceVowel (synthCtx->voiceVowel)
+#define voiceConsonant (synthCtx->voiceConsonant)
+#define voiceConsonantAmt (synthCtx->voiceConsonantAmt)
+#define voiceNasal (synthCtx->voiceNasal)
+#define voiceNasalAmt (synthCtx->voiceNasalAmt)
+#define voicePitchEnv (synthCtx->voicePitchEnv)
+#define voicePitchEnvTime (synthCtx->voicePitchEnvTime)
+#define voicePitchEnvCurve (synthCtx->voicePitchEnvCurve)
+#define pluckBrightness (synthCtx->pluckBrightness)
+#define pluckDamping (synthCtx->pluckDamping)
+#define pluckDamp (synthCtx->pluckDamp)
+#define additivePreset (synthCtx->additivePreset)
+#define additiveBrightness (synthCtx->additiveBrightness)
+#define additiveShimmer (synthCtx->additiveShimmer)
+#define additiveInharmonicity (synthCtx->additiveInharmonicity)
+#define malletPreset (synthCtx->malletPreset)
+#define malletStiffness (synthCtx->malletStiffness)
+#define malletHardness (synthCtx->malletHardness)
+#define malletStrikePos (synthCtx->malletStrikePos)
+#define malletResonance (synthCtx->malletResonance)
+#define malletTremolo (synthCtx->malletTremolo)
+#define malletTremoloRate (synthCtx->malletTremoloRate)
+#define malletDamp (synthCtx->malletDamp)
+#define granularScwIndex (synthCtx->granularScwIndex)
+#define granularGrainSize (synthCtx->granularGrainSize)
+#define granularDensity (synthCtx->granularDensity)
+#define granularPosition (synthCtx->granularPosition)
+#define granularPosRandom (synthCtx->granularPosRandom)
+#define granularPitch (synthCtx->granularPitch)
+#define granularPitchRandom (synthCtx->granularPitchRandom)
+#define granularAmpRandom (synthCtx->granularAmpRandom)
+#define granularSpread (synthCtx->granularSpread)
+#define granularFreeze (synthCtx->granularFreeze)
+#define fmModRatio (synthCtx->fmModRatio)
+#define fmModIndex (synthCtx->fmModIndex)
+#define fmFeedback (synthCtx->fmFeedback)
+#define pdWaveType (synthCtx->pdWaveType)
+#define pdDistortion (synthCtx->pdDistortion)
+#define membranePreset (synthCtx->membranePreset)
+#define membraneDamping (synthCtx->membraneDamping)
+#define membraneStrike (synthCtx->membraneStrike)
+#define membraneBend (synthCtx->membraneBend)
+#define membraneBendDecay (synthCtx->membraneBendDecay)
+#define birdType (synthCtx->birdType)
+#define birdChirpRange (synthCtx->birdChirpRange)
+#define birdTrillRate (synthCtx->birdTrillRate)
+#define birdTrillDepth (synthCtx->birdTrillDepth)
+#define birdAmRate (synthCtx->birdAmRate)
+#define birdAmDepth (synthCtx->birdAmDepth)
+#define birdHarmonics (synthCtx->birdHarmonics)
+#define sfxRandomize (synthCtx->sfxRandomize)
 
 // Load a .wav file as SCW
 static bool loadSCW(const char* path, const char* name) {
+    _ensureSynthCtx();
     if (scwCount >= SCW_MAX_SLOTS) return false;
     
     Wave wav = LoadWave(path);
@@ -458,23 +788,12 @@ static bool loadSCW(const char* path, const char* name) {
 }
 
 // ============================================================================
-// STATE
-// ============================================================================
-
-#define NUM_VOICES 16
-static Voice voices[NUM_VOICES];
-static float masterVolume = 0.5f;
-
-// Noise generator state (shared)
-static unsigned int noiseState = 12345;
-
-// ============================================================================
 // HELPERS
 // ============================================================================
 
 static float noise(void) {
-    noiseState = noiseState * 1103515245 + 12345;
-    return (float)(noiseState >> 16) / 32768.0f - 1.0f;
+    synthNoiseState = synthNoiseState * 1103515245 + 12345;
+    return (float)(synthNoiseState >> 16) / 32768.0f - 1.0f;
 }
 
 static float clampf(float x, float min, float max) {
@@ -2077,7 +2396,7 @@ static float processVoice(Voice *v, float sampleRate) {
     float res = clampf(v->filterResonance + resoLfoMod, 0.0f, 1.0f);
     // Resonance affects damping - at max resonance (1.0), q approaches 0.02 for self-oscillation
     // This gives a screaming 303-style filter at high resonance
-    float q = 1.0f - res * 0.98f;  // Range: 1.0 (no reso) to 0.02 (self-oscillating)
+    float q = 1.0f - res * FILTER_RESONANCE_SCALE;
     
     // SVF coefficients
     float f = cutoff * 1.5f;  // Scale for better range
@@ -2107,11 +2426,12 @@ static float processVoice(Voice *v, float sampleRate) {
 
 // Find a free voice or steal one
 static int findVoice(void) {
+    _ensureSynthCtx();
     for (int i = 0; i < NUM_VOICES; i++) {
-        if (voices[i].envStage == 0) return i;
+        if (synthVoices[i].envStage == 0) return i;
     }
     for (int i = 0; i < NUM_VOICES; i++) {
-        if (voices[i].envStage == 4) return i;
+        if (synthVoices[i].envStage == 4) return i;
     }
     return NUM_VOICES - 1;
 }
@@ -2119,131 +2439,11 @@ static int findVoice(void) {
 // Release a note
 static void releaseNote(int voiceIdx) {
     if (voiceIdx < 0 || voiceIdx >= NUM_VOICES) return;
-    if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
-        voices[voiceIdx].envStage = 4;
-        voices[voiceIdx].envPhase = 0.0f;
+    if (synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
+        synthVoices[voiceIdx].envStage = 4;
+        synthVoices[voiceIdx].envPhase = 0.0f;
     }
 }
-
-// ============================================================================
-// TWEAKABLE PARAMETERS (globals for UI)
-// ============================================================================
-
-static float noteAttack = 0.01f;
-static float noteDecay = 0.1f;
-static float noteSustain = 0.5f;
-static float noteRelease = 0.3f;
-static float noteVolume = 0.5f;
-static float notePulseWidth = 0.5f;
-static float notePwmRate = 3.0f;
-static float notePwmDepth = 0.0f;
-static float noteVibratoRate = 5.0f;
-static float noteVibratoDepth = 0.0f;
-static float noteFilterCutoff = 1.0f;
-static float noteFilterResonance = 0.0f;   // Filter resonance (0-1)
-static float noteFilterEnvAmt = 0.0f;      // Filter envelope amount (-1 to 1)
-static float noteFilterEnvAttack = 0.01f;  // Filter envelope attack
-static float noteFilterEnvDecay = 0.2f;    // Filter envelope decay
-static float noteFilterLfoRate = 0.0f;     // Filter LFO rate in Hz (0 = off)
-static float noteFilterLfoDepth = 0.0f;    // Filter LFO depth (0-1)
-static int noteFilterLfoShape = 0;         // 0=sine, 1=tri, 2=square, 3=saw, 4=S&H
-
-// Resonance LFO
-static float noteResoLfoRate = 0.0f;
-static float noteResoLfoDepth = 0.0f;
-static int noteResoLfoShape = 0;
-
-// Amplitude LFO (tremolo)
-static float noteAmpLfoRate = 0.0f;
-static float noteAmpLfoDepth = 0.0f;
-static int noteAmpLfoShape = 0;
-
-// Pitch LFO (vibrato with shapes)
-static float notePitchLfoRate = 5.0f;
-static float notePitchLfoDepth = 0.0f;     // In semitones
-static int notePitchLfoShape = 0;
-
-static int noteScwIndex = 0;
-
-// Voice synthesis parameters
-static float voiceFormantShift = 1.0f;
-static float voiceBreathiness = 0.1f;
-static float voiceBuzziness = 0.6f;
-static float voiceSpeed = 10.0f;
-static float voicePitch = 1.0f;
-static int voiceVowel = VOWEL_A;
-static bool voiceConsonant = false;      // Enable consonant/plosive attack
-static float voiceConsonantAmt = 0.5f;   // Consonant strength (0-1)
-static bool voiceNasal = false;          // Enable nasality
-static float voiceNasalAmt = 0.5f;       // Nasal strength (0-1)
-static float voicePitchEnv = 0.0f;       // Pitch envelope amount in semitones (-12 to +12)
-static float voicePitchEnvTime = 0.15f;  // Pitch envelope time (0.05 - 0.5s)
-static float voicePitchEnvCurve = 0.0f;  // Curve shape (-1 to +1)
-
-// Pluck (Karplus-Strong) tweakables
-static float pluckBrightness = 0.5f;  // 0=muted/nylon, 1=bright/steel
-static float pluckDamping = 0.996f;   // 0.99=short decay, 0.999=long sustain
-
-// Additive synthesis tweakables
-static int additivePreset = ADDITIVE_PRESET_ORGAN;
-static float additiveBrightness = 0.5f;   // High harmonic emphasis
-static float additiveShimmer = 0.0f;      // Phase modulation for movement
-static float additiveInharmonicity = 0.0f; // Stretch partials for bells
-
-// Mallet percussion tweakables
-static int malletPreset = MALLET_PRESET_MARIMBA;
-static float malletStiffness = 0.3f;      // Bar material (0=wood, 1=metal)
-static float malletHardness = 0.5f;       // Mallet hardness (0=soft, 1=hard)
-static float malletStrikePos = 0.25f;     // Strike position (0=center, 1=edge)
-static float malletResonance = 0.7f;      // Resonator coupling
-static float malletTremolo = 0.0f;        // Vibraphone motor tremolo
-static float malletTremoloRate = 5.5f;    // Tremolo speed Hz
-static float malletDamp = 0.0f;           // Release damping (0=ring, 1=mute on release)
-
-// Pluck tweakable for release damping
-static float pluckDamp = 0.0f;            // Release damping (0=ring, 1=mute on release)
-
-// Mono mode and glide/portamento
-static bool monoMode = false;             // Monophonic mode (reuse same voice)
-static float glideTime = 0.1f;            // Glide/portamento time in seconds (0.01-1.0)
-static int monoVoiceIdx = 0;              // Which voice to use in mono mode
-
-// Granular synthesis tweakables
-static int granularScwIndex = 0;          // Which SCW table to use
-static float granularGrainSize = 50.0f;   // Grain size in ms (10-500)
-static float granularDensity = 20.0f;     // Grains per second (1-100)
-static float granularPosition = 0.5f;     // Read position in buffer (0-1)
-static float granularPosRandom = 0.1f;    // Position randomization (0-1)
-static float granularPitch = 1.0f;        // Pitch multiplier (0.25-4.0)
-static float granularPitchRandom = 0.0f;  // Pitch randomization in semitones (0-12)
-static float granularAmpRandom = 0.1f;    // Amplitude randomization (0-1)
-static float granularSpread = 0.5f;       // Stereo spread (0-1)
-static bool granularFreeze = false;       // Freeze position
-
-// FM synthesis tweakables
-static float fmModRatio = 2.0f;           // Modulator frequency ratio (0.5-16)
-static float fmModIndex = 1.0f;           // Modulation index/depth (0-10)
-static float fmFeedback = 0.0f;           // Self-modulation amount (0-1)
-
-// Phase distortion (CZ-style) tweakables
-static int pdWaveType = PD_WAVE_SAW;      // Which PD waveform (0-7)
-static float pdDistortion = 0.5f;         // Phase distortion amount (0-1)
-
-// Membrane (tabla/conga) tweakables
-static int membranePreset = MEMBRANE_TABLA;
-static float membraneDamping = 0.3f;      // Overall damping (0.1-1)
-static float membraneStrike = 0.3f;       // Strike position (0=center, 1=edge)
-static float membraneBend = 0.15f;        // Pitch bend amount (0-0.5)
-static float membraneBendDecay = 0.08f;   // Pitch bend decay time (0.02-0.3)
-
-// Bird synthesis tweakables
-static int birdType = BIRD_CHIRP;
-static float birdChirpRange = 1.0f;       // Chirp frequency range multiplier (0.5-2)
-static float birdTrillRate = 0.0f;        // Trill rate Hz (0-30)
-static float birdTrillDepth = 0.0f;       // Trill depth semitones (0-5)
-static float birdAmRate = 0.0f;           // AM/flutter rate Hz (0-20)
-static float birdAmDepth = 0.0f;          // AM depth (0-1)
-static float birdHarmonics = 0.2f;        // Harmonic content (0-1)
 
 // ============================================================================
 // VOICE INIT HELPERS
@@ -2343,14 +2543,14 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     
     if (params->supportsMono && monoMode) {
         voiceIdx = monoVoiceIdx;
-        if (voices[voiceIdx].envStage > 0 && voices[voiceIdx].envStage < 4) {
+        if (synthVoices[voiceIdx].envStage > 0 && synthVoices[voiceIdx].envStage < 4) {
             isGlide = true;
         }
     } else {
         voiceIdx = findVoice();
     }
     
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
     // Frequency setup (with glide support)
@@ -2415,7 +2615,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 // Play a note using global parameters
 static int playNote(float freq, WaveType wave) {
     int voiceIdx = initVoiceCommon(freq, wave, &VOICE_INIT_SYNTH, NULL);
-    voices[voiceIdx].scwIndex = noteScwIndex;
+    synthVoices[voiceIdx].scwIndex = noteScwIndex;
     return voiceIdx;
 }
 
@@ -2459,7 +2659,7 @@ static void setupVoiceSettings(VoiceSettings *vs, VowelType vowel) {
 // Play a vowel sound
 static int playVowel(float freq, VowelType vowel) {
     int voiceIdx = initVoiceCommon(freq, WAVE_VOICE, &VOICE_INIT_VOWEL, NULL);
-    setupVoiceSettings(&voices[voiceIdx].voiceSettings, vowel);
+    setupVoiceSettings(&synthVoices[voiceIdx].voiceSettings, vowel);
     return voiceIdx;
 }
 
@@ -2474,14 +2674,14 @@ static const VoiceInitParams VOICE_INIT_PLUCK = {
 // Play a plucked string (Karplus-Strong)
 static int playPluck(float freq, float brightness, float damping) {
     int voiceIdx = initVoiceCommon(freq, WAVE_PLUCK, &VOICE_INIT_PLUCK, NULL);
-    initPluck(&voices[voiceIdx], freq, 44100.0f, brightness, damping);
+    initPluck(&synthVoices[voiceIdx], freq, 44100.0f, brightness, damping);
     return voiceIdx;
 }
 
 // Play additive synthesis note
 static int playAdditive(float freq, AdditivePreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_ADDITIVE, &VOICE_INIT_SYNTH, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     initAdditivePreset(&v->additiveSettings, preset);
     v->additiveSettings.brightness = additiveBrightness;
     v->additiveSettings.shimmer = additiveShimmer;
@@ -2492,7 +2692,7 @@ static int playAdditive(float freq, AdditivePreset preset) {
 // Play mallet percussion note
 static int playMallet(float freq, MalletPreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_MALLET, &VOICE_INIT_PERC, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     initMalletPreset(&v->malletSettings, preset);
     v->malletSettings.stiffness = malletStiffness;
     v->malletSettings.hardness = malletHardness;
@@ -2506,7 +2706,7 @@ static int playMallet(float freq, MalletPreset preset) {
 // Play granular synthesis note
 static int playGranular(float freq, int scwIndex) {
     int voiceIdx = initVoiceCommon(freq, WAVE_GRANULAR, &VOICE_INIT_SYNTH, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     v->scwIndex = scwIndex;
     
     initGranularSettings(&v->granularSettings, scwIndex);
@@ -2525,7 +2725,7 @@ static int playGranular(float freq, int scwIndex) {
 // Play FM synthesis note
 static int playFM(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_FM, &VOICE_INIT_SYNTH, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     v->fmSettings.modRatio = fmModRatio;
     v->fmSettings.modIndex = fmModIndex;
     v->fmSettings.feedback = fmFeedback;
@@ -2537,7 +2737,7 @@ static int playFM(float freq) {
 // Play phase distortion (CZ-style) note
 static int playPD(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_PD, &VOICE_INIT_SYNTH, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     v->pdSettings.waveType = (PDWaveType)pdWaveType;
     v->pdSettings.distortion = pdDistortion;
     return voiceIdx;
@@ -2562,7 +2762,7 @@ static const VoiceInitParams VOICE_INIT_BIRD = {
 // Play membrane (tabla/conga) note
 static int playMembrane(float freq, MembranePreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_MEMBRANE, &VOICE_INIT_MEMBRANE, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     initMembranePreset(&v->membraneSettings, preset);
     v->membraneSettings.damping = membraneDamping;
     v->membraneSettings.strikePos = membraneStrike;
@@ -2574,7 +2774,7 @@ static int playMembrane(float freq, MembranePreset preset) {
 // Play bird vocalization
 static int playBird(float freq, BirdType type) {
     int voiceIdx = initVoiceCommon(freq, WAVE_BIRD, &VOICE_INIT_BIRD, NULL);
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     initBirdPreset(&v->birdSettings, type, freq);
     v->birdSettings.startFreq *= (2.0f - birdChirpRange);
     v->birdSettings.endFreq *= birdChirpRange;
@@ -2593,7 +2793,7 @@ static int playBird(float freq, BirdType type) {
 
 // Play vowel on a specific voice (for speech system)
 static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
-    Voice *v = &voices[voiceIdx];
+    Voice *v = &synthVoices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
     // Basic voice setup
@@ -2629,12 +2829,10 @@ static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
 // SFX HELPERS
 // ============================================================================
 
-static bool sfxRandomize = true;
-
 static float rndRange(float min, float max) {
     if (!sfxRandomize) return (min + max) * 0.5f;
-    noiseState = noiseState * 1103515245 + 12345;
-    float t = (float)(noiseState >> 16) / 65535.0f;
+    synthNoiseState = synthNoiseState * 1103515245 + 12345;
+    float t = (float)(synthNoiseState >> 16) / 65535.0f;
     return min + t * (max - min);
 }
 
@@ -2667,37 +2865,37 @@ static void initSfxVoice(Voice *v, float freq, WaveType wave, float vol,
 // SFX functions
 static void sfxJump(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(150.0f, 0.15f), WAVE_SQUARE, mutate(0.5f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(150.0f, 0.15f), WAVE_SQUARE, mutate(0.5f, 0.1f),
                  0.01f, mutate(0.15f, 0.1f), 0.05f, mutate(10.0f, 0.2f));
 }
 
 static void sfxCoin(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(1200.0f, 0.08f), WAVE_SQUARE, mutate(0.4f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(1200.0f, 0.08f), WAVE_SQUARE, mutate(0.4f, 0.1f),
                  0.005f, mutate(0.1f, 0.15f), 0.05f, mutate(20.0f, 0.15f));
 }
 
 static void sfxHurt(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(200.0f, 0.25f), WAVE_NOISE, mutate(0.5f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(200.0f, 0.25f), WAVE_NOISE, mutate(0.5f, 0.1f),
                  0.01f, mutate(0.2f, 0.2f), mutate(0.1f, 0.2f), mutate(-3.0f, 0.3f));
 }
 
 static void sfxExplosion(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(80.0f, 0.3f), WAVE_NOISE, mutate(0.6f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(80.0f, 0.3f), WAVE_NOISE, mutate(0.6f, 0.1f),
                  0.01f, mutate(0.5f, 0.25f), mutate(0.3f, 0.2f), mutate(-1.0f, 0.4f));
 }
 
 static void sfxPowerup(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(300.0f, 0.12f), WAVE_TRIANGLE, mutate(0.4f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(300.0f, 0.12f), WAVE_TRIANGLE, mutate(0.4f, 0.1f),
                  0.01f, mutate(0.3f, 0.15f), mutate(0.2f, 0.1f), mutate(8.0f, 0.2f));
 }
 
 static void sfxBlip(void) {
     int v = findVoice();
-    initSfxVoice(&voices[v], mutate(800.0f, 0.1f), WAVE_SQUARE, mutate(0.3f, 0.1f),
+    initSfxVoice(&synthVoices[v], mutate(800.0f, 0.1f), WAVE_SQUARE, mutate(0.3f, 0.1f),
                  0.005f, mutate(0.05f, 0.15f), 0.02f, rndRange(-2.0f, 2.0f));
 }
 
@@ -2736,11 +2934,6 @@ static const int scaleIntervals[SCALE_COUNT][12] = {
     {1,0,1,0,1,1,0,1,0,1,1,0},  // Mixolydian: C D E F G A Bb
     {1,0,1,1,0,1,0,1,1,0,0,1},  // Harmonic Minor: C D Eb F G Ab B
 };
-
-// Scale lock state
-static bool scaleLockEnabled = false;
-static int scaleRoot = 0;         // 0=C, 1=C#, 2=D, etc.
-static ScaleType scaleType = SCALE_MAJOR;
 
 // Root note names
 static const char* rootNoteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};

@@ -16,6 +16,24 @@
 #define SAMPLE_RATE 44100
 #endif
 
+// Reverb feedback constants
+#define REVERB_FEEDBACK_MIN 0.7f      // Minimum reverb feedback (short decay)
+#define REVERB_FEEDBACK_RANGE 0.25f   // Additional feedback range based on room size
+#define REVERB_DAMP_SCALE 0.4f        // Damping coefficient scale factor
+
+// Tape effect constants
+#define TAPE_WOW_RATE 0.5f            // Tape wow LFO rate in Hz
+#define TAPE_WOW_DEPTH 0.1f           // Tape wow modulation depth
+#define TAPE_FLUTTER_DEPTH 0.05f      // Tape flutter modulation depth
+#define TAPE_HISS_SCALE 0.05f         // Tape hiss amplitude scaling
+#define TAPE_HISS_FILTER_COEFF 0.1f   // Tape hiss highpass filter coefficient
+
+// Distortion/delay tone curve constants
+#define DIST_TONE_SCALE 0.5f          // Distortion tone filter scale
+#define DIST_TONE_OFFSET 0.1f         // Distortion tone filter minimum
+#define DELAY_TONE_SCALE 0.4f         // Delay feedback filter scale
+#define DELAY_TONE_OFFSET 0.1f        // Delay feedback filter minimum
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -63,15 +81,11 @@ typedef struct {
 } Effects;
 
 // ============================================================================
-// STATE
+// EFFECTS CONTEXT (all effects state in one struct)
 // ============================================================================
-
-static Effects fx = {0};
 
 // Delay buffer (max 2 seconds at 44100Hz)
 #define DELAY_BUFFER_SIZE (SAMPLE_RATE * 2)
-static float delayBuffer[DELAY_BUFFER_SIZE];
-static int delayWritePos = 0;
 
 // Reverb buffers (Schroeder reverberator: 4 parallel comb filters + 2 series allpass)
 // Comb filter delay times (in samples, tuned for ~44100Hz, prime-ish numbers)
@@ -83,92 +97,129 @@ static int delayWritePos = 0;
 #define REVERB_ALLPASS_2 556
 #define REVERB_PREDELAY_MAX 4410  // Max 100ms pre-delay
 
-static float reverbComb1[REVERB_COMB_1];
-static float reverbComb2[REVERB_COMB_2];
-static float reverbComb3[REVERB_COMB_3];
-static float reverbComb4[REVERB_COMB_4];
-static float reverbAllpass1[REVERB_ALLPASS_1];
-static float reverbAllpass2[REVERB_ALLPASS_2];
-static float reverbPreDelayBuf[REVERB_PREDELAY_MAX];
+typedef struct EffectsContext {
+    // User parameters
+    Effects params;
+    
+    // Delay state
+    float delayBuffer[DELAY_BUFFER_SIZE];
+    int delayWritePos;
+    
+    // Reverb buffers
+    float reverbComb1[REVERB_COMB_1];
+    float reverbComb2[REVERB_COMB_2];
+    float reverbComb3[REVERB_COMB_3];
+    float reverbComb4[REVERB_COMB_4];
+    float reverbAllpass1[REVERB_ALLPASS_1];
+    float reverbAllpass2[REVERB_ALLPASS_2];
+    float reverbPreDelayBuf[REVERB_PREDELAY_MAX];
+    
+    // Reverb positions
+    int reverbCombPos1, reverbCombPos2, reverbCombPos3, reverbCombPos4;
+    int reverbAllpassPos1, reverbAllpassPos2;
+    int reverbPreDelayPos;
+    
+    // Comb filter lowpass states (for damping)
+    float reverbCombLp1, reverbCombLp2, reverbCombLp3, reverbCombLp4;
+    
+    // Noise state for tape hiss
+    unsigned int noiseState;
+} EffectsContext;
 
-static int reverbCombPos1 = 0, reverbCombPos2 = 0, reverbCombPos3 = 0, reverbCombPos4 = 0;
-static int reverbAllpassPos1 = 0, reverbAllpassPos2 = 0;
-static int reverbPreDelayPos = 0;
+// Initialize an effects context with default values
+static void initEffectsContext(EffectsContext* ctx) {
+    memset(ctx, 0, sizeof(EffectsContext));
+    
+    ctx->noiseState = 54321;
+    
+    // Distortion - off by default
+    ctx->params.distEnabled = false;
+    ctx->params.distDrive = 2.0f;
+    ctx->params.distTone = 0.7f;
+    ctx->params.distMix = 0.5f;
+    
+    // Delay - off by default
+    ctx->params.delayEnabled = false;
+    ctx->params.delayTime = 0.3f;
+    ctx->params.delayFeedback = 0.4f;
+    ctx->params.delayMix = 0.3f;
+    ctx->params.delayTone = 0.6f;
+    
+    // Tape - off by default
+    ctx->params.tapeEnabled = false;
+    ctx->params.tapeWow = 0.3f;
+    ctx->params.tapeFlutter = 0.2f;
+    ctx->params.tapeSaturation = 0.5f;
+    ctx->params.tapeHiss = 0.1f;
+    
+    // Bitcrusher - off by default
+    ctx->params.crushEnabled = false;
+    ctx->params.crushBits = 8.0f;
+    ctx->params.crushRate = 4.0f;
+    ctx->params.crushMix = 0.5f;
+    
+    // Reverb - off by default
+    ctx->params.reverbEnabled = false;
+    ctx->params.reverbSize = 0.5f;
+    ctx->params.reverbDamping = 0.5f;
+    ctx->params.reverbMix = 0.3f;
+    ctx->params.reverbPreDelay = 0.02f;
+}
 
-// Comb filter lowpass states (for damping)
-static float reverbCombLp1 = 0, reverbCombLp2 = 0, reverbCombLp3 = 0, reverbCombLp4 = 0;
+// ============================================================================
+// GLOBAL CONTEXT (for backward compatibility)
+// ============================================================================
 
-// We need a noise function for tape hiss - can be overridden
-#ifndef FX_NOISE_FUNC
-static unsigned int fxNoiseState = 54321;
+static EffectsContext _fxCtx;
+static EffectsContext* fxCtx = &_fxCtx;
+static bool _fxCtxInitialized = false;
+
+// Ensure context is initialized (called internally)
+static void _ensureFxCtx(void) {
+    if (!_fxCtxInitialized) {
+        initEffectsContext(fxCtx);
+        _fxCtxInitialized = true;
+    }
+}
+
+// Backward-compatible macros that reference the global context
+#define fx (fxCtx->params)
+#define delayBuffer (fxCtx->delayBuffer)
+#define delayWritePos (fxCtx->delayWritePos)
+#define reverbComb1 (fxCtx->reverbComb1)
+#define reverbComb2 (fxCtx->reverbComb2)
+#define reverbComb3 (fxCtx->reverbComb3)
+#define reverbComb4 (fxCtx->reverbComb4)
+#define reverbAllpass1 (fxCtx->reverbAllpass1)
+#define reverbAllpass2 (fxCtx->reverbAllpass2)
+#define reverbPreDelayBuf (fxCtx->reverbPreDelayBuf)
+#define reverbCombPos1 (fxCtx->reverbCombPos1)
+#define reverbCombPos2 (fxCtx->reverbCombPos2)
+#define reverbCombPos3 (fxCtx->reverbCombPos3)
+#define reverbCombPos4 (fxCtx->reverbCombPos4)
+#define reverbAllpassPos1 (fxCtx->reverbAllpassPos1)
+#define reverbAllpassPos2 (fxCtx->reverbAllpassPos2)
+#define reverbPreDelayPos (fxCtx->reverbPreDelayPos)
+#define reverbCombLp1 (fxCtx->reverbCombLp1)
+#define reverbCombLp2 (fxCtx->reverbCombLp2)
+#define reverbCombLp3 (fxCtx->reverbCombLp3)
+#define reverbCombLp4 (fxCtx->reverbCombLp4)
+#define fxNoiseState (fxCtx->noiseState)
+
+// Noise function for tape hiss
 static float fxNoise(void) {
+    _ensureFxCtx();
     fxNoiseState = fxNoiseState * 1103515245 + 12345;
     return (float)(fxNoiseState >> 16) / 32768.0f - 1.0f;
 }
 #define FX_NOISE_FUNC fxNoise
-#endif
 
 // ============================================================================
-// INIT
+// INIT (backward compatibility wrapper)
 // ============================================================================
 
 static void initEffects(void) {
-    // Distortion - off by default
-    fx.distEnabled = false;
-    fx.distDrive = 2.0f;
-    fx.distTone = 0.7f;
-    fx.distMix = 0.5f;
-    fx.distFilterLp = 0.0f;
-    
-    // Delay - off by default  
-    fx.delayEnabled = false;
-    fx.delayTime = 0.3f;
-    fx.delayFeedback = 0.4f;
-    fx.delayMix = 0.3f;
-    fx.delayTone = 0.6f;
-    fx.delayFilterLp = 0.0f;
-    
-    // Tape - off by default
-    fx.tapeEnabled = false;
-    fx.tapeWow = 0.3f;
-    fx.tapeFlutter = 0.2f;
-    fx.tapeSaturation = 0.5f;
-    fx.tapeHiss = 0.1f;
-    fx.tapeWowPhase = 0.0f;
-    fx.tapeFlutterPhase = 0.0f;
-    fx.tapeFilterLp = 0.0f;
-    
-    // Bitcrusher - off by default
-    fx.crushEnabled = false;
-    fx.crushBits = 8.0f;
-    fx.crushRate = 4.0f;
-    fx.crushMix = 0.5f;
-    fx.crushHold = 0.0f;
-    fx.crushCounter = 0;
-    
-    // Reverb - off by default
-    fx.reverbEnabled = false;
-    fx.reverbSize = 0.5f;
-    fx.reverbDamping = 0.5f;
-    fx.reverbMix = 0.3f;
-    fx.reverbPreDelay = 0.02f;
-    
-    // Clear delay buffer
-    memset(delayBuffer, 0, sizeof(delayBuffer));
-    delayWritePos = 0;
-    
-    // Clear reverb buffers
-    memset(reverbComb1, 0, sizeof(reverbComb1));
-    memset(reverbComb2, 0, sizeof(reverbComb2));
-    memset(reverbComb3, 0, sizeof(reverbComb3));
-    memset(reverbComb4, 0, sizeof(reverbComb4));
-    memset(reverbAllpass1, 0, sizeof(reverbAllpass1));
-    memset(reverbAllpass2, 0, sizeof(reverbAllpass2));
-    memset(reverbPreDelayBuf, 0, sizeof(reverbPreDelayBuf));
-    reverbCombPos1 = reverbCombPos2 = reverbCombPos3 = reverbCombPos4 = 0;
-    reverbAllpassPos1 = reverbAllpassPos2 = 0;
-    reverbPreDelayPos = 0;
-    reverbCombLp1 = reverbCombLp2 = reverbCombLp3 = reverbCombLp4 = 0;
+    _ensureFxCtx();
 }
 
 // ============================================================================
@@ -185,7 +236,7 @@ static float processDistortion(float sample) {
     float driven = tanhf(sample * fx.distDrive);
     
     // Tone control (lowpass to tame harshness)
-    float cutoff = fx.distTone * fx.distTone * 0.5f + 0.1f;
+    float cutoff = fx.distTone * fx.distTone * DIST_TONE_SCALE + DIST_TONE_OFFSET;
     fx.distFilterLp += cutoff * (driven - fx.distFilterLp);
     float wet = fx.distFilterLp;
     
@@ -208,7 +259,7 @@ static float processDelay(float sample, float dt) {
     float delayed = delayBuffer[readPos];
     
     // Filter the delayed signal (darker repeats)
-    float cutoff = fx.delayTone * fx.delayTone * 0.4f + 0.1f;
+    float cutoff = fx.delayTone * fx.delayTone * DELAY_TONE_SCALE + DELAY_TONE_OFFSET;
     fx.delayFilterLp += cutoff * (delayed - fx.delayFilterLp);
     delayed = fx.delayFilterLp;
     
@@ -229,11 +280,11 @@ static float processTape(float sample, float dt) {
         sample = tanhf(sample * (1.0f + sat)) / (1.0f + sat * 0.5f);
     }
     
-    // Wow (slow pitch wobble ~0.5Hz) - simulated as volume modulation
+    // Wow (slow pitch wobble) - simulated as volume modulation
     if (fx.tapeWow > 0.0f) {
-        fx.tapeWowPhase += 0.5f * dt;
+        fx.tapeWowPhase += TAPE_WOW_RATE * dt;
         if (fx.tapeWowPhase > 1.0f) fx.tapeWowPhase -= 1.0f;
-        float wow = sinf(fx.tapeWowPhase * 2.0f * PI) * fx.tapeWow * 0.1f;
+        float wow = sinf(fx.tapeWowPhase * 2.0f * PI) * fx.tapeWow * TAPE_WOW_DEPTH;
         sample *= (1.0f + wow);
     }
     
@@ -241,15 +292,15 @@ static float processTape(float sample, float dt) {
     if (fx.tapeFlutter > 0.0f) {
         fx.tapeFlutterPhase += 6.0f * dt;
         if (fx.tapeFlutterPhase > 1.0f) fx.tapeFlutterPhase -= 1.0f;
-        float flutter = sinf(fx.tapeFlutterPhase * 2.0f * PI) * fx.tapeFlutter * 0.05f;
+        float flutter = sinf(fx.tapeFlutterPhase * 2.0f * PI) * fx.tapeFlutter * TAPE_FLUTTER_DEPTH;
         sample *= (1.0f + flutter);
     }
     
     // Tape hiss (filtered noise)
     if (fx.tapeHiss > 0.0f) {
-        float hiss = FX_NOISE_FUNC() * fx.tapeHiss * 0.05f;
+        float hiss = FX_NOISE_FUNC() * fx.tapeHiss * TAPE_HISS_SCALE;
         // Highpass the hiss
-        fx.tapeFilterLp += 0.1f * (hiss - fx.tapeFilterLp);
+        fx.tapeFilterLp += TAPE_HISS_FILTER_COEFF * (hiss - fx.tapeFilterLp);
         hiss = hiss - fx.tapeFilterLp;
         sample += hiss;
     }
@@ -282,7 +333,7 @@ static float processCombFilter(float input, float *buffer, int *pos, int size,
     float output = buffer[*pos];
     
     // Lowpass filter for damping (darker reverb tails)
-    float dampCoef = 1.0f - damping * 0.4f;  // 0.6 to 1.0
+    float dampCoef = 1.0f - damping * REVERB_DAMP_SCALE;
     *lpState = output * dampCoef + *lpState * (1.0f - dampCoef);
     
     // Write input + filtered feedback to buffer
@@ -318,7 +369,7 @@ static float processReverb(float sample) {
     reverbPreDelayPos = (reverbPreDelayPos + 1) % REVERB_PREDELAY_MAX;
     
     // Feedback amount based on room size (longer decay for larger rooms)
-    float feedback = 0.7f + fx.reverbSize * 0.25f;  // 0.7 to 0.95
+    float feedback = REVERB_FEEDBACK_MIN + fx.reverbSize * REVERB_FEEDBACK_RANGE;
     
     // Scale delay lengths by room size (affects density and character)
     // For simplicity, we use fixed delays but vary feedback
@@ -352,6 +403,7 @@ static float processReverb(float sample) {
 
 // Process all effects (call on master output)
 static float processEffects(float sample, float dt) {
+    _ensureFxCtx();
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processTape(sample, dt);
