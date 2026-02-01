@@ -213,6 +213,10 @@ static void updateSpeech(float dt) {
 static double audioTimeUs = 0.0;
 static int audioFrameCount = 0;
 
+// Melody voice indices for sidechain targeting (Bass=0, Lead=1, Chord=2)
+// Declared here so audio callback can route voices to correct buses
+static int melodyVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+
 static void SynthCallback(void *buffer, unsigned int frames) {
     double startTime = GetTime();
     
@@ -222,13 +226,60 @@ static void SynthCallback(void *buffer, unsigned int frames) {
     for (unsigned int i = 0; i < frames; i++) {
         float sample = 0.0f;
         
-        // Process synth voices
+        // Process synth voices separately by track for sidechain targeting
+        // melodyVoiceIdx[0]=Bass, [1]=Lead, [2]=Chord
+        float bassSample = 0.0f;
+        float leadSample = 0.0f;
+        float chordSample = 0.0f;
+        float otherSample = 0.0f;  // keyboard/preview voices
+        
         for (int v = 0; v < NUM_VOICES; v++) {
-            sample += processVoice(&synthVoices[v], SAMPLE_RATE);
+            float voiceSample = processVoice(&synthVoices[v], SAMPLE_RATE);
+            
+            // Route to appropriate bus based on which track owns this voice
+            if (v == melodyVoiceIdx[0]) {
+                bassSample += voiceSample;
+            } else if (v == melodyVoiceIdx[1]) {
+                leadSample += voiceSample;
+            } else if (v == melodyVoiceIdx[2]) {
+                chordSample += voiceSample;
+            } else {
+                otherSample += voiceSample;
+            }
         }
         
-        // Process drums
-        sample += processDrums(dt);
+        // Process drums with sidechain source separated
+        float sidechainSample = 0.0f;
+        float drumsSample = processDrumsWithSidechain(dt, fx.sidechainSource, &sidechainSample);
+        
+        // Update sidechain envelope from selected source
+        updateSidechainEnvelope(sidechainSample, dt);
+        
+        // Apply sidechain ducking to selected target(s)
+        if (fx.sidechainEnabled) {
+            switch (fx.sidechainTarget) {
+                case SIDECHAIN_TGT_BASS:
+                    bassSample = applySidechainDucking(bassSample);
+                    break;
+                case SIDECHAIN_TGT_LEAD:
+                    leadSample = applySidechainDucking(leadSample);
+                    break;
+                case SIDECHAIN_TGT_CHORD:
+                    chordSample = applySidechainDucking(chordSample);
+                    break;
+                case SIDECHAIN_TGT_ALL:
+                default:
+                    bassSample = applySidechainDucking(bassSample);
+                    leadSample = applySidechainDucking(leadSample);
+                    chordSample = applySidechainDucking(chordSample);
+                    otherSample = applySidechainDucking(otherSample);
+                    break;
+            }
+        }
+        
+        // Mix everything together
+        float synthSample = bassSample + leadSample + chordSample + otherSample;
+        sample = synthSample + drumsSample;
         
         sample *= masterVolume;
         
@@ -955,8 +1006,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
 // MELODIC SEQUENCER VOICES
 // ============================================================================
 
-// Each melodic track gets a dedicated voice index to avoid conflicts
-static int melodyVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
+// melodyVoiceIdx declared earlier (near audio callback) for sidechain routing
 
 // Convert MIDI note to frequency
 static float midiNoteToFreq(int note) {
@@ -1876,6 +1926,25 @@ int main(void) {
                         break;
                 }
                 ui_col_space(&col4, 4);
+            }
+            
+            // Sidechain section (always visible, not per-drum)
+            ui_col_sublabel(&col4, "Sidechain:", ORANGE);
+            ui_col_toggle(&col4, "On", &fx.sidechainEnabled);
+            if (fx.sidechainEnabled) {
+                static const char* sidechainSourceNames[] = {"Kick", "Snare", "Clap", "HiHat", "AllDrm"};
+                static const char* sidechainTargetNames[] = {"Bass", "Lead", "Chord", "AllSyn"};
+                ui_col_cycle(&col4, "Source", sidechainSourceNames, SIDECHAIN_SRC_COUNT, &fx.sidechainSource);
+                ui_col_cycle(&col4, "Target", sidechainTargetNames, SIDECHAIN_TGT_COUNT, &fx.sidechainTarget);
+                // Show routing: "Kick -> Bass"
+                DrawTextShadow(TextFormat("%s -> %s", 
+                    sidechainSourceNames[fx.sidechainSource], 
+                    sidechainTargetNames[fx.sidechainTarget]), 
+                    col4.x + 5, col4.y, 10, LIME);
+                col4.y += 14;
+                ui_col_float(&col4, "Depth", &fx.sidechainDepth, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col4, "Attack", &fx.sidechainAttack, 0.002f, 0.001f, 0.05f);
+                ui_col_float(&col4, "Release", &fx.sidechainRelease, 0.02f, 0.05f, 0.5f);
             }
         }
         

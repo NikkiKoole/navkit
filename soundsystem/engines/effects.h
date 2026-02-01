@@ -78,7 +78,31 @@ typedef struct {
     float reverbDamping;  // High frequency damping (0-1)
     float reverbMix;      // Dry/wet (0-1)
     float reverbPreDelay; // Pre-delay in seconds (0-0.1)
+    
+    // Sidechain compression (kick -> bass ducking)
+    bool sidechainEnabled;
+    int sidechainSource;     // 0=Kick, 1=Snare, 2=Clap, 3=HiHat, 4=AllDrums
+    int sidechainTarget;     // 0=Bass, 1=Lead, 2=Chord, 3=All
+    float sidechainDepth;    // How much to duck (0-1)
+    float sidechainAttack;   // Attack time in seconds (0.001-0.05)
+    float sidechainRelease;  // Release time in seconds (0.05-0.5)
+    float sidechainEnvelope; // Internal: current envelope value
 } Effects;
+
+// Sidechain source options
+#define SIDECHAIN_SRC_KICK    0
+#define SIDECHAIN_SRC_SNARE   1
+#define SIDECHAIN_SRC_CLAP    2
+#define SIDECHAIN_SRC_HIHAT   3
+#define SIDECHAIN_SRC_ALL     4
+#define SIDECHAIN_SRC_COUNT   5
+
+// Sidechain target options
+#define SIDECHAIN_TGT_BASS    0
+#define SIDECHAIN_TGT_LEAD    1
+#define SIDECHAIN_TGT_CHORD   2
+#define SIDECHAIN_TGT_ALL     3
+#define SIDECHAIN_TGT_COUNT   4
 
 // ============================================================================
 // EFFECTS CONTEXT (all effects state in one struct)
@@ -164,6 +188,15 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.reverbDamping = 0.5f;
     ctx->params.reverbMix = 0.3f;
     ctx->params.reverbPreDelay = 0.02f;
+    
+    // Sidechain - off by default, kick -> bass
+    ctx->params.sidechainEnabled = false;
+    ctx->params.sidechainSource = SIDECHAIN_SRC_KICK;
+    ctx->params.sidechainTarget = SIDECHAIN_TGT_BASS;
+    ctx->params.sidechainDepth = 0.8f;
+    ctx->params.sidechainAttack = 0.005f;   // 5ms attack
+    ctx->params.sidechainRelease = 0.15f;   // 150ms release (pumpy)
+    ctx->params.sidechainEnvelope = 0.0f;
 }
 
 // ============================================================================
@@ -395,6 +428,47 @@ static float processReverb(float sample) {
     
     // Mix
     return dry * (1.0f - fx.reverbMix) + wet * fx.reverbMix;
+}
+
+// ============================================================================
+// SIDECHAIN COMPRESSION
+// ============================================================================
+
+// Update sidechain envelope follower based on sidechain source (e.g., kick)
+// Returns the current envelope value (0-1)
+static float updateSidechainEnvelope(float sidechainInput, float dt) {
+    _ensureFxCtx();
+    if (!fx.sidechainEnabled) return 0.0f;
+    
+    float inputLevel = fabsf(sidechainInput);
+    
+    // Envelope follower with separate attack/release
+    if (inputLevel > fx.sidechainEnvelope) {
+        // Attack: fast rise to follow transients
+        float attackCoef = 1.0f - expf(-dt / fx.sidechainAttack);
+        fx.sidechainEnvelope += (inputLevel - fx.sidechainEnvelope) * attackCoef;
+    } else {
+        // Release: slow decay for pumping effect
+        float releaseCoef = 1.0f - expf(-dt / fx.sidechainRelease);
+        fx.sidechainEnvelope += (inputLevel - fx.sidechainEnvelope) * releaseCoef;
+    }
+    
+    return fx.sidechainEnvelope;
+}
+
+// Apply sidechain ducking to a signal based on current envelope
+// Call updateSidechainEnvelope first with the sidechain source
+static float applySidechainDucking(float signal) {
+    _ensureFxCtx();
+    if (!fx.sidechainEnabled) return signal;
+    
+    // Calculate gain reduction based on envelope and depth
+    float gainReduction = fx.sidechainEnvelope * fx.sidechainDepth;
+    
+    // Clamp to avoid negative gain
+    if (gainReduction > 1.0f) gainReduction = 1.0f;
+    
+    return signal * (1.0f - gainReduction);
 }
 
 // ============================================================================

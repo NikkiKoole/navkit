@@ -654,6 +654,74 @@ static float processDrums(float dt) {
     return sample * drumVolume;
 }
 
+// Sidechain source types (must match effects.h defines)
+#define SIDECHAIN_SRC_KICK    0
+#define SIDECHAIN_SRC_SNARE   1
+#define SIDECHAIN_SRC_CLAP    2
+#define SIDECHAIN_SRC_HIHAT   3
+#define SIDECHAIN_SRC_ALL     4
+
+// Process drums with selected source separated out for sidechain routing
+// sidechainOut receives the sidechain source sample, other drums returned
+// sidechainSource: 0=Kick, 1=Snare, 2=Clap, 3=HiHat, 4=All
+static float processDrumsWithSidechain(float dt, int sidechainSource, float *sidechainOut) {
+    _ensureDrumsCtx();
+    float sample = 0.0f;
+    float scSample = 0.0f;
+    
+    // Process all drums, routing selected one(s) to sidechain output
+    float kick = processKick(&drumVoices[DRUM_KICK], dt) * drumVoices[DRUM_KICK].velocity;
+    float cr78Kick = processCR78Kick(&drumVoices[DRUM_CR78_KICK], dt) * drumVoices[DRUM_CR78_KICK].velocity;
+    float kicks = kick + cr78Kick;
+    
+    float snare = processSnare(&drumVoices[DRUM_SNARE], dt) * drumVoices[DRUM_SNARE].velocity;
+    float cr78Snare = processCR78Snare(&drumVoices[DRUM_CR78_SNARE], dt) * drumVoices[DRUM_CR78_SNARE].velocity;
+    float snares = snare + cr78Snare;
+    
+    float clap = processClap(&drumVoices[DRUM_CLAP], dt) * drumVoices[DRUM_CLAP].velocity;
+    
+    float closedHH = processHihat(&drumVoices[DRUM_CLOSED_HH], dt, false) * drumVoices[DRUM_CLOSED_HH].velocity;
+    float openHH = processHihat(&drumVoices[DRUM_OPEN_HH], dt, true) * drumVoices[DRUM_OPEN_HH].velocity;
+    float cr78HH = processCR78Hihat(&drumVoices[DRUM_CR78_HIHAT], dt) * drumVoices[DRUM_CR78_HIHAT].velocity;
+    float hihats = closedHH + openHH + cr78HH;
+    
+    float toms = processTom(&drumVoices[DRUM_LOW_TOM], dt, 1.0f) * drumVoices[DRUM_LOW_TOM].velocity;
+    toms += processTom(&drumVoices[DRUM_MID_TOM], dt, 1.5f) * drumVoices[DRUM_MID_TOM].velocity;
+    toms += processTom(&drumVoices[DRUM_HI_TOM], dt, 2.2f) * drumVoices[DRUM_HI_TOM].velocity;
+    
+    float percs = processRimshot(&drumVoices[DRUM_RIMSHOT], dt) * drumVoices[DRUM_RIMSHOT].velocity;
+    percs += processCowbell(&drumVoices[DRUM_COWBELL], dt) * drumVoices[DRUM_COWBELL].velocity;
+    percs += processClave(&drumVoices[DRUM_CLAVE], dt) * drumVoices[DRUM_CLAVE].velocity;
+    percs += processMaracas(&drumVoices[DRUM_MARACAS], dt) * drumVoices[DRUM_MARACAS].velocity;
+    percs += processCR78Metal(&drumVoices[DRUM_CR78_METAL], dt) * drumVoices[DRUM_CR78_METAL].velocity;
+    
+    // Route to sidechain based on source selection
+    switch (sidechainSource) {
+        case SIDECHAIN_SRC_KICK:
+            scSample = kicks;
+            break;
+        case SIDECHAIN_SRC_SNARE:
+            scSample = snares;
+            break;
+        case SIDECHAIN_SRC_CLAP:
+            scSample = clap;
+            break;
+        case SIDECHAIN_SRC_HIHAT:
+            scSample = hihats;
+            break;
+        case SIDECHAIN_SRC_ALL:
+        default:
+            scSample = kicks + snares + clap + hihats + toms + percs;
+            break;
+    }
+    
+    // Sum all drums for output
+    sample = kicks + snares + clap + hihats + toms + percs;
+    
+    *sidechainOut = scSample * drumVolume;
+    return sample * drumVolume;
+}
+
 // ============================================================================
 // CONVENIENCE FUNCTIONS
 // ============================================================================
