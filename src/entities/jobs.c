@@ -27,6 +27,53 @@
 static const int DIR_DX[4] = {0, 1, 0, -1};
 static const int DIR_DY[4] = {-1, 0, 1, 0};
 
+// =============================================================================
+// Dig Designation Cache - built once per frame, used by mining job assignment
+// =============================================================================
+#define MAX_DIG_CACHE 4096
+
+typedef struct {
+    int x, y, z;       // Designation coordinates
+    int adjX, adjY;    // Adjacent walkable tile (for miner to stand on)
+} DigDesignationEntry;
+
+static DigDesignationEntry digCache[MAX_DIG_CACHE];
+static int digCacheCount = 0;
+
+// Build the dig designation cache - call once per frame before mining assignment
+static void RebuildDigDesignationCache(void) {
+    digCacheCount = 0;
+    
+    for (int z = 0; z < gridDepth && digCacheCount < MAX_DIG_CACHE; z++) {
+        for (int y = 0; y < gridHeight && digCacheCount < MAX_DIG_CACHE; y++) {
+            for (int x = 0; x < gridWidth && digCacheCount < MAX_DIG_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != DESIGNATION_DIG) continue;
+                if (d->assignedMover != -1) continue;  // Already assigned
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                // Find adjacent walkable tile
+                int adjX = -1, adjY = -1;
+                for (int dir = 0; dir < 4; dir++) {
+                    int ax = x + DIR_DX[dir];
+                    int ay = y + DIR_DY[dir];
+                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                        if (IsCellWalkableAt(z, ay, ax)) {
+                            adjX = ax;
+                            adjY = ay;
+                            break;
+                        }
+                    }
+                }
+                
+                if (adjX < 0) continue;  // No adjacent walkable tile
+                
+                digCache[digCacheCount++] = (DigDesignationEntry){x, y, z, adjX, adjY};
+            }
+        }
+    }
+}
+
 // Find first adjacent tile that is both walkable and reachable from moverCell.
 // Returns true if found, storing result in outX/outY.
 static bool FindReachableAdjacentTile(int targetX, int targetY, int targetZ, 
@@ -1607,18 +1654,9 @@ void AssignJobsHybrid(void) {
     // Skip entirely if no sparse targets exist (performance optimization)
     // =========================================================================
     if (idleMoverCount > 0) {
-        // Quick check: any dig designations?
-        bool hasDigWork = false;
-        for (int z = 0; z < gridDepth && !hasDigWork; z++) {
-            for (int y = 0; y < gridHeight && !hasDigWork; y++) {
-                for (int x = 0; x < gridWidth && !hasDigWork; x++) {
-                    Designation* d = GetDesignation(x, y, z);
-                    if (d && d->type == DESIGNATION_DIG && d->assignedMover == -1) {
-                        hasDigWork = true;
-                    }
-                }
-            }
-        }
+        // Build dig designation cache ONCE (replaces grid scan per mover)
+        RebuildDigDesignationCache();
+        bool hasDigWork = (digCacheCount > 0);
         
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -2673,54 +2711,34 @@ int WorkGiver_Mining(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find nearest unassigned dig designation
+    // Find nearest unassigned dig designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
     
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_DIG || d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Find adjacent walkable tile
-                int adjX = -1, adjY = -1;
-                int dx4[] = {0, 1, 0, -1};
-                int dy4[] = {-1, 0, 1, 0};
-                for (int dir = 0; dir < 4; dir++) {
-                    int ax = x + dx4[dir];
-                    int ay = y + dy4[dir];
-                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                        if (IsCellWalkableAt(z, ay, ax)) {
-                            adjX = ax;
-                            adjY = ay;
-                            break;
-                        }
-                    }
-                }
-                
-                if (adjX < 0) continue;  // No adjacent walkable tile
-                
-                // Only same z-level for now
-                if (z != moverZ) continue;
-                
-                float digPosX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                float digPosY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = digPosX - m->x;
-                float dy = digPosY - m->y;
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestDesigX = x;
-                    bestDesigY = y;
-                    bestDesigZ = z;
-                    bestAdjX = adjX;
-                    bestAdjY = adjY;
-                }
-            }
+    for (int i = 0; i < digCacheCount; i++) {
+        DigDesignationEntry* entry = &digCache[i];
+        
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
+        
+        // Check if still unassigned (might have been assigned by previous mover this frame)
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        
+        float digPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float digPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = digPosX - m->x;
+        float dy = digPosY - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
         }
     }
     
