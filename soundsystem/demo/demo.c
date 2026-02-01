@@ -1352,9 +1352,11 @@ int main(void) {
         
         // Sequencer play/stop
         if (IsKeyPressed(KEY_SPACE)) {
-            seq.playing = !seq.playing;
             if (seq.playing) {
+                stopSequencer();  // Stop and release all notes
+            } else {
                 resetSequencer();
+                seq.playing = true;
             }
         }
         updateSequencer(GetFrameTime());
@@ -1423,8 +1425,12 @@ int main(void) {
             
             // [Play] / [Stop] button
             if (PushButton(x, topBarY, seq.playing ? "Stop" : "Play")) {
-                seq.playing = !seq.playing;
-                if (seq.playing) resetSequencer();
+                if (seq.playing) {
+                    stopSequencer();
+                } else {
+                    resetSequencer();
+                    seq.playing = true;
+                }
             }
             x += MeasureText(seq.playing ? "[Stop]" : "[Play]", 18) + 15;
             

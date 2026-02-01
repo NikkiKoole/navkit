@@ -565,7 +565,23 @@ static void clearPattern(Pattern *p) {
 // INIT & RESET
 // ============================================================================
 
+// Release all currently playing melody notes (call their release callbacks)
+static void releaseAllMelodyNotes(void) {
+    for (int i = 0; i < SEQ_MELODY_TRACKS; i++) {
+        if (seq.melodyCurrentNote[i] != SEQ_NOTE_OFF) {
+            if (seq.melodyRelease[i]) {
+                seq.melodyRelease[i]();
+            }
+            seq.melodyCurrentNote[i] = SEQ_NOTE_OFF;
+        }
+        seq.melodyGateRemaining[i] = 0;
+    }
+}
+
 static void resetSequencer(void) {
+    // Release any playing notes before resetting
+    releaseAllMelodyNotes();
+    
     seq.tickTimer = 0.0f;
     seq.playCount = 0;
     memset(seq.drumStepPlayCount, 0, sizeof(seq.drumStepPlayCount));
@@ -585,6 +601,12 @@ static void resetSequencer(void) {
         seq.melodyGateRemaining[i] = 0;
         seq.melodyCurrentNote[i] = SEQ_NOTE_OFF;
     }
+}
+
+// Stop sequencer playback and release all notes
+static void stopSequencer(void) {
+    seq.playing = false;
+    releaseAllMelodyNotes();
 }
 
 // Initialize sequencer with drum trigger functions
@@ -772,6 +794,35 @@ static void updateSequencer(float dt) {
                 seq.drumTriggered[track] = false;
                 seq.drumTriggerTick[track] = calcDrumTriggerTick(track);
                 
+                // IMPORTANT: Check if new step should trigger immediately (tick 0)
+                // This handles the case where we advance to a new step and the trigger
+                // tick is 0 or negative - we need to trigger NOW, not wait for next iteration
+                int newStep = seq.drumStep[track];
+                if (p->drumSteps[track][newStep] && seq.drumTriggerTick[track] <= 0) {
+                    float prob = p->drumProbability[track][newStep];
+                    bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
+                    bool passedCond = seqEvalDrumCondition(track, newStep);
+                    
+                    if (passedProb && passedCond) {
+                        seqPreparePLocks(p, track, newStep);
+                        float pitchMod = powf(2.0f, p->drumPitch[track][newStep]);
+                        float velocity = p->drumVelocity[track][newStep] * seq.trackVolume[track];
+                        
+                        float flamTimeMs = plockValue(PLOCK_FLAM_TIME, 0.0f);
+                        if (flamTimeMs > 0.0f && seq.drumTriggers[track]) {
+                            float flamVelMult = plockValue(PLOCK_FLAM_VELOCITY, 0.5f);
+                            seq.drumTriggers[track](velocity * flamVelMult, pitchMod);
+                            seq.flamPending[track] = true;
+                            seq.flamTime[track] = flamTimeMs / 1000.0f;
+                            seq.flamVelocity[track] = p->drumVelocity[track][newStep];
+                            seq.flamPitch[track] = pitchMod;
+                        } else if (seq.drumTriggers[track]) {
+                            seq.drumTriggers[track](velocity, pitchMod);
+                        }
+                    }
+                    seq.drumTriggered[track] = true;
+                }
+                
                 // Check if pattern completed (track 0 wraps as master)
                 if (track == 0 && seq.drumStep[0] == 0 && prevStep != 0) {
                     seq.playCount++;
@@ -853,6 +904,37 @@ static void updateSequencer(float dt) {
                 
                 seq.melodyStep[track] = (seq.melodyStep[track] + 1) % p->melodyTrackLength[track];
                 seq.melodyTriggered[track] = false;
+                
+                // IMPORTANT: Check if new step should trigger immediately (tick 0)
+                // This handles the case where we advance to a new step and need to trigger NOW
+                int newStep = seq.melodyStep[track];
+                int newNote = p->melodyNote[track][newStep];
+                if (newNote != SEQ_NOTE_OFF) {
+                    float prob = p->melodyProbability[track][newStep];
+                    bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
+                    bool passedCond = seqEvalMelodyCondition(track, newStep);
+                    
+                    if (passedProb && passedCond) {
+                        if (seq.melodyCurrentNote[track] != SEQ_NOTE_OFF && seq.melodyRelease[track]) {
+                            seq.melodyRelease[track]();
+                        }
+                        
+                        int gateSteps = p->melodyGate[track][newStep];
+                        if (gateSteps == 0) gateSteps = 1;
+                        float gateTime = gateSteps * stepDuration;
+                        
+                        if (seq.melodyTriggers[track]) {
+                            bool slide = p->melodySlide[track][newStep];
+                            bool accent = p->melodyAccent[track][newStep];
+                            seqPreparePLocks(p, SEQ_DRUM_TRACKS + track, newStep);
+                            float velocity = p->melodyVelocity[track][newStep] * seq.trackVolume[SEQ_DRUM_TRACKS + track];
+                            seq.melodyTriggers[track](newNote, velocity, gateTime, slide, accent);
+                        }
+                        seq.melodyCurrentNote[track] = newNote;
+                        seq.melodyGateRemaining[track] = gateSteps * SEQ_TICKS_PER_STEP;
+                    }
+                    seq.melodyTriggered[track] = true;
+                }
             }
         }
     }

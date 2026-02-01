@@ -1688,7 +1688,8 @@ describe(e2e_sequencer_playback) {
         // Calculate time for one full pattern (16 steps at 120 BPM)
         // 120 BPM = 2 beats/sec, 4 steps/beat = 8 steps/sec
         // 16 steps = 2 seconds
-        float patternDuration = 16.0f * (60.0f / seq.bpm / 4.0f);
+        // Subtract small epsilon to avoid triggering step 0 of the next loop
+        float patternDuration = 16.0f * (60.0f / seq.bpm / 4.0f) - 0.001f;
         float dt = 1.0f / SAMPLE_RATE;
         int samples = (int)(patternDuration * SAMPLE_RATE);
         
@@ -1795,9 +1796,11 @@ describe(e2e_sequencer_playback) {
         seq.dilla.jitter = 0;
         
         // Run for 12 steps (LCM of 3 and 4)
+        // Subtract epsilon to avoid triggering at the boundary
         float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float totalTime = 12.0f * stepDuration - 0.001f;
         float dt = 1.0f / SAMPLE_RATE;
-        int samples = (int)(12.0f * stepDuration * SAMPLE_RATE);
+        int samples = (int)(totalTime * SAMPLE_RATE);
         
         for (int i = 0; i < samples; i++) {
             updateSequencer(dt);
@@ -1906,6 +1909,178 @@ describe(e2e_sequencer_playback) {
         
         // Now should have snare from pattern 1
         expect(e2e_snare_count >= 1);
+        
+        seq.playing = false;
+    }
+    
+    it("should trigger step 0 correctly when pattern loops") {
+        // This test verifies that step 0 triggers on every pattern loop,
+        // not just the first time. This catches timing issues at the loop boundary.
+        e2e_reset_counters();
+        _ensureSeqCtx();
+        _ensureDrumsCtx();
+        initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
+        initDrumParams();
+        
+        // Only kick on step 0
+        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
+        
+        // Short pattern (4 steps) to make looping faster to test
+        Pattern *p = seqCurrentPattern();
+        p->drumTrackLength[0] = 4;
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        // No timing variation for predictable triggers
+        seq.dilla.kickNudge = 0;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        
+        // Calculate time for 3 full pattern loops (12 steps total at 4 steps/pattern)
+        // Subtract epsilon to avoid triggering step 0 of the 4th loop
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float totalTime = 12.0f * stepDuration - 0.001f;
+        float dt = 1.0f / SAMPLE_RATE;
+        int samples = (int)(totalTime * SAMPLE_RATE);
+        
+        // Run sequencer for 3 pattern loops
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+        
+        // Should have triggered kick exactly 3 times (once per loop)
+        expect(e2e_kick_count == 3);
+        
+        seq.playing = false;
+    }
+    
+    it("should trigger step 0 with variable frame times") {
+        // This test simulates variable frame rates which can cause
+        // multiple ticks to be processed in a single updateSequencer call
+        e2e_reset_counters();
+        _ensureSeqCtx();
+        _ensureDrumsCtx();
+        initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
+        initDrumParams();
+        
+        // Only kick on step 0
+        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
+        
+        Pattern *p = seqCurrentPattern();
+        p->drumTrackLength[0] = 4;
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        seq.dilla.kickNudge = 0;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        
+        // Simulate 3 pattern loops with LARGE frame times (30fps = ~33ms frames)
+        // This means multiple ticks will be processed per updateSequencer call
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float patternDuration = 4.0f * stepDuration;
+        // Run for exactly 3 patterns minus a small epsilon to avoid triggering 4th
+        float totalTime = 3.0f * patternDuration - 0.001f;
+        float largeFrameDt = 1.0f / 30.0f;  // 30 FPS
+        
+        float elapsed = 0.0f;
+        while (elapsed < totalTime) {
+            updateSequencer(largeFrameDt);
+            elapsed += largeFrameDt;
+        }
+        
+        // Should trigger exactly 3 times (once per pattern loop)
+        expect(e2e_kick_count == 3);
+        
+        seq.playing = false;
+    }
+    
+    it("should not double-trigger at loop boundary") {
+        // Test that step 0 doesn't trigger twice when crossing the loop boundary
+        e2e_reset_counters();
+        _ensureSeqCtx();
+        _ensureDrumsCtx();
+        initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
+        initDrumParams();
+        
+        // Kick on step 0 only
+        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
+        
+        Pattern *p = seqCurrentPattern();
+        p->drumTrackLength[0] = 4;
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        seq.dilla.kickNudge = 0;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        
+        // Advance to just before the loop boundary (end of step 3)
+        // 4 steps * 24 ticks = 96 ticks per pattern
+        // Position at tick 95 (last tick of step 3)
+        float tickDuration = 60.0f / seq.bpm / 96.0f;
+        float timeToTick95 = 95.0f * tickDuration;
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        int samples = (int)(timeToTick95 * SAMPLE_RATE);
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+        
+        // Should have triggered once (first loop)
+        expect(e2e_kick_count == 1);
+        
+        // Now advance to cross the boundary - step 0 of second loop should trigger
+        updateSequencer(tickDuration * 2);  // Advance 2 ticks to cross boundary
+        
+        // Should have triggered exactly twice (second loop started, step 0 triggered)
+        expect(e2e_kick_count == 2);
+        
+        seq.playing = false;
+    }
+    
+    it("should trigger with negative nudge at loop boundary") {
+        // If step 0 has negative nudge, it should still trigger correctly
+        // when the pattern loops (this tests early triggers at boundary)
+        e2e_reset_counters();
+        _ensureSeqCtx();
+        _ensureDrumsCtx();
+        initSequencer(e2e_kick_trigger, e2e_snare_trigger, e2e_hh_trigger, e2e_clap_trigger);
+        initDrumParams();
+        
+        seqSetDrumStep(0, 0, true, 1.0f, 0.0f);
+        
+        Pattern *p = seqCurrentPattern();
+        p->drumTrackLength[0] = 4;
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        // Negative kick nudge means kick triggers EARLY
+        seq.dilla.kickNudge = -5;
+        seq.dilla.swing = 0;
+        seq.dilla.jitter = 0;
+        
+        // Run for 2 full patterns
+        float stepDuration = 60.0f / seq.bpm / 4.0f;
+        float patternDuration = 4.0f * stepDuration;
+        float totalTime = 2.0f * patternDuration - 0.001f;
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        int samples = (int)(totalTime * SAMPLE_RATE);
+        for (int i = 0; i < samples; i++) {
+            updateSequencer(dt);
+        }
+        
+        // Should trigger exactly twice (once per loop)
+        expect(e2e_kick_count == 2);
         
         seq.playing = false;
     }
@@ -2849,6 +3024,70 @@ describe(integration_sequencer_synth) {
         expect_float_near(melody_last_vel, 0.5f, 0.01f);
         
         seq.playing = false;
+    }
+    
+    it("should release notes when playback stops") {
+        // This test verifies that stopping playback (seq.playing = false)
+        // releases any currently playing melody notes to prevent "hanging" voices
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        
+        // Set up a long note (8-step gate) so it's still playing when we stop
+        seqSetMelodyStep(0, 0, 60, 0.8f, 8);
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        // Run for a short time - note should trigger but not release yet
+        for (int i = 0; i < 1000; i++) {
+            updateSequencer(dt);
+        }
+        
+        expect(melody_trigger_count == 1);
+        expect(melody_release_count == 0);  // Gate hasn't expired yet
+        
+        // Now stop playback
+        seq.playing = false;
+        
+        // The sequencer should release all playing notes when stopped
+        // Call stopSequencer() or similar to clean up
+        stopSequencer();
+        
+        // Note should now be released
+        expect(melody_release_count == 1);
+    }
+    
+    it("should release notes when sequencer is reset during playback") {
+        reset_melody_counters();
+        _ensureSeqCtx();
+        initSequencer(NULL, NULL, NULL, NULL);
+        setMelodyCallbacks(0, test_melody_trigger, test_melody_release);
+        
+        seqSetMelodyStep(0, 0, 60, 0.8f, 8);
+        
+        seq.bpm = 120.0f;
+        seq.playing = true;
+        resetSequencer();
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        // Trigger the note
+        for (int i = 0; i < 1000; i++) {
+            updateSequencer(dt);
+        }
+        
+        expect(melody_trigger_count == 1);
+        expect(melody_release_count == 0);
+        
+        // Reset sequencer while playing - should release the note
+        resetSequencer();
+        
+        expect(melody_release_count == 1);
     }
 }
 
