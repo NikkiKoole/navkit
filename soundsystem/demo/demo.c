@@ -115,13 +115,13 @@ static void babbleWithIntonation(float duration, float pitch, float mood, float 
     int targetSyllables = (int)(duration * speed / 2.0f);
     
     for (int i = 0; i < targetSyllables && pos < SPEECH_MAX - 4; i++) {
-        noiseState = noiseState * 1103515245 + 12345;
-        const char* syl = babbleSyllables[(noiseState >> 16) % numBabbleSyllables];
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        const char* syl = babbleSyllables[(synthNoiseState >> 16) % numBabbleSyllables];
         while (*syl && pos < SPEECH_MAX - 2) {
             text[pos++] = *syl++;
         }
-        noiseState = noiseState * 1103515245 + 12345;
-        if ((noiseState >> 16) % 4 == 0 && pos < SPEECH_MAX - 2) {
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        if ((synthNoiseState >> 16) % 4 == 0 && pos < SPEECH_MAX - 2) {
             text[pos++] = ' ';
         }
     }
@@ -172,8 +172,8 @@ static void updateSpeech(float dt) {
         VowelType vowel = charToVowel(c);
         float pitchMod = charToPitch(c);
         
-        noiseState = noiseState * 1103515245 + 12345;
-        float randVar = 1.0f + ((float)(noiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+        float randVar = 1.0f + ((float)(synthNoiseState >> 16) / 65535.0f - 0.5f) * sq->pitchVariation;
         
         // Apply intonation contour (position-based pitch shift)
         float progress = (float)sq->index / (float)sq->length;
@@ -181,7 +181,7 @@ static void updateSpeech(float dt) {
         
         float baseFreq = 200.0f * sq->basePitch * pitchMod * randVar * intonationMod;
         
-        Voice *v = &voices[sq->voiceIndex];
+        Voice *v = &synthVoices[sq->voiceIndex];
         
         if (v->envStage > 0 && v->wave == WAVE_VOICE) {
             v->voiceSettings.nextVowel = vowel;
@@ -196,7 +196,7 @@ static void updateSpeech(float dt) {
     }
     
     // Animate vowel blend
-    Voice *v = &voices[sq->voiceIndex];
+    Voice *v = &synthVoices[sq->voiceIndex];
     if (v->envStage > 0 && v->wave == WAVE_VOICE) {
         v->voiceSettings.vowelBlend += dt * sq->speed * 2.0f;
         if (v->voiceSettings.vowelBlend >= 1.0f) {
@@ -224,7 +224,7 @@ static void SynthCallback(void *buffer, unsigned int frames) {
         
         // Process synth voices
         for (int v = 0; v < NUM_VOICES; v++) {
-            sample += processVoice(&voices[v], SAMPLE_RATE);
+            sample += processVoice(&synthVoices[v], SAMPLE_RATE);
         }
         
         // Process drums
@@ -312,219 +312,219 @@ static float semitoneToFreq(int semitone, int octave) {
 
 typedef struct {
     // Wave type
-    int waveType;
-    int scwIndex;
+    int p_waveType;
+    int p_scwIndex;
     
     // Envelope
-    float attack;
-    float decay;
-    float sustain;
-    float release;
-    float volume;
+    float p_attack;
+    float p_decay;
+    float p_sustain;
+    float p_release;
+    float p_volume;
     
     // PWM (for square wave)
-    float pulseWidth;
-    float pwmRate;
-    float pwmDepth;
+    float p_pulseWidth;
+    float p_pwmRate;
+    float p_pwmDepth;
     
     // Vibrato
-    float vibratoRate;
-    float vibratoDepth;
+    float p_vibratoRate;
+    float p_vibratoDepth;
     
     // Filter
-    float filterCutoff;
-    float filterResonance;
-    float filterEnvAmt;
-    float filterEnvAttack;
-    float filterEnvDecay;
+    float p_filterCutoff;
+    float p_filterResonance;
+    float p_filterEnvAmt;
+    float p_filterEnvAttack;
+    float p_filterEnvDecay;
     
     // Filter LFO
-    float filterLfoRate;
-    float filterLfoDepth;
-    int filterLfoShape;
+    float p_filterLfoRate;
+    float p_filterLfoDepth;
+    int p_filterLfoShape;
     
     // Resonance LFO
-    float resoLfoRate;
-    float resoLfoDepth;
-    int resoLfoShape;
+    float p_resoLfoRate;
+    float p_resoLfoDepth;
+    int p_resoLfoShape;
     
     // Amplitude LFO
-    float ampLfoRate;
-    float ampLfoDepth;
-    int ampLfoShape;
+    float p_ampLfoRate;
+    float p_ampLfoDepth;
+    int p_ampLfoShape;
     
     // Pitch LFO
-    float pitchLfoRate;
-    float pitchLfoDepth;
-    int pitchLfoShape;
+    float p_pitchLfoRate;
+    float p_pitchLfoDepth;
+    int p_pitchLfoShape;
     
     // Mono/Glide
-    bool monoMode;
-    float glideTime;
+    bool p_monoMode;
+    float p_glideTime;
     
     // Pluck settings
-    float pluckBrightness;
-    float pluckDamping;
-    float pluckDamp;
+    float p_pluckBrightness;
+    float p_pluckDamping;
+    float p_pluckDamp;
     
     // Additive
-    int additivePreset;
-    float additiveBrightness;
-    float additiveShimmer;
-    float additiveInharmonicity;
+    int p_additivePreset;
+    float p_additiveBrightness;
+    float p_additiveShimmer;
+    float p_additiveInharmonicity;
     
     // Mallet
-    int malletPreset;
-    float malletStiffness;
-    float malletHardness;
-    float malletStrikePos;
-    float malletResonance;
-    float malletTremolo;
-    float malletTremoloRate;
-    float malletDamp;
+    int p_malletPreset;
+    float p_malletStiffness;
+    float p_malletHardness;
+    float p_malletStrikePos;
+    float p_malletResonance;
+    float p_malletTremolo;
+    float p_malletTremoloRate;
+    float p_malletDamp;
     
     // Voice (formant)
-    int voiceVowel;
-    float voiceFormantShift;
-    float voiceBreathiness;
-    float voiceBuzziness;
-    float voiceSpeed;
-    float voicePitch;
-    bool voiceConsonant;
-    float voiceConsonantAmt;
-    bool voiceNasal;
-    float voiceNasalAmt;
-    float voicePitchEnv;
-    float voicePitchEnvTime;
-    float voicePitchEnvCurve;
+    int p_voiceVowel;
+    float p_voiceFormantShift;
+    float p_voiceBreathiness;
+    float p_voiceBuzziness;
+    float p_voiceSpeed;
+    float p_voicePitch;
+    bool p_voiceConsonant;
+    float p_voiceConsonantAmt;
+    bool p_voiceNasal;
+    float p_voiceNasalAmt;
+    float p_voicePitchEnv;
+    float p_voicePitchEnvTime;
+    float p_voicePitchEnvCurve;
     
     // Granular
-    int granularScwIndex;
-    float granularGrainSize;
-    float granularDensity;
-    float granularPosition;
-    float granularPosRandom;
-    float granularPitch;
-    float granularPitchRandom;
-    float granularAmpRandom;
-    float granularSpread;
-    bool granularFreeze;
+    int p_granularScwIndex;
+    float p_granularGrainSize;
+    float p_granularDensity;
+    float p_granularPosition;
+    float p_granularPosRandom;
+    float p_granularPitch;
+    float p_granularPitchRandom;
+    float p_granularAmpRandom;
+    float p_granularSpread;
+    bool p_granularFreeze;
     
     // FM
-    float fmModRatio;
-    float fmModIndex;
-    float fmFeedback;
+    float p_fmModRatio;
+    float p_fmModIndex;
+    float p_fmFeedback;
     
     // Phase Distortion
-    int pdWaveType;
-    float pdDistortion;
+    int p_pdWaveType;
+    float p_pdDistortion;
     
     // Membrane
-    int membranePreset;
-    float membraneDamping;
-    float membraneStrike;
-    float membraneBend;
-    float membraneBendDecay;
+    int p_membranePreset;
+    float p_membraneDamping;
+    float p_membraneStrike;
+    float p_membraneBend;
+    float p_membraneBendDecay;
     
     // Bird
-    int birdType;
-    float birdChirpRange;
-    float birdTrillRate;
-    float birdTrillDepth;
-    float birdAmRate;
-    float birdAmDepth;
-    float birdHarmonics;
+    int p_birdType;
+    float p_birdChirpRange;
+    float p_birdTrillRate;
+    float p_birdTrillDepth;
+    float p_birdAmRate;
+    float p_birdAmDepth;
+    float p_birdHarmonics;
 } SynthPatch;
 
 // Default patch initializer
 static SynthPatch createDefaultPatch(int waveType) {
     return (SynthPatch){
-        .waveType = waveType,
-        .scwIndex = 0,
-        .attack = 0.01f,
-        .decay = 0.1f,
-        .sustain = 0.5f,
-        .release = 0.3f,
-        .volume = 0.5f,
-        .pulseWidth = 0.5f,
-        .pwmRate = 3.0f,
-        .pwmDepth = 0.0f,
-        .vibratoRate = 5.0f,
-        .vibratoDepth = 0.0f,
-        .filterCutoff = 1.0f,
-        .filterResonance = 0.0f,
-        .filterEnvAmt = 0.0f,
-        .filterEnvAttack = 0.01f,
-        .filterEnvDecay = 0.2f,
-        .filterLfoRate = 0.0f,
-        .filterLfoDepth = 0.0f,
-        .filterLfoShape = 0,
-        .resoLfoRate = 0.0f,
-        .resoLfoDepth = 0.0f,
-        .resoLfoShape = 0,
-        .ampLfoRate = 0.0f,
-        .ampLfoDepth = 0.0f,
-        .ampLfoShape = 0,
-        .pitchLfoRate = 5.0f,
-        .pitchLfoDepth = 0.0f,
-        .pitchLfoShape = 0,
-        .monoMode = false,
-        .glideTime = 0.1f,
-        .pluckBrightness = 0.5f,
-        .pluckDamping = 0.996f,
-        .pluckDamp = 0.0f,
-        .additivePreset = ADDITIVE_PRESET_ORGAN,
-        .additiveBrightness = 0.5f,
-        .additiveShimmer = 0.0f,
-        .additiveInharmonicity = 0.0f,
-        .malletPreset = MALLET_PRESET_MARIMBA,
-        .malletStiffness = 0.3f,
-        .malletHardness = 0.5f,
-        .malletStrikePos = 0.25f,
-        .malletResonance = 0.7f,
-        .malletTremolo = 0.0f,
-        .malletTremoloRate = 5.5f,
-        .malletDamp = 0.0f,
-        .voiceVowel = VOWEL_A,
-        .voiceFormantShift = 1.0f,
-        .voiceBreathiness = 0.1f,
-        .voiceBuzziness = 0.6f,
-        .voiceSpeed = 10.0f,
-        .voicePitch = 1.0f,
-        .voiceConsonant = false,
-        .voiceConsonantAmt = 0.5f,
-        .voiceNasal = false,
-        .voiceNasalAmt = 0.5f,
-        .voicePitchEnv = 0.0f,
-        .voicePitchEnvTime = 0.15f,
-        .voicePitchEnvCurve = 0.0f,
-        .granularScwIndex = 0,
-        .granularGrainSize = 50.0f,
-        .granularDensity = 20.0f,
-        .granularPosition = 0.5f,
-        .granularPosRandom = 0.1f,
-        .granularPitch = 1.0f,
-        .granularPitchRandom = 0.0f,
-        .granularAmpRandom = 0.1f,
-        .granularSpread = 0.5f,
-        .granularFreeze = false,
-        .fmModRatio = 2.0f,
-        .fmModIndex = 1.0f,
-        .fmFeedback = 0.0f,
-        .pdWaveType = PD_WAVE_SAW,
-        .pdDistortion = 0.5f,
-        .membranePreset = MEMBRANE_TABLA,
-        .membraneDamping = 0.3f,
-        .membraneStrike = 0.3f,
-        .membraneBend = 0.15f,
-        .membraneBendDecay = 0.08f,
-        .birdType = BIRD_CHIRP,
-        .birdChirpRange = 1.0f,
-        .birdTrillRate = 0.0f,
-        .birdTrillDepth = 0.0f,
-        .birdAmRate = 0.0f,
-        .birdAmDepth = 0.0f,
-        .birdHarmonics = 0.2f,
+        .p_waveType = waveType,
+        .p_scwIndex = 0,
+        .p_attack = 0.01f,
+        .p_decay = 0.1f,
+        .p_sustain = 0.5f,
+        .p_release = 0.3f,
+        .p_volume = 0.5f,
+        .p_pulseWidth = 0.5f,
+        .p_pwmRate = 3.0f,
+        .p_pwmDepth = 0.0f,
+        .p_vibratoRate = 5.0f,
+        .p_vibratoDepth = 0.0f,
+        .p_filterCutoff = 1.0f,
+        .p_filterResonance = 0.0f,
+        .p_filterEnvAmt = 0.0f,
+        .p_filterEnvAttack = 0.01f,
+        .p_filterEnvDecay = 0.2f,
+        .p_filterLfoRate = 0.0f,
+        .p_filterLfoDepth = 0.0f,
+        .p_filterLfoShape = 0,
+        .p_resoLfoRate = 0.0f,
+        .p_resoLfoDepth = 0.0f,
+        .p_resoLfoShape = 0,
+        .p_ampLfoRate = 0.0f,
+        .p_ampLfoDepth = 0.0f,
+        .p_ampLfoShape = 0,
+        .p_pitchLfoRate = 5.0f,
+        .p_pitchLfoDepth = 0.0f,
+        .p_pitchLfoShape = 0,
+        .p_monoMode = false,
+        .p_glideTime = 0.1f,
+        .p_pluckBrightness = 0.5f,
+        .p_pluckDamping = 0.996f,
+        .p_pluckDamp = 0.0f,
+        .p_additivePreset = ADDITIVE_PRESET_ORGAN,
+        .p_additiveBrightness = 0.5f,
+        .p_additiveShimmer = 0.0f,
+        .p_additiveInharmonicity = 0.0f,
+        .p_malletPreset = MALLET_PRESET_MARIMBA,
+        .p_malletStiffness = 0.3f,
+        .p_malletHardness = 0.5f,
+        .p_malletStrikePos = 0.25f,
+        .p_malletResonance = 0.7f,
+        .p_malletTremolo = 0.0f,
+        .p_malletTremoloRate = 5.5f,
+        .p_malletDamp = 0.0f,
+        .p_voiceVowel = VOWEL_A,
+        .p_voiceFormantShift = 1.0f,
+        .p_voiceBreathiness = 0.1f,
+        .p_voiceBuzziness = 0.6f,
+        .p_voiceSpeed = 10.0f,
+        .p_voicePitch = 1.0f,
+        .p_voiceConsonant = false,
+        .p_voiceConsonantAmt = 0.5f,
+        .p_voiceNasal = false,
+        .p_voiceNasalAmt = 0.5f,
+        .p_voicePitchEnv = 0.0f,
+        .p_voicePitchEnvTime = 0.15f,
+        .p_voicePitchEnvCurve = 0.0f,
+        .p_granularScwIndex = 0,
+        .p_granularGrainSize = 50.0f,
+        .p_granularDensity = 20.0f,
+        .p_granularPosition = 0.5f,
+        .p_granularPosRandom = 0.1f,
+        .p_granularPitch = 1.0f,
+        .p_granularPitchRandom = 0.0f,
+        .p_granularAmpRandom = 0.1f,
+        .p_granularSpread = 0.5f,
+        .p_granularFreeze = false,
+        .p_fmModRatio = 2.0f,
+        .p_fmModIndex = 1.0f,
+        .p_fmFeedback = 0.0f,
+        .p_pdWaveType = PD_WAVE_SAW,
+        .p_pdDistortion = 0.5f,
+        .p_membranePreset = MEMBRANE_TABLA,
+        .p_membraneDamping = 0.3f,
+        .p_membraneStrike = 0.3f,
+        .p_membraneBend = 0.15f,
+        .p_membraneBendDecay = 0.08f,
+        .p_birdType = BIRD_CHIRP,
+        .p_birdChirpRange = 1.0f,
+        .p_birdTrillRate = 0.0f,
+        .p_birdTrillDepth = 0.0f,
+        .p_birdAmRate = 0.0f,
+        .p_birdAmDepth = 0.0f,
+        .p_birdHarmonics = 0.2f,
     };
 }
 
@@ -638,94 +638,94 @@ static bool switchBool(bool a, bool b, float t) {
 // Blend two SynthPatch structs
 static void blendSynthPatch(SynthPatch *out, const SynthPatch *a, const SynthPatch *b, float t) {
     // Discrete params (switch at 50%)
-    out->waveType = switchInt(a->waveType, b->waveType, t);
-    out->scwIndex = switchInt(a->scwIndex, b->scwIndex, t);
-    out->filterLfoShape = switchInt(a->filterLfoShape, b->filterLfoShape, t);
-    out->resoLfoShape = switchInt(a->resoLfoShape, b->resoLfoShape, t);
-    out->ampLfoShape = switchInt(a->ampLfoShape, b->ampLfoShape, t);
-    out->pitchLfoShape = switchInt(a->pitchLfoShape, b->pitchLfoShape, t);
-    out->additivePreset = switchInt(a->additivePreset, b->additivePreset, t);
-    out->malletPreset = switchInt(a->malletPreset, b->malletPreset, t);
-    out->voiceVowel = switchInt(a->voiceVowel, b->voiceVowel, t);
-    out->granularScwIndex = switchInt(a->granularScwIndex, b->granularScwIndex, t);
-    out->pdWaveType = switchInt(a->pdWaveType, b->pdWaveType, t);
-    out->membranePreset = switchInt(a->membranePreset, b->membranePreset, t);
-    out->birdType = switchInt(a->birdType, b->birdType, t);
-    out->monoMode = switchBool(a->monoMode, b->monoMode, t);
-    out->voiceConsonant = switchBool(a->voiceConsonant, b->voiceConsonant, t);
-    out->voiceNasal = switchBool(a->voiceNasal, b->voiceNasal, t);
-    out->granularFreeze = switchBool(a->granularFreeze, b->granularFreeze, t);
+    out->p_waveType = switchInt(a->p_waveType, b->p_waveType, t);
+    out->p_scwIndex = switchInt(a->p_scwIndex, b->p_scwIndex, t);
+    out->p_filterLfoShape = switchInt(a->p_filterLfoShape, b->p_filterLfoShape, t);
+    out->p_resoLfoShape = switchInt(a->p_resoLfoShape, b->p_resoLfoShape, t);
+    out->p_ampLfoShape = switchInt(a->p_ampLfoShape, b->p_ampLfoShape, t);
+    out->p_pitchLfoShape = switchInt(a->p_pitchLfoShape, b->p_pitchLfoShape, t);
+    out->p_additivePreset = switchInt(a->p_additivePreset, b->p_additivePreset, t);
+    out->p_malletPreset = switchInt(a->p_malletPreset, b->p_malletPreset, t);
+    out->p_voiceVowel = switchInt(a->p_voiceVowel, b->p_voiceVowel, t);
+    out->p_granularScwIndex = switchInt(a->p_granularScwIndex, b->p_granularScwIndex, t);
+    out->p_pdWaveType = switchInt(a->p_pdWaveType, b->p_pdWaveType, t);
+    out->p_membranePreset = switchInt(a->p_membranePreset, b->p_membranePreset, t);
+    out->p_birdType = switchInt(a->p_birdType, b->p_birdType, t);
+    out->p_monoMode = switchBool(a->p_monoMode, b->p_monoMode, t);
+    out->p_voiceConsonant = switchBool(a->p_voiceConsonant, b->p_voiceConsonant, t);
+    out->p_voiceNasal = switchBool(a->p_voiceNasal, b->p_voiceNasal, t);
+    out->p_granularFreeze = switchBool(a->p_granularFreeze, b->p_granularFreeze, t);
     
     // Continuous params (linear interpolation)
-    out->attack = lerpf(a->attack, b->attack, t);
-    out->decay = lerpf(a->decay, b->decay, t);
-    out->sustain = lerpf(a->sustain, b->sustain, t);
-    out->release = lerpf(a->release, b->release, t);
-    out->volume = lerpf(a->volume, b->volume, t);
-    out->pulseWidth = lerpf(a->pulseWidth, b->pulseWidth, t);
-    out->pwmRate = lerpf(a->pwmRate, b->pwmRate, t);
-    out->pwmDepth = lerpf(a->pwmDepth, b->pwmDepth, t);
-    out->vibratoRate = lerpf(a->vibratoRate, b->vibratoRate, t);
-    out->vibratoDepth = lerpf(a->vibratoDepth, b->vibratoDepth, t);
-    out->filterCutoff = lerpf(a->filterCutoff, b->filterCutoff, t);
-    out->filterResonance = lerpf(a->filterResonance, b->filterResonance, t);
-    out->filterEnvAmt = lerpf(a->filterEnvAmt, b->filterEnvAmt, t);
-    out->filterEnvAttack = lerpf(a->filterEnvAttack, b->filterEnvAttack, t);
-    out->filterEnvDecay = lerpf(a->filterEnvDecay, b->filterEnvDecay, t);
-    out->filterLfoRate = lerpf(a->filterLfoRate, b->filterLfoRate, t);
-    out->filterLfoDepth = lerpf(a->filterLfoDepth, b->filterLfoDepth, t);
-    out->resoLfoRate = lerpf(a->resoLfoRate, b->resoLfoRate, t);
-    out->resoLfoDepth = lerpf(a->resoLfoDepth, b->resoLfoDepth, t);
-    out->ampLfoRate = lerpf(a->ampLfoRate, b->ampLfoRate, t);
-    out->ampLfoDepth = lerpf(a->ampLfoDepth, b->ampLfoDepth, t);
-    out->pitchLfoRate = lerpf(a->pitchLfoRate, b->pitchLfoRate, t);
-    out->pitchLfoDepth = lerpf(a->pitchLfoDepth, b->pitchLfoDepth, t);
-    out->glideTime = lerpf(a->glideTime, b->glideTime, t);
-    out->pluckBrightness = lerpf(a->pluckBrightness, b->pluckBrightness, t);
-    out->pluckDamping = lerpf(a->pluckDamping, b->pluckDamping, t);
-    out->pluckDamp = lerpf(a->pluckDamp, b->pluckDamp, t);
-    out->additiveBrightness = lerpf(a->additiveBrightness, b->additiveBrightness, t);
-    out->additiveShimmer = lerpf(a->additiveShimmer, b->additiveShimmer, t);
-    out->additiveInharmonicity = lerpf(a->additiveInharmonicity, b->additiveInharmonicity, t);
-    out->malletStiffness = lerpf(a->malletStiffness, b->malletStiffness, t);
-    out->malletHardness = lerpf(a->malletHardness, b->malletHardness, t);
-    out->malletStrikePos = lerpf(a->malletStrikePos, b->malletStrikePos, t);
-    out->malletResonance = lerpf(a->malletResonance, b->malletResonance, t);
-    out->malletTremolo = lerpf(a->malletTremolo, b->malletTremolo, t);
-    out->malletTremoloRate = lerpf(a->malletTremoloRate, b->malletTremoloRate, t);
-    out->malletDamp = lerpf(a->malletDamp, b->malletDamp, t);
-    out->voiceFormantShift = lerpf(a->voiceFormantShift, b->voiceFormantShift, t);
-    out->voiceBreathiness = lerpf(a->voiceBreathiness, b->voiceBreathiness, t);
-    out->voiceBuzziness = lerpf(a->voiceBuzziness, b->voiceBuzziness, t);
-    out->voiceSpeed = lerpf(a->voiceSpeed, b->voiceSpeed, t);
-    out->voicePitch = lerpf(a->voicePitch, b->voicePitch, t);
-    out->voiceConsonantAmt = lerpf(a->voiceConsonantAmt, b->voiceConsonantAmt, t);
-    out->voiceNasalAmt = lerpf(a->voiceNasalAmt, b->voiceNasalAmt, t);
-    out->voicePitchEnv = lerpf(a->voicePitchEnv, b->voicePitchEnv, t);
-    out->voicePitchEnvTime = lerpf(a->voicePitchEnvTime, b->voicePitchEnvTime, t);
-    out->voicePitchEnvCurve = lerpf(a->voicePitchEnvCurve, b->voicePitchEnvCurve, t);
-    out->granularGrainSize = lerpf(a->granularGrainSize, b->granularGrainSize, t);
-    out->granularDensity = lerpf(a->granularDensity, b->granularDensity, t);
-    out->granularPosition = lerpf(a->granularPosition, b->granularPosition, t);
-    out->granularPosRandom = lerpf(a->granularPosRandom, b->granularPosRandom, t);
-    out->granularPitch = lerpf(a->granularPitch, b->granularPitch, t);
-    out->granularPitchRandom = lerpf(a->granularPitchRandom, b->granularPitchRandom, t);
-    out->granularAmpRandom = lerpf(a->granularAmpRandom, b->granularAmpRandom, t);
-    out->granularSpread = lerpf(a->granularSpread, b->granularSpread, t);
-    out->fmModRatio = lerpf(a->fmModRatio, b->fmModRatio, t);
-    out->fmModIndex = lerpf(a->fmModIndex, b->fmModIndex, t);
-    out->fmFeedback = lerpf(a->fmFeedback, b->fmFeedback, t);
-    out->pdDistortion = lerpf(a->pdDistortion, b->pdDistortion, t);
-    out->membraneDamping = lerpf(a->membraneDamping, b->membraneDamping, t);
-    out->membraneStrike = lerpf(a->membraneStrike, b->membraneStrike, t);
-    out->membraneBend = lerpf(a->membraneBend, b->membraneBend, t);
-    out->membraneBendDecay = lerpf(a->membraneBendDecay, b->membraneBendDecay, t);
-    out->birdChirpRange = lerpf(a->birdChirpRange, b->birdChirpRange, t);
-    out->birdTrillRate = lerpf(a->birdTrillRate, b->birdTrillRate, t);
-    out->birdTrillDepth = lerpf(a->birdTrillDepth, b->birdTrillDepth, t);
-    out->birdAmRate = lerpf(a->birdAmRate, b->birdAmRate, t);
-    out->birdAmDepth = lerpf(a->birdAmDepth, b->birdAmDepth, t);
-    out->birdHarmonics = lerpf(a->birdHarmonics, b->birdHarmonics, t);
+    out->p_attack = lerpf(a->p_attack, b->p_attack, t);
+    out->p_decay = lerpf(a->p_decay, b->p_decay, t);
+    out->p_sustain = lerpf(a->p_sustain, b->p_sustain, t);
+    out->p_release = lerpf(a->p_release, b->p_release, t);
+    out->p_volume = lerpf(a->p_volume, b->p_volume, t);
+    out->p_pulseWidth = lerpf(a->p_pulseWidth, b->p_pulseWidth, t);
+    out->p_pwmRate = lerpf(a->p_pwmRate, b->p_pwmRate, t);
+    out->p_pwmDepth = lerpf(a->p_pwmDepth, b->p_pwmDepth, t);
+    out->p_vibratoRate = lerpf(a->p_vibratoRate, b->p_vibratoRate, t);
+    out->p_vibratoDepth = lerpf(a->p_vibratoDepth, b->p_vibratoDepth, t);
+    out->p_filterCutoff = lerpf(a->p_filterCutoff, b->p_filterCutoff, t);
+    out->p_filterResonance = lerpf(a->p_filterResonance, b->p_filterResonance, t);
+    out->p_filterEnvAmt = lerpf(a->p_filterEnvAmt, b->p_filterEnvAmt, t);
+    out->p_filterEnvAttack = lerpf(a->p_filterEnvAttack, b->p_filterEnvAttack, t);
+    out->p_filterEnvDecay = lerpf(a->p_filterEnvDecay, b->p_filterEnvDecay, t);
+    out->p_filterLfoRate = lerpf(a->p_filterLfoRate, b->p_filterLfoRate, t);
+    out->p_filterLfoDepth = lerpf(a->p_filterLfoDepth, b->p_filterLfoDepth, t);
+    out->p_resoLfoRate = lerpf(a->p_resoLfoRate, b->p_resoLfoRate, t);
+    out->p_resoLfoDepth = lerpf(a->p_resoLfoDepth, b->p_resoLfoDepth, t);
+    out->p_ampLfoRate = lerpf(a->p_ampLfoRate, b->p_ampLfoRate, t);
+    out->p_ampLfoDepth = lerpf(a->p_ampLfoDepth, b->p_ampLfoDepth, t);
+    out->p_pitchLfoRate = lerpf(a->p_pitchLfoRate, b->p_pitchLfoRate, t);
+    out->p_pitchLfoDepth = lerpf(a->p_pitchLfoDepth, b->p_pitchLfoDepth, t);
+    out->p_glideTime = lerpf(a->p_glideTime, b->p_glideTime, t);
+    out->p_pluckBrightness = lerpf(a->p_pluckBrightness, b->p_pluckBrightness, t);
+    out->p_pluckDamping = lerpf(a->p_pluckDamping, b->p_pluckDamping, t);
+    out->p_pluckDamp = lerpf(a->p_pluckDamp, b->p_pluckDamp, t);
+    out->p_additiveBrightness = lerpf(a->p_additiveBrightness, b->p_additiveBrightness, t);
+    out->p_additiveShimmer = lerpf(a->p_additiveShimmer, b->p_additiveShimmer, t);
+    out->p_additiveInharmonicity = lerpf(a->p_additiveInharmonicity, b->p_additiveInharmonicity, t);
+    out->p_malletStiffness = lerpf(a->p_malletStiffness, b->p_malletStiffness, t);
+    out->p_malletHardness = lerpf(a->p_malletHardness, b->p_malletHardness, t);
+    out->p_malletStrikePos = lerpf(a->p_malletStrikePos, b->p_malletStrikePos, t);
+    out->p_malletResonance = lerpf(a->p_malletResonance, b->p_malletResonance, t);
+    out->p_malletTremolo = lerpf(a->p_malletTremolo, b->p_malletTremolo, t);
+    out->p_malletTremoloRate = lerpf(a->p_malletTremoloRate, b->p_malletTremoloRate, t);
+    out->p_malletDamp = lerpf(a->p_malletDamp, b->p_malletDamp, t);
+    out->p_voiceFormantShift = lerpf(a->p_voiceFormantShift, b->p_voiceFormantShift, t);
+    out->p_voiceBreathiness = lerpf(a->p_voiceBreathiness, b->p_voiceBreathiness, t);
+    out->p_voiceBuzziness = lerpf(a->p_voiceBuzziness, b->p_voiceBuzziness, t);
+    out->p_voiceSpeed = lerpf(a->p_voiceSpeed, b->p_voiceSpeed, t);
+    out->p_voicePitch = lerpf(a->p_voicePitch, b->p_voicePitch, t);
+    out->p_voiceConsonantAmt = lerpf(a->p_voiceConsonantAmt, b->p_voiceConsonantAmt, t);
+    out->p_voiceNasalAmt = lerpf(a->p_voiceNasalAmt, b->p_voiceNasalAmt, t);
+    out->p_voicePitchEnv = lerpf(a->p_voicePitchEnv, b->p_voicePitchEnv, t);
+    out->p_voicePitchEnvTime = lerpf(a->p_voicePitchEnvTime, b->p_voicePitchEnvTime, t);
+    out->p_voicePitchEnvCurve = lerpf(a->p_voicePitchEnvCurve, b->p_voicePitchEnvCurve, t);
+    out->p_granularGrainSize = lerpf(a->p_granularGrainSize, b->p_granularGrainSize, t);
+    out->p_granularDensity = lerpf(a->p_granularDensity, b->p_granularDensity, t);
+    out->p_granularPosition = lerpf(a->p_granularPosition, b->p_granularPosition, t);
+    out->p_granularPosRandom = lerpf(a->p_granularPosRandom, b->p_granularPosRandom, t);
+    out->p_granularPitch = lerpf(a->p_granularPitch, b->p_granularPitch, t);
+    out->p_granularPitchRandom = lerpf(a->p_granularPitchRandom, b->p_granularPitchRandom, t);
+    out->p_granularAmpRandom = lerpf(a->p_granularAmpRandom, b->p_granularAmpRandom, t);
+    out->p_granularSpread = lerpf(a->p_granularSpread, b->p_granularSpread, t);
+    out->p_fmModRatio = lerpf(a->p_fmModRatio, b->p_fmModRatio, t);
+    out->p_fmModIndex = lerpf(a->p_fmModIndex, b->p_fmModIndex, t);
+    out->p_fmFeedback = lerpf(a->p_fmFeedback, b->p_fmFeedback, t);
+    out->p_pdDistortion = lerpf(a->p_pdDistortion, b->p_pdDistortion, t);
+    out->p_membraneDamping = lerpf(a->p_membraneDamping, b->p_membraneDamping, t);
+    out->p_membraneStrike = lerpf(a->p_membraneStrike, b->p_membraneStrike, t);
+    out->p_membraneBend = lerpf(a->p_membraneBend, b->p_membraneBend, t);
+    out->p_membraneBendDecay = lerpf(a->p_membraneBendDecay, b->p_membraneBendDecay, t);
+    out->p_birdChirpRange = lerpf(a->p_birdChirpRange, b->p_birdChirpRange, t);
+    out->p_birdTrillRate = lerpf(a->p_birdTrillRate, b->p_birdTrillRate, t);
+    out->p_birdTrillDepth = lerpf(a->p_birdTrillDepth, b->p_birdTrillDepth, t);
+    out->p_birdAmRate = lerpf(a->p_birdAmRate, b->p_birdAmRate, t);
+    out->p_birdAmDepth = lerpf(a->p_birdAmDepth, b->p_birdAmDepth, t);
+    out->p_birdHarmonics = lerpf(a->p_birdHarmonics, b->p_birdHarmonics, t);
 }
 
 // Blend two DrumParams structs
@@ -847,14 +847,14 @@ static void updateCrossfaderBlend(void) {
 static void initPatches(void) {
     patches[PATCH_PREVIEW] = createDefaultPatch(WAVE_SAW);  // Scratchpad for jamming
     patches[PATCH_BASS] = createDefaultPatch(WAVE_SAW);
-    patches[PATCH_BASS].filterCutoff = 0.4f;  // Bass: darker
-    patches[PATCH_BASS].release = 0.15f;
+    patches[PATCH_BASS].p_filterCutoff = 0.4f;  // Bass: darker
+    patches[PATCH_BASS].p_release = 0.15f;
     patches[PATCH_LEAD] = createDefaultPatch(WAVE_SQUARE);
-    patches[PATCH_LEAD].filterCutoff = 0.8f;
-    patches[PATCH_LEAD].vibratoDepth = 0.2f;
+    patches[PATCH_LEAD].p_filterCutoff = 0.8f;
+    patches[PATCH_LEAD].p_vibratoDepth = 0.2f;
     patches[PATCH_CHORD] = createDefaultPatch(WAVE_TRIANGLE);
-    patches[PATCH_CHORD].attack = 0.05f;
-    patches[PATCH_CHORD].release = 0.5f;
+    patches[PATCH_CHORD].p_attack = 0.05f;
+    patches[PATCH_CHORD].p_release = 0.5f;
 }
 
 // Copy one patch to another
@@ -864,90 +864,90 @@ static void copyPatch(SynthPatch *src, SynthPatch *dst) {
 
 // Apply a patch's settings to the global synth parameters
 static void applyPatchToGlobals(SynthPatch *p) {
-    noteAttack = p->attack;
-    noteDecay = p->decay;
-    noteSustain = p->sustain;
-    noteRelease = p->release;
-    noteVolume = p->volume;
-    notePulseWidth = p->pulseWidth;
-    notePwmRate = p->pwmRate;
-    notePwmDepth = p->pwmDepth;
-    noteVibratoRate = p->vibratoRate;
-    noteVibratoDepth = p->vibratoDepth;
-    noteFilterCutoff = p->filterCutoff;
-    noteFilterResonance = p->filterResonance;
-    noteFilterEnvAmt = p->filterEnvAmt;
-    noteFilterEnvAttack = p->filterEnvAttack;
-    noteFilterEnvDecay = p->filterEnvDecay;
-    noteFilterLfoRate = p->filterLfoRate;
-    noteFilterLfoDepth = p->filterLfoDepth;
-    noteFilterLfoShape = p->filterLfoShape;
-    noteResoLfoRate = p->resoLfoRate;
-    noteResoLfoDepth = p->resoLfoDepth;
-    noteResoLfoShape = p->resoLfoShape;
-    noteAmpLfoRate = p->ampLfoRate;
-    noteAmpLfoDepth = p->ampLfoDepth;
-    noteAmpLfoShape = p->ampLfoShape;
-    notePitchLfoRate = p->pitchLfoRate;
-    notePitchLfoDepth = p->pitchLfoDepth;
-    notePitchLfoShape = p->pitchLfoShape;
-    monoMode = p->monoMode;
-    glideTime = p->glideTime;
-    pluckBrightness = p->pluckBrightness;
-    pluckDamping = p->pluckDamping;
-    pluckDamp = p->pluckDamp;
-    additivePreset = p->additivePreset;
-    additiveBrightness = p->additiveBrightness;
-    additiveShimmer = p->additiveShimmer;
-    additiveInharmonicity = p->additiveInharmonicity;
-    malletPreset = p->malletPreset;
-    malletStiffness = p->malletStiffness;
-    malletHardness = p->malletHardness;
-    malletStrikePos = p->malletStrikePos;
-    malletResonance = p->malletResonance;
-    malletTremolo = p->malletTremolo;
-    malletTremoloRate = p->malletTremoloRate;
-    malletDamp = p->malletDamp;
-    voiceVowel = p->voiceVowel;
-    voiceFormantShift = p->voiceFormantShift;
-    voiceBreathiness = p->voiceBreathiness;
-    voiceBuzziness = p->voiceBuzziness;
-    voiceSpeed = p->voiceSpeed;
-    voicePitch = p->voicePitch;
-    voiceConsonant = p->voiceConsonant;
-    voiceConsonantAmt = p->voiceConsonantAmt;
-    voiceNasal = p->voiceNasal;
-    voiceNasalAmt = p->voiceNasalAmt;
-    voicePitchEnv = p->voicePitchEnv;
-    voicePitchEnvTime = p->voicePitchEnvTime;
-    voicePitchEnvCurve = p->voicePitchEnvCurve;
-    granularScwIndex = p->granularScwIndex;
-    granularGrainSize = p->granularGrainSize;
-    granularDensity = p->granularDensity;
-    granularPosition = p->granularPosition;
-    granularPosRandom = p->granularPosRandom;
-    granularPitch = p->granularPitch;
-    granularPitchRandom = p->granularPitchRandom;
-    granularAmpRandom = p->granularAmpRandom;
-    granularSpread = p->granularSpread;
-    granularFreeze = p->granularFreeze;
-    fmModRatio = p->fmModRatio;
-    fmModIndex = p->fmModIndex;
-    fmFeedback = p->fmFeedback;
-    pdWaveType = p->pdWaveType;
-    pdDistortion = p->pdDistortion;
-    membranePreset = p->membranePreset;
-    membraneDamping = p->membraneDamping;
-    membraneStrike = p->membraneStrike;
-    membraneBend = p->membraneBend;
-    membraneBendDecay = p->membraneBendDecay;
-    birdType = p->birdType;
-    birdChirpRange = p->birdChirpRange;
-    birdTrillRate = p->birdTrillRate;
-    birdTrillDepth = p->birdTrillDepth;
-    birdAmRate = p->birdAmRate;
-    birdAmDepth = p->birdAmDepth;
-    birdHarmonics = p->birdHarmonics;
+    noteAttack = p->p_attack;
+    noteDecay = p->p_decay;
+    noteSustain = p->p_sustain;
+    noteRelease = p->p_release;
+    noteVolume = p->p_volume;
+    notePulseWidth = p->p_pulseWidth;
+    notePwmRate = p->p_pwmRate;
+    notePwmDepth = p->p_pwmDepth;
+    noteVibratoRate = p->p_vibratoRate;
+    noteVibratoDepth = p->p_vibratoDepth;
+    noteFilterCutoff = p->p_filterCutoff;
+    noteFilterResonance = p->p_filterResonance;
+    noteFilterEnvAmt = p->p_filterEnvAmt;
+    noteFilterEnvAttack = p->p_filterEnvAttack;
+    noteFilterEnvDecay = p->p_filterEnvDecay;
+    noteFilterLfoRate = p->p_filterLfoRate;
+    noteFilterLfoDepth = p->p_filterLfoDepth;
+    noteFilterLfoShape = p->p_filterLfoShape;
+    noteResoLfoRate = p->p_resoLfoRate;
+    noteResoLfoDepth = p->p_resoLfoDepth;
+    noteResoLfoShape = p->p_resoLfoShape;
+    noteAmpLfoRate = p->p_ampLfoRate;
+    noteAmpLfoDepth = p->p_ampLfoDepth;
+    noteAmpLfoShape = p->p_ampLfoShape;
+    notePitchLfoRate = p->p_pitchLfoRate;
+    notePitchLfoDepth = p->p_pitchLfoDepth;
+    notePitchLfoShape = p->p_pitchLfoShape;
+    monoMode = p->p_monoMode;
+    glideTime = p->p_glideTime;
+    pluckBrightness = p->p_pluckBrightness;
+    pluckDamping = p->p_pluckDamping;
+    pluckDamp = p->p_pluckDamp;
+    additivePreset = p->p_additivePreset;
+    additiveBrightness = p->p_additiveBrightness;
+    additiveShimmer = p->p_additiveShimmer;
+    additiveInharmonicity = p->p_additiveInharmonicity;
+    malletPreset = p->p_malletPreset;
+    malletStiffness = p->p_malletStiffness;
+    malletHardness = p->p_malletHardness;
+    malletStrikePos = p->p_malletStrikePos;
+    malletResonance = p->p_malletResonance;
+    malletTremolo = p->p_malletTremolo;
+    malletTremoloRate = p->p_malletTremoloRate;
+    malletDamp = p->p_malletDamp;
+    voiceVowel = p->p_voiceVowel;
+    voiceFormantShift = p->p_voiceFormantShift;
+    voiceBreathiness = p->p_voiceBreathiness;
+    voiceBuzziness = p->p_voiceBuzziness;
+    voiceSpeed = p->p_voiceSpeed;
+    voicePitch = p->p_voicePitch;
+    voiceConsonant = p->p_voiceConsonant;
+    voiceConsonantAmt = p->p_voiceConsonantAmt;
+    voiceNasal = p->p_voiceNasal;
+    voiceNasalAmt = p->p_voiceNasalAmt;
+    voicePitchEnv = p->p_voicePitchEnv;
+    voicePitchEnvTime = p->p_voicePitchEnvTime;
+    voicePitchEnvCurve = p->p_voicePitchEnvCurve;
+    granularScwIndex = p->p_granularScwIndex;
+    granularGrainSize = p->p_granularGrainSize;
+    granularDensity = p->p_granularDensity;
+    granularPosition = p->p_granularPosition;
+    granularPosRandom = p->p_granularPosRandom;
+    granularPitch = p->p_granularPitch;
+    granularPitchRandom = p->p_granularPitchRandom;
+    granularAmpRandom = p->p_granularAmpRandom;
+    granularSpread = p->p_granularSpread;
+    granularFreeze = p->p_granularFreeze;
+    fmModRatio = p->p_fmModRatio;
+    fmModIndex = p->p_fmModIndex;
+    fmFeedback = p->p_fmFeedback;
+    pdWaveType = p->p_pdWaveType;
+    pdDistortion = p->p_pdDistortion;
+    membranePreset = p->p_membranePreset;
+    membraneDamping = p->p_membraneDamping;
+    membraneStrike = p->p_membraneStrike;
+    membraneBend = p->p_membraneBend;
+    membraneBendDecay = p->p_membraneBendDecay;
+    birdType = p->p_birdType;
+    birdChirpRange = p->p_birdChirpRange;
+    birdTrillRate = p->p_birdTrillRate;
+    birdTrillDepth = p->p_birdTrillDepth;
+    birdAmRate = p->p_birdAmRate;
+    birdAmDepth = p->p_birdAmDepth;
+    birdHarmonics = p->p_birdHarmonics;
 }
 
 // ============================================================================
@@ -967,18 +967,18 @@ static int playNoteWithPatch(float freq, SynthPatch *p) {
     // Set globals from patch (play functions in synth.h read these)
     applyPatchToGlobals(p);
     
-    WaveType wave = (WaveType)p->waveType;
+    WaveType wave = (WaveType)p->p_waveType;
     
     switch (wave) {
-        case WAVE_PLUCK:    return playPluck(freq, p->pluckBrightness, p->pluckDamping);
-        case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->additivePreset);
-        case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->malletPreset);
-        case WAVE_VOICE:    return playVowel(freq, (VowelType)p->voiceVowel);
-        case WAVE_GRANULAR: return playGranular(freq, p->granularScwIndex);
+        case WAVE_PLUCK:    return playPluck(freq, p->p_pluckBrightness, p->p_pluckDamping);
+        case WAVE_ADDITIVE: return playAdditive(freq, (AdditivePreset)p->p_additivePreset);
+        case WAVE_MALLET:   return playMallet(freq, (MalletPreset)p->p_malletPreset);
+        case WAVE_VOICE:    return playVowel(freq, (VowelType)p->p_voiceVowel);
+        case WAVE_GRANULAR: return playGranular(freq, p->p_granularScwIndex);
         case WAVE_FM:       return playFM(freq);
         case WAVE_PD:       return playPD(freq);
-        case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->membranePreset);
-        case WAVE_BIRD:     return playBird(freq, (BirdType)p->birdType);
+        case WAVE_MEMBRANE: return playMembrane(freq, (MembranePreset)p->p_membranePreset);
+        case WAVE_BIRD:     return playBird(freq, (BirdType)p->p_birdType);
         default:            return playNote(freq, wave);
     }
 }
@@ -1099,17 +1099,17 @@ static void melodyTriggerGeneric(int trackIdx, int patchIdx, float freqMult,
     SynthPatch *p = &patches[patchIdx];
     // PLOCK_TONE acts as alias for cutoff on melody (check tone first, then cutoff)
     float pTone = plockValue(PLOCK_TONE, -1.0f);
-    float pCutoff = (pTone >= 0.0f) ? pTone : plockValue(PLOCK_FILTER_CUTOFF, p->filterCutoff);
-    float pReso = plockValue(PLOCK_FILTER_RESO, p->filterResonance);
-    float pFilterEnv = plockValue(PLOCK_FILTER_ENV, p->filterEnvAmt) + accentFilterBoost;
-    float pDecay = plockValue(PLOCK_DECAY, p->decay);
+    float pCutoff = (pTone >= 0.0f) ? pTone : plockValue(PLOCK_FILTER_CUTOFF, p->p_filterCutoff);
+    float pReso = plockValue(PLOCK_FILTER_RESO, p->p_filterResonance);
+    float pFilterEnv = plockValue(PLOCK_FILTER_ENV, p->p_filterEnvAmt) + accentFilterBoost;
+    float pDecay = plockValue(PLOCK_DECAY, p->p_decay);
     
     // Apply slide: enable glide instead of retriggering
-    if (slide && melodyVoiceIdx[trackIdx] >= 0 && voices[melodyVoiceIdx[trackIdx]].envStage > 0) {
-        Voice *v = &voices[melodyVoiceIdx[trackIdx]];
+    if (slide && melodyVoiceIdx[trackIdx] >= 0 && synthVoices[melodyVoiceIdx[trackIdx]].envStage > 0) {
+        Voice *v = &synthVoices[melodyVoiceIdx[trackIdx]];
         v->targetFrequency = freq;
         v->glideRate = 1.0f / 0.06f;  // Fast 303-style glide (~60ms)
-        v->volume = effectiveVel * p->volume;
+        v->volume = effectiveVel * p->p_volume;
         v->filterCutoff = pCutoff;
         v->filterResonance = pReso;
         v->filterEnvAmt = pFilterEnv;
@@ -1124,23 +1124,23 @@ static void melodyTriggerGeneric(int trackIdx, int patchIdx, float freqMult,
         if (melodyVoiceIdx[trackIdx] >= 0) releaseNote(melodyVoiceIdx[trackIdx]);
         
         // Temporarily apply p-lock values to patch
-        float origCutoff = p->filterCutoff, origReso = p->filterResonance;
-        float origFilterEnvAmt = p->filterEnvAmt, origDecay = p->decay;
+        float origCutoff = p->p_filterCutoff, origReso = p->p_filterResonance;
+        float origFilterEnvAmt = p->p_filterEnvAmt, origDecay = p->p_decay;
         
-        p->filterCutoff = pCutoff;
-        p->filterResonance = pReso;
-        p->filterEnvAmt = pFilterEnv;
-        p->decay = pDecay;
-        p->volume = effectiveVel * 0.5f;
+        p->p_filterCutoff = pCutoff;
+        p->p_filterResonance = pReso;
+        p->p_filterEnvAmt = pFilterEnv;
+        p->p_decay = pDecay;
+        p->p_volume = effectiveVel * 0.5f;
         
         melodyVoiceIdx[trackIdx] = playNoteWithPatch(freq, p);
         
         // Restore original patch values
-        p->filterCutoff = origCutoff;
-        p->filterResonance = origReso;
-        p->filterEnvAmt = origFilterEnvAmt;
-        p->decay = origDecay;
-        p->volume = 0.5f;
+        p->p_filterCutoff = origCutoff;
+        p->p_filterResonance = origReso;
+        p->p_filterEnvAmt = origFilterEnvAmt;
+        p->p_decay = origDecay;
+        p->p_volume = 0.5f;
     }
 }
 
@@ -1227,7 +1227,7 @@ int main(void) {
     PlayAudioStream(stream);
     
     // Initialize engines
-    memset(voices, 0, sizeof(voices));
+    memset(synthVoices, 0, sizeof(synthCtx->voices));
     memset(drumVoices, 0, sizeof(drumVoices));
     initDrumParams();
     initEffects();
@@ -1319,22 +1319,22 @@ int main(void) {
                 float freq = semitoneToFreq(pianoKeys[i].semitone, currentOctave);
                 // Handle voice random vowel mode specially
                 if (selectedWave == WAVE_VOICE && voiceRandomVowel) {
-                    noiseState = noiseState * 1103515245 + 12345;
-                    int savedVowel = keyboardPatch->voiceVowel;
-                    keyboardPatch->voiceVowel = (noiseState >> 16) % 5;
+                    synthNoiseState = synthNoiseState * 1103515245 + 12345;
+                    int savedVowel = keyboardPatch->p_voiceVowel;
+                    keyboardPatch->p_voiceVowel = (synthNoiseState >> 16) % 5;
                     pianoKeyVoices[i] = playNoteWithPatch(freq, keyboardPatch);
-                    keyboardPatch->voiceVowel = savedVowel;
+                    keyboardPatch->p_voiceVowel = savedVowel;
                 } else {
                     pianoKeyVoices[i] = playNoteWithPatch(freq, keyboardPatch);
                 }
             }
             if (IsKeyReleased(pianoKeys[i].key) && pianoKeyVoices[i] >= 0) {
                 // Pluck and Mallet can ring out or be damped based on damp setting
-                if (selectedWave == WAVE_PLUCK && keyboardPatch->pluckDamp > 0.01f) {
-                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->pluckDamp) * 0.5f;
+                if (selectedWave == WAVE_PLUCK && keyboardPatch->p_pluckDamp > 0.01f) {
+                    synthVoices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->p_pluckDamp) * 0.5f;
                     releaseNote(pianoKeyVoices[i]);
-                } else if (selectedWave == WAVE_MALLET && keyboardPatch->malletDamp > 0.01f) {
-                    voices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->malletDamp) * 0.5f;
+                } else if (selectedWave == WAVE_MALLET && keyboardPatch->p_malletDamp > 0.01f) {
+                    synthVoices[pianoKeyVoices[i]].release = 0.01f + (1.0f - keyboardPatch->p_malletDamp) * 0.5f;
                     releaseNote(pianoKeyVoices[i]);
                 } else if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
                     releaseNote(pianoKeyVoices[i]);
@@ -1519,8 +1519,8 @@ int main(void) {
             int voiceY = topBarY + 26;
             for (int i = 0; i < NUM_VOICES; i++) {
                 Color c = voiceOff;
-                if (voices[i].envStage == 4) c = ORANGE;
-                else if (voices[i].envStage > 0) c = GREEN;
+                if (synthVoices[i].envStage == 4) c = ORANGE;
+                else if (synthVoices[i].envStage > 0) c = GREEN;
                 DrawRectangle(statsX + (i % 8) * 7, voiceY + (i / 8) * 8, 5, 6, c);
             }
             for (int i = 0; i < NUM_DRUM_VOICES; i++) {
@@ -1550,7 +1550,7 @@ int main(void) {
             // When switching patches, update cp pointer and wave selector
             if (selectedPatch != prevPatch) {
                 cp = &patches[selectedPatch];
-                selectedWave = cp->waveType;
+                selectedWave = cp->p_waveType;
             }
             
             // Copy buttons (only show when on Preview)
@@ -1572,127 +1572,127 @@ int main(void) {
             int prevWave = selectedWave;
             ui_col_cycle(&col1, "Type", waveNames, 14, &selectedWave);
             if (selectedWave != prevWave) {
-                patches[selectedPatch].waveType = selectedWave;
+                patches[selectedPatch].p_waveType = selectedWave;
             }
             ui_col_space(&col1, 4);
             
             if (selectedWave == WAVE_SQUARE) {
                 ui_col_sublabel(&col1, "PWM:", ORANGE);
-                ui_col_float(&col1, "Width", &cp->pulseWidth, 0.05f, 0.1f, 0.9f);
-                ui_col_float(&col1, "Rate", &cp->pwmRate, 0.5f, 0.1f, 20.0f);
-                ui_col_float(&col1, "Depth", &cp->pwmDepth, 0.02f, 0.0f, 0.4f);
+                ui_col_float(&col1, "Width", &cp->p_pulseWidth, 0.05f, 0.1f, 0.9f);
+                ui_col_float(&col1, "Rate", &cp->p_pwmRate, 0.5f, 0.1f, 20.0f);
+                ui_col_float(&col1, "Depth", &cp->p_pwmDepth, 0.02f, 0.0f, 0.4f);
             }
             
             if (selectedWave == WAVE_SCW && scwCount > 0) {
                 ui_col_sublabel(&col1, "Wavetable:", ORANGE);
                 const char* scwNames[SCW_MAX_SLOTS];
                 for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
-                ui_col_cycle(&col1, "SCW", scwNames, scwCount, &cp->scwIndex);
+                ui_col_cycle(&col1, "SCW", scwNames, scwCount, &cp->p_scwIndex);
             }
             
             if (selectedWave == WAVE_VOICE) {
                 ui_col_sublabel(&col1, "Formant:", ORANGE);
-                ui_col_cycle(&col1, "Vowel", vowelNames, 5, &cp->voiceVowel);
+                ui_col_cycle(&col1, "Vowel", vowelNames, 5, &cp->p_voiceVowel);
                 ui_col_toggle(&col1, "Random", &voiceRandomVowel);
-                ui_col_float(&col1, "Pitch", &cp->voicePitch, 0.1f, 0.3f, 2.0f);
-                ui_col_float(&col1, "Speed", &cp->voiceSpeed, 1.0f, 4.0f, 20.0f);
-                ui_col_float(&col1, "Formant", &cp->voiceFormantShift, 0.05f, 0.5f, 1.5f);
-                ui_col_float(&col1, "Breath", &cp->voiceBreathiness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Buzz", &cp->voiceBuzziness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Pitch", &cp->p_voicePitch, 0.1f, 0.3f, 2.0f);
+                ui_col_float(&col1, "Speed", &cp->p_voiceSpeed, 1.0f, 4.0f, 20.0f);
+                ui_col_float(&col1, "Formant", &cp->p_voiceFormantShift, 0.05f, 0.5f, 1.5f);
+                ui_col_float(&col1, "Breath", &cp->p_voiceBreathiness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Buzz", &cp->p_voiceBuzziness, 0.05f, 0.0f, 1.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Extras:", ORANGE);
-                ui_col_toggle(&col1, "Consonant", &cp->voiceConsonant);
-                if (cp->voiceConsonant) {
-                    ui_col_float(&col1, "ConsAmt", &cp->voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Consonant", &cp->p_voiceConsonant);
+                if (cp->p_voiceConsonant) {
+                    ui_col_float(&col1, "ConsAmt", &cp->p_voiceConsonantAmt, 0.05f, 0.0f, 1.0f);
                 }
-                ui_col_toggle(&col1, "Nasal", &cp->voiceNasal);
-                if (cp->voiceNasal) {
-                    ui_col_float(&col1, "NasalAmt", &cp->voiceNasalAmt, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Nasal", &cp->p_voiceNasal);
+                if (cp->p_voiceNasal) {
+                    ui_col_float(&col1, "NasalAmt", &cp->p_voiceNasalAmt, 0.05f, 0.0f, 1.0f);
                 }
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Pitch Env:", ORANGE);
-                ui_col_float(&col1, "Bend", &cp->voicePitchEnv, 0.5f, -12.0f, 12.0f);
-                ui_col_float(&col1, "Time", &cp->voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
-                ui_col_float(&col1, "Curve", &cp->voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
+                ui_col_float(&col1, "Bend", &cp->p_voicePitchEnv, 0.5f, -12.0f, 12.0f);
+                ui_col_float(&col1, "Time", &cp->p_voicePitchEnvTime, 0.02f, 0.02f, 0.5f);
+                ui_col_float(&col1, "Curve", &cp->p_voicePitchEnvCurve, 0.1f, -1.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_PLUCK) {
                 ui_col_sublabel(&col1, "Pluck:", ORANGE);
-                ui_col_float(&col1, "Bright", &cp->pluckBrightness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Sustain", &cp->pluckDamping, 0.0002f, 0.995f, 0.9998f);
-                ui_col_float(&col1, "Damp", &cp->pluckDamp, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Bright", &cp->p_pluckBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Sustain", &cp->p_pluckDamping, 0.0002f, 0.995f, 0.9998f);
+                ui_col_float(&col1, "Damp", &cp->p_pluckDamp, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_ADDITIVE) {
                 ui_col_sublabel(&col1, "Additive:", ORANGE);
-                ui_col_cycle(&col1, "Preset", additivePresetNames, ADDITIVE_PRESET_COUNT, &cp->additivePreset);
-                ui_col_float(&col1, "Bright", &cp->additiveBrightness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Shimmer", &cp->additiveShimmer, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Inharm", &cp->additiveInharmonicity, 0.005f, 0.0f, 0.1f);
+                ui_col_cycle(&col1, "Preset", additivePresetNames, ADDITIVE_PRESET_COUNT, &cp->p_additivePreset);
+                ui_col_float(&col1, "Bright", &cp->p_additiveBrightness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Shimmer", &cp->p_additiveShimmer, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Inharm", &cp->p_additiveInharmonicity, 0.005f, 0.0f, 0.1f);
             }
             
             if (selectedWave == WAVE_MALLET) {
                 ui_col_sublabel(&col1, "Mallet:", ORANGE);
-                ui_col_cycle(&col1, "Preset", malletPresetNames, MALLET_PRESET_COUNT, &cp->malletPreset);
-                ui_col_float(&col1, "Stiff", &cp->malletStiffness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Hard", &cp->malletHardness, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Strike", &cp->malletStrikePos, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Reson", &cp->malletResonance, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Damp", &cp->malletDamp, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Tremolo", &cp->malletTremolo, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "TremSpd", &cp->malletTremoloRate, 0.5f, 1.0f, 12.0f);
+                ui_col_cycle(&col1, "Preset", malletPresetNames, MALLET_PRESET_COUNT, &cp->p_malletPreset);
+                ui_col_float(&col1, "Stiff", &cp->p_malletStiffness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Hard", &cp->p_malletHardness, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Strike", &cp->p_malletStrikePos, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Reson", &cp->p_malletResonance, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Damp", &cp->p_malletDamp, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Tremolo", &cp->p_malletTremolo, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "TremSpd", &cp->p_malletTremoloRate, 0.5f, 1.0f, 12.0f);
             }
             
             if (selectedWave == WAVE_GRANULAR && scwCount > 0) {
                 ui_col_sublabel(&col1, "Granular:", ORANGE);
                 const char* scwNames[SCW_MAX_SLOTS];
                 for (int i = 0; i < scwCount; i++) scwNames[i] = scwTables[i].name;
-                ui_col_cycle(&col1, "Source", scwNames, scwCount, &cp->granularScwIndex);
-                ui_col_float(&col1, "Size", &cp->granularGrainSize, 5.0f, 10.0f, 200.0f);
-                ui_col_float(&col1, "Density", &cp->granularDensity, 2.0f, 1.0f, 100.0f);
-                ui_col_float(&col1, "Position", &cp->granularPosition, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "PosRand", &cp->granularPosRandom, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Pitch", &cp->granularPitch, 0.1f, 0.25f, 4.0f);
-                ui_col_float(&col1, "PitRand", &cp->granularPitchRandom, 0.5f, 0.0f, 12.0f);
-                ui_col_float(&col1, "AmpRand", &cp->granularAmpRandom, 0.05f, 0.0f, 1.0f);
-                ui_col_toggle(&col1, "Freeze", &cp->granularFreeze);
+                ui_col_cycle(&col1, "Source", scwNames, scwCount, &cp->p_granularScwIndex);
+                ui_col_float(&col1, "Size", &cp->p_granularGrainSize, 5.0f, 10.0f, 200.0f);
+                ui_col_float(&col1, "Density", &cp->p_granularDensity, 2.0f, 1.0f, 100.0f);
+                ui_col_float(&col1, "Position", &cp->p_granularPosition, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "PosRand", &cp->p_granularPosRandom, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Pitch", &cp->p_granularPitch, 0.1f, 0.25f, 4.0f);
+                ui_col_float(&col1, "PitRand", &cp->p_granularPitchRandom, 0.5f, 0.0f, 12.0f);
+                ui_col_float(&col1, "AmpRand", &cp->p_granularAmpRandom, 0.05f, 0.0f, 1.0f);
+                ui_col_toggle(&col1, "Freeze", &cp->p_granularFreeze);
             }
             
             if (selectedWave == WAVE_FM) {
                 ui_col_sublabel(&col1, "FM Synth:", ORANGE);
-                ui_col_float(&col1, "Ratio", &cp->fmModRatio, 0.5f, 0.5f, 16.0f);
-                ui_col_float(&col1, "Index", &cp->fmModIndex, 0.1f, 0.0f, 10.0f);
-                ui_col_float(&col1, "Feedback", &cp->fmFeedback, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Ratio", &cp->p_fmModRatio, 0.5f, 0.5f, 16.0f);
+                ui_col_float(&col1, "Index", &cp->p_fmModIndex, 0.1f, 0.0f, 10.0f);
+                ui_col_float(&col1, "Feedback", &cp->p_fmFeedback, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_PD) {
                 ui_col_sublabel(&col1, "Phase Dist:", ORANGE);
-                ui_col_cycle(&col1, "Wave", pdWaveNames, PD_WAVE_COUNT, &cp->pdWaveType);
-                ui_col_float(&col1, "Distort", &cp->pdDistortion, 0.05f, 0.0f, 1.0f);
+                ui_col_cycle(&col1, "Wave", pdWaveNames, PD_WAVE_COUNT, &cp->p_pdWaveType);
+                ui_col_float(&col1, "Distort", &cp->p_pdDistortion, 0.05f, 0.0f, 1.0f);
             }
             
             if (selectedWave == WAVE_MEMBRANE) {
                 ui_col_sublabel(&col1, "Membrane:", ORANGE);
-                ui_col_cycle(&col1, "Preset", membranePresetNames, MEMBRANE_COUNT, &cp->membranePreset);
-                ui_col_float(&col1, "Damping", &cp->membraneDamping, 0.05f, 0.1f, 1.0f);
-                ui_col_float(&col1, "Strike", &cp->membraneStrike, 0.05f, 0.0f, 1.0f);
-                ui_col_float(&col1, "Bend", &cp->membraneBend, 0.02f, 0.0f, 0.5f);
-                ui_col_float(&col1, "BendDcy", &cp->membraneBendDecay, 0.01f, 0.02f, 0.3f);
+                ui_col_cycle(&col1, "Preset", membranePresetNames, MEMBRANE_COUNT, &cp->p_membranePreset);
+                ui_col_float(&col1, "Damping", &cp->p_membraneDamping, 0.05f, 0.1f, 1.0f);
+                ui_col_float(&col1, "Strike", &cp->p_membraneStrike, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "Bend", &cp->p_membraneBend, 0.02f, 0.0f, 0.5f);
+                ui_col_float(&col1, "BendDcy", &cp->p_membraneBendDecay, 0.01f, 0.02f, 0.3f);
             }
             
             if (selectedWave == WAVE_BIRD) {
                 ui_col_sublabel(&col1, "Bird:", ORANGE);
-                ui_col_cycle(&col1, "Type", birdTypeNames, BIRD_COUNT, &cp->birdType);
-                ui_col_float(&col1, "Range", &cp->birdChirpRange, 0.1f, 0.5f, 2.0f);
-                ui_col_float(&col1, "Harmonic", &cp->birdHarmonics, 0.05f, 0.0f, 1.0f);
+                ui_col_cycle(&col1, "Type", birdTypeNames, BIRD_COUNT, &cp->p_birdType);
+                ui_col_float(&col1, "Range", &cp->p_birdChirpRange, 0.1f, 0.5f, 2.0f);
+                ui_col_float(&col1, "Harmonic", &cp->p_birdHarmonics, 0.05f, 0.0f, 1.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Trill:", ORANGE);
-                ui_col_float(&col1, "Rate", &cp->birdTrillRate, 1.0f, 0.0f, 30.0f);
-                ui_col_float(&col1, "Depth", &cp->birdTrillDepth, 0.2f, 0.0f, 5.0f);
+                ui_col_float(&col1, "Rate", &cp->p_birdTrillRate, 1.0f, 0.0f, 30.0f);
+                ui_col_float(&col1, "Depth", &cp->p_birdTrillDepth, 0.2f, 0.0f, 5.0f);
                 ui_col_space(&col1, 4);
                 ui_col_sublabel(&col1, "Flutter:", ORANGE);
-                ui_col_float(&col1, "AM Rate", &cp->birdAmRate, 1.0f, 0.0f, 20.0f);
-                ui_col_float(&col1, "AM Depth", &cp->birdAmDepth, 0.05f, 0.0f, 1.0f);
+                ui_col_float(&col1, "AM Rate", &cp->p_birdAmRate, 1.0f, 0.0f, 20.0f);
+                ui_col_float(&col1, "AM Depth", &cp->p_birdAmDepth, 0.05f, 0.0f, 1.0f);
             }
         }
         
@@ -1703,36 +1703,36 @@ int main(void) {
             col2.y += 18;
             
             ui_col_sublabel(&col2, "Envelope:", ORANGE);
-            ui_col_float(&col2, "Attack", &cp->attack, 0.5f, 0.001f, 2.0f);
-            ui_col_float(&col2, "Decay", &cp->decay, 0.5f, 0.0f, 2.0f);
-            ui_col_float(&col2, "Sustain", &cp->sustain, 0.5f, 0.0f, 1.0f);
-            ui_col_float(&col2, "Release", &cp->release, 0.5f, 0.01f, 3.0f);
+            ui_col_float(&col2, "Attack", &cp->p_attack, 0.5f, 0.001f, 2.0f);
+            ui_col_float(&col2, "Decay", &cp->p_decay, 0.5f, 0.0f, 2.0f);
+            ui_col_float(&col2, "Sustain", &cp->p_sustain, 0.5f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Release", &cp->p_release, 0.5f, 0.01f, 3.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Vibrato:", ORANGE);
-            ui_col_float(&col2, "Rate", &cp->vibratoRate, 0.5f, 0.5f, 15.0f);
-            ui_col_float(&col2, "Depth", &cp->vibratoDepth, 0.2f, 0.0f, 2.0f);
+            ui_col_float(&col2, "Rate", &cp->p_vibratoRate, 0.5f, 0.5f, 15.0f);
+            ui_col_float(&col2, "Depth", &cp->p_vibratoDepth, 0.2f, 0.0f, 2.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Filter:", ORANGE);
-            ui_col_float(&col2, "Cutoff", &cp->filterCutoff, 0.05f, 0.01f, 1.0f);
-            ui_col_float(&col2, "Reso", &cp->filterResonance, 0.05f, 0.0f, 1.0f);
-            ui_col_float(&col2, "EnvAmt", &cp->filterEnvAmt, 0.05f, -1.0f, 1.0f);
-            ui_col_float(&col2, "EnvAtk", &cp->filterEnvAttack, 0.01f, 0.001f, 0.5f);
-            ui_col_float(&col2, "EnvDcy", &cp->filterEnvDecay, 0.05f, 0.01f, 2.0f);
+            ui_col_float(&col2, "Cutoff", &cp->p_filterCutoff, 0.05f, 0.01f, 1.0f);
+            ui_col_float(&col2, "Reso", &cp->p_filterResonance, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "EnvAmt", &cp->p_filterEnvAmt, 0.05f, -1.0f, 1.0f);
+            ui_col_float(&col2, "EnvAtk", &cp->p_filterEnvAttack, 0.01f, 0.001f, 0.5f);
+            ui_col_float(&col2, "EnvDcy", &cp->p_filterEnvDecay, 0.05f, 0.01f, 2.0f);
             ui_col_space(&col2, 4);
             
             ui_col_sublabel(&col2, "Volume:", ORANGE);
-            ui_col_float(&col2, "Note", &cp->volume, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col2, "Note", &cp->p_volume, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col2, "Master", &masterVolume, 0.05f, 0.0f, 1.0f);
             
             // Mono/Glide - only show for wave types that support it
             if (selectedWave != WAVE_PLUCK && selectedWave != WAVE_MALLET) {
                 ui_col_space(&col2, 4);
                 ui_col_sublabel(&col2, "Mono/Glide:", ORANGE);
-                ui_col_toggle(&col2, "Mono", &cp->monoMode);
-                if (cp->monoMode) {
-                    ui_col_float(&col2, "Glide", &cp->glideTime, 0.02f, 0.01f, 1.0f);
+                ui_col_toggle(&col2, "Mono", &cp->p_monoMode);
+                if (cp->p_monoMode) {
+                    ui_col_float(&col2, "Glide", &cp->p_glideTime, 0.02f, 0.01f, 1.0f);
                 }
             }
             
@@ -1756,27 +1756,27 @@ int main(void) {
             static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
             
             ui_col_sublabel(&col3, "Filter:", ORANGE);
-            ui_col_float(&col3, "Rate", &cp->filterLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &cp->filterLfoDepth, 0.05f, 0.0f, 2.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->filterLfoShape);
+            ui_col_float(&col3, "Rate", &cp->p_filterLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->p_filterLfoDepth, 0.05f, 0.0f, 2.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_filterLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Resonance:", ORANGE);
-            ui_col_float(&col3, "Rate", &cp->resoLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &cp->resoLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->resoLfoShape);
+            ui_col_float(&col3, "Rate", &cp->p_resoLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->p_resoLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_resoLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Amplitude:", ORANGE);
-            ui_col_float(&col3, "Rate", &cp->ampLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &cp->ampLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->ampLfoShape);
+            ui_col_float(&col3, "Rate", &cp->p_ampLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->p_ampLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_ampLfoShape);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Pitch:", ORANGE);
-            ui_col_float(&col3, "Rate", &cp->pitchLfoRate, 0.5f, 0.0f, 20.0f);
-            ui_col_float(&col3, "Depth", &cp->pitchLfoDepth, 0.05f, 0.0f, 1.0f);
-            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->pitchLfoShape);
+            ui_col_float(&col3, "Rate", &cp->p_pitchLfoRate, 0.5f, 0.0f, 20.0f);
+            ui_col_float(&col3, "Depth", &cp->p_pitchLfoDepth, 0.05f, 0.0f, 1.0f);
+            ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_pitchLfoShape);
         }
         
         // === COLUMN 4: Drums ===
@@ -2846,7 +2846,7 @@ int main(void) {
                     int px = inspX + 65;
                     float cutoff = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_CUTOFF, -1.0f);
                     bool isLocked = (cutoff >= 0.0f);
-                    if (!isLocked) cutoff = patch->filterCutoff;
+                    if (!isLocked) cutoff = patch->p_filterCutoff;
                     
                     DrawTextShadow("Cut:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 50, 14};
@@ -2873,7 +2873,7 @@ int main(void) {
                     int px = inspX + 160;
                     float reso = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_RESO, -1.0f);
                     bool isLocked = (reso >= 0.0f);
-                    if (!isLocked) reso = patch->filterResonance;
+                    if (!isLocked) reso = patch->p_filterResonance;
                     
                     DrawTextShadow("Res:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
@@ -2900,7 +2900,7 @@ int main(void) {
                     int px = inspX + 245;
                     float fenv = seqGetPLock(p, absTrack, selectedStep, PLOCK_FILTER_ENV, -1.0f);
                     bool isLocked = (fenv >= 0.0f);
-                    if (!isLocked) fenv = patch->filterEnvAmt;
+                    if (!isLocked) fenv = patch->p_filterEnvAmt;
                     
                     DrawTextShadow("FEnv:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 35), (float)(row2Y - 2), 40, 14};
@@ -2927,7 +2927,7 @@ int main(void) {
                     int px = inspX + 340;
                     float decay = seqGetPLock(p, absTrack, selectedStep, PLOCK_DECAY, -1.0f);
                     bool isLocked = (decay >= 0.0f);
-                    if (!isLocked) decay = patch->decay;
+                    if (!isLocked) decay = patch->p_decay;
                     
                     DrawTextShadow("Dec:", px, row2Y, 10, isLocked ? (Color){180, 120, 255, 255} : DARKGRAY);
                     Rectangle rect = {(float)(px + 28), (float)(row2Y - 2), 40, 14};
@@ -3022,7 +3022,7 @@ int main(void) {
         }
         
         // Keep wave type in sync with selector
-        cp->waveType = selectedWave;
+        cp->p_waveType = selectedWave;
         
         ui_update();
         

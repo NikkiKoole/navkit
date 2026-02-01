@@ -30,6 +30,36 @@
 #include "engines/scw_data.h"
 #endif
 
+// ============================================================================
+// UNIFIED SOUND SYSTEM CONTEXT
+// ============================================================================
+
+// Complete sound system state container
+// Allows multiple independent instances or explicit context management
+typedef struct SoundSystem {
+    SynthContext synth;
+    DrumsContext drums;
+    EffectsContext effects;
+    SequencerContext sequencer;
+} SoundSystem;
+
+// Initialize a complete sound system instance
+static void initSoundSystem(SoundSystem* ss) {
+    initSynthContext(&ss->synth);
+    initDrumsContext(&ss->drums);
+    initEffectsContext(&ss->effects);
+    initSequencerContext(&ss->sequencer);
+}
+
+// Point global contexts to a specific SoundSystem instance
+// (Use this to swap between sound system instances)
+static void useSoundSystem(SoundSystem* ss) {
+    synthCtx = &ss->synth;
+    drumsCtx = &ss->drums;
+    fxCtx = &ss->effects;
+    seqCtx = &ss->sequencer;
+}
+
 // Silence unused function warnings by referencing all public APIs
 static inline void soundsystem_suppress_warnings(void) {
     // synth.h
@@ -106,6 +136,14 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)seqSwitchPattern;
     (void)seqResetTiming;
     (void)midiToFreq;
+    // soundsystem.h (context management)
+    (void)initSoundSystem;
+    (void)useSoundSystem;
+    // context init functions
+    (void)initSynthContext;
+    (void)initDrumsContext;
+    (void)initEffectsContext;
+    (void)initSequencerContext;
 #if __has_include("engines/scw_data.h")
     (void)loadEmbeddedSCWs;
 #endif
