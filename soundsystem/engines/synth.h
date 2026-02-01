@@ -2806,6 +2806,24 @@ static float mutate(float value, float amount) {
     return value * rndRange(1.0f - amount, 1.0f + amount);
 }
 
+// Helper to init a voice with sensible defaults (useful for testing or direct voice manipulation)
+static void initVoiceDefaults(Voice *v, WaveType wave, float freq) {
+    memset(v, 0, sizeof(Voice));
+    v->wave = wave;
+    v->frequency = freq;
+    v->baseFrequency = freq;
+    v->targetFrequency = freq;
+    v->volume = 0.5f;
+    v->pulseWidth = 0.5f;
+    v->filterCutoff = 1.0f;
+    v->attack = 0.01f;
+    v->decay = 0.1f;
+    v->sustain = 0.5f;
+    v->release = 0.3f;
+    v->envStage = 3;  // Start in sustain (ready to play)
+    v->envLevel = 1.0f;
+}
+
 // Helper to init a voice for SFX
 static void initSfxVoice(Voice *v, float freq, WaveType wave, float vol,
                          float attack, float decay, float release, float pitchSlide) {

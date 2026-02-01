@@ -2084,24 +2084,10 @@ describe(e2e_synth_audio) {
         initSynthContext(synthCtx);
         
         Voice *v = &synthCtx->voices[0];
-        memset(v, 0, sizeof(Voice));
-        
-        // Set up a simple voice
-        v->wave = WAVE_SAW;
-        v->frequency = 440.0f;
-        v->baseFrequency = 440.0f;
-        v->targetFrequency = 440.0f;
-        v->volume = 0.5f;
-        v->pulseWidth = 0.5f;
+        initVoiceDefaults(v, WAVE_SAW, 440.0f);
         v->filterCutoff = 0.8f;
         v->filterResonance = 0.2f;
-        
-        // ADSR
-        v->attack = 0.01f;
-        v->decay = 0.1f;
-        v->sustain = 0.5f;
-        v->release = 0.2f;
-        v->envStage = 1;  // Attack
+        v->envStage = 1;  // Start in attack
         v->envLevel = 0.0f;
         
         float sampleRate = SAMPLE_RATE;
@@ -2132,22 +2118,7 @@ describe(e2e_synth_audio) {
             initSynthContext(synthCtx);
             
             Voice *v = &synthCtx->voices[0];
-            memset(v, 0, sizeof(Voice));
-            
-            v->wave = waves[w];
-            v->frequency = 440.0f;
-            v->baseFrequency = 440.0f;
-            v->targetFrequency = 440.0f;
-            v->volume = 0.5f;
-            v->pulseWidth = 0.5f;
-            v->filterCutoff = 1.0f;  // No filter
-            
-            v->attack = 0.001f;
-            v->decay = 0.0f;
-            v->sustain = 1.0f;
-            v->release = 0.1f;
-            v->envStage = 3;  // Sustain
-            v->envLevel = 1.0f;
+            initVoiceDefaults(v, waves[w], 440.0f);
             
             // Generate audio and sum absolute values
             for (int i = 0; i < SAMPLE_RATE / 10; i++) {
@@ -2167,16 +2138,8 @@ describe(e2e_synth_audio) {
         initSynthContext(synthCtx);
         
         Voice *v = &synthCtx->voices[0];
-        memset(v, 0, sizeof(Voice));
-        
-        v->wave = WAVE_SAW;
-        v->frequency = 440.0f;
-        v->baseFrequency = 440.0f;
-        v->targetFrequency = 440.0f;
+        initVoiceDefaults(v, WAVE_SAW, 440.0f);
         v->volume = 1.0f;
-        v->pulseWidth = 0.5f;
-        v->filterCutoff = 1.0f;
-        
         v->attack = 0.1f;   // 100ms attack
         v->decay = 0.1f;    // 100ms decay
         v->sustain = 0.5f;
@@ -2458,18 +2421,9 @@ describe(filter_coefficients) {
         initSynthContext(synthCtx);
         
         Voice v;
-        memset(&v, 0, sizeof(Voice));
-        v.wave = WAVE_SAW;
-        v.frequency = 440.0f;
-        v.baseFrequency = 440.0f;
-        v.targetFrequency = 440.0f;
-        v.volume = 0.5f;
-        v.pulseWidth = 0.5f;
+        initVoiceDefaults(&v, WAVE_SAW, 440.0f);
         v.filterCutoff = 0.3f;
         v.filterResonance = 0.5f;  // Moderate resonance
-        v.envStage = 3;
-        v.envLevel = 1.0f;
-        v.sustain = 1.0f;
         
         // Process many samples
         float maxSample = 0.0f;
@@ -2488,18 +2442,9 @@ describe(filter_coefficients) {
         
         // Low resonance
         Voice v1;
-        memset(&v1, 0, sizeof(Voice));
-        v1.wave = WAVE_SAW;
-        v1.frequency = 440.0f;
-        v1.baseFrequency = 440.0f;
-        v1.targetFrequency = 440.0f;
-        v1.volume = 0.5f;
-        v1.pulseWidth = 0.5f;
+        initVoiceDefaults(&v1, WAVE_SAW, 440.0f);
         v1.filterCutoff = 0.3f;
         v1.filterResonance = 0.0f;  // No resonance
-        v1.envStage = 3;
-        v1.envLevel = 1.0f;
-        v1.sustain = 1.0f;
         
         float sum1 = 0.0f;
         for (int i = 0; i < 1000; i++) {
@@ -2508,18 +2453,9 @@ describe(filter_coefficients) {
         
         // High resonance
         Voice v2;
-        memset(&v2, 0, sizeof(Voice));
-        v2.wave = WAVE_SAW;
-        v2.frequency = 440.0f;
-        v2.baseFrequency = 440.0f;
-        v2.targetFrequency = 440.0f;
-        v2.volume = 0.5f;
-        v2.pulseWidth = 0.5f;
+        initVoiceDefaults(&v2, WAVE_SAW, 440.0f);
         v2.filterCutoff = 0.3f;
         v2.filterResonance = 0.8f;  // High resonance
-        v2.envStage = 3;
-        v2.envLevel = 1.0f;
-        v2.sustain = 1.0f;
         
         float sum2 = 0.0f;
         for (int i = 0; i < 1000; i++) {
@@ -2549,17 +2485,7 @@ describe(fm_synthesis) {
         initSynthContext(synthCtx);
         
         Voice v;
-        memset(&v, 0, sizeof(Voice));
-        v.wave = WAVE_FM;
-        v.frequency = 440.0f;
-        v.baseFrequency = 440.0f;
-        v.targetFrequency = 440.0f;
-        v.volume = 0.5f;
-        v.filterCutoff = 1.0f;
-        v.envStage = 3;
-        v.envLevel = 1.0f;
-        v.sustain = 1.0f;
-        
+        initVoiceDefaults(&v, WAVE_FM, 440.0f);
         v.fmSettings.modRatio = 2.0f;
         v.fmSettings.modIndex = 1.0f;
         v.fmSettings.feedback = 0.0f;
@@ -2588,17 +2514,7 @@ describe(fm_synthesis) {
             initSynthContext(synthCtx);
             
             Voice v;
-            memset(&v, 0, sizeof(Voice));
-            v.wave = WAVE_FM;
-            v.frequency = 440.0f;
-            v.baseFrequency = 440.0f;
-            v.targetFrequency = 440.0f;
-            v.volume = 0.5f;
-            v.filterCutoff = 1.0f;
-            v.envStage = 3;
-            v.envLevel = 1.0f;
-            v.sustain = 1.0f;
-            
+            initVoiceDefaults(&v, WAVE_FM, 440.0f);
             v.fmSettings.modRatio = ratios[r];
             v.fmSettings.modIndex = 2.0f;
             v.fmSettings.feedback = 0.0f;
@@ -2622,16 +2538,7 @@ describe(fm_synthesis) {
         // Low mod index (nearly sine)
         initSynthContext(synthCtx);
         Voice v1;
-        memset(&v1, 0, sizeof(Voice));
-        v1.wave = WAVE_FM;
-        v1.frequency = 440.0f;
-        v1.baseFrequency = 440.0f;
-        v1.targetFrequency = 440.0f;
-        v1.volume = 0.5f;
-        v1.filterCutoff = 1.0f;
-        v1.envStage = 3;
-        v1.envLevel = 1.0f;
-        v1.sustain = 1.0f;
+        initVoiceDefaults(&v1, WAVE_FM, 440.0f);
         v1.fmSettings.modRatio = 2.0f;
         v1.fmSettings.modIndex = 0.1f;  // Very low
         v1.fmSettings.feedback = 0.0f;
@@ -2650,16 +2557,7 @@ describe(fm_synthesis) {
         // High mod index (rich harmonics)
         initSynthContext(synthCtx);
         Voice v2;
-        memset(&v2, 0, sizeof(Voice));
-        v2.wave = WAVE_FM;
-        v2.frequency = 440.0f;
-        v2.baseFrequency = 440.0f;
-        v2.targetFrequency = 440.0f;
-        v2.volume = 0.5f;
-        v2.filterCutoff = 1.0f;
-        v2.envStage = 3;
-        v2.envLevel = 1.0f;
-        v2.sustain = 1.0f;
+        initVoiceDefaults(&v2, WAVE_FM, 440.0f);
         v2.fmSettings.modRatio = 2.0f;
         v2.fmSettings.modIndex = 5.0f;  // High
         v2.fmSettings.feedback = 0.0f;
