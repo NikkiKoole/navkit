@@ -38,6 +38,34 @@
 #define DUB_LOOP_MAX_TIME 4.0f        // Max loop time in seconds
 #define DUB_LOOP_BUFFER_SIZE (SAMPLE_RATE * 4)  // 4 seconds at 44.1kHz
 #define DUB_LOOP_MAX_HEADS 3          // Up to 3 playback heads
+#define DUB_LOOP_MAX_ECHOES 8         // Track degradation for up to 8 echo generations
+
+// Dub Loop input source options
+#define DUB_INPUT_ALL      0          // All audio goes to delay
+#define DUB_INPUT_DRUMS    1          // All drums
+#define DUB_INPUT_SYNTH    2          // All synth voices
+#define DUB_INPUT_MANUAL   3          // Only when manually "thrown"
+
+// Individual drum sources (4-15)
+#define DUB_INPUT_KICK     4
+#define DUB_INPUT_SNARE    5
+#define DUB_INPUT_CLAP     6
+#define DUB_INPUT_CLOSED_HH 7
+#define DUB_INPUT_OPEN_HH  8
+#define DUB_INPUT_LOW_TOM  9
+#define DUB_INPUT_MID_TOM  10
+#define DUB_INPUT_HI_TOM   11
+#define DUB_INPUT_RIMSHOT  12
+#define DUB_INPUT_COWBELL  13
+#define DUB_INPUT_CLAVE    14
+#define DUB_INPUT_MARACAS  15
+
+// Individual synth voice sources (16-18)
+#define DUB_INPUT_BASS     16
+#define DUB_INPUT_LEAD     17
+#define DUB_INPUT_CHORD    18
+
+#define DUB_INPUT_COUNT    19         // Total number of input options
 
 // Rewind constants
 #define REWIND_BUFFER_SIZE (SAMPLE_RATE * 3)  // 3 seconds capture
@@ -124,20 +152,33 @@ typedef struct {
     float feedback;           // How much output feeds back (0-0.95)
     float mix;                // Dry/wet (0-1)
     
+    // Input source selection (King Tubby style send/return)
+    int inputSource;          // DUB_INPUT_ALL, DUB_INPUT_DRUMS, DUB_INPUT_SYNTH, DUB_INPUT_MANUAL
+    bool throwActive;         // Manual throw is active (for DUB_INPUT_MANUAL mode)
+    
+    // Routing
+    bool preReverb;           // If true: signal -> reverb -> delay (room being echoed)
+                              // If false: signal -> delay -> reverb (echo in a room)
+    
     // Tape speed/pitch
     float speed;              // Playback speed (0.5 = half speed/octave down, 2.0 = double)
     float speedTarget;        // Target speed (for smooth transitions)
     float speedSlew;          // How fast speed changes (for motor inertia feel)
     
-    // Degradation per pass
+    // Degradation per pass (cumulative - each echo gets worse)
     float saturation;         // Tape saturation amount (0-1)
     float toneHigh;           // High frequency loss per pass (0-1, lower = darker)
     float toneLow;            // Low frequency loss (0-1, subtle)
     float noise;              // Tape noise/hiss added per pass (0-1)
+    float degradeRate;        // How much degradation compounds per echo (0-1)
     
     // Wow & flutter (speed variation)
     float wow;                // Slow speed wobble (0-1)
     float flutter;            // Fast speed wobble (0-1)
+    
+    // Delay time drift (woozy non-tempo-synced feel)
+    float drift;              // Amount of random drift on delay times (0-1)
+    float driftRate;          // How fast drift changes (0.1 = slow wander, 1.0 = faster)
     
     // Head positions (as time in seconds)
     int numHeads;             // 1-3 playback heads
@@ -235,6 +276,11 @@ typedef struct EffectsContext {
     float dubLoopFlutterPhase;        // LFO phase for flutter
     unsigned int dubLoopNoiseState;   // Noise generator for hiss
     
+    // Per-echo degradation tracking (cumulative)
+    float dubLoopEchoAge;             // Tracks "generation" of current echo content
+    float dubLoopDriftPhase[DUB_LOOP_MAX_HEADS];  // Per-head drift LFO phase
+    float dubLoopDriftValue[DUB_LOOP_MAX_HEADS];  // Current drift offset per head
+    
     // Rewind state
     RewindParams rewind;
     float rewindBuffer[REWIND_BUFFER_SIZE];
@@ -302,6 +348,9 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->dubLoop.inputGain = 1.0f;
     ctx->dubLoop.feedback = 0.6f;
     ctx->dubLoop.mix = 0.4f;
+    ctx->dubLoop.inputSource = DUB_INPUT_ALL;  // All audio by default
+    ctx->dubLoop.throwActive = false;
+    ctx->dubLoop.preReverb = false;         // Classic: delay -> reverb
     ctx->dubLoop.speed = 1.0f;
     ctx->dubLoop.speedTarget = 1.0f;
     ctx->dubLoop.speedSlew = 0.1f;          // ~100ms to reach target speed
@@ -309,8 +358,11 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->dubLoop.toneHigh = 0.7f;           // Gentle high cut
     ctx->dubLoop.toneLow = 0.1f;
     ctx->dubLoop.noise = 0.05f;
+    ctx->dubLoop.degradeRate = 0.15f;       // Each echo loses 15% more quality
     ctx->dubLoop.wow = 0.2f;
     ctx->dubLoop.flutter = 0.1f;
+    ctx->dubLoop.drift = 0.3f;              // Woozy delay time drift
+    ctx->dubLoop.driftRate = 0.2f;          // Slow wandering
     ctx->dubLoop.numHeads = 1;              // Single head by default
     ctx->dubLoop.headTime[0] = 0.375f;      // Dotted eighth at 120bpm-ish
     ctx->dubLoop.headLevel[0] = 1.0f;
@@ -320,6 +372,7 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->dubLoop.headLevel[2] = 0.5f;
     ctx->dubLoopCurrentSpeed = 1.0f;
     ctx->dubLoopNoiseState = 12345;
+    ctx->dubLoopEchoAge = 0.0f;
     
     // Rewind - off by default
     ctx->rewind.enabled = true;             // Always capturing when in use
@@ -393,6 +446,9 @@ static float fxNoise(void) {
 #define dubLoopWowPhase (fxCtx->dubLoopWowPhase)
 #define dubLoopFlutterPhase (fxCtx->dubLoopFlutterPhase)
 #define dubLoopNoiseState (fxCtx->dubLoopNoiseState)
+#define dubLoopEchoAge (fxCtx->dubLoopEchoAge)
+#define dubLoopDriftPhase (fxCtx->dubLoopDriftPhase)
+#define dubLoopDriftValue (fxCtx->dubLoopDriftValue)
 
 #define rewind (fxCtx->rewind)
 #define rewindBuffer (fxCtx->rewindBuffer)
@@ -624,11 +680,8 @@ static float dubLoopNoise(void) {
     return (float)(dubLoopNoiseState >> 16) / 32768.0f - 1.0f;
 }
 
-// Process dub loop effect
-static float processDubLoop(float input, float dt) {
-    _ensureFxCtx();
-    if (!dubLoop.enabled) return input;
-    
+// Internal: core dub loop processing with pre-selected input
+static float _processDubLoopCore(float selectedInput, float dt) {
     DubLoopParams *p = &dubLoop;
     
     // Update speed with slew (motor inertia)
@@ -648,10 +701,25 @@ static float processDubLoop(float input, float dt) {
         speed *= 1.0f + sinf(dubLoopFlutterPhase * 2.0f * PI) * p->flutter * 0.005f;
     }
     
-    // Read from all heads and mix
+    // Read from all heads and mix (with per-head drift for woozy feel)
     float wet = 0.0f;
     for (int h = 0; h < p->numHeads; h++) {
-        float delaySamples = p->headTime[h] * SAMPLE_RATE;
+        // Update drift LFO for this head (each head drifts independently)
+        if (p->drift > 0.0f) {
+            // Use slightly different rates per head for more organic feel
+            float driftFreq = p->driftRate * (0.8f + 0.4f * (float)h / DUB_LOOP_MAX_HEADS);
+            dubLoopDriftPhase[h] += driftFreq * dt;
+            if (dubLoopDriftPhase[h] > 1.0f) dubLoopDriftPhase[h] -= 1.0f;
+            
+            // Combine two sine waves for more random-feeling drift
+            float drift1 = sinf(dubLoopDriftPhase[h] * 2.0f * PI);
+            float drift2 = sinf(dubLoopDriftPhase[h] * 2.0f * PI * 2.3f + (float)h);  // Slightly off harmonic
+            dubLoopDriftValue[h] = (drift1 * 0.7f + drift2 * 0.3f) * p->drift * 0.05f;  // Up to 5% drift
+        }
+        
+        // Apply drift to delay time
+        float headDelay = p->headTime[h] * (1.0f + dubLoopDriftValue[h]);
+        float delaySamples = headDelay * SAMPLE_RATE;
         if (delaySamples < 1.0f) delaySamples = 1.0f;
         if (delaySamples > DUB_LOOP_BUFFER_SIZE - 1) delaySamples = DUB_LOOP_BUFFER_SIZE - 1;
         
@@ -663,36 +731,54 @@ static float processDubLoop(float input, float dt) {
     }
     if (p->numHeads > 1) wet /= (float)p->numHeads;
     
-    // Degrade the signal for feedback
+    // === CUMULATIVE DEGRADATION ===
+    // Each echo generation gets progressively worse
+    // echoAge tracks how "old" the content in the buffer is
     float feedbackSample = wet;
     
-    // Saturation (tape compression)
-    if (p->saturation > 0.0f) {
-        feedbackSample = tanhf(feedbackSample * (1.0f + p->saturation * 2.0f));
+    // Calculate degradation multiplier based on echo age
+    float degradeMult = 1.0f + dubLoopEchoAge * p->degradeRate;
+    
+    // Saturation increases with age (tape compression gets worse)
+    float ageSaturation = p->saturation * degradeMult;
+    if (ageSaturation > 0.0f) {
+        float satAmount = 1.0f + ageSaturation * 2.0f;
+        feedbackSample = tanhf(feedbackSample * satAmount) / (satAmount * 0.5f + 0.5f);
     }
     
-    // Tone - lowpass for high frequency loss
-    float lpCoef = p->toneHigh * p->toneHigh * 0.5f + 0.1f;
+    // Tone - lowpass gets darker with age (high frequency loss compounds)
+    float ageToneHigh = p->toneHigh / degradeMult;  // Lower = darker
+    if (ageToneHigh < 0.1f) ageToneHigh = 0.1f;
+    float lpCoef = ageToneHigh * ageToneHigh * 0.5f + 0.1f;
     dubLoopLpState += lpCoef * (feedbackSample - dubLoopLpState);
     feedbackSample = dubLoopLpState;
     
-    // Tone - subtle highpass for low frequency loss (prevents mud buildup)
-    float hpCoef = p->toneLow * 0.01f;
+    // Tone - highpass for low frequency loss (prevents mud buildup)
+    float hpCoef = p->toneLow * 0.01f * degradeMult;
     dubLoopHpState += hpCoef * (feedbackSample - dubLoopHpState);
     feedbackSample = feedbackSample - dubLoopHpState * p->toneLow;
     
-    // Add noise
+    // Noise increases with age
     if (p->noise > 0.0f) {
-        float noise = dubLoopNoise() * p->noise * 0.02f;
+        float ageNoise = p->noise * degradeMult;
+        float noise = dubLoopNoise() * ageNoise * 0.02f;
         feedbackSample += noise;
     }
     
     // Write to tape: input + feedback
     float toTape = 0.0f;
-    if (p->recording) {
-        toTape += input * p->inputGain;
+    if (p->recording && fabsf(selectedInput) > 0.001f) {
+        toTape += selectedInput * p->inputGain;
+        // Fresh input resets the echo age (new content)
+        dubLoopEchoAge = dubLoopEchoAge * 0.95f;  // Blend toward fresh
     }
     toTape += feedbackSample * p->feedback;
+    
+    // Age the echo content (each pass through increases age)
+    if (p->feedback > 0.0f) {
+        dubLoopEchoAge += p->feedback * 0.1f;  // Age proportional to feedback
+        if (dubLoopEchoAge > DUB_LOOP_MAX_ECHOES) dubLoopEchoAge = DUB_LOOP_MAX_ECHOES;
+    }
     
     // Clip to prevent runaway
     if (toTape > 1.5f) toTape = 1.5f;
@@ -708,21 +794,140 @@ static float processDubLoop(float input, float dt) {
         dubLoopWritePos -= DUB_LOOP_BUFFER_SIZE;
     }
     
+    return wet;
+}
+
+// Process dub loop with individual voice inputs (most flexible)
+// drumInputs: array of 12 drum signals (DRUM_KICK through DRUM_MARACAS), or NULL
+// synthInputs: array of 3 synth voice signals (Bass, Lead, Chord), or NULL
+// Returns: wet signal only (caller handles dry/wet mix)
+static float processDubLoopWithVoices(float *drumInputs, float *synthInputs, float dt) {
+    _ensureFxCtx();
+    if (!dubLoop.enabled) return 0.0f;
+    
+    DubLoopParams *p = &dubLoop;
+    
+    // Calculate summed buses
+    float allDrums = 0.0f;
+    float allSynth = 0.0f;
+    if (drumInputs) {
+        for (int i = 0; i < 12; i++) allDrums += drumInputs[i];
+    }
+    if (synthInputs) {
+        for (int i = 0; i < 3; i++) allSynth += synthInputs[i];
+    }
+    
+    // Determine what input goes to the delay based on source selection
+    float selectedInput = 0.0f;
+    switch (p->inputSource) {
+        case DUB_INPUT_ALL:
+            selectedInput = allDrums + allSynth;
+            break;
+        case DUB_INPUT_DRUMS:
+            selectedInput = allDrums;
+            break;
+        case DUB_INPUT_SYNTH:
+            selectedInput = allSynth;
+            break;
+        case DUB_INPUT_MANUAL:
+            selectedInput = p->throwActive ? (allDrums + allSynth) : 0.0f;
+            break;
+        // Individual drum voices (4-15 map to drumInputs[0-11])
+        case DUB_INPUT_KICK:
+        case DUB_INPUT_SNARE:
+        case DUB_INPUT_CLAP:
+        case DUB_INPUT_CLOSED_HH:
+        case DUB_INPUT_OPEN_HH:
+        case DUB_INPUT_LOW_TOM:
+        case DUB_INPUT_MID_TOM:
+        case DUB_INPUT_HI_TOM:
+        case DUB_INPUT_RIMSHOT:
+        case DUB_INPUT_COWBELL:
+        case DUB_INPUT_CLAVE:
+        case DUB_INPUT_MARACAS:
+            if (drumInputs) {
+                int drumIdx = p->inputSource - DUB_INPUT_KICK;
+                selectedInput = drumInputs[drumIdx];
+            }
+            break;
+        // Individual synth voices (16-18 map to synthInputs[0-2])
+        case DUB_INPUT_BASS:
+        case DUB_INPUT_LEAD:
+        case DUB_INPUT_CHORD:
+            if (synthInputs) {
+                int synthIdx = p->inputSource - DUB_INPUT_BASS;
+                selectedInput = synthInputs[synthIdx];
+            }
+            break;
+        default:
+            selectedInput = 0.0f;
+            break;
+    }
+    
+    return _processDubLoopCore(selectedInput, dt);
+}
+
+// Process dub loop with summed drum/synth buses (simpler API)
+// drumInput: summed signal from all drums
+// synthInput: summed signal from all synth voices  
+// Returns: wet signal only (caller handles dry/wet mix)
+static float processDubLoopWithInputs(float drumInput, float synthInput, float dt) {
+    _ensureFxCtx();
+    if (!dubLoop.enabled) return 0.0f;
+    
+    DubLoopParams *p = &dubLoop;
+    
+    // Determine what input goes to the delay based on source selection
+    float selectedInput = 0.0f;
+    switch (p->inputSource) {
+        case DUB_INPUT_ALL:
+            selectedInput = drumInput + synthInput;
+            break;
+        case DUB_INPUT_DRUMS:
+            selectedInput = drumInput;
+            break;
+        case DUB_INPUT_SYNTH:
+            selectedInput = synthInput;
+            break;
+        case DUB_INPUT_MANUAL:
+            selectedInput = p->throwActive ? (drumInput + synthInput) : 0.0f;
+            break;
+        default:
+            // Individual sources need processDubLoopWithVoices
+            // Fall back to manual behavior
+            selectedInput = p->throwActive ? (drumInput + synthInput) : 0.0f;
+            break;
+    }
+    
+    return _processDubLoopCore(selectedInput, dt);
+}
+
+// Simplified version for backward compatibility (single mixed input)
+static float processDubLoop(float input, float dt) {
+    _ensureFxCtx();
+    if (!dubLoop.enabled) return input;
+    
+    // Route all input (acts like DUB_INPUT_ALL)
+    float wet = _processDubLoopCore(input, dt);
+    
     // Mix dry/wet
-    return input * (1.0f - p->mix) + wet * p->mix;
+    return input * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
 }
 
 // Convenience: "throw" into the delay (start recording with full input)
+// In manual mode, this enables input capture momentarily
 static void dubLoopThrow(void) {
     _ensureFxCtx();
     dubLoop.recording = true;
     dubLoop.inputGain = 1.0f;
+    dubLoop.throwActive = true;  // For manual mode
 }
 
 // Convenience: "cut" the input (let it decay)
 static void dubLoopCut(void) {
     _ensureFxCtx();
     dubLoop.inputGain = 0.0f;
+    dubLoop.throwActive = false;  // Stop manual throw
 }
 
 // Convenience: half-speed drop
@@ -741,6 +946,32 @@ static void dubLoopNormalSpeed(void) {
 static void dubLoopDoubleSpeed(void) {
     _ensureFxCtx();
     dubLoop.speedTarget = 2.0f;
+}
+
+// Set input source for dub loop
+static void dubLoopSetInput(int source) {
+    _ensureFxCtx();
+    if (source >= 0 && source < DUB_INPUT_COUNT) {
+        dubLoop.inputSource = source;
+    }
+}
+
+// Toggle reverb routing (pre or post delay)
+static void dubLoopTogglePreReverb(void) {
+    _ensureFxCtx();
+    dubLoop.preReverb = !dubLoop.preReverb;
+}
+
+// Set reverb routing explicitly
+static void dubLoopSetPreReverb(bool pre) {
+    _ensureFxCtx();
+    dubLoop.preReverb = pre;
+}
+
+// Check if preReverb is enabled
+static bool dubLoopIsPreReverb(void) {
+    _ensureFxCtx();
+    return dubLoop.preReverb;
 }
 
 // ============================================================================
@@ -955,9 +1186,62 @@ static float processEffects(float sample, float dt) {
     sample = processBitcrusher(sample);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
-    sample = processDubLoop(sample, dt);
-    sample = processRewind(sample, dt);
-    sample = processReverb(sample);
+    
+    // Dub loop routing: preReverb means reverb -> delay (room being echoed)
+    if (dubLoop.enabled && dubLoop.preReverb) {
+        // Pre-reverb mode: apply reverb before dub loop
+        sample = processReverb(sample);
+        sample = processDubLoop(sample, dt);
+        sample = processRewind(sample, dt);
+        // Skip reverb again at end
+    } else {
+        // Normal mode: delay -> reverb (echo in a room)
+        sample = processDubLoop(sample, dt);
+        sample = processRewind(sample, dt);
+        sample = processReverb(sample);
+    }
+    return sample;
+}
+
+// Process effects with separate drum/synth buses (for full routing control)
+// This allows selective input to dub loop while processing the full mix
+static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
+    _ensureFxCtx();
+    
+    // Mix for effects that don't have selective input
+    float sample = drumBus + synthBus;
+    
+    sample = processDistortion(sample);
+    sample = processBitcrusher(sample);
+    sample = processTape(sample, dt);
+    sample = processDelay(sample, dt);
+    
+    // Dub loop with selective input
+    if (dubLoop.enabled) {
+        float dry = sample;
+        float wet;
+        
+        if (dubLoop.preReverb) {
+            // Pre-reverb mode: reverb the input before delay
+            float reverbedDrums = fx.reverbEnabled ? processReverb(drumBus) : drumBus;
+            float reverbedSynth = fx.reverbEnabled ? processReverb(synthBus) : synthBus;
+            wet = processDubLoopWithInputs(reverbedDrums, reverbedSynth, dt);
+        } else {
+            wet = processDubLoopWithInputs(drumBus, synthBus, dt);
+        }
+        
+        sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
+        sample = processRewind(sample, dt);
+        
+        // Only apply reverb if not in preReverb mode (already applied)
+        if (!dubLoop.preReverb) {
+            sample = processReverb(sample);
+        }
+    } else {
+        sample = processRewind(sample, dt);
+        sample = processReverb(sample);
+    }
+    
     return sample;
 }
 

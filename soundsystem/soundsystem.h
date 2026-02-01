@@ -110,6 +110,20 @@ static inline void soundsystem_suppress_warnings(void) {
     // effects.h
     (void)initEffects;
     (void)processEffects;
+    (void)processEffectsWithBuses;
+    (void)processDubLoopWithInputs;
+    (void)processDubLoopWithVoices;
+    (void)dubLoopThrow;
+    (void)dubLoopCut;
+    (void)dubLoopHalfSpeed;
+    (void)dubLoopNormalSpeed;
+    (void)dubLoopDoubleSpeed;
+    (void)dubLoopSetInput;
+    (void)dubLoopTogglePreReverb;
+    (void)dubLoopSetPreReverb;
+    (void)dubLoopIsPreReverb;
+    (void)triggerRewind;
+    (void)isRewinding;
     // sequencer.h
     (void)initSequencer;
     (void)resetSequencer;

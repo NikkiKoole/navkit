@@ -2004,6 +2004,12 @@ int main(void) {
         
         // Rewind curve names for UI
         static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
+        static const char* dubInputNames[] = {
+            "All", "Drums", "Synth", "Manual",
+            "Kick", "Snare", "Clap", "ClHH", "OpHH",
+            "LoTom", "MdTom", "HiTom", "Rim", "Cow", "Clav", "Mara",
+            "Bass", "Lead", "Chord"
+        };
         
         if (SectionHeader(col6.x, col6.y, "Tape FX", &showTapeFxColumn)) {
             col6.y += 18;
@@ -2014,12 +2020,23 @@ int main(void) {
             ui_col_float(&col6, "Feedback", &dubLoop.feedback, 0.05f, 0.0f, 0.95f);
             ui_col_float(&col6, "Mix", &dubLoop.mix, 0.05f, 0.0f, 1.0f);
             ui_col_space(&col6, 2);
+            
+            // NEW: Input source and routing
+            ui_col_cycle(&col6, "Input", dubInputNames, 19, &dubLoop.inputSource);
+            ui_col_toggle(&col6, "PreReverb", &dubLoop.preReverb);
+            ui_col_space(&col6, 2);
+            
+            // Degradation
             ui_col_float(&col6, "Saturat", &dubLoop.saturation, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col6, "ToneHi", &dubLoop.toneHigh, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col6, "Noise", &dubLoop.noise, 0.02f, 0.0f, 0.5f);
+            ui_col_float(&col6, "Degrade", &dubLoop.degradeRate, 0.02f, 0.0f, 0.5f);
             ui_col_space(&col6, 2);
+            
+            // Modulation
             ui_col_float(&col6, "Wow", &dubLoop.wow, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col6, "Flutter", &dubLoop.flutter, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "Drift", &dubLoop.drift, 0.05f, 0.0f, 1.0f);
             ui_col_space(&col6, 2);
             ui_col_float(&col6, "Speed", &dubLoop.speedTarget, 0.1f, 0.25f, 2.0f);
             
