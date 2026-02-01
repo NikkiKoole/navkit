@@ -9,7 +9,7 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 1040
+#define SCREEN_WIDTH 1200
 #define SCREEN_HEIGHT 860
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -1231,6 +1231,7 @@ static bool showSynthColumn = true;
 static bool showLfoColumn = true;
 static bool showDrumsColumn = true;
 static bool showEffectsColumn = true;
+static bool showTapeFxColumn = true;
 
 // Waveform names for UI
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
@@ -1996,6 +1997,63 @@ int main(void) {
             ui_col_float(&col5, "Damping", &fx.reverbDamping, 0.05f, 0.0f, 1.0f);
             ui_col_float(&col5, "PreDly", &fx.reverbPreDelay, 0.005f, 0.0f, 0.1f);
             ui_col_float(&col5, "Mix", &fx.reverbMix, 0.05f, 0.0f, 1.0f);
+        }
+        
+        // === COLUMN 6: Tape FX (Dub Loop + Rewind) ===
+        UIColumn col6 = ui_column(950, 125, 20);
+        
+        // Rewind curve names for UI
+        static const char* rewindCurveNames[] = {"Linear", "Expo", "S-Curve"};
+        
+        if (SectionHeader(col6.x, col6.y, "Tape FX", &showTapeFxColumn)) {
+            col6.y += 18;
+            
+            ui_col_sublabel(&col6, "Dub Loop:", ORANGE);
+            ui_col_toggle(&col6, "On", &dubLoop.enabled);
+            ui_col_float(&col6, "Time", &dubLoop.headTime[0], 0.05f, 0.05f, 4.0f);
+            ui_col_float(&col6, "Feedback", &dubLoop.feedback, 0.05f, 0.0f, 0.95f);
+            ui_col_float(&col6, "Mix", &dubLoop.mix, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col6, 2);
+            ui_col_float(&col6, "Saturat", &dubLoop.saturation, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "ToneHi", &dubLoop.toneHigh, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "Noise", &dubLoop.noise, 0.02f, 0.0f, 0.5f);
+            ui_col_space(&col6, 2);
+            ui_col_float(&col6, "Wow", &dubLoop.wow, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "Flutter", &dubLoop.flutter, 0.05f, 0.0f, 1.0f);
+            ui_col_space(&col6, 2);
+            ui_col_float(&col6, "Speed", &dubLoop.speedTarget, 0.1f, 0.25f, 2.0f);
+            
+            // Action buttons
+            ui_col_space(&col6, 4);
+            if (ui_col_button(&col6, "Throw")) {
+                dubLoopThrow();
+            }
+            if (ui_col_button(&col6, "Cut")) {
+                dubLoopCut();
+            }
+            if (ui_col_button(&col6, "1/2 Spd")) {
+                dubLoopHalfSpeed();
+            }
+            if (ui_col_button(&col6, "Normal")) {
+                dubLoopNormalSpeed();
+            }
+            
+            ui_col_space(&col6, 8);
+            ui_col_sublabel(&col6, "Rewind:", ORANGE);
+            ui_col_float(&col6, "Time", &rewind.rewindTime, 0.1f, 0.3f, 3.0f);
+            ui_col_cycle(&col6, "Curve", rewindCurveNames, 3, &rewind.curve);
+            ui_col_float(&col6, "MinSpd", &rewind.minSpeed, 0.05f, 0.05f, 0.8f);
+            ui_col_space(&col6, 2);
+            ui_col_float(&col6, "Vinyl", &rewind.vinylNoise, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "Wobble", &rewind.wobble, 0.05f, 0.0f, 1.0f);
+            ui_col_float(&col6, "Filter", &rewind.filterSweep, 0.05f, 0.0f, 1.0f);
+            
+            ui_col_space(&col6, 4);
+            if (ui_col_button(&col6, isRewinding() ? ">>..." : "Rewind")) {
+                if (!isRewinding()) {
+                    triggerRewind();
+                }
+            }
         }
         
         // === SEQUENCER GRID (Drums + Melodic) ===
@@ -3090,6 +3148,113 @@ int main(void) {
                     if (clearHovered && mouseClicked) {
                         seqClearStepPLocks(p, absTrack, selectedStep);
                         ui_consume_click();
+                    }
+                }
+                
+                // Note Pool row (third row) - for generative/varied melodies
+                int row3Y = row2Y + 18;
+                NotePool* notePool = &p->melodyNotePool[selectedTrack][selectedStep];
+                
+                // Note Pool enable toggle
+                {
+                    int poolX = inspX + 10;
+                    Rectangle poolRect = {(float)poolX, (float)(row3Y - 2), 55, 16};
+                    bool poolHovered = CheckCollisionPointRec(mouse, poolRect);
+                    Color poolBg = notePool->enabled ? (Color){80, 100, 60, 255} : (Color){45, 45, 55, 255};
+                    if (poolHovered) poolBg = (Color){90, 110, 70, 255};
+                    DrawRectangleRec(poolRect, poolBg);
+                    DrawRectangleLinesEx(poolRect, 1, notePool->enabled ? (Color){150, 200, 100, 255} : (Color){80, 80, 80, 255});
+                    DrawTextShadow("Pool", poolX + 12, row3Y, 10, notePool->enabled ? (Color){150, 200, 100, 255} : LIGHTGRAY);
+                    if (poolHovered && mouseClicked) {
+                        notePool->enabled = !notePool->enabled;
+                        ui_consume_click();
+                    }
+                }
+                
+                // Only show pool options if enabled
+                if (notePool->enabled) {
+                    // Chord type selector
+                    {
+                        int chordX = inspX + 75;
+                        DrawTextShadow("Chord:", chordX, row3Y, 10, (Color){150, 200, 100, 255});
+                        Rectangle chordRect = {(float)(chordX + 45), (float)(row3Y - 2), 50, 14};
+                        bool chordHovered = CheckCollisionPointRec(mouse, chordRect);
+                        DrawRectangleRec(chordRect, chordHovered ? (Color){50, 60, 50, 255} : (Color){35, 45, 35, 255});
+                        DrawRectangleLinesEx(chordRect, 1, (Color){100, 150, 80, 255});
+                        DrawTextShadow(chordTypeNames[notePool->chordType], chordX + 49, row3Y, 9, WHITE);
+                        
+                        if (chordHovered) {
+                            float wheel = GetMouseWheelMove();
+                            if (wheel > 0.1f) {
+                                seqCycleNotePoolChord(selectedTrack, selectedStep, -1);
+                            } else if (wheel < -0.1f) {
+                                seqCycleNotePoolChord(selectedTrack, selectedStep, 1);
+                            }
+                            if (mouseClicked) {
+                                seqCycleNotePoolChord(selectedTrack, selectedStep, 1);
+                                ui_consume_click();
+                            }
+                        }
+                    }
+                    
+                    // Pick mode selector
+                    {
+                        int pickX = inspX + 185;
+                        DrawTextShadow("Pick:", pickX, row3Y, 10, (Color){150, 200, 100, 255});
+                        Rectangle pickRect = {(float)(pickX + 35), (float)(row3Y - 2), 45, 14};
+                        bool pickHovered = CheckCollisionPointRec(mouse, pickRect);
+                        DrawRectangleRec(pickRect, pickHovered ? (Color){50, 60, 50, 255} : (Color){35, 45, 35, 255});
+                        DrawRectangleLinesEx(pickRect, 1, (Color){100, 150, 80, 255});
+                        DrawTextShadow(pickModeNames[notePool->pickMode], pickX + 39, row3Y, 9, WHITE);
+                        
+                        if (pickHovered) {
+                            float wheel = GetMouseWheelMove();
+                            if (wheel > 0.1f) {
+                                seqCycleNotePoolPick(selectedTrack, selectedStep, -1);
+                            } else if (wheel < -0.1f) {
+                                seqCycleNotePoolPick(selectedTrack, selectedStep, 1);
+                            }
+                            if (mouseClicked) {
+                                seqCycleNotePoolPick(selectedTrack, selectedStep, 1);
+                                ui_consume_click();
+                            }
+                        }
+                    }
+                    
+                    // Show what notes are in the pool
+                    {
+                        int previewX = inspX + 290;
+                        int notes[NOTE_POOL_MAX_NOTES];
+                        int baseNote = p->melodyNote[selectedTrack][selectedStep];
+                        bool useMinor = shouldUseMinor(baseNote);
+                        int noteCount = buildChordNotes(baseNote, (ChordType)notePool->chordType, useMinor, notes);
+                        
+                        DrawTextShadow("Notes:", previewX, row3Y, 10, GRAY);
+                        char noteStr[64] = "";
+                        for (int i = 0; i < noteCount && i < 4; i++) {
+                            char buf[8];
+                            int note = notes[i];
+                            int octave = note / 12 - 1;
+                            int noteIdx = note % 12;
+                            static const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+                            snprintf(buf, sizeof(buf), "%s%s%d", i > 0 ? " " : "", noteNames[noteIdx], octave);
+                            strncat(noteStr, buf, sizeof(noteStr) - strlen(noteStr) - 1);
+                        }
+                        DrawTextShadow(noteStr, previewX + 45, row3Y, 9, (Color){180, 220, 140, 255});
+                    }
+                    
+                    // Reset cycle button
+                    {
+                        int resetX = inspX + 520;
+                        Rectangle resetRect = {(float)resetX, (float)(row3Y - 2), 45, 14};
+                        bool resetHovered = CheckCollisionPointRec(mouse, resetRect);
+                        DrawRectangleRec(resetRect, resetHovered ? (Color){60, 60, 70, 255} : (Color){40, 40, 50, 255});
+                        DrawRectangleLinesEx(resetRect, 1, (Color){80, 80, 90, 255});
+                        DrawTextShadow("Reset", resetX + 6, row3Y, 9, LIGHTGRAY);
+                        if (resetHovered && mouseClicked) {
+                            seqResetNotePoolCycle(selectedTrack, selectedStep);
+                            ui_consume_click();
+                        }
                     }
                 }
             }

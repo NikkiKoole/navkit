@@ -311,6 +311,54 @@ A comprehensive feature roadmap for building a full-featured music creation tool
 - Short delay with feedback
 - Flanging, metallic, Karplus-adjacent tones
 
+## 6.7 Tape Loop (King Tubby Dub Delay) - PLANNED
+- Variable-length loop buffer (up to 4 seconds)
+- Variable speed playback with motor inertia slew
+- Degradation per pass: saturation, high-freq rolloff, noise
+- Wow & flutter modulating playback speed
+- Multi-head support (up to 3 heads at different delay times)
+- Throw/Cut controls for classic dub moves
+- Half-speed drop for pitch effects
+
+## 6.8 Rewind Effect (Vinyl Spinback) - PLANNED
+- Capture buffer continuously stores last 3 seconds
+- Trigger-based reverse playback
+- Speed curves: linear, exponential (natural brake), S-curve
+- Filter sweep follows speed (gets darker as it slows)
+- Vinyl crackle/noise during rewind
+- Crossfade in/out of effect
+
+## 6.9 Bus/Mixer System - PLANNED (FUTURE)
+Koala-style per-sound effects routing:
+
+### Architecture
+- 4 buses (A, B, C, D) + Master
+- Each patch routes to a bus (Preview→A, Bass→B, Lead→C, Chord→D)
+- Drums configurable to any bus or direct to master
+- Each bus has independent effects chain
+
+### Per-Bus Effects
+- Volume/Pan
+- Filter (cutoff, resonance)
+- Distortion (drive, tone, mix)
+- Delay (time, feedback, mix)
+- Reverb (size, mix)
+
+### Signal Flow
+```
+Synth Voices ──┬──> Bus A (effects) ──┐
+               ├──> Bus B (effects) ──┼──> Master FX ──> Out
+               ├──> Bus C (effects) ──┤
+               └──> Bus D (effects) ──┘
+Drums ─────────────────────> (configurable)
+```
+
+### Use Cases
+- Heavy reverb on lead only
+- Distorted bass, clean chords
+- Separate delay times per instrument
+- Per-bus compression/limiting
+
 ---
 
 # PRIORITY 7: Advanced Modulation

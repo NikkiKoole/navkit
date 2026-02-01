@@ -32,9 +32,52 @@
 // Note value for "no note" (rest)
 #define SEQ_NOTE_OFF -1
 
+// Note pool constants
+#define NOTE_POOL_MAX_NOTES 8  // Max notes in a chord/pool
+
 // ============================================================================
 // TYPES
 // ============================================================================
+
+// Chord types for note pool
+typedef enum {
+    CHORD_SINGLE = 0,   // Just the root note
+    CHORD_FIFTH,        // Root + 5th (power chord)
+    CHORD_TRIAD,        // Root + 3rd + 5th (major/minor from scale)
+    CHORD_TRIAD_INV1,   // 1st inversion (3rd in bass)
+    CHORD_TRIAD_INV2,   // 2nd inversion (5th in bass)
+    CHORD_SEVENTH,      // Root + 3rd + 5th + 7th
+    CHORD_OCTAVE,       // Root + octave
+    CHORD_OCTAVES,      // Root + octave + 2 octaves
+    CHORD_COUNT
+} ChordType;
+
+static const char* chordTypeNames[] = {
+    "Single", "5th", "Triad", "Inv1", "Inv2", "7th", "Oct", "2Oct"
+};
+
+// Pick modes for selecting from note pool
+typedef enum {
+    PICK_CYCLE_UP = 0,  // Cycle through notes upward
+    PICK_CYCLE_DOWN,    // Cycle through notes downward  
+    PICK_PINGPONG,      // Up then down
+    PICK_RANDOM,        // Random selection
+    PICK_RANDOM_WALK,   // Random but tends to move stepwise
+    PICK_COUNT
+} PickMode;
+
+static const char* pickModeNames[] = {
+    "Up", "Down", "Ping", "Rand", "Walk"
+};
+
+// Note pool state for a step
+typedef struct {
+    bool enabled;           // Is note pool active for this step?
+    int chordType;          // ChordType: what notes to include
+    int pickMode;           // PickMode: how to select
+    int currentIndex;       // Current position in the pool (for cycling)
+    int direction;          // 1 = up, -1 = down (for pingpong)
+} NotePool;
 
 // Trigger conditions (Elektron-style)
 typedef enum {
@@ -135,6 +178,9 @@ typedef struct {
     // 303-style per-step slide & accent (for melodic tracks)
     bool melodySlide[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];      // Slide/glide to this note
     bool melodyAccent[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];     // Accent (boost vel + filter env)
+    
+    // Note pool per step (for generative/varied melodies)
+    NotePool melodyNotePool[SEQ_MELODY_TRACKS][SEQ_MAX_STEPS];
     
     // Parameter locks (Elektron-style)
     PLock plocks[MAX_PLOCKS_PER_PATTERN];
@@ -262,6 +308,236 @@ static float seqRandFloat(void) {
 // Get current pattern pointer
 static Pattern* seqCurrentPattern(void) {
     return &seq.patterns[seq.currentPattern];
+}
+
+// ============================================================================
+// NOTE POOL FUNCTIONS
+// ============================================================================
+
+// Scale intervals from root (in semitones) for building chords
+// Major scale: 0, 2, 4, 5, 7, 9, 11, 12
+// We use scale degrees: root=0, 2nd=2, 3rd=4(maj)/3(min), 4th=5, 5th=7, 6th=9, 7th=11(maj)/10(min)
+// For simplicity, we'll use these common intervals:
+static const int INTERVAL_ROOT = 0;
+static const int INTERVAL_MINOR_3RD = 3;
+static const int INTERVAL_MAJOR_3RD = 4;
+static const int INTERVAL_PERFECT_5TH = 7;
+static const int INTERVAL_MINOR_7TH = 10;
+static const int INTERVAL_MAJOR_7TH = 11;
+static const int INTERVAL_OCTAVE = 12;
+
+// Build chord notes from root note and chord type
+// Returns number of notes in the chord (stored in outNotes)
+// If useMinor is true, uses minor 3rd instead of major
+static int buildChordNotes(int rootNote, ChordType chordType, bool useMinor, int* outNotes) {
+    int count = 0;
+    int third = useMinor ? INTERVAL_MINOR_3RD : INTERVAL_MAJOR_3RD;
+    int seventh = useMinor ? INTERVAL_MINOR_7TH : INTERVAL_MAJOR_7TH;
+    
+    switch (chordType) {
+        case CHORD_SINGLE:
+            outNotes[count++] = rootNote;
+            break;
+            
+        case CHORD_FIFTH:
+            outNotes[count++] = rootNote;
+            outNotes[count++] = rootNote + INTERVAL_PERFECT_5TH;
+            break;
+            
+        case CHORD_TRIAD:
+            outNotes[count++] = rootNote;
+            outNotes[count++] = rootNote + third;
+            outNotes[count++] = rootNote + INTERVAL_PERFECT_5TH;
+            break;
+            
+        case CHORD_TRIAD_INV1:  // 1st inversion: 3rd, 5th, root+octave
+            outNotes[count++] = rootNote + third;
+            outNotes[count++] = rootNote + INTERVAL_PERFECT_5TH;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE;
+            break;
+            
+        case CHORD_TRIAD_INV2:  // 2nd inversion: 5th, root+octave, 3rd+octave
+            outNotes[count++] = rootNote + INTERVAL_PERFECT_5TH;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE + third;
+            break;
+            
+        case CHORD_SEVENTH:
+            outNotes[count++] = rootNote;
+            outNotes[count++] = rootNote + third;
+            outNotes[count++] = rootNote + INTERVAL_PERFECT_5TH;
+            outNotes[count++] = rootNote + seventh;
+            break;
+            
+        case CHORD_OCTAVE:
+            outNotes[count++] = rootNote;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE;
+            break;
+            
+        case CHORD_OCTAVES:
+            outNotes[count++] = rootNote;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE;
+            outNotes[count++] = rootNote + INTERVAL_OCTAVE * 2;
+            break;
+            
+        default:
+            outNotes[count++] = rootNote;
+            break;
+    }
+    
+    return count;
+}
+
+// Determine if we should use minor based on root note and scale
+// Simple heuristic: check if minor 3rd is in scale, otherwise use major
+static bool shouldUseMinor(int rootNote) {
+    // For now, use a simple rule based on common scale degrees
+    // In a major scale, chords on degrees 2, 3, 6 are minor
+    // This is a simplification - could integrate with scale lock system
+    int degree = rootNote % 12;
+    // Common minor chord roots in C major: D(2), E(4), A(9)
+    // Common minor chord roots considering all keys - just check if min 3rd sounds better
+    // For simplicity, let's make it random-ish or based on note
+    // Actually, let's just alternate or use the note value
+    return (degree == 2 || degree == 4 || degree == 9 || degree == 1 || degree == 6);
+}
+
+// Pick a note from the note pool based on pick mode
+// pool: the note pool settings (will be modified for cycling state)
+// notes: array of available notes
+// noteCount: number of notes in array
+// Returns the selected MIDI note
+static int pickNoteFromPool(NotePool* pool, int* notes, int noteCount) {
+    if (noteCount <= 0) return notes[0];
+    if (noteCount == 1) return notes[0];
+    
+    int selected = 0;
+    
+    switch (pool->pickMode) {
+        case PICK_CYCLE_UP:
+            selected = pool->currentIndex % noteCount;
+            pool->currentIndex = (pool->currentIndex + 1) % noteCount;
+            break;
+            
+        case PICK_CYCLE_DOWN:
+            selected = (noteCount - 1) - (pool->currentIndex % noteCount);
+            pool->currentIndex = (pool->currentIndex + 1) % noteCount;
+            break;
+            
+        case PICK_PINGPONG:
+            selected = pool->currentIndex;
+            pool->currentIndex += pool->direction;
+            if (pool->currentIndex >= noteCount - 1) {
+                pool->currentIndex = noteCount - 1;
+                pool->direction = -1;
+            } else if (pool->currentIndex <= 0) {
+                pool->currentIndex = 0;
+                pool->direction = 1;
+            }
+            break;
+            
+        case PICK_RANDOM:
+            selected = seqRandInt(0, noteCount - 1);
+            break;
+            
+        case PICK_RANDOM_WALK:
+            // Move by -1, 0, or +1 from current position
+            {
+                int delta = seqRandInt(-1, 1);
+                pool->currentIndex += delta;
+                if (pool->currentIndex < 0) pool->currentIndex = 0;
+                if (pool->currentIndex >= noteCount) pool->currentIndex = noteCount - 1;
+                selected = pool->currentIndex;
+            }
+            break;
+            
+        default:
+            selected = 0;
+            break;
+    }
+    
+    return notes[selected];
+}
+
+// Get the actual note to play for a melody step, considering note pool
+// Returns the MIDI note to play
+static int seqGetNoteForStep(Pattern* p, int track, int step) {
+    int baseNote = p->melodyNote[track][step];
+    if (baseNote == SEQ_NOTE_OFF) return SEQ_NOTE_OFF;
+    
+    NotePool* pool = &p->melodyNotePool[track][step];
+    if (!pool->enabled) return baseNote;
+    
+    // Build the chord notes
+    int notes[NOTE_POOL_MAX_NOTES];
+    bool useMinor = shouldUseMinor(baseNote);
+    int noteCount = buildChordNotes(baseNote, (ChordType)pool->chordType, useMinor, notes);
+    
+    // Pick from the pool
+    return pickNoteFromPool(pool, notes, noteCount);
+}
+
+// Enable/disable note pool for a step
+static void seqSetNotePoolEnabled(int track, int step, bool enabled) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    p->melodyNotePool[track][step].enabled = enabled;
+}
+
+// Set note pool chord type for a step
+static void seqSetNotePoolChord(int track, int step, ChordType chordType) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    p->melodyNotePool[track][step].chordType = chordType;
+}
+
+// Set note pool pick mode for a step
+static void seqSetNotePoolPickMode(int track, int step, PickMode pickMode) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    p->melodyNotePool[track][step].pickMode = pickMode;
+}
+
+// Reset note pool cycle position for a step
+static void seqResetNotePoolCycle(int track, int step) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    p->melodyNotePool[track][step].currentIndex = 0;
+    p->melodyNotePool[track][step].direction = 1;
+}
+
+// Toggle note pool enabled for a step
+static void seqToggleNotePool(int track, int step) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    p->melodyNotePool[track][step].enabled = !p->melodyNotePool[track][step].enabled;
+}
+
+// Cycle through chord types for a step
+static void seqCycleNotePoolChord(int track, int step, int direction) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    int newType = p->melodyNotePool[track][step].chordType + direction;
+    if (newType < 0) newType = CHORD_COUNT - 1;
+    if (newType >= CHORD_COUNT) newType = 0;
+    p->melodyNotePool[track][step].chordType = newType;
+}
+
+// Cycle through pick modes for a step
+static void seqCycleNotePoolPick(int track, int step, int direction) {
+    if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
+    if (step < 0 || step >= SEQ_MAX_STEPS) return;
+    Pattern *p = seqCurrentPattern();
+    int newMode = p->melodyNotePool[track][step].pickMode + direction;
+    if (newMode < 0) newMode = PICK_COUNT - 1;
+    if (newMode >= PICK_COUNT) newMode = 0;
+    p->melodyNotePool[track][step].pickMode = newMode;
 }
 
 // ============================================================================
@@ -538,6 +814,12 @@ static void initPattern(Pattern *p) {
             p->melodyGate[t][s] = 1;  // Default 1 step gate
             p->melodyProbability[t][s] = 1.0f;
             p->melodyCondition[t][s] = COND_ALWAYS;
+            // Note pool defaults (disabled)
+            p->melodyNotePool[t][s].enabled = false;
+            p->melodyNotePool[t][s].chordType = CHORD_TRIAD;
+            p->melodyNotePool[t][s].pickMode = PICK_RANDOM;
+            p->melodyNotePool[t][s].currentIndex = 0;
+            p->melodyNotePool[t][s].direction = 1;
         }
         p->melodyTrackLength[t] = 16;
     }
@@ -856,8 +1138,8 @@ static void updateSequencer(float dt) {
             }
             
             // Check if we should trigger on this tick (at start of step)
-            int note = p->melodyNote[track][step];
-            if (note != SEQ_NOTE_OFF && !seq.melodyTriggered[track] && tick == 0) {
+            int baseNote = p->melodyNote[track][step];
+            if (baseNote != SEQ_NOTE_OFF && !seq.melodyTriggered[track] && tick == 0) {
                 // Check probability
                 float prob = p->melodyProbability[track][step];
                 bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
@@ -870,6 +1152,9 @@ static void updateSequencer(float dt) {
                     if (seq.melodyCurrentNote[track] != SEQ_NOTE_OFF && seq.melodyRelease[track]) {
                         seq.melodyRelease[track]();
                     }
+                    
+                    // Get the actual note to play (may vary if note pool is enabled)
+                    int note = seqGetNoteForStep(p, track, step);
                     
                     // Calculate gate time in seconds
                     int gateSteps = p->melodyGate[track][step];
@@ -908,8 +1193,8 @@ static void updateSequencer(float dt) {
                 // IMPORTANT: Check if new step should trigger immediately (tick 0)
                 // This handles the case where we advance to a new step and need to trigger NOW
                 int newStep = seq.melodyStep[track];
-                int newNote = p->melodyNote[track][newStep];
-                if (newNote != SEQ_NOTE_OFF) {
+                int newBaseNote = p->melodyNote[track][newStep];
+                if (newBaseNote != SEQ_NOTE_OFF) {
                     float prob = p->melodyProbability[track][newStep];
                     bool passedProb = (prob >= 1.0f) || (seqRandFloat() < prob);
                     bool passedCond = seqEvalMelodyCondition(track, newStep);
@@ -918,6 +1203,9 @@ static void updateSequencer(float dt) {
                         if (seq.melodyCurrentNote[track] != SEQ_NOTE_OFF && seq.melodyRelease[track]) {
                             seq.melodyRelease[track]();
                         }
+                        
+                        // Get the actual note to play (may vary if note pool is enabled)
+                        int newNote = seqGetNoteForStep(p, track, newStep);
                         
                         int gateSteps = p->melodyGate[track][newStep];
                         if (gateSteps == 0) gateSteps = 1;
