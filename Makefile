@@ -169,6 +169,13 @@ scw_embed: $(BINDIR)
 	./$(BINDIR)/scw_embed soundsystem/cycles > soundsystem/engines/scw_data.h
 	@echo "Generated soundsystem/engines/scw_data.h"
 
+# Sample embedder for soundsystem (oneshot samples like CR-78)
+sample_embed_SRC := soundsystem/tools/sample_embed.c
+sample_embed: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/sample_embed $(sample_embed_SRC)
+	./$(BINDIR)/sample_embed soundsystem/oneshots > soundsystem/engines/sample_data.h
+	@echo "Generated soundsystem/engines/sample_data.h"
+
 # Embed all assets (atlas + fonts)
 embed: atlas embed_font
 
@@ -210,4 +217,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed path8 path16 path-sound bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs

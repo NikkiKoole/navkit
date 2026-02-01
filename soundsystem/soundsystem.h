@@ -24,6 +24,7 @@
 #include "engines/drums.h"
 #include "engines/effects.h"
 #include "engines/sequencer.h"
+#include "engines/sampler.h"
 
 // Optional: embedded waveform data (if available)
 #if __has_include("engines/scw_data.h")
@@ -41,6 +42,7 @@ typedef struct SoundSystem {
     DrumsContext drums;
     EffectsContext effects;
     SequencerContext sequencer;
+    SamplerContext sampler;
 } SoundSystem;
 
 // Initialize a complete sound system instance
@@ -49,6 +51,7 @@ static void initSoundSystem(SoundSystem* ss) {
     initDrumsContext(&ss->drums);
     initEffectsContext(&ss->effects);
     initSequencerContext(&ss->sequencer);
+    initSamplerContext(&ss->sampler);
 }
 
 // Point global contexts to a specific SoundSystem instance
@@ -58,6 +61,7 @@ static void useSoundSystem(SoundSystem* ss) {
     drumsCtx = &ss->drums;
     fxCtx = &ss->effects;
     seqCtx = &ss->sequencer;
+    samplerCtx = &ss->sampler;
 }
 
 // Silence unused function warnings by referencing all public APIs
@@ -149,6 +153,24 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)seqSwitchPattern;
     (void)seqResetTiming;
     (void)midiToFreq;
+    // sampler.h
+    (void)samplerLoadWav;
+    (void)samplerFreeSample;
+    (void)samplerFreeAll;
+    (void)samplerPlay;
+    (void)samplerPlayPanned;
+    (void)samplerPlayLooped;
+    (void)samplerStopVoice;
+    (void)samplerStopSample;
+    (void)samplerStopAll;
+    (void)processSampler;
+    (void)processSamplerStereo;
+    (void)samplerIsLoaded;
+    (void)samplerGetName;
+    (void)samplerGetLength;
+    (void)samplerGetDuration;
+    (void)samplerIsPlaying;
+    (void)samplerActiveVoices;
     // soundsystem.h (context management)
     (void)initSoundSystem;
     (void)useSoundSystem;
@@ -157,6 +179,7 @@ static inline void soundsystem_suppress_warnings(void) {
     (void)initDrumsContext;
     (void)initEffectsContext;
     (void)initSequencerContext;
+    (void)initSamplerContext;
 #if __has_include("engines/scw_data.h")
     (void)loadEmbeddedSCWs;
 #endif

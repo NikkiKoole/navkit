@@ -23,6 +23,8 @@
 #include "../engines/drums.h"    // 808-style drum machine
 #include "../engines/effects.h"  // Distortion, delay, tape, bitcrusher, chorus
 #include "../engines/sequencer.h" // Drum step sequencer
+#include "../engines/sampler.h"  // WAV sample playback
+#include "../engines/sample_data.h" // Embedded samples (run `make sample_embed` to regenerate)
 #include "../engines/piku_presets.h" // Pikuniku-style "sillycore" presets
 
 // ============================================================================
@@ -227,6 +229,9 @@ static DrumType drumTrackSound[SEQ_DRUM_TRACKS] = {
     DRUM_CLAP       // Track 3 default
 };
 
+// Total number of drum types = synthesized + embedded samples
+static int drumTypeCount = DRUM_SYNTH_COUNT;  // Updated at runtime after loading samples
+
 static void SynthCallback(void *buffer, unsigned int frames) {
     double startTime = GetTime();
     
@@ -314,6 +319,9 @@ static void SynthCallback(void *buffer, unsigned int frames) {
         
         // Process through mixer bus system → master effects → output
         sample = processMixerOutput(busInputs, dt);
+        
+        // Add sampler output
+        sample += processSampler(dt);
         
         sample *= masterVolume;
         
@@ -1435,7 +1443,15 @@ static void drumTriggerWithPLocks(DrumType drumType, float vel, float pitch) {
     float pitchOffset = plockValue(PLOCK_PITCH_OFFSET, 0.0f);
     float effectivePitch = pitch * powf(2.0f, pitchOffset / 12.0f);
     
-    // Trigger the drum first (this resets plock fields to -1)
+    // Check if this is a sample-based drum
+    if (DRUM_IS_SAMPLE(drumType)) {
+        // Trigger the sample
+        int sampleSlot = DRUM_SAMPLE_SLOT(drumType);
+        samplerPlay(sampleSlot, effectiveVel, effectivePitch);
+        return;
+    }
+    
+    // Synthesized drum - trigger normally
     triggerDrumFull(drumType, effectiveVel, effectivePitch);
     
     // Now set P-lock overrides on the voice (these persist for the duration of the sound)
@@ -1461,21 +1477,49 @@ static void drumTriggerWithPLocks(DrumType drumType, float vel, float pitch) {
 // DRUM KIT ASSIGNMENT
 // ============================================================================
 
-// Names for all drum types (for UI display)
-static const char* drumTypeNames[DRUM_COUNT] = {
+// Names for synthesized drum types (sample names added dynamically)
+static const char* synthDrumTypeNames[DRUM_SYNTH_COUNT] = {
+    // Synthesized 808
     "808 Kick", "808 Snare", "808 Clap", "808 CH", "808 OH",
     "808 LTom", "808 MTom", "808 HTom", "Rimshot", "Cowbell",
     "Clave", "Maracas",
+    // Synthesized CR-78
     "CR78 Kick", "CR78 Snare", "CR78 HH", "CR78 Metal"
 };
 
-// Short names for track labels
-static const char* drumTypeShortNames[DRUM_COUNT] = {
+// Short names for synthesized drum types
+static const char* synthDrumTypeShortNames[DRUM_SYNTH_COUNT] = {
+    // Synthesized 808
     "Kick", "Snare", "Clap", "CH", "OH",
     "LTom", "MTom", "HTom", "Rim", "Bell",
     "Clave", "Shaker",
+    // Synthesized CR-78
     "78Kick", "78Snr", "78HH", "78Met"
 };
+
+// Dynamic arrays for all drum types (synth + samples)
+static const char* drumTypeNames[DRUM_MAX_TOTAL];
+static const char* drumTypeShortNames[DRUM_MAX_TOTAL];
+
+// Initialize drum type names (call after loading samples)
+static void initDrumTypeNames(void) {
+    // Copy synthesized drum names
+    for (int i = 0; i < DRUM_SYNTH_COUNT; i++) {
+        drumTypeNames[i] = synthDrumTypeNames[i];
+        drumTypeShortNames[i] = synthDrumTypeShortNames[i];
+    }
+    
+    // Add embedded sample names
+    for (int i = 0; i < EMBEDDED_SAMPLE_COUNT && (DRUM_SYNTH_COUNT + i) < DRUM_MAX_TOTAL; i++) {
+        const EmbeddedSample* e = &embeddedSamples[i];
+        drumTypeNames[DRUM_SYNTH_COUNT + i] = e->name;
+        drumTypeShortNames[DRUM_SYNTH_COUNT + i] = e->shortName;
+    }
+    
+    // Update total count
+    drumTypeCount = DRUM_SYNTH_COUNT + EMBEDDED_SAMPLE_COUNT;
+    if (drumTypeCount > DRUM_MAX_TOTAL) drumTypeCount = DRUM_MAX_TOTAL;
+}
 
 // drumTrackSound is declared earlier in file (before audio callback)
 
@@ -1497,8 +1541,8 @@ static void cycleDrumTrackSound(int track, int direction) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
     int current = (int)drumTrackSound[track];
     current += direction;
-    if (current < 0) current = DRUM_COUNT - 1;
-    if (current >= DRUM_COUNT) current = 0;
+    if (current < 0) current = drumTypeCount - 1;
+    if (current >= drumTypeCount) current = 0;
     drumTrackSound[track] = (DrumType)current;
     updateDrumTrackName(track);
 }
@@ -1667,6 +1711,11 @@ int main(void) {
     initEffects();
     initPatches();
     initSequencer(seqDrumTrack0, seqDrumTrack1, seqDrumTrack2, seqDrumTrack3);
+    
+    // Load embedded samples and initialize drum type names
+    samplerCtx->sampleRate = SAMPLE_RATE;
+    loadEmbeddedSamples();
+    initDrumTypeNames();
     
     // Update track names to match initial drum assignments
     for (int i = 0; i < SEQ_DRUM_TRACKS; i++) {
@@ -2274,7 +2323,7 @@ int main(void) {
             
             // Show params for drums currently assigned to tracks
             // Track which drum types we've already shown to avoid duplicates
-            bool shownDrumType[DRUM_COUNT] = {false};
+            bool shownDrumType[DRUM_MAX_TOTAL] = {false};
             
             for (int track = 0; track < SEQ_DRUM_TRACKS; track++) {
                 DrumType dt = drumTrackSound[track];
@@ -2379,6 +2428,13 @@ int main(void) {
                 ui_col_float(&col4, "Depth", &fx.sidechainDepth, 0.05f, 0.0f, 1.0f);
                 ui_col_float(&col4, "Attack", &fx.sidechainAttack, 0.002f, 0.001f, 0.05f);
                 ui_col_float(&col4, "Release", &fx.sidechainRelease, 0.02f, 0.05f, 0.5f);
+            }
+            
+            // Sampler volume (affects all sample-based drums)
+            if (EMBEDDED_SAMPLE_COUNT > 0) {
+                ui_col_space(&col4, 8);
+                ui_col_sublabel(&col4, "Sampler:", SKYBLUE);
+                ui_col_float(&col4, "Volume", &samplerVolume, 0.05f, 0.0f, 1.0f);
             }
         }
         

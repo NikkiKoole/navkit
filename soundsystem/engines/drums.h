@@ -46,13 +46,23 @@ typedef enum {
     DRUM_COWBELL,
     DRUM_CLAVE,
     DRUM_MARACAS,
-    // CR-78 style drums
+    // CR-78 style drums (synthesized)
     DRUM_CR78_KICK,
     DRUM_CR78_SNARE,
     DRUM_CR78_HIHAT,
     DRUM_CR78_METAL,     // "Metallic beat" - 3 filtered square waves
-    DRUM_COUNT
+    // End of synthesized drums - sample-based drums start here
+    DRUM_SYNTH_COUNT
 } DrumType;
+
+// Maximum total drum types (synthesized + sampled)
+#define DRUM_MAX_TOTAL 64
+
+// Check if a drum type index is sample-based
+#define DRUM_IS_SAMPLE(type) ((type) >= DRUM_SYNTH_COUNT)
+
+// Get sampler slot index for a sample-based drum type
+#define DRUM_SAMPLE_SLOT(type) ((type) - DRUM_SYNTH_COUNT)
 
 // Drum voice state (one per drum type for dedicated processing)
 typedef struct {
