@@ -299,88 +299,49 @@ static void pikuPresetPluck(void) {
 // Configure the effects chain for that bright, clean Pikuniku aesthetic
 // ============================================================================
 
-// ----------------------------------------------------------------------------
-// PIKU EFFECTS: Clean with subtle character
-// The Pikuniku aesthetic is BRIGHT and DRY - avoid heavy reverb!
-// ----------------------------------------------------------------------------
+// Helper: reset all effects to off (clean slate)
+static void fxResetAll(void) {
+    _ensureFxCtx();
+    fx.distEnabled = false;
+    fx.delayEnabled = false;
+    fx.tapeEnabled = false;
+    fx.reverbEnabled = false;
+    fx.crushEnabled = false;
+    fx.chorusEnabled = false;
+}
+
+// PIKU EFFECTS: Clean - bright and dry
 static void pikuEffectsClean(void) {
-    _ensureFxCtx();
-    
-    // Disable most effects for clean sound
-    fx.distEnabled = false;
-    fx.delayEnabled = false;
-    fx.tapeEnabled = false;
-    fx.reverbEnabled = false;
-    fx.crushEnabled = false;
-    fx.chorusEnabled = false;
+    fxResetAll();
 }
 
-// ----------------------------------------------------------------------------
-// PIKU EFFECTS: 9-bit character
-// Subtle bitcrusher for that "cheap Japanese toy" feel
-// ----------------------------------------------------------------------------
+// PIKU EFFECTS: 9-bit - subtle bitcrusher for "cheap Japanese toy" feel
 static void pikuEffects9Bit(void) {
-    _ensureFxCtx();
-    
-    // Start clean
-    fx.distEnabled = false;
-    fx.delayEnabled = false;
-    fx.tapeEnabled = false;
-    fx.reverbEnabled = false;
-    
-    // Subtle bitcrusher - not harsh, just "lo-fi cute"
+    fxResetAll();
     fx.crushEnabled = true;
-    fx.crushBits = 9.0f;        // 9-bit = slight crunch
-    fx.crushRate = 2.0f;        // Light sample rate reduction
-    fx.crushMix = 0.3f;         // Subtle mix
-    
-    // No chorus here - use pikuEffectsWobbly for that
-    fx.chorusEnabled = false;
+    fx.crushBits = 9.0f;
+    fx.crushRate = 2.0f;
+    fx.crushMix = 0.3f;
 }
 
-// ----------------------------------------------------------------------------
-// PIKU EFFECTS: Wobbly leads
-// Chorus for thin synths that need to feel "broken and cute"
-// ----------------------------------------------------------------------------
+// PIKU EFFECTS: Wobbly - chorus for "broken and cute" pitch drift
 static void pikuEffectsWobbly(void) {
-    _ensureFxCtx();
-    
-    // Clean base
-    fx.distEnabled = false;
-    fx.delayEnabled = false;
-    fx.tapeEnabled = false;
-    fx.reverbEnabled = false;
-    fx.crushEnabled = false;
-    
-    // Gentle chorus for pitch drift
+    fxResetAll();
     fx.chorusEnabled = true;
-    fx.chorusRate = 1.2f;       // Slow wobble
-    fx.chorusDepth = 0.3f;      // Subtle depth
-    fx.chorusMix = 0.4f;        // Moderate mix
-    fx.chorusDelay = 0.012f;    // 12ms base
-    fx.chorusFeedback = 0.0f;   // No feedback (not flanging)
+    fx.chorusRate = 1.2f;
+    fx.chorusDepth = 0.3f;
+    fx.chorusMix = 0.4f;
+    fx.chorusDelay = 0.012f;
+    fx.chorusFeedback = 0.0f;
 }
 
-// ----------------------------------------------------------------------------
-// PIKU EFFECTS: Full toy character
-// Combines 9-bit crunch with subtle wobble
-// ----------------------------------------------------------------------------
+// PIKU EFFECTS: Toy - combines 9-bit crunch with subtle wobble
 static void pikuEffectsToy(void) {
-    _ensureFxCtx();
-    
-    // No heavy effects
-    fx.distEnabled = false;
-    fx.delayEnabled = false;
-    fx.tapeEnabled = false;
-    fx.reverbEnabled = false;
-    
-    // 9-bit crunch
+    fxResetAll();
     fx.crushEnabled = true;
     fx.crushBits = 9.0f;
     fx.crushRate = 2.0f;
     fx.crushMix = 0.25f;
-    
-    // Subtle chorus
     fx.chorusEnabled = true;
     fx.chorusRate = 1.0f;
     fx.chorusDepth = 0.25f;
@@ -399,11 +360,7 @@ static void pikuEffectsToy(void) {
 // Heavy chorus + tape wow/flutter = seasick lo-fi vibes
 // ----------------------------------------------------------------------------
 static void macEffectsTapeChorus(void) {
-    _ensureFxCtx();
-    
-    // No distortion or crush
-    fx.distEnabled = false;
-    fx.crushEnabled = false;
+    fxResetAll();
     
     // Deep chorus (Juno-style)
     fx.chorusEnabled = true;
@@ -440,12 +397,7 @@ static void macEffectsTapeChorus(void) {
 // For when you want the detune without the tape grit
 // ----------------------------------------------------------------------------
 static void macEffectsChorus(void) {
-    _ensureFxCtx();
-    
-    // Clean
-    fx.distEnabled = false;
-    fx.crushEnabled = false;
-    fx.tapeEnabled = false;
+    fxResetAll();
     
     // Deep chorus
     fx.chorusEnabled = true;
@@ -462,7 +414,6 @@ static void macEffectsChorus(void) {
     fx.reverbMix = 0.2f;
     fx.reverbPreDelay = 0.015f;
     
-    fx.delayEnabled = false;
 }
 
 // ----------------------------------------------------------------------------
@@ -470,11 +421,7 @@ static void macEffectsChorus(void) {
 // Maximum slacker vibes - like a well-loved cassette
 // ----------------------------------------------------------------------------
 static void macEffectsLoFi(void) {
-    _ensureFxCtx();
-    
-    // No digital effects
-    fx.distEnabled = false;
-    fx.crushEnabled = false;
+    fxResetAll();
     
     // Chorus
     fx.chorusEnabled = true;
@@ -497,8 +444,6 @@ static void macEffectsLoFi(void) {
     fx.reverbDamping = 0.7f;    // Dark reverb
     fx.reverbMix = 0.25f;
     fx.reverbPreDelay = 0.02f;
-    
-    fx.delayEnabled = false;
 }
 
 // ============================================================================
