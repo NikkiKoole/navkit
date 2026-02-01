@@ -217,74 +217,103 @@ static int audioFrameCount = 0;
 // Declared here so audio callback can route voices to correct buses
 static int melodyVoiceIdx[SEQ_MELODY_TRACKS] = {-1, -1, -1};
 
+// Which drum sound is assigned to each track (forward declaration for audio callback)
+// Full definition with names is later in file
+static DrumType drumTrackSound[SEQ_DRUM_TRACKS] = {
+    DRUM_KICK,      // Track 0 default
+    DRUM_SNARE,     // Track 1 default
+    DRUM_CLOSED_HH, // Track 2 default
+    DRUM_CLAP       // Track 3 default
+};
+
 static void SynthCallback(void *buffer, unsigned int frames) {
     double startTime = GetTime();
     
     short *d = (short *)buffer;
     float dt = 1.0f / SAMPLE_RATE;
     
+    // Sync mixer tempo with sequencer
+    setMixerTempo(seq.bpm);
+    
     for (unsigned int i = 0; i < frames; i++) {
         float sample = 0.0f;
         
-        // Process synth voices separately by track for sidechain targeting
-        // melodyVoiceIdx[0]=Bass, [1]=Lead, [2]=Chord
-        float bassSample = 0.0f;
-        float leadSample = 0.0f;
-        float chordSample = 0.0f;
-        float otherSample = 0.0f;  // keyboard/preview voices
+        // Bus input array: [DRUM0, DRUM1, DRUM2, DRUM3, BASS, LEAD, CHORD]
+        float busInputs[NUM_BUSES] = {0};
         
+        // Process each drum track to its bus
+        busInputs[BUS_DRUM0] = processDrumType(drumTrackSound[0], dt);
+        busInputs[BUS_DRUM1] = processDrumType(drumTrackSound[1], dt);
+        busInputs[BUS_DRUM2] = processDrumType(drumTrackSound[2], dt);
+        busInputs[BUS_DRUM3] = processDrumType(drumTrackSound[3], dt);
+        
+        // Process synth voices and route to buses
         for (int v = 0; v < NUM_VOICES; v++) {
             float voiceSample = processVoice(&synthVoices[v], SAMPLE_RATE);
             
             // Route to appropriate bus based on which track owns this voice
             if (v == melodyVoiceIdx[0]) {
-                bassSample += voiceSample;
+                busInputs[BUS_BASS] += voiceSample;
             } else if (v == melodyVoiceIdx[1]) {
-                leadSample += voiceSample;
+                busInputs[BUS_LEAD] += voiceSample;
             } else if (v == melodyVoiceIdx[2]) {
-                chordSample += voiceSample;
+                busInputs[BUS_CHORD] += voiceSample;
             } else {
-                otherSample += voiceSample;
+                // Other voices (keyboard/preview) go to chord bus for now
+                busInputs[BUS_CHORD] += voiceSample;
             }
         }
         
-        // Process drums with sidechain source separated
+        // Sidechain: extract source from appropriate drum bus
         float sidechainSample = 0.0f;
-        float drumsSample = processDrumsWithSidechain(dt, fx.sidechainSource, &sidechainSample);
+        switch (fx.sidechainSource) {
+            case SIDECHAIN_SRC_KICK:
+                sidechainSample = busInputs[BUS_DRUM0];  // Assuming track 0 is kick
+                break;
+            case SIDECHAIN_SRC_SNARE:
+                sidechainSample = busInputs[BUS_DRUM1];  // Assuming track 1 is snare
+                break;
+            case SIDECHAIN_SRC_CLAP:
+                sidechainSample = busInputs[BUS_DRUM1];  // Clap often on snare track
+                break;
+            case SIDECHAIN_SRC_HIHAT:
+                sidechainSample = busInputs[BUS_DRUM2];  // Assuming track 2 is hats
+                break;
+            case SIDECHAIN_SRC_ALL:
+            default:
+                sidechainSample = busInputs[BUS_DRUM0] + busInputs[BUS_DRUM1] + 
+                                  busInputs[BUS_DRUM2] + busInputs[BUS_DRUM3];
+                break;
+        }
         
-        // Update sidechain envelope from selected source
+        // Update sidechain envelope
         updateSidechainEnvelope(sidechainSample, dt);
         
-        // Apply sidechain ducking to selected target(s)
+        // Apply sidechain ducking to synth buses (pre-bus processing)
         if (fx.sidechainEnabled) {
             switch (fx.sidechainTarget) {
                 case SIDECHAIN_TGT_BASS:
-                    bassSample = applySidechainDucking(bassSample);
+                    busInputs[BUS_BASS] = applySidechainDucking(busInputs[BUS_BASS]);
                     break;
                 case SIDECHAIN_TGT_LEAD:
-                    leadSample = applySidechainDucking(leadSample);
+                    busInputs[BUS_LEAD] = applySidechainDucking(busInputs[BUS_LEAD]);
                     break;
                 case SIDECHAIN_TGT_CHORD:
-                    chordSample = applySidechainDucking(chordSample);
+                    busInputs[BUS_CHORD] = applySidechainDucking(busInputs[BUS_CHORD]);
                     break;
                 case SIDECHAIN_TGT_ALL:
                 default:
-                    bassSample = applySidechainDucking(bassSample);
-                    leadSample = applySidechainDucking(leadSample);
-                    chordSample = applySidechainDucking(chordSample);
-                    otherSample = applySidechainDucking(otherSample);
+                    busInputs[BUS_BASS] = applySidechainDucking(busInputs[BUS_BASS]);
+                    busInputs[BUS_LEAD] = applySidechainDucking(busInputs[BUS_LEAD]);
+                    busInputs[BUS_CHORD] = applySidechainDucking(busInputs[BUS_CHORD]);
                     break;
             }
         }
         
-        // Mix everything together
-        float synthSample = bassSample + leadSample + chordSample + otherSample;
-        sample = synthSample + drumsSample;
+        // Process through mixer bus system → master effects → output
+        sample = processMixerOutput(busInputs, dt);
         
         sample *= masterVolume;
-        
-        // Process effects
-        sample = processEffects(sample, dt);
         
         // Clamp
         if (sample > 1.0f) sample = 1.0f;
@@ -1090,13 +1119,7 @@ static const char* drumTypeShortNames[DRUM_COUNT] = {
     "78Kick", "78Snr", "78HH", "78Met"
 };
 
-// Which drum sound is assigned to each track (user configurable)
-static DrumType drumTrackSound[SEQ_DRUM_TRACKS] = {
-    DRUM_KICK,      // Track 0 default
-    DRUM_SNARE,     // Track 1 default
-    DRUM_CLOSED_HH, // Track 2 default
-    DRUM_CLAP       // Track 3 default
-};
+// drumTrackSound is declared earlier in file (before audio callback)
 
 // Generic sequencer drum callback - looks up which sound to play
 static void seqDrumTrack0(float vel, float pitch) { drumTriggerWithPLocks(drumTrackSound[0], vel, pitch); }
@@ -2008,7 +2031,11 @@ int main(void) {
             "All", "Drums", "Synth", "Manual",
             "Kick", "Snare", "Clap", "ClHH", "OpHH",
             "LoTom", "MdTom", "HiTom", "Rim", "Cow", "Clav", "Mara",
-            "Bass", "Lead", "Chord"
+            "Bass", "Lead", "Chord",
+            // Padding for indices 19-23 (unused)
+            "-", "-", "-", "-", "-",
+            // Bus sources (24-30)
+            "Bus:D0", "Bus:D1", "Bus:D2", "Bus:D3", "Bus:Bs", "Bus:Ld", "Bus:Ch"
         };
         
         if (SectionHeader(col6.x, col6.y, "Tape FX", &showTapeFxColumn)) {
@@ -2022,7 +2049,7 @@ int main(void) {
             ui_col_space(&col6, 2);
             
             // NEW: Input source and routing
-            ui_col_cycle(&col6, "Input", dubInputNames, 19, &dubLoop.inputSource);
+            ui_col_cycle(&col6, "Input", dubInputNames, 31, &dubLoop.inputSource);
             ui_col_toggle(&col6, "PreReverb", &dubLoop.preReverb);
             ui_col_space(&col6, 2);
             

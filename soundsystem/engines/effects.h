@@ -67,8 +67,115 @@
 
 #define DUB_INPUT_COUNT    19         // Total number of input options
 
+// Voice count constants
+#define DUB_NUM_DRUMS      12         // Number of individual drum voices
+#define DUB_NUM_SYNTHS     3          // Number of synth voices (Bass, Lead, Chord)
+
 // Rewind constants
 #define REWIND_BUFFER_SIZE (SAMPLE_RATE * 3)  // 3 seconds capture
+
+// ============================================================================
+// BUS/MIXER SYSTEM
+// ============================================================================
+
+// Bus index constants
+#define BUS_DRUM0      0   // Drum track 0 (usually kick)
+#define BUS_DRUM1      1   // Drum track 1 (usually snare)
+#define BUS_DRUM2      2   // Drum track 2 (usually hi-hat)
+#define BUS_DRUM3      3   // Drum track 3 (usually percussion)
+#define BUS_BASS       4   // Bass synth
+#define BUS_LEAD       5   // Lead synth
+#define BUS_CHORD      6   // Chord synth
+
+#define NUM_BUSES      7
+#define BUS_MASTER     7   // Special index for master bus
+
+// Bus delay buffer size (1 second per bus)
+#define BUS_DELAY_SIZE SAMPLE_RATE
+
+// Filter types for per-bus filter
+#define BUS_FILTER_LOWPASS   0
+#define BUS_FILTER_HIGHPASS  1
+#define BUS_FILTER_BANDPASS  2
+
+// Delay sync divisions
+#define BUS_DELAY_SYNC_16TH  0   // 1/16 note
+#define BUS_DELAY_SYNC_8TH   1   // 1/8 note
+#define BUS_DELAY_SYNC_4TH   2   // 1/4 note
+#define BUS_DELAY_SYNC_HALF  3   // 1/2 note
+#define BUS_DELAY_SYNC_BAR   4   // 1 bar
+
+// Dub loop bus input sources (post per-bus effects)
+#define DUB_INPUT_BUS_DRUM0  24
+#define DUB_INPUT_BUS_DRUM1  25
+#define DUB_INPUT_BUS_DRUM2  26
+#define DUB_INPUT_BUS_DRUM3  27
+#define DUB_INPUT_BUS_BASS   28
+#define DUB_INPUT_BUS_LEAD   29
+#define DUB_INPUT_BUS_CHORD  30
+
+// Per-bus effect parameters
+typedef struct {
+    float volume;           // 0-2 (1.0 = unity)
+    float pan;              // -1 to 1 (0 = center)
+    bool mute;
+    bool solo;
+    
+    // Filter (SVF)
+    bool filterEnabled;
+    float filterCutoff;     // 0-1 (maps to frequency)
+    float filterResonance;  // 0-1
+    int filterType;         // BUS_FILTER_LOWPASS, HIGHPASS, BANDPASS
+    
+    // Distortion (light)
+    bool distEnabled;
+    float distDrive;        // 1-4
+    float distMix;          // 0-1
+    
+    // Delay
+    bool delayEnabled;
+    float delayTime;        // 0.01-1.0s (or sync division if tempoSync)
+    float delayFeedback;    // 0-0.8
+    float delayMix;         // 0-1
+    bool delayTempoSync;    // If true, use delaySyncDiv instead of delayTime
+    int delaySyncDiv;       // BUS_DELAY_SYNC_*
+    
+    // Reverb send
+    float reverbSend;       // 0-1 (amount sent to master reverb)
+} BusEffects;
+
+// Per-bus processing state
+typedef struct {
+    // Filter state (SVF - state variable filter)
+    float filterIc1eq;
+    float filterIc2eq;
+    
+    // Distortion state
+    float distFilterLp;
+    
+    // Delay buffer and state (named busDelay* to avoid macro collision)
+    float busDelayBuf[BUS_DELAY_SIZE];
+    int busDelayWritePos;
+    float busDelayFilterLp;
+} BusState;
+
+// Mixer context (all buses + shared state)
+typedef struct {
+    BusEffects bus[NUM_BUSES];
+    BusState busState[NUM_BUSES];
+    
+    // Solo tracking
+    bool anySoloed;
+    
+    // Reverb send accumulator (reset each sample)
+    float reverbSendAccum;
+    
+    // Tempo for synced delays (BPM)
+    float tempo;
+    
+    // Bus outputs (stored for dub loop routing)
+    float busOutputs[NUM_BUSES];
+} MixerContext;
 
 // ============================================================================
 // TYPES
@@ -782,7 +889,7 @@ static float _processDubLoopCore(float selectedInput, float dt) {
     
     // Clip to prevent runaway
     if (toTape > 1.5f) toTape = 1.5f;
-    if (toTape < -1.5f) toTape = -1.5f;
+    else if (toTape < -1.5f) toTape = -1.5f;
     
     // Write at current position
     int writeIdx = (int)dubLoopWritePos % DUB_LOOP_BUFFER_SIZE;
@@ -811,57 +918,30 @@ static float processDubLoopWithVoices(float *drumInputs, float *synthInputs, flo
     float allDrums = 0.0f;
     float allSynth = 0.0f;
     if (drumInputs) {
-        for (int i = 0; i < 12; i++) allDrums += drumInputs[i];
+        for (int i = 0; i < DUB_NUM_DRUMS; i++) allDrums += drumInputs[i];
     }
     if (synthInputs) {
-        for (int i = 0; i < 3; i++) allSynth += synthInputs[i];
+        for (int i = 0; i < DUB_NUM_SYNTHS; i++) allSynth += synthInputs[i];
     }
     
     // Determine what input goes to the delay based on source selection
     float selectedInput = 0.0f;
-    switch (p->inputSource) {
-        case DUB_INPUT_ALL:
-            selectedInput = allDrums + allSynth;
-            break;
-        case DUB_INPUT_DRUMS:
-            selectedInput = allDrums;
-            break;
-        case DUB_INPUT_SYNTH:
-            selectedInput = allSynth;
-            break;
-        case DUB_INPUT_MANUAL:
-            selectedInput = p->throwActive ? (allDrums + allSynth) : 0.0f;
-            break;
-        // Individual drum voices (4-15 map to drumInputs[0-11])
-        case DUB_INPUT_KICK:
-        case DUB_INPUT_SNARE:
-        case DUB_INPUT_CLAP:
-        case DUB_INPUT_CLOSED_HH:
-        case DUB_INPUT_OPEN_HH:
-        case DUB_INPUT_LOW_TOM:
-        case DUB_INPUT_MID_TOM:
-        case DUB_INPUT_HI_TOM:
-        case DUB_INPUT_RIMSHOT:
-        case DUB_INPUT_COWBELL:
-        case DUB_INPUT_CLAVE:
-        case DUB_INPUT_MARACAS:
-            if (drumInputs) {
-                int drumIdx = p->inputSource - DUB_INPUT_KICK;
-                selectedInput = drumInputs[drumIdx];
-            }
-            break;
-        // Individual synth voices (16-18 map to synthInputs[0-2])
-        case DUB_INPUT_BASS:
-        case DUB_INPUT_LEAD:
-        case DUB_INPUT_CHORD:
-            if (synthInputs) {
-                int synthIdx = p->inputSource - DUB_INPUT_BASS;
-                selectedInput = synthInputs[synthIdx];
-            }
-            break;
-        default:
-            selectedInput = 0.0f;
-            break;
+    int src = p->inputSource;
+    
+    if (src == DUB_INPUT_ALL) {
+        selectedInput = allDrums + allSynth;
+    } else if (src == DUB_INPUT_DRUMS) {
+        selectedInput = allDrums;
+    } else if (src == DUB_INPUT_SYNTH) {
+        selectedInput = allSynth;
+    } else if (src == DUB_INPUT_MANUAL) {
+        selectedInput = p->throwActive ? (allDrums + allSynth) : 0.0f;
+    } else if (src >= DUB_INPUT_KICK && src <= DUB_INPUT_MARACAS && drumInputs) {
+        // Individual drum voice (4-15 maps to drumInputs[0-11])
+        selectedInput = drumInputs[src - DUB_INPUT_KICK];
+    } else if (src >= DUB_INPUT_BASS && src <= DUB_INPUT_CHORD && synthInputs) {
+        // Individual synth voice (16-18 maps to synthInputs[0-2])
+        selectedInput = synthInputs[src - DUB_INPUT_BASS];
     }
     
     return _processDubLoopCore(selectedInput, dt);
@@ -1243,6 +1323,356 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     }
     
     return sample;
+}
+
+// ============================================================================
+// BUS/MIXER SYSTEM IMPLEMENTATION
+// ============================================================================
+
+// Global mixer context
+static MixerContext _mixerCtx;
+static MixerContext* mixerCtx = &_mixerCtx;
+static bool _mixerCtxInitialized = false;
+
+// Initialize a single bus with default values
+static void initBusDefaults(BusEffects* bus) {
+    bus->volume = 1.0f;
+    bus->pan = 0.0f;
+    bus->mute = false;
+    bus->solo = false;
+    
+    bus->filterEnabled = false;
+    bus->filterCutoff = 1.0f;      // Fully open
+    bus->filterResonance = 0.0f;
+    bus->filterType = BUS_FILTER_LOWPASS;
+    
+    bus->distEnabled = false;
+    bus->distDrive = 1.0f;
+    bus->distMix = 0.5f;
+    
+    bus->delayEnabled = false;
+    bus->delayTime = 0.25f;        // 250ms default
+    bus->delayFeedback = 0.3f;
+    bus->delayMix = 0.3f;
+    bus->delayTempoSync = false;
+    bus->delaySyncDiv = BUS_DELAY_SYNC_8TH;
+    
+    bus->reverbSend = 0.0f;        // No reverb send by default
+}
+
+// Initialize mixer context
+static void initMixerContext(MixerContext* ctx) {
+    memset(ctx, 0, sizeof(MixerContext));
+    
+    for (int i = 0; i < NUM_BUSES; i++) {
+        initBusDefaults(&ctx->bus[i]);
+    }
+    
+    ctx->anySoloed = false;
+    ctx->reverbSendAccum = 0.0f;
+    ctx->tempo = 120.0f;  // Default 120 BPM
+}
+
+// Ensure mixer context is initialized
+static void _ensureMixerCtx(void) {
+    if (!_mixerCtxInitialized) {
+        initMixerContext(mixerCtx);
+        _mixerCtxInitialized = true;
+    }
+}
+
+// Update solo tracking (call when solo state changes)
+static void _updateSoloState(void) {
+    mixerCtx->anySoloed = false;
+    for (int i = 0; i < NUM_BUSES; i++) {
+        if (mixerCtx->bus[i].solo) {
+            mixerCtx->anySoloed = true;
+            break;
+        }
+    }
+}
+
+// Calculate delay time in samples (handles tempo sync)
+static int _getBusDelaySamples(BusEffects* bus, float tempo) {
+    float delaySeconds;
+    
+    if (bus->delayTempoSync && tempo > 0.0f) {
+        // Calculate delay from tempo and sync division
+        float beatSeconds = 60.0f / tempo;  // Duration of one beat
+        switch (bus->delaySyncDiv) {
+            case BUS_DELAY_SYNC_16TH: delaySeconds = beatSeconds * 0.25f; break;
+            case BUS_DELAY_SYNC_8TH:  delaySeconds = beatSeconds * 0.5f;  break;
+            case BUS_DELAY_SYNC_4TH:  delaySeconds = beatSeconds;         break;
+            case BUS_DELAY_SYNC_HALF: delaySeconds = beatSeconds * 2.0f;  break;
+            case BUS_DELAY_SYNC_BAR:  delaySeconds = beatSeconds * 4.0f;  break;
+            default: delaySeconds = beatSeconds * 0.5f; break;
+        }
+    } else {
+        delaySeconds = bus->delayTime;
+    }
+    
+    int samples = (int)(delaySeconds * SAMPLE_RATE);
+    if (samples < 1) samples = 1;
+    if (samples >= BUS_DELAY_SIZE) samples = BUS_DELAY_SIZE - 1;
+    return samples;
+}
+
+// Process a single bus through its effect chain
+// Returns: processed sample (post volume/pan/filter/dist/delay)
+static float processBusEffects(float input, int busIndex, float dt) {
+    _ensureMixerCtx();
+    (void)dt;  // Currently unused, may be needed for future time-based effects
+    
+    if (busIndex < 0 || busIndex >= NUM_BUSES) return input;
+    
+    BusEffects* bus = &mixerCtx->bus[busIndex];
+    BusState* state = &mixerCtx->busState[busIndex];
+    
+    // Check mute/solo
+    if (bus->mute) return 0.0f;
+    if (mixerCtx->anySoloed && !bus->solo) return 0.0f;
+    
+    float sample = input;
+    
+    // === FILTER (SVF - State Variable Filter) ===
+    if (bus->filterEnabled) {
+        // Map cutoff 0-1 to frequency (20Hz - 20kHz, exponential)
+        float freq = 20.0f * powf(1000.0f, bus->filterCutoff);
+        if (freq > SAMPLE_RATE * 0.45f) freq = SAMPLE_RATE * 0.45f;
+        
+        // SVF coefficients
+        float g = tanf(PI * freq / SAMPLE_RATE);
+        float k = 2.0f - 2.0f * bus->filterResonance * 0.99f;  // Resonance (avoid self-oscillation)
+        float a1 = 1.0f / (1.0f + g * (g + k));
+        float a2 = g * a1;
+        float a3 = g * a2;
+        
+        // Process SVF
+        float v3 = sample - state->filterIc2eq;
+        float v1 = a1 * state->filterIc1eq + a2 * v3;
+        float v2 = state->filterIc2eq + a2 * state->filterIc1eq + a3 * v3;
+        state->filterIc1eq = 2.0f * v1 - state->filterIc1eq;
+        state->filterIc2eq = 2.0f * v2 - state->filterIc2eq;
+        
+        // Select output based on filter type
+        float lp = v2;
+        float bp = v1;
+        float hp = sample - k * v1 - v2;
+        
+        switch (bus->filterType) {
+            case BUS_FILTER_LOWPASS:  sample = lp; break;
+            case BUS_FILTER_HIGHPASS: sample = hp; break;
+            case BUS_FILTER_BANDPASS: sample = bp; break;
+            default: sample = lp; break;
+        }
+    }
+    
+    // === DISTORTION (light tanh saturation) ===
+    if (bus->distEnabled && bus->distDrive > 1.0f) {
+        float dry = sample;
+        float driven = tanhf(sample * bus->distDrive);
+        sample = dry * (1.0f - bus->distMix) + driven * bus->distMix;
+    }
+    
+    // === DELAY ===
+    if (bus->delayEnabled) {
+        int delaySamples = _getBusDelaySamples(bus, mixerCtx->tempo);
+        
+        // Read from delay buffer
+        int readPos = state->busDelayWritePos - delaySamples;
+        if (readPos < 0) readPos += BUS_DELAY_SIZE;
+        float delayed = state->busDelayBuf[readPos];
+        
+        // Write to delay buffer (input + feedback)
+        state->busDelayBuf[state->busDelayWritePos] = sample + delayed * bus->delayFeedback;
+        state->busDelayWritePos = (state->busDelayWritePos + 1) % BUS_DELAY_SIZE;
+        
+        // Mix
+        sample = sample * (1.0f - bus->delayMix) + delayed * bus->delayMix;
+    }
+    
+    // === VOLUME ===
+    sample *= bus->volume;
+    
+    // Note: Pan is handled at the stereo mix stage (not implemented here for mono)
+    
+    return sample;
+}
+
+// Process all buses and return master input + reverb send
+// busInputs: array of NUM_BUSES raw instrument signals
+// reverbSend: output - accumulated reverb send from all buses
+// Returns: summed bus outputs ready for master processing
+static float processBuses(float busInputs[NUM_BUSES], float* reverbSend, float dt) {
+    _ensureMixerCtx();
+    
+    float masterInput = 0.0f;
+    mixerCtx->reverbSendAccum = 0.0f;
+    
+    for (int i = 0; i < NUM_BUSES; i++) {
+        float processed = processBusEffects(busInputs[i], i, dt);
+        mixerCtx->busOutputs[i] = processed;  // Store for dub loop routing
+        masterInput += processed;
+        
+        // Accumulate reverb send (post-effects, pre-master)
+        mixerCtx->reverbSendAccum += processed * mixerCtx->bus[i].reverbSend;
+    }
+    
+    if (reverbSend) {
+        *reverbSend = mixerCtx->reverbSendAccum;
+    }
+    
+    return masterInput;
+}
+
+// Full pipeline: buses → master effects → output
+static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
+    _ensureMixerCtx();
+    _ensureFxCtx();
+    
+    // Process all buses
+    float reverbSend = 0.0f;
+    float sample = processBuses(busInputs, &reverbSend, dt);
+    
+    // Master effects chain
+    sample = processDistortion(sample);
+    sample = processBitcrusher(sample);
+    sample = processTape(sample, dt);
+    sample = processDelay(sample, dt);
+    
+    // Dub loop (can use bus outputs for selective input)
+    if (dubLoop.enabled) {
+        float dry = sample;
+        float dubInput = 0.0f;
+        
+        // Handle bus input sources for dub loop
+        int src = dubLoop.inputSource;
+        if (src >= DUB_INPUT_BUS_DRUM0 && src <= DUB_INPUT_BUS_CHORD) {
+            int busIdx = src - DUB_INPUT_BUS_DRUM0;
+            dubInput = mixerCtx->busOutputs[busIdx];
+        } else if (src == DUB_INPUT_ALL) {
+            dubInput = sample;
+        } else if (src == DUB_INPUT_DRUMS) {
+            dubInput = mixerCtx->busOutputs[BUS_DRUM0] + mixerCtx->busOutputs[BUS_DRUM1] +
+                       mixerCtx->busOutputs[BUS_DRUM2] + mixerCtx->busOutputs[BUS_DRUM3];
+        } else if (src == DUB_INPUT_SYNTH) {
+            dubInput = mixerCtx->busOutputs[BUS_BASS] + mixerCtx->busOutputs[BUS_LEAD] +
+                       mixerCtx->busOutputs[BUS_CHORD];
+        } else if (src == DUB_INPUT_MANUAL) {
+            dubInput = dubLoop.throwActive ? sample : 0.0f;
+        } else {
+            // Legacy individual sources - use full sample
+            dubInput = sample;
+        }
+        
+        float wet = _processDubLoopCore(dubInput, dt);
+        sample = dry * (1.0f - dubLoop.mix) + wet * dubLoop.mix;
+    }
+    
+    sample = processRewind(sample, dt);
+    
+    // Reverb: process sends + apply to output
+    if (fx.reverbEnabled && reverbSend > 0.0f) {
+        float reverbWet = processReverb(reverbSend);
+        sample += reverbWet * fx.reverbMix;
+    }
+    // Also apply reverb to main signal if enabled
+    sample = processReverb(sample);
+    
+    return sample;
+}
+
+// === BUS PARAMETER SETTERS ===
+
+static void setBusVolume(int bus, float volume) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].volume = volume;
+    }
+}
+
+static void setBusPan(int bus, float pan) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        if (pan < -1.0f) pan = -1.0f;
+        if (pan > 1.0f) pan = 1.0f;
+        mixerCtx->bus[bus].pan = pan;
+    }
+}
+
+static void setBusMute(int bus, bool mute) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].mute = mute;
+    }
+}
+
+static void setBusSolo(int bus, bool solo) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].solo = solo;
+        _updateSoloState();
+    }
+}
+
+static void setBusFilter(int bus, bool enabled, float cutoff, float resonance, int type) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].filterEnabled = enabled;
+        mixerCtx->bus[bus].filterCutoff = cutoff;
+        mixerCtx->bus[bus].filterResonance = resonance;
+        mixerCtx->bus[bus].filterType = type;
+    }
+}
+
+static void setBusDistortion(int bus, bool enabled, float drive, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].distEnabled = enabled;
+        mixerCtx->bus[bus].distDrive = drive;
+        mixerCtx->bus[bus].distMix = mix;
+    }
+}
+
+static void setBusDelay(int bus, bool enabled, float time, float feedback, float mix) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].delayEnabled = enabled;
+        mixerCtx->bus[bus].delayTime = time;
+        mixerCtx->bus[bus].delayFeedback = feedback;
+        mixerCtx->bus[bus].delayMix = mix;
+    }
+}
+
+static void setBusDelaySync(int bus, bool tempoSync, int division) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].delayTempoSync = tempoSync;
+        mixerCtx->bus[bus].delaySyncDiv = division;
+    }
+}
+
+static void setBusReverbSend(int bus, float amount) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        mixerCtx->bus[bus].reverbSend = amount;
+    }
+}
+
+static void setMixerTempo(float bpm) {
+    _ensureMixerCtx();
+    if (bpm > 0.0f) {
+        mixerCtx->tempo = bpm;
+    }
+}
+
+// Get bus output (for external access, e.g., metering)
+static float getBusOutput(int bus) {
+    _ensureMixerCtx();
+    if (bus >= 0 && bus < NUM_BUSES) {
+        return mixerCtx->busOutputs[bus];
+    }
+    return 0.0f;
 }
 
 #endif // PIXELSYNTH_EFFECTS_H

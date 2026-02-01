@@ -723,6 +723,74 @@ static float processDrumsWithSidechain(float dt, int sidechainSource, float *sid
 }
 
 // ============================================================================
+// SINGLE DRUM TYPE PROCESSOR (for per-track bus routing)
+// ============================================================================
+
+// Process a single drum type and return its sample
+// Useful for routing individual drum sounds to separate buses
+static float processDrumType(DrumType type, float dt) {
+    _ensureDrumsCtx();
+    
+    DrumVoice* v = &drumVoices[type];
+    float sample = 0.0f;
+    
+    switch (type) {
+        case DRUM_KICK:
+            sample = processKick(v, dt) * v->velocity;
+            break;
+        case DRUM_SNARE:
+            sample = processSnare(v, dt) * v->velocity;
+            break;
+        case DRUM_CLAP:
+            sample = processClap(v, dt) * v->velocity;
+            break;
+        case DRUM_CLOSED_HH:
+            sample = processHihat(v, dt, false) * v->velocity;
+            break;
+        case DRUM_OPEN_HH:
+            sample = processHihat(v, dt, true) * v->velocity;
+            break;
+        case DRUM_LOW_TOM:
+            sample = processTom(v, dt, 1.0f) * v->velocity;
+            break;
+        case DRUM_MID_TOM:
+            sample = processTom(v, dt, 1.5f) * v->velocity;
+            break;
+        case DRUM_HI_TOM:
+            sample = processTom(v, dt, 2.2f) * v->velocity;
+            break;
+        case DRUM_RIMSHOT:
+            sample = processRimshot(v, dt) * v->velocity;
+            break;
+        case DRUM_COWBELL:
+            sample = processCowbell(v, dt) * v->velocity;
+            break;
+        case DRUM_CLAVE:
+            sample = processClave(v, dt) * v->velocity;
+            break;
+        case DRUM_MARACAS:
+            sample = processMaracas(v, dt) * v->velocity;
+            break;
+        case DRUM_CR78_KICK:
+            sample = processCR78Kick(v, dt) * v->velocity;
+            break;
+        case DRUM_CR78_SNARE:
+            sample = processCR78Snare(v, dt) * v->velocity;
+            break;
+        case DRUM_CR78_HIHAT:
+            sample = processCR78Hihat(v, dt) * v->velocity;
+            break;
+        case DRUM_CR78_METAL:
+            sample = processCR78Metal(v, dt) * v->velocity;
+            break;
+        default:
+            break;
+    }
+    
+    return sample * drumVolume;
+}
+
+// ============================================================================
 // CONVENIENCE FUNCTIONS
 // ============================================================================
 

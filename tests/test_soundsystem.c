@@ -3829,6 +3829,191 @@ describe(dub_loop_throw_cut) {
 }
 
 // ============================================================================
+// BUS/MIXER SYSTEM TESTS
+// ============================================================================
+
+describe(bus_system_basic) {
+    it("should initialize with default values") {
+        MixerContext ctx;
+        initMixerContext(&ctx);
+        
+        // Check all buses have defaults
+        for (int i = 0; i < NUM_BUSES; i++) {
+            expect_float_eq(ctx.bus[i].volume, 1.0f);
+            expect_float_eq(ctx.bus[i].pan, 0.0f);
+            expect(ctx.bus[i].mute == false);
+            expect(ctx.bus[i].solo == false);
+            expect(ctx.bus[i].filterEnabled == false);
+            expect(ctx.bus[i].distEnabled == false);
+            expect(ctx.bus[i].delayEnabled == false);
+            expect_float_eq(ctx.bus[i].reverbSend, 0.0f);
+        }
+        
+        expect_float_eq(ctx.tempo, 120.0f);
+        expect(ctx.anySoloed == false);
+    }
+    
+    it("should have correct bus index constants") {
+        expect(BUS_DRUM0 == 0);
+        expect(BUS_DRUM1 == 1);
+        expect(BUS_DRUM2 == 2);
+        expect(BUS_DRUM3 == 3);
+        expect(BUS_BASS == 4);
+        expect(BUS_LEAD == 5);
+        expect(BUS_CHORD == 6);
+        expect(NUM_BUSES == 7);
+    }
+}
+
+describe(bus_volume_mute_solo) {
+    it("should apply volume scaling") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float input = 0.5f;
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        // Default volume (1.0) should pass through
+        mixerCtx->bus[BUS_BASS].volume = 1.0f;
+        float output = processBusEffects(input, BUS_BASS, dt);
+        expect_float_eq(output, 0.5f);
+        
+        // Half volume
+        mixerCtx->bus[BUS_BASS].volume = 0.5f;
+        output = processBusEffects(input, BUS_BASS, dt);
+        expect_float_eq(output, 0.25f);
+        
+        // Double volume
+        mixerCtx->bus[BUS_BASS].volume = 2.0f;
+        output = processBusEffects(input, BUS_BASS, dt);
+        expect_float_eq(output, 1.0f);
+    }
+    
+    it("should mute bus when muted") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float input = 0.5f;
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        mixerCtx->bus[BUS_DRUM0].mute = true;
+        float output = processBusEffects(input, BUS_DRUM0, dt);
+        expect_float_eq(output, 0.0f);
+    }
+    
+    it("should handle solo correctly") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float input = 0.5f;
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        // Solo BUS_BASS
+        setBusSolo(BUS_BASS, true);
+        expect(mixerCtx->anySoloed == true);
+        
+        // BUS_BASS should output
+        float bassOut = processBusEffects(input, BUS_BASS, dt);
+        expect(bassOut > 0.0f);
+        
+        // Other buses should be silent (not soloed)
+        float drumOut = processBusEffects(input, BUS_DRUM0, dt);
+        expect_float_eq(drumOut, 0.0f);
+        
+        // Clear solo
+        setBusSolo(BUS_BASS, false);
+        expect(mixerCtx->anySoloed == false);
+    }
+}
+
+describe(bus_filter) {
+    it("should pass signal when filter disabled") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        mixerCtx->bus[BUS_LEAD].filterEnabled = false;
+        
+        float output = processBusEffects(0.5f, BUS_LEAD, dt);
+        expect_float_eq(output, 0.5f);
+    }
+    
+    it("should apply lowpass filter when enabled") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        
+        mixerCtx->bus[BUS_LEAD].filterEnabled = true;
+        mixerCtx->bus[BUS_LEAD].filterType = BUS_FILTER_LOWPASS;
+        mixerCtx->bus[BUS_LEAD].filterCutoff = 0.3f;  // Low cutoff
+        mixerCtx->bus[BUS_LEAD].filterResonance = 0.0f;
+        
+        // Process several samples to let filter settle
+        float output = 0.0f;
+        for (int i = 0; i < 100; i++) {
+            output = processBusEffects(0.5f, BUS_LEAD, dt);
+        }
+        
+        // Lowpass should attenuate high frequencies - with constant DC input,
+        // output should approach input value
+        expect(output > 0.0f);
+    }
+}
+
+describe(bus_delay) {
+    it("should not add delay when disabled") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        mixerCtx->bus[BUS_CHORD].delayEnabled = false;
+        
+        float output = processBusEffects(0.5f, BUS_CHORD, dt);
+        expect_float_eq(output, 0.5f);
+    }
+    
+    it("should calculate tempo-synced delay correctly") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        mixerCtx->tempo = 120.0f;  // 120 BPM = 0.5s per beat
+        
+        mixerCtx->bus[BUS_DRUM1].delayTempoSync = true;
+        mixerCtx->bus[BUS_DRUM1].delaySyncDiv = BUS_DELAY_SYNC_4TH;  // Quarter note
+        
+        int samples = _getBusDelaySamples(&mixerCtx->bus[BUS_DRUM1], 120.0f);
+        // At 120 BPM, quarter note = 0.5s = 22050 samples
+        expect(samples == 22050);
+        
+        mixerCtx->bus[BUS_DRUM1].delaySyncDiv = BUS_DELAY_SYNC_8TH;
+        samples = _getBusDelaySamples(&mixerCtx->bus[BUS_DRUM1], 120.0f);
+        // Eighth note = 0.25s = 11025 samples
+        expect(samples == 11025);
+    }
+}
+
+describe(bus_reverb_send) {
+    it("should accumulate reverb sends from all buses") {
+        _ensureMixerCtx();
+        initMixerContext(mixerCtx);
+        
+        float dt = 1.0f / SAMPLE_RATE;
+        float busInputs[NUM_BUSES] = {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
+        
+        // Set reverb send on some buses
+        mixerCtx->bus[BUS_DRUM1].reverbSend = 0.5f;  // Snare with reverb
+        mixerCtx->bus[BUS_LEAD].reverbSend = 0.8f;   // Lead with more reverb
+        
+        float reverbSend = 0.0f;
+        processBuses(busInputs, &reverbSend, dt);
+        
+        // Reverb send should be accumulated
+        expect(reverbSend > 0.0f);
+    }
+}
+
+// ============================================================================
 // MAIN
 // ============================================================================
 
@@ -3885,6 +4070,13 @@ int main(int argc, char **argv) {
     test(dub_loop_degradation);
     test(dub_loop_speed_control);
     test(dub_loop_throw_cut);
+    
+    // Bus/Mixer system tests
+    test(bus_system_basic);
+    test(bus_volume_mute_solo);
+    test(bus_filter);
+    test(bus_delay);
+    test(bus_reverb_send);
     
     // Integration tests
     test(integration_sequencer_drums);
