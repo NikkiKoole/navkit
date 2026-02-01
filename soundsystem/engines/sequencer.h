@@ -426,11 +426,8 @@ static float plockValue(PLockParam param, float defaultValue) {
 }
 
 // Evaluate trigger condition for drum track
-static bool seqEvalDrumCondition(int track, int step) {
-    Pattern *p = seqCurrentPattern();
-    TriggerCondition cond = (TriggerCondition)p->drumCondition[track][step];
-    int count = seq.drumStepPlayCount[track][step];
-    
+// Evaluate trigger condition given condition type and play count
+static bool seqEvalCondition(TriggerCondition cond, int count) {
     switch (cond) {
         case COND_ALWAYS:    return true;
         case COND_1_2:       return (count % 2) == 0;
@@ -447,26 +444,18 @@ static bool seqEvalDrumCondition(int track, int step) {
     }
 }
 
+// Evaluate trigger condition for drum track
+static bool seqEvalDrumCondition(int track, int step) {
+    Pattern *p = seqCurrentPattern();
+    return seqEvalCondition((TriggerCondition)p->drumCondition[track][step],
+                            seq.drumStepPlayCount[track][step]);
+}
+
 // Evaluate trigger condition for melody track
 static bool seqEvalMelodyCondition(int track, int step) {
     Pattern *p = seqCurrentPattern();
-    TriggerCondition cond = (TriggerCondition)p->melodyCondition[track][step];
-    int count = seq.melodyStepPlayCount[track][step];
-    
-    switch (cond) {
-        case COND_ALWAYS:    return true;
-        case COND_1_2:       return (count % 2) == 0;
-        case COND_2_2:       return (count % 2) == 1;
-        case COND_1_4:       return (count % 4) == 0;
-        case COND_2_4:       return (count % 4) == 1;
-        case COND_3_4:       return (count % 4) == 2;
-        case COND_4_4:       return (count % 4) == 3;
-        case COND_FILL:      return seq.fillMode;
-        case COND_NOT_FILL:  return !seq.fillMode;
-        case COND_FIRST:     return count == 0;
-        case COND_NOT_FIRST: return count > 0;
-        default:             return true;
-    }
+    return seqEvalCondition((TriggerCondition)p->melodyCondition[track][step],
+                            seq.melodyStepPlayCount[track][step]);
 }
 
 // Calculate the trigger tick for a drum track on its current step

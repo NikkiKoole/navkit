@@ -2750,13 +2750,16 @@ static int playBird(float freq, BirdType type) {
 }
 
 // Play vowel on a specific voice (for speech system)
+// Uses same parameters as playVowel() but targets a specific voice index
 static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     Voice *v = &synthVoices[voiceIdx];
     float oldFilterLp = v->filterLp;
     
-    // Basic voice setup
+    // Setup using VOICE_INIT_VOWEL params (same as playVowel)
     v->frequency = freq;
     v->baseFrequency = freq;
+    v->targetFrequency = freq;
+    v->glideRate = 0.0f;
     v->phase = 0.0f;
     v->volume = noteVolume;
     v->wave = WAVE_VOICE;
@@ -2765,21 +2768,25 @@ static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     v->pwmRate = 0.0f;
     v->pwmDepth = 0.0f;
     v->pwmPhase = 0.0f;
-    v->vibratoRate = 5.0f;
-    v->vibratoDepth = 0.1f;
+    v->vibratoRate = VOICE_INIT_VOWEL.vibratoRate;
+    v->vibratoDepth = VOICE_INIT_VOWEL.vibratoDepth;
     v->vibratoPhase = 0.0f;
-    v->attack = 0.02f;
-    v->decay = 0.05f;
-    v->sustain = 0.7f;
-    v->release = 0.25f;
+    v->attack = VOICE_INIT_VOWEL.attack;
+    v->decay = VOICE_INIT_VOWEL.decay;
+    v->sustain = VOICE_INIT_VOWEL.sustain;
+    v->release = VOICE_INIT_VOWEL.release;
     v->envPhase = 0.0f;
     v->envLevel = 0.0f;
     v->envStage = 1;
-    v->filterCutoff = 0.7f;
+    v->filterCutoff = VOICE_INIT_VOWEL.filterCutoff;
+    v->filterResonance = VOICE_INIT_VOWEL.filterResonance;
     v->filterLp = oldFilterLp * 0.3f;
+    v->filterBp = 0.0f;
     v->arpEnabled = false;
     v->scwIndex = -1;
     
+    resetFilterEnvelope(v, false);
+    resetVoiceLfos(v, false);
     setupVoiceSettings(&v->voiceSettings, vowel);
 }
 
