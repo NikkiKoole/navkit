@@ -101,7 +101,11 @@ typedef struct {
     uint8_t track;          // Absolute track index: 0-3 = drums, 4-6 = melody (Bass, Lead, Chord)
     uint8_t param;          // Which parameter (PLockParam)
     float value;            // The locked value
+    int8_t nextInStep;      // Next p-lock index for same (track,step), or -1
 } PLock;
+
+// P-lock index constant
+#define PLOCK_INDEX_NONE -1
 
 // P-lock values for current step (populated before trigger callback)
 typedef struct {
@@ -109,9 +113,6 @@ typedef struct {
     bool locked[PLOCK_COUNT];           // Which params are locked
     float values[PLOCK_COUNT];          // Locked values (only valid if locked[i] is true)
 } PLockState;
-
-// Global p-lock state for current triggering step (accessible from trigger callbacks)
-static PLockState currentPLocks = {0};
 
 // Single pattern data (drums + melodic)
 typedef struct {
@@ -138,6 +139,9 @@ typedef struct {
     // Parameter locks (Elektron-style)
     PLock plocks[MAX_PLOCKS_PER_PATTERN];
     int plockCount;
+    
+    // P-lock index: first p-lock for each (track, step) pair, or PLOCK_INDEX_NONE
+    int8_t plockStepIndex[SEQ_TOTAL_TRACKS][SEQ_MAX_STEPS];
 } Pattern;
 
 // Trigger function type for drums - takes velocity and pitch multiplier
@@ -199,13 +203,44 @@ typedef struct {
 } DrumSequencer;
 
 // ============================================================================
-// STATE
+// CONTEXT STRUCT
 // ============================================================================
 
-static DrumSequencer seq = {0};
+typedef struct SequencerContext {
+    DrumSequencer seq;
+    unsigned int noiseState;
+    PLockState currentPLocks;
+} SequencerContext;
 
-// Noise state for jitter and probability
-static unsigned int seqNoiseState = 12345;
+// Initialize sequencer context to default state
+static void initSequencerContext(SequencerContext* ctx) {
+    memset(&ctx->seq, 0, sizeof(DrumSequencer));
+    ctx->noiseState = 12345;
+    memset(&ctx->currentPLocks, 0, sizeof(PLockState));
+}
+
+// ============================================================================
+// GLOBAL CONTEXT INSTANCE (for backward compatibility)
+// ============================================================================
+
+static SequencerContext _seqCtx;
+static SequencerContext* seqCtx = &_seqCtx;
+static bool _seqCtxInitialized = false;
+
+static void _ensureSeqCtx(void) {
+    if (!_seqCtxInitialized) {
+        initSequencerContext(seqCtx);
+        _seqCtxInitialized = true;
+    }
+}
+
+// ============================================================================
+// BACKWARD COMPATIBILITY MACROS
+// ============================================================================
+
+#define seq (seqCtx->seq)
+#define seqNoiseState (seqCtx->noiseState)
+#define currentPLocks (seqCtx->currentPLocks)
 
 // ============================================================================
 // HELPERS
@@ -233,14 +268,53 @@ static Pattern* seqCurrentPattern(void) {
 // PARAMETER LOCK FUNCTIONS
 // ============================================================================
 
-// Find a p-lock entry (returns index or -1 if not found)
-static int seqFindPLock(Pattern *p, int track, int step, PLockParam param) {
-    for (int i = 0; i < p->plockCount; i++) {
-        if (p->plocks[i].track == track && 
-            p->plocks[i].step == step && 
-            p->plocks[i].param == param) {
-            return i;
+// Add a p-lock to the step index (call after adding to plocks array)
+static void plockIndexAdd(Pattern *p, int plockIdx) {
+    PLock *pl = &p->plocks[plockIdx];
+    pl->nextInStep = p->plockStepIndex[pl->track][pl->step];
+    p->plockStepIndex[pl->track][pl->step] = (int8_t)plockIdx;
+}
+
+// Remove a p-lock from the step index (call before removing from plocks array)
+static void plockIndexRemove(Pattern *p, int plockIdx) {
+    PLock *pl = &p->plocks[plockIdx];
+    int track = pl->track, step = pl->step;
+    
+    if (p->plockStepIndex[track][step] == plockIdx) {
+        // First in chain - update head
+        p->plockStepIndex[track][step] = pl->nextInStep;
+    } else {
+        // Find predecessor and unlink
+        int prev = p->plockStepIndex[track][step];
+        while (prev >= 0 && p->plocks[prev].nextInStep != plockIdx) {
+            prev = p->plocks[prev].nextInStep;
         }
+        if (prev >= 0) {
+            p->plocks[prev].nextInStep = pl->nextInStep;
+        }
+    }
+}
+
+// Update index after shifting p-locks down (for removal)
+static void plockIndexRebuild(Pattern *p) {
+    // Clear all indices
+    for (int t = 0; t < SEQ_TOTAL_TRACKS; t++) {
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+            p->plockStepIndex[t][s] = PLOCK_INDEX_NONE;
+        }
+    }
+    // Rebuild from array (in reverse to maintain order)
+    for (int i = p->plockCount - 1; i >= 0; i--) {
+        plockIndexAdd(p, i);
+    }
+}
+
+// Find a p-lock entry using index (returns index or -1 if not found)
+static int seqFindPLock(Pattern *p, int track, int step, PLockParam param) {
+    int idx = p->plockStepIndex[track][step];
+    while (idx >= 0) {
+        if (p->plocks[idx].param == param) return idx;
+        idx = p->plocks[idx].nextInStep;
     }
     return -1;
 }
@@ -257,11 +331,13 @@ static bool seqSetPLock(Pattern *p, int track, int step, PLockParam param, float
     if (p->plockCount >= MAX_PLOCKS_PER_PATTERN) {
         return false;  // Pool full
     }
-    p->plocks[p->plockCount].track = (uint8_t)track;
-    p->plocks[p->plockCount].step = (uint8_t)step;
-    p->plocks[p->plockCount].param = (uint8_t)param;
-    p->plocks[p->plockCount].value = value;
+    int newIdx = p->plockCount;
+    p->plocks[newIdx].track = (uint8_t)track;
+    p->plocks[newIdx].step = (uint8_t)step;
+    p->plocks[newIdx].param = (uint8_t)param;
+    p->plocks[newIdx].value = value;
     p->plockCount++;
+    plockIndexAdd(p, newIdx);
     return true;
 }
 
@@ -276,12 +352,7 @@ static float seqGetPLock(Pattern *p, int track, int step, PLockParam param, floa
 
 // Check if a step has any p-locks
 static bool seqHasPLocks(Pattern *p, int track, int step) {
-    for (int i = 0; i < p->plockCount; i++) {
-        if (p->plocks[i].track == track && p->plocks[i].step == step) {
-            return true;
-        }
-    }
-    return false;
+    return p->plockStepIndex[track][step] != PLOCK_INDEX_NONE;
 }
 
 // Clear a specific p-lock
@@ -293,6 +364,7 @@ static void seqClearPLock(Pattern *p, int track, int step, PLockParam param) {
             p->plocks[i] = p->plocks[i + 1];
         }
         p->plockCount--;
+        plockIndexRebuild(p);  // Rebuild index after shift
     }
 }
 
@@ -310,20 +382,21 @@ static void seqClearStepPLocks(Pattern *p, int track, int step) {
             i++;
         }
     }
+    plockIndexRebuild(p);  // Rebuild index after modifications
 }
 
-// Get all p-locks for a step (returns count, fills output array)
+// Get all p-locks for a step (returns count, fills output array) - uses index
 static int seqGetStepPLocks(Pattern *p, int track, int step, PLock *out, int maxOut) {
     int count = 0;
-    for (int i = 0; i < p->plockCount && count < maxOut; i++) {
-        if (p->plocks[i].track == track && p->plocks[i].step == step) {
-            out[count++] = p->plocks[i];
-        }
+    int idx = p->plockStepIndex[track][step];
+    while (idx >= 0 && count < maxOut) {
+        out[count++] = p->plocks[idx];
+        idx = p->plocks[idx].nextInStep;
     }
     return count;
 }
 
-// Populate currentPLocks state for a step (call before trigger callback)
+// Populate currentPLocks state for a step (call before trigger callback) - uses index
 static void seqPreparePLocks(Pattern *p, int track, int step) {
     // Reset state
     currentPLocks.hasLocks = false;
@@ -331,16 +404,16 @@ static void seqPreparePLocks(Pattern *p, int track, int step) {
         currentPLocks.locked[i] = false;
     }
     
-    // Fill in locked values
-    for (int i = 0; i < p->plockCount; i++) {
-        if (p->plocks[i].track == track && p->plocks[i].step == step) {
-            PLockParam param = (PLockParam)p->plocks[i].param;
-            if (param < PLOCK_COUNT) {
-                currentPLocks.locked[param] = true;
-                currentPLocks.values[param] = p->plocks[i].value;
-                currentPLocks.hasLocks = true;
-            }
+    // Fill in locked values using index (O(k) instead of O(n))
+    int idx = p->plockStepIndex[track][step];
+    while (idx >= 0) {
+        PLock *pl = &p->plocks[idx];
+        if (pl->param < PLOCK_COUNT) {
+            currentPLocks.locked[pl->param] = true;
+            currentPLocks.values[pl->param] = pl->value;
+            currentPLocks.hasLocks = true;
         }
+        idx = pl->nextInStep;
     }
 }
 
@@ -479,6 +552,14 @@ static void initPattern(Pattern *p) {
         }
         p->melodyTrackLength[t] = 16;
     }
+    
+    // Initialize p-lock index
+    p->plockCount = 0;
+    for (int t = 0; t < SEQ_TOTAL_TRACKS; t++) {
+        for (int s = 0; s < SEQ_MAX_STEPS; s++) {
+            p->plockStepIndex[t][s] = PLOCK_INDEX_NONE;
+        }
+    }
 }
 
 // Copy pattern from src to dst
@@ -520,6 +601,8 @@ static void resetSequencer(void) {
 // Initialize sequencer with drum trigger functions
 static void initSequencer(DrumTriggerFunc kickFn, DrumTriggerFunc snareFn, 
                           DrumTriggerFunc hhFn, DrumTriggerFunc clapFn) {
+    _ensureSeqCtx();
+    
     // Initialize all patterns
     for (int p = 0; p < SEQ_NUM_PATTERNS; p++) {
         initPattern(&seq.patterns[p]);
@@ -608,6 +691,7 @@ static void setMelodyCallbacks(int track, MelodyTriggerFunc trigger, MelodyRelea
 // ============================================================================
 
 static void updateSequencer(float dt) {
+    _ensureSeqCtx();
     if (!seq.playing) return;
     
     // Calculate tick duration: 60 / BPM / PPQ

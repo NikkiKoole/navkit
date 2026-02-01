@@ -259,6 +259,42 @@ static float expDecay(float time, float decay) {
     return expf(-time / (decay * ONE_OVER_E));
 }
 
+// Phase accumulator with wrapping
+static inline void advancePhase(float *phase, float freq, float dt) {
+    *phase += freq * dt;
+    if (*phase >= 1.0f) *phase -= 1.0f;
+}
+
+// One-pole lowpass filter
+static inline float filterLP(float *state, float input, float cutoff) {
+    *state += cutoff * (input - *state);
+    return *state;
+}
+
+// Bandpass filter (LP followed by HP)
+static inline float filterBP(float *lpState, float *hpState, 
+                              float input, float lpCutoff, float hpCutoff) {
+    *lpState += lpCutoff * (input - *lpState);
+    *hpState += hpCutoff * (*lpState - *hpState);
+    return *lpState - *hpState;
+}
+
+// Envelope with auto-deactivation, returns amplitude
+static inline float drumEnvelope(DrumVoice *dv, float decay) {
+    float amp = expDecay(dv->time, decay);
+    if (amp < SILENCE_THRESHOLD) dv->active = false;
+    return amp;
+}
+
+// Drum processor boilerplate macros
+#define DRUM_PROC_BEGIN(dv, dt) \
+    if (!(dv)->active) return 0.0f; \
+    DrumParams *p = &drumParams; \
+    (dv)->time += (dt)
+
+#define DRUM_PROC_END(dv, sample, decay, scale) \
+    return (sample) * drumEnvelope((dv), (decay)) * (scale)
+
 // ============================================================================
 // INIT (backward compatibility wrapper)
 // ============================================================================
@@ -320,10 +356,7 @@ static void triggerDrum(DrumType type) {
 
 // Kick - sine with pitch envelope + optional click
 static float processKick(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float decay = PLOCK_OR(dv->plockDecay, p->kickDecay);
     float tone = PLOCK_OR(dv->plockTone, p->kickTone);
@@ -331,9 +364,7 @@ static float processKick(DrumVoice *dv, float dt) {
     
     float pitchT = expDecay(dv->time, p->kickPunchDecay);
     float freq = (p->kickPitch + (punchPitch - p->kickPitch) * pitchT) * dv->pitchMod;
-    
-    dv->phase += freq * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    advancePhase(&dv->phase, freq, dt);
     
     float osc = sinf(dv->phase * 2.0f * PI);
     
@@ -349,49 +380,32 @@ static float processKick(DrumVoice *dv, float dt) {
         sample = tanhf(sample * (1.0f + tone * 3.0f));
     }
     
-    float amp = expDecay(dv->time, decay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.8f;
+    DRUM_PROC_END(dv, sample, decay, 0.8f);
 }
 
 // Snare - tuned oscillators + filtered noise
 static float processSnare(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float decay = PLOCK_OR(dv->plockDecay, p->snareDecay);
     float snareTone = PLOCK_OR(dv->plockTone, p->snareTone);
     float snappy = PLOCK_OR(dv->plockPunch, p->snareSnappy);
     
-    float freq1 = p->snarePitch * dv->pitchMod;
-    float freq2 = p->snarePitch * 1.5f * dv->pitchMod;
-    
-    dv->phase += freq1 * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
-    dv->phase2 += freq2 * dt;
-    if (dv->phase2 >= 1.0f) dv->phase2 -= 1.0f;
+    advancePhase(&dv->phase, p->snarePitch * dv->pitchMod, dt);
+    advancePhase(&dv->phase2, p->snarePitch * 1.5f * dv->pitchMod, dt);
     
     float tone = sinf(dv->phase * 2.0f * PI) * 0.6f + 
                  sinf(dv->phase2 * 2.0f * PI) * 0.3f;
     
     unsigned int ns = (unsigned int)(dv->time * 1000000 + dv->phase * 10000);
-    float noiseSample = drumNoise(&ns);
+    float filteredNoise = filterBP(&dv->filterLp, &dv->filterHp, drumNoise(&ns), 
+                                    0.15f + snareTone * 0.4f, 0.1f);
     
-    float cutoff = 0.15f + snareTone * 0.4f;
-    dv->filterLp += cutoff * (noiseSample - dv->filterLp);
-    dv->filterHp += 0.1f * (dv->filterLp - dv->filterHp);
-    float filteredNoise = dv->filterLp - dv->filterHp;
-    
-    float mix = tone * (1.0f - snappy * 0.7f) + 
-                filteredNoise * snappy * 1.5f;
+    float mix = tone * (1.0f - snappy * 0.7f) + filteredNoise * snappy * 1.5f;
     
     float toneAmp = expDecay(dv->time, decay * 0.7f);
     float noiseAmp = expDecay(dv->time, decay);
     float amp = toneAmp * (1.0f - snappy * 0.5f) + noiseAmp * snappy * 0.5f;
-    
     if (amp < SILENCE_THRESHOLD) dv->active = false;
     
     return mix * amp * 0.7f;
@@ -399,10 +413,7 @@ static float processSnare(DrumVoice *dv, float dt) {
 
 // Clap - multiple noise bursts
 static float processClap(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float decay = PLOCK_OR(dv->plockDecay, p->clapDecay);
     float clapTone = PLOCK_OR(dv->plockTone, p->clapTone);
@@ -415,28 +426,18 @@ static float processClap(DrumVoice *dv, float dt) {
         float t = dv->time - offsets[i];
         if (t >= 0.0f) {
             unsigned int ns = (unsigned int)(t * 1000000 + i * 12345);
-            float n = drumNoise(&ns);
-            float burstEnv = expDecay(t, 0.02f);
-            sample += n * burstEnv * 0.4f;
+            sample += drumNoise(&ns) * expDecay(t, 0.02f) * 0.4f;
         }
     }
     
-    float amp = expDecay(dv->time, decay);
+    sample = filterBP(&dv->filterLp, &dv->filterHp, sample, 0.2f + clapTone * 0.3f, 0.08f) * 2.0f;
     
-    float cutoff = 0.2f + clapTone * 0.3f;
-    dv->filterLp += cutoff * (sample - dv->filterLp);
-    dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
-    sample = (dv->filterLp - dv->filterHp) * 2.0f;
-    
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.6f;
+    DRUM_PROC_END(dv, sample, decay, 0.6f);
 }
 
 // Hihat - 6 square wave oscillators at metallic ratios
 static float processHihat(DrumVoice *dv, float dt, bool open) {
     if (!dv->active) return 0.0f;
-    
     DrumParams *p = &drumParams;
     dv->time += dt;
     
@@ -450,137 +451,72 @@ static float processHihat(DrumVoice *dv, float dt, bool open) {
     
     float sample = 0.0f;
     for (int i = 0; i < 6; i++) {
-        float freq = baseFreq * hhFreqRatios[i];
-        dv->hhPhases[i] += freq * dt;
-        if (dv->hhPhases[i] >= 1.0f) dv->hhPhases[i] -= 1.0f;
-        float sq = dv->hhPhases[i] < 0.5f ? 1.0f : -1.0f;
-        sample += sq;
+        advancePhase(&dv->hhPhases[i], baseFreq * hhFreqRatios[i], dt);
+        sample += dv->hhPhases[i] < 0.5f ? 1.0f : -1.0f;
     }
     sample /= 6.0f;
     
-    float hpCutoff = 0.3f + hhTone * 0.4f;
-    dv->filterHp += hpCutoff * (sample - dv->filterHp);
-    sample = sample - dv->filterHp;
+    // Highpass filter
+    sample = sample - filterLP(&dv->filterHp, sample, 0.3f + hhTone * 0.4f);
     
-    float amp = expDecay(dv->time, decay);
-    
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.4f;
+    DRUM_PROC_END(dv, sample, decay, 0.4f);
 }
 
 // Tom - similar to kick but higher pitch
 static float processTom(DrumVoice *dv, float dt, float pitchMult) {
     if (!dv->active) return 0.0f;
-    
     DrumParams *p = &drumParams;
     dv->time += dt;
     
     float basePitch = 80.0f * pitchMult * p->tomPitch;
-    float punchPitch = basePitch * 2.0f;
-    
     float pitchT = expDecay(dv->time, p->tomPunchDecay);
-    float freq = basePitch + (punchPitch - basePitch) * pitchT;
-    
-    dv->phase += freq * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    float freq = basePitch + basePitch * pitchT;  // pitch drops from 2x to 1x
+    advancePhase(&dv->phase, freq, dt);
     
     float osc = sinf(dv->phase * 2.0f * PI) * 0.8f +
                 (4.0f * fabsf(dv->phase - 0.5f) - 1.0f) * 0.2f;
     
-    float amp = expDecay(dv->time, p->tomDecay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return osc * amp * 0.6f;
+    DRUM_PROC_END(dv, osc, p->tomDecay, 0.6f);
 }
 
 // Rimshot - sharp click + high tone
 static float processRimshot(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
-    
-    dv->phase += p->rimPitch * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
-    
+    DRUM_PROC_BEGIN(dv, dt);
+    advancePhase(&dv->phase, p->rimPitch, dt);
     float osc = sinf(dv->phase * 2.0f * PI);
-    
     unsigned int ns = (unsigned int)(dv->time * 1000000);
     float click = drumNoise(&ns) * expDecay(dv->time, 0.005f);
-    
-    float amp = expDecay(dv->time, p->rimDecay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return (osc * 0.5f + click * 0.5f) * amp * 0.5f;
+    float sample = osc * 0.5f + click * 0.5f;
+    DRUM_PROC_END(dv, sample, p->rimDecay, 0.5f);
 }
 
 // Cowbell - two square waves at non-harmonic intervals
 static float processCowbell(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
-    
-    float freq1 = p->cowbellPitch;
-    float freq2 = p->cowbellPitch * 1.508f;
-    
-    dv->phase += freq1 * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
-    dv->phase2 += freq2 * dt;
-    if (dv->phase2 >= 1.0f) dv->phase2 -= 1.0f;
-    
+    DRUM_PROC_BEGIN(dv, dt);
+    advancePhase(&dv->phase, p->cowbellPitch, dt);
+    advancePhase(&dv->phase2, p->cowbellPitch * 1.508f, dt);
     float sq1 = dv->phase < 0.5f ? 1.0f : -1.0f;
     float sq2 = dv->phase2 < 0.5f ? 1.0f : -1.0f;
-    
-    float sample = (sq1 + sq2) * 0.5f;
-    
-    float cutoff = 0.15f;
-    dv->filterLp += cutoff * (sample - dv->filterLp);
-    sample = dv->filterLp;
-    
-    float amp = expDecay(dv->time, p->cowbellDecay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.4f;
+    float sample = filterLP(&dv->filterLp, (sq1 + sq2) * 0.5f, 0.15f);
+    DRUM_PROC_END(dv, sample, p->cowbellDecay, 0.4f);
 }
 
 // Clave - very short filtered click
 static float processClave(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
-    
-    dv->phase += p->clavePitch * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
-    
+    DRUM_PROC_BEGIN(dv, dt);
+    advancePhase(&dv->phase, p->clavePitch, dt);
     float osc = sinf(dv->phase * 2.0f * PI);
-    
-    float amp = expDecay(dv->time, p->claveDecay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return osc * amp * 0.5f;
+    DRUM_PROC_END(dv, osc, p->claveDecay, 0.5f);
 }
 
 // Maracas - filtered noise burst
 static float processMaracas(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
-    
+    DRUM_PROC_BEGIN(dv, dt);
     unsigned int ns = (unsigned int)(dv->time * 1000000);
     float sample = drumNoise(&ns);
-    
     float cutoff = 0.3f + p->maracasTone * 0.4f;
-    dv->filterHp += cutoff * (sample - dv->filterHp);
-    sample = sample - dv->filterHp;
-    
-    float amp = expDecay(dv->time, p->maracasDecay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.25f;
+    sample = sample - filterLP(&dv->filterHp, sample, cutoff);  // HP = input - LP
+    DRUM_PROC_END(dv, sample, p->maracasDecay, 0.25f);
 }
 
 // ============================================================================
@@ -602,10 +538,7 @@ static float squareOscillators(DrumVoice *dv, float baseFreq, float dt,
 
 // CR-78 Kick - Bridged-T resonant filter: damped sine with subtle harmonics
 static float processCR78Kick(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float pitch = p->cr78KickPitch * dv->pitchMod;
     float decay = PLOCK_OR(dv->plockDecay, p->cr78KickDecay);
@@ -613,10 +546,7 @@ static float processCR78Kick(DrumVoice *dv, float dt) {
     
     // Slight pitch drop (less dramatic than 808)
     float pitchEnv = expDecay(dv->time, 0.02f);
-    float freq = pitch * (1.0f + pitchEnv * 0.3f);
-    
-    dv->phase += freq * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    advancePhase(&dv->phase, pitch * (1.0f + pitchEnv * 0.3f), dt);
     
     float sample = sinf(dv->phase * 2.0f * PI) + sinf(dv->phase * 4.0f * PI) * 0.15f;
     
@@ -626,38 +556,28 @@ static float processCR78Kick(DrumVoice *dv, float dt) {
         sample += drumNoise(&ns) * (1.0f - dv->time / 0.005f) * 0.2f;
     }
     
-    float amp = expDecay(dv->time, decay * damping);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.7f;
+    DRUM_PROC_END(dv, sample, decay * damping, 0.7f);
 }
 
 // CR-78 Snare - Resonant ping + bandpassed noise
 static float processCR78Snare(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float pitch = p->cr78SnarePitch * dv->pitchMod;
     float decay = PLOCK_OR(dv->plockDecay, p->cr78SnareDecay);
     float snappy = PLOCK_OR(dv->plockPunch, p->cr78SnareSnappy);
     
     // Resonant ping
-    dv->phase += pitch * dt;
-    if (dv->phase >= 1.0f) dv->phase -= 1.0f;
+    advancePhase(&dv->phase, pitch, dt);
     float ping = sinf(dv->phase * 2.0f * PI);
     float pingAmp = expDecay(dv->time, decay * 0.5f);
     
     // Bandpassed noise
     unsigned int ns = (unsigned int)(dv->time * 1000000 + dv->phase * 10000);
-    float noise = drumNoise(&ns);
-    dv->filterLp += 0.25f * (noise - dv->filterLp);
-    dv->filterHp += 0.08f * (dv->filterLp - dv->filterHp);
+    float filteredNoise = filterBP(&dv->filterLp, &dv->filterHp, drumNoise(&ns), 0.25f, 0.08f);
     float noiseAmp = expDecay(dv->time, decay);
     
-    float sample = ping * pingAmp * (1.0f - snappy * 0.6f) +
-                   (dv->filterLp - dv->filterHp) * 1.5f * noiseAmp * snappy;
+    float sample = ping * pingAmp * (1.0f - snappy * 0.6f) + filteredNoise * 1.5f * noiseAmp * snappy;
     
     if (noiseAmp < SILENCE_THRESHOLD && pingAmp < SILENCE_THRESHOLD) dv->active = false;
     
@@ -666,10 +586,7 @@ static float processCR78Snare(DrumVoice *dv, float dt) {
 
 // CR-78 Hihat - 3 square oscillators + noise through LC-style bandpass
 static float processCR78Hihat(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float decay = PLOCK_OR(dv->plockDecay, p->cr78HHDecay);
     float tone = PLOCK_OR(dv->plockTone, p->cr78HHTone);
@@ -683,23 +600,14 @@ static float processCR78Hihat(DrumVoice *dv, float dt) {
     sample += drumNoise(&ns) * 0.3f;
     
     // LC-style bandpass
-    float cutoff = 0.15f + tone * 0.25f;
-    dv->filterLp += cutoff * (sample - dv->filterLp);
-    dv->filterHp += 0.05f * (dv->filterLp - dv->filterHp);
-    sample = (dv->filterLp - dv->filterHp) * 2.5f;
+    sample = filterBP(&dv->filterLp, &dv->filterHp, sample, 0.15f + tone * 0.25f, 0.05f) * 2.5f;
     
-    float amp = expDecay(dv->time, decay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.35f;
+    DRUM_PROC_END(dv, sample, decay, 0.35f);
 }
 
 // CR-78 Metallic Beat - 3 square waves (octave+fifth) through inductor-style lowpass
 static float processCR78Metal(DrumVoice *dv, float dt) {
-    if (!dv->active) return 0.0f;
-    
-    DrumParams *p = &drumParams;
-    dv->time += dt;
+    DRUM_PROC_BEGIN(dv, dt);
     
     float pitch = p->cr78MetalPitch * dv->pitchMod;
     float decay = PLOCK_OR(dv->plockDecay, p->cr78MetalDecay);
@@ -709,13 +617,10 @@ static float processCR78Metal(DrumVoice *dv, float dt) {
     float sample = squareOscillators(dv, pitch, dt, ratios, 3, levels);
     
     // Inductor-style lowpass with dry blend for attack
-    dv->filterLp += 0.08f * (sample - dv->filterLp);
-    sample = dv->filterLp * 2.0f + sample * 0.3f;
+    float filtered = filterLP(&dv->filterLp, sample, 0.08f);
+    sample = filtered * 2.0f + sample * 0.3f;
     
-    float amp = expDecay(dv->time, decay);
-    if (amp < SILENCE_THRESHOLD) dv->active = false;
-    
-    return sample * amp * 0.4f;
+    DRUM_PROC_END(dv, sample, decay, 0.4f);
 }
 
 // ============================================================================
