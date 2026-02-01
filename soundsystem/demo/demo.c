@@ -9,7 +9,7 @@
 #include <math.h>
 #include <string.h>
 
-#define SCREEN_WIDTH 1140
+#define SCREEN_WIDTH 1040
 #define SCREEN_HEIGHT 860
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
@@ -1176,6 +1176,7 @@ static void melodyReleaseChord(void) { melodyReleaseGeneric(2); }
 // ============================================================================
 
 static bool showWaveColumn = true;
+static bool showSynthColumn = true;
 static bool showLfoColumn = true;
 static bool showDrumsColumn = true;
 static bool showEffectsColumn = true;
@@ -1509,7 +1510,7 @@ int main(void) {
             // Audio stats (right side, stacked vertically)
             double bufferTimeMs = (double)audioFrameCount / SAMPLE_RATE * 1000.0;
             double cpuPercent = (audioTimeUs / 1000.0) / bufferTimeMs * 100.0;
-            int statsX = SCREEN_WIDTH - 80;
+            int statsX = SCREEN_WIDTH - 70;
             DrawTextShadow(TextFormat("%.1f%%", cpuPercent), statsX, topBarY, 10, GRAY);
             DrawTextShadow(TextFormat("FPS: %d", GetFPS()), statsX, topBarY + 12, 10, GRAY);
             
@@ -1528,15 +1529,13 @@ int main(void) {
             }
         }
         
-        ToggleBool(20, 68, "SFX Randomize", &sfxRandomize);
-        
         // Speaking indicator
         if (speechQueue.active) {
             DrawTextEx(font, "Speaking...", (Vector2){20, 200}, 14, 1, GREEN);
         }
         
         // === COLUMN 1: Wave Type + Wave-specific settings ===
-        UIColumn col1 = ui_column(70, 220, 20);
+        UIColumn col1 = ui_column(30, 75, 20);
         
         // Current patch pointer - UI edits patch directly, no globals sync
         SynthPatch *cp = &patches[selectedPatch];
@@ -1700,8 +1699,7 @@ int main(void) {
         // === COLUMN 2: Synth (shared settings) ===
         UIColumn col2 = ui_column(250, 75, 20);
         
-        {
-            DrawTextEx(font, "[-] Synth", (Vector2){(float)col2.x, (float)col2.y}, 14, 1, WHITE);
+        if (SectionHeader(col2.x, col2.y, "Synth", &showSynthColumn)) {
             col2.y += 18;
             
             ui_col_sublabel(&col2, "Envelope:", ORANGE);
