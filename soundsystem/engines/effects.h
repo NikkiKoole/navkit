@@ -1,5 +1,5 @@
 // PixelSynth - Effects Pedals
-// Distortion, Delay, Tape simulation, Bitcrusher, Dub Loop, Rewind
+// Distortion, Delay, Tape simulation, Bitcrusher, Chorus, Dub Loop, Rewind
 
 #ifndef PIXELSYNTH_EFFECTS_H
 #define PIXELSYNTH_EFFECTS_H
@@ -33,6 +33,11 @@
 #define DIST_TONE_OFFSET 0.1f         // Distortion tone filter minimum
 #define DELAY_TONE_SCALE 0.4f         // Delay feedback filter scale
 #define DELAY_TONE_OFFSET 0.1f        // Delay feedback filter minimum
+
+// Chorus constants (stereo chorus with 2 LFOs)
+#define CHORUS_BUFFER_SIZE 2048       // ~46ms at 44100Hz
+#define CHORUS_MIN_DELAY 0.005f       // 5ms minimum delay
+#define CHORUS_MAX_DELAY 0.030f       // 30ms maximum delay
 
 // Dub Loop constants
 #define DUB_LOOP_MAX_TIME 4.0f        // Max loop time in seconds
@@ -215,6 +220,16 @@ typedef struct {
     float crushHold;      // Sample hold value
     int crushCounter;     // Sample counter for rate reduction
     
+    // Chorus (dual LFO modulated delay for "wobbly" character)
+    bool chorusEnabled;
+    float chorusRate;     // LFO rate in Hz (0.1 - 5.0)
+    float chorusDepth;    // Modulation depth (0-1)
+    float chorusMix;      // Dry/wet (0-1)
+    float chorusDelay;    // Base delay time in seconds (0.005-0.030)
+    float chorusFeedback; // Feedback amount (0-0.5) for flanging
+    float chorusPhase1;   // LFO 1 phase
+    float chorusPhase2;   // LFO 2 phase (90° offset for stereo width)
+    
     // Reverb (Schroeder-style)
     bool reverbEnabled;
     float reverbSize;     // Room size (0-1, affects delay times)
@@ -368,6 +383,10 @@ typedef struct EffectsContext {
     // Comb filter lowpass states (for damping)
     float reverbCombLp1, reverbCombLp2, reverbCombLp3, reverbCombLp4;
     
+    // Chorus buffer and state
+    float chorusBuffer[CHORUS_BUFFER_SIZE];
+    int chorusWritePos;
+    
     // Noise state for tape hiss
     unsigned int noiseState;
     
@@ -432,6 +451,16 @@ static void initEffectsContext(EffectsContext* ctx) {
     ctx->params.crushBits = 8.0f;
     ctx->params.crushRate = 4.0f;
     ctx->params.crushMix = 0.5f;
+    
+    // Chorus - off by default (for wobbly/cute Pikuniku-style sounds)
+    ctx->params.chorusEnabled = false;
+    ctx->params.chorusRate = 1.5f;       // 1.5 Hz - gentle wobble
+    ctx->params.chorusDepth = 0.4f;      // Moderate depth
+    ctx->params.chorusMix = 0.5f;
+    ctx->params.chorusDelay = 0.015f;    // 15ms base delay
+    ctx->params.chorusFeedback = 0.0f;   // No feedback by default
+    ctx->params.chorusPhase1 = 0.0f;
+    ctx->params.chorusPhase2 = 0.25f;    // 90° offset
     
     // Reverb - off by default
     ctx->params.reverbEnabled = false;
@@ -679,6 +708,72 @@ static float processBitcrusher(float sample) {
     }
     
     return dry * (1.0f - fx.crushMix) + fx.crushHold * fx.crushMix;
+}
+
+// Chorus - dual LFO modulated delay for "wobbly" and "cute" character
+// Perfect for Pikuniku-style thin leads that need subtle pitch drift
+static float processChorus(float sample, float dt) {
+    _ensureFxCtx();
+    if (!fx.chorusEnabled) return sample;
+    
+    float dry = sample;
+    
+    // Write to chorus buffer
+    fxCtx->chorusBuffer[fxCtx->chorusWritePos] = sample;
+    fxCtx->chorusWritePos = (fxCtx->chorusWritePos + 1) % CHORUS_BUFFER_SIZE;
+    
+    // Advance LFO phases (dual LFOs for richer modulation)
+    fx.chorusPhase1 += fx.chorusRate * dt;
+    if (fx.chorusPhase1 >= 1.0f) fx.chorusPhase1 -= 1.0f;
+    fx.chorusPhase2 += fx.chorusRate * 1.1f * dt;  // Slightly different rate for richness
+    if (fx.chorusPhase2 >= 1.0f) fx.chorusPhase2 -= 1.0f;
+    
+    // Calculate modulated delay times (sine LFOs)
+    float lfo1 = sinf(fx.chorusPhase1 * 2.0f * PI);
+    float lfo2 = sinf(fx.chorusPhase2 * 2.0f * PI);
+    
+    // Map LFO to delay range
+    float delayRange = CHORUS_MAX_DELAY - CHORUS_MIN_DELAY;
+    float delay1 = fx.chorusDelay + lfo1 * fx.chorusDepth * delayRange * 0.5f;
+    float delay2 = fx.chorusDelay + lfo2 * fx.chorusDepth * delayRange * 0.5f;
+    
+    // Clamp delays
+    if (delay1 < CHORUS_MIN_DELAY) delay1 = CHORUS_MIN_DELAY;
+    if (delay1 > CHORUS_MAX_DELAY) delay1 = CHORUS_MAX_DELAY;
+    if (delay2 < CHORUS_MIN_DELAY) delay2 = CHORUS_MIN_DELAY;
+    if (delay2 > CHORUS_MAX_DELAY) delay2 = CHORUS_MAX_DELAY;
+    
+    // Convert to samples and read with linear interpolation
+    float delaySamples1 = delay1 * SAMPLE_RATE;
+    float delaySamples2 = delay2 * SAMPLE_RATE;
+    
+    // Read position 1
+    float readPos1 = (float)fxCtx->chorusWritePos - delaySamples1;
+    if (readPos1 < 0) readPos1 += CHORUS_BUFFER_SIZE;
+    int i1a = (int)readPos1 % CHORUS_BUFFER_SIZE;
+    int i1b = (i1a + 1) % CHORUS_BUFFER_SIZE;
+    float frac1 = readPos1 - (int)readPos1;
+    float wet1 = fxCtx->chorusBuffer[i1a] * (1.0f - frac1) + fxCtx->chorusBuffer[i1b] * frac1;
+    
+    // Read position 2
+    float readPos2 = (float)fxCtx->chorusWritePos - delaySamples2;
+    if (readPos2 < 0) readPos2 += CHORUS_BUFFER_SIZE;
+    int i2a = (int)readPos2 % CHORUS_BUFFER_SIZE;
+    int i2b = (i2a + 1) % CHORUS_BUFFER_SIZE;
+    float frac2 = readPos2 - (int)readPos2;
+    float wet2 = fxCtx->chorusBuffer[i2a] * (1.0f - frac2) + fxCtx->chorusBuffer[i2b] * frac2;
+    
+    // Mix the two chorus voices (mono sum - stereo would be wet1 L, wet2 R)
+    float wet = (wet1 + wet2) * 0.5f;
+    
+    // Optional feedback for flanging-style effects
+    if (fx.chorusFeedback > 0.0f) {
+        // Write feedback back to buffer (with current sample)
+        int writeIdx = (fxCtx->chorusWritePos - 1 + CHORUS_BUFFER_SIZE) % CHORUS_BUFFER_SIZE;
+        fxCtx->chorusBuffer[writeIdx] = sample + wet * fx.chorusFeedback;
+    }
+    
+    return dry * (1.0f - fx.chorusMix) + wet * fx.chorusMix;
 }
 
 // Helper: process a single comb filter with lowpass damping
@@ -1264,6 +1359,7 @@ static float processEffects(float sample, float dt) {
     _ensureFxCtx();
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
+    sample = processChorus(sample, dt);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
     
@@ -1293,6 +1389,7 @@ static float processEffectsWithBuses(float drumBus, float synthBus, float dt) {
     
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
+    sample = processChorus(sample, dt);
     sample = processTape(sample, dt);
     sample = processDelay(sample, dt);
     
