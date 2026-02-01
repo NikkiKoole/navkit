@@ -710,8 +710,24 @@ static float processBitcrusher(float sample) {
     return dry * (1.0f - fx.crushMix) + fx.crushHold * fx.crushMix;
 }
 
+// Helper: read from chorus buffer with linear interpolation
+static float chorusReadInterpolated(float delaySamples) {
+    float readPos = (float)fxCtx->chorusWritePos - delaySamples;
+    if (readPos < 0) readPos += CHORUS_BUFFER_SIZE;
+    int i0 = (int)readPos % CHORUS_BUFFER_SIZE;
+    int i1 = (i0 + 1) % CHORUS_BUFFER_SIZE;
+    float frac = readPos - (int)readPos;
+    return fxCtx->chorusBuffer[i0] * (1.0f - frac) + fxCtx->chorusBuffer[i1] * frac;
+}
+
+// Helper: clamp value to range
+static float clampToRange(float val, float min, float max) {
+    if (val < min) return min;
+    if (val > max) return max;
+    return val;
+}
+
 // Chorus - dual LFO modulated delay for "wobbly" and "cute" character
-// Perfect for Pikuniku-style thin leads that need subtle pitch drift
 static float processChorus(float sample, float dt) {
     _ensureFxCtx();
     if (!fx.chorusEnabled) return sample;
@@ -725,50 +741,24 @@ static float processChorus(float sample, float dt) {
     // Advance LFO phases (dual LFOs for richer modulation)
     fx.chorusPhase1 += fx.chorusRate * dt;
     if (fx.chorusPhase1 >= 1.0f) fx.chorusPhase1 -= 1.0f;
-    fx.chorusPhase2 += fx.chorusRate * 1.1f * dt;  // Slightly different rate for richness
+    fx.chorusPhase2 += fx.chorusRate * 1.1f * dt;
     if (fx.chorusPhase2 >= 1.0f) fx.chorusPhase2 -= 1.0f;
     
-    // Calculate modulated delay times (sine LFOs)
-    float lfo1 = sinf(fx.chorusPhase1 * 2.0f * PI);
-    float lfo2 = sinf(fx.chorusPhase2 * 2.0f * PI);
-    
-    // Map LFO to delay range
+    // Calculate modulated delay times
     float delayRange = CHORUS_MAX_DELAY - CHORUS_MIN_DELAY;
-    float delay1 = fx.chorusDelay + lfo1 * fx.chorusDepth * delayRange * 0.5f;
-    float delay2 = fx.chorusDelay + lfo2 * fx.chorusDepth * delayRange * 0.5f;
+    float modAmount = fx.chorusDepth * delayRange * 0.5f;
+    float delay1 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase1 * 2.0f * PI) * modAmount, 
+                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
+    float delay2 = clampToRange(fx.chorusDelay + sinf(fx.chorusPhase2 * 2.0f * PI) * modAmount,
+                                CHORUS_MIN_DELAY, CHORUS_MAX_DELAY);
     
-    // Clamp delays
-    if (delay1 < CHORUS_MIN_DELAY) delay1 = CHORUS_MIN_DELAY;
-    if (delay1 > CHORUS_MAX_DELAY) delay1 = CHORUS_MAX_DELAY;
-    if (delay2 < CHORUS_MIN_DELAY) delay2 = CHORUS_MIN_DELAY;
-    if (delay2 > CHORUS_MAX_DELAY) delay2 = CHORUS_MAX_DELAY;
-    
-    // Convert to samples and read with linear interpolation
-    float delaySamples1 = delay1 * SAMPLE_RATE;
-    float delaySamples2 = delay2 * SAMPLE_RATE;
-    
-    // Read position 1
-    float readPos1 = (float)fxCtx->chorusWritePos - delaySamples1;
-    if (readPos1 < 0) readPos1 += CHORUS_BUFFER_SIZE;
-    int i1a = (int)readPos1 % CHORUS_BUFFER_SIZE;
-    int i1b = (i1a + 1) % CHORUS_BUFFER_SIZE;
-    float frac1 = readPos1 - (int)readPos1;
-    float wet1 = fxCtx->chorusBuffer[i1a] * (1.0f - frac1) + fxCtx->chorusBuffer[i1b] * frac1;
-    
-    // Read position 2
-    float readPos2 = (float)fxCtx->chorusWritePos - delaySamples2;
-    if (readPos2 < 0) readPos2 += CHORUS_BUFFER_SIZE;
-    int i2a = (int)readPos2 % CHORUS_BUFFER_SIZE;
-    int i2b = (i2a + 1) % CHORUS_BUFFER_SIZE;
-    float frac2 = readPos2 - (int)readPos2;
-    float wet2 = fxCtx->chorusBuffer[i2a] * (1.0f - frac2) + fxCtx->chorusBuffer[i2b] * frac2;
-    
-    // Mix the two chorus voices (mono sum - stereo would be wet1 L, wet2 R)
+    // Read from both delay taps with interpolation
+    float wet1 = chorusReadInterpolated(delay1 * SAMPLE_RATE);
+    float wet2 = chorusReadInterpolated(delay2 * SAMPLE_RATE);
     float wet = (wet1 + wet2) * 0.5f;
     
     // Optional feedback for flanging-style effects
     if (fx.chorusFeedback > 0.0f) {
-        // Write feedback back to buffer (with current sample)
         int writeIdx = (fxCtx->chorusWritePos - 1 + CHORUS_BUFFER_SIZE) % CHORUS_BUFFER_SIZE;
         fxCtx->chorusBuffer[writeIdx] = sample + wet * fx.chorusFeedback;
     }
