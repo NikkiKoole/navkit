@@ -1856,6 +1856,7 @@ static const EmbeddedSCW embeddedSCWs[25] = {
 // Load all embedded SCWs into the synth's wavetable slots
 // Call this instead of loadSCW() calls
 static int loadEmbeddedSCWs(void) {
+    _ensureSynthCtx();
     int loaded = 0;
     for (int i = 0; i < EMBEDDED_SCW_COUNT && scwCount < SCW_MAX_SLOTS; i++) {
         const EmbeddedSCW* e = &embeddedSCWs[i];

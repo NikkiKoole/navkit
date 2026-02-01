@@ -13,7 +13,7 @@
 #endif
 
 #ifndef SAMPLE_RATE
-#define SAMPLE_RATE 44100
+#define SAMPLE_RATE 44100  // Required: reverb comb filter lengths are tuned for 44100Hz
 #endif
 
 // Reverb feedback constants
@@ -407,8 +407,8 @@ static float processEffects(float sample, float dt) {
     sample = processDistortion(sample);
     sample = processBitcrusher(sample);
     sample = processTape(sample, dt);
-    sample = processReverb(sample);
     sample = processDelay(sample, dt);
+    sample = processReverb(sample);
     return sample;
 }
 

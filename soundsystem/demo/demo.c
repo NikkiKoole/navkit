@@ -891,6 +891,7 @@ static void applyPatchToGlobals(SynthPatch *p) {
     notePitchLfoRate = p->p_pitchLfoRate;
     notePitchLfoDepth = p->p_pitchLfoDepth;
     notePitchLfoShape = p->p_pitchLfoShape;
+    noteScwIndex = p->p_scwIndex;
     monoMode = p->p_monoMode;
     glideTime = p->p_glideTime;
     pluckBrightness = p->p_pluckBrightness;

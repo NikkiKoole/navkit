@@ -307,6 +307,7 @@ int main(int argc, char** argv) {
     printf("// Load all embedded SCWs into the synth's wavetable slots\n");
     printf("// Call this instead of loadSCW() calls\n");
     printf("static int loadEmbeddedSCWs(void) {\n");
+    printf("    _ensureSynthCtx();\n");
     printf("    int loaded = 0;\n");
     printf("    for (int i = 0; i < EMBEDDED_SCW_COUNT && scwCount < SCW_MAX_SLOTS; i++) {\n");
     printf("        const EmbeddedSCW* e = &embeddedSCWs[i];\n");
