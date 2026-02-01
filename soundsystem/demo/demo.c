@@ -1513,25 +1513,18 @@ int main(void) {
             DrawTextShadow(TextFormat("%.1f%%", cpuPercent), statsX, topBarY, 10, GRAY);
             DrawTextShadow(TextFormat("FPS: %d", GetFPS()), statsX, topBarY + 12, 10, GRAY);
             
-            // Synth voice indicators (2 rows of 8)
+            // Voice indicators: synth (2 rows of 8), then drums (2 rows of 8)
+            Color voiceOff = {50, 50, 50, 255};
             int voiceY = topBarY + 26;
             for (int i = 0; i < NUM_VOICES; i++) {
-                Color c = (Color){50, 50, 50, 255};
+                Color c = voiceOff;
                 if (voices[i].envStage == 4) c = ORANGE;
                 else if (voices[i].envStage > 0) c = GREEN;
-                int row = i / 8;
-                int col = i % 8;
-                DrawRectangle(statsX + col * 7, voiceY + row * 8, 5, 6, c);
+                DrawRectangle(statsX + (i % 8) * 7, voiceY + (i / 8) * 8, 5, 6, c);
             }
-            
-            // Drum voice indicators (2 rows of 8)
-            int drumVoiceY = voiceY + 20;
             for (int i = 0; i < NUM_DRUM_VOICES; i++) {
-                Color c = (Color){50, 50, 50, 255};
-                if (drumVoices[i].active) c = (Color){255, 150, 50, 255};  // Orange for active drums
-                int row = i / 8;
-                int col = i % 8;
-                DrawRectangle(statsX + col * 7, drumVoiceY + row * 8, 5, 6, c);
+                Color c = drumVoices[i].active ? ORANGE : voiceOff;
+                DrawRectangle(statsX + (i % 8) * 7, voiceY + 20 + (i / 8) * 8, 5, 6, c);
             }
         }
         
