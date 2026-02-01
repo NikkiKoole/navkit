@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define SCREEN_WIDTH 1200
-#define SCREEN_HEIGHT 860
+#define SCREEN_HEIGHT 1060
 #define SAMPLE_RATE 44100
 #define MAX_SAMPLES_PER_UPDATE 4096
 
@@ -232,8 +232,9 @@ static void SynthCallback(void *buffer, unsigned int frames) {
     short *d = (short *)buffer;
     float dt = 1.0f / SAMPLE_RATE;
     
-    // Sync mixer tempo with sequencer
+    // Sync mixer and synth tempo with sequencer
     setMixerTempo(seq.bpm);
+    synthBpm = seq.bpm;
     
     for (unsigned int i = 0; i < frames; i++) {
         float sample = 0.0f;
@@ -422,6 +423,19 @@ typedef struct {
     float p_filterLfoRate;
     float p_filterLfoDepth;
     int p_filterLfoShape;
+    int p_filterLfoSync;      // LfoSyncDiv (0=off, 1-7=tempo divisions)
+    
+    // Arpeggiator
+    bool p_arpEnabled;
+    int p_arpMode;            // ArpMode
+    int p_arpRateDiv;         // ArpRateDiv
+    float p_arpRate;          // Free rate in Hz
+    int p_arpChord;           // ArpChordType
+    
+    // Unison
+    int p_unisonCount;        // 1-4
+    float p_unisonDetune;     // cents
+    float p_unisonMix;        // 0-1
     
     // Resonance LFO
     float p_resoLfoRate;
@@ -539,6 +553,15 @@ static SynthPatch createDefaultPatch(int waveType) {
         .p_filterLfoRate = 0.0f,
         .p_filterLfoDepth = 0.0f,
         .p_filterLfoShape = 0,
+        .p_filterLfoSync = 0,
+        .p_arpEnabled = false,
+        .p_arpMode = 0,
+        .p_arpRateDiv = 1,  // ARP_RATE_1_8
+        .p_arpRate = 8.0f,
+        .p_arpChord = 1,    // ARP_CHORD_MAJOR
+        .p_unisonCount = 1,
+        .p_unisonDetune = 10.0f,
+        .p_unisonMix = 0.5f,
         .p_resoLfoRate = 0.0f,
         .p_resoLfoDepth = 0.0f,
         .p_resoLfoShape = 0,
@@ -721,6 +744,12 @@ static void blendSynthPatch(SynthPatch *out, const SynthPatch *a, const SynthPat
     out->p_waveType = switchInt(a->p_waveType, b->p_waveType, t);
     out->p_scwIndex = switchInt(a->p_scwIndex, b->p_scwIndex, t);
     out->p_filterLfoShape = switchInt(a->p_filterLfoShape, b->p_filterLfoShape, t);
+    out->p_filterLfoSync = switchInt(a->p_filterLfoSync, b->p_filterLfoSync, t);
+    out->p_arpEnabled = switchBool(a->p_arpEnabled, b->p_arpEnabled, t);
+    out->p_arpMode = switchInt(a->p_arpMode, b->p_arpMode, t);
+    out->p_arpRateDiv = switchInt(a->p_arpRateDiv, b->p_arpRateDiv, t);
+    out->p_arpChord = switchInt(a->p_arpChord, b->p_arpChord, t);
+    out->p_unisonCount = switchInt(a->p_unisonCount, b->p_unisonCount, t);
     out->p_resoLfoShape = switchInt(a->p_resoLfoShape, b->p_resoLfoShape, t);
     out->p_ampLfoShape = switchInt(a->p_ampLfoShape, b->p_ampLfoShape, t);
     out->p_pitchLfoShape = switchInt(a->p_pitchLfoShape, b->p_pitchLfoShape, t);
@@ -754,6 +783,9 @@ static void blendSynthPatch(SynthPatch *out, const SynthPatch *a, const SynthPat
     out->p_filterEnvDecay = lerpf(a->p_filterEnvDecay, b->p_filterEnvDecay, t);
     out->p_filterLfoRate = lerpf(a->p_filterLfoRate, b->p_filterLfoRate, t);
     out->p_filterLfoDepth = lerpf(a->p_filterLfoDepth, b->p_filterLfoDepth, t);
+    out->p_arpRate = lerpf(a->p_arpRate, b->p_arpRate, t);
+    out->p_unisonDetune = lerpf(a->p_unisonDetune, b->p_unisonDetune, t);
+    out->p_unisonMix = lerpf(a->p_unisonMix, b->p_unisonMix, t);
     out->p_resoLfoRate = lerpf(a->p_resoLfoRate, b->p_resoLfoRate, t);
     out->p_resoLfoDepth = lerpf(a->p_resoLfoDepth, b->p_resoLfoDepth, t);
     out->p_ampLfoRate = lerpf(a->p_ampLfoRate, b->p_ampLfoRate, t);
@@ -962,6 +994,15 @@ static void applyPatchToGlobals(SynthPatch *p) {
     noteFilterLfoRate = p->p_filterLfoRate;
     noteFilterLfoDepth = p->p_filterLfoDepth;
     noteFilterLfoShape = p->p_filterLfoShape;
+    noteFilterLfoSync = (LfoSyncDiv)p->p_filterLfoSync;
+    noteArpEnabled = p->p_arpEnabled;
+    noteArpMode = (ArpMode)p->p_arpMode;
+    noteArpRateDiv = (ArpRateDiv)p->p_arpRateDiv;
+    noteArpRate = p->p_arpRate;
+    noteArpChord = (ArpChordType)p->p_arpChord;
+    noteUnisonCount = p->p_unisonCount;
+    noteUnisonDetune = p->p_unisonDetune;
+    noteUnisonMix = p->p_unisonMix;
     noteResoLfoRate = p->p_resoLfoRate;
     noteResoLfoDepth = p->p_resoLfoDepth;
     noteResoLfoShape = p->p_resoLfoShape;
@@ -1255,6 +1296,7 @@ static bool showLfoColumn = true;
 static bool showDrumsColumn = true;
 static bool showEffectsColumn = true;
 static bool showTapeFxColumn = true;
+static bool showMixerStrip = true;
 
 // Waveform names for UI
 static const char* waveNames[] = {"Square", "Saw", "Triangle", "Noise", "SCW", "Voice", "Pluck", "Additive", "Mallet", "Granular", "FM", "PD", "Membrane", "Bird"};
@@ -1817,6 +1859,32 @@ int main(void) {
                 }
             }
             
+            // Unison - only show for basic wave types
+            if (selectedWave == WAVE_SQUARE || selectedWave == WAVE_SAW || selectedWave == WAVE_TRIANGLE) {
+                ui_col_space(&col2, 4);
+                ui_col_sublabel(&col2, "Unison:", ORANGE);
+                ui_col_int(&col2, "Count", &cp->p_unisonCount, 1, 1, 4);
+                if (cp->p_unisonCount > 1) {
+                    ui_col_float(&col2, "Detune", &cp->p_unisonDetune, 1.0f, 0.0f, 50.0f);
+                }
+            }
+            
+            // Arpeggiator
+            ui_col_space(&col2, 4);
+            ui_col_sublabel(&col2, "Arpeggiator:", ORANGE);
+            ui_col_toggle(&col2, "Enabled", &cp->p_arpEnabled);
+            if (cp->p_arpEnabled) {
+                static const char* arpModeNames[] = {"Up", "Down", "UpDown", "Random"};
+                static const char* arpRateNames[] = {"1/4", "1/8", "1/16", "1/32", "Free"};
+                static const char* arpChordNames[] = {"Octave", "Major", "Minor", "Dom7", "Min7", "Sus4", "Power"};
+                ui_col_cycle(&col2, "Mode", arpModeNames, 4, &cp->p_arpMode);
+                ui_col_cycle(&col2, "Chord", arpChordNames, 7, &cp->p_arpChord);
+                ui_col_cycle(&col2, "Rate", arpRateNames, 5, &cp->p_arpRateDiv);
+                if (cp->p_arpRateDiv == 4) {  // ARP_RATE_FREE
+                    ui_col_float(&col2, "Hz", &cp->p_arpRate, 0.5f, 1.0f, 30.0f);
+                }
+            }
+            
             ui_col_space(&col2, 4);
             ui_col_sublabel(&col2, "Scale Lock:", ORANGE);
             ui_col_toggle(&col2, "Enabled", &scaleLockEnabled);
@@ -1836,10 +1904,13 @@ int main(void) {
             
             static const char* lfoShapeNames[] = {"Sine", "Tri", "Sqr", "Saw", "S&H"};
             
+            static const char* lfoSyncNames[] = {"Off", "4bar", "2bar", "1bar", "1/2", "1/4", "1/8", "1/16"};
+            
             ui_col_sublabel(&col3, "Filter:", ORANGE);
             ui_col_float(&col3, "Rate", &cp->p_filterLfoRate, 0.5f, 0.0f, 20.0f);
             ui_col_float(&col3, "Depth", &cp->p_filterLfoDepth, 0.05f, 0.0f, 2.0f);
             ui_col_cycle(&col3, "Shape", lfoShapeNames, 5, &cp->p_filterLfoShape);
+            ui_col_cycle(&col3, "Sync", lfoSyncNames, 8, &cp->p_filterLfoSync);
             ui_col_space(&col3, 4);
             
             ui_col_sublabel(&col3, "Resonance:", ORANGE);
@@ -2100,6 +2171,254 @@ int main(void) {
             }
         }
         
+        // === MIXER STRIP (7 channel strips + Master + Detail Panel) ===
+        {
+            static int selectedBus = -1;  // -1 = none, 0-6 = bus
+            
+            int mixerX = 20;
+            int mixerY = SCREEN_HEIGHT - 220;  // Bottom of screen
+            int stripW = 70;   // Narrower strips
+            int stripH = 55;   // Compact height
+            int stripSpacing = 4;
+            
+            Vector2 mouse = GetMousePosition();
+            bool mouseClicked = IsMouseButtonPressed(MOUSE_LEFT_BUTTON);
+            bool rightClicked = IsMouseButtonPressed(MOUSE_RIGHT_BUTTON);
+            float mouseWheel = GetMouseWheelMove();
+            bool mouseDown = IsMouseButtonDown(MOUSE_LEFT_BUTTON);
+            
+            // Bus names matching the 7 buses
+            static const char* busNames[NUM_BUSES] = {"Drum0", "Drum1", "Drum2", "Drum3", "Bass", "Lead", "Chord"};
+            static const char* filterTypeNames[] = {"LP", "HP", "BP"};
+            static const char* delaySyncNames[] = {"1/16", "1/8", "1/4", "1/2", "1bar"};
+            
+            // Header
+            if (SectionHeader(mixerX, mixerY, "Mixer", &showMixerStrip)) {
+                mixerY += 18;
+                
+                // Draw each bus strip (compact view)
+                for (int b = 0; b < NUM_BUSES; b++) {
+                    int sx = mixerX + b * (stripW + stripSpacing);
+                    int sy = mixerY;
+                    BusEffects* bus = &mixerCtx->bus[b];
+                    
+                    // Strip background
+                    bool isSelected = (selectedBus == b);
+                    Color stripBg = isSelected ? (Color){45, 50, 60, 255} : (Color){30, 32, 38, 255};
+                    if (bus->mute) stripBg = (Color){50, 30, 30, 255};
+                    if (bus->solo) stripBg = (Color){50, 50, 30, 255};
+                    DrawRectangle(sx, sy, stripW, stripH, stripBg);
+                    DrawRectangleLinesEx((Rectangle){(float)sx, (float)sy, (float)stripW, (float)stripH}, 
+                                         isSelected ? 2 : 1, isSelected ? ORANGE : (Color){60, 60, 70, 255});
+                    
+                    // Bus name (click to select)
+                    Rectangle nameRect = {(float)sx, (float)sy, (float)stripW, 14};
+                    bool nameHovered = CheckCollisionPointRec(mouse, nameRect);
+                    DrawTextShadow(busNames[b], sx + 4, sy + 2, 10, nameHovered ? WHITE : LIGHTGRAY);
+                    if (nameHovered && mouseClicked) {
+                        selectedBus = (selectedBus == b) ? -1 : b;
+                        ui_consume_click();
+                    }
+                    
+                    // Vertical volume bar
+                    int volX = sx + 4;
+                    int volY = sy + 16;
+                    int volW = 12;
+                    int volH = 34;
+                    Rectangle volRect = {(float)volX, (float)volY, (float)volW, (float)volH};
+                    bool volHovered = CheckCollisionPointRec(mouse, volRect);
+                    DrawRectangleRec(volRect, (Color){20, 20, 25, 255});
+                    int volFill = (int)(volH * (bus->volume / 2.0f));
+                    Color volColor = volHovered ? (Color){80, 180, 80, 255} : (Color){50, 140, 50, 255};
+                    if (bus->volume > 1.0f) volColor = (Color){180, 140, 50, 255};
+                    DrawRectangle(volX + 1, volY + volH - volFill, volW - 2, volFill, volColor);
+                    DrawRectangleLinesEx(volRect, 1, volHovered ? GREEN : (Color){50, 50, 60, 255});
+                    
+                    if (volHovered) {
+                        if (mouseDown) {
+                            bus->volume = (1.0f - (mouse.y - volY) / (float)volH) * 2.0f;
+                            bus->volume = fmaxf(0.0f, fminf(2.0f, bus->volume));
+                        }
+                        if (mouseWheel != 0) {
+                            bus->volume = fmaxf(0.0f, fminf(2.0f, bus->volume + mouseWheel * 0.05f));
+                        }
+                    }
+                    
+                    // M/S buttons (vertical stack)
+                    int btnX = sx + 20;
+                    int btnY = sy + 16;
+                    int btnW = 16;
+                    int btnH = 14;
+                    
+                    // Mute
+                    Rectangle muteRect = {(float)btnX, (float)btnY, (float)btnW, (float)btnH};
+                    bool muteHovered = CheckCollisionPointRec(mouse, muteRect);
+                    DrawRectangleRec(muteRect, bus->mute ? (Color){180, 60, 60, 255} : (muteHovered ? (Color){60, 50, 50, 255} : (Color){40, 35, 35, 255}));
+                    DrawTextShadow("M", btnX + 4, btnY + 2, 10, bus->mute ? WHITE : GRAY);
+                    if (muteHovered && mouseClicked) {
+                        bus->mute = !bus->mute;
+                        ui_consume_click();
+                    }
+                    
+                    // Solo
+                    Rectangle soloRect = {(float)btnX, (float)(btnY + btnH + 2), (float)btnW, (float)btnH};
+                    bool soloHovered = CheckCollisionPointRec(mouse, soloRect);
+                    DrawRectangleRec(soloRect, bus->solo ? (Color){180, 180, 60, 255} : (soloHovered ? (Color){60, 60, 50, 255} : (Color){40, 40, 35, 255}));
+                    DrawTextShadow("S", btnX + 4, btnY + btnH + 4, 10, bus->solo ? BLACK : GRAY);
+                    if (soloHovered && mouseClicked) {
+                        bus->solo = !bus->solo;
+                        mixerCtx->anySoloed = false;
+                        for (int i = 0; i < NUM_BUSES; i++) {
+                            if (mixerCtx->bus[i].solo) mixerCtx->anySoloed = true;
+                        }
+                        ui_consume_click();
+                    }
+                    
+                    // Effect indicators (F D E R) - horizontal at bottom
+                    int indY = sy + 16 + btnH * 2 + 6;
+                    int indX = sx + 20;
+                    int indW = 12;
+                    int indH = 10;
+                    
+                    // F - Filter
+                    Rectangle filtRect = {(float)indX, (float)indY, (float)indW, (float)indH};
+                    bool filtHovered = CheckCollisionPointRec(mouse, filtRect);
+                    Color filtColor = bus->filterEnabled ? (Color){100, 150, 200, 255} : (Color){40, 45, 50, 255};
+                    if (filtHovered) { filtColor.r += 30; filtColor.g += 30; filtColor.b += 30; }
+                    DrawRectangleRec(filtRect, filtColor);
+                    DrawTextShadow("F", indX + 3, indY, 9, bus->filterEnabled ? WHITE : DARKGRAY);
+                    if (filtHovered && mouseClicked) { bus->filterEnabled = !bus->filterEnabled; ui_consume_click(); }
+                    
+                    // D - Distortion
+                    indX += indW + 2;
+                    Rectangle distRect = {(float)indX, (float)indY, (float)indW, (float)indH};
+                    bool distHovered = CheckCollisionPointRec(mouse, distRect);
+                    Color distColor = bus->distEnabled ? (Color){200, 120, 80, 255} : (Color){45, 40, 38, 255};
+                    if (distHovered) { distColor.r += 30; distColor.g += 30; distColor.b += 30; }
+                    DrawRectangleRec(distRect, distColor);
+                    DrawTextShadow("D", indX + 3, indY, 9, bus->distEnabled ? WHITE : DARKGRAY);
+                    if (distHovered && mouseClicked) { bus->distEnabled = !bus->distEnabled; ui_consume_click(); }
+                    
+                    // E - Echo/Delay
+                    indX += indW + 2;
+                    Rectangle delRect = {(float)indX, (float)indY, (float)indW, (float)indH};
+                    bool delHovered = CheckCollisionPointRec(mouse, delRect);
+                    Color delColor = bus->delayEnabled ? (Color){80, 180, 150, 255} : (Color){38, 45, 43, 255};
+                    if (delHovered) { delColor.r += 30; delColor.g += 30; delColor.b += 30; }
+                    DrawRectangleRec(delRect, delColor);
+                    DrawTextShadow("E", indX + 3, indY, 9, bus->delayEnabled ? WHITE : DARKGRAY);
+                    if (delHovered && mouseClicked) { bus->delayEnabled = !bus->delayEnabled; ui_consume_click(); }
+                }
+                
+                // Master strip
+                int masterX = mixerX + NUM_BUSES * (stripW + stripSpacing);
+                DrawRectangle(masterX, mixerY, 50, stripH, (Color){35, 35, 40, 255});
+                DrawRectangleLinesEx((Rectangle){(float)masterX, (float)mixerY, 50, (float)stripH}, 1, (Color){80, 80, 90, 255});
+                DrawTextShadow("Mstr", masterX + 4, mixerY + 2, 10, YELLOW);
+                
+                // Master vertical volume
+                int mvX = masterX + 4;
+                int mvY = mixerY + 16;
+                int mvW = 12;
+                int mvH = 34;
+                Rectangle mvRect = {(float)mvX, (float)mvY, (float)mvW, (float)mvH};
+                bool mvHovered = CheckCollisionPointRec(mouse, mvRect);
+                DrawRectangleRec(mvRect, (Color){20, 20, 25, 255});
+                int mvFill = (int)(mvH * masterVolume);
+                DrawRectangle(mvX + 1, mvY + mvH - mvFill, mvW - 2, mvFill, mvHovered ? (Color){200, 180, 80, 255} : (Color){180, 160, 60, 255});
+                DrawRectangleLinesEx(mvRect, 1, mvHovered ? YELLOW : (Color){60, 60, 50, 255});
+                if (mvHovered) {
+                    if (mouseDown) {
+                        masterVolume = 1.0f - (mouse.y - mvY) / (float)mvH;
+                        masterVolume = fmaxf(0.0f, fminf(1.0f, masterVolume));
+                    }
+                    if (mouseWheel != 0) {
+                        masterVolume = fmaxf(0.0f, fminf(1.0f, masterVolume + mouseWheel * 0.05f));
+                    }
+                }
+                
+                // === DETAIL PANEL (right side, shows selected bus controls) ===
+                int panelX = masterX + 60;
+                int panelY = mixerY;
+                int panelW = 350;
+                int panelH = stripH + 50;
+                
+                if (selectedBus >= 0 && selectedBus < NUM_BUSES) {
+                    BusEffects* bus = &mixerCtx->bus[selectedBus];
+                    
+                    DrawRectangle(panelX, panelY, panelW, panelH, (Color){35, 38, 42, 255});
+                    DrawRectangleLinesEx((Rectangle){(float)panelX, (float)panelY, (float)panelW, (float)panelH}, 1, ORANGE);
+                    
+                    // Title
+                    DrawTextShadow(TextFormat("%s Settings", busNames[selectedBus]), panelX + 8, panelY + 4, 12, ORANGE);
+                    
+                    int ctrlY = panelY + 22;
+                    int col1 = panelX + 10;
+                    int col2 = panelX + 120;
+                    int col3 = panelX + 230;
+                    
+                    // Volume & Pan row
+                    DraggableFloat(col1, ctrlY, "Volume", &bus->volume, 0.02f, 0.0f, 2.0f);
+                    DraggableFloat(col2, ctrlY, "Pan", &bus->pan, 0.02f, -1.0f, 1.0f);
+                    DraggableFloat(col3, ctrlY, "RevSend", &bus->reverbSend, 0.02f, 0.0f, 1.0f);
+                    
+                    ctrlY += 22;
+                    
+                    // Filter section
+                    ToggleBool(col1, ctrlY, "Filter", &bus->filterEnabled);
+                    if (bus->filterEnabled) {
+                        DraggableFloat(col1 + 70, ctrlY, "Cut", &bus->filterCutoff, 0.02f, 0.0f, 1.0f);
+                        DraggableFloat(col2 + 30, ctrlY, "Res", &bus->filterResonance, 0.02f, 0.0f, 1.0f);
+                        // Filter type
+                        Rectangle typeRect = {(float)col3, (float)ctrlY, 40, 16};
+                        bool typeHovered = CheckCollisionPointRec(mouse, typeRect);
+                        DrawRectangleRec(typeRect, typeHovered ? (Color){60, 65, 70, 255} : (Color){45, 48, 52, 255});
+                        DrawRectangleLinesEx(typeRect, 1, typeHovered ? WHITE : (Color){80, 80, 90, 255});
+                        DrawTextShadow(filterTypeNames[bus->filterType], col3 + 10, ctrlY + 3, 10, WHITE);
+                        if (typeHovered && mouseClicked) { bus->filterType = (bus->filterType + 1) % 3; ui_consume_click(); }
+                        if (typeHovered && rightClicked) { bus->filterType = (bus->filterType + 2) % 3; ui_consume_click(); }
+                    }
+                    
+                    ctrlY += 22;
+                    
+                    // Distortion section
+                    ToggleBool(col1, ctrlY, "Dist", &bus->distEnabled);
+                    if (bus->distEnabled) {
+                        DraggableFloat(col1 + 60, ctrlY, "Drive", &bus->distDrive, 0.05f, 1.0f, 4.0f);
+                        DraggableFloat(col2 + 30, ctrlY, "Mix", &bus->distMix, 0.02f, 0.0f, 1.0f);
+                    }
+                    
+                    ctrlY += 22;
+                    
+                    // Delay section
+                    ToggleBool(col1, ctrlY, "Delay", &bus->delayEnabled);
+                    if (bus->delayEnabled) {
+                        ToggleBool(col1 + 65, ctrlY, "Sync", &bus->delayTempoSync);
+                        if (bus->delayTempoSync) {
+                            Rectangle syncRect = {(float)(col2), (float)ctrlY, 45, 16};
+                            bool syncHovered = CheckCollisionPointRec(mouse, syncRect);
+                            DrawRectangleRec(syncRect, syncHovered ? (Color){60, 65, 70, 255} : (Color){45, 48, 52, 255});
+                            DrawRectangleLinesEx(syncRect, 1, syncHovered ? WHITE : (Color){80, 80, 90, 255});
+                            DrawTextShadow(delaySyncNames[bus->delaySyncDiv], col2 + 8, ctrlY + 3, 10, WHITE);
+                            if (syncHovered && mouseClicked) { bus->delaySyncDiv = (bus->delaySyncDiv + 1) % 5; ui_consume_click(); }
+                            if (syncHovered && rightClicked) { bus->delaySyncDiv = (bus->delaySyncDiv + 4) % 5; ui_consume_click(); }
+                        } else {
+                            DraggableFloat(col2, ctrlY, "Time", &bus->delayTime, 0.01f, 0.01f, 1.0f);
+                        }
+                        DraggableFloat(col3, ctrlY, "FB", &bus->delayFeedback, 0.02f, 0.0f, 0.8f);
+                        
+                        ctrlY += 18;
+                        DraggableFloat(col2, ctrlY, "Mix", &bus->delayMix, 0.02f, 0.0f, 1.0f);
+                    }
+                } else {
+                    // No bus selected - show hint
+                    DrawRectangle(panelX, panelY, panelW, 40, (Color){30, 32, 36, 255});
+                    DrawRectangleLinesEx((Rectangle){(float)panelX, (float)panelY, (float)panelW, 40}, 1, (Color){50, 50, 60, 255});
+                    DrawTextShadow("Click a bus to edit its settings", panelX + 10, panelY + 12, 12, GRAY);
+                }
+            }
+        }
+        
         // === SEQUENCER GRID (Drums + Melodic) ===
         {
             static bool isDragging = false;
@@ -2118,7 +2437,7 @@ int main(void) {
             Pattern *p = seqCurrentPattern();
             
             int gridX = 20;
-            int gridY = SCREEN_HEIGHT - 240;  // Moved down 30px
+            int gridY = SCREEN_HEIGHT - 440;  // Moved up 200px
             int cellW = 32;  // Wider cells for better visibility
             int cellH = 20;
             int labelW = 80;  // Increased to fit volume slider

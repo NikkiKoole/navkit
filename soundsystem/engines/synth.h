@@ -36,6 +36,49 @@ typedef enum {
     WAVE_BIRD,       // Bird vocalization synthesis
 } WaveType;
 
+// LFO tempo sync divisions
+typedef enum {
+    LFO_SYNC_OFF = 0,   // Free rate in Hz
+    LFO_SYNC_4_1,       // 4 bars
+    LFO_SYNC_2_1,       // 2 bars
+    LFO_SYNC_1_1,       // 1 bar
+    LFO_SYNC_1_2,       // Half note
+    LFO_SYNC_1_4,       // Quarter note
+    LFO_SYNC_1_8,       // Eighth note
+    LFO_SYNC_1_16,      // Sixteenth note
+    LFO_SYNC_COUNT
+} LfoSyncDiv;
+
+// Arpeggiator modes
+typedef enum {
+    ARP_MODE_UP,
+    ARP_MODE_DOWN,
+    ARP_MODE_UPDOWN,
+    ARP_MODE_RANDOM,
+    ARP_MODE_COUNT
+} ArpMode;
+
+typedef enum {
+    ARP_CHORD_OCTAVE,      // Root, +1 oct, +2 oct
+    ARP_CHORD_MAJOR,       // Root, maj 3rd, 5th, octave
+    ARP_CHORD_MINOR,       // Root, min 3rd, 5th, octave
+    ARP_CHORD_DOM7,        // Root, maj 3rd, 5th, min 7th
+    ARP_CHORD_MIN7,        // Root, min 3rd, 5th, min 7th
+    ARP_CHORD_SUS4,        // Root, 4th, 5th, octave
+    ARP_CHORD_POWER,       // Root, 5th, octave
+    ARP_CHORD_COUNT
+} ArpChordType;
+
+// Arpeggiator rate divisions
+typedef enum {
+    ARP_RATE_1_4,    // Quarter note
+    ARP_RATE_1_8,    // Eighth note
+    ARP_RATE_1_16,   // Sixteenth note
+    ARP_RATE_1_32,   // Thirty-second note
+    ARP_RATE_FREE,   // Free rate in Hz
+    ARP_RATE_COUNT
+} ArpRateDiv;
+
 // Vowel types for formant synthesis
 typedef enum {
     VOWEL_A,    // "ah" as in father
@@ -328,11 +371,12 @@ typedef struct {
     int filterEnvStage;   // 0=off, 1=attack, 2=decay
     
     // Filter LFO
-    float filterLfoRate;  // LFO rate in Hz
+    float filterLfoRate;  // LFO rate in Hz (when not synced)
     float filterLfoDepth; // LFO depth (0-1)
     float filterLfoPhase; // LFO phase (0-1)
     int filterLfoShape;   // 0=sine, 1=tri, 2=square, 3=saw, 4=S&H
     float filterLfoSH;    // Sample & Hold current value
+    LfoSyncDiv filterLfoSync; // Tempo sync (LFO_SYNC_OFF = use filterLfoRate in Hz)
     
     // Resonance LFO
     float resoLfoRate;
@@ -357,11 +401,20 @@ typedef struct {
     
     // Arpeggiator
     bool arpEnabled;
-    float arpNotes[4];
+    float arpNotes[8];        // Expanded from 4
     int arpCount;
     int arpIndex;
-    float arpRate;
+    int arpDirection;         // +1 or -1 for UpDown mode
+    ArpMode arpMode;
+    ArpRateDiv arpRateDiv;
+    float arpRate;            // Hz when FREE mode
     float arpTimer;
+    
+    // Unison/Detune
+    int unisonCount;          // 1-4 oscillators (1 = off)
+    float unisonDetune;       // Spread in cents (0-50)
+    float unisonPhases[4];    // Per-oscillator phases
+    float unisonMix;          // Center vs spread balance (0-1)
     
     // SCW (wavetable) index
     int scwIndex;
@@ -463,6 +516,7 @@ typedef struct SynthContext {
     float noteFilterLfoRate;
     float noteFilterLfoDepth;
     int noteFilterLfoShape;
+    LfoSyncDiv noteFilterLfoSync;  // Tempo sync for filter LFO
     float noteResoLfoRate;
     float noteResoLfoDepth;
     int noteResoLfoShape;
@@ -473,6 +527,21 @@ typedef struct SynthContext {
     float notePitchLfoDepth;
     int notePitchLfoShape;
     int noteScwIndex;
+    
+    // Arpeggiator parameters
+    bool noteArpEnabled;
+    ArpMode noteArpMode;
+    ArpRateDiv noteArpRateDiv;
+    float noteArpRate;
+    ArpChordType noteArpChord;
+    
+    // Unison parameters
+    int noteUnisonCount;
+    float noteUnisonDetune;
+    float noteUnisonMix;
+    
+    // Global tempo (BPM)
+    float bpm;
     
     // Voice synthesis parameters
     float voiceFormantShift;
@@ -627,6 +696,24 @@ static void initSynthContext(SynthContext* ctx) {
     // Glide
     ctx->glideTime = 0.1f;
     
+    // Tempo
+    ctx->bpm = 120.0f;
+    
+    // Arpeggiator defaults
+    ctx->noteArpEnabled = false;
+    ctx->noteArpMode = ARP_MODE_UP;
+    ctx->noteArpRateDiv = ARP_RATE_1_8;
+    ctx->noteArpRate = 8.0f;
+    ctx->noteArpChord = ARP_CHORD_MAJOR;
+    
+    // Unison defaults
+    ctx->noteUnisonCount = 1;
+    ctx->noteUnisonDetune = 10.0f;
+    ctx->noteUnisonMix = 0.5f;
+    
+    // Filter LFO sync default
+    ctx->noteFilterLfoSync = LFO_SYNC_OFF;
+    
     // SFX randomization
     ctx->sfxRandomize = true;
 }
@@ -678,6 +765,7 @@ static void _ensureSynthCtx(void) {
 #define noteFilterLfoRate (synthCtx->noteFilterLfoRate)
 #define noteFilterLfoDepth (synthCtx->noteFilterLfoDepth)
 #define noteFilterLfoShape (synthCtx->noteFilterLfoShape)
+#define noteFilterLfoSync (synthCtx->noteFilterLfoSync)
 #define noteResoLfoRate (synthCtx->noteResoLfoRate)
 #define noteResoLfoDepth (synthCtx->noteResoLfoDepth)
 #define noteResoLfoShape (synthCtx->noteResoLfoShape)
@@ -688,6 +776,15 @@ static void _ensureSynthCtx(void) {
 #define notePitchLfoDepth (synthCtx->notePitchLfoDepth)
 #define notePitchLfoShape (synthCtx->notePitchLfoShape)
 #define noteScwIndex (synthCtx->noteScwIndex)
+#define noteArpEnabled (synthCtx->noteArpEnabled)
+#define noteArpMode (synthCtx->noteArpMode)
+#define noteArpRateDiv (synthCtx->noteArpRateDiv)
+#define noteArpRate (synthCtx->noteArpRate)
+#define noteArpChord (synthCtx->noteArpChord)
+#define noteUnisonCount (synthCtx->noteUnisonCount)
+#define noteUnisonDetune (synthCtx->noteUnisonDetune)
+#define noteUnisonMix (synthCtx->noteUnisonMix)
+#define synthBpm (synthCtx->bpm)
 #define voiceFormantShift (synthCtx->voiceFormantShift)
 #define voiceBreathiness (synthCtx->voiceBreathiness)
 #define voiceBuzziness (synthCtx->voiceBuzziness)
@@ -762,6 +859,104 @@ static float clampf(float x, float min, float max) {
 
 static float lerpf(float a, float b, float t) {
     return a * (1.0f - t) + b * t;
+}
+
+// Get LFO rate in Hz from tempo sync division
+static float getLfoRateFromSync(float bpm, LfoSyncDiv sync) {
+    if (sync == LFO_SYNC_OFF) return 0.0f;
+    
+    // Beats per second
+    float bps = bpm / 60.0f;
+    
+    switch (sync) {
+        case LFO_SYNC_4_1:  return bps / 16.0f;  // 4 bars = 16 beats
+        case LFO_SYNC_2_1:  return bps / 8.0f;   // 2 bars = 8 beats
+        case LFO_SYNC_1_1:  return bps / 4.0f;   // 1 bar = 4 beats
+        case LFO_SYNC_1_2:  return bps / 2.0f;   // Half note = 2 beats
+        case LFO_SYNC_1_4:  return bps;          // Quarter note = 1 beat
+        case LFO_SYNC_1_8:  return bps * 2.0f;   // Eighth note = 0.5 beats
+        case LFO_SYNC_1_16: return bps * 4.0f;   // Sixteenth note = 0.25 beats
+        default: return 0.0f;
+    }
+}
+
+// Get arpeggiator interval in seconds from tempo sync division
+static float getArpIntervalSeconds(float bpm, ArpRateDiv div) {
+    if (div == ARP_RATE_FREE) return 0.0f;
+    
+    float beatDuration = 60.0f / bpm;
+    
+    switch (div) {
+        case ARP_RATE_1_4:  return beatDuration;         // Quarter note
+        case ARP_RATE_1_8:  return beatDuration / 2.0f;  // Eighth note
+        case ARP_RATE_1_16: return beatDuration / 4.0f;  // Sixteenth note
+        case ARP_RATE_1_32: return beatDuration / 8.0f;  // Thirty-second note
+        default: return 0.0f;
+    }
+}
+
+// Build arp chord frequencies from root frequency
+// Returns number of notes in the chord
+static int buildArpChord(float rootFreq, ArpChordType chord, float *outFreqs) {
+    // Semitone intervals for each chord type
+    switch (chord) {
+        case ARP_CHORD_OCTAVE:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * 2.0f;
+            outFreqs[2] = rootFreq * 4.0f;
+            return 3;
+        case ARP_CHORD_MAJOR:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 4.0f / 12.0f);   // Major 3rd
+            outFreqs[2] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[3] = rootFreq * 2.0f;                        // Octave
+            return 4;
+        case ARP_CHORD_MINOR:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 3.0f / 12.0f);   // Minor 3rd
+            outFreqs[2] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[3] = rootFreq * 2.0f;                        // Octave
+            return 4;
+        case ARP_CHORD_DOM7:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 4.0f / 12.0f);   // Major 3rd
+            outFreqs[2] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[3] = rootFreq * powf(2.0f, 10.0f / 12.0f);  // Minor 7th
+            return 4;
+        case ARP_CHORD_MIN7:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 3.0f / 12.0f);   // Minor 3rd
+            outFreqs[2] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[3] = rootFreq * powf(2.0f, 10.0f / 12.0f);  // Minor 7th
+            return 4;
+        case ARP_CHORD_SUS4:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 5.0f / 12.0f);   // Perfect 4th
+            outFreqs[2] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[3] = rootFreq * 2.0f;                        // Octave
+            return 4;
+        case ARP_CHORD_POWER:
+            outFreqs[0] = rootFreq;
+            outFreqs[1] = rootFreq * powf(2.0f, 7.0f / 12.0f);   // Perfect 5th
+            outFreqs[2] = rootFreq * 2.0f;                        // Octave
+            return 3;
+        default:
+            outFreqs[0] = rootFreq;
+            return 1;
+    }
+}
+
+// Get frequency multiplier for a unison oscillator (spread evenly around center)
+// oscIndex: 0 to count-1, count: total oscillators, cents: total spread in cents
+static float getUnisonDetuneMultiplier(int oscIndex, int count, float cents) {
+    if (count <= 1 || cents <= 0.0f) return 1.0f;
+    
+    // Spread oscillators evenly from -cents/2 to +cents/2
+    float spread = cents / 2.0f;
+    float position = ((float)oscIndex / (float)(count - 1)) * 2.0f - 1.0f;  // -1 to +1
+    float detuneCents = position * spread;
+    
+    return powf(2.0f, detuneCents / 1200.0f);  // Cents to frequency multiplier
 }
 
 // Process an LFO and return modulation value (-1 to 1 range, scaled by depth)
@@ -2185,12 +2380,48 @@ static float processVoice(Voice *v, float sampleRate) {
     
     float dt = 1.0f / sampleRate;
     
-    // Arpeggiator
+    // Arpeggiator (enhanced with modes and tempo sync)
     if (v->arpEnabled && v->arpCount > 0) {
+        // Calculate interval (tempo-synced or free rate)
+        float interval;
+        if (v->arpRateDiv != ARP_RATE_FREE) {
+            interval = getArpIntervalSeconds(synthBpm, v->arpRateDiv);
+        } else {
+            interval = (v->arpRate > 0.0f) ? (1.0f / v->arpRate) : 0.125f;
+        }
+        
         v->arpTimer += dt;
-        if (v->arpTimer >= 1.0f / v->arpRate) {
+        if (v->arpTimer >= interval) {
             v->arpTimer = 0.0f;
-            v->arpIndex = (v->arpIndex + 1) % v->arpCount;
+            
+            // Advance based on mode
+            switch (v->arpMode) {
+                case ARP_MODE_UP:
+                    v->arpIndex = (v->arpIndex + 1) % v->arpCount;
+                    break;
+                case ARP_MODE_DOWN:
+                    v->arpIndex = (v->arpIndex - 1 + v->arpCount) % v->arpCount;
+                    break;
+                case ARP_MODE_UPDOWN:
+                    v->arpIndex += v->arpDirection;
+                    if (v->arpIndex >= v->arpCount - 1) {
+                        v->arpIndex = v->arpCount - 1;
+                        v->arpDirection = -1;
+                    } else if (v->arpIndex <= 0) {
+                        v->arpIndex = 0;
+                        v->arpDirection = 1;
+                    }
+                    break;
+                case ARP_MODE_RANDOM:
+                    v->arpIndex = (int)(((float)(synthNoiseState >> 16) / 65535.0f) * v->arpCount);
+                    synthNoiseState = synthNoiseState * 1103515245 + 12345;
+                    if (v->arpIndex >= v->arpCount) v->arpIndex = v->arpCount - 1;
+                    break;
+                default:
+                    v->arpIndex = (v->arpIndex + 1) % v->arpCount;
+                    break;
+            }
+            
             v->baseFrequency = v->arpNotes[v->arpIndex];
         }
     }
@@ -2257,13 +2488,49 @@ static float processVoice(Voice *v, float sampleRate) {
     float sample = 0.0f;
     switch (v->wave) {
         case WAVE_SQUARE:
-            sample = v->phase < pw ? 1.0f : -1.0f;
+            // Unison support for square wave
+            if (v->unisonCount > 1) {
+                float phaseInc = v->frequency / sampleRate;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    v->unisonPhases[u] += phaseInc * detune;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    sample += (v->unisonPhases[u] < pw ? 1.0f : -1.0f);
+                }
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = v->phase < pw ? 1.0f : -1.0f;
+            }
             break;
         case WAVE_SAW:
-            sample = 2.0f * v->phase - 1.0f;
+            // Unison support for saw wave
+            if (v->unisonCount > 1) {
+                float phaseInc = v->frequency / sampleRate;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    v->unisonPhases[u] += phaseInc * detune;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    sample += 2.0f * v->unisonPhases[u] - 1.0f;
+                }
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = 2.0f * v->phase - 1.0f;
+            }
             break;
         case WAVE_TRIANGLE:
-            sample = 4.0f * fabsf(v->phase - 0.5f) - 1.0f;
+            // Unison support for triangle wave
+            if (v->unisonCount > 1) {
+                float phaseInc = v->frequency / sampleRate;
+                for (int u = 0; u < v->unisonCount; u++) {
+                    float detune = getUnisonDetuneMultiplier(u, v->unisonCount, v->unisonDetune);
+                    v->unisonPhases[u] += phaseInc * detune;
+                    if (v->unisonPhases[u] >= 1.0f) v->unisonPhases[u] -= 1.0f;
+                    sample += 4.0f * fabsf(v->unisonPhases[u] - 0.5f) - 1.0f;
+                }
+                sample /= (float)v->unisonCount;
+            } else {
+                sample = 4.0f * fabsf(v->phase - 0.5f) - 1.0f;
+            }
             break;
         case WAVE_NOISE:
             sample = noise();
@@ -2338,8 +2605,13 @@ static float processVoice(Voice *v, float sampleRate) {
     }
     
     // Process LFOs
+    // Filter LFO: use synced rate if enabled, otherwise use free rate
+    float filterLfoRate = v->filterLfoRate;
+    if (v->filterLfoSync != LFO_SYNC_OFF) {
+        filterLfoRate = getLfoRateFromSync(synthBpm, v->filterLfoSync);
+    }
     float filterLfoMod = processLfo(&v->filterLfoPhase, &v->filterLfoSH, 
-                                     v->filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
+                                     filterLfoRate, v->filterLfoDepth, v->filterLfoShape, dt);
     float resoLfoMod = processLfo(&v->resoLfoPhase, &v->resoLfoSH,
                                    v->resoLfoRate, v->resoLfoDepth, v->resoLfoShape, dt);
     float ampLfoMod = processLfo(&v->ampLfoPhase, &v->ampLfoSH,
@@ -2422,6 +2694,7 @@ static void resetVoiceLfos(Voice *v, bool useGlobalParams) {
         v->filterLfoRate = noteFilterLfoRate;
         v->filterLfoDepth = noteFilterLfoDepth;
         v->filterLfoShape = noteFilterLfoShape;
+        v->filterLfoSync = noteFilterLfoSync;
         v->resoLfoRate = noteResoLfoRate;
         v->resoLfoDepth = noteResoLfoDepth;
         v->resoLfoShape = noteResoLfoShape;
@@ -2435,6 +2708,7 @@ static void resetVoiceLfos(Voice *v, bool useGlobalParams) {
         v->filterLfoRate = 0.0f;
         v->filterLfoDepth = 0.0f;
         v->filterLfoShape = 0;
+        v->filterLfoSync = LFO_SYNC_OFF;
         v->resoLfoRate = 0.0f;
         v->resoLfoDepth = 0.0f;
         v->resoLfoShape = 0;
@@ -2559,11 +2833,75 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
     v->filterCutoff = params->useGlobalFilter ? noteFilterCutoff : params->filterCutoff;
     v->filterResonance = params->useGlobalFilter ? noteFilterResonance : params->filterResonance;
     
-    v->arpEnabled = false;
+    // Initialize arpeggiator from global params if enabled
+    if (noteArpEnabled && params->useGlobalLfos) {
+        float chordFreqs[8];
+        int chordCount = buildArpChord(freq, noteArpChord, chordFreqs);
+        v->arpEnabled = true;
+        v->arpCount = chordCount;
+        for (int i = 0; i < chordCount; i++) {
+            v->arpNotes[i] = chordFreqs[i];
+        }
+        v->arpIndex = 0;
+        v->arpDirection = 1;
+        v->arpMode = noteArpMode;
+        v->arpRateDiv = noteArpRateDiv;
+        v->arpRate = noteArpRate;
+        v->arpTimer = 0.0f;
+        v->baseFrequency = v->arpNotes[0];
+    } else {
+        v->arpEnabled = false;
+    }
     v->scwIndex = -1;
+    
+    // Initialize unison from global params (for synth waves only)
+    if (params->useGlobalLfos && (wave == WAVE_SQUARE || wave == WAVE_SAW || wave == WAVE_TRIANGLE)) {
+        v->unisonCount = noteUnisonCount;
+        v->unisonDetune = noteUnisonDetune;
+        v->unisonMix = noteUnisonMix;
+        // Initialize phases on new notes (not glide)
+        if (!isGlide) {
+            for (int i = 0; i < 4; i++) {
+                v->unisonPhases[i] = (float)(synthNoiseState >> 16) / 65535.0f;
+                synthNoiseState = synthNoiseState * 1103515245 + 12345;
+            }
+        }
+    } else {
+        v->unisonCount = 1;
+        v->unisonDetune = 0.0f;
+        v->unisonMix = 0.5f;
+    }
     
     if (outIsGlide) *outIsGlide = isGlide;
     return voiceIdx;
+}
+
+// Helper to set up arpeggiator notes from an array of frequencies
+static void setArpNotes(Voice *v, float *freqs, int count, ArpMode mode, ArpRateDiv rateDiv, float freeRate) {
+    v->arpEnabled = true;
+    v->arpCount = (count > 8) ? 8 : count;
+    for (int i = 0; i < v->arpCount; i++) {
+        v->arpNotes[i] = freqs[i];
+    }
+    v->arpIndex = 0;
+    v->arpDirection = 1;  // Start going up for UpDown mode
+    v->arpMode = mode;
+    v->arpRateDiv = rateDiv;
+    v->arpRate = freeRate;
+    v->arpTimer = 0.0f;
+    v->baseFrequency = v->arpNotes[0];
+}
+
+// Helper to initialize unison on a voice
+static void initUnison(Voice *v, int count, float detuneCents, float mix) {
+    v->unisonCount = (count < 1) ? 1 : ((count > 4) ? 4 : count);
+    v->unisonDetune = detuneCents;
+    v->unisonMix = mix;
+    // Randomize initial phases for richer sound
+    for (int i = 0; i < 4; i++) {
+        v->unisonPhases[i] = (float)(synthNoiseState >> 16) / 65535.0f;
+        synthNoiseState = synthNoiseState * 1103515245 + 12345;
+    }
 }
 
 // ============================================================================

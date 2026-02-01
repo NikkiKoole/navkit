@@ -244,7 +244,7 @@ bool DraggableFloat(float x, float y, const char* label, float* value, float spe
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -284,7 +284,7 @@ bool DraggableInt(float x, float y, const char* label, int* value, float speed, 
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -330,7 +330,7 @@ bool DraggableIntLog(float x, float y, const char* label, int* value, float spee
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -379,7 +379,7 @@ void ToggleBool(float x, float y, const char* label, bool* value) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -399,7 +399,7 @@ bool PushButton(float x, float y, const char* label) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%s]", label);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -420,7 +420,7 @@ float PushButtonInline(float x, float y, const char* label, bool* clicked) {
     char buf[64];
     snprintf(buf, sizeof(buf), "[%s]", label);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -441,7 +441,7 @@ void CycleOption(float x, float y, const char* label, const char** options, int 
     char buf[128];
     snprintf(buf, sizeof(buf), "%s: < %s >", label, options[*value]);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -465,7 +465,7 @@ bool SectionHeader(float x, float y, const char* label, bool* open) {
     char buf[128];
     snprintf(buf, sizeof(buf), "[%c] %s", *open ? '-' : '+', label);
 
-    int textWidth = MeasureText(buf, 14);
+    int textWidth = MeasureTextUI(buf, 14);
     Rectangle bounds = {x, y, (float)textWidth + 10, 18};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -685,7 +685,7 @@ bool DraggableFloatT(float x, float y, const char* label, float* value, float sp
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %.2f", label, *value);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -728,7 +728,7 @@ bool DraggableIntT(float x, float y, const char* label, int* value, float speed,
     char buf[64];
     snprintf(buf, sizeof(buf), "%s: %d", label, *value);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);
@@ -777,7 +777,7 @@ void ToggleBoolT(float x, float y, const char* label, bool* value, const char* t
     char buf[64];
     snprintf(buf, sizeof(buf), "[%c] %s", *value ? 'X' : ' ', label);
 
-    int textWidth = MeasureText(buf, 18);
+    int textWidth = MeasureTextUI(buf, 18);
     Rectangle bounds = {x, y, (float)textWidth + 10, 20};
     Vector2 mouse = GetMousePosition();
     bool hovered = CheckCollisionPointRec(mouse, bounds);

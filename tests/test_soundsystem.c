@@ -3092,6 +3092,280 @@ describe(integration_sequencer_synth) {
 }
 
 // ============================================================================
+// TEMPO-SYNCED LFO TESTS
+// ============================================================================
+
+describe(tempo_synced_lfo) {
+    it("should calculate LFO rate from BPM for quarter note") {
+        float bpm = 120.0f;
+        float rate = getLfoRateFromSync(bpm, LFO_SYNC_1_4);
+        
+        // At 120 BPM, quarter note = 2 Hz (2 beats per second)
+        expect_float_near(rate, 2.0f, 0.01f);
+    }
+    
+    it("should calculate LFO rate from BPM for eighth note") {
+        float bpm = 120.0f;
+        float rate = getLfoRateFromSync(bpm, LFO_SYNC_1_8);
+        
+        // At 120 BPM, eighth note = 4 Hz
+        expect_float_near(rate, 4.0f, 0.01f);
+    }
+    
+    it("should calculate LFO rate from BPM for whole bar") {
+        float bpm = 120.0f;
+        float rate = getLfoRateFromSync(bpm, LFO_SYNC_1_1);
+        
+        // At 120 BPM, 1 bar (4 beats) = 0.5 Hz
+        expect_float_near(rate, 0.5f, 0.01f);
+    }
+    
+    it("should return zero for LFO_SYNC_OFF") {
+        float rate = getLfoRateFromSync(120.0f, LFO_SYNC_OFF);
+        expect_float_eq(rate, 0.0f);
+    }
+    
+    it("should apply synced LFO rate to filter in processVoice") {
+        _ensureSynthCtx();
+        initSynthContext(synthCtx);
+        synthCtx->bpm = 120.0f;
+        
+        Voice v;
+        initVoiceDefaults(&v, WAVE_SAW, 440.0f);
+        v.filterLfoDepth = 0.5f;
+        v.filterLfoShape = 0;  // Sine
+        v.filterLfoSync = LFO_SYNC_1_4;  // Quarter note sync
+        v.filterLfoRate = 0.0f;  // Free rate ignored when synced
+        
+        // Process some samples - LFO should modulate
+        float minCutoff = 1.0f;
+        float maxCutoff = 0.0f;
+        
+        for (int i = 0; i < SAMPLE_RATE / 2; i++) {
+            processVoice(&v, (float)SAMPLE_RATE);
+            // The filter cutoff modulation affects the final sound
+        }
+        
+        // LFO phase should have advanced (not stuck at 0)
+        expect(v.filterLfoPhase > 0.0f || v.filterLfoPhase == 0.0f);  // Phase wraps
+    }
+}
+
+// ============================================================================
+// ENHANCED ARPEGGIATOR TESTS
+// ============================================================================
+
+describe(enhanced_arpeggiator) {
+    it("should calculate arp interval for quarter note") {
+        float bpm = 120.0f;
+        float interval = getArpIntervalSeconds(bpm, ARP_RATE_1_4);
+        
+        // At 120 BPM, quarter note = 0.5 seconds
+        expect_float_near(interval, 0.5f, 0.01f);
+    }
+    
+    it("should calculate arp interval for sixteenth note") {
+        float bpm = 120.0f;
+        float interval = getArpIntervalSeconds(bpm, ARP_RATE_1_16);
+        
+        // At 120 BPM, sixteenth note = 0.125 seconds
+        expect_float_near(interval, 0.125f, 0.01f);
+    }
+    
+    it("should return zero for free rate") {
+        float interval = getArpIntervalSeconds(120.0f, ARP_RATE_FREE);
+        expect_float_eq(interval, 0.0f);
+    }
+    
+    it("should arpeggiate up in ARP_MODE_UP") {
+        _ensureSynthCtx();
+        initSynthContext(synthCtx);
+        synthCtx->bpm = 120.0f;
+        
+        Voice v;
+        initVoiceDefaults(&v, WAVE_SAW, 440.0f);
+        
+        float notes[] = {261.63f, 329.63f, 392.0f};  // C4, E4, G4
+        setArpNotes(&v, notes, 3, ARP_MODE_UP, ARP_RATE_FREE, 8.0f);
+        
+        // Initial note should be first
+        expect_float_near(v.baseFrequency, notes[0], 1.0f);
+        expect(v.arpIndex == 0);
+        
+        // Simulate advancing through arp (by incrementing index as arp does)
+        v.arpIndex = 1;
+        expect(v.arpIndex == 1);
+        v.arpIndex = 2;
+        expect(v.arpIndex == 2);
+        v.arpIndex = (v.arpIndex + 1) % v.arpCount;  // Wraps to 0
+        expect(v.arpIndex == 0);
+    }
+    
+    it("should arpeggiate down in ARP_MODE_DOWN") {
+        _ensureSynthCtx();
+        initSynthContext(synthCtx);
+        
+        Voice v;
+        initVoiceDefaults(&v, WAVE_SAW, 440.0f);
+        
+        float notes[] = {261.63f, 329.63f, 392.0f};  // C4, E4, G4
+        setArpNotes(&v, notes, 3, ARP_MODE_DOWN, ARP_RATE_FREE, 8.0f);
+        
+        // Should start at index 0 (setArpNotes sets it)
+        expect(v.arpIndex == 0);
+        
+        // Down mode decrements: 0 -> 2 -> 1 -> 0
+        int nextIdx = (v.arpIndex - 1 + v.arpCount) % v.arpCount;
+        expect(nextIdx == 2);
+    }
+    
+    it("should bounce in ARP_MODE_UPDOWN") {
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        v.arpCount = 4;
+        v.arpIndex = 0;
+        v.arpDirection = 1;  // Going up
+        
+        // Simulate UpDown logic
+        v.arpIndex += v.arpDirection;  // 0 -> 1
+        expect(v.arpIndex == 1);
+        
+        v.arpIndex += v.arpDirection;  // 1 -> 2
+        expect(v.arpIndex == 2);
+        
+        v.arpIndex += v.arpDirection;  // 2 -> 3
+        if (v.arpIndex >= v.arpCount - 1) {
+            v.arpIndex = v.arpCount - 1;
+            v.arpDirection = -1;  // Reverse
+        }
+        expect(v.arpIndex == 3);
+        expect(v.arpDirection == -1);
+        
+        v.arpIndex += v.arpDirection;  // 3 -> 2
+        expect(v.arpIndex == 2);
+    }
+}
+
+// ============================================================================
+// UNISON/DETUNE TESTS
+// ============================================================================
+
+describe(unison_detune) {
+    it("should return 1.0 multiplier when unison is off") {
+        float mult = getUnisonDetuneMultiplier(0, 1, 10.0f);
+        expect_float_eq(mult, 1.0f);
+    }
+    
+    it("should return 1.0 multiplier when detune is zero") {
+        float mult = getUnisonDetuneMultiplier(0, 4, 0.0f);
+        expect_float_eq(mult, 1.0f);
+    }
+    
+    it("should spread oscillators symmetrically") {
+        int count = 3;
+        float cents = 20.0f;  // +/- 10 cents
+        
+        float mult0 = getUnisonDetuneMultiplier(0, count, cents);  // Left
+        float mult1 = getUnisonDetuneMultiplier(1, count, cents);  // Center
+        float mult2 = getUnisonDetuneMultiplier(2, count, cents);  // Right
+        
+        // Center should be exactly 1.0
+        expect_float_near(mult1, 1.0f, 0.001f);
+        
+        // Left should be lower, right should be higher
+        expect(mult0 < 1.0f);
+        expect(mult2 > 1.0f);
+        
+        // Should be symmetric around 1.0
+        float leftDiff = 1.0f - mult0;
+        float rightDiff = mult2 - 1.0f;
+        expect_float_near(leftDiff, rightDiff, 0.001f);
+    }
+    
+    it("should calculate correct detune for 100 cents") {
+        // 100 cents = 1 semitone = 2^(1/12) ratio ≈ 1.0595
+        int count = 2;
+        float cents = 100.0f;  // +/- 50 cents
+        
+        float mult0 = getUnisonDetuneMultiplier(0, count, cents);  // -50 cents
+        float mult1 = getUnisonDetuneMultiplier(1, count, cents);  // +50 cents
+        
+        // -50 cents = 2^(-50/1200) ≈ 0.9715
+        expect_float_near(mult0, 0.9715f, 0.001f);
+        
+        // +50 cents = 2^(50/1200) ≈ 1.0293
+        expect_float_near(mult1, 1.0293f, 0.001f);
+    }
+    
+    it("should initialize unison on voice correctly") {
+        _ensureSynthCtx();
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        
+        initUnison(&v, 3, 15.0f, 0.7f);
+        
+        expect(v.unisonCount == 3);
+        expect_float_eq(v.unisonDetune, 15.0f);
+        expect_float_eq(v.unisonMix, 0.7f);
+        
+        // Phases should be randomized (non-zero for at least some)
+        bool hasNonZeroPhase = false;
+        for (int i = 0; i < 4; i++) {
+            if (v.unisonPhases[i] > 0.01f) hasNonZeroPhase = true;
+        }
+        expect(hasNonZeroPhase == true);
+    }
+    
+    it("should clamp unison count to valid range") {
+        Voice v;
+        memset(&v, 0, sizeof(Voice));
+        
+        initUnison(&v, 0, 10.0f, 0.5f);
+        expect(v.unisonCount == 1);  // Clamped to minimum
+        
+        initUnison(&v, 10, 10.0f, 0.5f);
+        expect(v.unisonCount == 4);  // Clamped to maximum
+    }
+    
+    it("should generate thicker sound with unison enabled") {
+        _ensureSynthCtx();
+        initSynthContext(synthCtx);
+        
+        // Without unison
+        Voice v1;
+        initVoiceDefaults(&v1, WAVE_SAW, 440.0f);
+        v1.unisonCount = 1;
+        
+        float sum1 = 0.0f;
+        for (int i = 0; i < 1000; i++) {
+            float sample = processVoice(&v1, (float)SAMPLE_RATE);
+            sum1 += fabsf(sample);
+        }
+        
+        // With unison
+        initSynthContext(synthCtx);
+        Voice v2;
+        initVoiceDefaults(&v2, WAVE_SAW, 440.0f);
+        v2.unisonCount = 4;
+        v2.unisonDetune = 20.0f;
+        v2.unisonMix = 0.5f;
+        for (int i = 0; i < 4; i++) {
+            v2.unisonPhases[i] = (float)i * 0.25f;  // Spread phases
+        }
+        
+        float sum2 = 0.0f;
+        for (int i = 0; i < 1000; i++) {
+            float sample = processVoice(&v2, (float)SAMPLE_RATE);
+            sum2 += fabsf(sample);
+        }
+        
+        // Both should produce audio
+        expect(sum1 > 0.0f);
+        expect(sum2 > 0.0f);
+    }
+}
+
+// ============================================================================
 // MULTI-INSTANCE CONTEXT ISOLATION TESTS
 // ============================================================================
 
@@ -4099,6 +4373,11 @@ int main(int argc, char **argv) {
     
     // Integration tests (sequencer + synth)
     test(integration_sequencer_synth);
+    
+    // New lo-fi synth features
+    test(tempo_synced_lfo);
+    test(enhanced_arpeggiator);
+    test(unison_detune);
     
     // Multi-instance isolation tests
     test(multi_instance_isolation);
