@@ -1944,14 +1944,20 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
     int startChunk = GetChunk(start.x, start.y, start.z);
     int goalChunk = GetChunk(goal.x, goal.y, goal.z);
 
-    // Special case: start and goal in same chunk (and same z-level) - just do local A*
+    // Special case: start and goal in same chunk - try local A* first
     if (startChunk == goalChunk) {
-        int minX, minY, maxX, maxY, chunkZ;
-        GetChunkBounds(startChunk, &minX, &minY, &maxX, &maxY, &chunkZ);
         resultLen = ReconstructLocalPath(start.x, start.y, start.z, 
                                          goal.x, goal.y, goal.z, outPath, maxLen);
-        lastPathTime = (GetTime() - startTime) * 1000.0;
-        return resultLen;
+        if (resultLen > 0) {
+            lastPathTime = (GetTime() - startTime) * 1000.0;
+            return resultLen;  // Found path locally, done
+        }
+        // Local failed - check if cross-z connections might help
+        if (rampCount == 0 && ladderLinkCount == 0) {
+            lastPathTime = (GetTime() - startTime) * 1000.0;
+            return 0;  // No cross-z connections exist, no path possible
+        }
+        // Fall through to full HPA* search - cross-z might provide a path
     }
 
     // Temporary entrance indices for start and goal

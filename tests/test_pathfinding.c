@@ -2314,12 +2314,97 @@ describe(hpa_ladder_pathfinding) {
         expect(entranceCount == initialEntranceCount);
         expect(ladderLinkCount == initialLadderCount);
     }
+
+    it("HPA* finds same-chunk cross-z path via ramps") {
+        // Test that HPA* falls through to full search when local A* fails
+        // and cross-z connections (ramps) exist.
+        //
+        // Setup (32x32 grid, 8x8 chunks):
+        // - Start at (8, 17, z1), Goal at (15, 17, z1) - both in same chunk
+        // - Cells x=10-13 at z1 are NOT walkable (above air at z0)
+        // - Ramps at z0 connect the walkable areas via z0
+        
+        InitGridWithSize(32, 32);
+        FillGroundLevel();  // z0 = dirt, z1 = air above dirt (walkable)
+        
+        // Channel out air at z0 spanning entire grid height
+        for (int y = 0; y < 32; y++) {
+            for (int x = 10; x <= 13; x++) {
+                grid[0][y][x] = CELL_AIR;
+            }
+        }
+        
+        // West ramp: at (10,17,z0) pointing west -> exit at (9,17,z1)
+        grid[0][17][10] = CELL_RAMP_W;
+        
+        // East ramp: at (13,17,z0) pointing east -> exit at (14,17,z1)  
+        grid[0][17][13] = CELL_RAMP_E;
+        
+        // Floor in pit for z0 walkable path between the ramps
+        grid[0][17][11] = CELL_FLOOR;
+        grid[0][17][12] = CELL_FLOOR;
+        
+        BuildEntrances();
+        BuildGraph();
+        
+        expect(rampLinkCount >= 2);
+        
+        Point start = {8, 17, 1};
+        Point goal = {15, 17, 1};
+        Point outPath[MAX_PATH];
+        
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+        
+        expect(astarLen > 0);
+        expect(hpaLen > 0);
+        expect(hpaLen == astarLen);  // Should find same length path
+    }
+
+    it("HPA* finds same-chunk cross-z path via ladders") {
+        // Same test but with ladders instead of ramps
+        //
+        // Setup: Wall at z0 blocks z0 path, ladders connect to z1 to go around
+        
+        InitGridWithSize(32, 32);
+        // z0 is AIR, walkable via implicit bedrock at z=-1
+        
+        // Wall at z0 spanning entire grid height
+        for (int y = 0; y < 32; y++) {
+            grid[0][y][12] = CELL_WALL;
+        }
+        
+        // Solid dirt at z0 makes z1 walkable for bypass
+        for (int x = 10; x <= 14; x++) {
+            grid[0][17][x] = CELL_DIRT;
+        }
+        grid[0][17][12] = CELL_WALL;  // Keep wall
+        
+        // Ladders on each side of the wall
+        grid[0][17][10] = CELL_LADDER;
+        grid[1][17][10] = CELL_LADDER;
+        grid[0][17][14] = CELL_LADDER;
+        grid[1][17][14] = CELL_LADDER;
+        
+        BuildEntrances();
+        BuildGraph();
+        
+        expect(ladderLinkCount >= 2);
+        
+        Point start = {8, 17, 0};
+        Point goal = {15, 17, 0};
+        Point outPath[MAX_PATH];
+        
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+        
+        expect(astarLen > 0);
+        expect(hpaLen > 0);
+        expect(hpaLen == astarLen);  // Should find same length path
+    }
 }
 
-// ============== HPA* RAMP / CROSS-Z SAME-LEVEL TESTS ==============
-// These tests document cases where A* finds a path but HPA* doesn't.
-// The issue: when start and goal are on the same z-level but the direct
-// path is blocked, requiring a detour through a different z-level via ramps.
+// ============== HPA* RAMP BASIC TESTS ==============
 
 describe(hpa_ramp_pathfinding) {
     // Test: same z-level, direct path blocked, must go down via ramp and back up
@@ -2367,144 +2452,6 @@ describe(hpa_ramp_pathfinding) {
         int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
         expect(astarLen > 0);
     }
-    
-    it("HPA* fails when start/goal in same chunk but cross-z path needed (KNOWN BUG)") {
-        // This reproduces the bug from save 2026-02-02_22-01-11.bin.gz
-        // 
-        // The bug: HPA* has a "same chunk" shortcut that does local A* only.
-        // Local A* can't cross z-levels. When start and goal are in the same
-        // chunk but separated by non-walkable terrain, HPA* fails even though
-        // a valid path exists via ramps on a different z-level.
-        //
-        // Setup (32x32 grid, 8x8 chunks):
-        // - Start at (9, 17, z1), Goal at (14, 17, z1) - both in chunk (1,2)
-        // - Cells x=10-13 at z1 are NOT walkable (above air at z0)
-        // - Ramps at z0 connect the walkable areas via z0
-        //
-        // With 8x8 chunks: chunk (1,2) covers x=8-15, y=16-23
-        // So start(9,17) and goal(14,17) are BOTH in chunk (1,2) = chunkID 25 at z1
-        
-        InitGridWithSize(32, 32);
-        FillGroundLevel();  // z0 = dirt, z1 = air above dirt (walkable)
-        
-        // Channel out a WALL of air at z0 spanning ENTIRE grid height (y=0-31)
-        // This blocks ALL z1 paths - no way around at z1
-        for (int y = 0; y < 32; y++) {
-            for (int x = 10; x <= 13; x++) {
-                grid[0][y][x] = CELL_AIR;
-            }
-        }
-        
-        // West ramp: at (10,17,z0) pointing west -> exit at (9,17,z1)
-        grid[0][17][10] = CELL_RAMP_W;
-        
-        // East ramp: at (13,17,z0) pointing east -> exit at (14,17,z1)  
-        grid[0][17][13] = CELL_RAMP_E;
-        
-        // Floor in pit for z0 walkable path between the ramps
-        grid[0][17][11] = CELL_FLOOR;
-        grid[0][17][12] = CELL_FLOOR;
-        
-        BuildEntrances();
-        BuildGraph();
-        
-        // Verify ramps detected
-        expect(rampLinkCount >= 2);
-        
-        // Both start and goal in chunk (1,2) at z1 = chunkID 25
-        // Start is at x=8 (above dirt), goal at x=15 (above dirt)
-        // Ramp exits are at x=9 and x=14, so start/goal are NOT directly on ramps
-        Point start = {8, 17, 1};   // Walkable at z1 (above dirt, not ramp exit)
-        Point goal = {15, 17, 1};   // Walkable at z1 (above dirt, not ramp exit)
-        Point outPath[MAX_PATH];
-        
-        // Verify walkability
-        expect(IsCellWalkableAt(1, 17, 8) == true);   // start (above dirt)
-        expect(IsCellWalkableAt(1, 17, 15) == true);  // goal (above dirt)
-        expect(IsCellWalkableAt(1, 17, 9) == true);   // ramp exit west
-        expect(IsCellWalkableAt(1, 17, 14) == true);  // ramp exit east
-        expect(IsCellWalkableAt(1, 17, 11) == false); // middle not walkable (above air)
-        
-        // A* should find path (down ramp at z1->z0, walk z0, up ramp z0->z1)
-        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
-        expect(astarLen > 0);
-        
-        // HPA* fails because same-chunk shortcut does local A* which can't cross z
-        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
-        
-        // KNOWN BUG: HPA* returns 0 for same-chunk cross-z paths
-        // When fixed, change to: expect(hpaLen > 0);
-        expect(hpaLen == 0);
-    }
-    
-    it("HPA* fails with ladders when start/goal in same chunk but cross-z needed (KNOWN BUG)") {
-        // Same test as ramps but with ladders - verify the limitation exists for both
-        //
-        // Setup: Wall at z0 blocks z0 path, ladders connect to z1 to go around
-        // Path must go: z0 -> ladder up -> z1 -> walk -> ladder down -> z0
-        //
-        // Key difference from ramps: With ramps you walk at z1 and dip into z0 pit
-        // With ladders here we walk at z0 (bedrock) and go up to z1 to bypass wall
-        
-        InitGridWithSize(32, 32);
-        // Don't fill ground - z0 is AIR, walkable via implicit bedrock at z=-1
-        
-        // Create a wall at z0 spanning entire grid height (blocks all z0 paths)
-        for (int y = 0; y < 32; y++) {
-            grid[0][y][12] = CELL_WALL;
-        }
-        
-        // We need z1 to be walkable where we walk around the wall
-        // z1 needs solid below it - use DIRT (CELL_FLOOR isn't solid)
-        for (int x = 10; x <= 14; x++) {
-            grid[0][17][x] = CELL_DIRT;  // Solid dirt at z0 makes z1 walkable
-        }
-        grid[0][17][12] = CELL_WALL;  // Keep wall at x=12
-        
-        // Place ladders on each side of the wall
-        // West ladder at x=10 (connects z0 to z1)
-        grid[0][17][10] = CELL_LADDER;
-        grid[1][17][10] = CELL_LADDER;
-        
-        // East ladder at x=14 (connects z0 to z1)
-        grid[0][17][14] = CELL_LADDER;
-        grid[1][17][14] = CELL_LADDER;
-        
-        BuildEntrances();
-        BuildGraph();
-        
-        // Verify ladders detected
-        expect(ladderLinkCount >= 2);
-        
-        // Both start and goal in same chunk at z0
-        Point start = {8, 17, 0};   // West of wall at z0
-        Point goal = {15, 17, 0};   // East of wall at z0
-        Point outPath[MAX_PATH];
-        
-        // Verify walkability at z0
-        expect(IsCellWalkableAt(0, 17, 8) == true);   // start (air above bedrock)
-        expect(IsCellWalkableAt(0, 17, 15) == true);  // goal (air above bedrock)
-        expect(IsCellWalkableAt(0, 17, 12) == false); // wall blocks
-        
-        // Verify z1 bypass path exists
-        expect(IsCellWalkableAt(1, 17, 10) == true);  // west ladder at z1
-        expect(IsCellWalkableAt(1, 17, 11) == true);  // z1 above floor
-        expect(IsCellWalkableAt(1, 17, 13) == true);  // z1 above floor
-        expect(IsCellWalkableAt(1, 17, 14) == true);  // east ladder at z1
-        
-        // A* should find path (up ladder, across z1, down ladder)
-        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
-        printf("A* len: %d, ladder links: %d\n", astarLen, ladderLinkCount);
-        expect(astarLen > 0);
-        
-        // Does HPA* have the same limitation with ladders?
-        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
-        
-        // If this fails (hpaLen > 0), then ladders work but ramps don't
-        // If this passes (hpaLen == 0), then the limitation affects both
-        expect(hpaLen == 0);  // Expected: same limitation as ramps
-    }
-    
 }
 
 // ============== JPS+ 3D LADDER TESTS ==============
