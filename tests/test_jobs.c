@@ -4322,6 +4322,76 @@ describe(channel_workgiver) {
     }
 }
 
+describe(channel_hpa_ramp_links) {
+    it("should update HPA ramp links after channeling creates ramp") {
+        // Same setup as "should create ramp when wall adjacent at z-1"
+        // We use A* for pathfinding but verify that HPA graph (rampLinkCount) updates
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        // z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
+        int channelZ = 2;
+        int rampZ = 1;
+        
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_WALL;
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
+            }
+        }
+        
+        // Use A* for pathfinding (HPA* doesn't work on single-chunk grids)
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        InitDesignations();
+        
+        // Build initial HPA graph - should have 0 ramp links
+        BuildEntrances();
+        BuildGraph();
+        int initialRampLinks = rampLinkCount;
+        expect(initialRampLinks == 0);
+        
+        // Mover at (2,2) on channelZ - exactly on channel target
+        Mover* m = &movers[0];
+        Point goal = {2, 2, channelZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)channelZ, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate channel
+        bool designated = DesignateChannel(2, 2, channelZ);
+        expect(designated == true);
+        
+        // Run simulation until channeling completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (!HasChannelDesignation(2, 2, channelZ)) break;
+        }
+        
+        // Should create ramp - walls surround provide high side
+        expect(CellIsRamp(grid[rampZ][2][2]) != 0);
+        
+        // HPA graph incremental update only runs with HPA* algorithm
+        // Force update by calling UpdateDirtyChunks (which is called in Tick when HPA* is active)
+        // Since we use A* for pathfinding, we need to manually trigger the update
+        UpdateDirtyChunks();
+        
+        // The ramp link count should now be > 0
+        expect(rampLinkCount > initialRampLinks);
+    }
+}
+
 // =============================================================================
 // Building/Construction Tests
 // =============================================================================
@@ -5943,6 +6013,7 @@ int main(int argc, char* argv[]) {
     test(channel_ramp_detection);
     test(channel_job_execution);
     test(channel_workgiver);
+    test(channel_hpa_ramp_links);
 
     // Building/construction tests
     test(building_blueprint);
