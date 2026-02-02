@@ -339,6 +339,23 @@ void ReleaseAllSlotsForMover(int moverIdx) {
     }
 }
 
+// TODO: Optimization opportunities for FindStockpileForItem (14.7% of frame time)
+// This function is called many times per frame for the same item types.
+// 
+// Option 1: Cache results per item type per frame
+//   - Build lookup table at frame start: bestStockpileForType[ITEM_TYPE_COUNT]
+//   - Pre-compute slot coordinates for each type
+//   - Call FindStockpileForItem once per type instead of once per item
+//   - Biggest impact, requires cache invalidation when slots fill up
+//
+// Option 2: Track first free slot index per stockpile  
+//   - Avoid scanning from index 0 each time
+//   - Maintain a "firstFreeSlot" hint that gets updated on reserve/release
+//
+// Option 3: Sort stockpiles by priority once per frame
+//   - Currently iterating in index order, not priority order
+//   - Pre-sort active stockpiles by priority for better slot selection
+
 int FindStockpileForItem(ItemType type, int* outSlotX, int* outSlotY) {
     // Find any stockpile that accepts this type and has a free slot
     for (int i = 0; i < MAX_STOCKPILES; i++) {

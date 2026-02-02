@@ -38,4 +38,5 @@ void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 #include "../src/entities/items.c"
 #include "../src/entities/stockpiles.c"
 #include "../src/entities/mover.c"
+#include "../src/entities/workshops.c"
 #include "../src/entities/jobs.c"
