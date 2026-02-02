@@ -62,6 +62,10 @@ int FindGroundItemAtTile(int tileX, int tileY, int z);
 // Used when building walls on cells that contain items
 void PushItemsOutOfCell(int x, int y, int z);
 
+// Drop all items in a cell down one z-level
+// Used when floor is removed (channeling)
+void DropItemsInCell(int x, int y, int z);
+
 // Spatial grid for O(1) item lookups (tile-based, includes z-level)
 typedef struct {
     int* cellCounts;    // Number of ground items per cell

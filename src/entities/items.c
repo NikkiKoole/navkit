@@ -267,6 +267,37 @@ void PushItemsOutOfCell(int x, int y, int z) {
     }
 }
 
+void DropItemsInCell(int x, int y, int z) {
+    if (z <= 0) return;  // Can't drop below z=0
+    
+    // Find the lowest z-level the item can fall to
+    int targetZ = z - 1;
+    while (targetZ > 0 && !CellIsSolid(grid[targetZ - 1][y][x])) {
+        targetZ--;
+    }
+    
+    // Check if there's actually somewhere to fall
+    if (CellIsSolid(grid[targetZ][y][x])) return;  // No open space below
+    
+    // Move all items at this cell down to the target z-level
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if ((int)items[i].z != z) continue;
+        
+        int itemTileX = (int)(items[i].x / CELL_SIZE);
+        int itemTileY = (int)(items[i].y / CELL_SIZE);
+        
+        if (itemTileX == x && itemTileY == y) {
+            items[i].z = (float)targetZ;
+            
+            // If item was in stockpile, it's now on ground
+            if (items[i].state == ITEM_IN_STOCKPILE) {
+                items[i].state = ITEM_ON_GROUND;
+            }
+        }
+    }
+}
+
 // Common spatial grid radius iteration - calls iterator for each valid ground item in radius
 // Returns number of items visited (or partial count if stopped early)
 // (ItemRadiusIterator typedef is forward-declared above)

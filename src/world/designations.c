@@ -295,8 +295,8 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     
     int lowerZ = z - 1;
     
-    // Push items out of this cell (at z)
-    PushItemsOutOfCell(x, y, z);
+    // Drop items in this cell down to z-1 (floor is being removed)
+    DropItemsInCell(x, y, z);
     
     // Push OTHER movers out (not the channeler)
     for (int i = 0; i < moverCount; i++) {
@@ -459,6 +459,9 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
+    
+    // Drop items on this floor down to z-1
+    DropItemsInCell(x, y, z);
     
     // Remove the floor
     CLEAR_FLOOR(x, y, z);
