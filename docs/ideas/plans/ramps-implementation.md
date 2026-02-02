@@ -211,6 +211,55 @@ static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, 
     
     return fromLowSide || fromHighSide;
 }
+
+// Find if there's a ramp adjacent to (x,y,z) that points TO this cell
+// Used for detecting ramp exits - the ramp itself is one cell away
+// Returns true if found, and optionally sets outRampX/outRampY to the ramp's position
+static inline bool FindRampPointingTo(int x, int y, int z, int* outRampX, int* outRampY) {
+    static const int rampOffsets[4][3] = {
+        {0, 1, CELL_RAMP_N},   // Ramp south of us pointing north
+        {-1, 0, CELL_RAMP_E},  // Ramp west of us pointing east
+        {0, -1, CELL_RAMP_S},  // Ramp north of us pointing south
+        {1, 0, CELL_RAMP_W}    // Ramp east of us pointing west
+    };
+    
+    for (int r = 0; r < 4; r++) {
+        int rx = x + rampOffsets[r][0];
+        int ry = y + rampOffsets[r][1];
+        if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
+        if (grid[z][ry][rx] == (CellType)rampOffsets[r][2]) {
+            if (outRampX) *outRampX = rx;
+            if (outRampY) *outRampY = ry;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Simplified version that only checks existence (no output coordinates)
+static inline bool HasRampPointingTo(int x, int y, int z) {
+    return FindRampPointingTo(x, y, z, (int*)0, (int*)0);
+}
+
+// Check if position (x,y) at z can transition UP to z+1 via a ramp
+// Either by being on a ramp cell, or being at a ramp's exit cell
+static inline bool CanRampTransitionUp(int x, int y, int z) {
+    if (z + 1 >= gridDepth) return false;
+    
+    // Case 1: Standing on a ramp that goes up
+    CellType cell = grid[z][y][x];
+    if (CellIsDirectionalRamp(cell)) {
+        return CanWalkUpRampAt(x, y, z);
+    }
+    
+    // Case 2: At exit position - check if there's a ramp pointing here
+    // and z+1 is walkable at this position
+    if (IsCellWalkableAt(z + 1, y, x) && HasRampPointingTo(x, y, z)) {
+        return true;
+    }
+    
+    return false;
+}
 ```
 
 ## Phase 3: A* Support (~50 lines)

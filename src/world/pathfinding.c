@@ -3437,33 +3437,6 @@ static bool ZLevelHasLadderLinks(int z) {
     return false;
 }
 
-// Check if z-level has ramp connections (ramp at z or exit at z)
-static bool ZLevelHasRampLinks(int z) {
-    // Ramps at z connect to z+1, so check both z and z-1 for ramps
-    for (int y = 0; y < gridHeight; y++) {
-        for (int x = 0; x < gridWidth; x++) {
-            // Check if there's a ramp at this z-level
-            if (z < gridDepth && CellIsDirectionalRamp(grid[z][y][x])) {
-                if (CanWalkUpRampAt(x, y, z)) {
-                    return true;  // This ramp connects z to z+1
-                }
-            }
-            // Check if there's a ramp at z-1 that connects to z
-            if (z > 0 && CellIsDirectionalRamp(grid[z-1][y][x])) {
-                if (CanWalkUpRampAt(x, y, z-1)) {
-                    return true;  // Ramp at z-1 connects to z
-                }
-            }
-        }
-    }
-    return false;
-}
-
-// Check if z-level has any vertical connections (ladders or ramps)
-static bool ZLevelHasVerticalConnections(int z) {
-    return ZLevelHasLadderLinks(z) || ZLevelHasRampLinks(z);
-}
-
 Point GetRandomWalkableCell(void) {
     Point p;
     // Only do expensive z-level connection checks for ladders (they have cached links)

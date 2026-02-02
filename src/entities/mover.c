@@ -703,15 +703,11 @@ static void AssignNewMoverGoal(Mover* m) {
     int currentZ = (int)m->z;
     Point start = {currentX, currentY, currentZ};
 
-    TraceLog(LOG_INFO, "AssignNewMoverGoal: mover at (%d,%d,z%d) goal=(%d,%d,z%d) hasZConn=%d rampCount=%d",
-             currentX, currentY, currentZ, newGoal.x, newGoal.y, newGoal.z, hasZConnections, rampCount);
-
     // HPA* and JPS+ now have native ramp support via RampLink edges
     PathAlgorithm algo = moverPathAlgorithm;
 
     Point tempPath[MAX_PATH];
     int len = FindPath(algo, start, newGoal, tempPath, MAX_PATH);
-    TraceLog(LOG_INFO, "  -> FindPath returned len=%d", len);
 
     m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
     // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
@@ -835,28 +831,15 @@ void UpdateMovers(void) {
             
             // Check if this is a ramp z-transition: mover is at the exit cell (wall at z)
             // but should transition to z+1 where it's walkable (air above solid)
+            int rampX, rampY;
             bool handledByRamp = false;
-            if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX)) {
-                // Check if there's a ramp adjacent that points to this cell
-                int rampCheckDirs[4][3] = {
-                    {0, 1, CELL_RAMP_N},   // Ramp south of us pointing north
-                    {-1, 0, CELL_RAMP_E},  // Ramp west of us pointing east
-                    {0, -1, CELL_RAMP_S},  // Ramp north of us pointing south
-                    {1, 0, CELL_RAMP_W}    // Ramp east of us pointing west
-                };
-                for (int r = 0; r < 4; r++) {
-                    int rx = currentX + rampCheckDirs[r][0];
-                    int ry = currentY + rampCheckDirs[r][1];
-                    if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-                    if (grid[currentZ][ry][rx] == (CellType)rampCheckDirs[r][2]) {
-                        // Found a ramp pointing to us - transition to z+1
-                        m->z = (float)(currentZ + 1);
-                        TraceLog(LOG_INFO, "Ramp auto-transition: mover %d at (%d,%d) wall, moved to z%d via ramp at (%d,%d)",
-                                 i, currentX, currentY, currentZ + 1, rx, ry);
-                        handledByRamp = true;
-                        break;
-                    }
-                }
+            if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX) &&
+                FindRampPointingTo(currentX, currentY, currentZ, &rampX, &rampY)) {
+                // Found a ramp pointing to us - transition to z+1
+                m->z = (float)(currentZ + 1);
+                TraceLog(LOG_INFO, "Ramp auto-transition: mover %d at (%d,%d) wall, moved to z%d via ramp at (%d,%d)",
+                         i, currentX, currentY, currentZ + 1, rampX, rampY);
+                handledByRamp = true;
             }
             
             if (handledByRamp) {
@@ -959,52 +942,33 @@ void UpdateMovers(void) {
             }
             // Only update z-level when target waypoint is a ladder or ramp transition
             if (target.z != (int)m->z) {
-                // Changing z-level - use the waypoint's coordinates (not mover's position)
                 int cellZ = (int)m->z;
                 bool isLadderTransition = IsLadderCell(grid[cellZ][target.y][target.x]) && 
                                           IsLadderCell(grid[target.z][target.y][target.x]);
                 
-                // Ramp transition: going UP means we're on the ramp at cellZ, target is at cellZ+1
-                // Going DOWN means we're at cellZ, target is ramp cell at cellZ-1
+                // Ramp transition check
                 bool isRampTransition = false;
+                int rampX, rampY;
                 if (target.z > cellZ) {
-                    // Going up: check if there's a ramp at cellZ pointing to target
-                    // The ramp should be at the cell adjacent to target on the LOW side
-                    int rampPositions[4][2] = {
-                        {target.x, target.y + 1},  // RAMP_N: ramp is south of exit
-                        {target.x - 1, target.y},  // RAMP_E: ramp is west of exit
-                        {target.x, target.y - 1},  // RAMP_S: ramp is north of exit
-                        {target.x + 1, target.y}   // RAMP_W: ramp is east of exit
-                    };
-                    CellType expectedRamps[4] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
-                    
-                    for (int r = 0; r < 4; r++) {
-                        int rx = rampPositions[r][0];
-                        int ry = rampPositions[r][1];
-                        if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-                        if (grid[cellZ][ry][rx] == expectedRamps[r]) {
-                            // Found a valid ramp pointing to target - allow transition
-                            // Mover can be on the ramp cell OR already at the exit cell
-                            if ((currentX == rx && currentY == ry) ||
-                                (currentX == target.x && currentY == target.y)) {
-                                isRampTransition = true;
-                                TraceLog(LOG_INFO, "Ramp Z-transition: mover at (%d,%d) using ramp at (%d,%d) to reach z%d",
-                                         currentX, currentY, rx, ry, target.z);
-                                break;
-                            }
+                    // Going up: mover must be on ramp or at exit cell with adjacent ramp
+                    if (FindRampPointingTo(target.x, target.y, cellZ, &rampX, &rampY)) {
+                        // Valid if mover is on the ramp or at the exit cell
+                        if ((currentX == rampX && currentY == rampY) ||
+                            (currentX == target.x && currentY == target.y)) {
+                            isRampTransition = true;
+                            TraceLog(LOG_INFO, "Ramp Z-transition: mover at (%d,%d) using ramp at (%d,%d) to reach z%d",
+                                     currentX, currentY, rampX, rampY, target.z);
                         }
                     }
                 } else {
                     // Going down: target cell should be a ramp we can descend onto
-                    CellType rampCell = grid[target.z][target.y][target.x];
-                    if (CellIsDirectionalRamp(rampCell)) {
+                    if (CellIsDirectionalRamp(grid[target.z][target.y][target.x])) {
                         isRampTransition = true;
                     }
                 }
                 
                 if (isLadderTransition || isRampTransition) {
                     m->z = (float)target.z;
-                    // Snap to target cell center for clean transition
                     m->x = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
                 }
@@ -1073,82 +1037,39 @@ void UpdateMovers(void) {
                 }
                 
                 if (!canMove && targetIsZTransition) {
-                    // Moving toward a z-transition cell
+                    // Moving toward a z-transition cell - check if movement should be allowed
+                    
                     // Allow if it's a ladder on target z-level
                     if (IsLadderCell(grid[target.z][newCellY][newCellX])) {
                         canMove = true;
                     }
-                    // Or if we're on/near a ramp and moving to its high side at z+1
+                    // Going UP via ramp
                     else if (target.z > mz) {
-                        // Check if current cell is a ramp pointing to newCell
+                        // Check 1: Current cell is a ramp pointing to newCell
                         CellType rampCell = grid[mz][currentY][currentX];
-                        TraceLog(LOG_INFO, "  Ramp check1: cell at (%d,%d) z%d = %d, isRamp=%d", 
-                                 currentX, currentY, mz, rampCell, CellIsDirectionalRamp(rampCell));
                         if (CellIsDirectionalRamp(rampCell)) {
                             int highDx, highDy;
                             GetRampHighSideOffset(rampCell, &highDx, &highDy);
-                            int expectedX = currentX + highDx;
-                            int expectedY = currentY + highDy;
-                            TraceLog(LOG_INFO, "  Ramp offset: dx=%d dy=%d, expected=(%d,%d), newCell=(%d,%d)", 
-                                     highDx, highDy, expectedX, expectedY, newCellX, newCellY);
-                            if (newCellX == expectedX && newCellY == expectedY) {
+                            if (newCellX == currentX + highDx && newCellY == currentY + highDy) {
                                 canMove = true;
-                                TraceLog(LOG_INFO, "  -> ALLOWED via ramp check1");
                             }
                         }
-                        // Also check if newCell is the exit and there's a ramp behind us
-                        // This handles the case where mover pixel-position crossed into exit cell
+                        // Check 2: newCell is exit with ramp pointing to it
+                        if (!canMove && HasRampPointingTo(newCellX, newCellY, mz)) {
+                            canMove = true;
+                        }
+                        // Check 3: target has a ramp and we're on/near it
                         if (!canMove) {
-                            // The ramp should be at newCell + opposite of high side offset
-                            // For each ramp type, check if there's a matching ramp that points to newCell
-                            int rampCheckDirs[4][3] = {
-                                {0, 1, CELL_RAMP_N},   // Ramp south of newCell pointing north
-                                {-1, 0, CELL_RAMP_E},  // Ramp west of newCell pointing east
-                                {0, -1, CELL_RAMP_S},  // Ramp north of newCell pointing south  
-                                {1, 0, CELL_RAMP_W}    // Ramp east of newCell pointing west
-                            };
-                            for (int r = 0; r < 4; r++) {
-                                int rx = newCellX + rampCheckDirs[r][0];
-                                int ry = newCellY + rampCheckDirs[r][1];
-                                if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-                                if (grid[mz][ry][rx] == (CellType)rampCheckDirs[r][2]) {
-                                    // Found a ramp pointing to newCell - allow movement
+                            int rampX, rampY;
+                            if (FindRampPointingTo(target.x, target.y, mz, &rampX, &rampY)) {
+                                if ((currentX == rampX && currentY == rampY) || 
+                                    (newCellX == rampX && newCellY == rampY)) {
                                     canMove = true;
-                                    break;
                                 }
                             }
                         }
                     }
-                    // Also allow if we're moving within the ramp cell itself toward the exit
-                    if (!canMove && target.z > mz) {
-                        // Check if there's a ramp below the target that would allow this movement
-                        int rampZ = target.z - 1;  // Ramp should be at z-1 relative to target
-                        if (rampZ >= 0 && rampZ < gridDepth) {
-                            CellType belowTarget = grid[rampZ][target.y][target.x];
-                            // For the exit to be valid, the cell below must be solid (wall) 
-                            // and there must be a ramp adjacent to target that points to it
-                            // Check all 4 directions for a ramp pointing to target
-                            int rampDirs[4][3] = {
-                                {0, 1, CELL_RAMP_N},   // ramp south of target, pointing north
-                                {-1, 0, CELL_RAMP_E},  // ramp west of target, pointing east
-                                {0, -1, CELL_RAMP_S},  // ramp north of target, pointing south
-                                {1, 0, CELL_RAMP_W}    // ramp east of target, pointing west
-                            };
-                            for (int r = 0; r < 4; r++) {
-                                int rx = target.x + rampDirs[r][0];
-                                int ry = target.y + rampDirs[r][1];
-                                if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
-                                if (grid[mz][ry][rx] == (CellType)rampDirs[r][2]) {
-                                    // There's a valid ramp - allow movement if we're on or moving through ramp area
-                                    if ((currentX == rx && currentY == ry) || (newCellX == rx && newCellY == ry)) {
-                                        canMove = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Or if we're descending onto a ramp
+                    // Going DOWN onto a ramp
                     else if (CellIsDirectionalRamp(grid[target.z][newCellY][newCellX])) {
                         canMove = true;
                     }
