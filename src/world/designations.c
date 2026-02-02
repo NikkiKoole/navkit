@@ -10,6 +10,9 @@
 
 Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Active designation count for early-exit optimizations
+int activeDesignationCount = 0;
+
 // Blueprint storage
 Blueprint blueprints[MAX_BLUEPRINTS];
 int blueprintCount = 0;
@@ -24,6 +27,7 @@ void InitDesignations(void) {
             }
         }
     }
+    activeDesignationCount = 0;
     
     // Clear blueprints
     memset(blueprints, 0, sizeof(blueprints));
@@ -53,6 +57,7 @@ bool DesignateDig(int x, int y, int z) {
     designations[z][y][x].type = DESIGNATION_DIG;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
     
     return true;
 }
@@ -62,6 +67,9 @@ void CancelDesignation(int x, int y, int z) {
         return;
     }
     
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
     designations[z][y][x].type = DESIGNATION_NONE;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
@@ -125,6 +133,9 @@ void CompleteDigDesignation(int x, int y, int z) {
     }
     
     // Clear designation
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
     designations[z][y][x].type = DESIGNATION_NONE;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
@@ -146,6 +157,9 @@ int CountDigDesignations(void) {
 
 // Tick down unreachable cooldowns for designations
 void DesignationsTick(float dt) {
+    // Early exit if no designations
+    if (activeDesignationCount == 0) return;
+    
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {

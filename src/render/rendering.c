@@ -1,6 +1,7 @@
 // render/rendering.c - Core rendering functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
 #include "../entities/workshops.h"
@@ -1141,6 +1142,9 @@ void DrawHaulDestinations(void) {
 }
 
 void DrawMiningDesignations(void) {
+    // Early exit if no designations
+    if (activeDesignationCount == 0) return;
+    
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 

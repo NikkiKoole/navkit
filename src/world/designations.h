@@ -57,6 +57,9 @@ typedef struct {
 extern Blueprint blueprints[MAX_BLUEPRINTS];
 extern int blueprintCount;
 
+// Active designation count (for early-exit optimizations)
+extern int activeDesignationCount;
+
 // Initialize designation system (clears all designations)
 void InitDesignations(void);
 

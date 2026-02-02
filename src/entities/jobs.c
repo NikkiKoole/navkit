@@ -44,6 +44,9 @@ static int digCacheCount = 0;
 void RebuildDigDesignationCache(void) {
     digCacheCount = 0;
     
+    // Early exit if no designations
+    if (activeDesignationCount == 0) return;
+    
     for (int z = 0; z < gridDepth && digCacheCount < MAX_DIG_CACHE; z++) {
         for (int y = 0; y < gridHeight && digCacheCount < MAX_DIG_CACHE; y++) {
             for (int x = 0; x < gridWidth && digCacheCount < MAX_DIG_CACHE; x++) {
@@ -581,12 +584,9 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
     }
     
     if (job->step == STEP_MOVING_TO_WORK) {
-        Point moverCell = { (int)(mover->x / CELL_SIZE), (int)(mover->y / CELL_SIZE), (int)mover->z };
-        int adjX, adjY;
-        if (!FindReachableAdjacentTile(job->targetDigX, job->targetDigY, job->targetDigZ, 
-                                        moverCell, &adjX, &adjY)) {
-            return JOBRUN_FAIL;
-        }
+        // Use cached adjacent tile (set when job was created)
+        int adjX = job->targetAdjX;
+        int adjY = job->targetAdjY;
         
         // Set goal if not already moving there
         if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != job->targetDigZ) {
@@ -2044,6 +2044,8 @@ void AssignJobsLegacy(void) {
                         job->targetDigX = x;
                         job->targetDigY = y;
                         job->targetDigZ = z;
+                        job->targetAdjX = adjX;  // Cache adjacent tile
+                        job->targetAdjY = adjY;
                         job->step = 0;  // STEP_MOVING_TO_WORK
                         job->progress = 0.0f;
                         m->currentJobId = jobId;
@@ -2733,9 +2735,10 @@ int WorkGiver_Mining(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
         
-        // Check if still unassigned (might have been assigned by previous mover this frame)
+        // Check if still unassigned and not marked unreachable this frame
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
         if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
         
         float digPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
         float digPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -2772,6 +2775,8 @@ int WorkGiver_Mining(int moverIdx) {
     job->targetDigX = bestDesigX;
     job->targetDigY = bestDesigY;
     job->targetDigZ = bestDesigZ;
+    job->targetAdjX = bestAdjX;  // Cache adjacent tile
+    job->targetAdjY = bestAdjY;
     job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;
     

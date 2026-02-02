@@ -456,6 +456,22 @@ void DrawUI(void) {
             }
         }
         y += 22;
+        if (PushButton(x, y, "Spawn Stone Blocks")) {
+            for (int i = 0; i < itemCountSetting; i++) {
+                int attempts = 100;
+                while (attempts-- > 0) {
+                    int gx = GetRandomValue(0, gridWidth - 1);
+                    int gy = GetRandomValue(0, gridHeight - 1);
+                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                        SpawnItem(px, py, (float)currentViewZ, ITEM_STONE_BLOCKS);
+                        break;
+                    }
+                }
+            }
+        }
+        y += 22;
         if (PushButton(x, y, "Clear Items")) {
             ClearItems();
         }

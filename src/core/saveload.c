@@ -306,9 +306,16 @@ bool LoadWorld(const char* filename) {
     }
     
     // Designations
+    activeDesignationCount = 0;
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(designations[z][y], sizeof(Designation), gridWidth, f);
+            // Count active designations for early-exit optimizations
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type != DESIGNATION_NONE) {
+                    activeDesignationCount++;
+                }
+            }
         }
     }
     

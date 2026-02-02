@@ -45,6 +45,8 @@ typedef struct {
     int targetDigX;         // Dig designation coordinates
     int targetDigY;
     int targetDigZ;
+    int targetAdjX;         // Adjacent tile to stand on while digging (cached)
+    int targetAdjY;
     int targetBlueprint;    // Blueprint index
     
     // Craft job targets
