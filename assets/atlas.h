@@ -26,10 +26,14 @@
     #define SPRITE_dirt SPRITE8X8_dirt
     #define SPRITE_stone_block SPRITE8X8_stone_block
     #define SPRITE_stone_wall SPRITE8X8_stone_wall
+    #define SPRITE_ramp_s SPRITE8X8_ramp_s
+    #define SPRITE_ramp_e SPRITE8X8_ramp_e
     #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_grass_tall SPRITE8X8_grass_tall
+    #define SPRITE_ramp_w SPRITE8X8_ramp_w
     #define SPRITE_stone_floor SPRITE8X8_stone_floor
     #define SPRITE_ladder SPRITE8X8_ladder
+    #define SPRITE_ramp_n SPRITE8X8_ramp_n
     #define SPRITE_apple SPRITE8X8_apple
     #define SPRITE_grass SPRITE8X8_grass
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
@@ -62,10 +66,14 @@
     #define SPRITE_dirt SPRITE16X16_dirt
     #define SPRITE_stone_block SPRITE16X16_stone_block
     #define SPRITE_stone_wall SPRITE16X16_stone_wall
+    #define SPRITE_ramp_s SPRITE16X16_ramp_s
+    #define SPRITE_ramp_e SPRITE16X16_ramp_e
     #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_grass_tall SPRITE16X16_grass_tall
+    #define SPRITE_ramp_w SPRITE16X16_ramp_w
     #define SPRITE_stone_floor SPRITE16X16_stone_floor
     #define SPRITE_ladder SPRITE16X16_ladder
+    #define SPRITE_ramp_n SPRITE16X16_ramp_n
     #define SPRITE_apple SPRITE16X16_apple
     #define SPRITE_grass SPRITE16X16_grass
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
