@@ -8,15 +8,18 @@
 // =============================================================================
 
 // Job types - each type has its own driver function
+// NOTE: New job types should be added at the END to maintain save compatibility!
 typedef enum {
     JOBTYPE_NONE,
     JOBTYPE_HAUL,              // Pick up item, deliver to stockpile
     JOBTYPE_CLEAR,             // Pick up item, drop outside stockpile (safe-drop)
     JOBTYPE_MINE,              // Mine a wall
     JOBTYPE_CHANNEL,           // Channel (vertical dig) - removes floor, mines below
+    JOBTYPE_REMOVE_FLOOR,      // Remove constructed floor (mover may fall!)
     JOBTYPE_HAUL_TO_BLUEPRINT, // Pick up item, deliver to blueprint
     JOBTYPE_BUILD,             // Construct at blueprint
     JOBTYPE_CRAFT,             // Fetch materials, craft at workshop
+    JOBTYPE_REMOVE_RAMP,       // Remove ramps (natural or carved)
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -106,6 +109,8 @@ JobRunResult RunJob_Haul(Job* job, void* mover, float dt);
 JobRunResult RunJob_Clear(Job* job, void* mover, float dt);
 JobRunResult RunJob_Mine(Job* job, void* mover, float dt);
 JobRunResult RunJob_Channel(Job* job, void* mover, float dt);
+JobRunResult RunJob_RemoveFloor(Job* job, void* mover, float dt);
+JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
@@ -153,6 +158,8 @@ int WorkGiver_Haul(int moverIdx);
 int WorkGiver_Rehaul(int moverIdx);
 int WorkGiver_Mining(int moverIdx);
 int WorkGiver_Channel(int moverIdx);
+int WorkGiver_RemoveFloor(int moverIdx);
+int WorkGiver_RemoveRamp(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
 int WorkGiver_Craft(int moverIdx);

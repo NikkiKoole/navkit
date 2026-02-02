@@ -332,10 +332,31 @@ bool CanPlaceRamp(int x, int y, int z, CellType rampType) {
     if (!IsCellWalkableAt(z + 1, exitY, exitX)) return false;
     
     // Low side at same z should be walkable (so you can enter the ramp)
+    // OR there should be a ramp below that exits here (diagonal staircase)
     int lowX = x - highDx;
     int lowY = y - highDy;
     if (lowX >= 0 && lowX < gridWidth && lowY >= 0 && lowY < gridHeight) {
-        if (!IsCellWalkableAt(z, lowY, lowX)) return false;
+        bool lowSideWalkable = IsCellWalkableAt(z, lowY, lowX);
+        
+        // Check if there's a ramp below that provides access via its exit
+        // A ramp at z-1 with same direction would exit at this ramp's low side at z
+        bool rampBelowProvideAccess = false;
+        if (z > 0) {
+            CellType cellBelow = grid[z-1][lowY][lowX];
+            if (CellIsRamp(cellBelow)) {
+                // Check if the ramp below exits toward this cell
+                int belowHighDx, belowHighDy;
+                GetRampHighSideOffset(cellBelow, &belowHighDx, &belowHighDy);
+                int belowExitX = lowX + belowHighDx;
+                int belowExitY = lowY + belowHighDy;
+                // If the ramp below's exit is at our position (x, y), allow it
+                if (belowExitX == x && belowExitY == y) {
+                    rampBelowProvideAccess = true;
+                }
+            }
+        }
+        
+        if (!lowSideWalkable && !rampBelowProvideAccess) return false;
     }
     
     return true;
@@ -380,6 +401,92 @@ void EraseRamp(int x, int y, int z) {
     
     rampCount--;
     MarkChunkDirty(x, y, z);
+}
+
+// Check if an existing ramp is still valid
+// A ramp is valid if its high side (exit at z+1) has solid ground below it
+bool IsRampStillValid(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    
+    CellType cell = grid[z][y][x];
+    if (!CellIsDirectionalRamp(cell)) return false;
+    
+    // Get the exit position (high side at z+1)
+    int highDx, highDy;
+    GetRampHighSideOffset(cell, &highDx, &highDy);
+    int exitX = x + highDx;
+    int exitY = y + highDy;
+    int exitZ = z + 1;
+    
+    // Check bounds for exit
+    if (exitX < 0 || exitX >= gridWidth || exitY < 0 || exitY >= gridHeight || exitZ >= gridDepth) {
+        return false;
+    }
+    
+    // The exit cell must have solid support below it (at z, the same level as the ramp)
+    // This means the cell adjacent to the ramp in the high direction must be solid
+    CellType exitBase = grid[z][exitY][exitX];
+    
+    // Valid if the exit has solid ground at the same z-level as the ramp
+    // (wall, dirt, etc. - something you can stand on top of)
+    return CellIsSolid(exitBase);
+}
+
+// Remove a ramp and convert to floor, spawning debris
+static void RemoveInvalidRamp(int x, int y, int z) {
+    CellType cell = grid[z][y][x];
+    if (!CellIsDirectionalRamp(cell)) return;
+    
+    // Convert to floor
+    if (g_legacyWalkability) {
+        grid[z][y][x] = CELL_FLOOR;
+    } else {
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
+    }
+    
+    rampCount--;
+    MarkChunkDirty(x, y, z);
+}
+
+// Validate and cleanup invalid ramps in a region
+// Call this after terrain changes (channeling, mining) that might invalidate ramps
+int ValidateAndCleanupRamps(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+    int removedCount = 0;
+    
+    // Clamp bounds
+    if (minX < 0) minX = 0;
+    if (minY < 0) minY = 0;
+    if (minZ < 0) minZ = 0;
+    if (maxX >= gridWidth) maxX = gridWidth - 1;
+    if (maxY >= gridHeight) maxY = gridHeight - 1;
+    if (maxZ >= gridDepth) maxZ = gridDepth - 1;
+    
+    // Multiple passes may be needed since removing one ramp might invalidate another
+    // (e.g., ramp A's exit was on top of ramp B, removing B invalidates A)
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int z = minZ; z <= maxZ; z++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int x = minX; x <= maxX; x++) {
+                    CellType cell = grid[z][y][x];
+                    if (CellIsDirectionalRamp(cell) && !IsRampStillValid(x, y, z)) {
+                        RemoveInvalidRamp(x, y, z);
+                        removedCount++;
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    
+    return removedCount;
+}
+
+// Validate all ramps in the entire grid
+int ValidateAllRamps(void) {
+    return ValidateAndCleanupRamps(0, 0, 0, gridWidth - 1, gridHeight - 1, gridDepth - 1);
 }
 
 int InitGridFromAscii(const char* ascii) {

@@ -460,6 +460,12 @@ bool LoadWorld(const char* filename) {
     BuildMoverSpatialGrid();
     BuildItemSpatialGrid();
     
+    // Validate and cleanup any invalid ramps (e.g., from older saves)
+    int removedRamps = ValidateAllRamps();
+    if (removedRamps > 0) {
+        AddMessage(TextFormat("Cleaned up %d invalid ramps", removedRamps), YELLOW);
+    }
+    
     // Rebuild entrances to count ladders and ramps (needed for pathfinding)
     BuildEntrances();
     

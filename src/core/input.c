@@ -296,6 +296,60 @@ static void ExecuteCancelChannel(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateRemoveFloor(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateRemoveFloor(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d floor%s for removal", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelRemoveFloor(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasRemoveFloorDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d floor removal designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteDesignateRemoveRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateRemoveRamp(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d ramp%s for removal", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelRemoveRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasRemoveRampDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d ramp removal designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -983,6 +1037,8 @@ void HandleInput(void) {
             case MODE_WORK:
                 if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
                 if (CheckKey(KEY_H)) { inputAction = ACTION_WORK_CHANNEL; }
+                if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_REMOVE_FLOOR; }
+                if (CheckKey(KEY_Z)) { inputAction = ACTION_WORK_REMOVE_RAMP; }
                 if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 break;
@@ -1016,10 +1072,11 @@ void HandleInput(void) {
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         // Work actions
-        case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_M); break;
-        case ACTION_WORK_CHANNEL:   backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_WORK_GATHER:    backOneLevel = CheckKey(KEY_G); break;
+        case ACTION_WORK_MINE:        backOneLevel = CheckKey(KEY_M); break;
+        case ACTION_WORK_CHANNEL:     backOneLevel = CheckKey(KEY_H); break;
+        case ACTION_WORK_REMOVE_RAMP: backOneLevel = CheckKey(KEY_Z); break;
+        case ACTION_WORK_CONSTRUCT:   backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_WORK_GATHER:      backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
         case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
@@ -1135,6 +1192,14 @@ void HandleInput(void) {
             case ACTION_WORK_CHANNEL:
                 if (leftClick) ExecuteDesignateChannel(x1, y1, x2, y2, z);
                 else ExecuteCancelChannel(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_REMOVE_FLOOR:
+                if (leftClick) ExecuteDesignateRemoveFloor(x1, y1, x2, y2, z);
+                else ExecuteCancelRemoveFloor(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_REMOVE_RAMP:
+                if (leftClick) ExecuteDesignateRemoveRamp(x1, y1, x2, y2, z);
+                else ExecuteCancelRemoveRamp(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_CONSTRUCT:
                 if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);

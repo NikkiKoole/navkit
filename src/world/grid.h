@@ -143,4 +143,14 @@ void PlaceRamp(int x, int y, int z, CellType rampType);
 // Ramp erasure - removes ramp, replaces with walkable/air
 void EraseRamp(int x, int y, int z);
 
+// Check if an existing ramp is still valid (high side has solid support)
+bool IsRampStillValid(int x, int y, int z);
+
+// Validate and cleanup invalid ramps in a region (call after terrain changes)
+// Returns number of ramps removed
+int ValidateAndCleanupRamps(int minX, int minY, int minZ, int maxX, int maxY, int maxZ);
+
+// Validate all ramps in the entire grid
+int ValidateAllRamps(void);
+
 #endif // GRID_H

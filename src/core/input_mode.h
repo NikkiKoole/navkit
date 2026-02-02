@@ -26,6 +26,8 @@ typedef enum {
     // Work actions (jobs for movers)
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,
+    ACTION_WORK_REMOVE_FLOOR,
+    ACTION_WORK_REMOVE_RAMP,
     ACTION_WORK_CONSTRUCT,
     ACTION_WORK_GATHER,
     // Sandbox actions (sim systems)

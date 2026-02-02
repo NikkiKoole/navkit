@@ -139,6 +139,9 @@ void CompleteMineDesignation(int x, int y, int z) {
     designations[z][y][x].type = DESIGNATION_NONE;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
+    
+    // Validate nearby ramps - mining may have removed solid support
+    ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
 }
 
 int CountMineDesignations(void) {
@@ -406,6 +409,11 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     designations[z][y][x].type = DESIGNATION_NONE;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
+    
+    // === STEP 5: Validate nearby ramps ===
+    // Channeling may have removed the solid support for adjacent ramps
+    // Check a small region around the channeled cell
+    ValidateAndCleanupRamps(x - 2, y - 2, lowerZ, x + 2, y + 2, z);
 }
 
 int CountChannelDesignations(void) {
@@ -414,6 +422,179 @@ int CountChannelDesignations(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_CHANNEL) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Remove floor designation functions
+// =============================================================================
+
+bool DesignateRemoveFloor(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must be walkable (so mover can stand on it to remove it)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+    
+    // Must have an explicit floor flag (constructed floor) - can't remove "implicit" floors
+    // In DF-style mode, you walk on solid blocks below, that's not a removable floor
+    if (!g_legacyWalkability && !HAS_FLOOR(x, y, z)) {
+        return false;  // No constructed floor to remove
+    }
+    
+    // In legacy mode, must be CELL_FLOOR type
+    if (g_legacyWalkability && grid[z][y][x] != CELL_FLOOR) {
+        return false;
+    }
+    
+    designations[z][y][x].type = DESIGNATION_REMOVE_FLOOR;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasRemoveFloorDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_REMOVE_FLOOR;
+}
+
+void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+    
+    // Remove the floor
+    if (g_legacyWalkability) {
+        grid[z][y][x] = CELL_AIR;
+    } else {
+        CLEAR_FLOOR(x, y, z);
+        // Cell type stays as-is (AIR) - we're just removing the floor flag
+    }
+    
+    MarkChunkDirty(x, y, z);
+    
+    // Spawn an item from the removed floor (orange block for now)
+    SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_ORANGE);
+    
+    // Clear designation
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    
+    // Note: mover will fall if there's nothing solid below - handled by mover update tick
+    (void)moverIdx;  // Could be used for special handling later
+}
+
+int CountRemoveFloorDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_REMOVE_FLOOR) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Remove ramp designation functions
+// =============================================================================
+
+bool DesignateRemoveRamp(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must be a ramp cell
+    CellType cell = grid[z][y][x];
+    if (!CellIsRamp(cell)) {
+        return false;
+    }
+    
+    designations[z][y][x].type = DESIGNATION_REMOVE_RAMP;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasRemoveRampDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_REMOVE_RAMP;
+}
+
+void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+    
+    // Remove the ramp, replace with floor
+    CellType cell = grid[z][y][x];
+    if (CellIsRamp(cell)) {
+        if (g_legacyWalkability) {
+            grid[z][y][x] = CELL_FLOOR;
+        } else {
+            grid[z][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, z);
+        }
+        rampCount--;
+    }
+    
+    MarkChunkDirty(x, y, z);
+    
+    // Spawn an item from the removed ramp (orange block for now)
+    SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, ITEM_ORANGE);
+    
+    // Clear designation
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    
+    (void)moverIdx;  // Could be used for special handling later
+}
+
+int CountRemoveRampDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_REMOVE_RAMP) {
                     count++;
                 }
             }

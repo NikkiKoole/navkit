@@ -9,7 +9,9 @@
 typedef enum {
     DESIGNATION_NONE,
     DESIGNATION_MINE,
-    DESIGNATION_CHANNEL,  // Vertical digging - removes floor and mines level below
+    DESIGNATION_CHANNEL,      // Vertical digging - removes floor and mines level below
+    DESIGNATION_REMOVE_FLOOR, // Remove constructed floor only (mover may fall!)
+    DESIGNATION_REMOVE_RAMP,  // Remove ramps (natural or carved)
     // Future: DESIGNATION_CHOP, etc.
 } DesignationType;
 
@@ -21,9 +23,11 @@ typedef struct {
     float unreachableCooldown;  // Seconds before retrying if unreachable
 } Designation;
 
-// Work time for mining/channeling (in seconds at 60 ticks/sec)
+// Work time for mining/channeling/removing (in seconds at 60 ticks/sec)
 #define MINE_WORK_TIME 2.0f
 #define CHANNEL_WORK_TIME 2.0f
+#define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
+#define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -113,6 +117,42 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx);
 
 // Count active channel designations
 int CountChannelDesignations(void);
+
+// =============================================================================
+// Remove floor designation functions
+// =============================================================================
+
+// Designate a cell for floor removal (constructed floors only)
+// Returns true if designation was added, false if cell has no removable floor
+bool DesignateRemoveFloor(int x, int y, int z);
+
+// Check if a cell has a remove floor designation
+bool HasRemoveFloorDesignation(int x, int y, int z);
+
+// Complete a remove floor designation (called when work finishes)
+// Removes the floor, spawns item, mover may fall if nothing below
+void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx);
+
+// Count active remove floor designations
+int CountRemoveFloorDesignations(void);
+
+// =============================================================================
+// Remove ramp designation functions
+// =============================================================================
+
+// Designate a cell for ramp removal (natural or carved ramps)
+// Returns true if designation was added, false if cell has no ramp
+bool DesignateRemoveRamp(int x, int y, int z);
+
+// Check if a cell has a remove ramp designation
+bool HasRemoveRampDesignation(int x, int y, int z);
+
+// Complete a remove ramp designation (called when work finishes)
+// Removes the ramp, creates floor, spawns item
+void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx);
+
+// Count active remove ramp designations
+int CountRemoveRampDesignations(void);
 
 // =============================================================================
 // Blueprint functions

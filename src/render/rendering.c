@@ -1120,6 +1120,42 @@ void DrawMiningDesignations(void) {
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, MAGENTA);
                 }
             }
+            // Remove floor designation: yellow/gold
+            else if (d->type == DESIGNATION_REMOVE_FLOOR) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 220, 100, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, GOLD);
+                }
+            }
+            // Remove ramp designation: cyan/teal
+            else if (d->type == DESIGNATION_REMOVE_RAMP) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 220, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){50, 200, 200, 255});
+                }
+            }
         }
     }
 
@@ -1151,6 +1187,36 @@ void DrawMiningDesignations(void) {
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 180, 150, 180});
+    }
+    
+    // Draw active remove floor jobs (gold/orange overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_REMOVE_FLOOR) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 80, 180});
+    }
+    
+    // Draw active remove ramp jobs (cyan/teal overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_REMOVE_RAMP) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 200, 180});
     }
     
     // Draw path of assigned mover when hovering over a designation
