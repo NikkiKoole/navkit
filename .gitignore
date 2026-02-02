@@ -7,3 +7,4 @@ bin/
 # Save files
 saves/debug_save.bin
 saves/debug_save.bin.gz
+saves/
