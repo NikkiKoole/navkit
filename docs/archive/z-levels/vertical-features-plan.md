@@ -2,6 +2,15 @@
 
 Planning document for: buildable ladders, mining rename, channeling, and ramps.
 
+## Status: MOSTLY COMPLETE
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Rename Dig → Mine** | ✅ Done | Completed |
+| **Ramps** | ✅ Done | 4 cardinal directions, bidirectional movement |
+| **Channeling** | ✅ Done | Creates ramps when wall adjacent below |
+| **Buildable Ladders** | ❌ TODO | See `/docs/ideas/plans/buildable-ladders.md` |
+
 ## Overview
 
 Four related features that expand vertical gameplay:
