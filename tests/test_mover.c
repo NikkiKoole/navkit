@@ -803,7 +803,6 @@ describe(string_pulling_narrow_gaps) {
 
 describe(chunk_boundary_paths) {
     it("should find paths when room entrance is in adjacent chunk") {
-        g_legacyWalkability = true;  // Chunk boundary test uses legacy mode
         // Regression test for chunk boundary pathfinding bug.
         //
         // The bug: ReconstructLocalPath() only searched within chunk bounds.
@@ -847,8 +846,8 @@ describe(chunk_boundary_paths) {
         int goalX = 12;
         int goalY = 12;
         
-        expect(grid[0][startY][startX] == CELL_WALKABLE);
-        expect(grid[0][goalY][goalX] == CELL_WALKABLE);
+        expect(IsCellWalkableAt(0, startY, startX) == true);
+        expect(IsCellWalkableAt(0, goalY, goalX) == true);
         
         startPos = (Point){startX, startY, 0};
         goalPos = (Point){goalX, goalY, 0};
@@ -924,30 +923,26 @@ describe(path_truncation) {
 
 describe(mover_falling) {
     it("should fall to ground when placed in air") {
-        g_legacyWalkability = true;  // Falling test uses legacy mode
-        // Two floors: z=0 is ground, z=1 is all air
-        const char* map =
-            "floor:0\n"
-            ".....\n"
-            ".....\n"
-            ".....\n"
-            "floor:1\n"
-            ".....\n"
-            ".....\n"
-            ".....\n";
+        // Setup: z=0 is walkable ground, z=1 is non-walkable air
+        InitGridWithSize(5, 5);
+        gridDepth = 2;
         
-        InitMultiFloorGridFromAscii(map, 5, 5);
-        
-        // Make z=1 all air
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_AIR;
+                if (g_legacyWalkability) {
+                    grid[0][y][x] = CELL_WALKABLE;  // Walkable ground
+                    grid[1][y][x] = CELL_AIR;       // Non-walkable air
+                } else {
+                    // Standard mode: z=0 is solid dirt, z=1 air above air is not walkable
+                    grid[0][y][x] = CELL_AIR;       // Air at z=0 (walkable due to bedrock)
+                    grid[1][y][x] = CELL_AIR;       // Air at z=1 (NOT walkable - no solid below)
+                }
             }
         }
         
-        // Verify setup
-        expect(grid[0][1][2] == CELL_WALKABLE);  // Ground at z=0
-        expect(grid[1][1][2] == CELL_AIR);       // Air at z=1
+        // Verify setup - z=0 walkable, z=1 not walkable
+        expect(IsCellWalkableAt(0, 1, 2) == true);
+        expect(IsCellWalkableAt(1, 1, 2) == false);
         
         ClearMovers();
         Mover* m = &movers[0];
@@ -970,19 +965,25 @@ describe(mover_falling) {
     }
     
     it("should not fall when walking on walkable cells") {
-        g_legacyWalkability = true;  // Falling test uses legacy mode
-        // Simple two-floor map where both floors are fully walkable
-        const char* map =
-            "floor:0\n"
-            ".....\n"
-            ".....\n"
-            ".....\n"
-            "floor:1\n"
-            ".....\n"
-            ".....\n"
-            ".....\n";
+        // Setup: both z=0 and z=1 are walkable
+        InitGridWithSize(5, 5);
+        gridDepth = 2;
         
-        InitMultiFloorGridFromAscii(map, 5, 5);
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (g_legacyWalkability) {
+                    grid[0][y][x] = CELL_WALKABLE;
+                    grid[1][y][x] = CELL_WALKABLE;
+                } else {
+                    // Standard mode: z=0 solid, z=1 air above solid is walkable
+                    grid[0][y][x] = CELL_DIRT;      // Solid ground
+                    grid[1][y][x] = CELL_AIR;       // Walkable (solid below)
+                }
+            }
+        }
+        
+        // Verify z=1 is walkable
+        expect(IsCellWalkableAt(1, 1, 0) == true);
         
         ClearMovers();
         Mover* m = &movers[0];
@@ -1006,26 +1007,30 @@ describe(mover_falling) {
     }
     
     it("should stop falling when hitting a wall below") {
-        // z=0 has a wall, z=1 is air - mover shouldn't fall through wall
-        const char* map =
-            "floor:0\n"
-            ".....\n"
-            "..#..\n"  // Wall at (2,1) on z=0
-            ".....\n"
-            "floor:1\n"
-            ".....\n"
-            ".....\n"
-            ".....\n";
+        // Setup: z=0 has a wall at (2,1), z=1 has a platform at (1,1)
+        InitGridWithSize(5, 5);
+        gridDepth = 2;
         
-        InitMultiFloorGridFromAscii(map, 5, 5);
-        
-        // Make z=1 all air except starting position
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[1][y][x] = CELL_AIR;
+                if (g_legacyWalkability) {
+                    grid[0][y][x] = CELL_WALKABLE;
+                    grid[1][y][x] = CELL_AIR;
+                } else {
+                    grid[0][y][x] = CELL_AIR;
+                    grid[1][y][x] = CELL_AIR;
+                }
             }
         }
-        grid[1][1][1] = CELL_FLOOR;  // Starting platform
+        // Wall at z=0 (2,1) - in standard mode, air above wall is walkable
+        grid[0][1][2] = CELL_WALL;
+        
+        // Starting platform at z=1 (1,1)
+        if (g_legacyWalkability) {
+            grid[1][1][1] = CELL_FLOOR;
+        } else {
+            grid[0][1][1] = CELL_DIRT;  // Solid below makes z=1 walkable
+        }
         
         ClearMovers();
         Mover* m = &movers[0];
@@ -1042,9 +1047,8 @@ describe(mover_falling) {
         // Run simulation
         RunTicks(60);
         
-        // Mover should NOT have fallen to z=0 (wall blocks it)
-        // It either stays at z=1 or gets stuck
-        expect(m->z >= 0.0f);  // At least not fallen through
+        // Mover should NOT have fallen through the wall
+        expect(m->z >= 0.0f);
     }
 }
 
@@ -1130,94 +1134,129 @@ describe(mover_z_level_collision) {
 }
 
 describe(mover_ladder_transitions) {
-    // Ladder tests use legacy walkability - they test ladder mechanics, not DF walkability
     it("should transition z-level when reaching ladder waypoint") {
-        g_legacyWalkability = true;
-        // Simple two-floor map with a ladder at (2,1)
-        const char* map =
-            "floor:0\n"
-            ".....\n"
-            "..L..\n"  // Ladder at (2,1) on z=0
-            ".....\n"
-            "floor:1\n"
-            ".....\n"
-            "..L..\n"  // Ladder at (2,1) on z=1
-            ".....\n";
+        // Setup: two walkable floors with ladder connecting them
+        // Legacy mode: z=0 and z=1 both walkable, ladder at (2,1) on both
+        // Standard mode: z=0 is solid dirt, z=1 is walkable air above dirt,
+        //                z=2 is walkable above constructed floor, ladder at z=1 and z=2
+        InitGridWithSize(5, 5);
+        
+        int startZ, goalZ;
+        if (g_legacyWalkability) {
+            gridDepth = 2;
+            startZ = 0;
+            goalZ = 1;
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[0][y][x] = CELL_WALKABLE;
+                    grid[1][y][x] = CELL_WALKABLE;
+                }
+            }
+            grid[0][1][2] = CELL_LADDER;
+            grid[1][1][2] = CELL_LADDER;
+        } else {
+            gridDepth = 3;
+            startZ = 1;  // Walk on air above dirt
+            goalZ = 2;   // Walk on air above constructed floor
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[0][y][x] = CELL_DIRT;   // Solid ground
+                    grid[1][y][x] = CELL_AIR;    // Walkable (above dirt)
+                    grid[2][y][x] = CELL_AIR;    // Not walkable yet
+                    SET_FLOOR(x, y, 2);          // Now walkable (constructed floor)
+                }
+            }
+            grid[1][1][2] = CELL_LADDER;
+            grid[2][1][2] = CELL_LADDER;
+        }
 
-        InitMultiFloorGridFromAscii(map, 5, 5);
-
-        // Verify ladder setup
-        expect(grid[0][1][2] == CELL_LADDER);
-        expect(grid[1][1][2] == CELL_LADDER);
+        // Verify walkability
+        expect(IsCellWalkableAt(startZ, 1, 0) == true);
+        expect(IsCellWalkableAt(goalZ, 1, 4) == true);
 
         ClearMovers();
         Mover* m = &movers[0];
 
-        // Mover starts at (0,1) z=0, needs to go to (4,1) z=1
-        // Path: start(0,1,0) -> ladder(2,1,0) -> ladder(2,1,1) -> goal(4,1,1)
+        // Mover starts at (0,1) startZ, needs to go to (4,1) goalZ
         float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        Point goal = {4, 1, 1};
+        Point goal = {4, 1, goalZ};
 
         // Path stored goal-to-start
         Point testPath[] = {
-            {4, 1, 1},  // goal
-            {2, 1, 1},  // ladder on z=1
-            {2, 1, 0},  // ladder on z=0
-            {0, 1, 0}   // start
+            {4, 1, goalZ},           // goal
+            {2, 1, goalZ},           // ladder on upper level
+            {2, 1, startZ},          // ladder on lower level
+            {0, 1, startZ}           // start
         };
-        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 4);
+        InitMoverWithPath(m, startX, startY, (float)startZ, goal, 100.0f, testPath, 4);
         moverCount = 1;
 
-        expect((int)m->z == 0);  // Starts at z=0
+        expect((int)m->z == startZ);
 
         // Run until mover reaches goal or times out
-        int maxTicks = 600;  // 10 seconds should be plenty
+        int maxTicks = 600;
         for (int tick = 0; tick < maxTicks; tick++) {
             Tick();
             if (!m->active) break;
         }
 
-        // Mover should have reached the goal on z=1
+        // Mover should have reached the goal
         expect(m->active == false);
     }
 
     it("should climb ladder when path goes through ladder cell") {
-        g_legacyWalkability = true;
-        // Map with ladder connecting z=0 and z=1
-        const char* map =
-            "floor:0\n"
-            ".....\n"
-            "..L..\n"
-            ".....\n"
-            "floor:1\n"
-            ".....\n"
-            "..L..\n"
-            ".....\n";
-
-        InitMultiFloorGridFromAscii(map, 5, 5);
+        // Same setup as above
+        InitGridWithSize(5, 5);
+        
+        int startZ, goalZ;
+        if (g_legacyWalkability) {
+            gridDepth = 2;
+            startZ = 0;
+            goalZ = 1;
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[0][y][x] = CELL_WALKABLE;
+                    grid[1][y][x] = CELL_WALKABLE;
+                }
+            }
+            grid[0][1][2] = CELL_LADDER;
+            grid[1][1][2] = CELL_LADDER;
+        } else {
+            gridDepth = 3;
+            startZ = 1;
+            goalZ = 2;
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    grid[0][y][x] = CELL_DIRT;
+                    grid[1][y][x] = CELL_AIR;
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);
+                }
+            }
+            grid[1][1][2] = CELL_LADDER;
+            grid[2][1][2] = CELL_LADDER;
+        }
 
         ClearMovers();
         Mover* m = &movers[0];
 
-        // Start right next to ladder, goal is on z=1
+        // Start right next to ladder, goal is on upper level
         float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        Point goal = {3, 1, 1};
+        Point goal = {3, 1, goalZ};
 
         // Direct path through ladder
         Point testPath[] = {
-            {3, 1, 1},  // goal on z=1
-            {2, 1, 1},  // ladder on z=1 (after climb)
-            {2, 1, 0},  // ladder on z=0 (before climb)
-            {1, 1, 0}   // start
+            {3, 1, goalZ},           // goal
+            {2, 1, goalZ},           // ladder on upper level
+            {2, 1, startZ},          // ladder on lower level
+            {1, 1, startZ}           // start
         };
-        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 4);
+        InitMoverWithPath(m, startX, startY, (float)startZ, goal, 100.0f, testPath, 4);
         moverCount = 1;
 
-        // Track z-level changes
-        int initialZ = (int)m->z;
-        expect(initialZ == 0);
+        expect((int)m->z == startZ);
 
         // Run simulation
         for (int tick = 0; tick < 300; tick++) {
@@ -1225,13 +1264,12 @@ describe(mover_ladder_transitions) {
             if (!m->active) break;
         }
 
-        // Mover should have reached goal on z=1
+        // Mover should have reached goal
         expect(m->active == false);
     }
 
     it("should handle JPS+ 3D path through Labyrinth3D") {
-        g_legacyWalkability = true;
-        // Use actual Labyrinth3D terrain
+        // Use actual Labyrinth3D terrain (works in both walkability modes)
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
         GenerateLabyrinth3D();
@@ -1239,26 +1277,31 @@ describe(mover_ladder_transitions) {
         BuildGraph();
         PrecomputeJpsPlus();
 
-        // Find a start on z=0 and goal on z=1
-        SeedRandom(12345);
-        Point start = {-1, -1, 0};
-        Point goal = {-1, -1, 1};
+        // In standard mode, baseZ=1 so walkable floors are z=1,z=2; in legacy baseZ=0
+        int baseZ = g_legacyWalkability ? 0 : 1;
+        int lowerZ = baseZ;
+        int upperZ = baseZ + 1;
 
-        // Find walkable start on z=0
+        // Find a start on lowerZ and goal on upperZ
+        SeedRandom(12345);
+        Point start = {-1, -1, lowerZ};
+        Point goal = {-1, -1, upperZ};
+
+        // Find walkable start on lowerZ
         for (int attempts = 0; attempts < 1000 && start.x < 0; attempts++) {
             int x = GetRandomValue(0, gridWidth - 1);
             int y = GetRandomValue(0, gridHeight - 1);
-            if (IsCellWalkableAt(0, y, x)) {
-                start = (Point){x, y, 0};
+            if (IsCellWalkableAt(lowerZ, y, x)) {
+                start = (Point){x, y, lowerZ};
             }
         }
 
-        // Find walkable goal on z=1
+        // Find walkable goal on upperZ
         for (int attempts = 0; attempts < 1000 && goal.x < 0; attempts++) {
             int x = GetRandomValue(0, gridWidth - 1);
             int y = GetRandomValue(0, gridHeight - 1);
-            if (IsCellWalkableAt(1, y, x)) {
-                goal = (Point){x, y, 1};
+            if (IsCellWalkableAt(upperZ, y, x)) {
+                goal = (Point){x, y, upperZ};
             }
         }
 
@@ -1323,7 +1366,6 @@ describe(mover_ladder_transitions) {
     }
 
     it("JPS+ 3D path should match JPS 3D path structure") {
-        g_legacyWalkability = true;
         // Compare paths from both algorithms to ensure JPS+ produces valid paths
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
@@ -1332,11 +1374,16 @@ describe(mover_ladder_transitions) {
         BuildGraph();
         PrecomputeJpsPlus();
 
+        // In standard mode, baseZ=1 so ladders are at z=1,z=2; in legacy baseZ=0
+        int baseZ = g_legacyWalkability ? 0 : 1;
+        int lowerZ = baseZ;
+        int upperZ = baseZ + 1;
+
         // Find a ladder
         int ladderX = -1, ladderY = -1;
         for (int y = 0; y < gridHeight && ladderX < 0; y++) {
             for (int x = 0; x < gridWidth && ladderX < 0; x++) {
-                if (grid[0][y][x] == CELL_LADDER && grid[1][y][x] == CELL_LADDER) {
+                if (grid[lowerZ][y][x] == CELL_LADDER && grid[upperZ][y][x] == CELL_LADDER) {
                     ladderX = x;
                     ladderY = y;
                 }
@@ -1344,29 +1391,29 @@ describe(mover_ladder_transitions) {
         }
         expect(ladderX >= 0);
 
-        // Find walkable start near ladder on z=0
-        Point start = {-1, -1, 0};
+        // Find walkable start near ladder on lowerZ
+        Point start = {-1, -1, lowerZ};
         for (int dy = -5; dy <= 5 && start.x < 0; dy++) {
             for (int dx = -5; dx <= 5 && start.x < 0; dx++) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(0, y, x) && grid[0][y][x] != CELL_LADDER) {
-                        start = (Point){x, y, 0};
+                    if (IsCellWalkableAt(lowerZ, y, x) && grid[lowerZ][y][x] != CELL_LADDER) {
+                        start = (Point){x, y, lowerZ};
                     }
                 }
             }
         }
 
-        // Find walkable goal near ladder on z=1
-        Point goal = {-1, -1, 1};
+        // Find walkable goal near ladder on upperZ
+        Point goal = {-1, -1, upperZ};
         for (int dy = -5; dy <= 5 && goal.x < 0; dy++) {
             for (int dx = -5; dx <= 5 && goal.x < 0; dx++) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(1, y, x) && grid[1][y][x] != CELL_LADDER) {
-                        goal = (Point){x, y, 1};
+                    if (IsCellWalkableAt(upperZ, y, x) && grid[upperZ][y][x] != CELL_LADDER) {
+                        goal = (Point){x, y, upperZ};
                     }
                 }
             }
@@ -1412,7 +1459,6 @@ describe(mover_ladder_transitions) {
     }
 
     it("should handle multiple random cross-z paths with JPS+") {
-        g_legacyWalkability = true;
         // Test many random paths to catch intermittent issues
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;

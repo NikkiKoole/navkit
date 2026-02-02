@@ -466,8 +466,9 @@ bool LoadWorld(const char* filename) {
         AddMessage(TextFormat("Cleaned up %d invalid ramps", removedRamps), YELLOW);
     }
     
-    // Rebuild entrances to count ladders and ramps (needed for pathfinding)
+    // Rebuild pathfinding graph (entrances + edges)
     BuildEntrances();
+    BuildGraph();
     
     return true;
 }

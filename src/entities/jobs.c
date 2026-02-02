@@ -1076,6 +1076,20 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             float dy = mover->y - item->y;
             float distSq = dx*dx + dy*dy;
             
+            // Final approach - when path exhausted but not in pickup range, move directly toward item
+            // This handles the case where knot-fix skips to waypoint without snapping position
+            int moverCellX = (int)(mover->x / CELL_SIZE);
+            int moverCellY = (int)(mover->y / CELL_SIZE);
+            bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
+            if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+                float dist = sqrtf(distSq);
+                float moveSpeed = mover->speed * TICK_DT;
+                if (dist > 0.01f) {
+                    mover->x -= (dx / dist) * moveSpeed;
+                    mover->y -= (dy / dist) * moveSpeed;
+                }
+            }
+            
             // Check if stuck
             if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
                 SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
@@ -1138,6 +1152,20 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             float dx = mover->x - targetX;
             float dy = mover->y - targetY;
             float distSq = dx*dx + dy*dy;
+            
+            // Final approach - when path exhausted but not in pickup range, move directly toward workshop
+            // This handles the case where knot-fix skips to waypoint without snapping position
+            int moverCellX = (int)(mover->x / CELL_SIZE);
+            int moverCellY = (int)(mover->y / CELL_SIZE);
+            bool inSameOrAdjacentCell = (abs(moverCellX - ws->workTileX) <= 1 && abs(moverCellY - ws->workTileY) <= 1);
+            if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+                float dist = sqrtf(distSq);
+                float moveSpeed = mover->speed * TICK_DT;
+                if (dist > 0.01f) {
+                    mover->x -= (dx / dist) * moveSpeed;
+                    mover->y -= (dy / dist) * moveSpeed;
+                }
+            }
             
             // Check if stuck
             if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {

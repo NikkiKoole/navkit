@@ -17,6 +17,8 @@
 
   **Updated fix:** The repath approach didn't work because knot-fix would just skip to the waypoint again without snapping position. Changed to direct micro-movement: when path exhausted and mover is in same/adjacent cell as item but out of pickup range, move directly toward item each tick (bypassing pathfinding). This should reliably close the gap caused by knot-fix's non-snapping arrival.
 
+  **Extended fix (2026-02-02):** The micro-movement fix was only in `RunJob_Haul`. Added the same final approach logic to `RunJob_Craft` for both `CRAFT_STEP_MOVING_TO_INPUT` and `CRAFT_STEP_MOVING_TO_WORKSHOP` steps. This fixes movers getting stuck near workshops.
+
 - # bug2 [X] items not being picked up
   -  after clearing movers and respawnig, the xisting items are not being picked up anymore,
  

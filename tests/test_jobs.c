@@ -1550,7 +1550,7 @@ describe(unreachable_item_cooldown) {
     }
     
     it("should retry unreachable item after cooldown expires") {
-        g_legacyWalkability = true;  // Use legacy mode for this complex job test
+        // Standard mode: z=0 with CELL_AIR is walkable (implicit bedrock below)
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -1596,7 +1596,9 @@ describe(unreachable_item_cooldown) {
         }
         
         // Now open a path by removing a wall
-        grid[0][3][2] = CELL_WALKABLE;  // Open the left wall
+        // In standard mode: CELL_AIR at z=0 is walkable (implicit bedrock)
+        // In legacy mode: need CELL_WALKABLE
+        grid[0][3][2] = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
         MarkChunkDirty(2, 3, 0);
         
         // Set cooldown to 0 to allow retry
@@ -3559,7 +3561,7 @@ describe(mining_job_assignment) {
 }
 
 describe(mining_job_execution) {
-    it("should complete mine job and convert wall to floor") {
+    it("should complete mine job and convert wall to walkable") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".#...\n"
@@ -3593,7 +3595,7 @@ describe(mining_job_execution) {
             AssignJobs();
             JobsTick();
             
-            // Check if mine completed (wall became floor)
+            // Check if mine completed (wall removed)
             if (grid[0][1][1] != CELL_WALL) {
                 completed = true;
                 break;
@@ -3601,7 +3603,9 @@ describe(mining_job_execution) {
         }
         
         expect(completed == true);
-        expect(grid[0][1][1] == CELL_FLOOR);
+        // Mined wall becomes walkable (CELL_AIR in standard mode, CELL_FLOOR in legacy)
+        expect(grid[0][1][1] != CELL_WALL);
+        expect(IsCellWalkableAt(0, 1, 1) == true);
         expect(HasMineDesignation(1, 1, 0) == false);
         expect(MoverIsIdle(m));
     }
@@ -3788,10 +3792,10 @@ describe(mining_multiple_designations) {
             if (CountMineDesignations() == 0) break;
         }
         
-        // All walls should be dug
-        expect(grid[0][1][1] == CELL_FLOOR);
-        expect(grid[0][1][3] == CELL_FLOOR);
-        expect(grid[0][3][1] == CELL_FLOOR);
+        // All walls should be dug and walkable
+        expect(IsCellWalkableAt(0, 1, 1) == true);
+        expect(IsCellWalkableAt(0, 1, 3) == true);
+        expect(IsCellWalkableAt(0, 3, 1) == true);
         expect(CountMineDesignations() == 0);
     }
 }
@@ -3954,7 +3958,7 @@ describe(channel_ramp_detection) {
         expect(rampDir == CELL_RAMP_N);  // RAMP_N means ramp going up to north
     }
     
-    it("should return CELL_AIR when no adjacent wall at z-1") {
+    it("should return CELL_AIR when no walkable exit at z+1") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".....\n"
@@ -3962,29 +3966,47 @@ describe(channel_ramp_detection) {
             ".....\n"
             ".....\n", 5, 5);
         
-        // All floor at both levels
+        // z=0: floor (walkable), z=1: all walls (no walkable exits)
+        // In standard mode: z=0 needs SET_FLOOR for walkability, z=1 walls block
+        // In legacy mode: z=0 is CELL_FLOOR (walkable), z=1 is CELL_WALL (not walkable)
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_FLOOR;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 0);
-                SET_FLOOR(x, y, 1);
+                if (g_legacyWalkability) {
+                    grid[0][y][x] = CELL_FLOOR;
+                } else {
+                    grid[0][y][x] = CELL_DIRT;  // Solid ground
+                    SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
+                }
+                grid[1][y][x] = CELL_WALL;  // Walls at z=1 block exits
+            }
+        }
+        
+        // In standard mode, we also need z=2 walls to block walkability above z=1
+        if (!g_legacyWalkability) {
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[2][y][x] = CELL_WALL;
+                }
             }
         }
         
         InitDesignations();
         
-        // No walls adjacent at z=0 - can't create ramp, returns CELL_AIR
-        CellType rampDir = AutoDetectChannelRampDirection(2, 2, 0);
+        // No walkable exits at z=1 - can't create ramp, returns CELL_AIR
+        // AutoDetectChannelRampDirection needs either:
+        // 1. Adjacent solid (wall) at lowerZ with walkable above, OR
+        // 2. Any walkable exit at upperZ (second pass for ramp-to-ramp)
+        int lowerZ = g_legacyWalkability ? 0 : 1;
+        CellType rampDir = AutoDetectChannelRampDirection(2, 2, lowerZ);
         expect(rampDir == CELL_AIR);
     }
 }
 
 describe(channel_job_execution) {
     it("should assign channel job to mover") {
-        g_legacyWalkability = true;  // Use legacy mode for simpler multi-z testing
-        
-        // Setup: floor at z=0 and z=1
+        // Setup: solid ground below, walkable floor above
+        // Legacy: z=0 walls, z=1 floor
+        // Standard: z=0 walls, z=1 air above walls (walkable), z=2 air + SET_FLOOR
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".....\n"
@@ -3992,12 +4014,30 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        // z=0 is all walls (solid ground), z=1 is floor above
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 1);
+        int channelZ;  // Z-level where channeling happens
+        int moverZ;    // Z-level where mover walks
+        
+        if (g_legacyWalkability) {
+            // Legacy: z=0 is walls (solid ground), z=1 is floor above
+            channelZ = 1;
+            moverZ = 1;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        } else {
+            // Standard: z=0 walls, z=1 air (walkable above walls), z=2 air + floor flag
+            channelZ = 2;
+            moverZ = 2;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_AIR;
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);  // Floor at z=2 makes it walkable
+                }
             }
         }
         
@@ -4008,17 +4048,17 @@ describe(channel_job_execution) {
         ClearStockpiles();
         InitDesignations();
         
-        // Mover starts at (2,2) z=1, exactly on the channel target
+        // Mover starts at (2,2) on moverZ, exactly on the channel target
         Mover* m = &movers[0];
-        Point goal = {2, 2, 1};
-        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        Point goal = {2, 2, moverZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)moverZ, goal, 100.0f);
         moverCount = 1;
         
         // Verify walkability at mover's position
-        expect(IsCellWalkableAt(1, 2, 2) == true);  // z=1, y=2, x=2
+        expect(IsCellWalkableAt(moverZ, 2, 2) == true);
         
-        // Designate for channeling at z=1
-        bool designated = DesignateChannel(2, 2, 1);
+        // Designate for channeling
+        bool designated = DesignateChannel(2, 2, channelZ);
         expect(designated == true);
         
         // Initial state: mover should be idle
@@ -4034,8 +4074,6 @@ describe(channel_job_execution) {
             expect(job != NULL);
             expect(job->type == JOBTYPE_CHANNEL);
         }
-        
-        g_legacyWalkability = false;  // Restore
     }
     
     // NOTE: The following execution tests have a subtle timing issue where
@@ -4045,9 +4083,7 @@ describe(channel_job_execution) {
     // These tests are marked for future investigation.
     
     it("should complete channel job - floor removed after execution") {
-        g_legacyWalkability = true;  // Use legacy mode for simpler multi-z testing
-        
-        // Setup: floor at z=0 and z=1
+        // Setup: solid ground below, walkable floor above to channel
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".....\n"
@@ -4055,12 +4091,30 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        // z=0 is all walls (solid ground), z=1 is floor above
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 1);
+        int channelZ;   // Z-level where channeling happens
+        int belowZ;     // Z-level below the channel (gets mined)
+        
+        if (g_legacyWalkability) {
+            // Legacy: z=0 walls, z=1 floor
+            channelZ = 1;
+            belowZ = 0;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        } else {
+            // Standard: z=0 walls, z=1 air (walkable), z=2 air + floor flag
+            channelZ = 2;
+            belowZ = 1;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_WALL;  // Solid at z=1 to mine
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);
+                }
             }
         }
         
@@ -4071,37 +4125,40 @@ describe(channel_job_execution) {
         ClearStockpiles();
         InitDesignations();
         
-        // Mover starts at (2,2) z=1, exactly on the channel target
+        // Mover starts at (2,2) on channelZ, exactly on the channel target
         Mover* m = &movers[0];
-        Point goal = {2, 2, 1};
-        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        Point goal = {2, 2, channelZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)channelZ, goal, 100.0f);
         moverCount = 1;
         
         // Verify initial state
-        expect(grid[0][2][2] == CELL_WALL);  // Wall below at z=0
-        expect(HAS_FLOOR(2, 2, 1) != 0);     // Floor at z=1
+        if (g_legacyWalkability) {
+            expect(grid[belowZ][2][2] == CELL_WALL);
+            expect(grid[channelZ][2][2] == CELL_FLOOR);
+        } else {
+            expect(grid[belowZ][2][2] == CELL_WALL);
+            expect(grid[channelZ][2][2] == CELL_AIR);
+        }
         
-        // Designate for channeling at z=1
-        bool designated = DesignateChannel(2, 2, 1);
+        // Designate for channeling
+        bool designated = DesignateChannel(2, 2, channelZ);
         expect(designated == true);
         
-        // Assign job and run simulation
+        // Assign job and run simulation until channeling completes
         for (int i = 0; i < 1000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
+            if (!HasChannelDesignation(2, 2, channelZ)) break;
         }
         
-        // After running, floor should be removed (main functional test)
-        expect(HAS_FLOOR(2, 2, 1) == 0);              // Floor removed at z=1
-        expect(grid[0][2][2] != CELL_WALL);          // Wall mined at z=0
-        
-        g_legacyWalkability = false;  // Restore
+        // After running, floor should be removed and wall below mined
+        expect(grid[channelZ][2][2] == CELL_AIR);     // Floor removed
+        expect(grid[belowZ][2][2] != CELL_WALL);      // Wall mined
     }
     
     it("should create ramp when wall adjacent at z-1") {
-        g_legacyWalkability = true;  // Use legacy mode for simpler multi-z testing
-        
+        // Setup: walls below that provide ramp high-side, floor above to channel
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".....\n"
@@ -4109,13 +4166,30 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        // z=0: all walls - provides ramp high-side in all directions
-        // z=1: all floor
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 1);
+        int channelZ;  // Z-level where channeling happens
+        int rampZ;     // Z-level where ramp appears
+        
+        if (g_legacyWalkability) {
+            // Legacy: z=0 walls (ramp high-side), z=1 floor
+            channelZ = 1;
+            rampZ = 0;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        } else {
+            // Standard: z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
+            channelZ = 2;
+            rampZ = 1;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_WALL;  // Solid walls provide ramp high-side
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);
+                }
             }
         }
         
@@ -4124,84 +4198,38 @@ describe(channel_job_execution) {
         ClearMovers();
         ClearItems();
         ClearStockpiles();
+        ClearJobs();
         InitDesignations();
         
-        // Mover at (2,2) z=1 - exactly on channel target
+        // Mover at (2,2) on channelZ - exactly on channel target
         Mover* m = &movers[0];
-        Point goal = {2, 2, 1};
-        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
-        moverCount = 1;
-        
-        // Designate channel at (2,2) z=1
-        bool designated = DesignateChannel(2, 2, 1);
-        expect(designated == true);
-        
-        // Run simulation
-        for (int i = 0; i < 1000; i++) {
-            Tick();
-            AssignJobs();
-            JobsTick();
-        }
-        
-        // Should create ramp - walls surround at z=0 provide high side
-        // Note: ramp detection requires adjacent wall at lowerZ with walkable above
-        expect(CellIsRamp(grid[0][2][2]) == true);
-        
-        g_legacyWalkability = false;  // Restore
-    }
-    
-    it("should channel into open air - floor removed") {
-        g_legacyWalkability = true;  // Use legacy mode for simpler multi-z testing
-        
-        InitGridFromAsciiWithChunkSize(
-            ".....\n"
-            ".....\n"
-            ".....\n"
-            ".....\n"
-            ".....\n", 5, 5);
-        
-        // z=0 is floor, z=1 is floor
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_FLOOR;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 0);
-                SET_FLOOR(x, y, 1);
-            }
-        }
-        
-        moverPathAlgorithm = PATH_ALGO_ASTAR;
-        
-        ClearMovers();
-        ClearItems();
-        ClearStockpiles();
-        InitDesignations();
-        
-        Mover* m = &movers[0];
-        Point goal = {2, 2, 1};
-        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        Point goal = {2, 2, channelZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)channelZ, goal, 100.0f);
         moverCount = 1;
         
         // Designate channel
-        bool designated = DesignateChannel(2, 2, 1);
+        bool designated = DesignateChannel(2, 2, channelZ);
         expect(designated == true);
         
+        // Run simulation until channeling completes
+        int iterations = 0;
         for (int i = 0; i < 1000; i++) {
+            iterations = i;
             Tick();
             AssignJobs();
             JobsTick();
+            // Stop once channeling is done to avoid further state changes
+            if (!HasChannelDesignation(2, 2, channelZ)) break;
         }
+        (void)iterations;
         
-        expect(HAS_FLOOR(2, 2, 1) == 0);
-        // z=0 should remain floor (was already open, just remove floor above)
-        expect(grid[0][2][2] == CELL_FLOOR);
-        
-        g_legacyWalkability = false;  // Restore
+        // Should create ramp - walls surround provide high side
+        // Note: CellIsRamp returns flag value (8), not boolean (1), so use != 0
+        expect(CellIsRamp(grid[rampZ][2][2]) != 0);
     }
     
-    it("should move channeler down to z-1 after completion") {
-        g_legacyWalkability = true;  // Use legacy mode for simpler multi-z testing
-        
+    it("should channel into open air - floor removed") {
+        // Setup: open air below, floor above to channel into open air
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".....\n"
@@ -4209,11 +4237,31 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
-                SET_FLOOR(x, y, 1);
+        int channelZ;  // Z-level where channeling happens
+        int belowZ;    // Z-level below (should remain open)
+        
+        if (g_legacyWalkability) {
+            // Legacy: z=0 floor (open), z=1 floor
+            channelZ = 1;
+            belowZ = 0;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_FLOOR;
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        } else {
+            // Standard: z=0 dirt (solid), z=1 air (walkable), z=2 air + floor flag
+            // We channel at z=2, z=1 should remain open air
+            channelZ = 2;
+            belowZ = 1;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_DIRT;  // Solid ground
+                    grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);         // Floor at z=2 to channel
+                }
             }
         }
         
@@ -4225,14 +4273,12 @@ describe(channel_job_execution) {
         InitDesignations();
         
         Mover* m = &movers[0];
-        Point goal = {2, 2, 1};
-        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        Point goal = {2, 2, channelZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)channelZ, goal, 100.0f);
         moverCount = 1;
         
-        float initialZ = m->z;
-        expect(initialZ == 1.0f);
-        
-        bool designated = DesignateChannel(2, 2, 1);
+        // Designate channel
+        bool designated = DesignateChannel(2, 2, channelZ);
         expect(designated == true);
         
         for (int i = 0; i < 1000; i++) {
@@ -4241,10 +4287,82 @@ describe(channel_job_execution) {
             JobsTick();
         }
         
-        // Mover should have descended to z=0
-        expect(m->z == 0.0f);
+        // Channeled floor becomes CELL_AIR
+        expect(grid[channelZ][2][2] == CELL_AIR);
+        // Below should remain as it was (open air in legacy, open air in standard)
+        if (g_legacyWalkability) {
+            expect(grid[belowZ][2][2] == CELL_FLOOR);
+        } else {
+            expect(grid[belowZ][2][2] == CELL_AIR);
+        }
+    }
+    
+    it("should move channeler down to z-1 after completion") {
+        // Setup: solid ground below, floor above - mover should descend after channeling
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
         
-        g_legacyWalkability = false;  // Restore
+        int channelZ;   // Z-level where channeling happens (mover starts here)
+        int descendZ;   // Z-level mover descends to after channeling
+        
+        if (g_legacyWalkability) {
+            // Legacy: z=0 walls, z=1 floor - mover descends from z=1 to z=0
+            channelZ = 1;
+            descendZ = 0;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_FLOOR;
+                }
+            }
+        } else {
+            // Standard: z=0 walls, z=1 walls, z=2 air + floor flag
+            // Mover descends from z=2 to z=1
+            channelZ = 2;
+            descendZ = 1;
+            for (int x = 0; x < 5; x++) {
+                for (int y = 0; y < 5; y++) {
+                    grid[0][y][x] = CELL_WALL;
+                    grid[1][y][x] = CELL_WALL;  // Solid to mine
+                    grid[2][y][x] = CELL_AIR;
+                    SET_FLOOR(x, y, 2);
+                }
+            }
+        }
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        Mover* m = &movers[0];
+        Point goal = {2, 2, channelZ};
+        InitMover(m, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, (float)channelZ, goal, 100.0f);
+        moverCount = 1;
+        
+        float initialZ = m->z;
+        expect(initialZ == (float)channelZ);
+        
+        bool designated = DesignateChannel(2, 2, channelZ);
+        expect(designated == true);
+        
+        // Run simulation until channeling completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            // Stop once channeling is done to capture mover position
+            if (!HasChannelDesignation(2, 2, channelZ)) break;
+        }
+        
+        // Mover should have descended
+        expect(m->z == (float)descendZ);
     }
 }
 
@@ -4915,11 +5033,26 @@ describe(job_drivers) {
     
     it("should complete mine job via driver: move to adjacent -> mine -> done") {
         // Setup world with a wall to mine
+        // Legacy: z=0 is walkable with wall at (3,1)
+        // Standard: z=0 is solid ground, z=1 is walkable with wall at (3,1)
+        int mineZ = g_legacyWalkability ? 0 : 1;
+        
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "...#....\n"
             "........\n"
             "........\n", 8, 8);
+        
+        if (!g_legacyWalkability) {
+            // Standard mode: need solid ground at z=0, walkable at z=1
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 4; y++) {
+                    grid[0][y][x] = CELL_DIRT;  // Solid ground
+                    grid[1][y][x] = CELL_AIR;   // Air above (walkable)
+                }
+            }
+            grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
+        }
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -4929,41 +5062,44 @@ describe(job_drivers) {
         
         // Create mover at (1,1)
         Mover* m = &movers[0];
-        Point goal = {1, 1, 0};
-        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        Point goal = {1, 1, mineZ};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, (float)mineZ, goal, 100.0f);
         moverCount = 1;
         
         // Designate wall at (3,1) for digging
-        DesignateMine(3, 1, 0);
+        DesignateMine(3, 1, mineZ);
         
         // Create a mine job using the new Job pool
         int jobId = CreateJob(JOBTYPE_MINE);
         Job* job = GetJob(jobId);
         job->targetMineX = 3;
         job->targetMineY = 1;
-        job->targetMineZ = 0;
+        job->targetMineZ = mineZ;
+        job->targetAdjX = 2;  // Adjacent tile where mover stands to mine
+        job->targetAdjY = 1;
         job->assignedMover = 0;
         
         // Assign job to mover
         m->currentJobId = jobId;
         
         // Set mover goal to adjacent tile (2,1 is adjacent to wall at 3,1)
-        m->goal = (Point){2, 1, 0};
+        m->goal = (Point){2, 1, mineZ};
         m->needsRepath = true;
         
         // Reserve designation
-        Designation* d = GetDesignation(3, 1, 0);
+        Designation* d = GetDesignation(3, 1, mineZ);
         d->assignedMover = 0;
         
         // Run simulation
         for (int i = 0; i < 600; i++) {
             Tick();
             JobsTick();
-            if (grid[0][1][3] == CELL_FLOOR) break;
+            // Check if wall is mined (becomes walkable)
+            if (IsCellWalkableAt(mineZ, 1, 3)) break;
         }
         
-        // Verify mine completed - wall is now floor
-        expect(grid[0][1][3] == CELL_FLOOR);
+        // Verify mine completed - wall is now walkable
+        expect(IsCellWalkableAt(mineZ, 1, 3) == true);
         expect(m->currentJobId == -1);
         expect(GetJob(jobId)->active == false);
     }
@@ -5148,11 +5284,26 @@ describe(job_drivers) {
 describe(job_game_speed) {
     it("should complete mine job faster at higher game speed") {
         // Setup world with a wall to mine
+        // Legacy: z=0 walkable with wall at (3,1)
+        // Standard: z=0 solid, z=1 walkable with wall at (3,1)
+        int mineZ = g_legacyWalkability ? 0 : 1;
+        
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "...#....\n"
             "........\n"
             "........\n", 8, 8);
+        
+        if (!g_legacyWalkability) {
+            // Standard mode: solid ground at z=0, walkable at z=1
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 4; y++) {
+                    grid[0][y][x] = CELL_DIRT;
+                    grid[1][y][x] = CELL_AIR;
+                }
+            }
+            grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
+        }
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5162,27 +5313,27 @@ describe(job_game_speed) {
         
         // Create mover adjacent to wall (at 2,1, wall is at 3,1)
         Mover* m = &movers[0];
-        Point goal = {2, 1, 0};
-        InitMover(m, CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        Point goal = {2, 1, mineZ};
+        InitMover(m, CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, (float)mineZ, goal, 100.0f);
         m->pathLength = 0;  // Already at destination
         moverCount = 1;
         
         // Designate wall at (3,1) for digging
-        DesignateMine(3, 1, 0);
+        DesignateMine(3, 1, mineZ);
         
         // Create mine job
         int jobId = CreateJob(JOBTYPE_MINE);
         Job* job = GetJob(jobId);
         job->targetMineX = 3;
         job->targetMineY = 1;
-        job->targetMineZ = 0;
+        job->targetMineZ = mineZ;
         job->assignedMover = 0;
         job->step = STEP_WORKING;
         job->progress = 0.0f;
         m->currentJobId = jobId;
         
         // Reserve designation
-        Designation* d = GetDesignation(3, 1, 0);
+        Designation* d = GetDesignation(3, 1, mineZ);
         d->assignedMover = 0;
         
         // Test at 1x speed - count ticks needed
@@ -5193,14 +5344,14 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt1x++;
-            if (grid[0][1][3] == CELL_FLOOR) break;
+            if (IsCellWalkableAt(mineZ, 1, 3)) break;
         }
-        expect(grid[0][1][3] == CELL_FLOOR);
+        expect(IsCellWalkableAt(mineZ, 1, 3) == true);
         
         // Reset for 2x speed test
-        grid[0][1][3] = CELL_WALL;
-        DesignateMine(3, 1, 0);
-        d = GetDesignation(3, 1, 0);
+        grid[mineZ][1][3] = CELL_WALL;
+        DesignateMine(3, 1, mineZ);
+        d = GetDesignation(3, 1, mineZ);
         d->assignedMover = 0;
         
         // Create fresh job for 2x test
@@ -5208,7 +5359,7 @@ describe(job_game_speed) {
         Job* job2 = GetJob(jobId2);
         job2->targetMineX = 3;
         job2->targetMineY = 1;
-        job2->targetMineZ = 0;
+        job2->targetMineZ = mineZ;
         job2->assignedMover = 0;
         job2->step = STEP_WORKING;
         job2->progress = 0.0f;
@@ -5222,9 +5373,9 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt2x++;
-            if (grid[0][1][3] == CELL_FLOOR) break;
+            if (IsCellWalkableAt(mineZ, 1, 3)) break;
         }
-        expect(grid[0][1][3] == CELL_FLOOR);
+        expect(IsCellWalkableAt(mineZ, 1, 3) == true);
         
         // At 2x speed, should complete in roughly half the ticks
         // Allow some tolerance (within 20%)
@@ -5239,13 +5390,26 @@ describe(job_game_speed) {
     }
     
     it("should complete build job faster at higher game speed") {
-        g_legacyWalkability = true;  // Use legacy mode for this complex job test
-        // Setup world
+        // Setup world - works in both modes since building happens at a specific z
+        // Legacy: z=0 is walkable (floor)
+        // Standard: z=0 is solid ground, z=1 is walkable (air above ground)
+        int buildZ = g_legacyWalkability ? 0 : 1;
+        
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "........\n"
             "........\n"
             "........\n", 8, 8);
+        
+        if (!g_legacyWalkability) {
+            // Standard mode: solid ground at z=0, walkable at z=1
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 4; y++) {
+                    grid[0][y][x] = CELL_DIRT;
+                    grid[1][y][x] = CELL_AIR;
+                }
+            }
+        }
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5255,13 +5419,13 @@ describe(job_game_speed) {
         
         // Create mover at blueprint location (4,1)
         Mover* m = &movers[0];
-        Point goal = {4, 1, 0};
-        InitMover(m, CELL_SIZE * 4.5f, CELL_SIZE * 1.5f, 0.0f, goal, 100.0f);
+        Point goal = {4, 1, buildZ};
+        InitMover(m, CELL_SIZE * 4.5f, CELL_SIZE * 1.5f, (float)buildZ, goal, 100.0f);
         m->pathLength = 0;  // Already at destination
         moverCount = 1;
         
         // Create blueprint at (4,1) - ready to build
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        int bpIdx = CreateBuildBlueprint(4, 1, buildZ);
         blueprints[bpIdx].state = BLUEPRINT_BUILDING;
         blueprints[bpIdx].deliveredMaterials = 1;
         blueprints[bpIdx].assignedBuilder = 0;
@@ -5283,13 +5447,13 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt1x++;
-            if (grid[0][1][4] == CELL_WALL) break;
+            if (grid[buildZ][1][4] == CELL_WALL) break;
         }
-        expect(grid[0][1][4] == CELL_WALL);
+        expect(grid[buildZ][1][4] == CELL_WALL);
         
         // Reset for 2x speed test
-        grid[0][1][4] = CELL_WALKABLE;
-        int bpIdx2 = CreateBuildBlueprint(4, 1, 0);
+        grid[buildZ][1][4] = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        int bpIdx2 = CreateBuildBlueprint(4, 1, buildZ);
         blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
         blueprints[bpIdx2].deliveredMaterials = 1;
         blueprints[bpIdx2].assignedBuilder = 0;
@@ -5311,9 +5475,9 @@ describe(job_game_speed) {
         for (int i = 0; i < 600; i++) {
             JobsTick();
             ticksAt2x++;
-            if (grid[0][1][4] == CELL_WALL) break;
+            if (grid[buildZ][1][4] == CELL_WALL) break;
         }
-        expect(grid[0][1][4] == CELL_WALL);
+        expect(grid[buildZ][1][4] == CELL_WALL);
         
         // At 2x speed, should complete in roughly half the ticks
         printf("Build: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
