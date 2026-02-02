@@ -2431,8 +2431,9 @@ int WorkGiver_Craft(int moverIdx) {
             if (searchRadius == 0) searchRadius = 100;  // Large default
             
             int itemIdx = -1;
+            int bestDistSq = searchRadius * searchRadius;
             
-            // Search for unreserved item of the required type
+            // Search for closest unreserved item of the required type
             for (int i = 0; i < itemHighWaterMark; i++) {
                 Item* item = &items[i];
                 if (!item->active) continue;
@@ -2446,10 +2447,11 @@ int WorkGiver_Craft(int moverIdx) {
                 int itemTileY = (int)(item->y / CELL_SIZE);
                 int dx = itemTileX - ws->x;
                 int dy = itemTileY - ws->y;
-                if (dx * dx + dy * dy > searchRadius * searchRadius) continue;
+                int distSq = dx * dx + dy * dy;
+                if (distSq > bestDistSq) continue;
                 
+                bestDistSq = distSq;
                 itemIdx = i;
-                break;
             }
             
             if (itemIdx < 0) continue;  // No materials available

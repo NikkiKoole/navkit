@@ -208,6 +208,28 @@ static void print_stockpile(int idx) {
     if (!found) printf("  (none)\n");
 }
 
+static const char* blueprintStateNames[] = {"AWAITING_MATERIALS", "READY_TO_BUILD", "BUILDING"};
+
+static void print_blueprint(int idx) {
+    if (idx < 0 || idx >= MAX_BLUEPRINTS) {
+        printf("Blueprint %d out of range\n", idx);
+        return;
+    }
+    Blueprint* bp = &insp_blueprints[idx];
+    printf("\n=== BLUEPRINT %d ===\n", idx);
+    printf("Active: %s\n", bp->active ? "YES" : "no");
+    if (!bp->active) return;
+    
+    printf("Position: (%d, %d, z%d)\n", bp->x, bp->y, bp->z);
+    printf("State: %s\n", bp->state < 3 ? blueprintStateNames[bp->state] : "UNKNOWN");
+    printf("Materials: %d/%d delivered\n", bp->deliveredMaterials, bp->requiredMaterials);
+    printf("Reserved item: %d%s\n", bp->reservedItem,
+           bp->reservedItem < 0 ? " (none)" : "");
+    printf("Assigned builder: %d%s\n", bp->assignedBuilder,
+           bp->assignedBuilder < 0 ? " (none)" : "");
+    printf("Progress: %.1f%%\n", bp->progress * 100.0f);
+}
+
 static const char* workshopTypeNames[] = {"STONECUTTER"};
 static const char* billModeNames[] = {"DO_X_TIMES", "DO_UNTIL_X", "DO_FOREVER"};
 
@@ -619,7 +641,7 @@ static void get_basename_without_gz(const char* path, char* out, size_t outSize)
 int InspectSaveFile(int argc, char** argv) {
     // Parse arguments
     const char* filename = "saves/debug_save.bin";
-    int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1, opt_workshop = -1;
+    int opt_mover = -1, opt_item = -1, opt_job = -1, opt_stockpile = -1, opt_workshop = -1, opt_blueprint = -1;
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
     int opt_path_x1 = -1, opt_path_y1 = -1, opt_path_z1 = -1;
     int opt_path_x2 = -1, opt_path_y2 = -1, opt_path_z2 = -1;
@@ -632,6 +654,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--job") == 0 && i+1 < argc) opt_job = atoi(argv[++i]);
         else if (strcmp(argv[i], "--stockpile") == 0 && i+1 < argc) opt_stockpile = atoi(argv[++i]);
         else if (strcmp(argv[i], "--workshop") == 0 && i+1 < argc) opt_workshop = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--blueprint") == 0 && i+1 < argc) opt_blueprint = atoi(argv[++i]);
         else if (strcmp(argv[i], "--cell") == 0 && i+1 < argc) {
             sscanf(argv[++i], "%d,%d,%d", &opt_cell_x, &opt_cell_y, &opt_cell_z);
         }
@@ -781,9 +804,9 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Print summary if no specific queries
     bool anyQuery = (opt_mover >= 0 || opt_item >= 0 || opt_job >= 0 || 
-                     opt_stockpile >= 0 || opt_workshop >= 0 || opt_cell_x >= 0 || 
-                     opt_path_x1 >= 0 || opt_map_x >= 0 || opt_designations ||
-                     opt_stuck || opt_reserved || opt_jobs_active);
+                     opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
+                     opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
+                     opt_designations || opt_stuck || opt_reserved || opt_jobs_active);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -805,8 +828,8 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Workshops: %d active\n", activeWorkshops);
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
-        printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --cell X,Y,Z\n");
-        printf("         --path X1,Y1,Z1 X2,Y2,Z2, --map X,Y,Z [R], --designations\n");
+        printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
+        printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2, --map X,Y,Z [R], --designations\n");
         printf("         --stuck, --reserved, --jobs-active\n");
     }
     
@@ -821,6 +844,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_job >= 0) print_job(opt_job);
     if (opt_stockpile >= 0) print_stockpile(opt_stockpile);
     if (opt_workshop >= 0) print_workshop(opt_workshop);
+    if (opt_blueprint >= 0) print_blueprint(opt_blueprint);
     if (opt_cell_x >= 0) print_cell(opt_cell_x, opt_cell_y, opt_cell_z);
     if (opt_path_x1 >= 0) print_path(opt_path_x1, opt_path_y1, opt_path_z1, opt_path_x2, opt_path_y2, opt_path_z2);
     if (opt_map_x >= 0) print_map(opt_map_x, opt_map_y, opt_map_z, opt_map_r);

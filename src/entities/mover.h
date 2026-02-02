@@ -159,6 +159,9 @@ extern bool useStaggeredUpdates;      // When true, LOS/avoidance are staggered 
 // Returns a vector pointing away from nearby movers, strength based on proximity
 Vec2 ComputeMoverAvoidance(int moverIndex);
 
+// Compute wall repulsion vector (pushes mover away from walls and workshop blocks)
+Vec2 ComputeWallRepulsion(float x, float y, int z);
+
 // Mover path state getters/setters (inline for zero overhead)
 static inline int GetMoverPathLength(int moverIdx) { return movers[moverIdx].pathLength; }
 static inline int GetMoverPathIndex(int moverIdx) { return movers[moverIdx].pathIndex; }
@@ -168,5 +171,8 @@ static inline void ClearMoverPath(int moverIdx) { movers[moverIdx].pathLength = 
 
 // Push all movers out of a cell to nearest walkable neighbor
 void PushMoversOutOfCell(int x, int y, int z);
+
+// Invalidate paths of movers whose path goes through a cell
+void InvalidatePathsThroughCell(int x, int y, int z);
 
 #endif

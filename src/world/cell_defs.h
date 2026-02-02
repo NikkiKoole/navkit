@@ -98,6 +98,8 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     if (g_legacyWalkability) {
         // Legacy walkability: cell has CF_WALKABLE flag
         if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
+        // Workshop blocks apply in both legacy and standard modes
+        if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
         return CellIsWalkable(grid[z][y][x]);
     }
     return IsCellWalkableAt_Standard(z, y, x);

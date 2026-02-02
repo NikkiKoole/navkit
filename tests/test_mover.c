@@ -4,6 +4,7 @@
 #include "../src/world/cell_defs.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
+#include "../src/entities/workshops.h"
 #include "../src/world/terrain.h"
 #include <stdlib.h>
 #include <string.h>
@@ -1726,6 +1727,353 @@ describe(staggered_updates) {
     }
 }
 
+// ============================================================================
+// Workshop Collision Tests
+// ============================================================================
+
+describe(workshop_mover_collision) {
+    it("should push mover out when workshop placed on it") {
+        // Mover at (1,1), we place a workshop there - mover should be pushed out
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearWorkshops();
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {7, 7, 0};
+        Point testPath[] = {{1, 1, 0}, {7, 7, 0}};
+        float startX = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        
+        // Verify mover is at (1,1)
+        int cellX = (int)(m->x / CELL_SIZE);
+        int cellY = (int)(m->y / CELL_SIZE);
+        expect(cellX == 1 && cellY == 1);
+        
+        // Place workshop at (0,0) - stonecutter is 3x3 with blocked tiles at (0,0), (1,0), (0,1), (1,1)
+        // Template is "##O" / "#X." / "..." so (0,0), (1,0), (0,1) are blocked
+        int wsIdx = CreateWorkshop(0, 0, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        
+        // Mover should have been pushed out of the blocked cell
+        cellX = (int)(m->x / CELL_SIZE);
+        cellY = (int)(m->y / CELL_SIZE);
+        
+        // Check if mover was on a blocked tile - template row 1 col 1 is 'X' (work tile, not blocked)
+        // Actually (1,1) relative to workshop at (0,0) is template[1*3+1] = 'X' which is walkable
+        // Let's check (0,0) and (1,0) and (0,1) which are blocked
+        expect(!IsWorkshopBlocking(1, 1, 0));  // (1,1) is work tile, not blocked
+        expect(IsWorkshopBlocking(0, 0, 0));   // (0,0) is blocked
+        expect(IsWorkshopBlocking(1, 0, 0));   // (1,0) is blocked
+        expect(IsWorkshopBlocking(0, 1, 0));   // (0,1) is blocked
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should push mover out of blocked workshop tile") {
+        // Place mover specifically on a tile that WILL be blocked
+        // Workshop template is "##O" / "#X." / "..." 
+        // Place workshop at (2,2) so blocked tiles are (2,2), (3,2), (2,3)
+        // Place mover at (2,3) which will be blocked, with (1,3) and (2,4) as escape routes
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearWorkshops();
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {7, 7, 0};
+        Point testPath[] = {{2, 3, 0}, {7, 7, 0}};
+        // Place mover at (2,3) which will become blocked by workshop at (2,2)
+        float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 2);
+        moverCount = 1;
+        
+        // Verify mover is at (2,3)
+        int cellX = (int)(m->x / CELL_SIZE);
+        int cellY = (int)(m->y / CELL_SIZE);
+        expect(cellX == 2 && cellY == 3);
+        
+        // Place workshop at (2,2) - tile (2,3) relative is row 1 col 0 = '#' (blocked)
+        int wsIdx = CreateWorkshop(2, 2, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        expect(IsWorkshopBlocking(2, 3, 0));  // Verify (2,3) is blocked
+        
+        // Mover should have been pushed to adjacent walkable cell
+        cellX = (int)(m->x / CELL_SIZE);
+        cellY = (int)(m->y / CELL_SIZE);
+        expect(!(cellX == 2 && cellY == 3));  // Should NOT be at (2,3) anymore
+        expect(m->needsRepath == true);  // Should need repath after being pushed
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should invalidate mover path when workshop blocks path waypoint") {
+        // Mover has a path that goes through a cell that becomes blocked
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearWorkshops();
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {7, 0, 0};
+        // Path goes through (1,0) which will become blocked by workshop
+        Point testPath[] = {{7, 0, 0}, {1, 0, 0}, {0, 0, 0}};  // goal-to-start order
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 3 * CELL_SIZE + CELL_SIZE * 0.5f;  // Start at (0,3) away from workshop
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 3);
+        moverCount = 1;
+        
+        expect(m->needsRepath == false);  // Path is valid initially
+        
+        // Place workshop at (0,0) - this blocks (1,0) which is in the path
+        int wsIdx = CreateWorkshop(0, 0, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        expect(IsWorkshopBlocking(1, 0, 0));  // (1,0) should be blocked
+        
+        // Mover's path goes through (1,0), so it should need repath
+        expect(m->needsRepath == true);
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should include workshop blocks in wall repulsion") {
+        // Test that ComputeWallRepulsion considers workshop blocked tiles
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        
+        ClearWorkshops();
+        
+        // Place workshop at (2,2)
+        int wsIdx = CreateWorkshop(2, 2, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        
+        // Workshop blocked tiles are at (2,2), (3,2), (2,3) based on template "##O" / "#X." / "..."
+        expect(IsWorkshopBlocking(2, 2, 0));
+        expect(IsWorkshopBlocking(3, 2, 0));
+        expect(IsWorkshopBlocking(2, 3, 0));
+        
+        // Compute wall repulsion near the workshop blocked tile
+        // Position near (2,2) blocked tile
+        float testX = 2 * CELL_SIZE + CELL_SIZE * 0.5f + CELL_SIZE * 0.3f;  // Slightly right of center
+        float testY = 2 * CELL_SIZE + CELL_SIZE * 0.5f + CELL_SIZE * 0.3f;  // Slightly down of center
+        
+        Vec2 repulsion = ComputeWallRepulsion(testX, testY, 0);
+        
+        // Should have non-zero repulsion pushing away from blocked tile
+        float repulsionMag = repulsion.x * repulsion.x + repulsion.y * repulsion.y;
+        expect(repulsionMag > 0.0f);
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should not allow mover to walk through workshop blocked tiles") {
+        // Mover tries to walk through workshop - should be blocked
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 4, 4);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearWorkshops();
+        ClearMovers();
+        
+        // Place workshop at (3,0) - blocks (3,0), (4,0), (3,1)
+        int wsIdx = CreateWorkshop(3, 0, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        
+        // Verify blocked tiles
+        expect(IsWorkshopBlocking(3, 0, 0));
+        expect(IsWorkshopBlocking(4, 0, 0));
+        expect(IsWorkshopBlocking(3, 1, 0));
+        
+        // IsCellWalkableAt(z, y, x) should return false for blocked tiles
+        expect(IsCellWalkableAt(0, 0, 3) == false);  // (x=3,y=0) blocked
+        expect(IsCellWalkableAt(0, 0, 4) == false);  // (x=4,y=0) blocked
+        expect(IsCellWalkableAt(0, 1, 3) == false);  // (x=3,y=1) blocked
+        
+        // Work tile and output tile should still be walkable
+        expect(IsCellWalkableAt(0, 1, 4) == true);   // (x=4,y=1) is work tile 'X'
+        expect(IsCellWalkableAt(0, 0, 5) == true);   // (x=5,y=0) is output tile 'O'
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should handle mover walking into newly placed workshop") {
+        // Mover is walking toward a location, workshop is placed in its path
+        // Mover should stop/repath, not walk through
+        InitGridFromAsciiWithChunkSize(
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n", 8, 8);
+        BuildEntrances();
+        BuildGraph();
+        
+        ClearWorkshops();
+        ClearMovers();
+        
+        Mover* m = &movers[0];
+        Point goal = {10, 0, 0};
+        // Path goes straight across row 0
+        Point testPath[] = {{10, 0, 0}, {5, 0, 0}, {0, 0, 0}};
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 3);
+        moverCount = 1;
+        
+        // Run a few ticks to get mover moving
+        RunTicks(10);
+        
+        // Place workshop at (5,0) - blocks path
+        int wsIdx = CreateWorkshop(5, 0, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        
+        // Run more ticks
+        RunTicks(300);
+        
+        // Mover should NOT be inside a blocked workshop tile
+        int cellX = (int)(m->x / CELL_SIZE);
+        int cellY = (int)(m->y / CELL_SIZE);
+        expect(!IsWorkshopBlocking(cellX, cellY, 0));
+        
+        DeleteWorkshop(wsIdx);
+    }
+    
+    it("should not get stuck in narrow corridor with workshops") {
+        // Reproduce the bug: narrow 3-cell-high corridor, many movers, workshops placed
+        // Create a 32x8 map with walls on top and bottom, leaving 3-cell corridor
+        InitGridFromAsciiWithChunkSize(
+            "################################\n"
+            "################################\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "################################\n"
+            "################################\n"
+            "################################\n", 8, 8);
+        BuildEntrances();
+        BuildGraph();
+        InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+        
+        ClearWorkshops();
+        ClearMovers();
+        endlessMoverMode = false;
+        
+        // Spawn many movers walking left-to-right and right-to-left through corridor
+        for (int i = 0; i < 50; i++) {
+            Point start, goal;
+            if (i % 2 == 0) {
+                start = (Point){0, 3, 0};
+                goal = (Point){31, 3, 0};
+            } else {
+                start = (Point){31, 3, 0};
+                goal = (Point){0, 3, 0};
+            }
+            
+            startPos = start;
+            goalPos = goal;
+            RunHPAStar();
+            
+            if (pathLength > 0) {
+                Mover* m = &movers[moverCount];
+                float sx = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float sy = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
+                InitMoverWithPath(m, sx, sy, 0.0f, goal, 100.0f, path, pathLength);
+                moverCount++;
+            }
+        }
+        
+        // Let movers start moving
+        RunTicks(60);
+        
+        // Place workshops in the corridor at different positions
+        // Stonecutter is 3x3, so place at y=2 (covers rows 2,3,4)
+        int ws1 = CreateWorkshop(8, 2, 0, WORKSHOP_STONECUTTER);
+        expect(ws1 >= 0);
+        
+        RunTicks(30);
+        
+        int ws2 = CreateWorkshop(16, 2, 0, WORKSHOP_STONECUTTER);
+        expect(ws2 >= 0);
+        
+        RunTicks(30);
+        
+        int ws3 = CreateWorkshop(24, 2, 0, WORKSHOP_STONECUTTER);
+        expect(ws3 >= 0);
+        
+        // Run simulation for a while
+        RunTicks(600);
+        
+        // Check that NO movers are stuck inside workshop-blocked tiles
+        int stuckInWorkshop = 0;
+        for (int i = 0; i < moverCount; i++) {
+            Mover* m = &movers[i];
+            if (!m->active) continue;
+            
+            int cellX = (int)(m->x / CELL_SIZE);
+            int cellY = (int)(m->y / CELL_SIZE);
+            int cellZ = (int)m->z;
+            
+            if (IsWorkshopBlocking(cellX, cellY, cellZ)) {
+                stuckInWorkshop++;
+            }
+        }
+        
+        expect(stuckInWorkshop == 0);
+        
+        DeleteWorkshop(ws1);
+        DeleteWorkshop(ws2);
+        DeleteWorkshop(ws3);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -1758,5 +2106,6 @@ int main(int argc, char* argv[]) {
     test(mover_ladder_transitions);
     test(sparse_level_pathfinding);
     test(staggered_updates);
+    test(workshop_mover_collision);
     return summary();
 }

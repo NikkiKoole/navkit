@@ -1116,6 +1116,40 @@ void DrawWorkshops(void) {
             }
         }
     }
+    
+    // Draw path of assigned crafter when hovering over a workshop
+    if (hoveredWorkshop >= 0 && hoveredWorkshop < MAX_WORKSHOPS) {
+        Workshop* ws = &workshops[hoveredWorkshop];
+        if (ws->active && ws->assignedCrafter >= 0) {
+            Mover* m = &movers[ws->assignedCrafter];
+            if (m->active && m->pathIndex >= 0) {
+                Color pathColor = YELLOW;
+                
+                // Draw line from mover to next waypoint
+                float msx = offset.x + m->x * zoom;
+                float msy = offset.y + m->y * zoom;
+                Point next = m->path[m->pathIndex];
+                if (next.z == viewZ) {
+                    float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    DrawLineEx((Vector2){msx, msy}, (Vector2){tx, ty}, 2.0f, pathColor);
+                }
+                
+                // Draw rest of path
+                for (int j = m->pathIndex; j > 0; j--) {
+                    if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
+                    float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
+                }
+                
+                // Draw mover position marker
+                DrawCircle((int)msx, (int)msy, 4.0f * zoom, pathColor);
+            }
+        }
+    }
 }
 
 void DrawHaulDestinations(void) {
@@ -1183,6 +1217,40 @@ void DrawMiningDesignations(void) {
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
+    }
+    
+    // Draw path of assigned mover when hovering over a designation
+    if (hoveredDesignationX >= 0) {
+        Designation* d = GetDesignation(hoveredDesignationX, hoveredDesignationY, hoveredDesignationZ);
+        if (d && d->assignedMover >= 0) {
+            Mover* m = &movers[d->assignedMover];
+            if (m->active && m->pathIndex >= 0) {
+                Color pathColor = ORANGE;
+                
+                // Draw line from mover to next waypoint
+                float msx = offset.x + m->x * zoom;
+                float msy = offset.y + m->y * zoom;
+                Point next = m->path[m->pathIndex];
+                if (next.z == viewZ) {
+                    float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    DrawLineEx((Vector2){msx, msy}, (Vector2){tx, ty}, 2.0f, pathColor);
+                }
+                
+                // Draw rest of path
+                for (int j = m->pathIndex; j > 0; j--) {
+                    if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
+                    float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+                    DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
+                }
+                
+                // Draw mover position marker
+                DrawCircle((int)msx, (int)msy, 4.0f * zoom, pathColor);
+            }
+        }
     }
 }
 

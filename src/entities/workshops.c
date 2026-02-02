@@ -57,6 +57,7 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->outputTileX = x;
             ws->outputTileY = y;
             
+            // First pass: copy template and set blocking flags
             for (int ty = 0; ty < ws->height; ty++) {
                 for (int tx = 0; tx < ws->width; tx++) {
                     int idx = ty * ws->width + tx;
@@ -71,12 +72,20 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                         ws->outputTileY = y + ty;
                     }
                     
-                    // Set blocking flag for machinery tiles and push movers out
+                    // Set blocking flag for machinery tiles
                     if (c == WT_BLOCK) {
-                        int tileX = x + tx;
-                        int tileY = y + ty;
-                        SET_CELL_FLAG(tileX, tileY, z, CELL_FLAG_WORKSHOP_BLOCK);
-                        PushMoversOutOfCell(tileX, tileY, z);
+                        SET_CELL_FLAG(x + tx, y + ty, z, CELL_FLAG_WORKSHOP_BLOCK);
+                    }
+                }
+            }
+            
+            // Second pass: push movers out, invalidate paths through blocked tiles
+            // Done separately so movers aren't pushed into tiles that will be blocked
+            for (int ty = 0; ty < ws->height; ty++) {
+                for (int tx = 0; tx < ws->width; tx++) {
+                    if (ws->template[ty * ws->width + tx] == WT_BLOCK) {
+                        PushMoversOutOfCell(x + tx, y + ty, z);
+                        InvalidatePathsThroughCell(x + tx, y + ty, z);
                     }
                 }
             }

@@ -270,7 +270,7 @@ bool HasClearanceInDirection(float x, float y, int z, int dir) {
     return true;
 }
 
-// Compute wall repulsion force - pushes mover away from walls only
+// Compute wall repulsion force - pushes mover away from blocked cells (walls, workshops)
 // Air cells do NOT repel - movers can be pushed into air and will fall
 Vec2 ComputeWallRepulsion(float x, float y, int z) {
     Vec2 repulsion = {0.0f, 0.0f};
@@ -278,7 +278,7 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
     int cellX = (int)(x / CELL_SIZE);
     int cellY = (int)(y / CELL_SIZE);
     
-    // Check 3x3 area around mover for walls only (not air - we allow falling into air)
+    // Check 3x3 area around mover for blocked cells (walls, workshops)
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             int cx = cellX + dx;
@@ -287,8 +287,10 @@ Vec2 ComputeWallRepulsion(float x, float y, int z) {
             // Skip out of bounds
             if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) continue;
             
-            // Only repel from walls, not air (movers can fall through air)
-            if (grid[z][cy][cx] != CELL_WALL) continue;
+            // Only repel from blocked cells (walls, workshops), not traversable air
+            CellType cell = grid[z][cy][cx];
+            bool isBlocked = CellBlocksMovement(cell) || (cellFlags[z][cy][cx] & CELL_FLAG_WORKSHOP_BLOCK);
+            if (!isBlocked) continue;
             
             // Wall cell center
             float wallX = cx * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -668,6 +670,22 @@ void PushMoversOutOfCell(int x, int y, int z) {
     }
 }
 
+void InvalidatePathsThroughCell(int x, int y, int z) {
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        if (m->pathLength == 0) continue;
+        
+        // Check if any waypoint in the path goes through this cell
+        for (int j = 0; j <= m->pathIndex; j++) {
+            if (m->path[j].x == x && m->path[j].y == y && m->path[j].z == z) {
+                m->needsRepath = true;
+                break;
+            }
+        }
+    }
+}
+
 // Assign a new random goal to a mover and compute path
 static void AssignNewMoverGoal(Mover* m) {
     Point newGoal;
@@ -791,12 +809,36 @@ void UpdateMovers(void) {
         int currentY = (int)(m->y / CELL_SIZE);
         int currentZ = (int)m->z;
 
-        // Check if mover needs to fall - only for non-blocking, non-walkable cells (e.g., air without solid below)
-        // In DF mode, air cells above solid ARE walkable, so we check walkability not just cell type
-        // Walls are handled separately below (push to adjacent cell)
-        CellType currentCell = grid[currentZ][currentY][currentX];
-        if (!CellBlocksMovement(currentCell) && !IsCellWalkableAt(currentZ, currentY, currentX)) {
-            TryFallToGround(m, currentX, currentY);
+        // Check if mover is in a non-walkable cell
+        if (!IsCellWalkableAt(currentZ, currentY, currentX)) {
+            CellType currentCell = grid[currentZ][currentY][currentX];
+            bool isWorkshopBlock = cellFlags[currentZ][currentY][currentX] & CELL_FLAG_WORKSHOP_BLOCK;
+            
+            // If it's a non-blocking cell (like air) without workshop flag, try to fall
+            if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {
+                TryFallToGround(m, currentX, currentY);
+                continue;
+            }
+            
+            // It's a blocked structure (wall or workshop) - push to adjacent walkable cell
+            int dx[] = {0, 0, -1, 1};
+            int dy[] = {-1, 1, 0, 0};
+            bool pushed = false;
+            for (int d = 0; d < 4; d++) {
+                int nx = currentX + dx[d];
+                int ny = currentY + dy[d];
+                if (IsCellWalkableAt(currentZ, ny, nx)) {
+                    m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
+                    pushed = true;
+                    break;
+                }
+            }
+            if (!pushed) {
+                m->active = false;
+                TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in blocked cell with no escape", i);
+            }
+            m->needsRepath = true;
             continue;
         }
         
@@ -838,29 +880,6 @@ void UpdateMovers(void) {
                 // Only deactivate if not on a job
                 m->active = false;
             }
-            continue;
-        }
-        
-        // Check if mover is standing on a wall - push to nearest walkable
-        if (IsWallCell(grid[currentZ][currentY][currentX])) {
-            int dx[] = {0, 0, -1, 1};
-            int dy[] = {-1, 1, 0, 0};
-            bool pushed = false;
-            for (int d = 0; d < 4; d++) {
-                int nx = currentX + dx[d];
-                int ny = currentY + dy[d];
-                if (IsCellWalkableAt(currentZ, ny, nx)) {
-                    m->x = nx * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->y = ny * CELL_SIZE + CELL_SIZE * 0.5f;
-                    pushed = true;
-                    break;
-                }
-            }
-            if (!pushed) {
-                m->active = false;
-                TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in wall with no escape", i);
-            }
-            m->needsRepath = true;
             continue;
         }
 

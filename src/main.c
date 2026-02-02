@@ -79,6 +79,9 @@ int hoveredWorkshop = -1;
 int hoveredMover = -1;
 int hoveredItemCell[16];
 int hoveredItemCount = 0;
+int hoveredDesignationX = -1;
+int hoveredDesignationY = -1;
+int hoveredDesignationZ = -1;
 
 int agentCountSetting = 10;
 Agent agents[MAX_AGENTS];

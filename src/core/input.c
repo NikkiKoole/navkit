@@ -1,6 +1,7 @@
 // core/input.c - Input handling with hierarchical mode system
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../world/designations.h"
 #include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -634,9 +635,22 @@ void HandleInput(void) {
         Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
         hoveredItemCount = GetItemsAtCell((int)mouseGrid.x, (int)mouseGrid.y, z, hoveredItemCell, 16);
+        // Check for designation hover
+        if (HasDigDesignation((int)mouseGrid.x, (int)mouseGrid.y, z)) {
+            hoveredDesignationX = (int)mouseGrid.x;
+            hoveredDesignationY = (int)mouseGrid.y;
+            hoveredDesignationZ = z;
+        } else {
+            hoveredDesignationX = -1;
+            hoveredDesignationY = -1;
+            hoveredDesignationZ = -1;
+        }
     } else {
         hoveredMover = -1;
         hoveredItemCount = 0;
+        hoveredDesignationX = -1;
+        hoveredDesignationY = -1;
+        hoveredDesignationZ = -1;
     }
 
     // ========================================================================

@@ -131,6 +131,9 @@ extern int hoveredWorkshop;
 extern int hoveredMover;
 extern int hoveredItemCell[16];
 extern int hoveredItemCount;
+extern int hoveredDesignationX;
+extern int hoveredDesignationY;
+extern int hoveredDesignationZ;
 
 // Test map
 
