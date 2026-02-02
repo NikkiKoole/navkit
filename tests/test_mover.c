@@ -929,14 +929,9 @@ describe(mover_falling) {
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (g_legacyWalkability) {
-                    grid[0][y][x] = CELL_WALKABLE;  // Walkable ground
-                    grid[1][y][x] = CELL_AIR;       // Non-walkable air
-                } else {
-                    // Standard mode: z=0 is solid dirt, z=1 air above air is not walkable
-                    grid[0][y][x] = CELL_AIR;       // Air at z=0 (walkable due to bedrock)
-                    grid[1][y][x] = CELL_AIR;       // Air at z=1 (NOT walkable - no solid below)
-                }
+                // z=0 is solid dirt, z=1 air above air is not walkable
+                grid[0][y][x] = CELL_AIR;       // Air at z=0 (walkable due to bedrock)
+                grid[1][y][x] = CELL_AIR;       // Air at z=1 (NOT walkable - no solid below)
             }
         }
         
@@ -971,14 +966,9 @@ describe(mover_falling) {
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (g_legacyWalkability) {
-                    grid[0][y][x] = CELL_WALKABLE;
-                    grid[1][y][x] = CELL_WALKABLE;
-                } else {
-                    // Standard mode: z=0 solid, z=1 air above solid is walkable
-                    grid[0][y][x] = CELL_DIRT;      // Solid ground
-                    grid[1][y][x] = CELL_AIR;       // Walkable (solid below)
-                }
+                // z=0 solid, z=1 air above solid is walkable
+                grid[0][y][x] = CELL_DIRT;      // Solid ground
+                grid[1][y][x] = CELL_AIR;       // Walkable (solid below)
             }
         }
         
@@ -1013,24 +1003,15 @@ describe(mover_falling) {
         
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (g_legacyWalkability) {
-                    grid[0][y][x] = CELL_WALKABLE;
-                    grid[1][y][x] = CELL_AIR;
-                } else {
-                    grid[0][y][x] = CELL_AIR;
-                    grid[1][y][x] = CELL_AIR;
-                }
+                grid[0][y][x] = CELL_AIR;
+                grid[1][y][x] = CELL_AIR;
             }
         }
-        // Wall at z=0 (2,1) - in standard mode, air above wall is walkable
+        // Wall at z=0 (2,1) - air above wall is walkable
         grid[0][1][2] = CELL_WALL;
         
         // Starting platform at z=1 (1,1)
-        if (g_legacyWalkability) {
-            grid[1][1][1] = CELL_FLOOR;
-        } else {
-            grid[0][1][1] = CELL_DIRT;  // Solid below makes z=1 walkable
-        }
+        grid[0][1][1] = CELL_DIRT;  // Solid below makes z=1 walkable
         
         ClearMovers();
         Mover* m = &movers[0];
@@ -1136,39 +1117,23 @@ describe(mover_z_level_collision) {
 describe(mover_ladder_transitions) {
     it("should transition z-level when reaching ladder waypoint") {
         // Setup: two walkable floors with ladder connecting them
-        // Legacy mode: z=0 and z=1 both walkable, ladder at (2,1) on both
-        // Standard mode: z=0 is solid dirt, z=1 is walkable air above dirt,
-        //                z=2 is walkable above constructed floor, ladder at z=1 and z=2
+        // z=0 is solid dirt, z=1 is walkable air above dirt,
+        // z=2 is walkable above constructed floor, ladder at z=1 and z=2
         InitGridWithSize(5, 5);
         
-        int startZ, goalZ;
-        if (g_legacyWalkability) {
-            gridDepth = 2;
-            startZ = 0;
-            goalZ = 1;
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    grid[0][y][x] = CELL_WALKABLE;
-                    grid[1][y][x] = CELL_WALKABLE;
-                }
+        gridDepth = 3;
+        int startZ = 1;  // Walk on air above dirt
+        int goalZ = 2;   // Walk on air above constructed floor
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_DIRT;   // Solid ground
+                grid[1][y][x] = CELL_AIR;    // Walkable (above dirt)
+                grid[2][y][x] = CELL_AIR;    // Not walkable yet
+                SET_FLOOR(x, y, 2);          // Now walkable (constructed floor)
             }
-            grid[0][1][2] = CELL_LADDER;
-            grid[1][1][2] = CELL_LADDER;
-        } else {
-            gridDepth = 3;
-            startZ = 1;  // Walk on air above dirt
-            goalZ = 2;   // Walk on air above constructed floor
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    grid[0][y][x] = CELL_DIRT;   // Solid ground
-                    grid[1][y][x] = CELL_AIR;    // Walkable (above dirt)
-                    grid[2][y][x] = CELL_AIR;    // Not walkable yet
-                    SET_FLOOR(x, y, 2);          // Now walkable (constructed floor)
-                }
-            }
-            grid[1][1][2] = CELL_LADDER;
-            grid[2][1][2] = CELL_LADDER;
         }
+        grid[1][1][2] = CELL_LADDER;
+        grid[2][1][2] = CELL_LADDER;
 
         // Verify walkability
         expect(IsCellWalkableAt(startZ, 1, 0) == true);
@@ -1209,34 +1174,19 @@ describe(mover_ladder_transitions) {
         // Same setup as above
         InitGridWithSize(5, 5);
         
-        int startZ, goalZ;
-        if (g_legacyWalkability) {
-            gridDepth = 2;
-            startZ = 0;
-            goalZ = 1;
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    grid[0][y][x] = CELL_WALKABLE;
-                    grid[1][y][x] = CELL_WALKABLE;
-                }
+        gridDepth = 3;
+        int startZ = 1;
+        int goalZ = 2;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_DIRT;
+                grid[1][y][x] = CELL_AIR;
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
             }
-            grid[0][1][2] = CELL_LADDER;
-            grid[1][1][2] = CELL_LADDER;
-        } else {
-            gridDepth = 3;
-            startZ = 1;
-            goalZ = 2;
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    grid[0][y][x] = CELL_DIRT;
-                    grid[1][y][x] = CELL_AIR;
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);
-                }
-            }
-            grid[1][1][2] = CELL_LADDER;
-            grid[2][1][2] = CELL_LADDER;
         }
+        grid[1][1][2] = CELL_LADDER;
+        grid[2][1][2] = CELL_LADDER;
 
         ClearMovers();
         Mover* m = &movers[0];
@@ -1278,7 +1228,7 @@ describe(mover_ladder_transitions) {
         PrecomputeJpsPlus();
 
         // In standard mode, baseZ=1 so walkable floors are z=1,z=2; in legacy baseZ=0
-        int baseZ = g_legacyWalkability ? 0 : 1;
+        int baseZ = 1;
         int lowerZ = baseZ;
         int upperZ = baseZ + 1;
 
@@ -1375,7 +1325,7 @@ describe(mover_ladder_transitions) {
         PrecomputeJpsPlus();
 
         // In standard mode, baseZ=1 so ladders are at z=1,z=2; in legacy baseZ=0
-        int baseZ = g_legacyWalkability ? 0 : 1;
+        int baseZ = 1;
         int lowerZ = baseZ;
         int upperZ = baseZ + 1;
 
@@ -2351,17 +2301,12 @@ describe(mover_ramp_transitions) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
 
     test(mover_initialization);
     test(fixed_timestep_movement);

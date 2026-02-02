@@ -1244,17 +1244,12 @@ describe(water_freezing) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
     
     // Basic operations
     test(water_initialization);

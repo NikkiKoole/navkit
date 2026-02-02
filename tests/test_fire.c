@@ -612,7 +612,7 @@ describe(fire_non_flammable) {
         RunFireTicks(1000);
         
         // Debug: print fire/burn state
-        printf("Legacy mode: %s\n", g_legacyWalkability ? "yes" : "no");
+        printf("Walkability mode: standard (DF-style)\n");
         printf("Fire state at z=0 after 1000 ticks:\n");
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
@@ -1061,17 +1061,12 @@ describe(fire_edge_cases) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
     
     // Basic operations
     test(fire_initialization);

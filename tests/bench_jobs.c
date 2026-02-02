@@ -454,16 +454,10 @@ static void BenchAssignJobsAlgorithms(void) {
 // Main
 // =============================================================================
 int main(int argc, char* argv[]) {
-    bool legacyMode = false;
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
-    }
+    (void)argc;
+    (void)argv;
     
     SetTraceLogLevel(LOG_NONE);
-    
-    // Standard (DF-style) walkability is the default
-    // z=0 is walkable via implicit bedrock in both modes
-    g_legacyWalkability = legacyMode;
     
     printf("\n=== JOB SYSTEM BENCHMARKS ===\n\n");
     

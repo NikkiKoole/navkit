@@ -647,14 +647,12 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
         return JOBRUN_FAIL;
     }
     
-    // Check if floor still exists (in DF-style mode)
-    if (!g_legacyWalkability) {
-        // Either has explicit floor flag or standing on solid below
-        bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(grid[tz-1][ty][tx]));
-        if (!hasFloor) {
-            CancelDesignation(tx, ty, tz);
-            return JOBRUN_FAIL;
-        }
+    // Check if floor still exists
+    // Either has explicit floor flag or standing on solid below
+    bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(grid[tz-1][ty][tx]));
+    if (!hasFloor) {
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
     }
     
     if (job->step == STEP_MOVING_TO_WORK) {
@@ -718,11 +716,7 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
     }
     
     // Check if floor still exists
-    if (!g_legacyWalkability && !HAS_FLOOR(tx, ty, tz)) {
-        CancelDesignation(tx, ty, tz);
-        return JOBRUN_FAIL;
-    }
-    if (g_legacyWalkability && grid[tz][ty][tx] != CELL_FLOOR) {
+    if (!HAS_FLOOR(tx, ty, tz)) {
         CancelDesignation(tx, ty, tz);
         return JOBRUN_FAIL;
     }

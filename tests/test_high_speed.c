@@ -449,17 +449,12 @@ describe(extreme_speed_edge_cases) {
 
 int main(int argc, char* argv[]) {
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
     
     // High speed movement safety
     test(high_speed_movement);

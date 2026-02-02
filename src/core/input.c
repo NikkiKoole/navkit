@@ -89,23 +89,13 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (g_legacyWalkability) {
-                // Legacy mode: use CELL_FLOOR type
-                if (grid[z][dy][dx] != CELL_FLOOR) {
-                    grid[z][dy][dx] = CELL_FLOOR;
-                    MarkChunkDirty(dx, dy, z);
-                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                    count++;
-                }
-            } else {
-                // Standard mode: set floor flag on AIR cell (for balconies/bridges)
-                if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
-                    grid[z][dy][dx] = CELL_AIR;
-                    SET_FLOOR(dx, dy, z);
-                    MarkChunkDirty(dx, dy, z);
-                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                    count++;
-                }
+            // Set floor flag on AIR cell (for balconies/bridges)
+            if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
+                grid[z][dy][dx] = CELL_AIR;
+                SET_FLOOR(dx, dy, z);
+                MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                count++;
             }
         }
     }
@@ -524,9 +514,9 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // In standard mode, fire burns on the floor (z-1), not in the air (z)
+            // Fire burns on the floor (z-1), not in the air (z)
             int fireZ = z;
-            if (!g_legacyWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
                 fireZ = z - 1;
             }
             
@@ -551,9 +541,9 @@ static void ExecuteRemoveFire(int x1, int y1, int x2, int y2, int z, bool shift)
     int removedSources = 0, extinguished = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // In standard mode, fire burns on the floor (z-1), not in the air (z)
+            // Fire burns on the floor (z-1), not in the air (z)
             int fireZ = z;
-            if (!g_legacyWalkability && z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
                 fireZ = z - 1;
             }
             
@@ -914,19 +904,7 @@ void HandleInput(void) {
         if (LoadWorld("saves/debug_save.bin")) AddMessage("World loaded", GREEN);
     }
 
-    // Toggle DF-style walkability (for testing new walkability model)
-    if (IsKeyPressed(KEY_F7)) {
-        g_legacyWalkability = !g_legacyWalkability;
-        // Full rebuild of pathfinding graph with new walkability rules
-        BuildEntrances();
-        BuildGraph();
-        jpsNeedsRebuild = true;
-        // Repath all movers
-        for (int i = 0; i < moverCount; i++) {
-            if (movers[i].active) movers[i].needsRepath = true;
-        }
-        AddMessage(TextFormat("Walkability: %s", g_legacyWalkability ? "Legacy (cell flag)" : "Standard (solid below)"), YELLOW);
-    }
+
 
     // ========================================================================
     // Navigation: ESC, re-tap mode key
@@ -1006,9 +984,8 @@ void HandleInput(void) {
                     if (IsLadderCell(grid[z][y][x])) {
                         EraseLadder(x, y, z);
                     } else {
-                        CellType eraseType = (!g_legacyWalkability || z > 0) ? CELL_AIR : CELL_WALKABLE;
-                        if (grid[z][y][x] != eraseType) {
-                            grid[z][y][x] = eraseType;
+                        if (grid[z][y][x] != CELL_AIR) {
+                            grid[z][y][x] = CELL_AIR;
                             MarkChunkDirty(x, y, z);
                             DestabilizeWater(x, y, z);
                         }

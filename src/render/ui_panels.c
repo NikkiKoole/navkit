@@ -179,7 +179,7 @@ void DrawUI(void) {
                 for (int gy = 0; gy < gridHeight; gy++)
                     for (int gx = 0; gx < gridWidth; gx++)
                         grid[z][gy][gx] = CELL_AIR;
-            if (!g_legacyWalkability) FillGroundLevel();
+            FillGroundLevel();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();
@@ -196,7 +196,7 @@ void DrawUI(void) {
                 for (int gy = 0; gy < gridHeight; gy++)
                     for (int gx = 0; gx < gridWidth; gx++)
                         grid[z][gy][gx] = CELL_AIR;
-            if (!g_legacyWalkability) FillGroundLevel();
+            FillGroundLevel();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();
@@ -213,7 +213,7 @@ void DrawUI(void) {
                 for (int gy = 0; gy < gridHeight; gy++)
                     for (int gx = 0; gx < gridWidth; gx++)
                         grid[z][gy][gx] = CELL_AIR;
-            if (!g_legacyWalkability) FillGroundLevel();
+            FillGroundLevel();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();

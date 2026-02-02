@@ -32,36 +32,20 @@ typedef struct {
 extern CellDef cellDefs[];
 
 // =============================================================================
-// WALKABILITY MODELS
+// WALKABILITY MODEL (DF-style)
 // =============================================================================
 //
-// This codebase supports two walkability models:
+// A cell at (z,y,x) is walkable if:
+// 1. The cell doesn't block movement (not a wall)
+// 2. The cell below (z-1) is SOLID (has CF_SOLID flag)
+// OR the cell is a ladder/ramp (self-supporting)
+// OR the cell has a constructed floor (HAS_FLOOR flag)
+// OR z=0 (implicit bedrock below)
 //
-// STANDARD MODEL (default, g_legacyWalkability = false):
-//   A cell at (z,y,x) is walkable if:
-//   1. The cell doesn't block movement (not a wall)
-//   2. The cell below (z-1) is SOLID (has CF_SOLID flag)
-//   OR the cell is a ladder/ramp (self-supporting)
-//   OR the cell has a constructed floor (HAS_FLOOR flag)
-//   OR z=0 (implicit bedrock below)
+// Think: "You stand ON TOP of solid ground, not inside it"
+// Example: Air at z=1 above dirt at z=0 is walkable
 //
-//   Think: "You stand ON TOP of solid ground, not inside it"
-//   Example: Air at z=1 above dirt at z=0 is walkable
-//
-// LEGACY MODEL (g_legacyWalkability = true):
-//   A cell at (z,y,x) is walkable if:
-//   1. The cell itself has the CF_WALKABLE flag
-//
-//   Think: "You stand INSIDE walkable cells"
-//   Example: Grass cell at z=0 with CF_WALKABLE flag is walkable
-//
-// The standard model is inspired by Dwarf Fortress and allows more intuitive
-// multi-level terrain (digging, building floors, bridges, etc).
-//
-// Toggle with F7 key at runtime for testing/comparison.
 // =============================================================================
-
-extern bool g_legacyWalkability;  // false = standard model, true = legacy model
 
 // Flag accessors
 #define CellHasFlag(c, f)       (cellDefs[c].flags & (f))
@@ -91,26 +75,9 @@ static inline bool IsWallCell(CellType cell) {
     return CellBlocksMovement(cell);
 }
 
-// Forward declaration of standard walkability function (defined below)
-static inline bool IsCellWalkableAt_Standard(int z, int y, int x);
-
-static inline bool IsCellWalkableAt(int z, int y, int x) {
-    if (g_legacyWalkability) {
-        // Legacy walkability: cell has CF_WALKABLE flag, or is ladder/ramp
-        if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
-        // Workshop blocks apply in both legacy and standard modes
-        if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
-        CellType cell = grid[z][y][x];
-        // Ladders and ramps are walkable even without CF_WALKABLE
-        if (CellIsLadder(cell) || CellIsRamp(cell)) return true;
-        return CellIsWalkable(cell);
-    }
-    return IsCellWalkableAt_Standard(z, y, x);
-}
-
-// Standard walkability: walkable if current cell is traversable AND
+// DF-style walkability: walkable if current cell is traversable AND
 // (cell below is solid OR this cell has a constructed floor)
-static inline bool IsCellWalkableAt_Standard(int z, int y, int x) {
+static inline bool IsCellWalkableAt(int z, int y, int x) {
     // Bounds check
     if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
     
@@ -148,14 +115,14 @@ static inline bool IsCellWalkableAt_Standard(int z, int y, int x) {
 // Pathfinder-agnostic helpers (allow pathfinder extraction without DF knowledge)
 // =============================================================================
 
-// Check if a cell is a valid destination (not a wall-top in standard mode)
+// Check if a cell is a valid destination (not a wall-top unless ramps exist)
 // Wall tops are traversable but shouldn't be random goals UNLESS ramps exist
 // (when ramps exist, wall-tops may be reachable platforms)
 static inline bool IsValidDestination(int z, int y, int x) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
-    if (!g_legacyWalkability && z > 0 && rampCount == 0) {
-        // In standard mode WITHOUT ramps, skip "wall tops" (air above wall) as destinations
+    if (z > 0 && rampCount == 0) {
+        // Without ramps, skip "wall tops" (air above wall) as destinations
         // When ramps exist, these could be valid platforms reachable via ramps
         if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL) {
             return false;
@@ -165,10 +132,10 @@ static inline bool IsValidDestination(int z, int y, int x) {
 }
 
 // Get additional z-levels affected when a cell changes (for chunk dirtying)
-// In standard mode, changing a cell affects walkability of cell above (z+1)
+// Changing a cell affects walkability of cell above (z+1) in DF-style model
 // Returns the number of additional z-levels written to outZ array
 static inline int GetAdditionalAffectedZLevels(int z, int* outZ) {
-    if (!g_legacyWalkability && z + 1 < gridDepth) {
+    if (z + 1 < gridDepth) {
         outZ[0] = z + 1;
         return 1;
     }
@@ -182,14 +149,7 @@ static inline bool CanClimbUpAt(int x, int y, int z) {
     CellType low = grid[z][y][x];
     CellType high = grid[z+1][y][x];
     
-    if (g_legacyWalkability) {
-        // Legacy mode: direction-based ladder types
-        bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
-        bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
-        return lowCanUp && highCanDown;
-    }
-    
-    // Standard mode: need ladder at both levels AND upper level must be walkable
+    // Need ladder at both levels AND upper level must be walkable
     bool hasLadderHere = CellIsLadder(low);
     bool hasLadderAbove = CellIsLadder(high);
     return hasLadderHere && hasLadderAbove && IsCellWalkableAt(z + 1, y, x);
@@ -202,14 +162,7 @@ static inline bool CanClimbDownAt(int x, int y, int z) {
     CellType high = grid[z][y][x];
     CellType low = grid[z-1][y][x];
     
-    if (g_legacyWalkability) {
-        // Legacy mode: direction-based ladder types
-        bool highCanDown = (high == CELL_LADDER_DOWN || high == CELL_LADDER_BOTH || high == CELL_LADDER);
-        bool lowCanUp = (low == CELL_LADDER_UP || low == CELL_LADDER_BOTH || low == CELL_LADDER);
-        return highCanDown && lowCanUp;
-    }
-    
-    // Standard mode: need ladder at both levels AND lower level must be walkable
+    // Need ladder at both levels AND lower level must be walkable
     bool hasLadderHere = CellIsLadder(high);
     bool hasLadderBelow = CellIsLadder(low);
     return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);

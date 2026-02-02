@@ -36,9 +36,8 @@ void DrawCellGrid(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
-    if (!g_legacyWalkability) {
-        // Standard mode: draw deeper levels first (z-3, z-2) with blue tint for depth
-        // These show terrain dropping away below current view
+    // Draw deeper levels first (z-3, z-2) with blue tint for depth
+    // These show terrain dropping away below current view
         Color depthTints[] = {
             {100, 120, 160, 255},  // z-3: darker blue
             {130, 150, 180, 255}   // z-2: lighter blue
@@ -192,31 +191,6 @@ void DrawCellGrid(void) {
                 }
             }
         }
-    } else {
-        // Legacy mode: draw layer below with transparency, then current layer
-        if (z > 0) {
-            Color tint = (Color){255, 255, 255, 128};
-            int zBelow = z - 1;
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cell = grid[zBelow][y][x];
-                    if (cell == CELL_AIR) continue;
-                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    Rectangle src = SpriteGetRect(CellSprite(cell));
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
-                }
-            }
-        }
-
-        // Draw current layer
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(CellSprite(grid[z][y][x]));
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
-            }
-        }
-    }
 }
 
 void DrawGrassOverlay(void) {
@@ -226,8 +200,7 @@ void DrawGrassOverlay(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
-    if (!g_legacyWalkability) {
-        // Standard mode: draw grass for deeper levels (z-3, z-2) with blue tint
+    // Draw grass for deeper levels (z-3, z-2) with blue tint
         Color depthTints[] = {
             {100, 120, 160, 255},  // z-3: darker blue
             {130, 150, 180, 255}   // z-2: lighter blue
@@ -300,29 +273,6 @@ void DrawGrassOverlay(void) {
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
             }
         }
-    } else {
-        // Legacy mode: grass overlay on current z
-        for (int y = minY; y < maxY; y++) {
-            for (int x = minX; x < maxX; x++) {
-                if (grid[z][y][x] != CELL_DIRT) continue;
-                
-                int surface = GET_CELL_SURFACE(x, y, z);
-                if (surface == SURFACE_BARE) continue;
-                
-                int sprite;
-                switch (surface) {
-                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
-                    case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
-                    case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
-                    default: continue;
-                }
-                
-                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(sprite);
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
-            }
-        }
-    }
 }
 
 void DrawWater(void) {
@@ -373,9 +323,9 @@ void DrawFire(void) {
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            // In standard mode, fire on the floor (z-1) should be visible when viewing z
+            // Fire on the floor (z-1) should be visible when viewing z
             int fireZ = z;
-            if (!g_legacyWalkability && z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
+            if (z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
                 fireZ = z - 1;
             }
             

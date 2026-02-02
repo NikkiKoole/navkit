@@ -32,28 +32,19 @@ void GenerateSparse(float density) {
 
 // ============================================================================
 // Floor Placement Helper
-// In DF mode: uses CELL_AIR + HAS_FLOOR flag (for balconies/bridges)
-// In legacy mode: uses CELL_FLOOR cell type
+// Uses CELL_AIR + HAS_FLOOR flag (for balconies/bridges)
 // ============================================================================
 static void PlaceFloor(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    if (g_legacyWalkability) {
-        grid[z][y][x] = CELL_FLOOR;
-    } else {
-        // Standard mode: uses CELL_AIR + HAS_FLOOR flag (for balconies/bridges)
-        grid[z][y][x] = CELL_AIR;
-        SET_FLOOR(x, y, z);
-    }
+    grid[z][y][x] = CELL_AIR;
+    SET_FLOOR(x, y, z);
     // Clear grass/surface overlay on floors
     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
 }
 
-// Helper to check if a cell is a floor (either CELL_FLOOR or HAS_FLOOR flag)
+// Helper to check if a cell is a floor (HAS_FLOOR flag or CELL_FLOOR type)
 static bool IsFloorCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
-    if (g_legacyWalkability) {
-        return grid[z][y][x] == CELL_FLOOR;
-    }
     return HAS_FLOOR(x, y, z) || grid[z][y][x] == CELL_FLOOR;
 }
 
@@ -88,10 +79,10 @@ static void PlaceLadderNear(int targetX, int targetY, int zLow, int zHigh, int r
 
 void GenerateLabyrinth3D(void) {
     InitGrid();  // Clear cells and flags
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
-    // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_legacyWalkability ? 0 : 1;
+    // z=0 is ground (dirt), buildings start at z=1
+    int baseZ = 1;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
@@ -199,10 +190,10 @@ void GenerateLabyrinth3D(void) {
 
 void GenerateSpiral3D(void) {
     InitGrid();  // Clear cells and flags
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
-    // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_legacyWalkability ? 0 : 1;
+    // z=0 is ground (dirt), buildings start at z=1
+    int baseZ = 1;
     int numLevels = 4;
     int maxLevels = gridDepth - baseZ;
     if (numLevels > maxLevels) numLevels = maxLevels;
@@ -1234,7 +1225,7 @@ static void BuildBridge(Tower* t1, Tower* t2) {
 
 void GenerateTowers(void) {
     InitGrid();  // Clear cells and flags
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
     // Place towers
     Tower towers[MAX_TOWERS];
@@ -1398,7 +1389,7 @@ void GenerateTowers(void) {
 
 void GenerateGalleryFlat(void) {
     InitGrid();  // Clear cells and flags
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
     // Building parameters
     int apartmentWidth = 4;
@@ -1508,7 +1499,7 @@ void GenerateGalleryFlat(void) {
 
 void GenerateCastle(void) {
     InitGrid();  // Clear cells and flags
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
     // Castle dimensions - centered in grid
     int wallThickness = 2;
@@ -1813,8 +1804,8 @@ void GenerateCastle(void) {
 // If vertical=true, the building is rotated 90 degrees (gallery on east side instead of south)
 // width/height are the TOTAL footprint dimensions (X and Y) including gallery
 static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
-    // In DF mode, z=0 is ground (dirt), buildings start at z=1
-    int baseZ = g_legacyWalkability ? 0 : 1;
+    // z=0 is ground (dirt), buildings start at z=1
+    int baseZ = 1;
     int maxFloors = gridDepth - baseZ;
     if (floors > maxFloors) floors = maxFloors;
     if (floors < 1) floors = 1;
@@ -2200,7 +2191,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
 
 void GenerateCouncilEstate(void) {
     InitGrid();  // Clear cells and flags properly
-    if (!g_legacyWalkability) FillGroundLevel();
+    FillGroundLevel();
     
     // Scale building count based on grid size
     int numTerraceRows = 4 + (gridWidth * gridHeight) / 6000;

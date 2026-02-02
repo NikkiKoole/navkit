@@ -14,17 +14,11 @@
 describe(grid_initialization) {
     it("should initialize grid to all walkable cells") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        // Check that z=0 is walkable
-        // In legacy mode: z=0 is CELL_WALKABLE, higher levels are CELL_AIR
-        // In standard mode: all levels are CELL_AIR (z=0 walkable via implicit bedrock)
+        // Check that all levels are CELL_AIR (z=0 walkable via implicit bedrock)
         int allCorrect = 1;
         for (int y = 0; y < gridHeight && allCorrect; y++) {
             for (int x = 0; x < gridWidth && allCorrect; x++) {
-                // Check z=0 specifically
-                CellType expectedZ0 = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
-                if (grid[0][y][x] != expectedZ0) allCorrect = 0;
-                // Higher z-levels should be CELL_AIR in both modes
-                for (int z = 1; z < gridDepth && allCorrect; z++) {
+                for (int z = 0; z < gridDepth && allCorrect; z++) {
                     if (grid[z][y][x] != CELL_AIR) allCorrect = 0;
                 }
             }
@@ -113,7 +107,7 @@ describe(entrance_building) {
         InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
 
         // Block the horizontal border except for a 3-cell gap
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
             grid[0][borderY - 1][x] = CELL_WALL;
@@ -145,7 +139,7 @@ describe(entrance_building) {
         InitGridWithSizeAndChunkSize(TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE * 2, TEST_CHUNK_SIZE, TEST_CHUNK_SIZE);  // 2x2 chunks
 
         // Block the horizontal border except for a wide gap
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         int borderY = chunkHeight;
         for (int x = 0; x < chunkWidth; x++) {
             grid[0][borderY - 1][x] = CELL_WALL;
@@ -1198,7 +1192,7 @@ describe(diagonal_corner_cutting) {
         };
         
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
                 grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
@@ -1231,7 +1225,7 @@ describe(diagonal_corner_cutting) {
         };
         
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
                 grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
@@ -1273,7 +1267,7 @@ describe(diagonal_corner_cutting) {
         };
         
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
                 grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
@@ -1319,7 +1313,7 @@ describe(diagonal_corner_cutting) {
         };
         
         InitGridWithSizeAndChunkSize(8, 8, 8, 8);
-        CellType walkable = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
                 grid[0][y][x] = (map[y][x] == '#') ? CELL_WALL : walkable;
@@ -2068,30 +2062,19 @@ describe(hpa_ladder_pathfinding) {
         grid[1][10][10] = CELL_LADDER;
         MarkChunkDirty(10, 10, 1);
         
-        // Add floor on z=1 around the ladder
-        // In standard mode, use CELL_AIR + HAS_FLOOR; in legacy mode use CELL_FLOOR
+        // Add floor on z=1 around the ladder (using CELL_AIR + HAS_FLOOR)
         for (int fx = 6; fx <= 12; fx++) {
             if (fx == 10) continue;  // Don't overwrite ladder
-            if (g_legacyWalkability) {
-                grid[1][10][fx] = CELL_FLOOR;
-            } else {
-                grid[1][10][fx] = CELL_AIR;
-                SET_FLOOR(fx, 10, 1);
-            }
+            grid[1][10][fx] = CELL_AIR;
+            SET_FLOOR(fx, 10, 1);
             MarkChunkDirty(fx, 10, 1);
         }
-        if (g_legacyWalkability) {
-            grid[1][11][10] = CELL_FLOOR;
-            grid[1][11][11] = CELL_FLOOR;  // This is the goal cell
-            grid[1][9][10] = CELL_FLOOR;
-        } else {
-            grid[1][11][10] = CELL_AIR;
-            SET_FLOOR(10, 11, 1);
-            grid[1][11][11] = CELL_AIR;
-            SET_FLOOR(11, 11, 1);  // This is the goal cell
-            grid[1][9][10] = CELL_AIR;
-            SET_FLOOR(10, 9, 1);
-        }
+        grid[1][11][10] = CELL_AIR;
+        SET_FLOOR(10, 11, 1);
+        grid[1][11][11] = CELL_AIR;
+        SET_FLOOR(11, 11, 1);  // This is the goal cell
+        grid[1][9][10] = CELL_AIR;
+        SET_FLOOR(10, 9, 1);
         MarkChunkDirty(10, 11, 1);
         MarkChunkDirty(11, 11, 1);
         MarkChunkDirty(10, 9, 1);
@@ -2554,13 +2537,12 @@ describe(jps_plus_vs_astar_consistency) {
     it("JPS+ should match A* on Labyrinth3D lowest level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         // Standard mode needs extra z for ground level
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateLabyrinth3D();
         PrecomputeJpsPlus();
         
-        // Test 20 random paths on lowest labyrinth level
-        // In legacy mode: z=0, in standard mode: z=1 (z=0 is ground)
-        int targetZ = g_legacyWalkability ? 0 : 1;
+        // Test 20 random paths on lowest labyrinth level (z=1, z=0 is ground)
+        int targetZ = 1;
         SeedRandom(12345);
         int failures = 0;
         
@@ -2591,13 +2573,12 @@ describe(jps_plus_vs_astar_consistency) {
     it("JPS+ should match A* on Labyrinth3D highest level") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         // Standard mode needs extra z for ground level
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateLabyrinth3D();
         PrecomputeJpsPlus();
         
-        // Test 20 random paths on highest labyrinth level
-        // In legacy mode: z=3, in standard mode: z=4 (z=0 is ground)
-        int targetZ = g_legacyWalkability ? 3 : 4;
+        // Test 20 random paths on highest labyrinth level (z=4, z=0 is ground)
+        int targetZ = 4;
         SeedRandom(54321);
         int failures = 0;
         
@@ -2627,7 +2608,7 @@ describe(jps_plus_vs_astar_consistency) {
 
     it("JPS+ 3D should match A* 3D on cross-level paths") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateLabyrinth3D();
         PrecomputeJpsPlus();
         
@@ -2661,7 +2642,7 @@ describe(jps_plus_vs_astar_consistency) {
 
     it("JPS+ should match A* on Spiral3D terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateSpiral3D();
         PrecomputeJpsPlus();
         
@@ -2693,7 +2674,7 @@ describe(jps_plus_vs_astar_consistency) {
 
     it("JPS+ should match A* on Castle terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateCastle();
         PrecomputeJpsPlus();
         
@@ -2725,12 +2706,9 @@ describe(jps_plus_vs_astar_consistency) {
 
     it("JPS+ should match A* on Towers terrain") {
         // NOTE: Towers terrain generator creates isolated towers that are poorly
-        // connected in standard walkability mode. Skip this test in standard mode
-        // until the terrain generator is updated to properly support it.
-        if (!g_legacyWalkability) {
-            expect(true);  // Skip in standard mode
-            return;
-        }
+        // connected. Skip this test until the terrain generator is updated.
+        expect(true);  // Skip - towers not well connected
+        return;
         
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
         gridDepth = 4;
@@ -2765,7 +2743,7 @@ describe(jps_plus_vs_astar_consistency) {
 
     it("JPS+ should match A* on Mixed terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-        gridDepth = g_legacyWalkability ? 4 : 5;
+        gridDepth = 5;
         GenerateMixed();
         PrecomputeJpsPlus();
         
@@ -3149,13 +3127,9 @@ describe(ladder_erase) {
 // if there's a solid block below them (walk ON blocks, not IN them).
 
 describe(df_walkability) {
-    it("should make air above solid walkable in DF mode") {
-        // Test explicitly compares legacy vs standard mode behavior
-        bool savedMode = g_legacyWalkability;
-        g_legacyWalkability = true;  // Start in legacy mode
-        
+    it("should make air above solid walkable") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
-        // Set up DF-style terrain: solid at z=0, air at z=1
+        // Set up terrain: solid at z=0, air at z=1
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_DIRT;
@@ -3164,26 +3138,19 @@ describe(df_walkability) {
             }
         }
         
-        // In legacy mode, air is not walkable
-        expect(IsCellWalkableAt(1, 5, 5) == false);
-        
-        // In DF mode, air above solid IS walkable
-        g_legacyWalkability = false;
+        // Air above solid IS walkable
         expect(IsCellWalkableAt(1, 5, 5) == true);
         
-        // z=0 with air IS walkable in DF mode (implicit bedrock below)
+        // z=0 with air IS walkable (implicit bedrock below)
         grid[0][5][5] = CELL_AIR;
         expect(IsCellWalkableAt(0, 5, 5) == true);
         
         // z=0 with solid (dirt) is NOT walkable (can't walk inside solid blocks)
         grid[0][5][5] = CELL_DIRT;
         expect(IsCellWalkableAt(0, 5, 5) == false);
-        
-        // Restore mode
-        g_legacyWalkability = savedMode;
     }
     
-    it("should not make air walkable without solid below in DF mode") {
+    it("should not make air walkable without solid below") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
         // Air at z=1 and z=2, no solid below z=2
         for (int y = 0; y < gridHeight; y++) {
@@ -3195,15 +3162,13 @@ describe(df_walkability) {
             }
         }
         
-        g_legacyWalkability = false;
         // z=1 is walkable (solid dirt at z=0)
         expect(IsCellWalkableAt(1, 5, 5) == true);
         // z=2 is NOT walkable (air at z=1, no solid)
         expect(IsCellWalkableAt(2, 5, 5) == false);
-        
     }
     
-    it("should make ladder cells walkable in DF mode regardless of below") {
+    it("should make ladder cells walkable regardless of below") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
         // Solid at z=0, ladder at z=1 and z=2
         grid[0][5][5] = CELL_DIRT;
@@ -3211,12 +3176,10 @@ describe(df_walkability) {
         grid[1][5][5] = CELL_LADDER;
         grid[2][5][5] = CELL_LADDER;
         
-        g_legacyWalkability = false;
         // z=1 ladder is walkable (has solid below anyway)
         expect(IsCellWalkableAt(1, 5, 5) == true);
         // z=2 ladder is walkable (ladder makes it walkable even without solid below)
         expect(IsCellWalkableAt(2, 5, 5) == true);
-        
     }
 }
 
@@ -3245,7 +3208,7 @@ describe(df_ladder_pathfinding) {
         // Solid platform at z=2 adjacent to ladder, for walking at z=3
         grid[2][6][5] = CELL_DIRT;
         
-        g_legacyWalkability = false;
+
         BuildEntrances();
         BuildGraph();
         
@@ -3293,7 +3256,7 @@ describe(df_ladder_pathfinding) {
         // Platform at z=2 but NO ladder to reach it
         grid[2][6][5] = CELL_DIRT;
         
-        g_legacyWalkability = false;
+
         BuildEntrances();
         BuildGraph();
         
@@ -3313,7 +3276,7 @@ describe(df_ladder_pathfinding) {
 
 describe(df_basics) {
     it("z=1 is walkable above dirt at z=0") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         FillGroundLevel();  // z=0 = dirt, z=1+ = air
         
@@ -3322,7 +3285,7 @@ describe(df_basics) {
     }
     
     it("z=0 air is walkable (implicit bedrock below)") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         // No FillGroundLevel - z=0 is air, walkable via implicit bedrock
         
@@ -3330,7 +3293,7 @@ describe(df_basics) {
     }
     
     it("z=1 becomes unwalkable when z=0 is dug out") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         FillGroundLevel();
         
@@ -3345,7 +3308,7 @@ describe(df_basics) {
     }
     
     it("simple pathfinding at z=1 across dirt floor") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         FillGroundLevel();
         
@@ -3357,7 +3320,7 @@ describe(df_basics) {
     }
     
     it("simple pathfinding at z=0 across bedrock") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         // No FillGroundLevel - z=0 is air, walkable via implicit bedrock
         
@@ -3369,7 +3332,7 @@ describe(df_basics) {
     }
     
     it("wall at z=1 blocks movement") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         FillGroundLevel();
         
@@ -3387,7 +3350,7 @@ describe(df_basics) {
     }
     
     it("gap in wall at z=1 allows path") {
-        g_legacyWalkability = false;
+
         InitGridWithSize(32, 32);
         FillGroundLevel();
         
@@ -3423,43 +3386,21 @@ static void run_all_tests(void) {
     test(jps_plus_vs_astar_consistency);
     test(ladder_placement);
     test(ladder_erase);
-    
-    // DF-specific tests only run in standard mode
-    if (!g_legacyWalkability) {
-        test(df_walkability);
-        test(df_ladder_pathfinding);
-        test(df_basics);
-    }
+    test(df_walkability);
+    test(df_ladder_pathfinding);
+    test(df_basics);
 }
 
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
     
-    // If legacy mode specified, run only in legacy mode
-    if (legacyMode) {
-        printf("\n=== Running tests in LEGACY walkability mode ===\n\n");
-        g_legacyWalkability = true;
-        run_all_tests();
-        return summary();
-    }
-    
-    // Default: run tests in BOTH modes (standard first, then legacy)
-    printf("\n=== Running tests in STANDARD (DF) walkability mode ===\n\n");
-    g_legacyWalkability = false;
     run_all_tests();
-    
-    printf("\n=== Running tests in LEGACY walkability mode ===\n\n");
-    g_legacyWalkability = true;
-    run_all_tests();
-    
     return summary();
 }

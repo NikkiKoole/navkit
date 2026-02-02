@@ -136,15 +136,10 @@ describe(feature_name) {
 
 int main(int argc, char* argv[]) {
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) SetTraceLogLevel(LOG_NONE);
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
     
     test(feature_name);
     return summary();
@@ -182,9 +177,6 @@ static void BenchSomething(void) {
 int main(int argc, char* argv[]) {
     (void)argc; (void)argv;
     SetTraceLogLevel(LOG_NONE);
-    
-    // Benchmarks typically use legacy mode for consistency
-    g_legacyWalkability = true;
     
     printf("\n=== BENCHMARKS ===\n\n");
     BenchSomething();

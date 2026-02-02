@@ -1598,7 +1598,7 @@ describe(unreachable_item_cooldown) {
         // Now open a path by removing a wall
         // In standard mode: CELL_AIR at z=0 is walkable (implicit bedrock)
         // In legacy mode: need CELL_WALKABLE
-        grid[0][3][2] = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        grid[0][3][2] = CELL_AIR;
         MarkChunkDirty(2, 3, 0);
         
         // Set cooldown to 0 to allow retry
@@ -3966,27 +3966,19 @@ describe(channel_ramp_detection) {
             ".....\n"
             ".....\n", 5, 5);
         
-        // z=0: floor (walkable), z=1: all walls (no walkable exits)
-        // In standard mode: z=0 needs SET_FLOOR for walkability, z=1 walls block
-        // In legacy mode: z=0 is CELL_FLOOR (walkable), z=1 is CELL_WALL (not walkable)
+        // z=0: solid ground, z=1: floor above + walls blocking exits
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                if (g_legacyWalkability) {
-                    grid[0][y][x] = CELL_FLOOR;
-                } else {
-                    grid[0][y][x] = CELL_DIRT;  // Solid ground
-                    SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
-                }
+                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
                 grid[1][y][x] = CELL_WALL;  // Walls at z=1 block exits
             }
         }
         
-        // In standard mode, we also need z=2 walls to block walkability above z=1
-        if (!g_legacyWalkability) {
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[2][y][x] = CELL_WALL;
-                }
+        // Need z=2 walls to block walkability above z=1
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[2][y][x] = CELL_WALL;
             }
         }
         
@@ -3996,7 +3988,7 @@ describe(channel_ramp_detection) {
         // AutoDetectChannelRampDirection needs either:
         // 1. Adjacent solid (wall) at lowerZ with walkable above, OR
         // 2. Any walkable exit at upperZ (second pass for ramp-to-ramp)
-        int lowerZ = g_legacyWalkability ? 0 : 1;
+        int lowerZ = 1;
         CellType rampDir = AutoDetectChannelRampDirection(2, 2, lowerZ);
         expect(rampDir == CELL_AIR);
     }
@@ -4014,30 +4006,16 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        int channelZ;  // Z-level where channeling happens
-        int moverZ;    // Z-level where mover walks
+        // z=0 walls, z=1 air (walkable above walls), z=2 air + floor flag
+        int channelZ = 2;  // Z-level where channeling happens
+        int moverZ = 2;    // Z-level where mover walks
         
-        if (g_legacyWalkability) {
-            // Legacy: z=0 is walls (solid ground), z=1 is floor above
-            channelZ = 1;
-            moverZ = 1;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_FLOOR;
-                }
-            }
-        } else {
-            // Standard: z=0 walls, z=1 air (walkable above walls), z=2 air + floor flag
-            channelZ = 2;
-            moverZ = 2;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_AIR;
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);  // Floor at z=2 makes it walkable
-                }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);  // Floor at z=2 makes it walkable
             }
         }
         
@@ -4091,30 +4069,16 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        int channelZ;   // Z-level where channeling happens
-        int belowZ;     // Z-level below the channel (gets mined)
+        // z=0 walls, z=1 walls (solid to mine), z=2 air + floor flag
+        int channelZ = 2;   // Z-level where channeling happens
+        int belowZ = 1;     // Z-level below the channel (gets mined)
         
-        if (g_legacyWalkability) {
-            // Legacy: z=0 walls, z=1 floor
-            channelZ = 1;
-            belowZ = 0;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_FLOOR;
-                }
-            }
-        } else {
-            // Standard: z=0 walls, z=1 air (walkable), z=2 air + floor flag
-            channelZ = 2;
-            belowZ = 1;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_WALL;  // Solid at z=1 to mine
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);
-                }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_WALL;  // Solid at z=1 to mine
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
             }
         }
         
@@ -4132,13 +4096,8 @@ describe(channel_job_execution) {
         moverCount = 1;
         
         // Verify initial state
-        if (g_legacyWalkability) {
-            expect(grid[belowZ][2][2] == CELL_WALL);
-            expect(grid[channelZ][2][2] == CELL_FLOOR);
-        } else {
-            expect(grid[belowZ][2][2] == CELL_WALL);
-            expect(grid[channelZ][2][2] == CELL_AIR);
-        }
+        expect(grid[belowZ][2][2] == CELL_WALL);
+        expect(grid[channelZ][2][2] == CELL_AIR);
         
         // Designate for channeling
         bool designated = DesignateChannel(2, 2, channelZ);
@@ -4166,30 +4125,16 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        int channelZ;  // Z-level where channeling happens
-        int rampZ;     // Z-level where ramp appears
+        // z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
+        int channelZ = 2;  // Z-level where channeling happens
+        int rampZ = 1;     // Z-level where ramp appears
         
-        if (g_legacyWalkability) {
-            // Legacy: z=0 walls (ramp high-side), z=1 floor
-            channelZ = 1;
-            rampZ = 0;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_FLOOR;
-                }
-            }
-        } else {
-            // Standard: z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
-            channelZ = 2;
-            rampZ = 1;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_WALL;  // Solid walls provide ramp high-side
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);
-                }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_WALL;  // Solid walls provide ramp high-side
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
             }
         }
         
@@ -4237,31 +4182,17 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        int channelZ;  // Z-level where channeling happens
-        int belowZ;    // Z-level below (should remain open)
+        // z=0 dirt (solid), z=1 air (walkable), z=2 air + floor flag
+        // We channel at z=2, z=1 should remain open air
+        int channelZ = 2;  // Z-level where channeling happens
+        int belowZ = 1;    // Z-level below (should remain open)
         
-        if (g_legacyWalkability) {
-            // Legacy: z=0 floor (open), z=1 floor
-            channelZ = 1;
-            belowZ = 0;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_FLOOR;
-                    grid[1][y][x] = CELL_FLOOR;
-                }
-            }
-        } else {
-            // Standard: z=0 dirt (solid), z=1 air (walkable), z=2 air + floor flag
-            // We channel at z=2, z=1 should remain open air
-            channelZ = 2;
-            belowZ = 1;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_DIRT;  // Solid ground
-                    grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);         // Floor at z=2 to channel
-                }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);         // Floor at z=2 to channel
             }
         }
         
@@ -4289,12 +4220,8 @@ describe(channel_job_execution) {
         
         // Channeled floor becomes CELL_AIR
         expect(grid[channelZ][2][2] == CELL_AIR);
-        // Below should remain as it was (open air in legacy, open air in standard)
-        if (g_legacyWalkability) {
-            expect(grid[belowZ][2][2] == CELL_FLOOR);
-        } else {
-            expect(grid[belowZ][2][2] == CELL_AIR);
-        }
+        // Below should remain as it was (open air)
+        expect(grid[belowZ][2][2] == CELL_AIR);
     }
     
     it("should move channeler down to z-1 after completion") {
@@ -4306,31 +4233,17 @@ describe(channel_job_execution) {
             ".....\n"
             ".....\n", 5, 5);
         
-        int channelZ;   // Z-level where channeling happens (mover starts here)
-        int descendZ;   // Z-level mover descends to after channeling
+        // z=0 walls, z=1 walls, z=2 air + floor flag
+        // Mover descends from z=2 to z=1
+        int channelZ = 2;   // Z-level where channeling happens (mover starts here)
+        int descendZ = 1;   // Z-level mover descends to after channeling
         
-        if (g_legacyWalkability) {
-            // Legacy: z=0 walls, z=1 floor - mover descends from z=1 to z=0
-            channelZ = 1;
-            descendZ = 0;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_FLOOR;
-                }
-            }
-        } else {
-            // Standard: z=0 walls, z=1 walls, z=2 air + floor flag
-            // Mover descends from z=2 to z=1
-            channelZ = 2;
-            descendZ = 1;
-            for (int x = 0; x < 5; x++) {
-                for (int y = 0; y < 5; y++) {
-                    grid[0][y][x] = CELL_WALL;
-                    grid[1][y][x] = CELL_WALL;  // Solid to mine
-                    grid[2][y][x] = CELL_AIR;
-                    SET_FLOOR(x, y, 2);
-                }
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_WALL;  // Solid to mine
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
             }
         }
         
@@ -5035,7 +4948,7 @@ describe(job_drivers) {
         // Setup world with a wall to mine
         // Legacy: z=0 is walkable with wall at (3,1)
         // Standard: z=0 is solid ground, z=1 is walkable with wall at (3,1)
-        int mineZ = g_legacyWalkability ? 0 : 1;
+        int mineZ = 1;
         
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5043,16 +4956,14 @@ describe(job_drivers) {
             "........\n"
             "........\n", 8, 8);
         
-        if (!g_legacyWalkability) {
-            // Standard mode: need solid ground at z=0, walkable at z=1
-            for (int x = 0; x < 8; x++) {
-                for (int y = 0; y < 4; y++) {
-                    grid[0][y][x] = CELL_DIRT;  // Solid ground
-                    grid[1][y][x] = CELL_AIR;   // Air above (walkable)
-                }
+        // Need solid ground at z=0, walkable at z=1
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 4; y++) {
+                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
-            grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
         }
+        grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5286,7 +5197,7 @@ describe(job_game_speed) {
         // Setup world with a wall to mine
         // Legacy: z=0 walkable with wall at (3,1)
         // Standard: z=0 solid, z=1 walkable with wall at (3,1)
-        int mineZ = g_legacyWalkability ? 0 : 1;
+        int mineZ = 1;
         
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5294,16 +5205,14 @@ describe(job_game_speed) {
             "........\n"
             "........\n", 8, 8);
         
-        if (!g_legacyWalkability) {
-            // Standard mode: solid ground at z=0, walkable at z=1
-            for (int x = 0; x < 8; x++) {
-                for (int y = 0; y < 4; y++) {
-                    grid[0][y][x] = CELL_DIRT;
-                    grid[1][y][x] = CELL_AIR;
-                }
+        // Solid ground at z=0, walkable at z=1
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 4; y++) {
+                grid[0][y][x] = CELL_DIRT;
+                grid[1][y][x] = CELL_AIR;
             }
-            grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
         }
+        grid[1][1][3] = CELL_WALL;  // Wall to mine at z=1
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -5393,7 +5302,7 @@ describe(job_game_speed) {
         // Setup world - works in both modes since building happens at a specific z
         // Legacy: z=0 is walkable (floor)
         // Standard: z=0 is solid ground, z=1 is walkable (air above ground)
-        int buildZ = g_legacyWalkability ? 0 : 1;
+        int buildZ = 1;
         
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5401,13 +5310,11 @@ describe(job_game_speed) {
             "........\n"
             "........\n", 8, 8);
         
-        if (!g_legacyWalkability) {
-            // Standard mode: solid ground at z=0, walkable at z=1
-            for (int x = 0; x < 8; x++) {
-                for (int y = 0; y < 4; y++) {
-                    grid[0][y][x] = CELL_DIRT;
-                    grid[1][y][x] = CELL_AIR;
-                }
+        // Solid ground at z=0, walkable at z=1
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 4; y++) {
+                grid[0][y][x] = CELL_DIRT;
+                grid[1][y][x] = CELL_AIR;
             }
         }
         
@@ -5452,7 +5359,7 @@ describe(job_game_speed) {
         expect(grid[buildZ][1][4] == CELL_WALL);
         
         // Reset for 2x speed test
-        grid[buildZ][1][4] = g_legacyWalkability ? CELL_WALKABLE : CELL_AIR;
+        grid[buildZ][1][4] = CELL_AIR;
         int bpIdx2 = CreateBuildBlueprint(4, 1, buildZ);
         blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
         blueprints[bpIdx2].deliveredMaterials = 1;
@@ -5979,17 +5886,12 @@ describe(workgivers) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
-    bool legacyMode = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
-        if (strcmp(argv[i], "--legacy") == 0) legacyMode = true;
     }
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
     }
-    
-    // Standard (DF-style) walkability is the default
-    g_legacyWalkability = legacyMode;
 
     test(item_system);
     test(item_reservation);

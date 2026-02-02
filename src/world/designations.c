@@ -115,14 +115,10 @@ void CompleteMineDesignation(int x, int y, int z) {
         return;
     }
     
-    // Convert wall to floor
+    // Convert wall to air with floor
     if (grid[z][y][x] == CELL_WALL) {
-        if (g_legacyWalkability) {
-            grid[z][y][x] = CELL_FLOOR;
-        } else {
-            grid[z][y][x] = CELL_AIR;
-            SET_FLOOR(x, y, z);
-        }
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
         MarkChunkDirty(x, y, z);
         
         // Destabilize water at this cell and neighbors so it can flow into the new space
@@ -200,8 +196,8 @@ bool DesignateChannel(int x, int y, int z) {
         return false;
     }
     
-    // In DF-style mode, verify there's a floor to remove
-    if (!g_legacyWalkability && !HAS_FLOOR(x, y, z)) {
+    // Verify there's a floor to remove
+    if (!HAS_FLOOR(x, y, z)) {
         // Check if standing on solid cell below (implicit floor)
         if (z > 0 && !CellIsSolid(grid[z-1][y][x])) {
             // No solid below - channeling here creates a hole with no ramp (DF behavior)
@@ -330,14 +326,8 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     }
     
     // === STEP 1: Remove the floor at z ===
-    if (g_legacyWalkability) {
-        // Legacy mode: set to air
-        grid[z][y][x] = CELL_AIR;
-    } else {
-        // DF-style: clear floor flag, cell becomes air
-        CLEAR_FLOOR(x, y, z);
-        grid[z][y][x] = CELL_AIR;
-    }
+    CLEAR_FLOOR(x, y, z);
+    grid[z][y][x] = CELL_AIR;
     
     // === STEP 2: Mine out z-1 and determine what to create ===
     CellType cellBelow = grid[lowerZ][y][x];
@@ -352,20 +342,14 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
             // Create ramp facing the adjacent wall
             // Mover can climb UP this ramp to exit at z (the hole level)
             grid[lowerZ][y][x] = rampDir;
-            if (!g_legacyWalkability) {
-                SET_FLOOR(x, y, lowerZ);  // Ramps need floor flag in DF-style mode
-            }
+            SET_FLOOR(x, y, lowerZ);  // Ramps need floor flag
             rampCount++;
         } else {
             // No valid ramp direction (no adjacent wall with walkable floor above)
             // This happens if channeling in the middle of a large open area
             // Create floor instead - mover is stuck but at least standing
-            if (g_legacyWalkability) {
-                grid[lowerZ][y][x] = CELL_FLOOR;
-            } else {
-                grid[lowerZ][y][x] = CELL_AIR;
-                SET_FLOOR(x, y, lowerZ);
-            }
+            grid[lowerZ][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, lowerZ);
         }
         
         // Spawn stone from the mined material
@@ -451,14 +435,9 @@ bool DesignateRemoveFloor(int x, int y, int z) {
     }
     
     // Must have an explicit floor flag (constructed floor) - can't remove "implicit" floors
-    // In DF-style mode, you walk on solid blocks below, that's not a removable floor
-    if (!g_legacyWalkability && !HAS_FLOOR(x, y, z)) {
+    // You walk on solid blocks below, that's not a removable floor
+    if (!HAS_FLOOR(x, y, z)) {
         return false;  // No constructed floor to remove
-    }
-    
-    // In legacy mode, must be CELL_FLOOR type
-    if (g_legacyWalkability && grid[z][y][x] != CELL_FLOOR) {
-        return false;
     }
     
     designations[z][y][x].type = DESIGNATION_REMOVE_FLOOR;
@@ -482,12 +461,8 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     }
     
     // Remove the floor
-    if (g_legacyWalkability) {
-        grid[z][y][x] = CELL_AIR;
-    } else {
-        CLEAR_FLOOR(x, y, z);
-        // Cell type stays as-is (AIR) - we're just removing the floor flag
-    }
+    CLEAR_FLOOR(x, y, z);
+    // Cell type stays as-is (AIR) - we're just removing the floor flag
     
     MarkChunkDirty(x, y, z);
     
@@ -564,12 +539,8 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     // Remove the ramp, replace with floor
     CellType cell = grid[z][y][x];
     if (CellIsRamp(cell)) {
-        if (g_legacyWalkability) {
-            grid[z][y][x] = CELL_FLOOR;
-        } else {
-            grid[z][y][x] = CELL_AIR;
-            SET_FLOOR(x, y, z);
-        }
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
         rampCount--;
     }
     

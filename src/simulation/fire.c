@@ -77,8 +77,8 @@ static inline bool CanBurn(int x, int y, int z) {
     // Already burned cells can't burn again
     if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) return false;
     
-    // In DF mode, check if there's a wall above that blocks fire spread
-    if (!g_legacyWalkability && z + 1 < gridDepth) {
+    // Check if there's a wall above that blocks fire spread
+    if (z + 1 < gridDepth) {
         CellType cellAbove = grid[z + 1][y][x];
         if (CellBlocksFluids(cellAbove)) return false;
     }

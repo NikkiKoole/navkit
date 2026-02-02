@@ -3441,7 +3441,7 @@ Point GetRandomWalkableCell(void) {
     Point p;
     // Only do expensive z-level connection checks for ladders (they have cached links)
     // Ramps use A* fallback which handles connectivity itself
-    bool checkLadderLinks = (!g_legacyWalkability && ladderLinkCount > 0 && rampCount == 0);
+    bool checkLadderLinks = (ladderLinkCount > 0 && rampCount == 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
@@ -3460,7 +3460,7 @@ Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     Point p;
     // Only do expensive z-level connection checks for ladders (they have cached links)
     // Ramps use A* fallback which handles connectivity itself
-    bool checkLadderLinks = (!g_legacyWalkability && ladderLinkCount > 0 && rampCount == 0);
+    bool checkLadderLinks = (ladderLinkCount > 0 && rampCount == 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
