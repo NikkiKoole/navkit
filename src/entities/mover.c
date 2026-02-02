@@ -1145,7 +1145,6 @@ void UpdateMovers(void) {
                         m->needsRepath = true;
                     } else {
                         // Actual fall - find ground
-                        TraceLog(LOG_INFO, "FALL-B: mover at (%d,%d,z%d) newCell=(%d,%d)", currentX, currentY, mz, newCellX, newCellY);
                         TryFallToGround(m, newCellX, newCellY);
                     }
                 } else {

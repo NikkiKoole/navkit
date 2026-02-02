@@ -1742,8 +1742,6 @@ void RunAStar(void) {
         }
     }
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "A* 3D (%s): time=%.2fms, nodes=%d, path=%d",
-             use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
 }
 
 // Get chunk index from cell coordinates (includes z-level in ID)
@@ -2550,8 +2548,6 @@ void RunJPS(void) {
     }
 
     lastPathTime = (GetTime() - startTime) * 1000.0;
-    TraceLog(LOG_INFO, "JPS 3D (%s): time=%.2fms, nodes=%d, path=%d",
-             use8Dir ? "8-dir" : "4-dir", lastPathTime, nodesExplored, pathLength);
 }
 
 // ============== JPS+ (Jump Point Search Plus - with preprocessing) ==============
