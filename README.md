@@ -113,9 +113,15 @@ Inspect save files from the command line (works with `.bin` and `.gz` files):
 ./bin/path --inspect debug_save.bin --job 3            # job details
 ./bin/path --inspect debug_save.bin --stockpile 0      # stockpile details
 ./bin/path --inspect debug_save.bin --cell 10,20,0     # cell at (x,y,z)
+./bin/path --inspect debug_save.bin --designations     # all designations (MINE/CHANNEL/etc)
 ./bin/path --inspect debug_save.bin --stuck            # movers stuck > 2s
 ./bin/path --inspect debug_save.bin --reserved         # items with reservations
 ./bin/path --inspect debug_save.bin --jobs-active      # all active jobs
+
+# Path testing with algorithm selection
+./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1              # test path (A* default)
+./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo hpa   # test with HPA*
+./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo jps   # test with JPS
 ```
 
 Bug save workflow: F5 to save → rename `saves/*.bin.gz` to something meaningful → inspect later.

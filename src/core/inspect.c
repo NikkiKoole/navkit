@@ -51,6 +51,7 @@ static const char* cellTypeNames[] = {
 static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE", "STONE_BLOCKS"};
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
+static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
@@ -358,8 +359,9 @@ static void print_cell(int x, int y, int z) {
     printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {
-        printf("Designation: DIG, assigned to mover %d, progress %.0f%%\n",
-               desig.assignedMover, desig.progress * 100);
+        const char* desigName = desig.type < 5 ? designationTypeNames[desig.type] : "?";
+        printf("Designation: %s, assigned to mover %d, progress %.0f%%\n",
+               desigName, desig.assignedMover, desig.progress * 100);
     }
     
     // Find items at this cell
@@ -411,8 +413,9 @@ static void setup_pathfinding_globals(void) {
     }
 }
 
-static void print_path(int x1, int y1, int z1, int x2, int y2, int z2) {
-    printf("\n=== PATH TEST ===\n");
+static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo) {
+    const char* algoNames[] = {"A*", "HPA*", "JPS", "JPS+"};
+    printf("\n=== PATH TEST (%s) ===\n", algo < 4 ? algoNames[algo] : "?");
     printf("From: (%d, %d, z%d)\n", x1, y1, z1);
     printf("To:   (%d, %d, z%d)\n", x2, y2, z2);
     
@@ -442,7 +445,7 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2) {
     Point goal = { x2, y2, z2 };
     Point outPath[MAX_PATH];
     
-    int len = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+    int len = FindPath(algo, start, goal, outPath, MAX_PATH);
     
     if (len > 0) {
         printf("Path: FOUND (%d steps)\n", len);
@@ -548,8 +551,9 @@ static void print_designations(void) {
                 
                 CellType cell = insp_gridCells[idx];
                 const char* cellName = cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "?";
+                const char* desigName = d->type < 5 ? designationTypeNames[d->type] : "?";
                 
-                printf("(%d,%d,z%d) DIG %s", x, y, z, cellName);
+                printf("(%d,%d,z%d) %s %s", x, y, z, desigName, cellName);
                 if (d->assignedMover >= 0) {
                     printf(" [mover %d, %.0f%%]", d->assignedMover, d->progress * 100);
                 } else if (d->unreachableCooldown > 0) {
@@ -662,6 +666,7 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_cell_x = -1, opt_cell_y = -1, opt_cell_z = -1;
     int opt_path_x1 = -1, opt_path_y1 = -1, opt_path_z1 = -1;
     int opt_path_x2 = -1, opt_path_y2 = -1, opt_path_z2 = -1;
+    int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
     
@@ -678,6 +683,14 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--path") == 0 && i+2 < argc) {
             sscanf(argv[++i], "%d,%d,%d", &opt_path_x1, &opt_path_y1, &opt_path_z1);
             sscanf(argv[++i], "%d,%d,%d", &opt_path_x2, &opt_path_y2, &opt_path_z2);
+        }
+        else if (strcmp(argv[i], "--algo") == 0 && i+1 < argc) {
+            i++;
+            if (strcmp(argv[i], "astar") == 0 || strcmp(argv[i], "a*") == 0) opt_path_algo = PATH_ALGO_ASTAR;
+            else if (strcmp(argv[i], "hpa") == 0 || strcmp(argv[i], "hpa*") == 0) opt_path_algo = PATH_ALGO_HPA;
+            else if (strcmp(argv[i], "jps") == 0) opt_path_algo = PATH_ALGO_JPS;
+            else if (strcmp(argv[i], "jps+") == 0) opt_path_algo = PATH_ALGO_JPS_PLUS;
+            else printf("Warning: unknown algorithm '%s', using A*\n", argv[i]);
         }
         else if (strcmp(argv[i], "--map") == 0 && i+1 < argc) {
             sscanf(argv[++i], "%d,%d,%d", &opt_map_x, &opt_map_y, &opt_map_z);
@@ -846,8 +859,8 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
-        printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2, --map X,Y,Z [R], --designations\n");
-        printf("         --stuck, --reserved, --jobs-active\n");
+        printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
+        printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
     }
     
     // Handle queries
@@ -863,7 +876,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_workshop >= 0) print_workshop(opt_workshop);
     if (opt_blueprint >= 0) print_blueprint(opt_blueprint);
     if (opt_cell_x >= 0) print_cell(opt_cell_x, opt_cell_y, opt_cell_z);
-    if (opt_path_x1 >= 0) print_path(opt_path_x1, opt_path_y1, opt_path_z1, opt_path_x2, opt_path_y2, opt_path_z2);
+    if (opt_path_x1 >= 0) print_path(opt_path_x1, opt_path_y1, opt_path_z1, opt_path_x2, opt_path_y2, opt_path_z2, opt_path_algo);
     if (opt_map_x >= 0) print_map(opt_map_x, opt_map_y, opt_map_z, opt_map_r);
     if (opt_designations) print_designations();
     if (opt_stuck) print_stuck_movers();
