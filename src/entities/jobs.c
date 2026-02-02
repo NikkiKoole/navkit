@@ -1418,13 +1418,13 @@ void AssignJobsHybrid(void) {
     // Rebuild caches once per frame (same as legacy)
     RebuildStockpileGroundItemCache();
     RebuildStockpileFreeSlotCounts();
+    RebuildStockpileSlotCache();  // O(1) FindStockpileForItem lookups
     
-    // Cache which item types have available stockpiles (shared across all hauling)
+    // Check which item types have available stockpiles (from cache)
     bool typeHasStockpile[ITEM_TYPE_COUNT] = {false};
     bool anyTypeHasSlot = false;
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
-        int slotX, slotY;
-        if (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0) {
+        if (stockpileSlotCache[t].stockpileIdx >= 0) {
             typeHasStockpile[t] = true;
             anyTypeHasSlot = true;
         }
@@ -1449,12 +1449,15 @@ void AssignJobsHybrid(void) {
             slotX = (int)(items[itemIdx].x / CELL_SIZE);
             slotY = (int)(items[itemIdx].y / CELL_SIZE);
         } else {
-            spIdx = FindStockpileForItem(items[itemIdx].type, &slotX, &slotY);
+            spIdx = FindStockpileForItemCached(items[itemIdx].type, &slotX, &slotY);
             if (spIdx < 0) safeDrop = true;
         }
         
         if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        } else if (!safeDrop) {
+            // Slot was reserved, invalidate cache for this type
+            InvalidateStockpileSlotCache(items[itemIdx].type);
         }
     }
     
@@ -1583,10 +1586,12 @@ void AssignJobsHybrid(void) {
                 if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
                 
                 int slotX, slotY;
-                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+                int spIdx = FindStockpileForItemCached(item->type, &slotX, &slotY);
                 if (spIdx < 0) continue;
                 
-                TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
+                if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
+                    InvalidateStockpileSlotCache(item->type);
+                }
             }
         } else {
             // Fallback: linear scan
@@ -1605,10 +1610,12 @@ void AssignJobsHybrid(void) {
                 if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
                 
                 int slotX, slotY;
-                int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+                int spIdx = FindStockpileForItemCached(item->type, &slotX, &slotY);
                 if (spIdx < 0) continue;
                 
-                TryAssignItemToMover(j, spIdx, slotX, slotY, false);
+                if (TryAssignItemToMover(j, spIdx, slotX, slotY, false)) {
+                    InvalidateStockpileSlotCache(item->type);
+                }
             }
         }
     }
@@ -1635,7 +1642,7 @@ void AssignJobsHybrid(void) {
             bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
             
             if (noLongerAllowed) {
-                destSp = FindStockpileForItem(items[j].type, &destSlotX, &destSlotY);
+                destSp = FindStockpileForItemCached(items[j].type, &destSlotX, &destSlotY);
             } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
                 destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
             } else {
@@ -1644,7 +1651,11 @@ void AssignJobsHybrid(void) {
             
             if (destSp < 0) continue;
             
-            TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false);
+            if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
+                if (noLongerAllowed) {
+                    InvalidateStockpileSlotCache(items[j].type);
+                }
+            }
         }
     }
     

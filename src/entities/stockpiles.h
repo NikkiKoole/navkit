@@ -102,4 +102,22 @@ void RebuildStockpileGroundItemCache(void);  // full rebuild from item positions
 // Free slot cache - call once per frame before job assignment
 void RebuildStockpileFreeSlotCounts(void);
 
+// =============================================================================
+// Stockpile Slot Cache - for O(1) FindStockpileForItem lookups
+// =============================================================================
+// Call RebuildStockpileSlotCache() once per frame before job assignment.
+// Then use FindStockpileForItemCached() instead of FindStockpileForItem().
+// The cache stores one available slot per item type.
+
+typedef struct {
+    int stockpileIdx;   // -1 if no stockpile available for this type
+    int slotX, slotY;   // slot coordinates (valid only if stockpileIdx >= 0)
+} StockpileSlotCacheEntry;
+
+extern StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT];
+
+void RebuildStockpileSlotCache(void);  // Build cache - O(types * stockpiles * slots)
+int FindStockpileForItemCached(ItemType type, int* outSlotX, int* outSlotY);  // O(1) lookup
+void InvalidateStockpileSlotCache(ItemType type);  // Call when a slot is reserved
+
 #endif

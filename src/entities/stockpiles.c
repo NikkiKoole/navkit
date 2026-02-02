@@ -98,6 +98,60 @@ void RebuildStockpileFreeSlotCounts(void) {
     }
 }
 
+// =============================================================================
+// Stockpile Slot Cache Implementation
+// =============================================================================
+
+StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT];
+
+void RebuildStockpileSlotCache(void) {
+    // Initialize all entries to "no stockpile available"
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        stockpileSlotCache[t].stockpileIdx = -1;
+        stockpileSlotCache[t].slotX = -1;
+        stockpileSlotCache[t].slotY = -1;
+    }
+    
+    // For each item type, find the first available stockpile slot
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        int slotX, slotY;
+        int spIdx = FindStockpileForItem((ItemType)t, &slotX, &slotY);
+        if (spIdx >= 0) {
+            stockpileSlotCache[t].stockpileIdx = spIdx;
+            stockpileSlotCache[t].slotX = slotX;
+            stockpileSlotCache[t].slotY = slotY;
+        }
+    }
+}
+
+int FindStockpileForItemCached(ItemType type, int* outSlotX, int* outSlotY) {
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return -1;
+    
+    StockpileSlotCacheEntry* entry = &stockpileSlotCache[type];
+    if (entry->stockpileIdx < 0) return -1;
+    
+    *outSlotX = entry->slotX;
+    *outSlotY = entry->slotY;
+    return entry->stockpileIdx;
+}
+
+void InvalidateStockpileSlotCache(ItemType type) {
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return;
+    
+    // Re-find a slot for this type
+    int slotX, slotY;
+    int spIdx = FindStockpileForItem(type, &slotX, &slotY);
+    if (spIdx >= 0) {
+        stockpileSlotCache[type].stockpileIdx = spIdx;
+        stockpileSlotCache[type].slotX = slotX;
+        stockpileSlotCache[type].slotY = slotY;
+    } else {
+        stockpileSlotCache[type].stockpileIdx = -1;
+        stockpileSlotCache[type].slotX = -1;
+        stockpileSlotCache[type].slotY = -1;
+    }
+}
+
 int CreateStockpile(int x, int y, int z, int width, int height) {
     // Find first inactive slot
     for (int i = 0; i < MAX_STOCKPILES; i++) {
