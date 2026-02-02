@@ -3890,8 +3890,8 @@ describe(building_haul_job) {
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Item at (1,1) - must be ITEM_ORANGE for building walls
-        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        // Item at (1,1) - must be ITEM_STONE_BLOCKS for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STONE_BLOCKS);
         
         // Blueprint at (4,4)
         int bpIdx = CreateBuildBlueprint(4, 4, 0);
@@ -3963,8 +3963,8 @@ describe(building_job_execution) {
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Item at (1,1) - must be ITEM_ORANGE for building walls
-        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        // Item at (1,1) - must be ITEM_STONE_BLOCKS for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STONE_BLOCKS);
         (void)itemIdx;  // Used only in setup
         
         // Blueprint at (3,3) - will become a wall
@@ -4015,8 +4015,8 @@ describe(building_job_execution) {
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Item at (1,1) - must be ITEM_ORANGE for building walls
-        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        // Item at (1,1) - must be ITEM_STONE_BLOCKS for building walls
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STONE_BLOCKS);
         
         // Blueprint at (4,4)
         int bpIdx = CreateBuildBlueprint(4, 4, 0);
@@ -4085,8 +4085,8 @@ describe(building_two_movers) {
         InitMover(m2, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal2, 100.0f);
         moverCount = 2;
         
-        // Item at (1,1) - must be ITEM_ORANGE for building walls
-        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ORANGE);
+        // Item at (1,1) - must be ITEM_STONE_BLOCKS for building walls
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_STONE_BLOCKS);
         
         // Blueprint at (5,5)
         int bpIdx = CreateBuildBlueprint(5, 5, 0);
@@ -5051,8 +5051,8 @@ describe(mover_capabilities) {
         // Create blueprint awaiting materials
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         
-        // Spawn an orange item (building material)
-        int itemIdx = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_ORANGE);
+        // Spawn a stone blocks item (building material)
+        int itemIdx = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_STONE_BLOCKS);
         (void)itemIdx;  // Suppress unused warning
         
         // Run until material is delivered
@@ -5149,6 +5149,9 @@ describe(workgivers) {
         // Designate wall for digging
         DesignateDig(3, 1, 0);
         
+        // Build dig cache (required before WorkGiver_Mining)
+        RebuildDigDesignationCache();
+        
         // Call WorkGiver_Mining directly
         int jobId = WorkGiver_Mining(0);
         
@@ -5224,8 +5227,8 @@ describe(workgivers) {
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
         
-        // Spawn an orange item (building material)
-        SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_ORANGE);
+        // Spawn a stone blocks item (building material)
+        SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_STONE_BLOCKS);
         
         // Call WorkGiver_BlueprintHaul directly
         int jobId = WorkGiver_BlueprintHaul(0);
@@ -5301,6 +5304,9 @@ describe(workgivers) {
         
         // Create dig designation
         DesignateDig(3, 1, 0);
+        
+        // Build dig cache (required before WorkGiver_Mining)
+        RebuildDigDesignationCache();
         
         // Call WorkGiver_Mining - should fail because mover can't mine
         int jobId = WorkGiver_Mining(0);

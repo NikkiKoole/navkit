@@ -127,6 +127,7 @@ void AssignJobs(void);           // Match idle movers with available items (curr
 void AssignJobsLegacy(void);     // Item-centric with inline optimizations (fast)
 void AssignJobsWorkGivers(void); // Mover-centric using WorkGivers (slower, for comparison)
 void AssignJobsHybrid(void);     // Hybrid: item-centric for hauling, mover-centric for sparse jobs
+void RebuildDigDesignationCache(void);  // Build cache for WorkGiver_Mining (call before mining assignment)
 void JobsTick(void);             // Update job state machines using per-type drivers
 
 // =============================================================================

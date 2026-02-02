@@ -41,7 +41,7 @@ static DigDesignationEntry digCache[MAX_DIG_CACHE];
 static int digCacheCount = 0;
 
 // Build the dig designation cache - call once per frame before mining assignment
-static void RebuildDigDesignationCache(void) {
+void RebuildDigDesignationCache(void) {
     digCacheCount = 0;
     
     for (int z = 0; z < gridDepth && digCacheCount < MAX_DIG_CACHE; z++) {
