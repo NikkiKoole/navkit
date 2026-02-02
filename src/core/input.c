@@ -904,8 +904,6 @@ void HandleInput(void) {
         if (LoadWorld("saves/debug_save.bin")) AddMessage("World loaded", GREEN);
     }
 
-
-
     // ========================================================================
     // Navigation: ESC, re-tap mode key
     // Handle before ui_wants_mouse check since bar buttons trigger pending keys
