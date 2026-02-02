@@ -305,6 +305,9 @@ void CompleteBlueprint(int blueprintIdx) {
     // Push any movers out of this cell before placing the wall
     PushMoversOutOfCell(x, y, z);
     
+    // Push any items out of this cell before placing the wall
+    PushItemsOutOfCell(x, y, z);
+    
     // Convert floor to wall
     if (IsCellWalkableAt(z, y, x)) {
         DisplaceWater(x, y, z);

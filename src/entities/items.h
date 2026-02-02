@@ -58,6 +58,10 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown);
 // Returns the index of a ground item at the given tile, or -1 if none
 int FindGroundItemAtTile(int tileX, int tileY, int z);
 
+// Push all items out of a cell to nearest walkable neighbor
+// Used when building walls on cells that contain items
+void PushItemsOutOfCell(int x, int y, int z);
+
 // Spatial grid for O(1) item lookups (tile-based, includes z-level)
 typedef struct {
     int* cellCounts;    // Number of ground items per cell

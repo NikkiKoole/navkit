@@ -1,6 +1,7 @@
 #include "items.h"
 #include "mover.h"  // for CELL_SIZE
 #include "../world/grid.h"   // for gridWidth, gridHeight, gridDepth
+#include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include <math.h>
 #include <stdlib.h>
@@ -227,6 +228,43 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
         }
     }
     return -1;
+}
+
+void PushItemsOutOfCell(int x, int y, int z) {
+    // Direction offsets for cardinal neighbors
+    int dx[] = {0, 0, -1, 1};
+    int dy[] = {-1, 1, 0, 0};
+    
+    // Find first walkable neighbor to push items to
+    int targetX = -1, targetY = -1;
+    for (int d = 0; d < 4; d++) {
+        int nx = x + dx[d];
+        int ny = y + dy[d];
+        if (IsCellWalkableAt(z, ny, nx)) {
+            targetX = nx;
+            targetY = ny;
+            break;
+        }
+    }
+    
+    // Move all items at this cell to the target neighbor
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if ((int)items[i].z != z) continue;
+        
+        int itemTileX = (int)(items[i].x / CELL_SIZE);
+        int itemTileY = (int)(items[i].y / CELL_SIZE);
+        
+        if (itemTileX == x && itemTileY == y) {
+            if (targetX >= 0) {
+                // Move to walkable neighbor
+                items[i].x = targetX * CELL_SIZE + CELL_SIZE * 0.5f;
+                items[i].y = targetY * CELL_SIZE + CELL_SIZE * 0.5f;
+            }
+            // If no walkable neighbor, item stays (will be trapped in wall)
+            // This is an edge case - fully surrounded cells shouldn't have blueprints
+        }
+    }
 }
 
 // Common spatial grid radius iteration - calls iterator for each valid ground item in radius
