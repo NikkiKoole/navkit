@@ -23,7 +23,7 @@ typedef struct {
     // Priority support
     int priority;          // higher = better storage (1-9, default 5)
     // Ground item cache (avoids expensive FindGroundItemAtTile calls)
-    bool hasGroundItem[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // true if ground item on this slot
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // item index on this slot, -1 if none
     // Free slot cache (avoids scanning all tiles when stockpile is full)
     int freeSlotCount;     // number of unreserved slots with room for items (rebuilt each frame)
 } Stockpile;
@@ -96,7 +96,7 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
 int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb);
 
 // Ground item cache - call when items land on or leave stockpile tiles
-void MarkStockpileGroundItem(float x, float y, int z, bool hasItem);
+void MarkStockpileGroundItem(float x, float y, int z, int itemIdx);
 void RebuildStockpileGroundItemCache(void);  // full rebuild from item positions
 
 // Free slot cache - call once per frame before job assignment

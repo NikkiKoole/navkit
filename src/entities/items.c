@@ -42,7 +42,7 @@ int SpawnItem(float x, float y, float z, ItemType type) {
                 itemHighWaterMark = i + 1;
             }
             // Update stockpile ground item cache
-            MarkStockpileGroundItem(x, y, (int)z, true);
+            MarkStockpileGroundItem(x, y, (int)z, i);
             return i;
         }
     }
@@ -214,7 +214,7 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
     }
     
     // Fallback to O(n) scan if grid not built yet or was built when empty
-    for (int i = 0; i < MAX_ITEMS; i++) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
         if ((int)items[i].z != z) continue;

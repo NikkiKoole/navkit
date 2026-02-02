@@ -1590,7 +1590,7 @@ void AssignJobsHybrid(void) {
             }
         } else {
             // Fallback: linear scan
-            for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+            for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
                 Item* item = &items[j];
                 if (!item->active) continue;
                 if (item->reservedBy != -1) continue;
@@ -1617,7 +1617,7 @@ void AssignJobsHybrid(void) {
     // PRIORITY 3: Re-haul from overfull/low-priority stockpiles - ITEM-CENTRIC
     // =========================================================================
     if (idleMoverCount > 0) {
-        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+        for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
             if (!items[j].active) continue;
             if (items[j].reservedBy != -1) continue;
             if (items[j].state != ITEM_IN_STOCKPILE) continue;
@@ -1897,7 +1897,7 @@ void AssignJobsLegacy(void) {
         }
     } else if (idleMoverCount > 0) {
         // Fallback: linear scan when spatial grid not built (tests)
-        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+        for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
             Item* item = &items[j];
             if (!item->active) continue;
             if (item->reservedBy != -1) continue;
@@ -1924,7 +1924,7 @@ void AssignJobsLegacy(void) {
     // PRIORITY 3: Re-haul items from overfull/low-priority stockpiles
     PROFILE_ACCUM_BEGIN(Jobs_FindRehaulItem);
     if (idleMoverCount > 0) {
-        for (int j = 0; j < MAX_ITEMS && idleMoverCount > 0; j++) {
+        for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
             if (!items[j].active) continue;
             if (items[j].reservedBy != -1) continue;
             if (items[j].state != ITEM_IN_STOCKPILE) continue;
@@ -2067,7 +2067,7 @@ void AssignJobsLegacy(void) {
             float bpY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
             
             // Linear scan for items (could use spatial grid for optimization)
-            for (int j = 0; j < MAX_ITEMS; j++) {
+            for (int j = 0; j < itemHighWaterMark; j++) {
                 Item* item = &items[j];
                 if (!item->active) continue;
                 if (item->type != ITEM_STONE_BLOCKS) continue;  // Only stone blocks for building
@@ -2285,7 +2285,7 @@ int WorkGiver_Haul(int moverIdx) {
     } else {
         // Fallback: linear scan when spatial grid not built (for tests)
         float bestDistSq = 1e30f;
-        for (int j = 0; j < MAX_ITEMS; j++) {
+        for (int j = 0; j < itemHighWaterMark; j++) {
             Item* item = &items[j];
             if (!item->active) continue;
             if (item->reservedBy != -1) continue;
@@ -2602,7 +2602,7 @@ int WorkGiver_Rehaul(int moverIdx) {
     int bestDestSlotX = -1, bestDestSlotY = -1;
     float bestDistSq = 1e30f;
     
-    for (int j = 0; j < MAX_ITEMS; j++) {
+    for (int j = 0; j < itemHighWaterMark; j++) {
         if (!items[j].active) continue;
         if (items[j].reservedBy != -1) continue;
         if (items[j].state != ITEM_IN_STOCKPILE) continue;
@@ -2910,7 +2910,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     }
     
     // Linear scan for all ITEM_STONE_BLOCKS (fallback for tests, plus checks stockpile items)
-    for (int j = 0; j < MAX_ITEMS; j++) {
+    for (int j = 0; j < itemHighWaterMark; j++) {
         Item* item = &items[j];
         if (!item->active) continue;
         if (item->type != ITEM_STONE_BLOCKS) continue;

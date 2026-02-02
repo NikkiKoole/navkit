@@ -25,7 +25,7 @@ void ClearStockpiles(void) {
 // per assignment attempt - causing 79% of frame time in pathological cases.
 //
 // Solution: Cache which stockpile slots have ground items blocking them.
-// - hasGroundItem[slot] is a simple bool array per stockpile
+// - groundItemIdx[slot] stores the item index (-1 if none) per stockpile
 // - RebuildStockpileGroundItemCache() does a full rebuild, called once per frame
 //   at the start of AssignJobs()
 // - SpawnItem() also marks the cache incrementally for immediate correctness
@@ -36,8 +36,8 @@ void ClearStockpiles(void) {
 // before any job assignment decisions are made.
 // =============================================================================
 
-// Mark/unmark a tile as having a ground item (for the hasGroundItem cache)
-void MarkStockpileGroundItem(float x, float y, int z, bool hasItem) {
+// Mark/unmark a tile as having a ground item (for the groundItemIdx cache)
+void MarkStockpileGroundItem(float x, float y, int z, int itemIdx) {
     int tileX = (int)(x / CELL_SIZE);
     int tileY = (int)(y / CELL_SIZE);
     
@@ -55,25 +55,25 @@ void MarkStockpileGroundItem(float x, float y, int z, bool hasItem) {
         int idx = ly * sp->width + lx;
         if (!sp->cells[idx]) continue;  // not an active cell
         
-        sp->hasGroundItem[idx] = hasItem;
+        sp->groundItemIdx[idx] = itemIdx;
         return;  // tile can only belong to one stockpile
     }
 }
 
-// Rebuild the entire hasGroundItem cache from current item positions
+// Rebuild the entire groundItemIdx cache from current item positions
 void RebuildStockpileGroundItemCache(void) {
-    // Clear all flags
+    // Clear all to -1 (no item)
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         int totalSlots = stockpiles[i].width * stockpiles[i].height;
-        memset(stockpiles[i].hasGroundItem, 0, totalSlots * sizeof(bool));
+        memset(stockpiles[i].groundItemIdx, -1, totalSlots * sizeof(int));
     }
     
-    // Mark slots that have ground items
-    for (int i = 0; i < MAX_ITEMS; i++) {
+    // Mark slots with their ground item indices
+    for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
-        MarkStockpileGroundItem(items[i].x, items[i].y, (int)items[i].z, true);
+        MarkStockpileGroundItem(items[i].x, items[i].y, (int)items[i].z, i);
     }
 }
 
@@ -89,7 +89,7 @@ void RebuildStockpileFreeSlotCounts(void) {
         for (int s = 0; s < totalSlots; s++) {
             if (!sp->cells[s]) continue;            // inactive cell
             if (sp->reservedBy[s] != -1) continue;  // reserved
-            if (sp->hasGroundItem[s]) continue;     // ground item blocking
+            if (sp->groundItemIdx[s] >= 0) continue; // ground item blocking
             if (sp->slotCounts[s] < sp->maxStackSize) {
                 freeCount++;
             }
@@ -123,7 +123,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
                 sp->reservedBy[s] = -1; // not reserved
                 sp->slotCounts[s] = 0;  // no items stacked
                 sp->slotTypes[s] = -1;  // no type
-                sp->hasGroundItem[s] = false; // no ground item blocking
+                sp->groundItemIdx[s] = -1; // no ground item blocking
             }
             
             // Default priority and stack size
@@ -262,7 +262,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
             int idx = SlotIndex(sp, lx, ly);
             if (!sp->cells[idx]) continue;            // skip inactive cells
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
-            if (sp->hasGroundItem[idx]) continue;     // skip if ground item blocking (O(1) check)
+            if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
             if (sp->slotTypes[idx] == type && sp->slotCounts[idx] > 0 && sp->slotCounts[idx] < sp->maxStackSize) {
                 // Found partial stack of same type
@@ -279,7 +279,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
             int idx = SlotIndex(sp, lx, ly);
             if (!sp->cells[idx]) continue;            // skip inactive cells
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
-            if (sp->hasGroundItem[idx]) continue;     // skip if ground item blocking (O(1) check)
+            if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
             if (sp->slotCounts[idx] == 0 && sp->slots[idx] == -1) {
                 // Found empty slot
@@ -610,15 +610,13 @@ int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
             for (int lx = 0; lx < sp->width; lx++) {
                 int idx = ly * sp->width + lx;
                 if (!sp->cells[idx]) continue;  // skip inactive cells
-                if (!sp->hasGroundItem[idx]) continue;  // O(1) cache check - skip if no ground item
                 
-                int tileX = sp->x + lx;
-                int tileY = sp->y + ly;
+                int itemIdx = sp->groundItemIdx[idx];  // O(1) cache lookup
+                if (itemIdx < 0) continue;  // no ground item on this slot
                 
-                int itemIdx = FindGroundItemAtTile(tileX, tileY, sp->z);
-                if (itemIdx < 0) continue;
+                // Validate item is still active and on ground (cache may be slightly stale)
+                if (!items[itemIdx].active || items[itemIdx].state != ITEM_ON_GROUND) continue;
                 
-                // Found a ground item on this stockpile tile
                 // Check if it's already reserved
                 if (items[itemIdx].reservedBy != -1) continue;
                 
