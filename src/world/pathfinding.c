@@ -950,6 +950,9 @@ static void GetAffectedChunks(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][
                     if (cy < chunksY-1) affectedChunks[z][cy+1][cx] = true;
                     if (cx > 0) affectedChunks[z][cy][cx-1] = true;
                     if (cx < chunksX-1) affectedChunks[z][cy][cx+1] = true;
+                    // Mark Z neighbors as affected too (for ladders/ramps)
+                    if (z > 0) affectedChunks[z-1][cy][cx] = true;
+                    if (z < gridDepth-1) affectedChunks[z+1][cy][cx] = true;
                 }
             }
         }
