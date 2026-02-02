@@ -1082,26 +1082,48 @@ void DrawMiningDesignations(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             Designation* d = GetDesignation(x, y, viewZ);
-            if (!d || d->type != DESIGNATION_MINE) continue;
+            if (!d) continue;
+            
+            // Mine designation: cyan
+            if (d->type == DESIGNATION_MINE) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
 
-            float sx = offset.x + x * size;
-            float sy = offset.y + y * size;
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 255, 200});
 
-            Rectangle src = SpriteGetRect(SPRITE_stockpile);
-            Rectangle dest = { sx, sy, size, size };
-            DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 255, 200});
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, SKYBLUE);
+                }
+            }
+            // Channel designation: pink/magenta
+            else if (d->type == DESIGNATION_CHANNEL) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
 
-            if (d->progress > 0.0f) {
-                float barWidth = size * 0.8f;
-                float barHeight = 4.0f;
-                float barX = sx + size * 0.1f;
-                float barY = sy + size - 8.0f;
-                DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, SKYBLUE);
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 150, 200, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, MAGENTA);
+                }
             }
         }
     }
 
+    // Draw active mine jobs (orange overlay for assigned)
     for (int i = 0; i < activeJobCount; i++) {
         int jobIdx = activeJobList[i];
         Job* job = &jobs[jobIdx];
@@ -1114,6 +1136,21 @@ void DrawMiningDesignations(void) {
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
+    }
+    
+    // Draw active channel jobs (yellow/orange overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_CHANNEL) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 180, 150, 180});
     }
     
     // Draw path of assigned mover when hovering over a designation

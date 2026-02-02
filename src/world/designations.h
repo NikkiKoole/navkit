@@ -9,6 +9,7 @@
 typedef enum {
     DESIGNATION_NONE,
     DESIGNATION_MINE,
+    DESIGNATION_CHANNEL,  // Vertical digging - removes floor and mines level below
     // Future: DESIGNATION_CHOP, etc.
 } DesignationType;
 
@@ -20,8 +21,9 @@ typedef struct {
     float unreachableCooldown;  // Seconds before retrying if unreachable
 } Designation;
 
-// Work time for mining (in seconds at 60 ticks/sec)
+// Work time for mining/channeling (in seconds at 60 ticks/sec)
 #define MINE_WORK_TIME 2.0f
+#define CHANNEL_WORK_TIME 2.0f
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -89,6 +91,28 @@ void CompleteMineDesignation(int x, int y, int z);
 
 // Count active mine designations
 int CountMineDesignations(void);
+
+// =============================================================================
+// Channel designation functions
+// =============================================================================
+
+// Designate a cell for channeling (vertical digging)
+// Returns true if designation was added, false if cell can't be channeled
+bool DesignateChannel(int x, int y, int z);
+
+// Check if a cell has a channel designation
+bool HasChannelDesignation(int x, int y, int z);
+
+// Auto-detect ramp direction for channeling (relaxed rules - no low-side check)
+// Returns ramp type if valid direction found, CELL_AIR if none
+CellType AutoDetectChannelRampDirection(int x, int y, int lowerZ);
+
+// Complete a channel designation (called when work finishes)
+// Removes floor at z, mines out z-1, creates ramp if possible, handles mover descent
+void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx);
+
+// Count active channel designations
+int CountChannelDesignations(void);
 
 // =============================================================================
 // Blueprint functions

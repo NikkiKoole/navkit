@@ -119,3 +119,24 @@ Inspect save files from the command line (works with `.bin` and `.gz` files):
 ```
 
 Bug save workflow: F5 to save → rename `saves/*.bin.gz` to something meaningful → inspect later.
+
+## Headless Mode
+
+Run simulation without GUI for debugging and automated testing:
+
+```bash
+# Run 100 ticks (default)
+./bin/path --headless --load save.bin.gz
+
+# Run custom number of ticks
+./bin/path --headless --load save.bin.gz --ticks 500
+
+# Run and show mover state after
+./bin/path --headless --load save.bin.gz --ticks 100 --mover all
+./bin/path --headless --load save.bin.gz --ticks 100 --mover 0
+
+# Run and save result
+./bin/path --headless --load save.bin.gz --ticks 100 --save /tmp/after.bin
+```
+
+Output includes tick count, performance (ms/tick), movers stuck in non-walkable cells before/after, and movers with no pathfinding progress.

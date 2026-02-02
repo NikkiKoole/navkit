@@ -269,6 +269,33 @@ static void ExecuteCancelMine(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateChannel(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateChannel(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d cell%s for channeling", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelChannel(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasChannelDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d channel designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -955,6 +982,7 @@ void HandleInput(void) {
                 break;
             case MODE_WORK:
                 if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
+                if (CheckKey(KEY_H)) { inputAction = ACTION_WORK_CHANNEL; }
                 if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 break;
@@ -989,6 +1017,7 @@ void HandleInput(void) {
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         // Work actions
         case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_M); break;
+        case ACTION_WORK_CHANNEL:   backOneLevel = CheckKey(KEY_H); break;
         case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
         case ACTION_WORK_GATHER:    backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
@@ -1102,6 +1131,10 @@ void HandleInput(void) {
             case ACTION_WORK_MINE:
                 if (leftClick) ExecuteDesignateMine(x1, y1, x2, y2, z);
                 else ExecuteCancelMine(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_CHANNEL:
+                if (leftClick) ExecuteDesignateChannel(x1, y1, x2, y2, z);
+                else ExecuteCancelChannel(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_CONSTRUCT:
                 if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);

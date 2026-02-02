@@ -633,6 +633,76 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Channel job driver: move to tile -> channel (remove floor, mine below, create ramp)
+JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    
+    int tx = job->targetMineX;  // Reusing mine target fields for channel coordinates
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+    
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_CHANNEL) {
+        return JOBRUN_FAIL;
+    }
+    
+    // Check if floor still exists (in DF-style mode)
+    if (!g_legacyWalkability) {
+        // Either has explicit floor flag or standing on solid below
+        bool hasFloor = HAS_FLOOR(tx, ty, tz) || (tz > 0 && CellIsSolid(grid[tz-1][ty][tx]));
+        if (!hasFloor) {
+            CancelDesignation(tx, ty, tz);
+            return JOBRUN_FAIL;
+        }
+    }
+    
+    if (job->step == STEP_MOVING_TO_WORK) {
+        // Channel: mover stands ON the tile (not adjacent like mining)
+        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
+            mover->goal = (Point){tx, ty, tz};
+            mover->needsRepath = true;
+        }
+        
+        // Check if arrived at target tile
+        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+        
+        bool correctZ = (int)mover->z == tz;
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+        
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        // Progress channeling
+        job->progress += dt / CHANNEL_WORK_TIME;
+        d->progress = job->progress;
+        
+        if (job->progress >= 1.0f) {
+            // Channeling complete!
+            // Pass mover index so CompleteChannelDesignation can handle their descent
+            CompleteChannelDesignation(tx, ty, tz, job->assignedMover);
+            return JOBRUN_DONE;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    
+    return JOBRUN_FAIL;
+}
+
 // Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
@@ -989,6 +1059,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_HAUL] = RunJob_Haul,
     [JOBTYPE_CLEAR] = RunJob_Clear,
     [JOBTYPE_MINE] = RunJob_Mine,
+    [JOBTYPE_CHANNEL] = RunJob_Channel,
     [JOBTYPE_HAUL_TO_BLUEPRINT] = RunJob_HaulToBlueprint,
     [JOBTYPE_BUILD] = RunJob_Build,
     [JOBTYPE_CRAFT] = RunJob_Craft,
@@ -1001,7 +1072,13 @@ static void CancelJob(Mover* m, int moverIdx);
 void JobsTick(void) {
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
-        if (!m->active) continue;
+        if (!m->active) {
+            // Inactive mover - cancel any job they have to release reservations
+            if (m->currentJobId >= 0) {
+                CancelJob(m, i);
+            }
+            continue;
+        }
         if (m->currentJobId < 0) continue;
         
         Job* job = GetJob(m->currentJobId);
@@ -1375,13 +1452,16 @@ void AssignJobsWorkGivers(void) {
         // Priority 4: Mining (mine designations)
         if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
         
-        // Priority 5: Crafting (workshops with runnable bills)
+        // Priority 5: Channeling (channel designations)
+        if (jobId < 0) jobId = WorkGiver_Channel(moverIdx);
+        
+        // Priority 6: Crafting (workshops with runnable bills)
         if (jobId < 0) jobId = WorkGiver_Craft(moverIdx);
         
-        // Priority 6: Blueprint haul (materials to blueprints)
+        // Priority 7: Blueprint haul (materials to blueprints)
         if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
         
-        // Priority 7: Build (construct at blueprints) - lowest
+        // Priority 8: Build (construct at blueprints) - lowest
         if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
         
         // jobId >= 0 means job was assigned, mover removed from idle list
@@ -1669,6 +1749,9 @@ void AssignJobsHybrid(void) {
         RebuildMineDesignationCache();
         bool hasMineWork = (mineCacheCount > 0);
         
+        // Quick check: any channel designations?
+        bool hasChannelWork = (CountChannelDesignations() > 0);
+        
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
         for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
@@ -1682,7 +1765,7 @@ void AssignJobsHybrid(void) {
         }
         
         // Only iterate movers if there's sparse work to do
-        if (hasMineWork || hasBlueprintWork) {
+        if (hasMineWork || hasChannelWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -1699,6 +1782,11 @@ void AssignJobsHybrid(void) {
                 int jobId = -1;
                 if (hasMineWork) {
                     jobId = WorkGiver_Mining(moverIdx);
+                }
+                
+                // Channel (after mining - similar priority)
+                if (jobId < 0 && hasChannelWork) {
+                    jobId = WorkGiver_Channel(moverIdx);
                 }
                 
                 if (jobId < 0 && hasBlueprintWork) {
@@ -2789,6 +2877,93 @@ int WorkGiver_Mining(int moverIdx) {
     // Update mover
     m->currentJobId = jobId;
     m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    m->needsRepath = true;
+    
+    RemoveMoverFromIdleList(moverIdx);
+    
+    return jobId;
+}
+
+// WorkGiver_Channel: Find a channel designation to work on
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_Channel(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    
+    // Check capability - channeling uses the same skill as mining
+    if (!m->capabilities.canMine) return -1;
+    
+    int moverZ = (int)m->z;
+    
+    // Find nearest unassigned channel designation
+    // Unlike mining, channeling doesn't need a pre-built cache since it's typically sparse
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+    
+    // Early exit if no designations
+    if (activeDesignationCount == 0) return -1;
+    
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != DESIGNATION_CHANNEL) continue;
+                if (d->assignedMover != -1) continue;  // Already assigned
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                // Same z-level only for now (mover walks to the tile)
+                if (z != moverZ) continue;
+                
+                // Distance to the tile itself (mover stands on it)
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float dx = tileX - m->x;
+                float dy = tileY - m->y;
+                float distSq = dx * dx + dy * dy;
+                
+                if (distSq < bestDistSq) {
+                    bestDistSq = distSq;
+                    bestDesigX = x;
+                    bestDesigY = y;
+                    bestDesigZ = z;
+                }
+            }
+        }
+    }
+    
+    if (bestDesigX < 0) return -1;
+    
+    // Check reachability - mover walks TO the tile (not adjacent)
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point targetCell = { bestDesigX, bestDesigY, bestDesigZ };
+    
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, targetCell, tempPath, MAX_PATH);
+    
+    if (tempLen == 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+    
+    // Create job
+    int jobId = CreateJob(JOBTYPE_CHANNEL);
+    if (jobId < 0) return -1;
+    
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;  // Reusing mine target fields
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = 0;  // STEP_MOVING_TO_WORK
+    job->progress = 0.0f;
+    
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+    
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = targetCell;  // Walk to the tile itself
     m->needsRepath = true;
     
     RemoveMoverFromIdleList(moverIdx);

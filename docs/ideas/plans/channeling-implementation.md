@@ -1,5 +1,10 @@
 # Channeling Implementation Plan
 
+## References
+
+- DF Wiki - Channel: https://dwarffortresswiki.org/index.php/DF2014:Channel
+- DF Wiki - Ramp: https://dwarffortresswiki.org/index.php/DF2014:Ramp
+
 ## Overview
 
 Channeling is vertical digging - removing the floor beneath a cell AND mining out the z-level below simultaneously. Unlike mining (horizontal wall removal), channeling works from above and affects two z-levels at once.
@@ -58,8 +63,66 @@ Channeling is vertical digging - removing the floor beneath a cell AND mining ou
 **Recommendation: Option B** - Match DF behavior
 - If z-1 has solid material (wall), mine it out and create a ramp
 - If z-1 is already air/open, just remove the floor (no ramp created)
-- Ramp direction: use `AutoDetectRampDirection()` based on adjacent walls
-- If no adjacent wall for ramp direction, create floor instead of ramp (mover can stand there)
+- Ramp direction: use special channeling ramp logic (see below)
+
+### How DF Ramps Work (important for channeling)
+
+From the DF wiki, a ramp needs 4 tiles to be usable:
+1. The ramp tile itself (at z-1)
+2. Open space directly above it (the hole at z - this is the "▼" downward slope)
+3. An adjacent solid tile on the same level (wall at z-1)
+4. A walkable tile above that solid tile (floor at z, adjacent to the hole)
+
+**Key insight:** The mover walks UP the ramp and exits onto an adjacent tile at z+1. They don't need walkable space at z-1 (the low side) - they climb UP and OUT.
+
+Our existing `AutoDetectRampDirection()` / `CanPlaceRamp()` requires a walkable low-side at the same z-level, which is wrong for channeling. For channeling, we need **relaxed ramp placement**:
+
+```c
+// For channeling: find a ramp direction where:
+// 1. There's a wall adjacent at z-1 (the "high side" base)
+// 2. There's walkable floor at z above that wall (the exit point)
+// We DON'T require walkable space at z-1 (mover climbs out, not in)
+CellType AutoDetectChannelRampDirection(int x, int y, int lowerZ) {
+    int upperZ = lowerZ + 1;
+    
+    // Try each direction: the ramp faces toward an adjacent wall
+    // RAMP_N means "wall to the north, exit to the north at z+1"
+    int dirs[4][3] = {
+        {0, -1, CELL_RAMP_N},  // North
+        {1, 0, CELL_RAMP_E},   // East
+        {0, 1, CELL_RAMP_S},   // South
+        {-1, 0, CELL_RAMP_W},  // West
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        int dx = dirs[i][0];
+        int dy = dirs[i][1];
+        CellType rampType = (CellType)dirs[i][2];
+        
+        int adjX = x + dx;
+        int adjY = y + dy;
+        
+        // Bounds check
+        if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+        
+        // Adjacent cell at z-1 should be solid (wall) - this is the "high side base"
+        CellType adjBelow = grid[lowerZ][adjY][adjX];
+        bool adjIsSolid = (adjBelow == CELL_WALL || adjBelow == CELL_WOOD_WALL || 
+                           adjBelow == CELL_STONE || adjBelow == CELL_DIRT);
+        if (!adjIsSolid) continue;
+        
+        // Adjacent cell at z (above that wall) should be walkable - this is the exit
+        if (!IsCellWalkableAt(upperZ, adjY, adjX)) continue;
+        
+        // This direction works!
+        return rampType;
+    }
+    
+    return CELL_AIR;  // No valid direction found
+}
+```
+
+This ensures the mover can always climb out of their channel as long as there's a wall with walkable floor above it adjacent to the hole.
 
 ### Can you channel at z=0?
 
@@ -248,14 +311,20 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     
     if (wassolid) {
         // z-1 was solid - mine it out and create a ramp
-        // Try to auto-detect ramp direction from adjacent walls at z-1
-        CellType rampDir = AutoDetectRampDirection(x, y, lowerZ);
+        // Use channeling-specific ramp detection (relaxed rules - no low-side check)
+        CellType rampDir = AutoDetectChannelRampDirection(x, y, lowerZ);
         
         if (rampDir != CELL_AIR) {
             // Create ramp facing the adjacent wall
+            // Mover can climb UP this ramp to exit at z (the hole level)
             grid[lowerZ][y][x] = rampDir;
+            if (!g_legacyWalkability) {
+                SET_FLOOR(x, y, lowerZ);  // Ramps need floor flag in DF-style mode
+            }
         } else {
-            // No adjacent wall - create floor instead (mover can stand here)
+            // No valid ramp direction (no adjacent wall with walkable floor above)
+            // This happens if channeling in the middle of a large open area
+            // Create floor instead - mover is stuck but at least standing
             if (g_legacyWalkability) {
                 grid[lowerZ][y][x] = CELL_FLOOR;
             } else {
@@ -474,9 +543,8 @@ In `input_mode.c`:
 ```c
 case MODE_WORK:
     n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
-    n = AddItem(items, n, "Mine", KEY_D, 0, false, false, false);
-    n = AddItem(items, n, "Channel", KEY_C, 0, false, false, false);  // NEW
-    n = AddItem(items, n, "Construct", KEY_B, 0, false, false, false);  // Move to B for Build
+    n = AddItem(items, n, "Mine", KEY_M, 0, false, false, false);
+    n = AddItem(items, n, "Channel", KEY_H, 0, false, false, false);  // NEW - H for cHannel
     // ...
 ```
 
@@ -507,7 +575,7 @@ Update these to handle `DESIGNATION_CHANNEL`:
 - `DesignationsTick()` - already handles all designations generically
 - `CancelDesignation()` - already works for any type
 - `GetDesignation()` - already returns any type
-- Job assignment in `AssignJobsHybrid()` - add WorkGiver_Channel call
+- Job assignment in `AssignJobsHybrid()` - add `WorkGiver_Channel()` call **immediately after** `WorkGiver_Mining()` (channeling is another form of digging, similar priority)
 - Job driver table - add `[JOBTYPE_CHANNEL] = RunJob_Channel`
 - `CancelJob()` - handle channel job cancellation (release designation)
 
@@ -517,10 +585,10 @@ Update these to handle `DESIGNATION_CHANNEL`:
 
 ### Key Binding
 - **M** for Mine (already set)
-- **C** for Channel (conflicts with current Construct, move Construct to **B** for Build)
+- **H** for cHannel
 
 ### Visual Feedback
-- Designation overlay: distinct from mining (maybe cyan vs orange?)
+- Designation overlay: pink `(255, 150, 200, 200)` to distinguish from mining (cyan)
 - Progress indicator: same as mining (fill overlay)
 - Tooltip: "Channeling (50%)" when hovering
 
@@ -533,15 +601,23 @@ Update these to handle `DESIGNATION_CHANNEL`:
 
 ## Edge Cases
 
-1. **Channeling would isolate the mover** - They fall down, which is fine. If there's no way back up, that's the player's problem (like DF).
+1. **Channeling a 1-cell pit surrounded by walls** - `AutoDetectChannelRampDirection()` will find a valid direction because:
+   - Adjacent walls exist at z-1 ✓
+   - Walkable floor exists at z above those walls ✓
+   - The mover can climb UP the ramp and exit onto the floor around the hole
+   - **This now works correctly** thanks to relaxed ramp placement rules
 
-2. **Channeling into water at z-1** - Water might flow up through the hole. Need to handle water interactions (destabilize water at both levels).
+2. **Channeling with no adjacent walls at z-1** - If channeling in the middle of a large open area where z-1 has no adjacent walls, no ramp can be created. Mover ends up on a floor tile and is stuck. This is an edge case (requires weird terrain).
 
-3. **Channeling creates a ramp but mover was at edge** - Mover ends up on the ramp, can walk off normally.
+3. **Channeling would isolate the mover** - They fall down, which is fine. If there's no way back up, that's the player's problem (like DF).
 
-4. **Multiple channel designations creating a pit** - Each completes independently. Movers fall into the expanding pit.
+4. **Channeling into water at z-1** - Water might flow up through the hole. Need to handle water interactions (destabilize water at both levels).
 
-5. **Channeling a tile with a mover on it (not the channeler)** - Push them out first, like blueprints do.
+5. **Channeling creates a ramp but mover was at edge** - Mover ends up on the ramp, can walk off normally.
+
+6. **Multiple channel designations creating a pit** - Each completes independently. Movers fall into the expanding pit.
+
+7. **Channeling a tile with a mover on it (not the channeler)** - Push them out first, like blueprints do.
 
 ---
 
@@ -553,13 +629,16 @@ Update these to handle `DESIGNATION_CHANNEL`:
 2. `DesignateChannel` fails at z=0
 3. `DesignateChannel` fails on walls/air
 4. `CompleteChannelDesignation` removes floor flag
-5. `CompleteChannelDesignation` creates ramp when adjacent wall exists
-6. `CompleteChannelDesignation` creates air when no adjacent wall
+5. `CompleteChannelDesignation` creates ramp when adjacent wall exists at z-1 with walkable floor at z
+6. `CompleteChannelDesignation` creates floor when no valid ramp direction
 7. `CompleteChannelDesignation` spawns item
 8. `CompleteChannelDesignation` moves channeler to z-1
-9. Job assignment finds channel designations
-10. Job completes and designation is cleared
-11. Cancelling designation releases mover
+9. `AutoDetectChannelRampDirection` finds valid direction for 1-cell pit surrounded by walls
+10. `AutoDetectChannelRampDirection` returns CELL_AIR when no adjacent walls
+11. Job assignment finds channel designations
+12. Job completes and designation is cleared
+13. Cancelling designation releases mover
+14. Mover can climb out of 1-cell channel via created ramp
 
 ### Integration Tests
 
@@ -570,20 +649,621 @@ Update these to handle `DESIGNATION_CHANNEL`:
 
 ---
 
+## End-to-End Test Specs
+
+These tests verify the complete channeling workflow using the c89spec test framework.
+
+### Test: Channel designation basics
+
+```c
+describe(channel_designation) {
+    it("should designate a walkable floor tile for channeling") {
+        // Two floors: z=1 has floor, z=0 has solid wall beneath
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitDesignations();
+        
+        // Designate center tile at z=1
+        bool result = DesignateChannel(2, 1, 1);
+        expect(result == true);
+        expect(HasChannelDesignation(2, 1, 1) == true);
+        expect(CountChannelDesignations() == 1);
+    }
+    
+    it("should not designate at z=0 (nothing below)") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitDesignations();
+        
+        bool result = DesignateChannel(2, 1, 0);
+        expect(result == false);
+        expect(HasChannelDesignation(2, 1, 0) == false);
+    }
+    
+    it("should not designate a wall tile") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitDesignations();
+        
+        bool result = DesignateChannel(2, 1, 0);
+        expect(result == false);
+    }
+    
+    it("should not designate tile without floor") {
+        // z=1 is air (no floor flag)
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            "floor:1\n"
+            "     \n"  // space = air, no floor
+            "     \n"
+            "     \n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitDesignations();
+        
+        bool result = DesignateChannel(2, 1, 1);
+        expect(result == false);
+    }
+}
+```
+
+### Test: Channel ramp direction detection
+
+```c
+describe(channel_ramp_direction) {
+    it("should find valid ramp direction for 1-cell pit surrounded by walls") {
+        // z=0: all walls, z=1: walkable floor
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        
+        // Check center cell at z=0 (will be channeled from z=1)
+        CellType rampDir = AutoDetectChannelRampDirection(2, 1, 0);
+        
+        // Should find a valid direction (any of N/E/S/W works)
+        // All adjacent cells at z=0 are walls, all at z=1 are walkable
+        expect(rampDir != CELL_AIR);
+        expect(CellIsDirectionalRamp(rampDir));
+    }
+    
+    it("should return CELL_AIR when no adjacent walls at z-1") {
+        // z=0: all air/floor (no walls), z=1: walkable floor
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        
+        CellType rampDir = AutoDetectChannelRampDirection(2, 1, 0);
+        expect(rampDir == CELL_AIR);  // No walls to anchor ramp
+    }
+    
+    it("should pick direction where z+1 is walkable") {
+        // z=0: walls on all sides, z=1: only NORTH is walkable
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"  // row 0 - walkable
+            "#.#.#\n"  // row 1 - mixed (center walkable for standing)
+            "#####\n"; // row 2 - walls
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        
+        // Channel at (2,1,1), below is (2,1,0)
+        // Adjacent at z=0: N(2,0), E(3,1), S(2,2), W(1,1) - all walls
+        // Adjacent at z=1: N(2,0) walkable, E(3,1) wall, S(2,2) wall, W(1,1) wall
+        // Should pick RAMP_N (exits north to walkable tile)
+        CellType rampDir = AutoDetectChannelRampDirection(2, 1, 0);
+        expect(rampDir == CELL_RAMP_N);
+    }
+}
+```
+
+### Test: Complete channel job execution
+
+```c
+describe(channel_job_execution) {
+    it("should complete channel job: mover walks to tile, channels, descends to z-1") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        // Mover starts at (0,0,1)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 1};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate (2,1,1) for channeling
+        DesignateChannel(2, 1, 1);
+        
+        int initialZ = (int)m->z;
+        expect(initialZ == 1);
+        
+        // Run simulation until channel completes
+        bool completed = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if mover descended to z=0
+            if ((int)m->z == 0) {
+                completed = true;
+                break;
+            }
+        }
+        
+        expect(completed == true);
+        expect((int)m->z == 0);  // Mover descended
+        expect(HasChannelDesignation(2, 1, 1) == false);  // Designation cleared
+        expect(!HAS_FLOOR(2, 1, 1));  // Floor removed at z=1
+        expect(grid[0][1][2] != CELL_WALL);  // Wall mined at z=0
+    }
+    
+    it("should create ramp that mover can use to climb back out") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        // Mover starts at (0,0,1)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 1};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate (2,1,1) for channeling
+        DesignateChannel(2, 1, 1);
+        
+        // Run until channel completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if ((int)m->z == 0) break;
+        }
+        
+        expect((int)m->z == 0);  // Mover is at z=0
+        
+        // Verify a ramp was created
+        CellType cell = grid[0][1][2];
+        expect(CellIsDirectionalRamp(cell));
+        
+        // Now set mover's goal back to z=1 and verify they can path there
+        m->goal = (Point){0, 0, 1};
+        m->needsRepath = true;
+        
+        // Run until mover returns to z=1
+        bool returnedToZ1 = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            if ((int)m->z == 1) {
+                returnedToZ1 = true;
+                break;
+            }
+        }
+        
+        expect(returnedToZ1 == true);  // Mover climbed out via ramp
+    }
+    
+    it("should spawn item when channeling completes") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 1};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        int initialItemCount = GetActiveItemCount();
+        
+        DesignateChannel(2, 1, 1);
+        
+        // Run until channel completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if ((int)m->z == 0) break;
+        }
+        
+        // Should have spawned at least one item (debris)
+        expect(GetActiveItemCount() > initialItemCount);
+    }
+}
+```
+
+### Test: 1-cell corridor channeling (the tricky case)
+
+```c
+describe(channel_1cell_corridor) {
+    it("should create usable ramp in 1-cell wide corridor") {
+        // Classic 1-cell corridor: mover channels, falls into pit, must climb out
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#...#\n"  // 1-cell wide corridor at z=0
+            "#####\n"
+            "floor:1\n"
+            "#####\n"
+            "#...#\n"  // 1-cell wide corridor at z=1
+            "#####\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        // Mover starts at (1,1,1) in the corridor
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 1};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     1 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate middle of corridor (2,1,1) for channeling
+        // Below at z=0 is floor (corridor), adjacent cells are walls
+        DesignateChannel(2, 1, 1);
+        
+        // Run until channel completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if ((int)m->z == 0) break;
+        }
+        
+        expect((int)m->z == 0);
+        
+        // Verify ramp was created at z=0
+        CellType cell = grid[0][1][2];
+        expect(CellIsDirectionalRamp(cell));
+        
+        // The ramp should face E or W (toward the corridor, not the walls N/S)
+        // Actually it should face toward a wall with walkable floor above
+        // Walls are N and S, corridor is E and W
+        // At z=1: N(2,0) is wall, S(2,2) is wall, E(3,1) is floor, W(1,1) is floor
+        // Ramp needs wall at z=0 with walkable at z=1 above it
+        // N: wall at z=0, wall at z=1 -> no good (z=1 not walkable)
+        // S: wall at z=0, wall at z=1 -> no good
+        // E: floor at z=0, floor at z=1 -> no good (no wall at z=0)
+        // W: floor at z=0, floor at z=1 -> no good
+        // Hmm, this case is actually tricky - let me reconsider...
+        
+        // Actually in a 1-cell corridor, the walls are N and S
+        // z=0: #.# (N=wall, center=floor, S=wall)  <- but we're channeling INTO solid
+        // Wait, the map shows z=0 has a corridor too "#...#"
+        // So z=0 at (2,1) is already floor, not wall!
+        
+        // Let me redo this test with solid below:
+    }
+    
+    it("should handle 1-cell corridor with solid wall below") {
+        // z=0 is solid, z=1 has 1-cell corridor
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            "#####\n"
+            "#...#\n"  // 1-cell wide corridor
+            "#####\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        // Mover starts at west end of corridor (1,1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 1};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     1 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Designate center of corridor (2,1,1) for channeling
+        // Below at (2,1,0) is wall
+        // Adjacent at z=0: all walls (N,E,S,W)
+        // Adjacent at z=1: N=wall, S=wall, E=floor, W=floor
+        DesignateChannel(2, 1, 1);
+        
+        // Run until channel completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if ((int)m->z == 0) break;
+        }
+        
+        expect((int)m->z == 0);
+        
+        // Verify ramp was created
+        CellType cell = grid[0][1][2];
+        expect(CellIsDirectionalRamp(cell));
+        
+        // Ramp should face E or W (the directions with walkable floor at z=1)
+        // N and S have walls at z=1, so those directions won't work
+        expect(cell == CELL_RAMP_E || cell == CELL_RAMP_W);
+        
+        // Mover should be able to climb out
+        m->goal = (Point){1, 1, 1};
+        m->needsRepath = true;
+        
+        bool returnedToZ1 = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            if ((int)m->z == 1) {
+                returnedToZ1 = true;
+                break;
+            }
+        }
+        
+        expect(returnedToZ1 == true);
+    }
+}
+```
+
+### Test: Channeling into open air (no ramp created)
+
+```c
+describe(channel_into_open_air) {
+    it("should not create ramp when z-1 is already open") {
+        // z=0 is open air, z=1 has floor
+        const char* map =
+            "floor:0\n"
+            ".....\n"  // open floor
+            ".....\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 1};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // z=0 at (2,1) is floor (not wall), so no ramp should be created
+        DesignateChannel(2, 1, 1);
+        
+        // Run until channel completes
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if ((int)m->z == 0) break;
+        }
+        
+        expect((int)m->z == 0);
+        
+        // No ramp created (was already open)
+        CellType cell = grid[0][1][2];
+        expect(!CellIsDirectionalRamp(cell));
+        
+        // Mover is stuck at z=0 (this is expected - DF behavior)
+        // "Channels dug above a dug-out area will not create ramps"
+    }
+}
+```
+
+### Test: Multiple channel designations (pit digging)
+
+```c
+describe(channel_multiple_designations) {
+    it("should handle multiple channel designations creating expanding pit") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        // Two movers
+        Mover* m1 = &movers[0];
+        Mover* m2 = &movers[1];
+        Point goal1 = {0, 0, 1};
+        Point goal2 = {4, 0, 1};
+        InitMover(m1, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                      0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal1, 100.0f);
+        InitMover(m2, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                      0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal2, 100.0f);
+        moverCount = 2;
+        
+        // Designate two adjacent tiles
+        DesignateChannel(1, 1, 1);
+        DesignateChannel(2, 1, 1);
+        
+        expect(CountChannelDesignations() == 2);
+        
+        // Run until both complete
+        int completedCount = 0;
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            completedCount = 0;
+            if (!HAS_FLOOR(1, 1, 1)) completedCount++;
+            if (!HAS_FLOOR(2, 1, 1)) completedCount++;
+            
+            if (completedCount == 2) break;
+        }
+        
+        expect(completedCount == 2);
+        expect(CountChannelDesignations() == 0);
+    }
+}
+```
+
+### Test: Job cancellation
+
+```c
+describe(channel_job_cancellation) {
+    it("should release designation when channel job is cancelled") {
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#####\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+        
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        InitDesignations();
+        
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 1};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 
+                     0 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        DesignateChannel(2, 1, 1);
+        
+        // Let job get assigned
+        AssignJobs();
+        expect(MoverHasChannelJob(m));
+        
+        Designation* d = GetDesignation(2, 1, 1);
+        expect(d->assignedMover == 0);
+        
+        // Cancel the designation
+        CancelDesignation(2, 1, 1);
+        
+        // Job should be cancelled, mover idle
+        expect(MoverIsIdle(m));
+        expect(HasChannelDesignation(2, 1, 1) == false);
+    }
+}
+```
+
+---
+
 ## Estimated Changes
 
 | File | Changes |
 |------|---------|
 | `designations.h` | +15 lines (enum, functions, constant) |
-| `designations.c` | +80 lines (DesignateChannel, CompleteChannel, helpers) |
+| `designations.c` | +120 lines (DesignateChannel, CompleteChannel, AutoDetectChannelRampDirection) |
 | `jobs.h` | +5 lines (JOBTYPE_CHANNEL, maybe reuse target fields) |
 | `jobs.c` | +100 lines (RunJob_Channel, WorkGiver_Channel, driver entry) |
 | `input.c` | +20 lines (ExecuteDesignateChannel, key handling) |
 | `input_mode.c` | +5 lines (menu item) |
 | `rendering.c` | +20 lines (channel designation rendering) |
-| `test_jobs.c` | +150 lines (channel tests) |
+| `test_jobs.c` | +180 lines (channel tests including ramp direction tests) |
 
-**Total: ~400 lines**
+**Total: ~465 lines**
 
 ---
 

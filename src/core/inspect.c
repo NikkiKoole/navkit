@@ -50,7 +50,7 @@ static const char* cellTypeNames[] = {
 #define CELL_TYPE_COUNT 16
 static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE", "STONE_BLOCKS"};
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
-static const char* jobTypeNames[] = {"NONE", "HAUL", "DIG", "BUILD", "CLEAR", "HAUL_TO_BP"};
+static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "HAUL_TO_BP", "BUILD", "CRAFT"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
@@ -106,7 +106,7 @@ static void print_mover(int idx) {
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
         Job* job = &insp_jobs[m->currentJobId];
         printf("\n  --- Job %d ---\n", m->currentJobId);
-        printf("  Type: %s\n", job->type < 6 ? jobTypeNames[job->type] : "?");
+        printf("  Type: %s\n", job->type < 8 ? jobTypeNames[job->type] : "?");
         printf("  Step: %d\n", job->step);
         printf("  Progress: %.2f\n", job->progress);
         if (job->targetItem >= 0) printf("  Target item: %d\n", job->targetItem);
@@ -155,7 +155,7 @@ static void print_job(int idx) {
     }
     Job* job = &insp_jobs[idx];
     printf("\n=== JOB %d ===\n", idx);
-    printf("Type: %s\n", job->type < 6 ? jobTypeNames[job->type] : "?");
+    printf("Type: %s\n", job->type < 8 ? jobTypeNames[job->type] : "?");
     printf("Assigned mover: %d\n", job->assignedMover);
     printf("Step: %d\n", job->step);
     printf("Progress: %.2f\n", job->progress);

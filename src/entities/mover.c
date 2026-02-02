@@ -64,6 +64,7 @@ static inline int clampi(int v, int lo, int hi) {
 static bool TryFallToGround(Mover* m, int cellX, int cellY) {
     int currentZ = (int)m->z;
     
+    // First, try to fall straight down
     for (int checkZ = currentZ - 1; checkZ >= 0; checkZ--) {
         if (IsCellWalkableAt(checkZ, cellY, cellX)) {
             m->z = (float)checkZ;
@@ -75,6 +76,30 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
             break;  // Can't fall through walls
         }
     }
+    
+    // If no walkable cell directly below, search adjacent cells at each z-level
+    // This handles the case where a mover falls through a channel but their position
+    // is near the edge and they'd land in solid ground
+    for (int checkZ = currentZ - 1; checkZ >= 0; checkZ--) {
+        // Check the 4 adjacent cells
+        int dx[] = {0, 0, -1, 1};
+        int dy[] = {-1, 1, 0, 0};
+        for (int d = 0; d < 4; d++) {
+            int adjX = cellX + dx[d];
+            int adjY = cellY + dy[d];
+            if (adjX >= 0 && adjX < gridWidth && adjY >= 0 && adjY < gridHeight) {
+                if (IsCellWalkableAt(checkZ, adjY, adjX)) {
+                    m->z = (float)checkZ;
+                    m->x = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->y = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    m->needsRepath = true;
+                    m->fallTimer = 1.0f;
+                    return true;
+                }
+            }
+        }
+    }
+    
     return false;
 }
 
@@ -836,7 +861,14 @@ void UpdateMovers(void) {
                     // Don't continue - let them move on the ramp
                 } else if (!isRampExit) {
                     // Actual fall
-                    TryFallToGround(m, currentX, currentY);
+                    if (!TryFallToGround(m, currentX, currentY)) {
+                        // Couldn't fall - maybe stuck inside solid ground
+                        // Try to move up if the cell above is walkable
+                        if (currentZ + 1 < gridDepth && IsCellWalkableAt(currentZ + 1, currentY, currentX)) {
+                            m->z = (float)(currentZ + 1);
+                            m->needsRepath = true;
+                        }
+                    }
                     continue;
                 }
                 // If isRampExit, they're on a valid platform, continue normally

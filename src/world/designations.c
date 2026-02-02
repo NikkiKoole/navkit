@@ -173,6 +173,256 @@ void DesignationsTick(float dt) {
 }
 
 // =============================================================================
+// Channel designation functions
+// =============================================================================
+
+bool DesignateChannel(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Can't channel at z=0 (nothing below)
+    if (z == 0) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Mover needs to stand on the tile to channel it, so it must be walkable
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+    
+    // In DF-style mode, verify there's a floor to remove
+    if (!g_legacyWalkability && !HAS_FLOOR(x, y, z)) {
+        // Check if standing on solid cell below (implicit floor)
+        if (z > 0 && !CellIsSolid(grid[z-1][y][x])) {
+            // No solid below - channeling here creates a hole with no ramp (DF behavior)
+            // This is dangerous: mover will fall! But DF allows it, so we do too.
+            // return false;  // No floor to channel
+        }
+    }
+    
+    designations[z][y][x].type = DESIGNATION_CHANNEL;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasChannelDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_CHANNEL;
+}
+
+// Direction offsets for cardinal neighbors (N, E, S, W)
+static const int CHANNEL_DIR_DX[4] = {0, 1, 0, -1};
+static const int CHANNEL_DIR_DY[4] = {-1, 0, 1, 0};
+static const CellType CHANNEL_RAMP_TYPES[4] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
+
+CellType AutoDetectChannelRampDirection(int x, int y, int lowerZ) {
+    int upperZ = lowerZ + 1;
+    
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) {
+        return CELL_AIR;
+    }
+    if (lowerZ < 0 || upperZ >= gridDepth) {
+        return CELL_AIR;
+    }
+    
+    // Try each direction - prioritize adjacent walls (classic DF behavior),
+    // then fall back to any walkable exit (allows ramp-to-ramp connections)
+    // RAMP_N means "exit to the north at z+1"
+    
+    // First pass: prefer directions with adjacent solid (wall) - classic behavior
+    for (int i = 0; i < 4; i++) {
+        int dx = CHANNEL_DIR_DX[i];
+        int dy = CHANNEL_DIR_DY[i];
+        CellType rampType = CHANNEL_RAMP_TYPES[i];
+        
+        int adjX = x + dx;
+        int adjY = y + dy;
+        
+        // Bounds check for adjacent cell
+        if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+        
+        // Adjacent cell at lowerZ should be solid (wall) - this is the "high side base"
+        CellType adjBelow = grid[lowerZ][adjY][adjX];
+        bool adjIsSolid = CellIsSolid(adjBelow);
+        if (!adjIsSolid) continue;
+        
+        // Adjacent cell at upperZ (above that wall) should be walkable - this is the exit
+        if (!IsCellWalkableAt(upperZ, adjY, adjX)) continue;
+        
+        // This direction works!
+        return rampType;
+    }
+    
+    // Second pass: allow any direction with walkable exit at z+1
+    // This enables ramp creation in interior cells where adjacent cells are also ramps
+    for (int i = 0; i < 4; i++) {
+        int dx = CHANNEL_DIR_DX[i];
+        int dy = CHANNEL_DIR_DY[i];
+        CellType rampType = CHANNEL_RAMP_TYPES[i];
+        
+        int adjX = x + dx;
+        int adjY = y + dy;
+        
+        // Bounds check for adjacent cell
+        if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+        
+        // Just check if exit at upperZ is walkable (standing on ramp = walkable)
+        if (!IsCellWalkableAt(upperZ, adjY, adjX)) continue;
+        
+        // This direction works!
+        return rampType;
+    }
+    
+    return CELL_AIR;  // No valid direction found
+}
+
+void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z <= 0 || z >= gridDepth) {
+        return;
+    }
+    
+    int lowerZ = z - 1;
+    
+    // Push items out of this cell (at z)
+    PushItemsOutOfCell(x, y, z);
+    
+    // Push OTHER movers out (not the channeler)
+    for (int i = 0; i < moverCount; i++) {
+        if (i == channelerMoverIdx) continue;
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        int mx = (int)(m->x / CELL_SIZE);
+        int my = (int)(m->y / CELL_SIZE);
+        int mz = (int)m->z;
+        if (mx == x && my == y && mz == z) {
+            // Push to adjacent walkable cell
+            for (int dir = 0; dir < 4; dir++) {
+                int ax = x + CHANNEL_DIR_DX[dir];
+                int ay = y + CHANNEL_DIR_DY[dir];
+                if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                    if (IsCellWalkableAt(z, ay, ax)) {
+                        m->x = ax * CELL_SIZE + CELL_SIZE * 0.5f;
+                        m->y = ay * CELL_SIZE + CELL_SIZE * 0.5f;
+                        m->pathLength = 0;
+                        m->pathIndex = -1;
+                        m->needsRepath = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // === STEP 1: Remove the floor at z ===
+    if (g_legacyWalkability) {
+        // Legacy mode: set to air
+        grid[z][y][x] = CELL_AIR;
+    } else {
+        // DF-style: clear floor flag, cell becomes air
+        CLEAR_FLOOR(x, y, z);
+        grid[z][y][x] = CELL_AIR;
+    }
+    
+    // === STEP 2: Mine out z-1 and determine what to create ===
+    CellType cellBelow = grid[lowerZ][y][x];
+    bool wasSolid = CellIsSolid(cellBelow);
+    
+    if (wasSolid) {
+        // z-1 was solid - mine it out and create a ramp
+        // Use channeling-specific ramp detection (relaxed rules - no low-side check)
+        CellType rampDir = AutoDetectChannelRampDirection(x, y, lowerZ);
+        
+        if (rampDir != CELL_AIR) {
+            // Create ramp facing the adjacent wall
+            // Mover can climb UP this ramp to exit at z (the hole level)
+            grid[lowerZ][y][x] = rampDir;
+            if (!g_legacyWalkability) {
+                SET_FLOOR(x, y, lowerZ);  // Ramps need floor flag in DF-style mode
+            }
+            rampCount++;
+        } else {
+            // No valid ramp direction (no adjacent wall with walkable floor above)
+            // This happens if channeling in the middle of a large open area
+            // Create floor instead - mover is stuck but at least standing
+            if (g_legacyWalkability) {
+                grid[lowerZ][y][x] = CELL_FLOOR;
+            } else {
+                grid[lowerZ][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, lowerZ);
+            }
+        }
+        
+        // Spawn stone from the mined material
+        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 
+                  y * CELL_SIZE + CELL_SIZE * 0.5f, 
+                  (float)lowerZ, ITEM_ORANGE);
+    }
+    // else: z-1 was already open - no ramp created (DF behavior)
+    // "Channels dug above a dug-out area will not create ramps"
+    
+    // Spawn debris from the floor we removed at z
+    SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 
+              y * CELL_SIZE + CELL_SIZE * 0.5f, 
+              (float)lowerZ, ITEM_ORANGE);
+    
+    MarkChunkDirty(x, y, z);
+    MarkChunkDirty(x, y, lowerZ);
+    
+    // Destabilize water so it can flow into the hole
+    DestabilizeWater(x, y, z);
+    DestabilizeWater(x, y, lowerZ);
+    
+    // === STEP 3: Handle channeler descent ===
+    if (channelerMoverIdx >= 0 && channelerMoverIdx < moverCount) {
+        Mover* channeler = &movers[channelerMoverIdx];
+        // Move mover to z-1 - they descend into their channel
+        channeler->z = (float)lowerZ;
+        // Position them at center of the cell
+        channeler->x = x * CELL_SIZE + CELL_SIZE * 0.5f;
+        channeler->y = y * CELL_SIZE + CELL_SIZE * 0.5f;
+        // They're now on the ramp/floor they just created
+        // Clear their path since they've moved
+        channeler->pathLength = 0;
+        channeler->pathIndex = -1;
+    }
+    
+    // === STEP 4: Clear designation ===
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+}
+
+int CountChannelDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_CHANNEL) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

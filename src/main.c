@@ -430,6 +430,155 @@ bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
 
 // ============================================================================
+// Headless Mode - Run simulation without GUI
+// ============================================================================
+
+static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
+    // Initialize minimal state (no window)
+    use8Dir = true;
+    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+    gridDepth = 6;
+    for (int y = 0; y < gridHeight; y++)
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+        }
+    for (int z = 1; z < gridDepth; z++)
+        for (int y = 0; y < gridHeight; y++)
+            for (int x = 0; x < gridWidth; x++)
+                grid[z][y][x] = CELL_AIR;
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitDesignations();
+    InitTemperature();
+    InitSteam();
+    
+    // Handle .gz decompression
+    const char* actualFile = loadFile;
+    char tempFile[512] = {0};
+    size_t len = strlen(loadFile);
+    if (len > 3 && strcmp(loadFile + len - 3, ".gz") == 0) {
+        const char* base = strrchr(loadFile, '/');
+        base = base ? base + 1 : loadFile;
+        snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
+        char cmd[1024];
+        snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", loadFile, tempFile);
+        if (system(cmd) == 0) {
+            actualFile = tempFile;
+            printf("(decompressed to %s)\n", tempFile);
+        } else {
+            printf("Failed to decompress: %s\n", loadFile);
+            return 1;
+        }
+    }
+    
+    if (!LoadWorld(actualFile)) {
+        printf("Failed to load: %s\n", loadFile);
+        return 1;
+    }
+    printf("Loaded: %s\n", loadFile);
+    printf("Running %d ticks headless...\n", ticks);
+    
+    // Build pathfinding structures
+    BuildEntrances();
+    BuildGraph();
+    
+    // Snapshot state before
+    int stuckBefore = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) {
+            int mx = (int)(movers[i].x / CELL_SIZE);
+            int my = (int)(movers[i].y / CELL_SIZE);
+            int mz = (int)movers[i].z;
+            if (!IsCellWalkableAt(mz, my, mx)) stuckBefore++;
+        }
+    }
+    
+    // Run simulation
+    clock_t startClock = clock();
+    for (int t = 0; t < ticks; t++) {
+        TickWithDt(TICK_DT);
+        ItemsTick(TICK_DT);
+        DesignationsTick(TICK_DT);
+        AssignJobs();
+        JobsTick();
+    }
+    double elapsed = (double)(clock() - startClock) / CLOCKS_PER_SEC;
+    
+    // Snapshot state after
+    int stuckAfter = 0;
+    int moversInNonWalkable = 0;
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].active) {
+            int mx = (int)(movers[i].x / CELL_SIZE);
+            int my = (int)(movers[i].y / CELL_SIZE);
+            int mz = (int)movers[i].z;
+            if (!IsCellWalkableAt(mz, my, mx)) {
+                moversInNonWalkable++;
+            }
+            if (movers[i].timeWithoutProgress > 2.0f) {
+                stuckAfter++;
+            }
+        }
+    }
+    
+    printf("\n=== HEADLESS RESULTS ===\n");
+    printf("Ticks: %d (%.2f ms, %.2f ms/tick)\n", ticks, elapsed * 1000.0, (elapsed * 1000.0) / ticks);
+    printf("Movers: %d\n", moverCount);
+    printf("Stuck in non-walkable: %d before -> %d after\n", stuckBefore, moversInNonWalkable);
+    printf("Stuck (no progress): %d\n", stuckAfter);
+    
+    // Check if --mover flag is present for quick mover summary
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--mover") == 0 && i + 1 < argc) {
+            const char* arg = argv[i + 1];
+            printf("\n=== MOVER STATE AFTER HEADLESS ===\n");
+            if (strcmp(arg, "all") == 0) {
+                for (int m = 0; m < moverCount; m++) {
+                    Mover* mv = &movers[m];
+                    if (!mv->active) continue;
+                    int mx = (int)(mv->x / CELL_SIZE);
+                    int my = (int)(mv->y / CELL_SIZE);
+                    int mz = (int)mv->z;
+                    bool walkable = IsCellWalkableAt(mz, my, mx);
+                    printf("Mover %d: cell (%d,%d,z%d) %s goal=(%d,%d,z%d) path=%d\n",
+                           m, mx, my, mz, walkable ? "OK" : "STUCK!",
+                           mv->goal.x, mv->goal.y, mv->goal.z, mv->pathLength);
+                }
+            } else {
+                int idx = atoi(arg);
+                if (idx >= 0 && idx < moverCount) {
+                    Mover* mv = &movers[idx];
+                    int mx = (int)(mv->x / CELL_SIZE);
+                    int my = (int)(mv->y / CELL_SIZE);
+                    int mz = (int)mv->z;
+                    printf("Mover %d:\n", idx);
+                    printf("  Position: (%.2f, %.2f, z%d) -> cell (%d, %d)\n", mv->x, mv->y, mz, mx, my);
+                    printf("  Walkable: %s\n", IsCellWalkableAt(mz, my, mx) ? "YES" : "NO");
+                    printf("  Goal: (%d, %d, z%d)\n", mv->goal.x, mv->goal.y, mv->goal.z);
+                    printf("  Path length: %d, index: %d\n", mv->pathLength, mv->pathIndex);
+                    printf("  Time without progress: %.2f\n", mv->timeWithoutProgress);
+                }
+            }
+            break;
+        }
+    }
+    
+    // Check if --save specified
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--save") == 0 && i + 1 < argc) {
+            const char* outFile = argv[i + 1];
+            if (SaveWorld(outFile)) {
+                printf("Saved to: %s\n", outFile);
+            } else {
+                printf("Failed to save to: %s\n", outFile);
+            }
+            break;
+        }
+    }
+    
+    return 0;
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -437,6 +586,28 @@ int main(int argc, char** argv) {
     // Check for --inspect mode (runs without GUI)
     if (argc >= 2 && strcmp(argv[1], "--inspect") == 0) {
         return InspectSaveFile(argc, argv);
+    }
+
+    // Check for --headless mode
+    const char* headlessFile = NULL;
+    int headlessTicks = 100;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--headless") == 0) {
+            // Find the load file and tick count
+            for (int j = 1; j < argc; j++) {
+                if (strcmp(argv[j], "--load") == 0 && j + 1 < argc) {
+                    headlessFile = argv[j + 1];
+                }
+                if (strcmp(argv[j], "--ticks") == 0 && j + 1 < argc) {
+                    headlessTicks = atoi(argv[j + 1]);
+                }
+            }
+            if (!headlessFile) {
+                printf("Usage: %s --headless --load <savefile> [--ticks N] [--save <outfile>] [--mover N] [--cell X,Y,Z] ...\n", argv[0]);
+                return 1;
+            }
+            return RunHeadless(headlessFile, headlessTicks, argc, argv);
+        }
     }
 
     // Check for --load option
