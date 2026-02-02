@@ -3426,8 +3426,7 @@ void SeedRandom(unsigned int seed) {
     SetRandomSeed(seed);
 }
 
-// Wall-top fix: In DF mode, only pick z-levels that have ladder links.
-// This prevents movers from spawning/targeting unreachable wall tops.
+// Check if a z-level has any ladder connections
 static bool ZLevelHasLadderLinks(int z) {
     for (int i = 0; i < ladderLinkCount; i++) {
         if (ladderLinks[i].zLow == z || ladderLinks[i].zHigh == z) {
@@ -3437,17 +3436,32 @@ static bool ZLevelHasLadderLinks(int z) {
     return false;
 }
 
+// Check if a z-level has any ramp connections
+static bool ZLevelHasRampLinks(int z) {
+    for (int i = 0; i < rampLinkCount; i++) {
+        // Ramp is at rampZ, exit is at rampZ+1
+        if (rampLinks[i].rampZ == z || rampLinks[i].rampZ + 1 == z) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Check if a z-level is reachable via ladders or ramps
+static bool ZLevelIsConnected(int z) {
+    return ZLevelHasLadderLinks(z) || ZLevelHasRampLinks(z);
+}
+
 Point GetRandomWalkableCell(void) {
     Point p;
-    // Only do expensive z-level connection checks for ladders (they have cached links)
-    // Ramps use A* fallback which handles connectivity itself
-    bool checkLadderLinks = (ladderLinkCount > 0 && rampCount == 0);
+    // Check z-level connectivity when vertical connections exist
+    bool checkConnectivity = (ladderLinkCount > 0 || rampLinkCount > 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
-        // Skip z-levels with no ladder connections (stranded spawns) in standard mode
-        if (checkLadderLinks && !ZLevelHasLadderLinks(p.z)) continue;
+        // Skip z-levels with no vertical connections (stranded spawns)
+        if (checkConnectivity && !ZLevelIsConnected(p.z)) continue;
         // Use IsValidDestination to filter wall-tops and other non-goal cells
         if (IsValidDestination(p.z, p.y, p.x)) {
             return p;
@@ -3458,21 +3472,19 @@ Point GetRandomWalkableCell(void) {
 
 Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     Point p;
-    // Only do expensive z-level connection checks for ladders (they have cached links)
-    // Ramps use A* fallback which handles connectivity itself
-    bool checkLadderLinks = (ladderLinkCount > 0 && rampCount == 0);
+    // Check z-level connectivity when vertical connections exist
+    bool checkConnectivity = (ladderLinkCount > 0 || rampLinkCount > 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
-        // Skip z-levels with no ladder connections (stranded spawns) in standard mode
-        if (checkLadderLinks && !ZLevelHasLadderLinks(p.z)) continue;
+        // Skip z-levels with no vertical connections (stranded spawns)
+        if (checkConnectivity && !ZLevelIsConnected(p.z)) continue;
         if (p.z != excludeZ && IsValidDestination(p.z, p.y, p.x)) {
-            TraceLog(LOG_DEBUG, "GetRandomWalkableCellDifferentZ: found (%d,%d,z%d) excludeZ=%d", p.x, p.y, p.z, excludeZ);
             return p;
         }
     }
-    TraceLog(LOG_WARNING, "GetRandomWalkableCellDifferentZ: failed after 1000 attempts, excludeZ=%d, falling back", excludeZ);
+    // Fallback to any walkable cell if no different-z cell found
     return GetRandomWalkableCell();
 }
 
