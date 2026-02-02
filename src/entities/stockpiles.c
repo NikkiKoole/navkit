@@ -1,6 +1,7 @@
 #include "stockpiles.h"
 #include "mover.h"
 #include "items.h"
+#include "../world/cell_defs.h"
 #include <string.h>
 
 Stockpile stockpiles[MAX_STOCKPILES];
@@ -78,7 +79,7 @@ void RebuildStockpileGroundItemCache(void) {
 }
 
 // Rebuild free slot counts for all stockpiles
-// A slot is "free" if: active cell, not reserved, not full, no ground item blocking
+// A slot is "free" if: active cell, not reserved, not full, no ground item blocking, walkable
 void RebuildStockpileFreeSlotCounts(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
@@ -90,6 +91,14 @@ void RebuildStockpileFreeSlotCounts(void) {
             if (!sp->cells[s]) continue;            // inactive cell
             if (sp->reservedBy[s] != -1) continue;  // reserved
             if (sp->groundItemIdx[s] >= 0) continue; // ground item blocking
+            
+            // Check walkability
+            int lx = s % sp->width;
+            int ly = s / sp->width;
+            int worldX = sp->x + lx;
+            int worldY = sp->y + ly;
+            if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
+            
             if (sp->slotCounts[s] < sp->maxStackSize) {
                 freeCount++;
             }
@@ -318,10 +327,15 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
             if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
+            // Skip cells that aren't walkable (e.g., above ramps)
+            int worldX = sp->x + lx;
+            int worldY = sp->y + ly;
+            if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
+            
             if (sp->slotTypes[idx] == type && sp->slotCounts[idx] > 0 && sp->slotCounts[idx] < sp->maxStackSize) {
                 // Found partial stack of same type
-                *outX = sp->x + lx;
-                *outY = sp->y + ly;
+                *outX = worldX;
+                *outY = worldY;
                 return true;
             }
         }
@@ -335,10 +349,15 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY
             if (sp->reservedBy[idx] != -1) continue;  // skip reserved
             if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
+            // Skip cells that aren't walkable (e.g., above ramps)
+            int worldX = sp->x + lx;
+            int worldY = sp->y + ly;
+            if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
+            
             if (sp->slotCounts[idx] == 0 && sp->slots[idx] == -1) {
                 // Found empty slot
-                *outX = sp->x + lx;
-                *outY = sp->y + ly;
+                *outX = worldX;
+                *outY = worldY;
                 return true;
             }
         }

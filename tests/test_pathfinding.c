@@ -2402,6 +2402,107 @@ describe(hpa_ladder_pathfinding) {
         expect(hpaLen > 0);
         expect(hpaLen == astarLen);  // Should find same length path
     }
+
+    it("HPA* finds cross-chunk cross-z path") {
+        // Test that HPA* can find paths that cross both chunk boundaries AND z-levels
+        // This reproduces a bug where movers at z0 can't pathfind to goals at z1
+        // in different chunks, even though A* finds the path.
+        //
+        // Setup (32x32 grid, 8x8 chunks):
+        // - Start at (13, 17, z1) in chunk (1, 2) at z1
+        // - Goal at (0, 12, z1) in chunk (0, 1) at z1
+        // - Wall blocks direct path at z1, must go down ramp, across z0, up ramp
+
+        InitGridWithSize(32, 32);
+        FillGroundLevel();  // z0 = dirt, z1 = air above dirt (walkable at z1)
+
+        // Add wall at z1 blocking direct path (make z1 above it unwalkable by removing z0 dirt)
+        for (int y = 0; y < 32; y++) {
+            grid[0][y][6] = CELL_AIR;  // Remove dirt at x=6, making z1 above it unwalkable
+        }
+
+        // Add ramps to allow going down to z0 and back up
+        // West ramp at x=7 to go down from z1 to z0
+        grid[0][12][7] = CELL_RAMP_W;  // Exit at (6, 12, z1) - but that's air, need floor
+        
+        // Actually let's do it simpler: make a pit at z0 with ramps on both sides
+        // Carve out z0 in the middle, add ramps on edges
+        for (int y = 0; y < 32; y++) {
+            for (int x = 5; x <= 8; x++) {
+                grid[0][y][x] = CELL_AIR;  // Pit
+            }
+        }
+        // West ramp at x=5 going west (exit at x=4, z1)
+        grid[0][12][5] = CELL_RAMP_W;
+        // East ramp at x=8 going east (exit at x=9, z1)  
+        grid[0][12][8] = CELL_RAMP_E;
+        // Floor in pit for walking at z0
+        for (int x = 5; x <= 8; x++) {
+            grid[0][12][x] = (x == 5) ? CELL_RAMP_W : (x == 8) ? CELL_RAMP_E : CELL_FLOOR;
+        }
+
+        BuildEntrances();
+        BuildGraph();
+
+        expect(rampLinkCount >= 2);
+
+        Point start = {13, 12, 1};  // chunk (1, 1), z1 - east of pit
+        Point goal = {0, 12, 1};    // chunk (0, 1), z1 - west of pit
+        Point outPath[MAX_PATH];
+
+        // Verify positions are walkable
+        expect(IsCellWalkableAt(1, 12, 13) == true);
+        expect(IsCellWalkableAt(1, 12, 0) == true);
+
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+
+        expect(astarLen > 0);
+        expect(hpaLen > 0);  // This is the bug - HPA* fails to find the path
+    }
+
+    it("HPA* finds cross-chunk cross-z path from z0 floor to z1") {
+        // Reproduces actual save file bug: mover at z0 (constructed floor) 
+        // trying to reach z1 goal in different chunk
+        //
+        // Setup:
+        // - Start at (13, 17, z0) with constructed floor - walkable at z0
+        // - Goal at (0, 12, z1) - walkable at z1 (standing on dirt)
+        // - Ramp somewhere to connect z0 and z1
+
+        InitGridWithSize(32, 32);
+        FillGroundLevel();  // z0 = dirt, z1 = air above dirt (walkable at z1)
+
+        // Add constructed floor corridor at z0 from start to ramp
+        // Need AIR with floor flag to be walkable at z0
+        for (int x = 10; x <= 13; x++) {
+            grid[0][17][x] = CELL_AIR;
+            SET_FLOOR(x, 17, 0);
+        }
+        
+        // Add a ramp to connect z0 to z1 
+        // Ramp at (10, 17, z0) going west, exit at (9, 17, z1)
+        grid[0][17][10] = CELL_RAMP_W;
+
+        BuildEntrances();
+        BuildGraph();
+
+        expect(rampLinkCount >= 1);
+
+        Point start = {13, 17, 0};  // z0, constructed floor
+        Point goal = {0, 12, 1};    // z1, different chunk
+        Point outPath[MAX_PATH];
+
+        // Verify positions are walkable (args: z, y, x)
+        expect(IsCellWalkableAt(0, 17, 13) == true);  // z0 (y=17, x=13) with floor
+        expect(IsCellWalkableAt(1, 12, 0) == true);   // z1 (y=12, x=0) above dirt
+
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+
+        expect(astarLen > 0);
+        expect(hpaLen > 0);  // Bug: HPA* fails to find this cross-chunk cross-z path
+    }
 }
 
 // ============== HPA* RAMP BASIC TESTS ==============

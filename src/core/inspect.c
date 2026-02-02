@@ -401,6 +401,10 @@ static void setup_pathfinding_globals(void) {
     gridWidth = insp_gridW;
     gridHeight = insp_gridH;
     gridDepth = insp_gridD;
+    chunkWidth = insp_chunkW;
+    chunkHeight = insp_chunkH;
+    chunksX = gridWidth / chunkWidth;
+    chunksY = gridHeight / chunkHeight;
     
     for (int z = 0; z < insp_gridD; z++) {
         for (int y = 0; y < insp_gridH; y++) {
@@ -438,6 +442,12 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
     if (!startWalkable || !goalWalkable) {
         printf("Path: NOT POSSIBLE (endpoints not walkable)\n");
         return;
+    }
+    
+    // Build HPA* graph if needed
+    if (algo == PATH_ALGO_HPA) {
+        BuildEntrances();
+        BuildGraph();
     }
     
     // Run pathfinding
@@ -571,6 +581,52 @@ static void print_designations(void) {
     else printf("\nTotal: %d designations\n", found);
 }
 
+static void print_entrances(int filterZ) {
+    setup_pathfinding_globals();
+    BuildEntrances();
+    BuildGraph();
+    
+    printf("\n=== HPA* ENTRANCES ===\n");
+    printf("Chunk size: %dx%d, Chunks: %dx%d, Depth: %d\n",
+           chunkWidth, chunkHeight, chunksX, chunksY, gridDepth);
+    printf("Total entrances: %d, Ramp links: %d, Ladder links: %d\n\n", 
+           entranceCount, rampLinkCount, ladderLinkCount);
+    
+    if (filterZ >= 0) {
+        printf("Entrances at z=%d:\n", filterZ);
+        int count = 0;
+        for (int i = 0; i < entranceCount; i++) {
+            if (entrances[i].z == filterZ) {
+                printf("  [%d] (%d,%d,z%d) chunks %d<->%d\n",
+                       i, entrances[i].x, entrances[i].y, entrances[i].z,
+                       entrances[i].chunk1, entrances[i].chunk2);
+                count++;
+            }
+        }
+        printf("Total at z=%d: %d entrances\n", filterZ, count);
+    } else {
+        // Show summary by z-level
+        for (int z = 0; z < gridDepth; z++) {
+            int count = 0;
+            for (int i = 0; i < entranceCount; i++) {
+                if (entrances[i].z == z) count++;
+            }
+            if (count > 0) {
+                printf("z=%d: %d entrances\n", z, count);
+            }
+        }
+    }
+    
+    if (rampLinkCount > 0) {
+        printf("\nRamp links:\n");
+        for (int i = 0; i < rampLinkCount; i++) {
+            printf("  Ramp at (%d,%d,z%d) -> exit (%d,%d,z%d)\n",
+                   rampLinks[i].rampX, rampLinks[i].rampY, rampLinks[i].rampZ,
+                   rampLinks[i].exitX, rampLinks[i].exitY, rampLinks[i].rampZ + 1);
+        }
+    }
+}
+
 static void print_stuck_movers(void) {
     printf("\n=== STUCK MOVERS (timeWithoutProgress > 2s) ===\n");
     int found = 0;
@@ -669,6 +725,8 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
+    bool opt_entrances = false;
+    int opt_entrances_z = -1;
     
     for (int i = 2; i < argc; i++) {  // Start at 2, skip program name and --inspect
         if (strcmp(argv[i], "--mover") == 0 && i+1 < argc) opt_mover = atoi(argv[++i]);
@@ -700,6 +758,10 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--stuck") == 0) opt_stuck = true;
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
         else if (strcmp(argv[i], "--jobs-active") == 0) opt_jobs_active = true;
+        else if (strcmp(argv[i], "--entrances") == 0) {
+            opt_entrances = true;
+            if (i+1 < argc && argv[i+1][0] != '-') opt_entrances_z = atoi(argv[++i]);
+        }
         else if (argv[i][0] != '-') filename = argv[i];
     }
     
@@ -836,7 +898,8 @@ int InspectSaveFile(int argc, char** argv) {
     bool anyQuery = (opt_mover >= 0 || opt_item >= 0 || opt_job >= 0 || 
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
-                     opt_designations || opt_stuck || opt_reserved || opt_jobs_active);
+                     opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
+                     opt_entrances);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -861,6 +924,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
+        printf("         --entrances [Z]\n");
     }
     
     // Handle queries
@@ -882,6 +946,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_stuck) print_stuck_movers();
     if (opt_reserved) print_reserved_items();
     if (opt_jobs_active) print_active_jobs();
+    if (opt_entrances) print_entrances(opt_entrances_z);
     
     cleanup();
     return 0;

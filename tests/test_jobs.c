@@ -3336,6 +3336,17 @@ describe(stockpile_cell_operations) {
     }
     
     it("should not find free slot in removed cell") {
+        // Need grid for walkability check in FindFreeStockpileSlot
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
         ClearStockpiles();
         
         int spIdx = CreateStockpile(5, 5, 0, 3, 1);  // 3 cells wide, 1 tall
