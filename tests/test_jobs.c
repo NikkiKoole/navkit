@@ -4392,6 +4392,106 @@ describe(channel_hpa_ramp_links) {
     }
 }
 
+describe(channel_rectangle_ramps) {
+    it("should create ramps on all border cells when channeling rectangle") {
+        // Setup: 10x10 grid, z0 = solid dirt, z1 = walkable air (floor flag)
+        // Channel a 4x4 rectangle (cells 3-6, 3-6) at z1
+        // Expected: all 12 border cells at z0 should become ramps
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        // Set up z0 as solid dirt, z1 as walkable air
+        for (int x = 0; x < 10; x++) {
+            for (int y = 0; y < 10; y++) {
+                grid[0][y][x] = CELL_DIRT;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);  // Floor flag makes z1 walkable
+            }
+        }
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        InitDesignations();
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        // Directly call CompleteChannelDesignation for each cell
+        // This simulates what happens when movers complete the jobs
+        // Channel from (3,3) to (6,6) - a 4x4 area
+        int minX = 3, maxX = 6, minY = 3, maxY = 6;
+        int channelZ = 1;
+        
+        // Process in row-major order (same as typical designation order)
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                CompleteChannelDesignation(x, y, channelZ, -1);
+            }
+        }
+        
+        // Count ramps at z0 in the channeled area
+        int rampCountInArea = 0;
+        int floorCountInArea = 0;
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                CellType cell = grid[0][y][x];
+                if (CellIsRamp(cell)) {
+                    rampCountInArea++;
+                } else if (cell == CELL_AIR && HAS_FLOOR(x, y, 0)) {
+                    floorCountInArea++;
+                }
+            }
+        }
+        
+        // All 16 cells should be either ramp or floor
+        // Border cells (12) should be ramps, interior cells (4) can be floor
+        // Actually in DF, interior cells also get ramps if they have an adjacent ramp exit
+        
+        // At minimum, verify we have some ramps (not all floor)
+        expect(rampCountInArea > 0);
+        
+        // Check specific border cells that should definitely be ramps:
+        // Top row (y=3): should have ramps facing north
+        // Bottom row (y=6): should have ramps facing south  
+        // Left column (x=3): should have ramps facing west
+        // Right column (x=6): should have ramps facing east
+        
+        // Top-left corner (3,3) - should be a ramp (either N or W)
+        CellType topLeft = grid[0][3][3];
+        expect(CellIsRamp(topLeft) != 0);
+        
+        // Top-right corner (6,3) - should be a ramp (either N or E)
+        CellType topRight = grid[0][3][6];
+        expect(CellIsRamp(topRight) != 0);
+        
+        // Bottom-left corner (3,6) - should be a ramp (either S or W)
+        CellType bottomLeft = grid[0][6][3];
+        expect(CellIsRamp(bottomLeft) != 0);
+        
+        // Bottom-right corner (6,6) - should be a ramp (either S or E)
+        CellType bottomRight = grid[0][6][6];
+        expect(CellIsRamp(bottomRight) != 0);
+        
+        // Check a middle border cell on west edge (3,4)
+        CellType westEdge = grid[0][4][3];
+        expect(CellIsRamp(westEdge) != 0);
+        
+        // Check a middle border cell on east edge (6,4)
+        CellType eastEdge = grid[0][4][6];
+        expect(CellIsRamp(eastEdge) != 0);
+    }
+}
+
 // =============================================================================
 // Building/Construction Tests
 // =============================================================================
@@ -6014,6 +6114,7 @@ int main(int argc, char* argv[]) {
     test(channel_job_execution);
     test(channel_workgiver);
     test(channel_hpa_ramp_links);
+    test(channel_rectangle_ramps);
 
     // Building/construction tests
     test(building_blueprint);

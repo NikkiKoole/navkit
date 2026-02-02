@@ -413,12 +413,18 @@ bool IsRampStillValid(int x, int y, int z) {
     }
     
     // The exit cell must have solid support below it (at z, the same level as the ramp)
-    // This means the cell adjacent to the ramp in the high direction must be solid
+    // This means the cell adjacent to the ramp in the high direction must be solid OR a ramp
     CellType exitBase = grid[z][exitY][exitX];
     
     // Valid if the exit has solid ground at the same z-level as the ramp
     // (wall, dirt, etc. - something you can stand on top of)
-    return CellIsSolid(exitBase);
+    if (CellIsSolid(exitBase)) return true;
+    
+    // Also valid if exit base is a ramp - ramp-to-ramp connections are allowed
+    // When the exit base is a ramp, you can stand on it at z+1 (the exit level)
+    if (CellIsRamp(exitBase)) return true;
+    
+    return false;
 }
 
 // Remove a ramp and convert to floor, spawning debris
