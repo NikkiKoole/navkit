@@ -19,6 +19,7 @@ typedef enum {
     ACTION_DRAW_WALL,
     ACTION_DRAW_FLOOR,
     ACTION_DRAW_LADDER,
+    ACTION_DRAW_RAMP,
     ACTION_DRAW_STOCKPILE,
     ACTION_DRAW_DIRT,
     ACTION_DRAW_WORKSHOP,
@@ -48,6 +49,10 @@ extern int dragStartY;
 
 // Quick edit mode - left/right click draws/erases walls in normal mode
 extern bool quickEditEnabled;
+
+// Ramp direction selection (defined in input.c)
+#include "../world/grid.h"  // For CellType
+extern CellType selectedRampDirection;
 
 // Quit confirmation
 extern bool showQuitConfirm;

@@ -2074,6 +2074,234 @@ describe(workshop_mover_collision) {
     }
 }
 
+describe(mover_ramp_transitions) {
+    it("should transition z-level UP when walking onto ramp high side") {
+        // Ramp at z=0 with high side pointing north
+        // Mover walks from south onto ramp, exits at z=1 to the north
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"  // Ramp at (2,1), high side north -> exit at (2,0) z=1
+            ".....\n"
+            "floor:1\n"
+            ".....\n"  // Exit tile at (2,0) z=1
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+
+        // Verify ramp setup
+        expect(grid[0][1][2] == CELL_RAMP_N);
+        expect(CellIsDirectionalRamp(grid[0][1][2]));
+
+        ClearMovers();
+        Mover* m = &movers[0];
+
+        // Mover starts at (2,2) z=0, goal at (2,0) z=1
+        // Path: start(2,2,0) -> ramp(2,1,0) -> exit(2,0,1)
+        float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {2, 0, 1};
+
+        Point testPath[] = {{2, 0, 1}, {2, 1, 0}, {2, 2, 0}};
+        InitMoverWithPath(m, startX, startY, 0.0f, goal, 100.0f, testPath, 3);
+        moverCount = 1;
+
+        expect((int)m->z == 0);
+
+        // Tick until mover reaches z=1 or times out
+        int maxTicks = 500;
+        bool reachedZ1 = false;
+        for (int t = 0; t < maxTicks; t++) {
+            Tick();
+            if ((int)m->z == 1) {
+                reachedZ1 = true;
+                break;
+            }
+        }
+
+        expect(reachedZ1);
+        expect((int)m->z == 1);
+    }
+
+    it("should transition z-level DOWN when walking onto ramp from above") {
+        // Ramp at z=0 with high side pointing north
+        // Mover walks from z=1 down onto the ramp
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"  // Ramp at (2,1), high side north
+            ".....\n"
+            "floor:1\n"
+            ".....\n"  // Entry from z=1 at (2,0)
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+
+        ClearMovers();
+        Mover* m = &movers[0];
+
+        // Mover starts at (2,0) z=1, goal at (2,2) z=0
+        // Path: start(2,0,1) -> ramp(2,1,0) -> goal(2,2,0)
+        float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {2, 2, 0};
+
+        Point testPath[] = {{2, 2, 0}, {2, 1, 0}, {2, 0, 1}};
+        InitMoverWithPath(m, startX, startY, 1.0f, goal, 100.0f, testPath, 3);
+        moverCount = 1;
+
+        expect((int)m->z == 1);
+
+        // Tick until mover reaches z=0 or times out
+        int maxTicks = 500;
+        bool reachedZ0 = false;
+        for (int t = 0; t < maxTicks; t++) {
+            Tick();
+            if ((int)m->z == 0) {
+                reachedZ0 = true;
+                break;
+            }
+        }
+
+        expect(reachedZ0);
+        expect((int)m->z == 0);
+    }
+
+    it("should find path using ramp to reach upper floor") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"  // Ramp at (2,1)
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        BuildEntrances();
+        BuildGraph();
+
+        // Test pathfinding from z=0 to z=1
+        Point start = {0, 2, 0};
+        Point goal = {4, 0, 1};
+        Point path[MAX_PATH];
+
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+
+        expect(len > 0);
+
+        // Path should contain z-level transition
+        bool hasZTransition = false;
+        for (int i = 1; i < len; i++) {
+            if (path[i].z != path[i-1].z) {
+                hasZTransition = true;
+                break;
+            }
+        }
+        expect(hasZTransition);
+    }
+
+    it("should walk up ramp and reach goal on upper floor") {
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            "..N..\n"  // Ramp at (2,1)
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        BuildEntrances();
+        BuildGraph();
+
+        ClearMovers();
+        Mover* m = &movers[0];
+
+        // Mover starts at (0,2) z=0, goal at (4,0) z=1
+        float startX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float startY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {4, 0, 1};
+
+        InitMover(m, startX, startY, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Find path
+        Point start = {0, 2, 0};
+        Point path[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+        expect(len > 0);
+
+        // Set the path
+        m->pathLength = len;
+        for (int i = 0; i < len; i++) {
+            m->path[i] = path[i];
+        }
+        m->pathIndex = len - 1;
+
+        // Tick until mover reaches goal or times out
+        int maxTicks = 1000;
+        bool reachedGoal = false;
+        for (int t = 0; t < maxTicks; t++) {
+            Tick();
+            int mx = (int)(m->x / CELL_SIZE);
+            int my = (int)(m->y / CELL_SIZE);
+            int mz = (int)m->z;
+            if (mx == goal.x && my == goal.y && mz == goal.z) {
+                reachedGoal = true;
+                break;
+            }
+        }
+
+        expect(reachedGoal);
+    }
+
+    it("should handle all four ramp directions") {
+        // Test each ramp direction
+        CellType rampTypes[] = {CELL_RAMP_N, CELL_RAMP_E, CELL_RAMP_S, CELL_RAMP_W};
+        char rampChars[] = {'N', 'E', 'S', 'W'};
+        int highDxExpected[] = {0, 1, 0, -1};
+        int highDyExpected[] = {-1, 0, 1, 0};
+
+        for (int r = 0; r < 4; r++) {
+            char map[256];
+            snprintf(map, sizeof(map),
+                "floor:0\n"
+                ".....\n"
+                "..%c..\n"
+                ".....\n"
+                "floor:1\n"
+                ".....\n"
+                ".....\n"
+                ".....\n", rampChars[r]);
+
+            InitMultiFloorGridFromAscii(map, 5, 5);
+
+            // Verify ramp type
+            expect(grid[0][1][2] == rampTypes[r]);
+
+            // Verify high side offset
+            int dx, dy;
+            GetRampHighSideOffset(rampTypes[r], &dx, &dy);
+            expect(dx == highDxExpected[r]);
+            expect(dy == highDyExpected[r]);
+
+            // Verify can walk up
+            bool canUp = CanWalkUpRampAt(2, 1, 0);
+            int exitX = 2 + dx;
+            int exitY = 1 + dy;
+            // Exit must be in bounds for canUp to be true
+            if (exitX >= 0 && exitX < gridWidth && exitY >= 0 && exitY < gridHeight) {
+                expect(canUp);
+            }
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -2104,6 +2332,7 @@ int main(int argc, char* argv[]) {
     test(mover_falling);
     test(mover_z_level_collision);
     test(mover_ladder_transitions);
+    test(mover_ramp_transitions);
     test(sparse_level_pathfinding);
     test(staggered_updates);
     test(workshop_mover_collision);

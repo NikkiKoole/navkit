@@ -48,6 +48,20 @@ typedef struct {
 extern LadderLink ladderLinks[MAX_LADDERS];
 extern int ladderLinkCount;
 
+// Ramp links connect entrances on different z-levels (similar to ladders but directional)
+#define MAX_RAMP_LINKS 1024
+typedef struct {
+    int rampX, rampY, rampZ;  // Ramp cell position (on lower z)
+    int exitX, exitY;          // Exit position at z+1 (high side of ramp)
+    int entranceRamp;          // Entrance index for ramp cell
+    int entranceExit;          // Entrance index for exit cell at z+1
+    int cost;                  // Movement cost (14 for diagonal-equivalent)
+    CellType rampType;         // Which direction ramp (CELL_RAMP_N/E/S/W)
+} RampLink;
+
+extern RampLink rampLinks[MAX_RAMP_LINKS];
+extern int rampLinkCount;
+
 // External state (defined in pathfinding.c)
 extern Entrance entrances[MAX_ENTRANCES];
 extern int entranceCount;

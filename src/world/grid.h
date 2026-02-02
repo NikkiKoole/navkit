@@ -17,6 +17,7 @@ extern int gridDepth;               // Z-levels at runtime
 extern int chunkWidth;
 extern int chunkHeight;
 extern int chunksX;
+extern int rampCount;               // Number of directional ramps in the grid
 extern int chunksY;
 
 // For static array sizing
@@ -35,7 +36,11 @@ typedef enum {
     CELL_GRASS,        // Natural ground - can become dirt when trampled
     CELL_DIRT,         // Worn ground - can become grass when left alone
     CELL_WOOD_WALL,    // Flammable wall - burns and turns to floor
-    CELL_BEDROCK       // Unmineable bottom layer
+    CELL_BEDROCK,      // Unmineable bottom layer
+    CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
+    CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1
+    CELL_RAMP_S,       // Ramp: high side south - enter from north at z, exit south at z+1
+    CELL_RAMP_W        // Ramp: high side west - enter from east at z, exit west at z+1
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -125,5 +130,14 @@ void EraseLadder(int x, int y, int z);
 
 // Recalculate ladder types in a column based on neighbors
 void RecalculateLadderColumn(int x, int y);
+
+// Ramp placement - check if ramp can be placed
+bool CanPlaceRamp(int x, int y, int z, CellType rampType);
+
+// Ramp placement - places ramp if valid, pushes movers/items out
+void PlaceRamp(int x, int y, int z, CellType rampType);
+
+// Ramp erasure - removes ramp, replaces with walkable/air
+void EraseRamp(int x, int y, int z);
 
 #endif // GRID_H

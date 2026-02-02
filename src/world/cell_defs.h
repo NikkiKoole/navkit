@@ -96,11 +96,14 @@ static inline bool IsCellWalkableAt_Standard(int z, int y, int x);
 
 static inline bool IsCellWalkableAt(int z, int y, int x) {
     if (g_legacyWalkability) {
-        // Legacy walkability: cell has CF_WALKABLE flag
+        // Legacy walkability: cell has CF_WALKABLE flag, or is ladder/ramp
         if (z < 0 || z >= gridDepth || y < 0 || y >= gridHeight || x < 0 || x >= gridWidth) return false;
         // Workshop blocks apply in both legacy and standard modes
         if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
-        return CellIsWalkable(grid[z][y][x]);
+        CellType cell = grid[z][y][x];
+        // Ladders and ramps are walkable even without CF_WALKABLE
+        if (CellIsLadder(cell) || CellIsRamp(cell)) return true;
+        return CellIsWalkable(cell);
     }
     return IsCellWalkableAt_Standard(z, y, x);
 }
@@ -146,12 +149,14 @@ static inline bool IsCellWalkableAt_Standard(int z, int y, int x) {
 // =============================================================================
 
 // Check if a cell is a valid destination (not a wall-top in standard mode)
-// Wall tops are traversable but shouldn't be random goals
+// Wall tops are traversable but shouldn't be random goals UNLESS ramps exist
+// (when ramps exist, wall-tops may be reachable platforms)
 static inline bool IsValidDestination(int z, int y, int x) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
-    if (!g_legacyWalkability && z > 0) {
-        // In standard mode, skip "wall tops" (air above wall) as destinations
+    if (!g_legacyWalkability && z > 0 && rampCount == 0) {
+        // In standard mode WITHOUT ramps, skip "wall tops" (air above wall) as destinations
+        // When ramps exist, these could be valid platforms reachable via ramps
         if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL) {
             return false;
         }
@@ -208,6 +213,96 @@ static inline bool CanClimbDownAt(int x, int y, int z) {
     bool hasLadderHere = CellIsLadder(high);
     bool hasLadderBelow = CellIsLadder(low);
     return hasLadderHere && hasLadderBelow && IsCellWalkableAt(z - 1, y, x);
+}
+
+// =============================================================================
+// RAMP HELPERS - Directional z-transitions
+// =============================================================================
+
+// Check if cell is a directional ramp (N/E/S/W)
+static inline bool CellIsDirectionalRamp(CellType cell) {
+    return cell == CELL_RAMP_N || cell == CELL_RAMP_E || 
+           cell == CELL_RAMP_S || cell == CELL_RAMP_W;
+}
+
+// Get the direction offset for the HIGH side of the ramp (where z+1 exit is)
+static inline void GetRampHighSideOffset(CellType cell, int* dx, int* dy) {
+    switch (cell) {
+        case CELL_RAMP_N: *dx = 0;  *dy = -1; break;  // North (y-1)
+        case CELL_RAMP_E: *dx = 1;  *dy = 0;  break;  // East (x+1)
+        case CELL_RAMP_S: *dx = 0;  *dy = 1;  break;  // South (y+1)
+        case CELL_RAMP_W: *dx = -1; *dy = 0;  break;  // West (x-1)
+        default: *dx = 0; *dy = 0; break;
+    }
+}
+
+// Can walk UP the ramp at (x,y,z) to exit at z+1?
+// Returns true if ramp exists and exit tile at z+1 is walkable
+static inline bool CanWalkUpRampAt(int x, int y, int z) {
+    if (z + 1 >= gridDepth) return false;
+    
+    CellType cell = grid[z][y][x];
+    if (!CellIsDirectionalRamp(cell)) return false;
+    
+    int highDx, highDy;
+    GetRampHighSideOffset(cell, &highDx, &highDy);
+    
+    int exitX = x + highDx;
+    int exitY = y + highDy;
+    
+    // Check bounds
+    if (exitX < 0 || exitX >= gridWidth || exitY < 0 || exitY >= gridHeight) {
+        return false;
+    }
+    
+    // Exit tile at z+1 must be walkable (works for both walkability modes)
+    return IsCellWalkableAt(z + 1, exitY, exitX);
+}
+
+// Can walk DOWN onto the ramp at (x,y,z) from z+1?
+// We're standing at the exit tile at z+1, checking if we can descend
+static inline bool CanWalkDownRampAt(int x, int y, int z) {
+    if (z < 0) return false;
+    
+    CellType cell = grid[z][y][x];
+    if (!CellIsDirectionalRamp(cell)) return false;
+    
+    int highDx, highDy;
+    GetRampHighSideOffset(cell, &highDx, &highDy);
+    
+    int exitX = x + highDx;
+    int exitY = y + highDy;
+    
+    // Check bounds for where we'd be coming from
+    if (exitX < 0 || exitX >= gridWidth || exitY < 0 || exitY >= gridHeight) {
+        return false;
+    }
+    
+    // The ramp itself must be walkable (should always be true for valid ramps)
+    return IsCellWalkableAt(z, y, x);
+}
+
+// Check if moving from (fromX, fromY) to ramp at (rampX, rampY) at same z is allowed
+// Blocks side entry (perpendicular to ramp direction)
+static inline bool CanEnterRampFromSide(int rampX, int rampY, int z, int fromX, int fromY) {
+    CellType cell = grid[z][rampY][rampX];
+    if (!CellIsDirectionalRamp(cell)) return true;  // Not a ramp, allow normal movement
+    
+    int highDx, highDy;
+    GetRampHighSideOffset(cell, &highDx, &highDy);
+    
+    // Calculate movement direction
+    int moveDx = rampX - fromX;
+    int moveDy = rampY - fromY;
+    
+    // Allow entry from low side (opposite of high) or high side
+    // Block entry from perpendicular directions
+    // Moving toward high = coming from low side
+    // Moving toward low = coming from high side
+    bool fromLowSide = (moveDx == highDx && moveDy == highDy);
+    bool fromHighSide = (moveDx == -highDx && moveDy == -highDy);
+    
+    return fromLowSide || fromHighSide;
 }
 
 #endif // CELL_DEFS_H

@@ -460,5 +460,8 @@ bool LoadWorld(const char* filename) {
     BuildMoverSpatialGrid();
     BuildItemSpatialGrid();
     
+    // Rebuild entrances to count ladders and ramps (needed for pathfinding)
+    BuildEntrances();
+    
     return true;
 }

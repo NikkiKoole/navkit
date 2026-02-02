@@ -57,6 +57,7 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_WALL:       return "WALL";
         case ACTION_DRAW_FLOOR:      return "FLOOR";
         case ACTION_DRAW_LADDER:     return "LADDER";
+        case ACTION_DRAW_RAMP:       return "RAMP";
         case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
         case ACTION_DRAW_DIRT:       return "DIRT";
         case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
@@ -218,6 +219,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Wall", KEY_W, 0, false, false, false);
                 n = AddItem(items, n, "Floor", KEY_F, 0, false, false, false);
                 n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
+                n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
                 n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
                 n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
                 n = AddItem(items, n, "sTone workshop", KEY_T, 1, false, false, false);
@@ -264,6 +266,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_WALL:      actionKey = KEY_W; break;
         case ACTION_DRAW_FLOOR:     actionKey = KEY_F; break;
         case ACTION_DRAW_LADDER:    actionKey = KEY_L; break;
+        case ACTION_DRAW_RAMP:      actionKey = KEY_R; break;
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
@@ -296,6 +299,15 @@ int InputMode_GetBarItems(BarItem* items) {
             break;
         case ACTION_DRAW_LADDER:
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            break;
+        case ACTION_DRAW_RAMP:
+            n = AddItem(items, n, "N", KEY_UP, -1, false, false, selectedRampDirection == CELL_RAMP_N);
+            n = AddItem(items, n, "E", KEY_RIGHT, -1, false, false, selectedRampDirection == CELL_RAMP_E);
+            n = AddItem(items, n, "S", KEY_DOWN, -1, false, false, selectedRampDirection == CELL_RAMP_S);
+            n = AddItem(items, n, "W", KEY_LEFT, -1, false, false, selectedRampDirection == CELL_RAMP_W);
+            n = AddItem(items, n, "Arrows/HJKL", 0, -1, false, true, false);
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;
         case ACTION_DRAW_DIRT:
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);

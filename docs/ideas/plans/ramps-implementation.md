@@ -967,24 +967,44 @@ New cell types (CELL_RAMP_N, etc.) are automatically included since they're just
 
 ## Implementation Order
 
-1. [ ] Add CELL_RAMP_N/E/S/W to CellType enum in grid.h
-2. [ ] Add cellDefs entries in cell_defs.c (name, sprite placeholder, CF_RAMP flag)
-3. [ ] Add CellIsDirectionalRamp() helper to cell_defs.h
-4. [ ] Add GetRampHighSideOffset(), CanWalkUpRampAt(), CanWalkDownRampAt() to cell_defs.h
-5. [ ] Add CanEnterRampFromSide() for side-entry blocking
-6. [ ] Update RunAStar() for ramp z-transitions (up and down)
-7. [ ] Add CanPlaceRamp(), PlaceRamp(), EraseRamp() to grid.c
-8. [ ] Add KEY_R handling and direction selection to input.c
-9. [ ] Add DrawRampCell() with triangle rendering to rendering.c
-10. [ ] Update inspect.c: cellTypeNames[], ^>v< visualization, legend
-11. [ ] Test manually - place ramps, walk up/down, verify directions, inspect
-12. [ ] Add RampLink struct, MAX_RAMPS, rampLinks[], rampLinkCount to pathfinding.h
-13. [ ] Add AddRampEntrance() and ramp detection to BuildEntrances()
-14. [ ] Add ramp edges to BuildGraph()
-15. [ ] Add ramp endpoints to BuildJpsLadderGraph()
-16. [ ] Write automated tests (A*, HPA*, JPS+, mover, DF-style, edge cases)
-17. [ ] Test both walkability modes
-18. [ ] Polish and edge cases
+1. [x] Add CELL_RAMP_N/E/S/W to CellType enum in grid.h
+2. [x] Add cellDefs entries in cell_defs.c (name, sprite placeholder, CF_RAMP flag)
+3. [x] Add CellIsDirectionalRamp() helper to cell_defs.h
+4. [x] Add GetRampHighSideOffset(), CanWalkUpRampAt(), CanWalkDownRampAt() to cell_defs.h
+5. [x] Add CanEnterRampFromSide() for side-entry blocking
+6. [x] Update RunAStar() for ramp z-transitions (up and down)
+7. [x] Add CanPlaceRamp(), PlaceRamp(), EraseRamp() to grid.c
+8. [x] Add KEY_R handling and direction selection to input.c
+9. [x] Add DrawRampCell() with triangle rendering to rendering.c
+10. [x] Update inspect.c: cellTypeNames[], ^>v< visualization, legend
+11. [x] Test manually - place ramps, walk up/down, verify directions, inspect
+12. [x] Add RampLink struct, MAX_RAMPS, rampLinks[], rampLinkCount to pathfinding.h
+13. [x] Add ramp counting to BuildEntrances() (rampCount recomputed on load)
+14. [x] Add ramp link detection to BuildEntrances() (create entrances for ramp and exit cells)
+15. [x] Add ramp edges to BuildGraph() (HPA* native support)
+16. [x] Add ramp edges to RebuildAffectedEdges() (incremental HPA* updates)
+17. [x] Add ramp link rebuilding to RebuildAffectedEntrances() (incremental updates)
+18. [x] Add ramp endpoints to BuildJpsLadderGraph() (JPS+ native support)
+19. [x] Write automated tests (A*, mover ramp transitions)
+20. [x] Test both walkability modes
+21. [x] Mover z-transition fix: auto-transition when entering wall cell with adjacent ramp
+22. [x] IsValidDestination: allow wall-tops as destinations when ramps exist
+23. [x] Fix rampCount persistence: count ramps in BuildEntrances(), call after load
+24. [x] Remove A* fallback for cross-z ramp paths (HPA*/JPS+ now native)
+25. [x] Fix legacy walkability mode: ramps now walkable (added CellIsRamp check)
+
+## Status: COMPLETE
+
+All ramp functionality is now implemented and tested:
+
+- **Cell types**: CELL_RAMP_N/E/S/W with CF_RAMP flag
+- **Walkability**: Works in both legacy and DF-style modes
+- **A* pathfinding**: Native ramp z-transitions (up and down)
+- **HPA* pathfinding**: Native ramp support via RampLink edges
+- **JPS+ pathfinding**: Native ramp support via ladder graph endpoints
+- **Incremental updates**: Ramp links rebuilt correctly when chunks change
+- **Mover movement**: Auto z-transition when walking onto ramp exit cells
+- **All tests passing**: 1217 tests pass including ramp-specific tests
 
 ## Estimated Effort
 

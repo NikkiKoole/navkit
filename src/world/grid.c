@@ -18,6 +18,7 @@ int gridDepth = MAX_GRID_DEPTH;
 int chunkWidth = DEFAULT_CHUNK_SIZE;
 int chunkHeight = DEFAULT_CHUNK_SIZE;
 int chunksX = MAX_GRID_WIDTH / DEFAULT_CHUNK_SIZE;
+int rampCount = 0;
 int chunksY = MAX_GRID_HEIGHT / DEFAULT_CHUNK_SIZE;
 
 void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH) {
@@ -40,6 +41,7 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     chunkHeight = chunkH;
     chunksX = (gridWidth + chunkWidth - 1) / chunkWidth;   // ceiling division
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
+    rampCount = 0;
 
     // Clear the grid (all z-levels) and cell flags
     memset(cellFlags, 0, sizeof(cellFlags));
@@ -285,6 +287,79 @@ void EraseLadder(int x, int y, int z) {
     }
 }
 
+// ============== RAMP PLACEMENT/ERASURE ==============
+
+// Forward declaration for push functions (defined in mover.c and items.c)
+extern void PushMoversOutOfCell(int x, int y, int z);
+extern void PushItemsOutOfCell(int x, int y, int z);
+
+bool CanPlaceRamp(int x, int y, int z, CellType rampType) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    
+    // Current cell must be walkable (not a wall)
+    if (!IsCellWalkableAt(z, y, x)) return false;
+    
+    // Current cell must not already be a ramp or ladder
+    CellType current = grid[z][y][x];
+    if (CellIsDirectionalRamp(current) || CellIsLadder(current)) return false;
+    
+    // Get high side offset
+    int highDx, highDy;
+    GetRampHighSideOffset(rampType, &highDx, &highDy);
+    int exitX = x + highDx;
+    int exitY = y + highDy;
+    
+    // Check z+1 bounds
+    if (z + 1 >= gridDepth) return false;
+    
+    // Check exit tile bounds
+    if (exitX < 0 || exitX >= gridWidth || exitY < 0 || exitY >= gridHeight) return false;
+    
+    // Exit tile at z+1 must be walkable
+    if (!IsCellWalkableAt(z + 1, exitY, exitX)) return false;
+    
+    // Low side at same z should be walkable (so you can enter the ramp)
+    int lowX = x - highDx;
+    int lowY = y - highDy;
+    if (lowX >= 0 && lowX < gridWidth && lowY >= 0 && lowY < gridHeight) {
+        if (!IsCellWalkableAt(z, lowY, lowX)) return false;
+    }
+    
+    return true;
+}
+
+void PlaceRamp(int x, int y, int z, CellType rampType) {
+    if (!CanPlaceRamp(x, y, z, rampType)) return;
+    
+    // Push movers and items out of the cell
+    PushMoversOutOfCell(x, y, z);
+    PushItemsOutOfCell(x, y, z);
+    
+    // Place the ramp
+    grid[z][y][x] = rampType;
+    rampCount++;
+    MarkChunkDirty(x, y, z);
+}
+
+void EraseRamp(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    
+    CellType cell = grid[z][y][x];
+    if (!CellIsDirectionalRamp(cell)) return;
+    
+    // Replace with appropriate floor type
+    if (g_legacyWalkability) {
+        grid[z][y][x] = CELL_WALKABLE;
+    } else {
+        grid[z][y][x] = CELL_AIR;
+    }
+    
+    rampCount--;
+    MarkChunkDirty(x, y, z);
+}
+
 int InitGridFromAscii(const char* ascii) {
     return InitGridFromAsciiWithChunkSize(ascii, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
 }
@@ -390,6 +465,18 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
                     grid[currentFloor][y][x] = CELL_LADDER_DOWN;
                 } else if (*p == 'X') {
                     grid[currentFloor][y][x] = CELL_LADDER_BOTH;
+                } else if (*p == 'N') {
+                    grid[currentFloor][y][x] = CELL_RAMP_N;
+                    rampCount++;
+                } else if (*p == 'E') {
+                    grid[currentFloor][y][x] = CELL_RAMP_E;
+                    rampCount++;
+                } else if (*p == 'S') {
+                    grid[currentFloor][y][x] = CELL_RAMP_S;
+                    rampCount++;
+                } else if (*p == 'W') {
+                    grid[currentFloor][y][x] = CELL_RAMP_W;
+                    rampCount++;
                 } else {
                     // In standard mode: all floors are CELL_AIR
                     //   - floor 0 is walkable via implicit bedrock at z=-1

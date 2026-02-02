@@ -85,6 +85,8 @@ GraphEdge graphEdges[MAX_EDGES];
 int graphEdgeCount = 0;
 LadderLink ladderLinks[MAX_LADDERS];
 int ladderLinkCount = 0;
+RampLink rampLinks[MAX_RAMP_LINKS];
+int rampLinkCount = 0;
 
 // Adjacency list for fast edge lookup: adjList[node][i] gives edge index
 // adjListCount[node] gives number of edges for that node
@@ -493,10 +495,22 @@ static int AddLadderEntrance(int x, int y, int z) {
     return entranceCount++;
 }
 
+// Add a ramp entrance at given position (similar to ladder entrance)
+// Returns the entrance index, or -1 if no room
+static int AddRampEntrance(int x, int y, int z) {
+    if (entranceCount >= MAX_ENTRANCES) return -1;
+    
+    int chunk = z * (chunksX * chunksY) + (y / chunkHeight) * chunksX + (x / chunkWidth);
+    entrances[entranceCount] = (Entrance){x, y, z, chunk, chunk};
+    return entranceCount++;
+}
+
 
 void BuildEntrances(void) {
     entranceCount = 0;
     ladderLinkCount = 0;
+    rampLinkCount = 0;
+    rampCount = 0;  // Recount ramps when rebuilding entrances
     
     int chunksPerLevel = chunksX * chunksY;
     
@@ -546,11 +560,12 @@ void BuildEntrances(void) {
         }
     }
     
-    // Detect ladders and create ladder links
+    // Detect ladders and ramps, create ladder links
     // A ladder link connects two z-levels using CanClimbUp helper
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
+                // Detect ladder connections
                 if (CanClimbUp(x, y, z)) {
                     // Found a ladder connection between z and z+1
                     if (ladderLinkCount < MAX_LADDERS) {
@@ -570,6 +585,51 @@ void BuildEntrances(void) {
                             };
                         }
                     }
+                }
+                
+                // Detect ramp connections (directional ramps connecting z to z+1)
+                CellType cell = grid[z][y][x];
+                if (CellIsDirectionalRamp(cell)) {
+                    rampCount++;
+                    
+                    // Check if this ramp can be walked up (valid connection to z+1)
+                    if (CanWalkUpRampAt(x, y, z) && rampLinkCount < MAX_RAMP_LINKS) {
+                        // Get exit position at z+1
+                        int highDx, highDy;
+                        GetRampHighSideOffset(cell, &highDx, &highDy);
+                        int exitX = x + highDx;
+                        int exitY = y + highDy;
+                        
+                        // Create entrances for ramp (at z) and exit cell (at z+1)
+                        int entRamp = AddRampEntrance(x, y, z);
+                        int entExit = AddRampEntrance(exitX, exitY, z + 1);
+                        
+                        if (entRamp >= 0 && entExit >= 0) {
+                            rampLinks[rampLinkCount++] = (RampLink){
+                                .rampX = x,
+                                .rampY = y,
+                                .rampZ = z,
+                                .exitX = exitX,
+                                .exitY = exitY,
+                                .entranceRamp = entRamp,
+                                .entranceExit = entExit,
+                                .cost = 14,  // Diagonal cost (XY + Z movement)
+                                .rampType = cell
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Also check the top z-level for ramps (loop above stops at gridDepth-1)
+    // These can't connect to z+1 (no z+1 exists) so just count them
+    if (gridDepth > 0) {
+        int z = gridDepth - 1;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (CellIsDirectionalRamp(grid[z][y][x])) {
+                    rampCount++;
                 }
             }
         }
@@ -842,8 +902,32 @@ void BuildGraph(void) {
         }
     }
     
-    TraceLog(LOG_INFO, "Built graph: %d edges (%d ladder links) in %.2fms", 
-             graphEdgeCount, ladderLinkCount, (GetTime() - startTime) * 1000);
+    // Add edges for ramp links (cross z-level connections via directional ramps)
+    for (int i = 0; i < rampLinkCount; i++) {
+        RampLink* link = &rampLinks[i];
+        int e1 = link->entranceRamp;  // Lower entrance (on ramp at z)
+        int e2 = link->entranceExit;  // Upper entrance (exit at z+1)
+        int cost = link->cost;
+        
+        if (graphEdgeCount < MAX_EDGES - 1) {
+            int edgeIdx1 = graphEdgeCount;
+            int edgeIdx2 = graphEdgeCount + 1;
+            // Bidirectional: can walk up and down the ramp
+            graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+            graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+            
+            // Add to adjacency list
+            if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                adjList[e1][adjListCount[e1]++] = edgeIdx1;
+            }
+            if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                adjList[e2][adjListCount[e2]++] = edgeIdx2;
+            }
+        }
+    }
+    
+    TraceLog(LOG_INFO, "Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms", 
+             graphEdgeCount, ladderLinkCount, rampLinkCount, (GetTime() - startTime) * 1000);
 }
 
 // ============== Incremental Update Functions ==============
@@ -887,12 +971,13 @@ static bool EntranceTouchesAffected(int entranceIdx, bool affectedChunks[MAX_GRI
 
 // Rebuild entrances for affected chunks (simpler approach - no keeping/remapping)
 static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_Y][MAX_CHUNKS_X]) {
-    // First pass: if a ladder has ANY of its z-levels in an affected chunk,
-    // mark ALL its z-levels as affected. This ensures both ladder entrances
+    // First pass: if a ladder or ramp has ANY of its z-levels in an affected chunk,
+    // mark ALL its z-levels as affected. This ensures both entrances
     // get filtered out together, preventing duplicates.
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
+                // Check ladders
                 if (CanClimbUp(x, y, z)) {
                     int cx = x / chunkWidth;
                     int cy = y / chunkHeight;
@@ -900,6 +985,26 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                     if (affectedChunks[z][cy][cx] || affectedChunks[z + 1][cy][cx]) {
                         affectedChunks[z][cy][cx] = true;
                         affectedChunks[z + 1][cy][cx] = true;
+                    }
+                }
+                
+                // Check ramps (ramp at z, exit at z+1 with different x,y)
+                CellType cell = grid[z][y][x];
+                if (CellIsDirectionalRamp(cell) && CanWalkUpRampAt(x, y, z)) {
+                    int highDx, highDy;
+                    GetRampHighSideOffset(cell, &highDx, &highDy);
+                    int exitX = x + highDx;
+                    int exitY = y + highDy;
+                    
+                    int cxRamp = x / chunkWidth;
+                    int cyRamp = y / chunkHeight;
+                    int cxExit = exitX / chunkWidth;
+                    int cyExit = exitY / chunkHeight;
+                    
+                    // If either endpoint's chunk is affected, mark both as affected
+                    if (affectedChunks[z][cyRamp][cxRamp] || affectedChunks[z + 1][cyExit][cxExit]) {
+                        affectedChunks[z][cyRamp][cxRamp] = true;
+                        affectedChunks[z + 1][cyExit][cxExit] = true;
                     }
                 }
             }
@@ -1069,6 +1174,84 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                                 .entranceLow = entLow,
                                 .entranceHigh = entHigh,
                                 .cost = 10
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Rebuild ramp links (similar to ladder links but with different x,y for exit)
+    rampLinkCount = 0;
+    for (int z = 0; z < gridDepth - 1; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                CellType cell = grid[z][y][x];
+                if (CellIsDirectionalRamp(cell) && CanWalkUpRampAt(x, y, z)) {
+                    int highDx, highDy;
+                    GetRampHighSideOffset(cell, &highDx, &highDy);
+                    int exitX = x + highDx;
+                    int exitY = y + highDy;
+                    
+                    int cxRamp = x / chunkWidth;
+                    int cyRamp = y / chunkHeight;
+                    int cxExit = exitX / chunkWidth;
+                    int cyExit = exitY / chunkHeight;
+                    
+                    // Check if this ramp is in an affected chunk
+                    bool rampAffected = affectedChunks[z][cyRamp][cxRamp] || affectedChunks[z + 1][cyExit][cxExit];
+                    
+                    if (rampAffected) {
+                        // Ramp is in affected chunk - add new entrances
+                        if (rampLinkCount < MAX_RAMP_LINKS && newCount + 2 <= MAX_ENTRANCES) {
+                            int chunkRamp = z * (chunksX * chunksY) + cyRamp * chunksX + cxRamp;
+                            int chunkExit = (z + 1) * (chunksX * chunksY) + cyExit * chunksX + cxExit;
+                            
+                            int entRamp = newCount;
+                            entrances[newCount++] = (Entrance){x, y, z, chunkRamp, chunkRamp};
+                            int entExit = newCount;
+                            entrances[newCount++] = (Entrance){exitX, exitY, z + 1, chunkExit, chunkExit};
+                            
+                            // Mark both chunks as affected so edges get built
+                            affectedChunks[z][cyRamp][cxRamp] = true;
+                            affectedChunks[z + 1][cyExit][cxExit] = true;
+                            
+                            rampLinks[rampLinkCount++] = (RampLink){
+                                .rampX = x,
+                                .rampY = y,
+                                .rampZ = z,
+                                .exitX = exitX,
+                                .exitY = exitY,
+                                .entranceRamp = entRamp,
+                                .entranceExit = entExit,
+                                .cost = 14,
+                                .rampType = cell
+                            };
+                        }
+                    } else {
+                        // Ramp is in unaffected chunk - find existing entrances
+                        int entRamp = -1, entExit = -1;
+                        for (int i = 0; i < newCount; i++) {
+                            if (entrances[i].x == x && entrances[i].y == y && entrances[i].z == z) {
+                                entRamp = i;
+                            }
+                            if (entrances[i].x == exitX && entrances[i].y == exitY && entrances[i].z == z + 1) {
+                                entExit = i;
+                            }
+                        }
+                        
+                        if (entRamp >= 0 && entExit >= 0 && rampLinkCount < MAX_RAMP_LINKS) {
+                            rampLinks[rampLinkCount++] = (RampLink){
+                                .rampX = x,
+                                .rampY = y,
+                                .rampZ = z,
+                                .exitX = exitX,
+                                .exitY = exitY,
+                                .entranceRamp = entRamp,
+                                .entranceExit = entExit,
+                                .cost = 14,
+                                .rampType = cell
                             };
                         }
                     }
@@ -1290,6 +1473,36 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
             }
         }
     }
+    
+    // Add edges for ramp links (cross z-level connections via directional ramps)
+    for (int i = 0; i < rampLinkCount; i++) {
+        RampLink* link = &rampLinks[i];
+        int e1 = link->entranceRamp;
+        int e2 = link->entranceExit;
+        int cost = link->cost;
+        
+        // Check if edge already exists
+        bool exists = false;
+        for (int k = 0; k < adjListCount[e1] && !exists; k++) {
+            int edgeIdx = adjList[e1][k];
+            if (graphEdges[edgeIdx].to == e2) exists = true;
+        }
+        if (exists) continue;
+        
+        if (graphEdgeCount < MAX_EDGES - 1) {
+            int edgeIdx1 = graphEdgeCount;
+            int edgeIdx2 = graphEdgeCount + 1;
+            graphEdges[graphEdgeCount++] = (GraphEdge){e1, e2, cost};
+            graphEdges[graphEdgeCount++] = (GraphEdge){e2, e1, cost};
+            
+            if (adjListCount[e1] < MAX_EDGES_PER_NODE) {
+                adjList[e1][adjListCount[e1]++] = edgeIdx1;
+            }
+            if (adjListCount[e2] < MAX_EDGES_PER_NODE) {
+                adjList[e2][adjListCount[e2]++] = edgeIdx2;
+            }
+        }
+    }
 
 }
 
@@ -1417,6 +1630,9 @@ void RunAStar(void) {
                     !IsCellWalkableAt(bestZ, bestY + dy[i], bestX))
                     continue;
             }
+            
+            // Block side entry to ramps (can only enter from low or high side)
+            if (!CanEnterRampFromSide(nx, ny, nz, bestX, bestY)) continue;
 
             // Cost: 10 for cardinal, 14 for diagonal
             int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
@@ -1462,6 +1678,62 @@ void RunAStar(void) {
                     nodeData[nz][bestY][bestX].parentY = bestY;
                     nodeData[nz][bestY][bestX].parentZ = bestZ;
                     nodeData[nz][bestY][bestX].open = true;
+                }
+            }
+        }
+        
+        // === RAMP Z-TRANSITIONS ===
+        // Try going UP via ramp (current cell is ramp, move to exit tile at z+1)
+        if (CanWalkUpRampAt(bestX, bestY, bestZ)) {
+            int highDx, highDy;
+            GetRampHighSideOffset(grid[bestZ][bestY][bestX], &highDx, &highDy);
+            int exitX = bestX + highDx;
+            int exitY = bestY + highDy;
+            int exitZ = bestZ + 1;
+            
+            if (!nodeData[exitZ][exitY][exitX].closed) {
+                int moveCost = 14;  // Diagonal cost (XY + Z movement)
+                int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                if (ng < nodeData[exitZ][exitY][exitX].g) {
+                    nodeData[exitZ][exitY][exitX].g = ng;
+                    nodeData[exitZ][exitY][exitX].f = ng + Heuristic3D(exitX, exitY, exitZ, goalPos.x, goalPos.y, goalPos.z);
+                    nodeData[exitZ][exitY][exitX].parentX = bestX;
+                    nodeData[exitZ][exitY][exitX].parentY = bestY;
+                    nodeData[exitZ][exitY][exitX].parentZ = bestZ;
+                    nodeData[exitZ][exitY][exitX].open = true;
+                }
+            }
+        }
+        
+        // Try going DOWN via ramp (check if there's a ramp below whose high side we're on)
+        if (bestZ > 0) {
+            // Check the 4 potential ramp positions that could connect to us
+            int checkOffsets[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // N, E, S, W
+            CellType matchingRamps[4] = {CELL_RAMP_S, CELL_RAMP_W, CELL_RAMP_N, CELL_RAMP_E};
+            
+            for (int i = 0; i < 4; i++) {
+                int rampX = bestX + checkOffsets[i][0];
+                int rampY = bestY + checkOffsets[i][1];
+                int rampZ = bestZ - 1;
+                
+                if (rampX < 0 || rampX >= gridWidth || rampY < 0 || rampY >= gridHeight) continue;
+                
+                CellType below = grid[rampZ][rampY][rampX];
+                
+                // Check if this ramp's high side points to our current position
+                if (below == matchingRamps[i]) {
+                    if (!nodeData[rampZ][rampY][rampX].closed && IsCellWalkableAt(rampZ, rampY, rampX)) {
+                        int moveCost = 14;
+                        int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
+                        if (ng < nodeData[rampZ][rampY][rampX].g) {
+                            nodeData[rampZ][rampY][rampX].g = ng;
+                            nodeData[rampZ][rampY][rampX].f = ng + Heuristic3D(rampX, rampY, rampZ, goalPos.x, goalPos.y, goalPos.z);
+                            nodeData[rampZ][rampY][rampX].parentX = bestX;
+                            nodeData[rampZ][rampY][rampX].parentY = bestY;
+                            nodeData[rampZ][rampY][rampX].parentZ = bestZ;
+                            nodeData[rampZ][rampY][rampX].open = true;
+                        }
+                    }
                 }
             }
         }
@@ -2772,12 +3044,14 @@ void BuildJpsLadderGraph(void) {
         g->endpointsPerLevelCount[z] = 0;
     }
     
-    // Step 1: Scan grid for ladder pairs and create endpoints
+    // Step 1: Scan grid for ladder pairs and ramps, create endpoints
     // A ladder connects z and z+1 using CanClimbUp helper
-    int ladderIndex = 0;
+    // A ramp connects (rampX, rampY, z) to (exitX, exitY, z+1)
+    int connectionIndex = 0;  // Shared index for both ladders and ramps
     for (int z = 0; z < gridDepth - 1; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
+                // Check for ladder connection
                 if (CanClimbUp(x, y, z)) {
                     // Found a ladder - create two endpoints
                     if (g->endpointCount + 2 > MAX_LADDER_ENDPOINTS) {
@@ -2789,7 +3063,7 @@ void BuildJpsLadderGraph(void) {
                     int lowIdx = g->endpointCount++;
                     g->endpoints[lowIdx] = (LadderEndpoint){
                         .x = x, .y = y, .z = z,
-                        .ladderIndex = ladderIndex,
+                        .ladderIndex = connectionIndex,
                         .isLow = true
                     };
                     
@@ -2797,7 +3071,7 @@ void BuildJpsLadderGraph(void) {
                     int highIdx = g->endpointCount++;
                     g->endpoints[highIdx] = (LadderEndpoint){
                         .x = x, .y = y, .z = z + 1,
-                        .ladderIndex = ladderIndex,
+                        .ladderIndex = connectionIndex,
                         .isLow = false
                     };
                     
@@ -2809,7 +3083,49 @@ void BuildJpsLadderGraph(void) {
                         g->endpointsByLevel[z + 1][g->endpointsPerLevelCount[z + 1]++] = highIdx;
                     }
                     
-                    ladderIndex++;
+                    connectionIndex++;
+                }
+                
+                // Check for ramp connection
+                CellType cell = grid[z][y][x];
+                if (CellIsDirectionalRamp(cell) && CanWalkUpRampAt(x, y, z)) {
+                    // Found a walkable ramp - create two endpoints
+                    if (g->endpointCount + 2 > MAX_LADDER_ENDPOINTS) {
+                        TraceLog(LOG_WARNING, "JPS+ ladder graph: too many endpoints (ramps)");
+                        goto done_scanning;
+                    }
+                    
+                    // Get exit position at z+1
+                    int highDx, highDy;
+                    GetRampHighSideOffset(cell, &highDx, &highDy);
+                    int exitX = x + highDx;
+                    int exitY = y + highDy;
+                    
+                    // Low endpoint (ramp cell at z)
+                    int lowIdx = g->endpointCount++;
+                    g->endpoints[lowIdx] = (LadderEndpoint){
+                        .x = x, .y = y, .z = z,
+                        .ladderIndex = connectionIndex,
+                        .isLow = true
+                    };
+                    
+                    // High endpoint (exit cell at z+1)
+                    int highIdx = g->endpointCount++;
+                    g->endpoints[highIdx] = (LadderEndpoint){
+                        .x = exitX, .y = exitY, .z = z + 1,
+                        .ladderIndex = connectionIndex,
+                        .isLow = false
+                    };
+                    
+                    // Index by z-level
+                    if (g->endpointsPerLevelCount[z] < MAX_ENDPOINTS_PER_LEVEL) {
+                        g->endpointsByLevel[z][g->endpointsPerLevelCount[z]++] = lowIdx;
+                    }
+                    if (g->endpointsPerLevelCount[z + 1] < MAX_ENDPOINTS_PER_LEVEL) {
+                        g->endpointsByLevel[z + 1][g->endpointsPerLevelCount[z + 1]++] = highIdx;
+                    }
+                    
+                    connectionIndex++;
                 }
             }
         }
@@ -2824,17 +3140,22 @@ done_scanning:
         }
     }
     
-    // Step 3: Add vertical edges (climb cost between low/high of same ladder)
+    // Step 3: Add vertical edges (climb cost between low/high of same connection)
+    // Ladders: same x,y on both levels, cost 10 (cardinal)
+    // Ramps: different x,y (ramp to exit), cost 14 (diagonal)
     for (int i = 0; i < g->endpointCount; i++) {
         LadderEndpoint* ep = &g->endpoints[i];
         if (ep->isLow) {
-            // Find the matching high endpoint (next index, same ladder)
+            // Find the matching high endpoint (next index, same connection)
             int highIdx = i + 1;
             if (highIdx < g->endpointCount && 
                 g->endpoints[highIdx].ladderIndex == ep->ladderIndex &&
                 !g->endpoints[highIdx].isLow) {
-                // Add bidirectional climb edge
-                int climbCost = 10;  // Same as one step
+                // Determine cost: ladder (same x,y) = 10, ramp (different x,y) = 14
+                LadderEndpoint* highEp = &g->endpoints[highIdx];
+                int climbCost = (ep->x == highEp->x && ep->y == highEp->y) ? 10 : 14;
+                
+                // Add bidirectional edge
                 g->allPairs[i][highIdx] = climbCost;
                 g->allPairs[highIdx][i] = climbCost;
                 g->next[i][highIdx] = highIdx;  // Direct edge
@@ -3116,14 +3437,44 @@ static bool ZLevelHasLadderLinks(int z) {
     return false;
 }
 
+// Check if z-level has ramp connections (ramp at z or exit at z)
+static bool ZLevelHasRampLinks(int z) {
+    // Ramps at z connect to z+1, so check both z and z-1 for ramps
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            // Check if there's a ramp at this z-level
+            if (z < gridDepth && CellIsDirectionalRamp(grid[z][y][x])) {
+                if (CanWalkUpRampAt(x, y, z)) {
+                    return true;  // This ramp connects z to z+1
+                }
+            }
+            // Check if there's a ramp at z-1 that connects to z
+            if (z > 0 && CellIsDirectionalRamp(grid[z-1][y][x])) {
+                if (CanWalkUpRampAt(x, y, z-1)) {
+                    return true;  // Ramp at z-1 connects to z
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Check if z-level has any vertical connections (ladders or ramps)
+static bool ZLevelHasVerticalConnections(int z) {
+    return ZLevelHasLadderLinks(z) || ZLevelHasRampLinks(z);
+}
+
 Point GetRandomWalkableCell(void) {
     Point p;
+    // Only do expensive z-level connection checks for ladders (they have cached links)
+    // Ramps use A* fallback which handles connectivity itself
+    bool checkLadderLinks = (!g_legacyWalkability && ladderLinkCount > 0 && rampCount == 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
         // Skip z-levels with no ladder connections (stranded spawns) in standard mode
-        if (!g_legacyWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
+        if (checkLadderLinks && !ZLevelHasLadderLinks(p.z)) continue;
         // Use IsValidDestination to filter wall-tops and other non-goal cells
         if (IsValidDestination(p.z, p.y, p.x)) {
             return p;
@@ -3134,16 +3485,21 @@ Point GetRandomWalkableCell(void) {
 
 Point GetRandomWalkableCellDifferentZ(int excludeZ) {
     Point p;
+    // Only do expensive z-level connection checks for ladders (they have cached links)
+    // Ramps use A* fallback which handles connectivity itself
+    bool checkLadderLinks = (!g_legacyWalkability && ladderLinkCount > 0 && rampCount == 0);
     for (int attempts = 0; attempts < 1000; attempts++) {
         p.x = GetRandomValue(0, gridWidth - 1);
         p.y = GetRandomValue(0, gridHeight - 1);
         p.z = GetRandomValue(0, gridDepth - 1);
         // Skip z-levels with no ladder connections (stranded spawns) in standard mode
-        if (!g_legacyWalkability && ladderLinkCount > 0 && !ZLevelHasLadderLinks(p.z)) continue;
+        if (checkLadderLinks && !ZLevelHasLadderLinks(p.z)) continue;
         if (p.z != excludeZ && IsValidDestination(p.z, p.y, p.x)) {
+            TraceLog(LOG_DEBUG, "GetRandomWalkableCellDifferentZ: found (%d,%d,z%d) excludeZ=%d", p.x, p.y, p.z, excludeZ);
             return p;
         }
     }
+    TraceLog(LOG_WARNING, "GetRandomWalkableCellDifferentZ: failed after 1000 attempts, excludeZ=%d, falling back", excludeZ);
     return GetRandomWalkableCell();
 }
 

@@ -41,8 +41,13 @@ static const char* cellTypeNames[] = {
     "GRASS",         // 8
     "DIRT",          // 9
     "WOOD_WALL",     // 10
-    "BEDROCK"        // 11
+    "BEDROCK",       // 11
+    "RAMP_N",        // 12
+    "RAMP_E",        // 13
+    "RAMP_S",        // 14
+    "RAMP_W"         // 15
 };
+#define CELL_TYPE_COUNT 16
 static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE", "STONE_BLOCKS"};
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "DIG", "BUILD", "CLEAR", "HAUL_TO_BP"};
@@ -288,7 +293,7 @@ static void print_cell(int x, int y, int z) {
     Designation desig = insp_designations[idx];
     
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
-    printf("Type: %s (raw=%d)\n", cell < 12 ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
+    printf("Type: %s (raw=%d)\n", cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
     
     // Walkability (requires globals to be set up)
     bool walkable = IsCellWalkableAt(z, y, x);
@@ -301,7 +306,7 @@ static void print_cell(int x, int y, int z) {
         else {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
             CellType cellBelow = insp_gridCells[idxBelow];
-            printf(" (solid below: %s)", cell < 12 ? cellTypeNames[cellBelow] : "?");
+            printf(" (solid below: %s)", cell < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
         }
     } else {
         if (CellBlocksMovement(cell)) printf(" (blocks movement)");
@@ -309,7 +314,7 @@ static void print_cell(int x, int y, int z) {
         else if (z > 0) {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
             CellType cellBelow = insp_gridCells[idxBelow];
-            if (!CellIsSolid(cellBelow)) printf(" (no solid below: %s)", cellBelow < 12 ? cellTypeNames[cellBelow] : "?");
+            if (!CellIsSolid(cellBelow)) printf(" (no solid below: %s)", cellBelow < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
         }
     }
     printf("\n");
@@ -500,6 +505,14 @@ static void print_map(int cx, int cy, int cz, int radius) {
                     case CELL_LADDER_DOWN:
                     case CELL_LADDER_BOTH:
                         c = 'H'; break;
+                    case CELL_RAMP_N:
+                        c = '^'; break;
+                    case CELL_RAMP_E:
+                        c = '>'; break;
+                    case CELL_RAMP_S:
+                        c = 'v'; break;
+                    case CELL_RAMP_W:
+                        c = '<'; break;
                     default:
                         c = '?'; break;
                 }
@@ -515,7 +528,7 @@ static void print_map(int cx, int cy, int cz, int radius) {
         printf("\n");
     }
     
-    printf("\nLegend: # wall, . floor, , grass, : dirt, ~ water, X dig, H ladder, @ center\n");
+    printf("\nLegend: # wall, . floor, , grass, : dirt, ~ water, X dig, H ladder, ^>v< ramp, @ center\n");
 }
 
 static void print_designations(void) {
@@ -530,7 +543,7 @@ static void print_designations(void) {
                 if (d->type == DESIGNATION_NONE) continue;
                 
                 CellType cell = insp_gridCells[idx];
-                const char* cellName = cell < 12 ? cellTypeNames[cell] : "?";
+                const char* cellName = cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "?";
                 
                 printf("(%d,%d,z%d) DIG %s", x, y, z, cellName);
                 if (d->assignedMover >= 0) {

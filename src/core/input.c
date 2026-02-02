@@ -123,6 +123,54 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+// Selected ramp direction (default north) - extern in input_mode.h
+CellType selectedRampDirection = CELL_RAMP_N;
+
+static void ExecuteBuildRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    int skipped = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (CanPlaceRamp(dx, dy, z, selectedRampDirection)) {
+                PlaceRamp(dx, dy, z, selectedRampDirection);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                count++;
+            } else {
+                skipped++;
+            }
+        }
+    }
+    const char* dirName = "";
+    switch (selectedRampDirection) {
+        case CELL_RAMP_N: dirName = "north"; break;
+        case CELL_RAMP_E: dirName = "east"; break;
+        case CELL_RAMP_S: dirName = "south"; break;
+        case CELL_RAMP_W: dirName = "west"; break;
+        default: break;
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d %s ramp%s", count, dirName, count > 1 ? "s" : ""), GREEN);
+    }
+    if (skipped > 0) {
+        AddMessage(TextFormat("Skipped %d cell%s (invalid)", skipped, skipped > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteEraseRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (CellIsDirectionalRamp(grid[z][dy][dx])) {
+                EraseRamp(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Erased %d ramp%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -900,6 +948,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_W)) { inputAction = ACTION_DRAW_WALL; selectedMaterial = 1; }
                 if (CheckKey(KEY_F)) { inputAction = ACTION_DRAW_FLOOR; selectedMaterial = 1; }
                 if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
+                if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_RAMP; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
                 if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
@@ -934,6 +983,7 @@ void HandleInput(void) {
         case ACTION_DRAW_WALL:      backOneLevel = CheckKey(KEY_W); break;
         case ACTION_DRAW_FLOOR:     backOneLevel = CheckKey(KEY_F); break;
         case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
+        case ACTION_DRAW_RAMP:      backOneLevel = CheckKey(KEY_R); break;
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
@@ -963,6 +1013,30 @@ void HandleInput(void) {
     if (CheckKey(KEY_ONE)) selectedMaterial = 1;
     if (CheckKey(KEY_TWO)) selectedMaterial = 2;
     if (CheckKey(KEY_THREE)) selectedMaterial = 3;
+    
+    // ========================================================================
+    // Ramp direction selection (when ramp action is selected)
+    // ========================================================================
+    
+    if (inputAction == ACTION_DRAW_RAMP) {
+        // Arrow keys or HJKL to select direction
+        if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) {
+            selectedRampDirection = CELL_RAMP_N;
+            AddMessage("Ramp direction: North", WHITE);
+        }
+        if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_L)) {
+            selectedRampDirection = CELL_RAMP_E;
+            AddMessage("Ramp direction: East", WHITE);
+        }
+        if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_J)) {
+            selectedRampDirection = CELL_RAMP_S;
+            AddMessage("Ramp direction: South", WHITE);
+        }
+        if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_H)) {
+            selectedRampDirection = CELL_RAMP_W;
+            AddMessage("Ramp direction: West", WHITE);
+        }
+    }
 
     // ========================================================================
     // Action execution (drag handling)
@@ -1002,6 +1076,10 @@ void HandleInput(void) {
             case ACTION_DRAW_LADDER:
                 if (leftClick) ExecuteBuildLadder(x1, y1, x2, y2, z);
                 else ExecuteErase(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_RAMP:
+                if (leftClick) ExecuteBuildRamp(x1, y1, x2, y2, z);
+                else ExecuteEraseRamp(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
