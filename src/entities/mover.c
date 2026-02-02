@@ -914,7 +914,13 @@ void UpdateMovers(void) {
         }
         
         // Don't move movers that are waiting for a repath - they'd walk on stale paths
-        if (m->needsRepath) continue;
+        // But still accumulate stuck time for job stuck detection
+        if (m->needsRepath) {
+            if (m->currentJobId >= 0 && m->pathLength == 0) {
+                m->timeWithoutProgress += dt;
+            }
+            continue;
+        }
 
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
@@ -1231,6 +1237,12 @@ void ProcessMoverRepaths(void) {
         
         Point tempPath[MAX_PATH];
         int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
+        
+        // If HPA* failed but ramps exist, try A* as fallback
+        // This handles cases where same-z path is blocked but cross-z via ramps works
+        if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
+            len = FindPath(PATH_ALGO_ASTAR, start, m->goal, tempPath, MAX_PATH);
+        }
 
         m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
         // Path is stored goal-to-start: path[0]=goal, path[pathLen-1]=start
