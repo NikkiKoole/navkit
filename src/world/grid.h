@@ -134,6 +134,9 @@ void RecalculateLadderColumn(int x, int y);
 // Ramp placement - check if ramp can be placed
 bool CanPlaceRamp(int x, int y, int z, CellType rampType);
 
+// Auto-detect ramp direction based on terrain (returns CELL_AIR if no valid direction)
+CellType AutoDetectRampDirection(int x, int y, int z);
+
 // Ramp placement - places ramp if valid, pushes movers/items out
 void PlaceRamp(int x, int y, int z, CellType rampType);
 

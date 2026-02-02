@@ -1042,6 +1042,29 @@ New cell types (CELL_RAMP_N, etc.) are automatically included since they're just
 24. [x] Remove A* fallback for cross-z ramp paths (HPA*/JPS+ now native)
 25. [x] Fix legacy walkability mode: ramps now walkable (added CellIsRamp check)
 
+## Design Decision: Directional vs Omnidirectional Ramps
+
+### Dwarf Fortress Model (Omnidirectional)
+In Dwarf Fortress, ramps are **omnidirectional** - a single ramp tile can connect to **multiple** z+1 exits simultaneously. Any adjacent wall with walkable space above becomes a valid exit. This means:
+- One ramp can have 1-4 exit directions
+- Ramp links change dynamically when neighboring walls change
+- More flexible for players (fewer ramp placements needed)
+
+### Our Model (Directional)
+We chose **directional ramps** (CELL_RAMP_N/E/S/W) for simpler pathfinding graph management:
+- 1 ramp = 1 RampLink = exactly 2 entrances (predictable)
+- DF model would need N RampLinks per ramp (up to 4), making incremental updates complex
+- DF model requires rebuilding all ramp links when any neighbor wall changes
+- Our model only rebuilds when the ramp itself or its specific exit changes
+
+### Auto-Detection at Placement
+To reduce user friction while keeping the simpler model:
+- Default placement uses `AutoDetectRampDirection()` which picks the first valid direction (N→E→S→W)
+- Users can still manually select direction with arrow keys if needed
+- 'A' key resets to auto-detect mode
+
+This gives us the UX benefit of "just place a ramp and it works" without the pathfinding complexity of true omnidirectional ramps.
+
 ## Status: COMPLETE
 
 All ramp functionality is now implemented and tested:

@@ -6,29 +6,35 @@
 #include "../core/time.h"
 #include "../entities/workshops.h"
 
-void DrawCellGrid(void) {
-    float size = CELL_SIZE * zoom;
-    int z = currentViewZ;
-
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
+// Helper: calculate visible cell range with view frustum culling
+static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
+    *minX = 0;
+    *minY = 0;
+    *maxX = gridWidth;
+    *maxY = gridHeight;
+    
     if (cullDrawing) {
         int screenW = GetScreenWidth();
         int screenH = GetScreenHeight();
 
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
+        *minX = (int)((-offset.x) / size);
+        *maxX = (int)((-offset.x + screenW) / size) + 1;
+        *minY = (int)((-offset.y) / size);
+        *maxY = (int)((-offset.y + screenH) / size) + 1;
 
-        // Clamp to grid bounds
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
+        if (*minX < 0) *minX = 0;
+        if (*minY < 0) *minY = 0;
+        if (*maxX > gridWidth) *maxX = gridWidth;
+        if (*maxY > gridHeight) *maxY = gridHeight;
     }
+}
+
+void DrawCellGrid(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     if (!g_legacyWalkability) {
         // Standard mode: draw deeper levels first (z-3, z-2) with blue tint for depth
@@ -115,6 +121,7 @@ void DrawCellGrid(void) {
         }
         
         // Draw current layer (walls, ladders, etc. - things that block or occupy the space)
+        // Ramps are drawn with 50% opacity so grass shows through
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 CellType cell = grid[z][y][x];
@@ -122,7 +129,8 @@ void DrawCellGrid(void) {
                 if (cell == CELL_AIR) continue;
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(CellSprite(cell));
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                Color tint = CellIsRamp(cell) ? (Color){255, 255, 255, 64} : WHITE;
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
         
@@ -215,24 +223,8 @@ void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     if (!g_legacyWalkability) {
         // Standard mode: draw grass for deeper levels (z-3, z-2) with blue tint
@@ -285,10 +277,11 @@ void DrawGrassOverlay(void) {
         int zBelow = z - 1;
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                // Only draw overlay where floor is dirt and current cell is empty (air)
+                // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
                 if (grid[zBelow][y][x] != CELL_DIRT) continue;
                 CellType cellHere = grid[z][y][x];
-                if (cellHere != CELL_AIR) continue;  // Don't draw grass under walls, ladders, etc.
+                // Allow grass under air and ramps, skip walls/ladders/etc.
+                if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
                 
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
@@ -336,24 +329,8 @@ void DrawWater(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
@@ -391,24 +368,8 @@ void DrawFire(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
@@ -465,24 +426,8 @@ void DrawSmoke(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
@@ -505,24 +450,8 @@ void DrawSteam(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
@@ -550,24 +479,8 @@ void DrawTemperature(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     int ambient = GetAmbientTemperature(z);
 
@@ -628,24 +541,8 @@ void DrawFrozenWater(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
-    int minX = 0, minY = 0;
-    int maxX = gridWidth, maxY = gridHeight;
-
-    // Calculate visible cell range (view frustum culling)
-    if (cullDrawing) {
-        int screenW = GetScreenWidth();
-        int screenH = GetScreenHeight();
-
-        minX = (int)((-offset.x) / size);
-        maxX = (int)((-offset.x + screenW) / size) + 1;
-        minY = (int)((-offset.y) / size);
-        maxY = (int)((-offset.y + screenH) / size) + 1;
-
-        if (minX < 0) minX = 0;
-        if (minY < 0) minY = 0;
-        if (maxX > gridWidth) maxX = gridWidth;
-        if (maxY > gridHeight) maxY = gridHeight;
-    }
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {

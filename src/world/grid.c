@@ -288,6 +288,18 @@ void EraseLadder(int x, int y, int z) {
 }
 
 // ============== RAMP PLACEMENT/ERASURE ==============
+//
+// NOTE: Our ramps use explicit directions (CELL_RAMP_N/E/S/W). Dwarf Fortress
+// uses omnidirectional ramps where a single ramp tile can connect to multiple
+// z+1 exits simultaneously (any adjacent wall with walkable space above).
+// 
+// We chose directional ramps for simpler HPA*/JPS+ graph handling:
+// - 1 ramp = 1 RampLink = 2 entrances (predictable)
+// - DF model would need N RampLinks per ramp (up to 4)
+// - DF model requires rebuilding ramp links when any neighbor wall changes
+//
+// We auto-detect the direction at placement time based on terrain.
+// If multiple directions are valid, we pick the first valid one (N→E→S→W).
 
 // Forward declaration for push functions (defined in mover.c and items.c)
 extern void PushMoversOutOfCell(int x, int y, int z);
@@ -327,6 +339,16 @@ bool CanPlaceRamp(int x, int y, int z, CellType rampType) {
     }
     
     return true;
+}
+
+CellType AutoDetectRampDirection(int x, int y, int z) {
+    // Try each direction in priority order: N → E → S → W
+    // Returns the first valid direction, or CELL_AIR if none valid
+    if (CanPlaceRamp(x, y, z, CELL_RAMP_N)) return CELL_RAMP_N;
+    if (CanPlaceRamp(x, y, z, CELL_RAMP_E)) return CELL_RAMP_E;
+    if (CanPlaceRamp(x, y, z, CELL_RAMP_S)) return CELL_RAMP_S;
+    if (CanPlaceRamp(x, y, z, CELL_RAMP_W)) return CELL_RAMP_W;
+    return CELL_AIR;  // No valid direction
 }
 
 void PlaceRamp(int x, int y, int z, CellType rampType) {

@@ -123,16 +123,24 @@ static void ExecuteBuildLadder(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
-// Selected ramp direction (default north) - extern in input_mode.h
-CellType selectedRampDirection = CELL_RAMP_N;
+// Selected ramp direction - can be set manually or CELL_AIR for auto-detect
+// When CELL_AIR, direction is auto-detected based on terrain at placement time
+CellType selectedRampDirection = CELL_AIR;  // Default to auto-detect
 
 static void ExecuteBuildRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CanPlaceRamp(dx, dy, z, selectedRampDirection)) {
-                PlaceRamp(dx, dy, z, selectedRampDirection);
+            CellType rampDir = selectedRampDirection;
+            
+            // Auto-detect direction if not manually selected
+            if (rampDir == CELL_AIR) {
+                rampDir = AutoDetectRampDirection(dx, dy, z);
+            }
+            
+            if (rampDir != CELL_AIR && CanPlaceRamp(dx, dy, z, rampDir)) {
+                PlaceRamp(dx, dy, z, rampDir);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 count++;
             } else {
@@ -140,16 +148,8 @@ static void ExecuteBuildRamp(int x1, int y1, int x2, int y2, int z) {
             }
         }
     }
-    const char* dirName = "";
-    switch (selectedRampDirection) {
-        case CELL_RAMP_N: dirName = "north"; break;
-        case CELL_RAMP_E: dirName = "east"; break;
-        case CELL_RAMP_S: dirName = "south"; break;
-        case CELL_RAMP_W: dirName = "west"; break;
-        default: break;
-    }
     if (count > 0) {
-        AddMessage(TextFormat("Placed %d %s ramp%s", count, dirName, count > 1 ? "s" : ""), GREEN);
+        AddMessage(TextFormat("Placed %d ramp%s", count, count > 1 ? "s" : ""), GREEN);
     }
     if (skipped > 0) {
         AddMessage(TextFormat("Skipped %d cell%s (invalid)", skipped, skipped > 1 ? "s" : ""), ORANGE);
@@ -1016,25 +1016,31 @@ void HandleInput(void) {
     
     // ========================================================================
     // Ramp direction selection (when ramp action is selected)
+    // Arrow keys override auto-detect, 'A' resets to auto-detect
     // ========================================================================
     
     if (inputAction == ACTION_DRAW_RAMP) {
-        // Arrow keys or HJKL to select direction
+        // Arrow keys or HJKL to manually select direction
         if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_K)) {
             selectedRampDirection = CELL_RAMP_N;
-            AddMessage("Ramp direction: North", WHITE);
+            AddMessage("Ramp direction: North (manual)", WHITE);
         }
         if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_L)) {
             selectedRampDirection = CELL_RAMP_E;
-            AddMessage("Ramp direction: East", WHITE);
+            AddMessage("Ramp direction: East (manual)", WHITE);
         }
         if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_J)) {
             selectedRampDirection = CELL_RAMP_S;
-            AddMessage("Ramp direction: South", WHITE);
+            AddMessage("Ramp direction: South (manual)", WHITE);
         }
         if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_H)) {
             selectedRampDirection = CELL_RAMP_W;
-            AddMessage("Ramp direction: West", WHITE);
+            AddMessage("Ramp direction: West (manual)", WHITE);
+        }
+        // 'A' to reset to auto-detect
+        if (IsKeyPressed(KEY_A)) {
+            selectedRampDirection = CELL_AIR;
+            AddMessage("Ramp direction: Auto-detect", WHITE);
         }
     }
 

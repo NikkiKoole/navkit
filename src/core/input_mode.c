@@ -301,11 +301,11 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             break;
         case ACTION_DRAW_RAMP:
+            n = AddItem(items, n, "Auto", KEY_A, -1, false, false, selectedRampDirection == CELL_AIR);
             n = AddItem(items, n, "N", KEY_UP, -1, false, false, selectedRampDirection == CELL_RAMP_N);
             n = AddItem(items, n, "E", KEY_RIGHT, -1, false, false, selectedRampDirection == CELL_RAMP_E);
             n = AddItem(items, n, "S", KEY_DOWN, -1, false, false, selectedRampDirection == CELL_RAMP_S);
             n = AddItem(items, n, "W", KEY_LEFT, -1, false, false, selectedRampDirection == CELL_RAMP_W);
-            n = AddItem(items, n, "Arrows/HJKL", 0, -1, false, true, false);
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;

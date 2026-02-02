@@ -825,8 +825,21 @@ void UpdateMovers(void) {
             
             // If it's a non-blocking cell (like air) without workshop flag, try to fall
             if (!CellBlocksMovement(currentCell) && !isWorkshopBlock) {
-                TryFallToGround(m, currentX, currentY);
-                continue;
+                // Check if there's a ramp below we can descend to
+                bool isRampExit = (currentZ > 0) && HasRampPointingTo(currentX, currentY, currentZ - 1);
+                bool isAboveRamp = (currentZ > 0) && CellIsDirectionalRamp(grid[currentZ - 1][currentY][currentX]);
+                
+                if (isAboveRamp) {
+                    // Descend onto the ramp - NOT a fall, just z-transition
+                    m->z = (float)(currentZ - 1);
+                    m->needsRepath = true;
+                    // Don't continue - let them move on the ramp
+                } else if (!isRampExit) {
+                    // Actual fall
+                    TryFallToGround(m, currentX, currentY);
+                    continue;
+                }
+                // If isRampExit, they're on a valid platform, continue normally
             }
             
             // Check if this is a ramp z-transition: mover is at the exit cell (wall at z)
@@ -837,8 +850,7 @@ void UpdateMovers(void) {
                 FindRampPointingTo(currentX, currentY, currentZ, &rampX, &rampY)) {
                 // Found a ramp pointing to us - transition to z+1
                 m->z = (float)(currentZ + 1);
-                TraceLog(LOG_INFO, "Ramp auto-transition: mover %d at (%d,%d) wall, moved to z%d via ramp at (%d,%d)",
-                         i, currentX, currentY, currentZ + 1, rampX, rampY);
+
                 handledByRamp = true;
             }
             
@@ -956,8 +968,6 @@ void UpdateMovers(void) {
                         if ((currentX == rampX && currentY == rampY) ||
                             (currentX == target.x && currentY == target.y)) {
                             isRampTransition = true;
-                            TraceLog(LOG_INFO, "Ramp Z-transition: mover at (%d,%d) using ramp at (%d,%d) to reach z%d",
-                                     currentX, currentY, rampX, rampY, target.z);
                         }
                     }
                 } else {
@@ -1030,12 +1040,6 @@ void UpdateMovers(void) {
                 // Check walkability - for z transitions, also accept ladder/ramp cells
                 bool canMove = IsCellWalkableAt(mz, newCellY, newCellX);
                 
-                // Debug logging for ramp transitions
-                if (targetIsZTransition && target.z > mz && !canMove) {
-                    TraceLog(LOG_INFO, "Z-trans check: cur=(%d,%d) new=(%d,%d) mz=%d target=(%d,%d,z%d) canMove=%d",
-                             currentX, currentY, newCellX, newCellY, mz, target.x, target.y, target.z, canMove);
-                }
-                
                 if (!canMove && targetIsZTransition) {
                     // Moving toward a z-transition cell - check if movement should be allowed
                     
@@ -1070,8 +1074,12 @@ void UpdateMovers(void) {
                         }
                     }
                     // Going DOWN onto a ramp
-                    else if (CellIsDirectionalRamp(grid[target.z][newCellY][newCellX])) {
-                        canMove = true;
+                    else if (target.z < mz) {
+                        bool rampAtTarget = CellIsDirectionalRamp(grid[target.z][newCellY][newCellX]);
+                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
+                        if (rampAtTarget || rampBelow) {
+                            canMove = true;
+                        }
                     }
                 }
                 
@@ -1079,13 +1087,29 @@ void UpdateMovers(void) {
                     // Normal movement
                     m->x = newX;
                     m->y = newY;
+                    // If we're descending onto a ramp, also transition z
+                    if (targetIsZTransition && target.z < mz) {
+                        bool rampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
+                        if (rampBelow) {
+                            m->z = (float)(mz - 1);
+                        }
+                    }
                 } else if (!CellBlocksMovement(grid[mz][newCellY][newCellX]) && 
                            !IsCellWalkableAt(mz, newCellY, newCellX)) {
                     // Moving into non-blocking, non-walkable cell (e.g., air without solid below)
-                    // Allow it, then fall to find ground
+                    // Check if there's a ramp below - if so, this is a ramp descent, not a fall
+                    bool hasRampBelow = (mz > 0) && CellIsDirectionalRamp(grid[mz-1][newCellY][newCellX]);
                     m->x = newX;
                     m->y = newY;
-                    TryFallToGround(m, newCellX, newCellY);
+                    if (hasRampBelow) {
+                        // Ramp descent - transition to ramp z-level without fall penalty
+                        m->z = (float)(mz - 1);
+                        m->needsRepath = true;
+                    } else {
+                        // Actual fall - find ground
+                        TraceLog(LOG_INFO, "FALL-B: mover at (%d,%d,z%d) newCell=(%d,%d)", currentX, currentY, mz, newCellX, newCellY);
+                        TryFallToGround(m, newCellX, newCellY);
+                    }
                 } else {
                     // Wall or out of bounds - try sliding
                     int xOnlyCellY = (int)(m->y / CELL_SIZE);
