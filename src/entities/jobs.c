@@ -77,6 +77,116 @@ void RebuildMineDesignationCache(void) {
     }
 }
 
+// =============================================================================
+// Channel Designation Cache - built once per frame
+// =============================================================================
+#define MAX_CHANNEL_CACHE 4096
+
+typedef struct {
+    int x, y, z;       // Designation coordinates (mover stands ON this tile)
+} ChannelDesignationEntry;
+
+static ChannelDesignationEntry channelCache[MAX_CHANNEL_CACHE];
+static int channelCacheCount = 0;
+
+void RebuildChannelDesignationCache(void) {
+    channelCacheCount = 0;
+    
+    if (activeDesignationCount == 0) return;
+    
+    for (int z = 0; z < gridDepth && channelCacheCount < MAX_CHANNEL_CACHE; z++) {
+        for (int y = 0; y < gridHeight && channelCacheCount < MAX_CHANNEL_CACHE; y++) {
+            for (int x = 0; x < gridWidth && channelCacheCount < MAX_CHANNEL_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != DESIGNATION_CHANNEL) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                channelCache[channelCacheCount++] = (ChannelDesignationEntry){x, y, z};
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Remove Floor Designation Cache - built once per frame
+// =============================================================================
+#define MAX_REMOVE_FLOOR_CACHE 4096
+
+typedef struct {
+    int x, y, z;       // Designation coordinates (mover stands ON this tile)
+} RemoveFloorDesignationEntry;
+
+static RemoveFloorDesignationEntry removeFloorCache[MAX_REMOVE_FLOOR_CACHE];
+static int removeFloorCacheCount = 0;
+
+void RebuildRemoveFloorDesignationCache(void) {
+    removeFloorCacheCount = 0;
+    
+    if (activeDesignationCount == 0) return;
+    
+    for (int z = 0; z < gridDepth && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; z++) {
+        for (int y = 0; y < gridHeight && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; y++) {
+            for (int x = 0; x < gridWidth && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != DESIGNATION_REMOVE_FLOOR) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                removeFloorCache[removeFloorCacheCount++] = (RemoveFloorDesignationEntry){x, y, z};
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Remove Ramp Designation Cache - built once per frame
+// =============================================================================
+#define MAX_REMOVE_RAMP_CACHE 4096
+
+typedef struct {
+    int x, y, z;       // Designation coordinates
+    int adjX, adjY;    // Adjacent walkable tile (for mover to stand on)
+} RemoveRampDesignationEntry;
+
+static RemoveRampDesignationEntry removeRampCache[MAX_REMOVE_RAMP_CACHE];
+static int removeRampCacheCount = 0;
+
+void RebuildRemoveRampDesignationCache(void) {
+    removeRampCacheCount = 0;
+    
+    if (activeDesignationCount == 0) return;
+    
+    for (int z = 0; z < gridDepth && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; z++) {
+        for (int y = 0; y < gridHeight && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; y++) {
+            for (int x = 0; x < gridWidth && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != DESIGNATION_REMOVE_RAMP) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                // Find adjacent walkable tile
+                int adjX = -1, adjY = -1;
+                for (int dir = 0; dir < 4; dir++) {
+                    int ax = x + DIR_DX[dir];
+                    int ay = y + DIR_DY[dir];
+                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                        if (IsCellWalkableAt(z, ay, ax)) {
+                            adjX = ax;
+                            adjY = ay;
+                            break;
+                        }
+                    }
+                }
+                
+                if (adjX < 0) continue;  // No adjacent walkable tile
+                
+                removeRampCache[removeRampCacheCount++] = (RemoveRampDesignationEntry){x, y, z, adjX, adjY};
+            }
+        }
+    }
+}
+
 // Find first adjacent tile that is both walkable and reachable from moverCell.
 // Returns true if found, storing result in outX/outY.
 static bool FindReachableAdjacentTile(int targetX, int targetY, int targetZ, 
@@ -1913,18 +2023,16 @@ void AssignJobsHybrid(void) {
     // Skip entirely if no sparse targets exist (performance optimization)
     // =========================================================================
     if (idleMoverCount > 0) {
-        // Build mine designation cache ONCE (replaces grid scan per mover)
+        // Build designation caches ONCE (replaces grid scan per mover)
         RebuildMineDesignationCache();
+        RebuildChannelDesignationCache();
+        RebuildRemoveFloorDesignationCache();
+        RebuildRemoveRampDesignationCache();
+        
         bool hasMineWork = (mineCacheCount > 0);
-        
-        // Quick check: any channel designations?
-        bool hasChannelWork = (CountChannelDesignations() > 0);
-        
-        // Quick check: any remove floor designations?
-        bool hasRemoveFloorWork = (CountRemoveFloorDesignations() > 0);
-        
-        // Quick check: any remove ramp designations?
-        bool hasRemoveRampWork = (CountRemoveRampDesignations() > 0);
+        bool hasChannelWork = (channelCacheCount > 0);
+        bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
+        bool hasRemoveRampWork = (removeRampCacheCount > 0);
         
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -3078,39 +3186,33 @@ int WorkGiver_Channel(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find nearest unassigned channel designation
-    // Unlike mining, channeling doesn't need a pre-built cache since it's typically sparse
+    // Find nearest unassigned channel designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDistSq = 1e30f;
     
-    // Early exit if no designations
-    if (activeDesignationCount == 0) return -1;
-    
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_CHANNEL) continue;
-                if (d->assignedMover != -1) continue;  // Already assigned
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Same z-level only for now (mover walks to the tile)
-                if (z != moverZ) continue;
-                
-                // Distance to the tile itself (mover stands on it)
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestDesigX = x;
-                    bestDesigY = y;
-                    bestDesigZ = z;
-                }
-            }
+    for (int i = 0; i < channelCacheCount; i++) {
+        ChannelDesignationEntry* entry = &channelCache[i];
+        
+        // Same z-level only for now (mover walks to the tile)
+        if (entry->z != moverZ) continue;
+        
+        // Check if still unassigned and not marked unreachable this frame
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+        
+        // Distance to the tile itself (mover stands on it)
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
         }
     }
     
@@ -3166,38 +3268,33 @@ int WorkGiver_RemoveFloor(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find nearest unassigned remove floor designation
+    // Find nearest unassigned remove floor designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDistSq = 1e30f;
     
-    // Early exit if no designations
-    if (activeDesignationCount == 0) return -1;
-    
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_REMOVE_FLOOR) continue;
-                if (d->assignedMover != -1) continue;  // Already assigned
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Same z-level only for now (mover walks to the tile)
-                if (z != moverZ) continue;
-                
-                // Distance to the tile itself (mover stands on it)
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestDesigX = x;
-                    bestDesigY = y;
-                    bestDesigZ = z;
-                }
-            }
+    for (int i = 0; i < removeFloorCacheCount; i++) {
+        RemoveFloorDesignationEntry* entry = &removeFloorCache[i];
+        
+        // Same z-level only for now (mover walks to the tile)
+        if (entry->z != moverZ) continue;
+        
+        // Check if still unassigned and not marked unreachable this frame
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+        
+        // Distance to the tile itself (mover stands on it)
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
         }
     }
     
@@ -3253,57 +3350,36 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find nearest unassigned remove ramp designation
+    // Find nearest unassigned remove ramp designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
     
-    // Early exit if no designations
-    if (activeDesignationCount == 0) return -1;
-    
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_REMOVE_RAMP) continue;
-                if (d->assignedMover != -1) continue;  // Already assigned
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Same z-level only for now
-                if (z != moverZ) continue;
-                
-                // Find adjacent walkable tile (mover stands adjacent to ramp)
-                int adjX = -1, adjY = -1;
-                for (int dir = 0; dir < 4; dir++) {
-                    int ax = x + DIR_DX[dir];
-                    int ay = y + DIR_DY[dir];
-                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                        if (IsCellWalkableAt(z, ay, ax)) {
-                            adjX = ax;
-                            adjY = ay;
-                            break;
-                        }
-                    }
-                }
-                
-                if (adjX < 0) continue;  // No adjacent walkable tile
-                
-                // Distance to adjacent tile
-                float tileX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                float dx = tileX - m->x;
-                float dy = tileY - m->y;
-                float distSq = dx * dx + dy * dy;
-                
-                if (distSq < bestDistSq) {
-                    bestDistSq = distSq;
-                    bestDesigX = x;
-                    bestDesigY = y;
-                    bestDesigZ = z;
-                    bestAdjX = adjX;
-                    bestAdjY = adjY;
-                }
-            }
+    for (int i = 0; i < removeRampCacheCount; i++) {
+        RemoveRampDesignationEntry* entry = &removeRampCache[i];
+        
+        // Same z-level only for now
+        if (entry->z != moverZ) continue;
+        
+        // Check if still unassigned and not marked unreachable this frame
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+        
+        // Distance to adjacent tile (pre-computed in cache)
+        float tileX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = tileX - m->x;
+        float dy = tileY - m->y;
+        float distSq = dx * dx + dy * dy;
+        
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
         }
     }
     
