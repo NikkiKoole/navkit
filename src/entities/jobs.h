@@ -12,7 +12,7 @@ typedef enum {
     JOBTYPE_NONE,
     JOBTYPE_HAUL,              // Pick up item, deliver to stockpile
     JOBTYPE_CLEAR,             // Pick up item, drop outside stockpile (safe-drop)
-    JOBTYPE_DIG,               // Mine a wall
+    JOBTYPE_MINE,              // Mine a wall
     JOBTYPE_HAUL_TO_BLUEPRINT, // Pick up item, deliver to blueprint
     JOBTYPE_BUILD,             // Construct at blueprint
     JOBTYPE_CRAFT,             // Fetch materials, craft at workshop
@@ -42,10 +42,10 @@ typedef struct {
     int targetStockpile;    // Destination stockpile
     int targetSlotX;        // Stockpile slot coordinates
     int targetSlotY;
-    int targetDigX;         // Dig designation coordinates
-    int targetDigY;
-    int targetDigZ;
-    int targetAdjX;         // Adjacent tile to stand on while digging (cached)
+    int targetMineX;        // Mine designation coordinates
+    int targetMineY;
+    int targetMineZ;
+    int targetAdjX;         // Adjacent tile to stand on while mining (cached)
     int targetAdjY;
     int targetBlueprint;    // Blueprint index
     
@@ -103,7 +103,7 @@ typedef JobRunResult (*JobDriver)(Job* job, void* mover, float dt);
 // Implementation in jobs.c casts to Mover*
 JobRunResult RunJob_Haul(Job* job, void* mover, float dt);
 JobRunResult RunJob_Clear(Job* job, void* mover, float dt);
-JobRunResult RunJob_Dig(Job* job, void* mover, float dt);
+JobRunResult RunJob_Mine(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
@@ -129,7 +129,7 @@ void AssignJobs(void);           // Match idle movers with available items (curr
 void AssignJobsLegacy(void);     // Item-centric with inline optimizations (fast)
 void AssignJobsWorkGivers(void); // Mover-centric using WorkGivers (slower, for comparison)
 void AssignJobsHybrid(void);     // Hybrid: item-centric for hauling, mover-centric for sparse jobs
-void RebuildDigDesignationCache(void);  // Build cache for WorkGiver_Mining (call before mining assignment)
+void RebuildMineDesignationCache(void);  // Build cache for WorkGiver_Mining (call before mining assignment)
 void JobsTick(void);             // Update job state machines using per-type drivers
 
 // =============================================================================
@@ -143,7 +143,7 @@ void JobsTick(void);             // Update job state machines using per-type dri
 //   1. StockpileMaintenance - absorb/clear ground items on stockpile tiles
 //   2. Haul - ground items to stockpiles
 //   3. Rehaul - transfer from overfull/low-priority stockpiles
-//   4. Mining - dig designations
+//   4. Mining - mine designations
 //   5. BlueprintHaul - materials to blueprints
 //   6. Build - construct at blueprints
 int WorkGiver_StockpileMaintenance(int moverIdx);

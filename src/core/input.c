@@ -246,7 +246,7 @@ static void ExecuteDesignateMine(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (DesignateDig(dx, dy, z)) count++;
+            if (DesignateMine(dx, dy, z)) count++;
         }
     }
     if (count > 0) {
@@ -258,7 +258,7 @@ static void ExecuteCancelMine(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (HasDigDesignation(dx, dy, z)) {
+            if (HasMineDesignation(dx, dy, z)) {
                 CancelDesignation(dx, dy, z);
                 count++;
             }
@@ -684,7 +684,7 @@ void HandleInput(void) {
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
         hoveredItemCount = GetItemsAtCell((int)mouseGrid.x, (int)mouseGrid.y, z, hoveredItemCell, 16);
         // Check for designation hover
-        if (HasDigDesignation((int)mouseGrid.x, (int)mouseGrid.y, z)) {
+        if (HasMineDesignation((int)mouseGrid.x, (int)mouseGrid.y, z)) {
             hoveredDesignationX = (int)mouseGrid.x;
             hoveredDesignationY = (int)mouseGrid.y;
             hoveredDesignationZ = z;
@@ -954,7 +954,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
                 break;
             case MODE_WORK:
-                if (CheckKey(KEY_D)) { inputAction = ACTION_WORK_MINE; }
+                if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
                 if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 break;
@@ -988,7 +988,7 @@ void HandleInput(void) {
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         // Work actions
-        case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_D); break;
+        case ACTION_WORK_MINE:      backOneLevel = CheckKey(KEY_M); break;
         case ACTION_WORK_CONSTRUCT: backOneLevel = CheckKey(KEY_C); break;
         case ACTION_WORK_GATHER:    backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions

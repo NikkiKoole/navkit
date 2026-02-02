@@ -28,30 +28,30 @@ static const int DIR_DX[4] = {0, 1, 0, -1};
 static const int DIR_DY[4] = {-1, 0, 1, 0};
 
 // =============================================================================
-// Dig Designation Cache - built once per frame, used by mining job assignment
+// Mine Designation Cache - built once per frame, used by mining job assignment
 // =============================================================================
-#define MAX_DIG_CACHE 4096
+#define MAX_MINE_CACHE 4096
 
 typedef struct {
     int x, y, z;       // Designation coordinates
     int adjX, adjY;    // Adjacent walkable tile (for miner to stand on)
-} DigDesignationEntry;
+} MineDesignationEntry;
 
-static DigDesignationEntry digCache[MAX_DIG_CACHE];
-static int digCacheCount = 0;
+static MineDesignationEntry mineCache[MAX_MINE_CACHE];
+static int mineCacheCount = 0;
 
-// Build the dig designation cache - call once per frame before mining assignment
-void RebuildDigDesignationCache(void) {
-    digCacheCount = 0;
+// Build the mine designation cache - call once per frame before mining assignment
+void RebuildMineDesignationCache(void) {
+    mineCacheCount = 0;
     
     // Early exit if no designations
     if (activeDesignationCount == 0) return;
     
-    for (int z = 0; z < gridDepth && digCacheCount < MAX_DIG_CACHE; z++) {
-        for (int y = 0; y < gridHeight && digCacheCount < MAX_DIG_CACHE; y++) {
-            for (int x = 0; x < gridWidth && digCacheCount < MAX_DIG_CACHE; x++) {
+    for (int z = 0; z < gridDepth && mineCacheCount < MAX_MINE_CACHE; z++) {
+        for (int y = 0; y < gridHeight && mineCacheCount < MAX_MINE_CACHE; y++) {
+            for (int x = 0; x < gridWidth && mineCacheCount < MAX_MINE_CACHE; x++) {
                 Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_DIG) continue;
+                if (!d || d->type != DESIGNATION_MINE) continue;
                 if (d->assignedMover != -1) continue;  // Already assigned
                 if (d->unreachableCooldown > 0.0f) continue;
                 
@@ -71,7 +71,7 @@ void RebuildDigDesignationCache(void) {
                 
                 if (adjX < 0) continue;  // No adjacent walkable tile
                 
-                digCache[digCacheCount++] = (DigDesignationEntry){x, y, z, adjX, adjY};
+                mineCache[mineCacheCount++] = (MineDesignationEntry){x, y, z, adjX, adjY};
             }
         }
     }
@@ -139,9 +139,9 @@ void InitJobPool(void) {
         jobs[i].targetStockpile = -1;
         jobs[i].targetSlotX = -1;
         jobs[i].targetSlotY = -1;
-        jobs[i].targetDigX = -1;
-        jobs[i].targetDigY = -1;
-        jobs[i].targetDigZ = -1;
+        jobs[i].targetMineX = -1;
+        jobs[i].targetMineY = -1;
+        jobs[i].targetMineZ = -1;
         jobs[i].targetBlueprint = -1;
         jobs[i].carryingItem = -1;
     }
@@ -178,9 +178,9 @@ void ClearJobs(void) {
         jobs[i].targetStockpile = -1;
         jobs[i].targetSlotX = -1;
         jobs[i].targetSlotY = -1;
-        jobs[i].targetDigX = -1;
-        jobs[i].targetDigY = -1;
-        jobs[i].targetDigZ = -1;
+        jobs[i].targetMineX = -1;
+        jobs[i].targetMineY = -1;
+        jobs[i].targetMineZ = -1;
         jobs[i].targetBlueprint = -1;
         jobs[i].progress = 0.0f;
         jobs[i].carryingItem = -1;
@@ -224,9 +224,9 @@ int CreateJob(JobType type) {
     job->targetStockpile = -1;
     job->targetSlotX = -1;
     job->targetSlotY = -1;
-    job->targetDigX = -1;
-    job->targetDigY = -1;
-    job->targetDigZ = -1;
+    job->targetMineX = -1;
+    job->targetMineY = -1;
+    job->targetMineZ = -1;
     job->targetBlueprint = -1;
     job->progress = 0.0f;
     job->carryingItem = -1;
@@ -566,20 +566,20 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
-// Dig job driver: move to adjacent tile -> dig wall
-JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
+// Mine job driver: move to adjacent tile -> mine wall
+JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
     (void)job->assignedMover;  // Currently unused but available if needed
     
     // Check if designation still exists
-    Designation* d = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
-    if (!d || d->type != DESIGNATION_DIG) {
+    Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+    if (!d || d->type != DESIGNATION_MINE) {
         return JOBRUN_FAIL;
     }
     
-    // Check if the wall was already dug
-    if (grid[job->targetDigZ][job->targetDigY][job->targetDigX] != CELL_WALL) {
-        CancelDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
+    // Check if the wall was already mined
+    if (grid[job->targetMineZ][job->targetMineY][job->targetMineX] != CELL_WALL) {
+        CancelDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return JOBRUN_FAIL;
     }
     
@@ -589,8 +589,8 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
         int adjY = job->targetAdjY;
         
         // Set goal if not already moving there
-        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != job->targetDigZ) {
-            mover->goal = (Point){adjX, adjY, job->targetDigZ};
+        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != job->targetMineZ) {
+            mover->goal = (Point){adjX, adjY, job->targetMineZ};
             mover->needsRepath = true;
         }
         
@@ -601,11 +601,11 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
         float dy = mover->y - goalY;
         float distSq = dx*dx + dy*dy;
         
-        bool correctZ = (int)mover->z == job->targetDigZ;
+        bool correctZ = (int)mover->z == job->targetMineZ;
         
         // Check if stuck
         if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            Designation* desig = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
+            Designation* desig = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
             if (desig) desig->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -617,13 +617,13 @@ JobRunResult RunJob_Dig(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
     else if (job->step == STEP_WORKING) {
-        // Progress digging
-        job->progress += dt / DIG_WORK_TIME;
+        // Progress mining
+        job->progress += dt / MINE_WORK_TIME;
         d->progress = job->progress;
         
         if (job->progress >= 1.0f) {
-            // Dig complete!
-            CompleteDigDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
+            // Mining complete!
+            CompleteMineDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
             return JOBRUN_DONE;
         }
         
@@ -988,7 +988,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
     [JOBTYPE_HAUL] = RunJob_Haul,
     [JOBTYPE_CLEAR] = RunJob_Clear,
-    [JOBTYPE_DIG] = RunJob_Dig,
+    [JOBTYPE_MINE] = RunJob_Mine,
     [JOBTYPE_HAUL_TO_BLUEPRINT] = RunJob_HaulToBlueprint,
     [JOBTYPE_BUILD] = RunJob_Build,
     [JOBTYPE_CRAFT] = RunJob_Craft,
@@ -1181,9 +1181,9 @@ static void CancelJob(Mover* m, int moverIdx) {
             item->reservedBy = -1;
         }
         
-        // Release dig designation reservation
-        if (job->targetDigX >= 0 && job->targetDigY >= 0 && job->targetDigZ >= 0) {
-            Designation* d = GetDesignation(job->targetDigX, job->targetDigY, job->targetDigZ);
+        // Release mine designation reservation
+        if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
+            Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
             if (d && d->assignedMover == moverIdx) {
                 d->assignedMover = -1;
                 d->progress = 0.0f;  // Reset progress when cancelled
@@ -1372,7 +1372,7 @@ void AssignJobsWorkGivers(void) {
         // Priority 3: Rehaul (overfull/low-priority transfers)
         if (jobId < 0) jobId = WorkGiver_Rehaul(moverIdx);
         
-        // Priority 4: Mining (dig designations)
+        // Priority 4: Mining (mine designations)
         if (jobId < 0) jobId = WorkGiver_Mining(moverIdx);
         
         // Priority 5: Crafting (workshops with runnable bills)
@@ -1665,9 +1665,9 @@ void AssignJobsHybrid(void) {
     // Skip entirely if no sparse targets exist (performance optimization)
     // =========================================================================
     if (idleMoverCount > 0) {
-        // Build dig designation cache ONCE (replaces grid scan per mover)
-        RebuildDigDesignationCache();
-        bool hasDigWork = (digCacheCount > 0);
+        // Build mine designation cache ONCE (replaces grid scan per mover)
+        RebuildMineDesignationCache();
+        bool hasMineWork = (mineCacheCount > 0);
         
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -1682,7 +1682,7 @@ void AssignJobsHybrid(void) {
         }
         
         // Only iterate movers if there's sparse work to do
-        if (hasDigWork || hasBlueprintWork) {
+        if (hasMineWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -1697,7 +1697,7 @@ void AssignJobsHybrid(void) {
                 
                 // Try sparse-target WorkGivers only (skip hauling WorkGivers)
                 int jobId = -1;
-                if (hasDigWork) {
+                if (hasMineWork) {
                     jobId = WorkGiver_Mining(moverIdx);
                 }
                 
@@ -1970,17 +1970,17 @@ void AssignJobsLegacy(void) {
     PROFILE_ACCUM_END(Jobs_FindRehaulItem);
     
     // PRIORITY 4: Mining designations
-    PROFILE_ACCUM_BEGIN(Jobs_FindDigJob);
+    PROFILE_ACCUM_BEGIN(Jobs_FindMineJob);
     if (idleMoverCount > 0) {
-        // Find unassigned dig designations
+        // Find unassigned mine designations
         for (int z = 0; z < gridDepth && idleMoverCount > 0; z++) {
             for (int y = 0; y < gridHeight && idleMoverCount > 0; y++) {
                 for (int x = 0; x < gridWidth && idleMoverCount > 0; x++) {
                     Designation* d = GetDesignation(x, y, z);
-                    if (!d || d->type != DESIGNATION_DIG || d->assignedMover != -1) continue;
+                    if (!d || d->type != DESIGNATION_MINE || d->assignedMover != -1) continue;
                     if (d->unreachableCooldown > 0.0f) continue;  // Skip if on cooldown
                     
-                    // Find an adjacent walkable tile to stand on while digging
+                    // Find an adjacent walkable tile to stand on while mining
                     // Check 4 cardinal directions (miner stands adjacent to wall)
                     int adjX = -1, adjY = -1;
                     int dx4[] = {0, 1, 0, -1};
@@ -2000,8 +2000,8 @@ void AssignJobsLegacy(void) {
                     if (adjX < 0) continue;  // No adjacent walkable tile
                     
                     // Find nearest idle mover with canMine capability
-                    float digPosX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float digPosY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float minePosX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float minePosY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
                     
                     int moverIdx = -1;
                     float bestDistSq = 1e30f;
@@ -2010,8 +2010,8 @@ void AssignJobsLegacy(void) {
                         int idx = idleMoverList[i];
                         if ((int)movers[idx].z != z) continue;  // Same z-level only for now
                         if (!movers[idx].capabilities.canMine) continue;  // Check mining capability
-                        float mdx = movers[idx].x - digPosX;
-                        float mdy = movers[idx].y - digPosY;
+                        float mdx = movers[idx].x - minePosX;
+                        float mdy = movers[idx].y - minePosY;
                         float distSq = mdx * mdx + mdy * mdy;
                         if (distSq < bestDistSq) {
                             bestDistSq = distSq;
@@ -2037,13 +2037,13 @@ void AssignJobsLegacy(void) {
                     }
                     
                     // Create Job entry
-                    int jobId = CreateJob(JOBTYPE_DIG);
+                    int jobId = CreateJob(JOBTYPE_MINE);
                     if (jobId >= 0) {
                         Job* job = GetJob(jobId);
                         job->assignedMover = moverIdx;
-                        job->targetDigX = x;
-                        job->targetDigY = y;
-                        job->targetDigZ = z;
+                        job->targetMineX = x;
+                        job->targetMineY = y;
+                        job->targetMineZ = z;
                         job->targetAdjX = adjX;  // Cache adjacent tile
                         job->targetAdjY = adjY;
                         job->step = 0;  // STEP_MOVING_TO_WORK
@@ -2051,7 +2051,7 @@ void AssignJobsLegacy(void) {
                         m->currentJobId = jobId;
                     }
                     
-                    // Assign dig job
+                    // Assign mine job
                     d->assignedMover = moverIdx;
                     m->goal = adjCell;
                     m->needsRepath = true;
@@ -2061,7 +2061,7 @@ void AssignJobsLegacy(void) {
             }
         }
     }
-    PROFILE_ACCUM_END(Jobs_FindDigJob);
+    PROFILE_ACCUM_END(Jobs_FindMineJob);
     
     // PRIORITY 5: Haul materials to blueprints
     PROFILE_ACCUM_BEGIN(Jobs_FindBlueprintHaulJob);
@@ -2716,7 +2716,7 @@ int WorkGiver_Rehaul(int moverIdx) {
     return jobId;
 }
 
-// WorkGiver_Mining: Find a dig designation to work on
+// WorkGiver_Mining: Find a mine designation to work on
 // Returns job ID if successful, -1 if no job available
 int WorkGiver_Mining(int moverIdx) {
     Mover* m = &movers[moverIdx];
@@ -2726,13 +2726,13 @@ int WorkGiver_Mining(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // Find nearest unassigned dig designation from the pre-built cache
+    // Find nearest unassigned mine designation from the pre-built cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
     
-    for (int i = 0; i < digCacheCount; i++) {
-        DigDesignationEntry* entry = &digCache[i];
+    for (int i = 0; i < mineCacheCount; i++) {
+        MineDesignationEntry* entry = &mineCache[i];
         
         // Only same z-level for now
         if (entry->z != moverZ) continue;
@@ -2742,10 +2742,10 @@ int WorkGiver_Mining(int moverIdx) {
         if (!d || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
         
-        float digPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float digPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = digPosX - m->x;
-        float dy = digPosY - m->y;
+        float minePosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float minePosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = minePosX - m->x;
+        float dy = minePosY - m->y;
         float distSq = dx * dx + dy * dy;
         
         if (distSq < bestDistSq) {
@@ -2769,14 +2769,14 @@ int WorkGiver_Mining(int moverIdx) {
     }
     
     // Create job
-    int jobId = CreateJob(JOBTYPE_DIG);
+    int jobId = CreateJob(JOBTYPE_MINE);
     if (jobId < 0) return -1;
     
     Job* job = GetJob(jobId);
     job->assignedMover = moverIdx;
-    job->targetDigX = bestDesigX;
-    job->targetDigY = bestDesigY;
-    job->targetDigZ = bestDesigZ;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;  // Cache adjacent tile
     job->targetAdjY = bestAdjY;
     job->step = 0;  // STEP_MOVING_TO_WORK

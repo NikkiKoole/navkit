@@ -45,6 +45,10 @@ $(BINDIR):
 $(BINDIR)/%:
 	$(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS)
 
+# Soundsystem demo needs -Wno-unused-function for header-only library functions
+$(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-demo_SRC) $(LDFLAGS)
+
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_pathing_SRC) $(LDFLAGS)

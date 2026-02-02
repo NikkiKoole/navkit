@@ -944,7 +944,7 @@ int main(int argc, char** argv) {
                     DrawBlueprintTooltip(bpIdx, GetMousePosition());
                 }
                 // Check for mining designation at this cell
-                else if (HasDigDesignation(cellX, cellY, currentViewZ)) {
+                else if (HasMineDesignation(cellX, cellY, currentViewZ)) {
                     DrawMiningTooltip(cellX, cellY, currentViewZ, GetMousePosition());
                 }
                 else if (paused) {

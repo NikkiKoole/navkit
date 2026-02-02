@@ -3337,7 +3337,7 @@ describe(df_basics) {
         // Before digging: z=1 is walkable
         expect(IsCellWalkableAt(1, 5, 5) == true);
         
-        // Dig out z=0
+        // Mine out z=0
         grid[0][5][5] = CELL_AIR;
         
         // Now z=1 is NOT walkable (no solid below)

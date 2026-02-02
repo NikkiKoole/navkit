@@ -2474,7 +2474,7 @@ void GenerateCraftingTest(void) {
     // Pre-designate some walls for mining
     for (int y = 2; y <= 4; y++) {
         for (int x = 2; x <= 4; x++) {
-            DesignateDig(x, y, 1);
+            DesignateMine(x, y, 1);
         }
     }
     

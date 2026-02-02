@@ -30,10 +30,10 @@ static bool MoverHasClearJob(Mover* m) {
     return job && job->active && job->type == JOBTYPE_CLEAR;
 }
 
-static bool MoverHasDigJob(Mover* m) {
+static bool MoverHasMineJob(Mover* m) {
     if (m->currentJobId < 0) return false;
     Job* job = GetJob(m->currentJobId);
-    return job && job->active && job->type == JOBTYPE_DIG;
+    return job && job->active && job->type == JOBTYPE_MINE;
 }
 
 static bool MoverHasBuildJob(Mover* m) {
@@ -64,11 +64,11 @@ static bool MoverIsCarrying(Mover* m) {
            && job->step == STEP_CARRYING;
 }
 
-static bool MoverIsDigging(Mover* m) {
+static bool MoverIsMining(Mover* m) {
     if (m->currentJobId < 0) return false;
     Job* job = GetJob(m->currentJobId);
     if (!job || !job->active) return false;
-    return job->type == JOBTYPE_DIG && job->step == STEP_WORKING;
+    return job->type == JOBTYPE_MINE && job->step == STEP_WORKING;
 }
 
 static bool MoverIsBuilding(Mover* m) {
@@ -106,25 +106,25 @@ static int MoverGetTargetBlueprint(Mover* m) {
     return job->targetBlueprint;
 }
 
-static int MoverGetTargetDigX(Mover* m) {
+static int MoverGetTargetMineX(Mover* m) {
     if (m->currentJobId < 0) return -1;
     Job* job = GetJob(m->currentJobId);
     if (!job || !job->active) return -1;
-    return job->targetDigX;
+    return job->targetMineX;
 }
 
-static int MoverGetTargetDigY(Mover* m) {
+static int MoverGetTargetMineY(Mover* m) {
     if (m->currentJobId < 0) return -1;
     Job* job = GetJob(m->currentJobId);
     if (!job || !job->active) return -1;
-    return job->targetDigY;
+    return job->targetMineY;
 }
 
-static int MoverGetTargetDigZ(Mover* m) {
+static int MoverGetTargetMineZ(Mover* m) {
     if (m->currentJobId < 0) return -1;
     Job* job = GetJob(m->currentJobId);
     if (!job || !job->active) return -1;
-    return job->targetDigZ;
+    return job->targetMineZ;
 }
 
 /*
@@ -3440,10 +3440,10 @@ describe(mining_designation) {
         InitDesignations();
         
         // Designate center wall
-        bool result = DesignateDig(2, 2, 0);
+        bool result = DesignateMine(2, 2, 0);
         expect(result == true);
-        expect(HasDigDesignation(2, 2, 0) == true);
-        expect(CountDigDesignations() == 1);
+        expect(HasMineDesignation(2, 2, 0) == true);
+        expect(CountMineDesignations() == 1);
     }
     
     it("should not designate floor for digging") {
@@ -3457,9 +3457,9 @@ describe(mining_designation) {
         InitDesignations();
         
         // Try to designate floor tile
-        bool result = DesignateDig(0, 0, 0);
+        bool result = DesignateMine(0, 0, 0);
         expect(result == false);
-        expect(HasDigDesignation(0, 0, 0) == false);
+        expect(HasMineDesignation(0, 0, 0) == false);
     }
     
     it("should cancel a designation") {
@@ -3472,17 +3472,17 @@ describe(mining_designation) {
         
         InitDesignations();
         
-        DesignateDig(2, 2, 0);
-        expect(HasDigDesignation(2, 2, 0) == true);
+        DesignateMine(2, 2, 0);
+        expect(HasMineDesignation(2, 2, 0) == true);
         
         CancelDesignation(2, 2, 0);
-        expect(HasDigDesignation(2, 2, 0) == false);
-        expect(CountDigDesignations() == 0);
+        expect(HasMineDesignation(2, 2, 0) == false);
+        expect(CountMineDesignations() == 0);
     }
 }
 
 describe(mining_job_assignment) {
-    it("should assign dig job to mover when adjacent floor exists") {
+    it("should assign mine job to mover when adjacent floor exists") {
         // Wall with floor below it
         InitGridFromAsciiWithChunkSize(
             ".....\n"
@@ -3505,16 +3505,16 @@ describe(mining_job_assignment) {
         moverCount = 1;
         
         // Designate wall at (1,1) - has adjacent floor at (0,1) and (1,0)
-        DesignateDig(1, 1, 0);
+        DesignateMine(1, 1, 0);
         
         // Assign jobs
         AssignJobs();
         
-        // Mover should be assigned to dig
-        expect(MoverHasDigJob(m));
-        expect(MoverGetTargetDigX(m) == 1);
-        expect(MoverGetTargetDigY(m) == 1);
-        expect(MoverGetTargetDigZ(m) == 0);
+        // Mover should be assigned to mine
+        expect(MoverHasMineJob(m));
+        expect(MoverGetTargetMineX(m) == 1);
+        expect(MoverGetTargetMineY(m) == 1);
+        expect(MoverGetTargetMineZ(m) == 0);
         
         // Designation should be reserved
         Designation* d = GetDesignation(1, 1, 0);
@@ -3522,7 +3522,7 @@ describe(mining_job_assignment) {
         expect(d->assignedMover == 0);
     }
     
-    it("should not assign dig job when no adjacent floor") {
+    it("should not assign mine job when no adjacent floor") {
         // Completely surrounded wall
         InitGridFromAsciiWithChunkSize(
             "#####\n"
@@ -3548,7 +3548,7 @@ describe(mining_job_assignment) {
         moverCount = 1;
         
         // Designate wall at (2,2) - surrounded by walls, no adjacent floor
-        DesignateDig(2, 2, 0);
+        DesignateMine(2, 2, 0);
         
         // Assign jobs
         AssignJobs();
@@ -3559,7 +3559,7 @@ describe(mining_job_assignment) {
 }
 
 describe(mining_job_execution) {
-    it("should complete dig job and convert wall to floor") {
+    it("should complete mine job and convert wall to floor") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".#...\n"
@@ -3584,16 +3584,16 @@ describe(mining_job_execution) {
         expect(grid[0][1][1] == CELL_WALL);
         
         // Designate wall for digging
-        DesignateDig(1, 1, 0);
+        DesignateMine(1, 1, 0);
         
-        // Run simulation until dig completes
+        // Run simulation until mine completes
         bool completed = false;
         for (int i = 0; i < 500; i++) {
             Tick();
             AssignJobs();
             JobsTick();
             
-            // Check if dig completed (wall became floor)
+            // Check if mine completed (wall became floor)
             if (grid[0][1][1] != CELL_WALL) {
                 completed = true;
                 break;
@@ -3602,11 +3602,11 @@ describe(mining_job_execution) {
         
         expect(completed == true);
         expect(grid[0][1][1] == CELL_FLOOR);
-        expect(HasDigDesignation(1, 1, 0) == false);
+        expect(HasMineDesignation(1, 1, 0) == false);
         expect(MoverIsIdle(m));
     }
     
-    it("should spawn orange block when dig completes") {
+    it("should spawn orange block when mine completes") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".#...\n"
@@ -3630,10 +3630,10 @@ describe(mining_job_execution) {
         // Wall at (1,1)
         expect(grid[0][1][1] == CELL_WALL);
         
-        // Designate wall for digging
-        DesignateDig(1, 1, 0);
+        // Designate wall for mining
+        DesignateMine(1, 1, 0);
         
-        // Run simulation until dig completes
+        // Run simulation until mine completes
         bool completed = false;
         for (int i = 0; i < 500; i++) {
             Tick();
@@ -3648,7 +3648,7 @@ describe(mining_job_execution) {
         
         expect(completed == true);
         
-        // Find the spawned item and verify it's orange at the dig location
+        // Find the spawned item and verify it's orange at the mine location
         bool foundOrange = false;
         for (int i = 0; i < MAX_ITEMS; i++) {
             if (IsItemActive(i) && GetItemType(i) == ITEM_ORANGE) {
@@ -3666,7 +3666,7 @@ describe(mining_job_execution) {
         expect(foundOrange == true);
     }
     
-    it("should cancel dig job if designation is removed") {
+    it("should cancel mine job if designation is removed") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".#...\n"
@@ -3688,10 +3688,10 @@ describe(mining_job_execution) {
         moverCount = 1;
         
         // Designate and assign
-        DesignateDig(1, 1, 0);
+        DesignateMine(1, 1, 0);
         AssignJobs();
         
-        expect(MoverHasDigJob(m));
+        expect(MoverHasMineJob(m));
         
         // Cancel designation while mover is en route
         CancelDesignation(1, 1, 0);
@@ -3702,10 +3702,10 @@ describe(mining_job_execution) {
         
         // Mover should be back to idle
         expect(MoverIsIdle(m));
-        expect(MoverGetTargetDigX(m) == -1);
+        expect(MoverGetTargetMineX(m) == -1);
     }
     
-    it("should cancel dig job if wall is removed by other means") {
+    it("should cancel mine job if wall is removed by other means") {
         InitGridFromAsciiWithChunkSize(
             ".....\n"
             ".#...\n"
@@ -3727,10 +3727,10 @@ describe(mining_job_execution) {
         moverCount = 1;
         
         // Designate and assign
-        DesignateDig(1, 1, 0);
+        DesignateMine(1, 1, 0);
         AssignJobs();
         
-        expect(MoverHasDigJob(m));
+        expect(MoverHasMineJob(m));
         
         // Player removes wall manually (simulating editor action)
         grid[0][1][1] = CELL_FLOOR;
@@ -3741,12 +3741,12 @@ describe(mining_job_execution) {
         
         // Mover should be back to idle, designation should be cleared
         expect(MoverIsIdle(m));
-        expect(HasDigDesignation(1, 1, 0) == false);
+        expect(HasMineDesignation(1, 1, 0) == false);
     }
 }
 
 describe(mining_multiple_designations) {
-    it("should process multiple dig designations sequentially") {
+    it("should process multiple mine designations sequentially") {
         // Layout with walls that each have at least one adjacent floor
         // So they can all be dug from the start
         InitGridFromAsciiWithChunkSize(
@@ -3771,28 +3771,28 @@ describe(mining_multiple_designations) {
         moverCount = 1;
         
         // Designate 3 isolated walls (each has adjacent floor)
-        DesignateDig(1, 1, 0);  // Wall at (1,1)
-        DesignateDig(3, 1, 0);  // Wall at (3,1)
-        DesignateDig(1, 3, 0);  // Wall at (1,3)
+        DesignateMine(1, 1, 0);  // Wall at (1,1)
+        DesignateMine(3, 1, 0);  // Wall at (3,1)
+        DesignateMine(1, 3, 0);  // Wall at (1,3)
         
-        expect(CountDigDesignations() == 3);
+        expect(CountMineDesignations() == 3);
         
         // Run simulation until all digs complete
-        // Each dig takes ~DIG_WORK_TIME (2s) at 60 ticks/s = 120 ticks per dig
+        // Each mine takes ~MINE_WORK_TIME (2s) at 60 ticks/s = 120 ticks per mine
         // Plus travel time, so give plenty of margin
         for (int i = 0; i < 5000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
             
-            if (CountDigDesignations() == 0) break;
+            if (CountMineDesignations() == 0) break;
         }
         
         // All walls should be dug
         expect(grid[0][1][1] == CELL_FLOOR);
         expect(grid[0][1][3] == CELL_FLOOR);
         expect(grid[0][3][1] == CELL_FLOOR);
-        expect(CountDigDesignations() == 0);
+        expect(CountMineDesignations() == 0);
     }
 }
 
@@ -4210,12 +4210,12 @@ describe(job_pool) {
         ClearJobs();
         
         int haulJob = CreateJob(JOBTYPE_HAUL);
-        int digJob = CreateJob(JOBTYPE_DIG);
+        int digJob = CreateJob(JOBTYPE_MINE);
         int buildJob = CreateJob(JOBTYPE_BUILD);
         int clearJob = CreateJob(JOBTYPE_CLEAR);
         
         expect(GetJob(haulJob)->type == JOBTYPE_HAUL);
-        expect(GetJob(digJob)->type == JOBTYPE_DIG);
+        expect(GetJob(digJob)->type == JOBTYPE_MINE);
         expect(GetJob(buildJob)->type == JOBTYPE_BUILD);
         expect(GetJob(clearJob)->type == JOBTYPE_CLEAR);
     }
@@ -4239,21 +4239,21 @@ describe(job_pool) {
         expect(job->targetSlotY == 4);
     }
     
-    it("should store target data for dig job") {
+    it("should store target data for mine job") {
         ClearJobs();
         
-        int jobId = CreateJob(JOBTYPE_DIG);
+        int jobId = CreateJob(JOBTYPE_MINE);
         Job* job = GetJob(jobId);
         
-        // Set dig targets
-        job->targetDigX = 10;
-        job->targetDigY = 20;
-        job->targetDigZ = 0;
+        // Set mine targets
+        job->targetMineX = 10;
+        job->targetMineY = 20;
+        job->targetMineZ = 0;
         
         // Verify targets stored correctly
-        expect(job->targetDigX == 10);
-        expect(job->targetDigY == 20);
-        expect(job->targetDigZ == 0);
+        expect(job->targetMineX == 10);
+        expect(job->targetMineY == 20);
+        expect(job->targetMineZ == 0);
     }
     
     it("should store target data for build job") {
@@ -4276,7 +4276,7 @@ describe(job_pool) {
         
         // Create 3 jobs
         int job1 = CreateJob(JOBTYPE_HAUL);
-        int job2 = CreateJob(JOBTYPE_DIG);
+        int job2 = CreateJob(JOBTYPE_MINE);
         int job3 = CreateJob(JOBTYPE_BUILD);
         
         // Release middle job
@@ -4302,7 +4302,7 @@ describe(job_pool) {
         int job1 = CreateJob(JOBTYPE_HAUL);
         expect(activeJobCount == 1);
         
-        int job2 = CreateJob(JOBTYPE_DIG);
+        int job2 = CreateJob(JOBTYPE_MINE);
         expect(activeJobCount == 2);
         
         ReleaseJob(job1);
@@ -4418,8 +4418,8 @@ describe(job_drivers) {
         expect(GetJob(jobId)->active == false);
     }
     
-    it("should complete dig job via driver: move to adjacent -> dig -> done") {
-        // Setup world with a wall to dig
+    it("should complete mine job via driver: move to adjacent -> mine -> done") {
+        // Setup world with a wall to mine
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "...#....\n"
@@ -4439,14 +4439,14 @@ describe(job_drivers) {
         moverCount = 1;
         
         // Designate wall at (3,1) for digging
-        DesignateDig(3, 1, 0);
+        DesignateMine(3, 1, 0);
         
-        // Create a dig job using the new Job pool
-        int jobId = CreateJob(JOBTYPE_DIG);
+        // Create a mine job using the new Job pool
+        int jobId = CreateJob(JOBTYPE_MINE);
         Job* job = GetJob(jobId);
-        job->targetDigX = 3;
-        job->targetDigY = 1;
-        job->targetDigZ = 0;
+        job->targetMineX = 3;
+        job->targetMineY = 1;
+        job->targetMineZ = 0;
         job->assignedMover = 0;
         
         // Assign job to mover
@@ -4467,7 +4467,7 @@ describe(job_drivers) {
             if (grid[0][1][3] == CELL_FLOOR) break;
         }
         
-        // Verify dig completed - wall is now floor
+        // Verify mine completed - wall is now floor
         expect(grid[0][1][3] == CELL_FLOOR);
         expect(m->currentJobId == -1);
         expect(GetJob(jobId)->active == false);
@@ -4651,8 +4651,8 @@ describe(job_drivers) {
  */
 
 describe(job_game_speed) {
-    it("should complete dig job faster at higher game speed") {
-        // Setup world with a wall to dig
+    it("should complete mine job faster at higher game speed") {
+        // Setup world with a wall to mine
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "...#....\n"
@@ -4673,14 +4673,14 @@ describe(job_game_speed) {
         moverCount = 1;
         
         // Designate wall at (3,1) for digging
-        DesignateDig(3, 1, 0);
+        DesignateMine(3, 1, 0);
         
-        // Create dig job
-        int jobId = CreateJob(JOBTYPE_DIG);
+        // Create mine job
+        int jobId = CreateJob(JOBTYPE_MINE);
         Job* job = GetJob(jobId);
-        job->targetDigX = 3;
-        job->targetDigY = 1;
-        job->targetDigZ = 0;
+        job->targetMineX = 3;
+        job->targetMineY = 1;
+        job->targetMineZ = 0;
         job->assignedMover = 0;
         job->step = STEP_WORKING;
         job->progress = 0.0f;
@@ -4704,16 +4704,16 @@ describe(job_game_speed) {
         
         // Reset for 2x speed test
         grid[0][1][3] = CELL_WALL;
-        DesignateDig(3, 1, 0);
+        DesignateMine(3, 1, 0);
         d = GetDesignation(3, 1, 0);
         d->assignedMover = 0;
         
         // Create fresh job for 2x test
-        int jobId2 = CreateJob(JOBTYPE_DIG);
+        int jobId2 = CreateJob(JOBTYPE_MINE);
         Job* job2 = GetJob(jobId2);
-        job2->targetDigX = 3;
-        job2->targetDigY = 1;
-        job2->targetDigZ = 0;
+        job2->targetMineX = 3;
+        job2->targetMineY = 1;
+        job2->targetMineZ = 0;
         job2->assignedMover = 0;
         job2->step = STEP_WORKING;
         job2->progress = 0.0f;
@@ -4733,7 +4733,7 @@ describe(job_game_speed) {
         
         // At 2x speed, should complete in roughly half the ticks
         // Allow some tolerance (within 20%)
-        printf("Dig: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
+        printf("Mine: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
                ticksAt1x, ticksAt2x, (float)ticksAt1x / ticksAt2x);
         expect(ticksAt2x < ticksAt1x);
         expect(ticksAt2x <= (ticksAt1x / 2) + 5);  // Should be ~half, with small tolerance
@@ -4839,7 +4839,7 @@ describe(job_game_speed) {
  * These tests verify that movers can be assigned different capabilities:
  * - Hauler-only movers only do haul jobs
  * - Builder-only movers only do build jobs
- * - Miner-only movers only do dig jobs
+ * - Miner-only movers only do mine jobs
  * - Movers with all capabilities can do all jobs
  * =============================================================================
  */
@@ -4881,7 +4881,7 @@ describe(mover_capabilities) {
         expect(m->currentJobId == -1);
     }
     
-    it("should not assign dig job to mover with canMine=false") {
+    it("should not assign mine job to mover with canMine=false") {
         // Setup world with wall
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -4906,12 +4906,12 @@ describe(mover_capabilities) {
         RebuildIdleMoverList();
         
         // Designate wall for digging
-        DesignateDig(3, 1, 0);
+        DesignateMine(3, 1, 0);
         
         // Try to assign jobs
         AssignJobs();
         
-        // Mover should NOT have a dig job
+        // Mover should NOT have a mine job
         expect(MoverIsIdle(m));
         expect(m->currentJobId == -1);
     }
@@ -5126,7 +5126,7 @@ describe(workgivers) {
         expect(job->assignedMover == 0);
     }
     
-    it("should find dig jobs via WorkGiver_Mining") {
+    it("should find mine jobs via WorkGiver_Mining") {
         // Setup world with wall
         InitGridFromAsciiWithChunkSize(
             "........\n"
@@ -5147,10 +5147,10 @@ describe(workgivers) {
         RebuildIdleMoverList();
         
         // Designate wall for digging
-        DesignateDig(3, 1, 0);
+        DesignateMine(3, 1, 0);
         
-        // Build dig cache (required before WorkGiver_Mining)
-        RebuildDigDesignationCache();
+        // Build mine cache (required before WorkGiver_Mining)
+        RebuildMineDesignationCache();
         
         // Call WorkGiver_Mining directly
         int jobId = WorkGiver_Mining(0);
@@ -5159,10 +5159,10 @@ describe(workgivers) {
         expect(jobId >= 0);
         Job* job = GetJob(jobId);
         expect(job != NULL);
-        expect(job->type == JOBTYPE_DIG);
+        expect(job->type == JOBTYPE_MINE);
         expect(job->assignedMover == 0);
-        expect(job->targetDigX == 3);
-        expect(job->targetDigY == 1);
+        expect(job->targetMineX == 3);
+        expect(job->targetMineY == 1);
     }
     
     it("should find build jobs via WorkGiver_Build") {
@@ -5243,7 +5243,7 @@ describe(workgivers) {
     }
     
     it("should respect priority order: haul before mining") {
-        // Setup world with both dig designation and haul opportunity
+        // Setup world with both mine designation and haul opportunity
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "...#....\n"
@@ -5268,13 +5268,13 @@ describe(workgivers) {
         SetStockpileFilter(sp, ITEM_RED, true);
         SpawnItem(CELL_SIZE * 5.5f, CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
-        // Also create dig designation (lower priority than haul in AssignJobs)
-        DesignateDig(3, 1, 0);
+        // Also create mine designation (lower priority than haul in AssignJobs)
+        DesignateMine(3, 1, 0);
         
         // Call AssignJobs - haul has higher priority than mining
         AssignJobs();
         
-        // Mover should have a HAUL job (higher priority than dig)
+        // Mover should have a HAUL job (higher priority than mine)
         expect(m->currentJobId >= 0);
         Job* job = GetJob(m->currentJobId);
         expect(job != NULL);
@@ -5302,11 +5302,11 @@ describe(workgivers) {
         moverCount = 1;
         RebuildIdleMoverList();
         
-        // Create dig designation
-        DesignateDig(3, 1, 0);
+        // Create mine designation
+        DesignateMine(3, 1, 0);
         
-        // Build dig cache (required before WorkGiver_Mining)
-        RebuildDigDesignationCache();
+        // Build mine cache (required before WorkGiver_Mining)
+        RebuildMineDesignationCache();
         
         // Call WorkGiver_Mining - should fail because mover can't mine
         int jobId = WorkGiver_Mining(0);

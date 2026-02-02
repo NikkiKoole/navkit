@@ -61,7 +61,7 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
         case ACTION_DRAW_DIRT:       return "DIRT";
         case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
-        case ACTION_WORK_MINE:       return "DIG";
+        case ACTION_WORK_MINE:       return "MINE";
         case ACTION_WORK_CONSTRUCT:  return "CONSTRUCT";
         case ACTION_WORK_GATHER:     return "GATHER";
         case ACTION_SANDBOX_WATER:   return "WATER";
@@ -227,7 +227,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 break;
             case MODE_WORK:
                 n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
-                n = AddItem(items, n, "Dig", KEY_D, 0, false, false, false);
+                n = AddItem(items, n, "Mine", KEY_M, 0, false, false, false);
                 n = AddItem(items, n, "Construct", KEY_C, 0, false, false, false);
                 n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
@@ -270,7 +270,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
-        case ACTION_WORK_MINE:      actionKey = KEY_D; break;
+        case ACTION_WORK_MINE:      actionKey = KEY_M; break;
         case ACTION_WORK_CONSTRUCT: actionKey = KEY_C; break;
         case ACTION_WORK_GATHER:    actionKey = KEY_G; break;
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;

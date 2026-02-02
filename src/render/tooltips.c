@@ -640,7 +640,7 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 // Draw mining designation tooltip
 void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     Designation* des = GetDesignation(cellX, cellY, cellZ);
-    if (!des || des->type != DESIGNATION_DIG) return;
+    if (!des || des->type != DESIGNATION_MINE) return;
 
     char lines[6][64];
     int lineCount = 0;

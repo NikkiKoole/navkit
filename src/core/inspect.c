@@ -113,8 +113,8 @@ static void print_mover(int idx) {
         if (job->carryingItem >= 0) printf("  Carrying item: %d\n", job->carryingItem);
         if (job->targetStockpile >= 0) printf("  Target stockpile: %d slot (%d,%d)\n", 
             job->targetStockpile, job->targetSlotX, job->targetSlotY);
-        if (job->targetDigX >= 0) printf("  Target dig: (%d,%d,z%d)\n", 
-            job->targetDigX, job->targetDigY, job->targetDigZ);
+        if (job->targetMineX >= 0) printf("  Target mine: (%d,%d,z%d)\n", 
+            job->targetMineX, job->targetMineY, job->targetMineZ);
         if (job->targetBlueprint >= 0) printf("  Target blueprint: %d\n", job->targetBlueprint);
     }
     
@@ -163,7 +163,7 @@ static void print_job(int idx) {
     printf("Carrying item: %d\n", job->carryingItem);
     printf("Target stockpile: %d\n", job->targetStockpile);
     printf("Target slot: (%d, %d)\n", job->targetSlotX, job->targetSlotY);
-    printf("Target dig: (%d, %d, z%d)\n", job->targetDigX, job->targetDigY, job->targetDigZ);
+    printf("Target mine: (%d, %d, z%d)\n", job->targetMineX, job->targetMineY, job->targetMineZ);
     printf("Target blueprint: %d\n", job->targetBlueprint);
 }
 
@@ -484,7 +484,7 @@ static void print_map(int cx, int cy, int cz, int radius) {
             
             char c = '?';
             if (water.level > 0) c = '~';
-            else if (desig.type == DESIGNATION_DIG) c = 'X';
+            else if (desig.type == DESIGNATION_MINE) c = 'X';
             else {
                 switch (cell) {
                     case CELL_WALL:
@@ -528,7 +528,7 @@ static void print_map(int cx, int cy, int cz, int radius) {
         printf("\n");
     }
     
-    printf("\nLegend: # wall, . floor, , grass, : dirt, ~ water, X dig, H ladder, ^>v< ramp, @ center\n");
+    printf("\nLegend: # wall, . floor, , grass, : dirt, ~ water, X mine, H ladder, ^>v< ramp, @ center\n");
 }
 
 static void print_designations(void) {

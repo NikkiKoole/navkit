@@ -1082,7 +1082,7 @@ void DrawMiningDesignations(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             Designation* d = GetDesignation(x, y, viewZ);
-            if (!d || d->type != DESIGNATION_DIG) continue;
+            if (!d || d->type != DESIGNATION_MINE) continue;
 
             float sx = offset.x + x * size;
             float sy = offset.y + y * size;
@@ -1105,11 +1105,11 @@ void DrawMiningDesignations(void) {
     for (int i = 0; i < activeJobCount; i++) {
         int jobIdx = activeJobList[i];
         Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_DIG) continue;
-        if (job->targetDigZ != viewZ) continue;
+        if (job->type != JOBTYPE_MINE) continue;
+        if (job->targetMineZ != viewZ) continue;
 
-        float sx = offset.x + job->targetDigX * size;
-        float sy = offset.y + job->targetDigY * size;
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
 
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };

@@ -38,23 +38,23 @@ void InitDesignations(void) {
     blueprintCount = 0;
 }
 
-bool DesignateDig(int x, int y, int z) {
+bool DesignateMine(int x, int y, int z) {
     // Bounds check
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
     
-    // Can only dig walls
+    // Can only mine walls
     if (grid[z][y][x] != CELL_WALL) {
         return false;
     }
     
     // Already designated?
-    if (designations[z][y][x].type == DESIGNATION_DIG) {
+    if (designations[z][y][x].type == DESIGNATION_MINE) {
         return false;
     }
     
-    designations[z][y][x].type = DESIGNATION_DIG;
+    designations[z][y][x].type = DESIGNATION_MINE;
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
@@ -75,11 +75,11 @@ void CancelDesignation(int x, int y, int z) {
     designations[z][y][x].progress = 0.0f;
 }
 
-bool HasDigDesignation(int x, int y, int z) {
+bool HasMineDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return false;
     }
-    return designations[z][y][x].type == DESIGNATION_DIG;
+    return designations[z][y][x].type == DESIGNATION_MINE;
 }
 
 Designation* GetDesignation(int x, int y, int z) {
@@ -92,13 +92,13 @@ Designation* GetDesignation(int x, int y, int z) {
     return &designations[z][y][x];
 }
 
-bool FindUnassignedDigDesignation(int* outX, int* outY, int* outZ) {
+bool FindUnassignedMineDesignation(int* outX, int* outY, int* outZ) {
     // Simple linear scan - could be optimized with a list later
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 Designation* d = &designations[z][y][x];
-                if (d->type == DESIGNATION_DIG && d->assignedMover == -1) {
+                if (d->type == DESIGNATION_MINE && d->assignedMover == -1) {
                     *outX = x;
                     *outY = y;
                     *outZ = z;
@@ -110,7 +110,7 @@ bool FindUnassignedDigDesignation(int* outX, int* outY, int* outZ) {
     return false;
 }
 
-void CompleteDigDesignation(int x, int y, int z) {
+void CompleteMineDesignation(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
@@ -141,12 +141,12 @@ void CompleteDigDesignation(int x, int y, int z) {
     designations[z][y][x].progress = 0.0f;
 }
 
-int CountDigDesignations(void) {
+int CountMineDesignations(void) {
     int count = 0;
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (designations[z][y][x].type == DESIGNATION_DIG) {
+                if (designations[z][y][x].type == DESIGNATION_MINE) {
                     count++;
                 }
             }
