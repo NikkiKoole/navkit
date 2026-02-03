@@ -9,7 +9,7 @@ Planning document for: buildable ladders, mining rename, channeling, and ramps.
 | **Rename Dig → Mine** | ✅ Done | Completed |
 | **Ramps** | ✅ Done | 4 cardinal directions, bidirectional movement |
 | **Channeling** | ✅ Done | Creates ramps when wall adjacent below |
-| **Buildable Ladders** | ❌ TODO | See `/docs/ideas/plans/buildable-ladders.md` |
+| **Buildable Ladders** | ❌ TODO | See `/docs/todo/buildable-ladders.md` |
 
 ## Overview
 
@@ -155,7 +155,7 @@ In DF-style walkability:
 ## 4. Ramps
 
 ### Current State
-- Design doc exists: `docs/archive/z-levels/df-stairs-and-ramps.md`
+- Design doc exists: `docs/done/z-levels/df-stairs-and-ramps.md`
 - Not implemented
 - Ladders handle all z-transitions currently
 

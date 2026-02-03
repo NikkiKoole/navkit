@@ -1,12 +1,12 @@
 # Feature Development Process
 
-How we build new features using the `docs/current/` workflow.
+How we build new features using the `docs/doing/` workflow.
 
 ---
 
 ## Overview
 
-Every new feature starts in `docs/current/`. This folder is a focused workspace for the active feature - one feature at a time. When complete, we archive it and clear the folder for the next feature.
+Every new feature starts in `docs/doing/`. This folder is a focused workspace for the active feature - one feature at a time. When complete, we move it to `docs/done/` and clear the folder for the next feature.
 
 ---
 
@@ -14,7 +14,7 @@ Every new feature starts in `docs/current/`. This folder is a focused workspace 
 
 ### 1. Define the Vertical Slice
 
-Create `docs/current/vertical-slice.md`:
+Create `docs/doing/vertical-slice.md`:
 - Pick the smallest testable chunk of the feature
 - Write a concrete test scenario you can run manually
 - Define clear success criteria ("I can do X, then Y happens")
@@ -32,7 +32,7 @@ The vertical slice should be:
 
 ### 2. Write the Technical Plan
 
-Create `docs/current/crafting-plan.md` (or `<feature>-plan.md`):
+Create `docs/doing/crafting-plan.md` (or `<feature>-plan.md`):
 - Data structures needed
 - New job types / state machines
 - Integration points with existing systems
@@ -42,7 +42,7 @@ Don't over-plan. Just enough to start coding confidently.
 
 ### 3. Create the README Dashboard
 
-Create `docs/current/README.md`:
+Create `docs/doing/README.md`:
 - Start with `## Status: IN PROGRESS`
 - List what's done vs what's left
 - Update this as you work
@@ -62,14 +62,14 @@ When the vertical slice works:
 - Document what was actually built (may differ from plan)
 - List key files for future reference
 
-### 7. Archive
+### 7. Move to Done
 
 Move the folder contents:
 ```
-docs/current/* -> docs/archive/<feature-name>/
+docs/doing/* -> docs/done/<feature-name>/
 ```
 
-Clear `docs/current/` for the next feature.
+Clear `docs/doing/` for the next feature.
 
 ---
 
@@ -77,28 +77,30 @@ Clear `docs/current/` for the next feature.
 
 ```
 docs/
-├── current/              # Active feature (one at a time)
+├── doing/                # Active feature (one at a time)
 │   ├── README.md         # Status dashboard
 │   ├── vertical-slice.md # Test scenario / acceptance criteria  
 │   ├── <feature>-plan.md # Technical spec
 │   └── <roadmap>.md      # Future phases (optional)
 │
-├── archive/              # Completed features
+├── done/                 # Completed features
 │   ├── crafting-system/
 │   ├── hauling/
 │   └── ...
 │
-└── ideas/                # Future feature ideas (not active)
+├── todo/                 # Actionable tasks and plans
+│
+└── vision/               # Future ideas (not yet planned)
 ```
 
 ---
 
 ## Why This Works
 
-- **Focus**: One feature at a time in `current/`
+- **Focus**: One feature at a time in `doing/`
 - **Clarity**: README shows exactly where you are
 - **Scope control**: Vertical slice prevents over-building
-- **History**: Archive preserves decisions and context
+- **History**: `done/` preserves decisions and context
 - **Low overhead**: Just a few markdown files
 
 ---
@@ -107,10 +109,10 @@ docs/
 
 Starting a new feature:
 
-- [ ] Clear or archive anything in `docs/current/`
+- [ ] Clear or move anything in `docs/doing/` to `docs/done/`
 - [ ] Create `vertical-slice.md` with test scenario
 - [ ] Create `<feature>-plan.md` with technical approach
 - [ ] Create `README.md` with status: IN PROGRESS
 - [ ] Build the vertical slice
 - [ ] Update README to DONE when complete
-- [ ] Archive to `docs/archive/<feature-name>/`
+- [ ] Move to `docs/done/<feature-name>/`

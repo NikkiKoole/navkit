@@ -1,6 +1,6 @@
 # Jobs System - Remaining Work
 
-*See [/docs/archive/done/jobs-checklist-completed.md](../../archive/done/jobs-checklist-completed.md) for completed phases.*
+*See [jobs-checklist-completed.md](../done/jobs-checklist-completed.md) for completed phases.*
 
 ---
 
@@ -29,3 +29,4 @@
 **References:**
 - [jobs-roadmap.md](jobs-roadmap.md) - Full design details
 - [logistics-influences.md](logistics-influences.md) - Factorio/SimTower research
+- [jobs-checklist-completed.md](../done/jobs-checklist-completed.md) - Completed phases

@@ -41,7 +41,7 @@ Small remaining items and future improvements.
 
 ## Completed (Feb 2026)
 
-See [/docs/archive/done/](../../archive/done/) for detailed completion notes.
+See [/docs/done/](../done/) for detailed completion notes.
 
 - [x] **Jobs/Hauling system** - Items, stockpiles, filters, stacking, priority, gather zones
 - [x] **Stockpile/gather zone UI** - S+drag for stockpiles, G+drag for gather zones
@@ -73,9 +73,9 @@ See [/docs/archive/done/](../../archive/done/) for detailed completion notes.
 
 ## See Also (Design Docs)
 
-- [jobs-checklist.md](../jobs/jobs-checklist.md) - Remaining jobs work
-- [jobs-roadmap.md](../jobs/jobs-roadmap.md) - Jobs system full design
-- [needs-vs-jobs.md](../jobs/needs-vs-jobs.md) - Individual needs vs colony jobs (future)
-- [elevators.md](../architecture/elevators.md) - Full elevator simulation design
-- [decoupled-simulation-plan.md](../architecture/decoupled-simulation-plan.md) - Headless sim + 2.5D views
-- [logistics-influences.md](../jobs/logistics-influences.md) - Factorio/SimTower research
+- [jobs-checklist.md](jobs-checklist.md) - Remaining jobs work
+- [jobs-roadmap.md](jobs-roadmap.md) - Jobs system full design
+- [needs-vs-jobs.md](needs-vs-jobs.md) - Individual needs vs colony jobs (future)
+- [elevators.md](elevators.md) - Full elevator simulation design
+- [decoupled-simulation-plan.md](decoupled-simulation-plan.md) - Headless sim + 2.5D views
+- [logistics-influences.md](logistics-influences.md) - Factorio/SimTower research

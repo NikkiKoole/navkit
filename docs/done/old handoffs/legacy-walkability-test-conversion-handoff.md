@@ -114,7 +114,7 @@ The pattern is to use variables like `channelZ`, `moverZ`, `belowZ`, `descendZ` 
 ## Next Steps
 
 With all tests now mode-agnostic, the next step is to actually remove legacy walkability mode:
-- See `/docs/ideas/plans/remove-legacy-walkability.md` for the full plan
+- See `/docs/todo/remove-legacy-walkability.md` for the full plan
 
 ## Running Tests
 
