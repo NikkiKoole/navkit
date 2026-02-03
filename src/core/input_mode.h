@@ -32,6 +32,7 @@ typedef enum {
     ACTION_WORK_LADDER,
     ACTION_WORK_FLOOR,
     ACTION_WORK_GATHER,
+    ACTION_WORK_CHOP,
     // Sandbox actions (sim systems)
     ACTION_SANDBOX_WATER,
     ACTION_SANDBOX_FIRE,
@@ -40,6 +41,7 @@ typedef enum {
     ACTION_SANDBOX_SMOKE,
     ACTION_SANDBOX_STEAM,
     ACTION_SANDBOX_GRASS,
+    ACTION_SANDBOX_TREE,
 } InputAction;
 
 // Current input state

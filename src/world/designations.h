@@ -12,7 +12,7 @@ typedef enum {
     DESIGNATION_CHANNEL,      // Vertical digging - removes floor and mines level below
     DESIGNATION_REMOVE_FLOOR, // Remove constructed floor only (mover may fall!)
     DESIGNATION_REMOVE_RAMP,  // Remove ramps (natural or carved)
-    // Future: DESIGNATION_CHOP, etc.
+    DESIGNATION_CHOP,         // Chop down tree (trunk cell)
 } DesignationType;
 
 // Per-cell designation data
@@ -28,6 +28,7 @@ typedef struct {
 #define CHANNEL_WORK_TIME 2.0f
 #define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
+#define CHOP_WORK_TIME 3.0f          // Chopping trees takes longer
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -160,6 +161,24 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx);
 
 // Count active remove ramp designations
 int CountRemoveRampDesignations(void);
+
+// =============================================================================
+// Chop tree designation functions
+// =============================================================================
+
+// Designate a tree trunk for chopping
+// Returns true if designation was added, false if cell is not a tree trunk
+bool DesignateChop(int x, int y, int z);
+
+// Check if a cell has a chop designation
+bool HasChopDesignation(int x, int y, int z);
+
+// Complete a chop designation (called when work finishes)
+// Fells the tree, spawns wood items
+void CompleteChopDesignation(int x, int y, int z, int moverIdx);
+
+// Count active chop designations
+int CountChopDesignations(void);
 
 // =============================================================================
 // Blueprint functions

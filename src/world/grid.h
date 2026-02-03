@@ -36,7 +36,10 @@ typedef enum {
     CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
     CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1
     CELL_RAMP_S,       // Ramp: high side south - enter from north at z, exit south at z+1
-    CELL_RAMP_W        // Ramp: high side west - enter from east at z, exit west at z+1
+    CELL_RAMP_W,       // Ramp: high side west - enter from east at z, exit west at z+1
+    CELL_SAPLING,      // Young tree - grows into trunk over time
+    CELL_TREE_TRUNK,   // Solid wood - blocks movement, choppable
+    CELL_TREE_LEAVES   // Tree canopy - blocks movement, decays without trunk
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

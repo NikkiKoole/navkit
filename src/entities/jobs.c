@@ -895,6 +895,75 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Chop tree job driver: move to adjacent tile -> chop down tree
+JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    
+    int tx = job->targetMineX;  // Reusing mine target fields
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+    
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_CHOP) {
+        return JOBRUN_FAIL;
+    }
+    
+    // Check if trunk still exists
+    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) {
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+    
+    if (job->step == STEP_MOVING_TO_WORK) {
+        // Use cached adjacent tile (set when job was created)
+        int adjX = job->targetAdjX;
+        int adjY = job->targetAdjY;
+        
+        // Set goal if not already moving there
+        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
+            mover->goal = (Point){adjX, adjY, tz};
+            mover->needsRepath = true;
+        }
+        
+        // Check if arrived at adjacent tile
+        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+        
+        bool correctZ = (int)mover->z == tz;
+        
+        // Check if stuck
+        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+        
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        // Progress tree chopping
+        job->progress += dt / CHOP_WORK_TIME;
+        d->progress = job->progress;
+        
+        if (job->progress >= 1.0f) {
+            // Chopping complete!
+            CompleteChopDesignation(tx, ty, tz, job->assignedMover);
+            return JOBRUN_DONE;
+        }
+        
+        return JOBRUN_RUNNING;
+    }
+    
+    return JOBRUN_FAIL;
+}
+
 // Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
@@ -1304,6 +1373,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_BUILD] = RunJob_Build,
     [JOBTYPE_CRAFT] = RunJob_Craft,
     [JOBTYPE_REMOVE_RAMP] = RunJob_RemoveRamp,
+    [JOBTYPE_CHOP] = RunJob_Chop,
 };
 
 // Forward declaration for CancelJob (defined later in file)
@@ -1702,7 +1772,10 @@ void AssignJobsWorkGivers(void) {
         // Priority 7: Remove ramp (natural or carved ramps)
         if (jobId < 0) jobId = WorkGiver_RemoveRamp(moverIdx);
         
-        // Priority 8: Crafting (workshops with runnable bills)
+        // Priority 8: Chop trees
+        if (jobId < 0) jobId = WorkGiver_Chop(moverIdx);
+        
+        // Priority 9: Crafting (workshops with runnable bills)
         if (jobId < 0) jobId = WorkGiver_Craft(moverIdx);
         
         // Priority 7: Blueprint haul (materials to blueprints)
@@ -2002,6 +2075,7 @@ void AssignJobsHybrid(void) {
         bool hasChannelWork = (channelCacheCount > 0);
         bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
         bool hasRemoveRampWork = (removeRampCacheCount > 0);
+        bool hasChopWork = (CountChopDesignations() > 0);
         
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -2016,7 +2090,7 @@ void AssignJobsHybrid(void) {
         }
         
         // Only iterate movers if there's sparse work to do
-        if (hasMineWork || hasChannelWork || hasRemoveFloorWork || hasRemoveRampWork || hasBlueprintWork) {
+        if (hasMineWork || hasChannelWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -2048,6 +2122,11 @@ void AssignJobsHybrid(void) {
                 // Remove ramp (after remove floor - lower priority)
                 if (jobId < 0 && hasRemoveRampWork) {
                     jobId = WorkGiver_RemoveRamp(moverIdx);
+                }
+                
+                // Chop trees (after remove ramp)
+                if (jobId < 0 && hasChopWork) {
+                    jobId = WorkGiver_Chop(moverIdx);
                 }
                 
                 if (jobId < 0 && hasBlueprintWork) {
@@ -3372,6 +3451,99 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     job->targetMineY = bestDesigY;
     job->targetMineZ = bestDesigZ;
     job->targetAdjX = bestAdjX;  // Cache adjacent tile
+    job->targetAdjY = bestAdjY;
+    job->step = 0;  // STEP_MOVING_TO_WORK
+    job->progress = 0.0f;
+    
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+    
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
+    m->needsRepath = true;
+    
+    RemoveMoverFromIdleList(moverIdx);
+    
+    return jobId;
+}
+
+// WorkGiver_Chop: Find a tree chop designation to work on
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_Chop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    
+    // Check capability - uses mining skill for chopping
+    if (!m->capabilities.canMine) return -1;
+    
+    int moverZ = (int)m->z;
+    
+    // Find nearest unassigned chop designation
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    int bestAdjX = -1, bestAdjY = -1;
+    float bestDistSq = 1e30f;
+    
+    // Simple search - no cache for chop designations (they're rare)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                Designation* d = &designations[z][y][x];
+                if (d->type != DESIGNATION_CHOP) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                if (z != moverZ) continue;  // Same z-level for now
+                
+                // Find an adjacent walkable tile
+                int dx[] = {1, -1, 0, 0};
+                int dy[] = {0, 0, 1, -1};
+                for (int i = 0; i < 4; i++) {
+                    int adjX = x + dx[i];
+                    int adjY = y + dy[i];
+                    if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+                    if (!IsCellWalkableAt(z, adjY, adjX)) continue;
+                    
+                    // Distance to adjacent tile
+                    float tileX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float tileY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    float distX = tileX - m->x;
+                    float distY = tileY - m->y;
+                    float distSq = distX * distX + distY * distY;
+                    
+                    if (distSq < bestDistSq) {
+                        bestDistSq = distSq;
+                        bestDesigX = x;
+                        bestDesigY = y;
+                        bestDesigZ = z;
+                        bestAdjX = adjX;
+                        bestAdjY = adjY;
+                    }
+                    break;  // Found adjacent tile, no need to check others
+                }
+            }
+        }
+    }
+    
+    if (bestDesigX < 0) return -1;
+    
+    // Check reachability
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    if (!FindReachableAdjacentTile(bestDesigX, bestDesigY, bestDesigZ, moverCell, &bestAdjX, &bestAdjY)) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+    
+    // Create job
+    int jobId = CreateJob(JOBTYPE_CHOP);
+    if (jobId < 0) return -1;
+    
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->targetAdjX = bestAdjX;
     job->targetAdjY = bestAdjY;
     job->step = 0;  // STEP_MOVING_TO_WORK
     job->progress = 0.0f;

@@ -107,6 +107,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("O", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_STONE_BLOCKS] ? "S" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_STONE_BLOCKS] ? GRAY : DARKGRAY);
+    fx += MeasureText("S", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_WOOD] ? "W" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_WOOD] ? BROWN : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);

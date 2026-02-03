@@ -24,4 +24,8 @@ CellDef cellDefs[] = {
     [CELL_AIR]         = {"air",         SPRITE_air,         0,                    INSULATION_TIER_AIR,    0, CELL_AIR},
     [CELL_BEDROCK]     = {"bedrock",     SPRITE_bedrock,     CF_SOLID | CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE, 0, CELL_BEDROCK},
     
+    // === VEGETATION ===
+    [CELL_SAPLING]     = {"sapling",     SPRITE_grass_tall,  0,                    INSULATION_TIER_AIR,    0, CELL_AIR},  // Walkable, grows into trunk
+    [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR},  // Solid, choppable, burns
+    [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves, CF_BLOCKS_MOVEMENT,   INSULATION_TIER_AIR,   32, CELL_AIR},  // Blocks movement but not solid (can't stand on)
 };

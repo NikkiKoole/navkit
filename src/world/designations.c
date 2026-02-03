@@ -578,6 +578,167 @@ int CountRemoveRampDesignations(void) {
 }
 
 // =============================================================================
+// Chop tree designation functions
+// =============================================================================
+
+bool DesignateChop(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must be a tree trunk cell
+    if (grid[z][y][x] != CELL_TREE_TRUNK) {
+        return false;
+    }
+    
+    designations[z][y][x].type = DESIGNATION_CHOP;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasChopDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_CHOP;
+}
+
+// Helper: Check if a leaf cell is connected to a trunk within distance
+static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist) {
+    for (int checkZ = z; checkZ >= 0 && checkZ >= z - maxDist; checkZ--) {
+        if (grid[checkZ][y][x] == CELL_TREE_TRUNK) return true;
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dy == 0) continue;
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Fell a tree: remove all trunk cells in column and connected leaves
+// chopperX/Y is where the mover stood - tree falls away from them
+static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
+    int woodCount = 0;
+    
+    // Find base of tree (lowest trunk in column)
+    int baseZ = z;
+    while (baseZ > 0 && grid[baseZ - 1][y][x] == CELL_TREE_TRUNK) {
+        baseZ--;
+    }
+    
+    // Remove all trunk cells going upward from base
+    for (int tz = baseZ; tz < gridDepth; tz++) {
+        if (grid[tz][y][x] != CELL_TREE_TRUNK) break;
+        grid[tz][y][x] = CELL_AIR;
+        MarkChunkDirty(x, y, tz);
+        woodCount++;
+        
+        // Clear any designation on this trunk cell
+        if (designations[tz][y][x].type != DESIGNATION_NONE) {
+            activeDesignationCount--;
+            designations[tz][y][x].type = DESIGNATION_NONE;
+            designations[tz][y][x].assignedMover = -1;
+            designations[tz][y][x].progress = 0.0f;
+        }
+    }
+    
+    // Remove orphaned leaves (leaves not connected to any remaining trunk)
+    // Simple approach: scan nearby cells for leaves and check connection
+    int searchRadius = 3;
+    for (int sz = 0; sz < gridDepth; sz++) {
+        for (int sy = y - searchRadius; sy <= y + searchRadius; sy++) {
+            for (int sx = x - searchRadius; sx <= x + searchRadius; sx++) {
+                if (sx < 0 || sx >= gridWidth || sy < 0 || sy >= gridHeight) continue;
+                if (grid[sz][sy][sx] == CELL_TREE_LEAVES) {
+                    if (!LeafConnectedToTrunk(sx, sy, sz, 4)) {
+                        grid[sz][sy][sx] = CELL_AIR;
+                        MarkChunkDirty(sx, sy, sz);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Calculate fall direction (away from chopper)
+    float fallDirX = (float)(x - chopperX);
+    float fallDirY = (float)(y - chopperY);
+    
+    // Normalize fall direction
+    float fallLen = sqrtf(fallDirX * fallDirX + fallDirY * fallDirY);
+    if (fallLen > 0.01f) {
+        fallDirX /= fallLen;
+        fallDirY /= fallLen;
+    } else {
+        // Chopper is on the tree tile somehow, pick a random direction
+        fallDirX = 1.0f;
+        fallDirY = 0.0f;
+    }
+    
+    // Spawn wood items scattered along the fall direction
+    float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    
+    for (int i = 0; i < woodCount; i++) {
+        // Each log falls progressively further in the fall direction
+        float fallDist = (float)(i + 1) * CELL_SIZE * 0.7f;
+        
+        // Add some perpendicular scatter for variety
+        float perpX = -fallDirY;
+        float perpY = fallDirX;
+        float scatter = ((float)((i * 7) % 5) - 2.0f) * 4.0f;  // -8 to +8 pixels
+        
+        float spawnX = treeBaseX + fallDirX * fallDist + perpX * scatter;
+        float spawnY = treeBaseY + fallDirY * fallDist + perpY * scatter;
+        
+        SpawnItem(spawnX, spawnY, (float)baseZ, ITEM_WOOD);
+    }
+}
+
+void CompleteChopDesignation(int x, int y, int z, int moverIdx) {
+    // Get chopper position for fall direction
+    int chopperX = x;
+    int chopperY = y;
+    
+    if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
+        chopperX = (int)(movers[moverIdx].x / CELL_SIZE);
+        chopperY = (int)(movers[moverIdx].y / CELL_SIZE);
+    }
+    
+    // Fell the entire tree (falls away from chopper)
+    FellTree(x, y, z, chopperX, chopperY);
+    
+    // Designation already cleared in FellTree
+}
+
+int CountChopDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_CHOP) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

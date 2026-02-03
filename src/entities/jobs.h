@@ -20,6 +20,7 @@ typedef enum {
     JOBTYPE_BUILD,             // Construct at blueprint
     JOBTYPE_CRAFT,             // Fetch materials, craft at workshop
     JOBTYPE_REMOVE_RAMP,       // Remove ramps (natural or carved)
+    JOBTYPE_CHOP,              // Chop down tree
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -160,6 +161,7 @@ int WorkGiver_Mining(int moverIdx);
 int WorkGiver_Channel(int moverIdx);
 int WorkGiver_RemoveFloor(int moverIdx);
 int WorkGiver_RemoveRamp(int moverIdx);
+int WorkGiver_Chop(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
 int WorkGiver_Craft(int moverIdx);

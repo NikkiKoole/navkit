@@ -7,6 +7,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/trees.h"
 #include "input_mode.h"
 
 // Forward declarations
@@ -337,6 +338,33 @@ static void ExecuteCancelRemoveRamp(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Cancelled %d ramp removal designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteDesignateChop(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateChop(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d tree%s for chopping", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelChop(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasChopDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d chop designation%s", count, count > 1 ? "s" : ""), ORANGE);
     }
 }
 
@@ -740,6 +768,42 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecutePlaceTree(int x, int y, int z) {
+    // Check if we can place a tree here (need solid ground below or at z=0)
+    CellType cell = grid[z][y][x];
+    if (cell != CELL_AIR && cell != CELL_DIRT) {
+        AddMessage("Can't place tree here", RED);
+        return;
+    }
+    
+    // Need solid ground below (or z=0)
+    if (z > 0 && !CellIsSolid(grid[z - 1][y][x])) {
+        AddMessage("Trees need solid ground below", RED);
+        return;
+    }
+    
+    // Grow a full tree instantly
+    TreeGrowFull(x, y, z);
+    AddMessage(TextFormat("Planted tree at (%d, %d)", x, y), GREEN);
+}
+
+static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            CellType cell = grid[z][dy][dx];
+            if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+                grid[z][dy][dx] = CELL_AIR;
+                MarkChunkDirty(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed %d tree cell%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 // ============================================================================
 // Main Input Handler
 // ============================================================================
@@ -816,6 +880,7 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ORANGE] = !sp->allowedTypes[ITEM_ORANGE]; AddMessage(TextFormat("Orange: %s", sp->allowedTypes[ITEM_ORANGE] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
+            if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
         }
     }
 
@@ -1034,6 +1099,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_L)) { inputAction = ACTION_WORK_LADDER; }
                 if (CheckKey(KEY_O)) { inputAction = ACTION_WORK_FLOOR; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
+                if (CheckKey(KEY_T)) { inputAction = ACTION_WORK_CHOP; }
                 break;
             case MODE_SANDBOX:
                 if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
@@ -1043,6 +1109,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_M)) { inputAction = ACTION_SANDBOX_SMOKE; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_SANDBOX_STEAM; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_SANDBOX_GRASS; }
+                if (CheckKey(KEY_R)) { inputAction = ACTION_SANDBOX_TREE; }
                 break;
             default:
                 break;
@@ -1072,6 +1139,7 @@ void HandleInput(void) {
         case ACTION_WORK_LADDER:      backOneLevel = CheckKey(KEY_L); break;
         case ACTION_WORK_FLOOR:       backOneLevel = CheckKey(KEY_O); break;
         case ACTION_WORK_GATHER:      backOneLevel = CheckKey(KEY_G); break;
+        case ACTION_WORK_CHOP:        backOneLevel = CheckKey(KEY_T); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
         case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
@@ -1080,6 +1148,7 @@ void HandleInput(void) {
         case ACTION_SANDBOX_SMOKE:  backOneLevel = CheckKey(KEY_M); break;
         case ACTION_SANDBOX_STEAM:  backOneLevel = CheckKey(KEY_T); break;
         case ACTION_SANDBOX_GRASS:  backOneLevel = CheckKey(KEY_G); break;
+        case ACTION_SANDBOX_TREE:   backOneLevel = CheckKey(KEY_R); break;
         default: break;
     }
     if (backOneLevel) {
@@ -1212,6 +1281,10 @@ void HandleInput(void) {
                 if (leftClick) ExecuteCreateGatherZone(x1, y1, x2, y2, z);
                 else ExecuteEraseGatherZone(x1, y1, x2, y2, z);
                 break;
+            case ACTION_WORK_CHOP:
+                if (leftClick) ExecuteDesignateChop(x1, y1, x2, y2, z);
+                else ExecuteCancelChop(x1, y1, x2, y2, z);
+                break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:
                 if (leftClick) ExecutePlaceWater(x1, y1, x2, y2, z, shift);
@@ -1240,6 +1313,10 @@ void HandleInput(void) {
             case ACTION_SANDBOX_GRASS:
                 if (leftClick) ExecutePlaceGrass(x1, y1, x2, y2, z);
                 else ExecuteRemoveGrass(x1, y1, x2, y2, z);
+                break;
+            case ACTION_SANDBOX_TREE:
+                if (leftClick) ExecutePlaceTree(x1, y1, z);  // Single click for tree placement
+                else ExecuteRemoveTree(x1, y1, x2, y2, z);
                 break;
             default:
                 break;

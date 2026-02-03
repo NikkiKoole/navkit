@@ -10,6 +10,7 @@ typedef enum {
     ITEM_BLUE,
     ITEM_ORANGE,       // Raw stone from mining
     ITEM_STONE_BLOCKS, // Crafted from ORANGE at stonecutter, used for building
+    ITEM_WOOD,         // Wood logs from chopping trees
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

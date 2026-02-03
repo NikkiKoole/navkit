@@ -24,6 +24,7 @@
 #include "simulation/steam.c"
 #include "simulation/groundwear.c"
 #include "simulation/temperature.c"
+#include "simulation/trees.c"
 
 // Entity systems
 #include "entities/items.c"

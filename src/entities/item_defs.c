@@ -13,4 +13,5 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10 },
     [ITEM_ORANGE]       = { "Raw Stone",    SPRITE_crate_orange, IF_STACKABLE, 20 },
     [ITEM_STONE_BLOCKS] = { "Stone Blocks", SPRITE_stone_block,  IF_STACKABLE | IF_BUILDING_MAT, 20 },
+    [ITEM_WOOD]         = { "Wood",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
 };

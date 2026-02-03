@@ -69,6 +69,7 @@ static const char* GetActionName(void) {
         case ACTION_WORK_LADDER:       return "LADDER";
         case ACTION_WORK_FLOOR:        return "FLOOR";
         case ACTION_WORK_GATHER:       return "GATHER";
+        case ACTION_WORK_CHOP:         return "CHOP";
         case ACTION_SANDBOX_WATER:   return "WATER";
         case ACTION_SANDBOX_FIRE:    return "FIRE";
         case ACTION_SANDBOX_HEAT:    return "HEAT";
@@ -76,6 +77,7 @@ static const char* GetActionName(void) {
         case ACTION_SANDBOX_SMOKE:   return "SMOKE";
         case ACTION_SANDBOX_STEAM:   return "STEAM";
         case ACTION_SANDBOX_GRASS:   return "GRASS";
+        case ACTION_SANDBOX_TREE:    return "TREE";
         default:                     return NULL;
     }
 }
@@ -94,9 +96,9 @@ const char* InputMode_GetBarText(void) {
             case MODE_DRAW:
                 return "DRAW: [W]all  [F]loor  [L]adder  [S]tockpile    [ESC]Back";
             case MODE_WORK:
-                return "WORK: [M]ine  [C]onstruct  [G]ather    [ESC]Back";
+                return "WORK: [M]ine  [C]onstruct  [G]ather  [T]ree    [ESC]Back";
             case MODE_SANDBOX:
-                return "SANDBOX: [W]ater  [F]ire  [H]eat  [C]old  s[M]oke  s[T]eam  [G]rass    [ESC]Back";
+                return "SANDBOX: [W]ater  [F]ire  [H]eat  [C]old  s[M]oke  s[T]eam  [G]rass  t[R]ee    [ESC]Back";
             default:
                 return "[ESC]Back";
         }
@@ -141,6 +143,7 @@ const char* InputMode_GetBarText(void) {
         case ACTION_WORK_LADDER:
         case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
+        case ACTION_WORK_CHOP:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
             break;
@@ -162,6 +165,10 @@ const char* InputMode_GetBarText(void) {
         case ACTION_SANDBOX_GRASS:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag add  R-drag remove  [ESC]Back", modeName, actionName);
+            break;
+        case ACTION_SANDBOX_TREE:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s > %s: L-click place  R-drag remove  [ESC]Back", modeName, actionName);
             break;
         default:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
@@ -245,6 +252,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
                 n = AddItem(items, n, "flOor", KEY_O, 2, false, false, false);
                 n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
+                n = AddItem(items, n, "Tree", KEY_T, 0, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             case MODE_SANDBOX:
@@ -256,6 +264,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "sMoke", KEY_M, 1, false, false, false);
                 n = AddItem(items, n, "sTeam", KEY_T, 1, false, false, false);
                 n = AddItem(items, n, "Grass", KEY_G, 0, false, false, false);
+                n = AddItem(items, n, "tRee", KEY_R, 1, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             default:
@@ -293,6 +302,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_LADDER:       actionKey = KEY_L; break;
         case ACTION_WORK_FLOOR:        actionKey = KEY_O; actionUnderline = 2; break;
         case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
+        case ACTION_WORK_CHOP:         actionKey = KEY_T; break;
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
         case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
         case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;
@@ -300,6 +310,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_SANDBOX_SMOKE:  actionKey = KEY_M; actionUnderline = 1; break;
         case ACTION_SANDBOX_STEAM:  actionKey = KEY_T; actionUnderline = 1; break;
         case ACTION_SANDBOX_GRASS:  actionKey = KEY_G; break;
+        case ACTION_SANDBOX_TREE:   actionKey = KEY_R; actionUnderline = 1; break;
         default: break;
     }
     const char* actionName = GetActionName();
@@ -348,6 +359,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_LADDER:
         case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
+        case ACTION_WORK_CHOP:
             n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
             break;
@@ -367,6 +379,10 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_SANDBOX_STEAM:
         case ACTION_SANDBOX_GRASS:
             n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+            break;
+        case ACTION_SANDBOX_TREE:
+            n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;
         default:

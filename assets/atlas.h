@@ -24,6 +24,7 @@
     #define SPRITE_air SPRITE8X8_air
     #define SPRITE_grass_trampled SPRITE8X8_grass_trampled
     #define SPRITE_dirt SPRITE8X8_dirt
+    #define SPRITE_tree_leaves SPRITE8X8_tree_leaves
     #define SPRITE_stone_block SPRITE8X8_stone_block
     #define SPRITE_stone_wall SPRITE8X8_stone_wall
     #define SPRITE_ramp_s SPRITE8X8_ramp_s
@@ -31,6 +32,7 @@
     #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_grass_tall SPRITE8X8_grass_tall
     #define SPRITE_ramp_w SPRITE8X8_ramp_w
+    #define SPRITE_tree_trunk SPRITE8X8_tree_trunk
     #define SPRITE_stone_floor SPRITE8X8_stone_floor
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_ramp_n SPRITE8X8_ramp_n
@@ -44,6 +46,7 @@
     #define SPRITE_floor SPRITE8X8_floor
     #define SPRITE_ice_block SPRITE8X8_ice_block
     #define SPRITE_ladder_down SPRITE8X8_ladder_down
+    #define SPRITE_tree_sapling SPRITE8X8_tree_sapling
     #define SPRITE_rock_floor SPRITE8X8_rock_floor
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_wood_wall SPRITE8X8_wood_wall
@@ -64,6 +67,7 @@
     #define SPRITE_air SPRITE16X16_air
     #define SPRITE_grass_trampled SPRITE16X16_grass_trampled
     #define SPRITE_dirt SPRITE16X16_dirt
+    #define SPRITE_tree_leaves SPRITE16X16_tree_leaves
     #define SPRITE_stone_block SPRITE16X16_stone_block
     #define SPRITE_stone_wall SPRITE16X16_stone_wall
     #define SPRITE_ramp_s SPRITE16X16_ramp_s
@@ -71,6 +75,7 @@
     #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_grass_tall SPRITE16X16_grass_tall
     #define SPRITE_ramp_w SPRITE16X16_ramp_w
+    #define SPRITE_tree_trunk SPRITE16X16_tree_trunk
     #define SPRITE_stone_floor SPRITE16X16_stone_floor
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_ramp_n SPRITE16X16_ramp_n
@@ -84,6 +89,7 @@
     #define SPRITE_floor SPRITE16X16_floor
     #define SPRITE_ice_block SPRITE16X16_ice_block
     #define SPRITE_ladder_down SPRITE16X16_ladder_down
+    #define SPRITE_tree_sapling SPRITE16X16_tree_sapling
     #define SPRITE_rock_floor SPRITE16X16_rock_floor
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_wood_wall SPRITE16X16_wood_wall
