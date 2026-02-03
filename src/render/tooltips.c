@@ -2,6 +2,8 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../entities/workshops.h"
+#include "../entities/item_defs.h"
+#include "../entities/jobs.h"
 #include "../world/designations.h"
 
 // Draw stockpile tooltip at mouse position
@@ -118,8 +120,8 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
-    const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "DIG", "HAUL_TO_BP", "BUILD"};
-    const char* jobTypeName = job ? (job->type < 6 ? jobTypeNames[job->type] : "?") : "IDLE";
+    const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
+    const char* jobTypeName = job ? (job->type < 10 ? jobTypeNames[job->type] : "?") : "IDLE";
 
     int carryingItem = job ? job->carryingItem : -1;
     int targetStockpile = job ? job->targetStockpile : -1;
@@ -128,53 +130,104 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     int targetItem = job ? job->targetItem : -1;
     int jobStep = job ? job->step : 0;
 
-    char line1[64], line2[64], line3[64], line4[64], line5[64], line6[64];
-    char line7[64] = "";
-    char line8[64] = "";
-    snprintf(line1, sizeof(line1), "Mover #%d", moverIdx);
-    snprintf(line2, sizeof(line2), "Pos: (%.1f, %.1f, %.0f)", m->x, m->y, m->z);
-    snprintf(line3, sizeof(line3), "Job: %s (step %d)", jobTypeName, jobStep);
-    snprintf(line4, sizeof(line4), "Carrying: %s", carryingItem >= 0 ? TextFormat("#%d", carryingItem) : "none");
-    snprintf(line5, sizeof(line5), "Path: %d/%d, Goal: (%d,%d)",
-        m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y);
-    snprintf(line6, sizeof(line6), "Target SP: %d, Slot: (%d,%d)",
-        targetStockpile, targetSlotX, targetSlotY);
+    // Build lines dynamically
+    char lines[16][80];
+    Color lineColors[16];
+    int lineCount = 0;
 
-    int numLines = 6;
+    // Header
+    snprintf(lines[lineCount], sizeof(lines[0]), "Mover #%d", moverIdx);
+    lineColors[lineCount++] = YELLOW;
+
+    // Position
+    int cellX = (int)(m->x / CELL_SIZE);
+    int cellY = (int)(m->y / CELL_SIZE);
+    snprintf(lines[lineCount], sizeof(lines[0]), "Pos: (%.1f, %.1f, z%.0f) cell (%d,%d)", m->x, m->y, m->z, cellX, cellY);
+    lineColors[lineCount++] = WHITE;
+
+    // Job info
+    snprintf(lines[lineCount], sizeof(lines[0]), "Job: %s (step %d)", jobTypeName, jobStep);
+    lineColors[lineCount++] = job ? GREEN : GRAY;
+
+    // Carrying item with name
+    if (carryingItem >= 0 && items[carryingItem].active) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: #%d (%s)", carryingItem, ItemName(items[carryingItem].type));
+        lineColors[lineCount++] = ORANGE;
+    } else {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: none");
+        lineColors[lineCount++] = GRAY;
+    }
+
+    // Path info
+    snprintf(lines[lineCount], sizeof(lines[0]), "Path: %d/%d, Goal: (%d,%d,z%d)",
+        m->pathIndex >= 0 ? m->pathIndex + 1 : 0, m->pathLength, m->goal.x, m->goal.y, m->goal.z);
+    lineColors[lineCount++] = m->pathLength > 0 ? WHITE : RED;
+
+    // Repath status
+    if (m->needsRepath) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "NEEDS REPATH (cooldown: %d)", m->repathCooldown);
+        lineColors[lineCount++] = RED;
+    } else if (m->repathCooldown > 0) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Repath cooldown: %d", m->repathCooldown);
+        lineColors[lineCount++] = GRAY;
+    }
+
+    // Stuck detection
+    if (m->timeWithoutProgress > 0.5f) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "No progress: %.1fs%s", m->timeWithoutProgress,
+            m->timeWithoutProgress > 2.0f ? " STUCK!" : "");
+        lineColors[lineCount++] = m->timeWithoutProgress > 2.0f ? RED : ORANGE;
+    }
+
+    // Target stockpile (only if relevant)
+    if (targetStockpile >= 0) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Target SP: %d, Slot: (%d,%d)",
+            targetStockpile, targetSlotX, targetSlotY);
+        lineColors[lineCount++] = WHITE;
+    }
+
+    // Target item pickup info
     float pickupRadius = CELL_SIZE * 0.75f;
-    if (job && jobStep == 0 && targetItem >= 0 && items[targetItem].active) {
+    if (job && targetItem >= 0 && items[targetItem].active) {
         Item* item = &items[targetItem];
         float dx = m->x - item->x;
         float dy = m->y - item->y;
         float dist = sqrtf(dx*dx + dy*dy);
-        snprintf(line7, sizeof(line7), "Item #%d at (%.1f,%.1f) dist=%.1f",
-            targetItem, item->x, item->y, dist);
-        snprintf(line8, sizeof(line8), "Pickup radius: %.1f %s",
-            pickupRadius, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
-        numLines = 8;
+        snprintf(lines[lineCount], sizeof(lines[0]), "Target: #%d %s at (%.0f,%.0f)", 
+            targetItem, ItemName(item->type), item->x, item->y);
+        lineColors[lineCount++] = SKYBLUE;
+        
+        snprintf(lines[lineCount], sizeof(lines[0]), "  dist=%.1f %s", 
+            dist, dist < pickupRadius ? "IN RANGE" : "OUT OF RANGE");
+        lineColors[lineCount++] = dist < pickupRadius ? GREEN : RED;
     }
 
-    int w1 = MeasureText(line1, 14);
-    int w2 = MeasureText(line2, 14);
-    int w3 = MeasureText(line3, 14);
-    int w4 = MeasureText(line4, 14);
-    int w5 = MeasureText(line5, 14);
-    int w6 = MeasureText(line6, 14);
-    int w7 = MeasureText(line7, 14);
-    int w8 = MeasureText(line8, 14);
-    int maxW = w1;
-    if (w2 > maxW) maxW = w2;
-    if (w3 > maxW) maxW = w3;
-    if (w4 > maxW) maxW = w4;
-    if (w5 > maxW) maxW = w5;
-    if (w6 > maxW) maxW = w6;
-    if (w7 > maxW) maxW = w7;
-    if (w8 > maxW) maxW = w8;
+    // Mining target
+    if (job && (job->type == JOBTYPE_MINE || job->type == JOBTYPE_CHANNEL || job->type == JOBTYPE_REMOVE_FLOOR)) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Mining: (%d,%d,z%d) %.0f%%",
+            job->targetMineX, job->targetMineY, job->targetMineZ, job->progress * 100);
+        lineColors[lineCount++] = ORANGE;
+    }
+
+    // Blueprint target
+    if (job && job->targetBlueprint >= 0) {
+        Blueprint* bp = &blueprints[job->targetBlueprint];
+        snprintf(lines[lineCount], sizeof(lines[0]), "Blueprint: #%d at (%d,%d,z%d)",
+            job->targetBlueprint, bp->x, bp->y, bp->z);
+        lineColors[lineCount++] = SKYBLUE;
+    }
+
+    // Calculate box dimensions
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
 
     int padding = 6;
     int lineH = 16;
     int boxW = maxW + padding * 2;
-    int boxH = lineH * numLines + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
 
     int tx = (int)mouse.x + 15;
     int ty = (int)mouse.y + 15;
@@ -185,26 +238,9 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
 
     int y = ty + padding;
-    DrawTextShadow(line1, tx + padding, y, 14, YELLOW);
-    y += lineH;
-    DrawTextShadow(line2, tx + padding, y, 14, WHITE);
-    y += lineH;
-    DrawTextShadow(line3, tx + padding, y, 14, !job ? GRAY : GREEN);
-    y += lineH;
-    DrawTextShadow(line4, tx + padding, y, 14, carryingItem >= 0 ? ORANGE : GRAY);
-    y += lineH;
-    DrawTextShadow(line5, tx + padding, y, 14, m->pathLength > 0 ? WHITE : RED);
-    y += lineH;
-    DrawTextShadow(line6, tx + padding, y, 14, targetStockpile >= 0 ? WHITE : GRAY);
-
-    if (numLines == 8 && targetItem >= 0 && items[targetItem].active) {
+    for (int i = 0; i < lineCount; i++) {
+        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
         y += lineH;
-        DrawTextShadow(line7, tx + padding, y, 14, SKYBLUE);
-        y += lineH;
-        float dx = m->x - items[targetItem].x;
-        float dy = m->y - items[targetItem].y;
-        float dist = sqrtf(dx*dx + dy*dy);
-        DrawTextShadow(line8, tx + padding, y, 14, dist < pickupRadius ? GREEN : RED);
     }
 }
 
@@ -212,7 +248,6 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
     if (itemCount <= 0) return;
 
-    const char* typeNames[] = {"Red", "Green", "Blue", "Orange", "Stone Blocks"};
     const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
 
     char lines[17][64];
@@ -222,7 +257,7 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     for (int i = 0; i < itemCount && lineCount < 17; i++) {
         int idx = itemIndices[i];
         Item* item = &items[idx];
-        const char* typeName = (item->type >= 0 && item->type < 5) ? typeNames[item->type] : "?";
+        const char* typeName = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
         lineCount++;
