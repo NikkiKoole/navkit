@@ -1016,6 +1016,147 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Plant sapling job driver: pick up sapling -> carry to designation -> plant
+JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;  // Reusing mine target fields for designation location
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_PLANT_SAPLING) {
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+
+        // Check if item still exists
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)(item->z);
+
+        // Check if item's cell became a wall
+        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        float dx = mover->x - item->x;
+        float dy = mover->y - item->y;
+        float distSq = dx*dx + dy*dy;
+
+        // Request repath if path exhausted and not at destination
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+
+        // Final approach - move directly toward item when close but path exhausted
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+
+        // Check if stuck
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Pick up the item
+            if (item->state == ITEM_IN_STOCKPILE) {
+                ClearSourceStockpileSlot(item);
+            }
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+
+            // Set goal to designation tile (it should be walkable - it's AIR)
+            mover->goal = (Point){ tx, ty, tz };
+            mover->needsRepath = true;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+
+        // Check if still carrying
+        if (itemIdx < 0 || !items[itemIdx].active) {
+            return JOBRUN_FAIL;
+        }
+
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+
+        // Check if arrived at designation
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        int moverCellZ = (int)mover->z;
+
+        bool onTarget = (moverCellX == tx && moverCellY == ty && moverCellZ == tz);
+
+        // If on target, advance to planting (check this BEFORE stuck detection)
+        if (onTarget) {
+            job->step = STEP_PLANTING;
+            job->progress = 0.0f;
+            return JOBRUN_RUNNING;
+        }
+
+        // Final approach
+        if (IsPathExhausted(mover)) {
+            float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+            TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
+        }
+
+        // Check if stuck (only if not on target)
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_PLANTING) {
+        int itemIdx = job->carryingItem;
+
+        // Progress planting
+        job->progress += dt / PLANT_SAPLING_WORK_TIME;
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            // Planting complete - place sapling cell
+            PlaceSapling(tx, ty, tz);
+
+            // Consume the sapling item
+            if (itemIdx >= 0 && items[itemIdx].active) {
+                items[itemIdx].active = false;
+                items[itemIdx].reservedBy = -1;
+            }
+            job->carryingItem = -1;
+
+            // Clear the designation
+            CancelDesignation(tx, ty, tz);
+
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
@@ -1421,6 +1562,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_CRAFT] = RunJob_Craft,
     [JOBTYPE_REMOVE_RAMP] = RunJob_RemoveRamp,
     [JOBTYPE_CHOP] = RunJob_Chop,
+    [JOBTYPE_PLANT_SAPLING] = RunJob_PlantSapling,
 };
 
 // Forward declaration for CancelJob (defined later in file)
@@ -2042,6 +2184,7 @@ void AssignJobs(void) {
         bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
         bool hasRemoveRampWork = (removeRampCacheCount > 0);
         bool hasChopWork = (CountChopDesignations() > 0);
+        bool hasPlantSaplingWork = (CountPlantSaplingDesignations() > 0);
 
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -2056,7 +2199,7 @@ void AssignJobs(void) {
         }
 
         // Only iterate movers if there's sparse work to do
-        if (hasMineWork || hasChannelWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasBlueprintWork) {
+        if (hasMineWork || hasChannelWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasPlantSaplingWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -2093,6 +2236,11 @@ void AssignJobs(void) {
                 // Chop trees (after remove ramp)
                 if (jobId < 0 && hasChopWork) {
                     jobId = WorkGiver_Chop(moverIdx);
+                }
+
+                // Plant saplings (after chop)
+                if (jobId < 0 && hasPlantSaplingWork) {
+                    jobId = WorkGiver_PlantSapling(moverIdx);
                 }
 
                 if (jobId < 0 && hasBlueprintWork) {
@@ -2252,6 +2400,133 @@ int WorkGiver_Haul(int moverIdx) {
     // Update mover
     m->currentJobId = jobId;
     m->goal = itemCell;
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_PlantSapling: Find a plant sapling designation and a sapling item to plant
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_PlantSapling(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    // Check capability
+    if (!m->capabilities.canPlant) return -1;
+
+    int moverZ = (int)m->z;
+
+    // Find nearest unassigned plant sapling designation
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDesigDistSq = 1e30f;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                Designation* d = &designations[z][y][x];
+                if (d->type != DESIGNATION_PLANT_SAPLING) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                if (z != moverZ) continue;  // Same z-level for now
+
+                // Check if designation tile is walkable (should be AIR)
+                if (!IsCellWalkableAt(z, y, x)) continue;
+
+                // Distance to designation
+                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+                float distX = tileX - m->x;
+                float distY = tileY - m->y;
+                float distSq = distX * distX + distY * distY;
+
+                if (distSq < bestDesigDistSq) {
+                    bestDesigDistSq = distSq;
+                    bestDesigX = x;
+                    bestDesigY = y;
+                    bestDesigZ = z;
+                }
+            }
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Find nearest available sapling item
+    int bestItemIdx = -1;
+    float bestItemDistSq = 1e30f;
+
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        Item* item = &items[j];
+        if (!item->active) continue;
+        if (item->type != ITEM_SAPLING) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != moverZ) continue;
+
+        float dx = item->x - m->x;
+        float dy = item->y - m->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < bestItemDistSq) {
+            bestItemDistSq = distSq;
+            bestItemIdx = j;
+        }
+    }
+
+    if (bestItemIdx < 0) return -1;
+
+    // Check reachability to item
+    Item* item = &items[bestItemIdx];
+    int itemCellX = (int)(item->x / CELL_SIZE);
+    int itemCellY = (int)(item->y / CELL_SIZE);
+    int itemCellZ = (int)item->z;
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point itemCell = { itemCellX, itemCellY, itemCellZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+        return -1;
+    }
+
+    // Check reachability to designation
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    tempLen = FindPath(moverPathAlgorithm, itemCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Reserve the item
+    ReserveItem(bestItemIdx, moverIdx);
+
+    // Reserve the designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_PLANT_SAPLING);
+    if (jobId < 0) {
+        ReleaseItemReservation(bestItemIdx);
+        d->assignedMover = -1;
+        return -1;
+    }
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetItem = bestItemIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_PICKUP;
+    job->progress = 0.0f;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ itemCellX, itemCellY, itemCellZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);

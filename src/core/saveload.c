@@ -355,6 +355,11 @@ bool LoadWorld(const char* filename) {
     fread(&moverCount, sizeof(moverCount), 1, f);
     fread(movers, sizeof(Mover), moverCount, f);
     
+    // Initialize canPlant for old saves (field added later)
+    for (int i = 0; i < moverCount; i++) {
+        movers[i].capabilities.canPlant = true;
+    }
+    
     // Jobs
     fread(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
     fread(&activeJobCount, sizeof(activeJobCount), 1, f);

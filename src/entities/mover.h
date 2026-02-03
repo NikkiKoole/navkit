@@ -29,6 +29,7 @@ typedef struct {
     bool canHaul;       // Can pick up and deliver items
     bool canMine;       // Can dig/mine walls
     bool canBuild;      // Can construct blueprints
+    bool canPlant;      // Can plant saplings
 } MoverCapabilities;
 
 // Mover struct (no Color - that's raylib specific, for rendering only)

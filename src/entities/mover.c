@@ -583,6 +583,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->capabilities.canHaul = true;
     m->capabilities.canMine = true;
     m->capabilities.canBuild = true;
+    m->capabilities.canPlant = true;
 }
 
 void InitMoverWithPath(Mover* m, float x, float y, float z, Point goal, float speed, Point* pathArr, int pathLen) {

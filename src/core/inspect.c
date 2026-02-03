@@ -50,8 +50,8 @@ static const char* cellTypeNames[] = {
 #define CELL_TYPE_COUNT 15
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
-static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
-static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP"};
+static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING"};
+static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
 static uint64_t insp_worldSeed = 0;
@@ -108,7 +108,7 @@ static void print_mover(int idx) {
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
         Job* job = &insp_jobs[m->currentJobId];
         printf("\n  --- Job %d ---\n", m->currentJobId);
-        printf("  Type: %s\n", job->type < 10 ? jobTypeNames[job->type] : "?");
+        printf("  Type: %s\n", job->type < 13 ? jobTypeNames[job->type] : "?");
         printf("  Step: %d\n", job->step);
         printf("  Progress: %.2f\n", job->progress);
         if (job->targetItem >= 0) printf("  Target item: %d\n", job->targetItem);
@@ -120,8 +120,8 @@ static void print_mover(int idx) {
         if (job->targetBlueprint >= 0) printf("  Target blueprint: %d\n", job->targetBlueprint);
     }
     
-    printf("Capabilities: haul=%d mine=%d build=%d\n",
-           m->capabilities.canHaul, m->capabilities.canMine, m->capabilities.canBuild);
+    printf("Capabilities: haul=%d mine=%d build=%d plant=%d\n",
+           m->capabilities.canHaul, m->capabilities.canMine, m->capabilities.canBuild, m->capabilities.canPlant);
 }
 
 static void print_item(int idx) {
@@ -157,7 +157,7 @@ static void print_job(int idx) {
     }
     Job* job = &insp_jobs[idx];
     printf("\n=== JOB %d ===\n", idx);
-    printf("Type: %s (%d)\n", job->type < 10 ? jobTypeNames[job->type] : "?", job->type);
+    printf("Type: %s (%d)\n", job->type < 13 ? jobTypeNames[job->type] : "?", job->type);
     printf("Assigned mover: %d\n", job->assignedMover);
     printf("Step: %d\n", job->step);
     printf("Progress: %.2f\n", job->progress);
@@ -360,9 +360,9 @@ static void print_cell(int x, int y, int z) {
     printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {
-        const char* desigName = desig.type < 5 ? designationTypeNames[desig.type] : "?";
-        printf("Designation: %s, assigned to mover %d, progress %.0f%%\n",
-               desigName, desig.assignedMover, desig.progress * 100);
+        const char* desigName = desig.type < 8 ? designationTypeNames[desig.type] : "?";
+        printf("Designation: %s (type=%d), assigned to mover %d, progress %.0f%%\n",
+               desigName, desig.type, desig.assignedMover, desig.progress * 100);
     }
     
     // Find items at this cell
@@ -559,7 +559,7 @@ static void print_designations(void) {
                 
                 CellType cell = insp_gridCells[idx];
                 const char* cellName = cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "?";
-                const char* desigName = d->type < 5 ? designationTypeNames[d->type] : "?";
+                const char* desigName = d->type < 8 ? designationTypeNames[d->type] : "?";
                 
                 printf("(%d,%d,z%d) %s %s", x, y, z, desigName, cellName);
                 if (d->assignedMover >= 0) {
@@ -639,7 +639,7 @@ static void print_stuck_movers(void) {
                    insp_movers[i].pathLength, insp_movers[i].needsRepath ? "yes" : "no");
             if (insp_movers[i].currentJobId >= 0) {
                 Job* j = &insp_jobs[insp_movers[i].currentJobId];
-                printf("  Job: %s step=%d\n", jobTypeNames[j->type], j->step);
+                printf("  Job: %s step=%d\n", j->type < 13 ? jobTypeNames[j->type] : "?", j->step);
             }
             found++;
         }
@@ -668,12 +668,43 @@ static void print_active_jobs(void) {
         int jid = insp_activeJobList[i];
         Job* j = &insp_jobs[jid];
         printf("Job %d: %s mover=%d step=%d", 
-               jid, jobTypeNames[j->type], j->assignedMover, j->step);
+               jid, j->type < 13 ? jobTypeNames[j->type] : "?", j->assignedMover, j->step);
         if (j->targetItem >= 0) printf(" item=%d", j->targetItem);
         if (j->carryingItem >= 0) printf(" carrying=%d", j->carryingItem);
         printf("\n");
     }
     if (insp_activeJobCnt == 0) printf("No active jobs.\n");
+}
+
+static void print_items(const char* filterType) {
+    printf("\n=== ITEMS ===\n");
+    int found = 0;
+    for (int i = 0; i < insp_itemHWM; i++) {
+        if (!insp_items[i].active) continue;
+        Item* item = &insp_items[i];
+        const char* typeName = ItemName(item->type);
+        
+        // Filter by type if specified
+        if (filterType && strcmp(filterType, typeName) != 0) continue;
+        
+        int cellX = (int)(item->x / CELL_SIZE);
+        int cellY = (int)(item->y / CELL_SIZE);
+        int cellZ = (int)item->z;
+        
+        printf("Item %d: %s at (%d,%d,z%d) %s", 
+               i, typeName, cellX, cellY, cellZ,
+               item->state < 3 ? itemStateNames[item->state] : "?");
+        if (item->reservedBy >= 0) printf(" [reserved by mover %d]", item->reservedBy);
+        if (item->unreachableCooldown > 0) printf(" [UNREACHABLE %.1fs]", item->unreachableCooldown);
+        printf("\n");
+        found++;
+    }
+    if (!found) {
+        if (filterType) printf("No %s items found.\n", filterType);
+        else printf("No items found.\n");
+    } else {
+        printf("\nTotal: %d items\n", found);
+    }
 }
 
 static void cleanup(void) {
@@ -723,8 +754,9 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false;
+    bool opt_entrances = false, opt_items = false;
     int opt_entrances_z = -1;
+    const char* opt_items_filter = NULL;
     
     for (int i = 2; i < argc; i++) {  // Start at 2, skip program name and --inspect
         if (strcmp(argv[i], "--mover") == 0 && i+1 < argc) opt_mover = atoi(argv[++i]);
@@ -759,6 +791,10 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--entrances") == 0) {
             opt_entrances = true;
             if (i+1 < argc && argv[i+1][0] != '-') opt_entrances_z = atoi(argv[++i]);
+        }
+        else if (strcmp(argv[i], "--items") == 0) {
+            opt_items = true;
+            if (i+1 < argc && argv[i+1][0] != '-') opt_items_filter = argv[++i];
         }
         else if (argv[i][0] != '-') filename = argv[i];
     }
@@ -882,6 +918,11 @@ int InspectSaveFile(int argc, char** argv) {
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
     if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
     
+    // Initialize canPlant for old saves (field added later)
+    for (int i = 0; i < insp_moverCount; i++) {
+        insp_movers[i].capabilities.canPlant = true;
+    }
+    
     // Jobs
     fread(&insp_jobHWM, 4, 1, f);
     fread(&insp_activeJobCnt, 4, 1, f);
@@ -900,7 +941,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances);
+                     opt_entrances || opt_items);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -926,7 +967,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
-        printf("         --entrances [Z]\n");
+        printf("         --entrances [Z], --items [TYPE]\n");
     }
     
     // Handle queries
@@ -949,6 +990,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_reserved) print_reserved_items();
     if (opt_jobs_active) print_active_jobs();
     if (opt_entrances) print_entrances(opt_entrances_z);
+    if (opt_items) print_items(opt_items_filter);
     
     cleanup();
     return 0;
