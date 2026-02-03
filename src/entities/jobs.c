@@ -1,5 +1,6 @@
 #include "jobs.h"
 #include "items.h"
+#include "item_defs.h"
 #include "mover.h"
 #include "workshops.h"
 #include "../core/time.h"
@@ -2412,7 +2413,7 @@ void AssignJobsLegacy(void) {
             for (int j = 0; j < itemHighWaterMark; j++) {
                 Item* item = &items[j];
                 if (!item->active) continue;
-                if (item->type != ITEM_STONE_BLOCKS) continue;  // Only stone blocks for building
+                if (!ItemIsBuildingMat(item->type)) continue;  // Only building materials
                 if (item->reservedBy != -1) continue;
                 if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
@@ -3441,13 +3442,13 @@ int WorkGiver_Build(int moverIdx) {
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint
 // Returns job ID if successful, -1 if no job available
-// Filter for blueprint haul items (ITEM_STONE_BLOCKS only)
+// Filter for blueprint haul items (building materials only)
 static bool BlueprintHaulItemFilter(int itemIdx, void* userData) {
     (void)userData;
     Item* item = &items[itemIdx];
     
     if (!item->active) return false;
-    if (item->type != ITEM_STONE_BLOCKS) return false;  // Only stone blocks for building
+    if (!ItemIsBuildingMat(item->type)) return false;  // Only building materials
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;  // Spatial grid only has ground items
     if (item->unreachableCooldown > 0.0f) return false;
@@ -3479,7 +3480,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     int moverTileX = (int)(m->x / CELL_SIZE);
     int moverTileY = (int)(m->y / CELL_SIZE);
     
-    // Find nearest ITEM_STONE_BLOCKS
+    // Find nearest building material
     int bestItemIdx = -1;
     float bestDistSq = 1e30f;
     
@@ -3501,11 +3502,11 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
         }
     }
     
-    // Linear scan for all ITEM_STONE_BLOCKS (fallback for tests, plus checks stockpile items)
+    // Linear scan for all building materials (fallback for tests, plus checks stockpile items)
     for (int j = 0; j < itemHighWaterMark; j++) {
         Item* item = &items[j];
         if (!item->active) continue;
-        if (item->type != ITEM_STONE_BLOCKS) continue;
+        if (!ItemIsBuildingMat(item->type)) continue;
         if (item->reservedBy != -1) continue;
         if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
         if (item->unreachableCooldown > 0.0f) continue;

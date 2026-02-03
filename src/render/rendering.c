@@ -5,6 +5,7 @@
 #include "../core/input_mode.h"
 #include "../core/time.h"
 #include "../entities/workshops.h"
+#include "../entities/item_defs.h"
 
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
@@ -688,15 +689,7 @@ void DrawMovers(void) {
         int carryingItem = moverJob ? moverJob->carryingItem : -1;
         if (carryingItem >= 0 && items[carryingItem].active) {
             Item* item = &items[carryingItem];
-            int sprite;
-            switch (item->type) {
-                case ITEM_RED:          sprite = SPRITE_crate_red;    break;
-                case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
-                case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
-                case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
-                case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
-                default:                sprite = SPRITE_apple;        break;
-            }
+            int sprite = ItemSprite(item->type);
             float itemSize = size * ITEM_SIZE_CARRIED;
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
             Rectangle itemSrc = SpriteGetRect(sprite);
@@ -780,16 +773,7 @@ void DrawItems(void) {
         float sx = offset.x + item->x * zoom;
         float sy = offset.y + item->y * zoom;
 
-        int sprite;
-        switch (item->type) {
-            case ITEM_RED:          sprite = SPRITE_crate_red;    break;
-            case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
-            case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
-            case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
-            case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
-            default:                sprite = SPRITE_apple;        break;
-        }
-
+        int sprite = ItemSprite(item->type);
         float itemSize = size * ITEM_SIZE_GROUND;
         Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
@@ -876,16 +860,7 @@ void DrawStockpileItems(void) {
                 float sy = offset.y + gy * size;
 
                 ItemType type = sp->slotTypes[slotIdx];
-                int sprite;
-                switch (type) {
-                    case ITEM_RED:          sprite = SPRITE_crate_red;    break;
-                    case ITEM_GREEN:        sprite = SPRITE_crate_green;  break;
-                    case ITEM_BLUE:         sprite = SPRITE_crate_blue;   break;
-                    case ITEM_ORANGE:       sprite = SPRITE_crate_orange; break;
-                    case ITEM_STONE_BLOCKS: sprite = SPRITE_stone_block;  break;
-                    default:                sprite = SPRITE_apple;        break;
-                }
-
+                int sprite = ItemSprite(type);
                 int visibleCount = count > 5 ? 5 : count;
                 float itemSize = size * ITEM_SIZE_STOCKPILE;
                 float stackOffset = size * 0.08f;

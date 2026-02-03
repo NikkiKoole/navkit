@@ -11,6 +11,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
 #include "../entities/items.h"
+#include "../entities/item_defs.h"
 #include "../entities/stockpiles.h"
 #include "../world/designations.h"
 #include "../entities/mover.h"
@@ -48,7 +49,7 @@ static const char* cellTypeNames[] = {
     "RAMP_W"         // 15
 };
 #define CELL_TYPE_COUNT 16
-static const char* itemTypeNames[] = {"RED", "GREEN", "BLUE", "ORANGE", "STONE_BLOCKS"};
+// Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
 static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP"};
@@ -134,7 +135,7 @@ static void print_item(int idx) {
     printf("Position: (%.2f, %.2f, z%.0f) -> cell (%d, %d)\n",
            item->x, item->y, item->z, (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE));
     printf("Active: %s\n", item->active ? "YES" : "no");
-    printf("Type: %s\n", item->type < 5 ? itemTypeNames[item->type] : "?");
+    printf("Type: %s\n", item->type < ITEM_TYPE_COUNT ? ItemName(item->type) : "?");
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");
@@ -185,8 +186,8 @@ static void print_stockpile(int idx) {
     printf("Free slots: %d\n", sp->freeSlotCount);
     printf("Max stack: %d\n", sp->maxStackSize);
     printf("Allowed: ");
-    for (int t = 0; t < 4; t++) {
-        if (sp->allowedTypes[t]) printf("%s ", itemTypeNames[t]);
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        if (sp->allowedTypes[t]) printf("%s ", ItemName(t));
     }
     printf("\n\nSlot grid (. = empty, X = inactive, # = count):\n");
     for (int y = 0; y < sp->height; y++) {
@@ -375,7 +376,7 @@ static void print_cell(int x, int y, int z) {
         int iz = (int)insp_items[i].z;
         if (ix == x && iy == y && iz == z) {
             printf("  Item %d: %s (%s)\n", i, 
-                   itemTypeNames[insp_items[i].type], itemStateNames[insp_items[i].state]);
+                   ItemName(insp_items[i].type), itemStateNames[insp_items[i].state]);
             found++;
         }
     }
@@ -657,7 +658,7 @@ static void print_reserved_items(void) {
         if (!insp_items[i].active) continue;
         if (insp_items[i].reservedBy >= 0) {
             printf("Item %d (%s at %.0f,%.0f): reserved by mover %d\n",
-                   i, itemTypeNames[insp_items[i].type],
+                   i, ItemName(insp_items[i].type),
                    insp_items[i].x, insp_items[i].y, insp_items[i].reservedBy);
             found++;
         }
