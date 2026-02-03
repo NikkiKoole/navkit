@@ -2007,7 +2007,7 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength > 0);
 
         // Remove the ladder from floor 0 (break the connection)
-        grid[0][6][7] = CELL_WALKABLE;
+        grid[0][6][7] = CELL_DIRT;
         MarkChunkDirty(7, 6, 0);
 
         // Run incremental update
@@ -2238,7 +2238,7 @@ describe(hpa_ladder_pathfinding) {
             UpdateDirtyChunks();
             
             // Remove the wall
-            grid[0][8][8] = CELL_WALKABLE;
+            grid[0][8][8] = CELL_DIRT;
             MarkChunkDirty(8, 8, 0);
             UpdateDirtyChunks();
         }
@@ -2304,7 +2304,7 @@ describe(hpa_ladder_pathfinding) {
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
             
-            grid[0][5][5] = CELL_WALKABLE;
+            grid[0][5][5] = CELL_DIRT;
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
         }
@@ -3091,7 +3091,7 @@ describe(ladder_placement) {
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
         
         // Place ladder at z=0 (creates UP at z=0, DOWN at z=1)
         PlaceLadder(2, 2, 0);
@@ -3129,7 +3129,7 @@ describe(ladder_placement) {
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
         
         // Place ladder at z=1 (creates UP at z=1, DOWN at z=2)
         PlaceLadder(2, 2, 1);
@@ -3160,7 +3160,7 @@ describe(ladder_erase) {
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
                 for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_WALKABLE : CELL_AIR;
+                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
         
         // Build a 5-level ladder shaft
         grid[0][2][2] = CELL_LADDER_UP;
@@ -3194,7 +3194,7 @@ describe(ladder_erase) {
         // Erase the UP at z=0
         EraseLadder(2, 2, 0);
         
-        // Removed - z=0 becomes walkable (CELL_WALKABLE in legacy, CELL_AIR in standard)
+        // Removed - z=0 becomes walkable (CELL_AIR with solid ground below)
         expect(IsCellWalkableAt(0, 2, 2));
         expect(!IsLadderCell(grid[0][2][2]));
         expect(grid[1][2][2] == CELL_AIR);       // Cascade: DOWN with no connection below -> removed

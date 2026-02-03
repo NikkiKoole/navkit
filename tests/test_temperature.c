@@ -319,7 +319,7 @@ describe(temperature_underground_ambient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -344,7 +344,7 @@ describe(temperature_underground_ambient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -374,7 +374,7 @@ describe(temperature_heated_room) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -561,7 +561,7 @@ describe(temperature_depth_gradient) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }

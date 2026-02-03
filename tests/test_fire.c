@@ -315,7 +315,7 @@ describe(smoke_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -342,7 +342,7 @@ describe(smoke_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -409,7 +409,7 @@ describe(fire_water_extinguishing) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -714,7 +714,7 @@ describe(fire_permanent_source) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -771,7 +771,7 @@ describe(smoke_multi_z_rising) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -879,7 +879,7 @@ describe(smoke_closed_room_filling) {
                     if (x == 0 || x == 7 || y == 0 || y == 7) {
                         grid[z][y][x] = CELL_WALL;
                     } else {
-                        grid[z][y][x] = CELL_WALKABLE;
+                        grid[z][y][x] = CELL_AIR;
                     }
                 }
             }
@@ -939,7 +939,7 @@ describe(smoke_chimney_ventilation) {
                     if (x == 0 || x == 7 || y == 0 || y == 7) {
                         grid[z][y][x] = CELL_WALL;
                     } else {
-                        grid[z][y][x] = CELL_WALKABLE;
+                        grid[z][y][x] = CELL_AIR;
                     }
                 }
             }
@@ -949,7 +949,7 @@ describe(smoke_chimney_ventilation) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (x == 4 && y == 4) {
-                    grid[3][y][x] = CELL_WALKABLE;  // Chimney hole
+                    grid[3][y][x] = CELL_AIR;  // Chimney hole
                 } else if (x > 0 && x < 7 && y > 0 && y < 7) {
                     grid[3][y][x] = CELL_WALL;  // Ceiling
                 }

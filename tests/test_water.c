@@ -480,7 +480,7 @@ describe(water_pool_filling) {
         
         // Remove the north wall - water should spread
         // This simulates what the erase tool does: change cell and destabilize
-        grid[0][1][2] = CELL_WALKABLE;
+        grid[0][1][2] = CELL_AIR;
         DestabilizeWater(2, 1, 0);  // Destabilize the changed cell (like erase tool does)
         
         // Run simulation
@@ -571,11 +571,11 @@ describe(water_pressure) {
         InitGridWithSizeAndChunkSize(8, 4, 8, 4);
         gridDepth = 3;
         
-        // Initialize all as walkable
+        // Initialize all as air (allows water flow)
         for (int z = 0; z < 3; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 8; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -621,11 +621,11 @@ describe(water_pressure) {
         InitGridWithSizeAndChunkSize(8, 4, 8, 4);
         gridDepth = 4;
         
-        // Initialize all as walkable
+        // Initialize all as air (allows water flow)
         for (int z = 0; z < 4; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 8; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
@@ -671,11 +671,11 @@ describe(water_pressure) {
         InitGridWithSizeAndChunkSize(4, 4, 4, 4);
         gridDepth = 2;
         
-        // Both levels walkable
+        // Both levels air (allows water flow)
         for (int z = 0; z < 2; z++) {
             for (int y = 0; y < 4; y++) {
                 for (int x = 0; x < 4; x++) {
-                    grid[z][y][x] = CELL_WALKABLE;
+                    grid[z][y][x] = CELL_AIR;
                 }
             }
         }
