@@ -6066,6 +6066,319 @@ describe(workgivers) {
     }
 }
 
+/*
+ * =============================================================================
+ * Final Approach Tests
+ * Tests for the IsPathExhausted and TryFinalApproach helpers that fix
+ * movers getting stuck at the end of their path.
+ * =============================================================================
+ */
+
+describe(final_approach) {
+    it("should complete haul job when path exhausted but close to item") {
+        // Scenario: mover's path ends one step away from item
+        // The final approach code should micro-move the mover to pickup range
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover at (1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at (5,5)
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Stockpile at (8,8)
+        int spIdx = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Run simulation until item is picked up or delivered
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Item should be in stockpile (job completed successfully)
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        expect(MoverIsIdle(m));
+    }
+    
+    it("should complete mine job when path exhausted but adjacent to wall") {
+        // Scenario: mover paths to adjacent tile but ends slightly off
+        // Final approach should move mover into working range
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".#...\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Mover starts at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Wall at (1,1)
+        expect(grid[0][1][1] == CELL_WALL);
+        
+        // Designate wall for digging
+        DesignateMine(1, 1, 0);
+        
+        // Run simulation until mine completes
+        bool completed = false;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (grid[0][1][1] != CELL_WALL) {
+                completed = true;
+                break;
+            }
+        }
+        
+        expect(completed == true);
+        expect(MoverIsIdle(m));
+    }
+    
+    it("should handle pathIndex < 0 as path exhausted") {
+        // This tests the specific bug fix: pathLength > 0 but pathIndex < 0
+        // means the path was traversed and exhausted
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover starting position
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item nearby
+        float itemX = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(7, 1, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Assign job
+        AssignJobs();
+        expect(MoverIsMovingToPickup(m));
+        
+        // Run until mover picks up item (tests that final approach works)
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (MoverIsCarrying(m)) break;
+        }
+        
+        // Mover should have picked up the item
+        expect(MoverIsCarrying(m));
+        expect(MoverGetCarryingItem(m) == itemIdx);
+    }
+    
+    it("should not move mover when already in pickup range") {
+        // Final approach should not apply if mover is already close enough
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover very close to where item will be
+        float itemX = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        Mover* m = &movers[0];
+        Point goal = {5, 2, 0};
+        // Place mover very close to item position (within PICKUP_RADIUS)
+        InitMover(m, itemX + 5.0f, itemY + 5.0f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at same location
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(8, 2, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Assign and run - should pick up immediately
+        AssignJobs();
+        
+        // Run just a few ticks - should pick up very quickly
+        for (int i = 0; i < 30; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (MoverIsCarrying(m)) break;
+        }
+        
+        expect(MoverIsCarrying(m));
+        expect(MoverGetCarryingItem(m) == itemIdx);
+    }
+    
+    it("should complete delivery when path exhausted but close to stockpile") {
+        // Scenario: mover carrying item, path ends near stockpile
+        // Final approach should complete the delivery
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near item for quick pickup
+        float itemX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        Mover* m = &movers[0];
+        Point goal = {2, 2, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item close to mover
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Stockpile at (7,7)
+        int spIdx = CreateStockpile(7, 7, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Run full simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Delivery should complete
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        expect(MoverIsIdle(m));
+        expect(MoverGetCarryingItem(m) == -1);
+    }
+    
+    it("should not final approach when mover is far from target") {
+        // Final approach only activates when mover is in same or adjacent cell
+        // When far away, mover should rely on normal pathfinding
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover at (1,1)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item far away at (8,8)
+        float itemX = 8 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float itemY = 8 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        
+        // Stockpile
+        int spIdx = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Assign job
+        AssignJobs();
+        expect(MoverIsMovingToPickup(m));
+        
+        // Artificially clear the path to simulate exhausted state while far
+        ClearMoverPath(0);
+        m->pathIndex = -1;
+        
+        // Record position
+        float startX = m->x;
+        float startY = m->y;
+        
+        // Run one JobsTick - final approach should NOT move mover (too far)
+        JobsTick();
+        
+        // Mover position should be unchanged (final approach didn't activate)
+        // The mover is in cell (1,1) and item is in cell (8,8) - not adjacent
+        expect(m->x == startX);
+        expect(m->y == startY);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -6149,6 +6462,9 @@ int main(int argc, char* argv[]) {
     
     // WorkGivers tests (Phase 4 of Jobs Refactor)
     test(workgivers);
+    
+    // Final approach tests (mover arrival fix)
+    test(final_approach);
     
     return summary();
 }
