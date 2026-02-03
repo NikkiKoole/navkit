@@ -204,9 +204,11 @@ Copy patterns from similar features rather than inventing new approaches.
 
 ## 7. Gate for Moving to `done/`
 
-Keep the doc in `doing/` until:
+**Never move a doc to `done/` without explicit user permission.**
+
+Before asking, verify:
 - End-to-end test passes
 - You've seen it work in-game or headless
 - Inspector shows correct state
 
-Only then move to `done/`.
+Then ask the user if it can be moved to `done/`.
