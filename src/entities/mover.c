@@ -13,6 +13,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/temperature.h"
+#include "../simulation/trees.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1337,6 +1338,9 @@ void TickWithDt(float dt) {
     
     // Ground wear (emergent paths)
     UpdateGroundWear();
+    
+    // Tree growth
+    TreesTick(dt);
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();

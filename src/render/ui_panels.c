@@ -1,6 +1,8 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../simulation/trees.h"
+#include "../simulation/groundwear.h"
 #include <time.h>
 
 // ============================================================================
@@ -723,6 +725,28 @@ void DrawUI(void) {
         if (PushButton(x, y, "Clear Wear")) {
             ClearGroundWear();
         }
+    }
+    y += 22;
+
+    // === TREES ===
+    y += 8;
+    if (SectionHeader(x, y, "Trees", &sectionTrees)) {
+        y += 18;
+        DraggableIntT(x, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 1000,
+            TextFormat("Time for sapling to become trunk: %.1f seconds (%d ticks)", saplingGrowTicks / 60.0f, saplingGrowTicks));
+        y += 22;
+        DraggableIntT(x, y, "Trunk Grow", &trunkGrowTicks, 5.0f, 5, 500,
+            TextFormat("Time between trunk growth stages: %.1f seconds (%d ticks)", trunkGrowTicks / 60.0f, trunkGrowTicks));
+        y += 22;
+        ToggleBoolT(x, y, "Sapling Regrowth", &saplingRegrowthEnabled,
+            "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");
+        y += 22;
+        DraggableIntT(x, y, "Regrowth Chance", &saplingRegrowthChance, 1.0f, 0, 100,
+            TextFormat("Chance per 10000 per interval for sapling to spawn on tall grass. At %d, roughly %.2f%% chance.", 
+                       saplingRegrowthChance, saplingRegrowthChance / 100.0f));
+        y += 22;
+        DraggableIntT(x, y, "Min Tree Distance", &saplingMinTreeDistance, 1.0f, 1, 10,
+            TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
     }
     y += 22;
 
