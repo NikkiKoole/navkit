@@ -163,6 +163,7 @@ Find problems across all entities:
 --reserved       # Items currently reserved by movers  
 --jobs-active    # All active jobs with summary
 --designations   # All mining/channeling designations
+--entrances [Z]  # HPA* graph entrances (optionally filter by z-level)
 ```
 
 Example - finding stuck movers:
