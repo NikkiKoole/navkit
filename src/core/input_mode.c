@@ -240,6 +240,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Remove floor", KEY_R, 0, false, false, false);
                 n = AddItem(items, n, "remove ramp (Z)", KEY_Z, 7, false, false, false);
                 n = AddItem(items, n, "Construct", KEY_C, 0, false, false, false);
+                n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
                 n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
