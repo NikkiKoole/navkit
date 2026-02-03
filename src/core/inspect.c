@@ -31,24 +31,21 @@
 #define MARKER_END      0x454E4421  // "END!"
 
 static const char* cellTypeNames[] = {
-    "WALKABLE",      // 0
-    "WALL",          // 1
-    "LADDER",        // 2
-    "AIR",           // 3
-    "FLOOR",         // 4
-    "LADDER_UP",     // 5
-    "LADDER_DOWN",   // 6
-    "LADDER_BOTH",   // 7
-    "GRASS",         // 8
-    "DIRT",          // 9
-    "WOOD_WALL",     // 10
-    "BEDROCK",       // 11
-    "RAMP_N",        // 12
-    "RAMP_E",        // 13
-    "RAMP_S",        // 14
-    "RAMP_W"         // 15
+    "WALL",          // 0
+    "LADDER",        // 1
+    "AIR",           // 2
+    "LADDER_UP",     // 3
+    "LADDER_DOWN",   // 4
+    "LADDER_BOTH",   // 5
+    "DIRT",          // 6
+    "WOOD_WALL",     // 7
+    "BEDROCK",       // 8
+    "RAMP_N",        // 9
+    "RAMP_E",        // 10
+    "RAMP_S",        // 11
+    "RAMP_W"         // 12
 };
-#define CELL_TYPE_COUNT 16
+#define CELL_TYPE_COUNT 13
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
@@ -515,8 +512,6 @@ static void print_map(int cx, int cy, int cz, int radius) {
                         c = '#'; break;
                     case CELL_AIR:
                         c = ' '; break;
-                    case CELL_WALKABLE:
-                        c = ','; break;
                     case CELL_DIRT:
                         c = ':'; break;
                     case CELL_LADDER:

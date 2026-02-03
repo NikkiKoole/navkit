@@ -166,8 +166,8 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can place dirt on air or walkable
-            if (cell == CELL_AIR || cell == CELL_WALKABLE) {
+            // Can place dirt on air
+            if (cell == CELL_AIR) {
                 grid[z][dy][dx] = CELL_DIRT;
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
@@ -700,8 +700,8 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can grow grass on dirt, air, or walkable ground
-            if (cell == CELL_AIR || cell == CELL_WALKABLE) {
+            // Can grow grass on dirt or air
+            if (cell == CELL_AIR) {
                 // Convert to dirt first
                 grid[z][dy][dx] = CELL_DIRT;
                 MarkChunkDirty(dx, dy, z);

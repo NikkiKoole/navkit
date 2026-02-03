@@ -25,6 +25,5 @@ CellDef cellDefs[] = {
     [CELL_BEDROCK]     = {"bedrock",     SPRITE_bedrock,     CF_SOLID | CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE, 0, CELL_BEDROCK},
     
     // === LEGACY ALIASES ===
-    [CELL_WALKABLE]    = {"dirt",        SPRITE_dirt,        CF_GROUND,            INSULATION_TIER_AIR,    1, CELL_DIRT},
     [CELL_LADDER]      = {"ladder",      SPRITE_ladder,      CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER},
 };

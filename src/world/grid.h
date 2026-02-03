@@ -25,7 +25,6 @@ extern int chunksY;
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
 typedef enum { 
-    CELL_WALKABLE,     // Legacy: kept for enum stability
     CELL_WALL, 
     CELL_LADDER,       // Legacy: alias for CELL_LADDER_BOTH
     CELL_AIR, 
