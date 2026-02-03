@@ -1,22 +1,20 @@
-# WorkGiver Performance Optimization
+# AssignJobs Performance
 
-## Current Status
+## Current Status (February 2026)
 
-We have three `AssignJobs` variants:
+We now have a single `AssignJobs()` implementation using the hybrid approach:
+item-centric for hauling (fast), mover-centric for sparse jobs (mining, building, chopping).
 
-| Variant | Speed | Used In Production | Notes |
-|---------|-------|-------------------|-------|
-| `AssignJobsLegacy()` | Fast | **Yes** (via `AssignJobs()`) | Item-centric, inline job creation |
-| `AssignJobsHybrid()` | Fast | No (available) | Item-centric hauling + WorkGivers for sparse jobs |
-| `AssignJobsWorkGivers()` | Slow | No (for testing) | Mover-centric, uses all WorkGivers |
-
-**Benchmark results (500 items):**
+**Benchmark results (500 items, 100 iterations):**
 ```
-           Legacy      WorkGivers    Hybrid
-10 mov     ~256ms      ~422ms        ~48ms   (Hybrid 5x faster!)
-50 mov     ~50ms       ~2100ms       ~49ms   (equal)
-100 mov    ~48ms       ~4200ms       ~49ms   (equal)
+           Old Legacy  Old WorkGivers  Old Hybrid   Current (Feb 2026)
+10 mov     ~256ms      ~422ms          ~48ms        ~170ms
+50 mov     ~50ms       ~2100ms         ~49ms        ~188ms
+100 mov    ~48ms       ~4200ms         ~49ms        ~239ms
 ```
+
+The current implementation is slightly slower than the old Hybrid but still fast.
+The old Legacy and WorkGivers variants have been removed.
 
 ## The Problem (WorkGivers)
 

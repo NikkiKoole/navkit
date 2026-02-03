@@ -276,7 +276,7 @@ static void BenchAssignJobsRehaul(void) {
         
         BuildItemSpatialGrid();
         
-        int numIterations = 100;
+        int numIterations = 10;
         
         // Benchmark: Steady state
         volatile int steadySum = 0;
@@ -342,10 +342,15 @@ static void BenchAssignJobsRehaul(void) {
 }
 
 // =============================================================================
-// AssignJobs algorithm comparison
+// AssignJobs benchmark - tests cold (no cooldowns) vs warm (with cooldowns)
 // =============================================================================
+// Cold: Every iteration clears unreachableCooldown, forcing pathfinding on all items
+// Warm: Unreachable items keep their cooldown, so they're skipped quickly
+// The warm case represents steady-state gameplay where unreachable items stay marked
 static void BenchAssignJobsAlgorithms(void) {
-    printf("--- AssignJobsLegacy vs AssignJobsWorkGivers vs Hybrid ---\n");
+    printf("--- AssignJobs (Cold vs Warm) ---\n");
+    printf("  Cold: pathfind every item each iteration (worst case)\n");
+    printf("  Warm: skip items marked unreachable (steady state)\n\n");
     
     SetupBenchGrid();
     ClearMovers();
@@ -383,67 +388,51 @@ static void BenchAssignJobsAlgorithms(void) {
         
         int numIterations = 100;
         
-        // Legacy
-        volatile int legacySum = 0;
+        // Cold: clear cooldowns each iteration (worst case - pathfind everything)
+        volatile int coldSum = 0;
         for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
         for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
         ClearJobs();
         
-        double legacyStart = GetBenchTime();
+        double coldStart = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            for (int m = 0; m < targetMovers; m++) {
+                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
+                movers[m].currentJobId = -1;
+            }
+            for (int i = 0; i < 500; i++) {
+                if (items[i].active) {
+                    items[i].reservedBy = -1;
+                    items[i].unreachableCooldown = 0.0f;  // Force re-pathfind
+                }
+            }
+            AssignJobs();
+            coldSum += idleMoverCount;
+        }
+        double coldTime = (GetBenchTime() - coldStart) * 1000.0;
+        (void)coldSum;
+        
+        // Warm: keep cooldowns (steady state - skip unreachable items)
+        volatile int warmSum = 0;
+        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
+        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
+        ClearJobs();
+        
+        double warmStart = GetBenchTime();
         for (int iter = 0; iter < numIterations; iter++) {
             for (int m = 0; m < targetMovers; m++) {
                 if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
                 movers[m].currentJobId = -1;
             }
             for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
-            AssignJobsLegacy();
-            legacySum += idleMoverCount;
+            AssignJobs();
+            warmSum += idleMoverCount;
         }
-        double legacyTime = (GetBenchTime() - legacyStart) * 1000.0;
-        (void)legacySum;
+        double warmTime = (GetBenchTime() - warmStart) * 1000.0;
+        (void)warmSum;
         
-        // WorkGivers
-        volatile int wgSum = 0;
-        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
-        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
-        ClearJobs();
-        
-        double wgStart = GetBenchTime();
-        for (int iter = 0; iter < numIterations; iter++) {
-            for (int m = 0; m < targetMovers; m++) {
-                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
-                movers[m].currentJobId = -1;
-            }
-            for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
-            AssignJobsWorkGivers();
-            wgSum += idleMoverCount;
-        }
-        double wgTime = (GetBenchTime() - wgStart) * 1000.0;
-        (void)wgSum;
-        
-        // Hybrid
-        volatile int hybridSum = 0;
-        for (int i = 0; i < targetMovers; i++) movers[i].currentJobId = -1;
-        for (int i = 0; i < MAX_ITEMS; i++) if (items[i].active) items[i].reservedBy = -1;
-        ClearJobs();
-        
-        double hybridStart = GetBenchTime();
-        for (int iter = 0; iter < numIterations; iter++) {
-            for (int m = 0; m < targetMovers; m++) {
-                if (movers[m].currentJobId >= 0) ReleaseJob(movers[m].currentJobId);
-                movers[m].currentJobId = -1;
-            }
-            for (int i = 0; i < 500; i++) if (items[i].active) items[i].reservedBy = -1;
-            AssignJobsHybrid();
-            hybridSum += idleMoverCount;
-        }
-        double hybridTime = (GetBenchTime() - hybridStart) * 1000.0;
-        (void)hybridSum;
-        
-        double wgRatio = (legacyTime > 0.001) ? wgTime / legacyTime : 0;
-        double hybridRatio = (legacyTime > 0.001) ? hybridTime / legacyTime : 0;
-        printf("  %3d movers: Legacy=%.3fms  WorkGivers=%.3fms (%.1fx)  Hybrid=%.3fms (%.1fx)\n",
-               targetMovers, legacyTime, wgTime, wgRatio, hybridTime, hybridRatio);
+        printf("  %3d movers: Cold=%.1fms  Warm=%.1fms\n",
+               targetMovers, coldTime, warmTime);
     }
     
     FreeItemSpatialGrid();

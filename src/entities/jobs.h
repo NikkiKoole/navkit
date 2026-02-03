@@ -41,7 +41,7 @@ typedef struct {
     JobType type;
     int assignedMover;      // Mover index, -1 if unassigned
     int step;               // Sub-state within job (0=moving to pickup, 1=carrying, etc)
-    
+
     // Targets (interpret based on job type)
     int targetItem;         // Item to pick up
     int targetStockpile;    // Destination stockpile
@@ -53,15 +53,15 @@ typedef struct {
     int targetAdjX;         // Adjacent tile to stand on while mining (cached)
     int targetAdjY;
     int targetBlueprint;    // Blueprint index
-    
+
     // Craft job targets
     int targetWorkshop;     // Workshop index
     int targetBillIdx;      // Bill index within workshop
     float workRequired;     // Work time from recipe (seconds)
-    
+
     // Progress for timed work (digging, building, crafting)
     float progress;
-    
+
     // Carried item (for haul jobs and craft jobs)
     int carryingItem;
 } Job;
@@ -133,10 +133,7 @@ void RemoveMoverFromIdleList(int moverIdx);
 void RebuildIdleMoverList(void);  // Full rebuild (e.g., after ClearMovers)
 
 // Core functions
-void AssignJobs(void);           // Match idle movers with available items (currently uses Legacy)
-void AssignJobsLegacy(void);     // Item-centric with inline optimizations (fast)
-void AssignJobsWorkGivers(void); // Mover-centric using WorkGivers (slower, for comparison)
-void AssignJobsHybrid(void);     // Hybrid: item-centric for hauling, mover-centric for sparse jobs
+void AssignJobs(void);           // Match idle movers with available jobs
 void RebuildMineDesignationCache(void);  // Build cache for WorkGiver_Mining (call before mining assignment)
 void JobsTick(void);             // Update job state machines using per-type drivers
 
