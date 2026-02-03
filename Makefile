@@ -122,6 +122,9 @@ test_soundsystem: $(BINDIR)
 # Run all tests
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
+# Quick tests - skips slow mover tests (~3s instead of ~30s)
+test-quick: test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
+
 # Benchmark targets - link against precompiled test_unity.o
 bench_jobs_SRC := tests/bench_jobs.c
 
