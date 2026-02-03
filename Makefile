@@ -114,28 +114,8 @@ test_soundsystem: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	./$(BINDIR)/test_soundsystem
 
-# Run all tests in standard (DF-style) mode - this is the default
+# Run all tests
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
-
-# Run all tests in legacy mode
-test-legacy: $(BINDIR)
-	@echo "=== Running all tests in LEGACY mode ==="
-	./$(BINDIR)/test_pathing --legacy
-	./$(BINDIR)/test_mover --legacy
-	./$(BINDIR)/test_steering
-	./$(BINDIR)/test_jobs --legacy
-	./$(BINDIR)/test_water --legacy
-	./$(BINDIR)/test_groundwear --legacy
-	./$(BINDIR)/test_fire --legacy
-	./$(BINDIR)/test_temperature --legacy
-	./$(BINDIR)/test_steam --legacy
-	./$(BINDIR)/test_time --legacy
-	./$(BINDIR)/test_time_specs --legacy
-	./$(BINDIR)/test_high_speed --legacy
-
-# Run all tests in both modes (standard first, then legacy)
-test-both: test test-legacy
-	@echo "=== All tests passed in both modes ==="
 
 # Benchmark targets - all use test_unity.c for shared game logic
 bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c

@@ -1,58 +1,28 @@
 # Tests and Benchmarks
 
-## Walkability Modes
-
-The game supports two walkability models:
-
-- **Standard (DF-style)**: Cells are walkable if there's a solid block below them (walk ON blocks, not IN them). This is the default mode.
-- **Legacy**: Cells have explicit walkability flags (`CELL_WALKABLE`, `CELL_FLOOR`, etc.). Used for backwards compatibility.
-
-All tests run in **standard mode by default**. Use `--legacy` to run in legacy mode.
-
 ## Running Tests
 
-### Run All Tests (Standard Mode)
+### Run All Tests
 
 ```bash
-make test              # Run all tests in standard mode
-```
-
-### Run All Tests in Legacy Mode
-
-```bash
-make test-legacy       # Run all tests in legacy mode
-```
-
-### Run All Tests in Both Modes
-
-```bash
-make test-both         # Run all tests in standard mode, then legacy mode
+make test              # Run all tests
 ```
 
 ### Run a Specific Test Suite
 
 ```bash
-make test_mover        # Run mover tests (standard mode)
+make test_mover        # Run mover tests
 make test_jobs         # Run job system tests
-make test_pathing      # Run pathfinding tests (runs BOTH modes by default)
+make test_pathing      # Run pathfinding tests
 make test_water        # Run water simulation tests
 make test_fire         # Run fire simulation tests
 make test_groundwear   # Run ground wear tests
-make test_steering     # Run steering tests (no walkability)
+make test_steering     # Run steering tests
 make test_temperature  # Run temperature simulation tests
 make test_steam        # Run steam simulation tests
 make test_time         # Run time system tests
 make test_time_specs   # Run time specification tests
 make test_high_speed   # Run high-speed simulation tests
-```
-
-### Run a Specific Test in Legacy Mode
-
-```bash
-./bin/test_mover --legacy
-./bin/test_jobs --legacy
-./bin/test_fire --legacy
-# etc.
 ```
 
 ### Verbose Output
@@ -61,27 +31,7 @@ Add `-v` flag to see raylib log output:
 
 ```bash
 ./bin/test_mover -v
-./bin/test_mover -v --legacy
 ```
-
-## Special Cases
-
-### test_pathfinding
-
-The pathfinding tests (`make test_pathing`) run in **both modes by default** since pathfinding behavior differs significantly between walkability models. Use `--legacy` to run only in legacy mode:
-
-```bash
-make test_pathing              # Runs both standard AND legacy modes
-./bin/test_pathing --legacy    # Runs only legacy mode
-```
-
-### test_steering
-
-Steering tests don't use walkability at all (pure vector math), so they ignore the `--legacy` flag.
-
-### bench_jobs
-
-The job benchmark uses legacy mode internally (hardcoded) for consistent benchmark comparisons.
 
 ## Running Benchmarks
 
@@ -198,5 +148,4 @@ int main(int argc, char* argv[]) {
        ./$(BINDIR)/test_<system>
    ```
 4. Add to the `test:` target
-5. Add to `test-legacy:` target with `--legacy` flag
-6. Add to `.PHONY` line
+5. Add to `.PHONY` line

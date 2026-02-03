@@ -28,163 +28,112 @@ static const int DIR_DX[4] = {0, 1, 0, -1};
 static const int DIR_DY[4] = {-1, 0, 1, 0};
 
 // =============================================================================
-// Mine Designation Cache - built once per frame, used by mining job assignment
+// Designation Caches - built once per frame for job assignment performance
 // =============================================================================
-#define MAX_MINE_CACHE 4096
+#define MAX_DESIGNATION_CACHE 4096
 
-typedef struct {
-    int x, y, z;       // Designation coordinates
-    int adjX, adjY;    // Adjacent walkable tile (for miner to stand on)
-} MineDesignationEntry;
-
-static MineDesignationEntry mineCache[MAX_MINE_CACHE];
-static int mineCacheCount = 0;
-
-// Build the mine designation cache - call once per frame before mining assignment
-void RebuildMineDesignationCache(void) {
-    mineCacheCount = 0;
-    
-    // Early exit if no designations
-    if (activeDesignationCount == 0) return;
-    
-    for (int z = 0; z < gridDepth && mineCacheCount < MAX_MINE_CACHE; z++) {
-        for (int y = 0; y < gridHeight && mineCacheCount < MAX_MINE_CACHE; y++) {
-            for (int x = 0; x < gridWidth && mineCacheCount < MAX_MINE_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_MINE) continue;
-                if (d->assignedMover != -1) continue;  // Already assigned
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Find adjacent walkable tile
-                int adjX = -1, adjY = -1;
-                for (int dir = 0; dir < 4; dir++) {
-                    int ax = x + DIR_DX[dir];
-                    int ay = y + DIR_DY[dir];
-                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                        if (IsCellWalkableAt(z, ay, ax)) {
-                            adjX = ax;
-                            adjY = ay;
-                            break;
-                        }
-                    }
-                }
-                
-                if (adjX < 0) continue;  // No adjacent walkable tile
-                
-                mineCache[mineCacheCount++] = (MineDesignationEntry){x, y, z, adjX, adjY};
-            }
-        }
-    }
-}
-
-// =============================================================================
-// Channel Designation Cache - built once per frame
-// =============================================================================
-#define MAX_CHANNEL_CACHE 4096
-
-typedef struct {
-    int x, y, z;       // Designation coordinates (mover stands ON this tile)
-} ChannelDesignationEntry;
-
-static ChannelDesignationEntry channelCache[MAX_CHANNEL_CACHE];
-static int channelCacheCount = 0;
-
-void RebuildChannelDesignationCache(void) {
-    channelCacheCount = 0;
-    
-    if (activeDesignationCount == 0) return;
-    
-    for (int z = 0; z < gridDepth && channelCacheCount < MAX_CHANNEL_CACHE; z++) {
-        for (int y = 0; y < gridHeight && channelCacheCount < MAX_CHANNEL_CACHE; y++) {
-            for (int x = 0; x < gridWidth && channelCacheCount < MAX_CHANNEL_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_CHANNEL) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                channelCache[channelCacheCount++] = (ChannelDesignationEntry){x, y, z};
-            }
-        }
-    }
-}
-
-// =============================================================================
-// Remove Floor Designation Cache - built once per frame
-// =============================================================================
-#define MAX_REMOVE_FLOOR_CACHE 4096
-
-typedef struct {
-    int x, y, z;       // Designation coordinates (mover stands ON this tile)
-} RemoveFloorDesignationEntry;
-
-static RemoveFloorDesignationEntry removeFloorCache[MAX_REMOVE_FLOOR_CACHE];
-static int removeFloorCacheCount = 0;
-
-void RebuildRemoveFloorDesignationCache(void) {
-    removeFloorCacheCount = 0;
-    
-    if (activeDesignationCount == 0) return;
-    
-    for (int z = 0; z < gridDepth && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; z++) {
-        for (int y = 0; y < gridHeight && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; y++) {
-            for (int x = 0; x < gridWidth && removeFloorCacheCount < MAX_REMOVE_FLOOR_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_REMOVE_FLOOR) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                removeFloorCache[removeFloorCacheCount++] = (RemoveFloorDesignationEntry){x, y, z};
-            }
-        }
-    }
-}
-
-// =============================================================================
-// Remove Ramp Designation Cache - built once per frame
-// =============================================================================
-#define MAX_REMOVE_RAMP_CACHE 4096
-
+// Cache entry for designations where mover stands adjacent (mine, remove ramp)
 typedef struct {
     int x, y, z;       // Designation coordinates
     int adjX, adjY;    // Adjacent walkable tile (for mover to stand on)
-} RemoveRampDesignationEntry;
+} AdjacentDesignationEntry;
 
-static RemoveRampDesignationEntry removeRampCache[MAX_REMOVE_RAMP_CACHE];
+// Cache entry for designations where mover stands on tile (channel, remove floor)
+typedef struct {
+    int x, y, z;       // Designation coordinates (mover stands ON this tile)
+} OnTileDesignationEntry;
+
+// Mine designation cache
+static AdjacentDesignationEntry mineCache[MAX_DESIGNATION_CACHE];
+static int mineCacheCount = 0;
+
+// Channel designation cache
+static OnTileDesignationEntry channelCache[MAX_DESIGNATION_CACHE];
+static int channelCacheCount = 0;
+
+// Remove floor designation cache
+static OnTileDesignationEntry removeFloorCache[MAX_DESIGNATION_CACHE];
+static int removeFloorCacheCount = 0;
+
+// Remove ramp designation cache
+static AdjacentDesignationEntry removeRampCache[MAX_DESIGNATION_CACHE];
 static int removeRampCacheCount = 0;
 
-void RebuildRemoveRampDesignationCache(void) {
-    removeRampCacheCount = 0;
-    
-    if (activeDesignationCount == 0) return;
-    
-    for (int z = 0; z < gridDepth && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; z++) {
-        for (int y = 0; y < gridHeight && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; y++) {
-            for (int x = 0; x < gridWidth && removeRampCacheCount < MAX_REMOVE_RAMP_CACHE; x++) {
-                Designation* d = GetDesignation(x, y, z);
-                if (!d || d->type != DESIGNATION_REMOVE_RAMP) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                
-                // Find adjacent walkable tile
-                int adjX = -1, adjY = -1;
-                for (int dir = 0; dir < 4; dir++) {
-                    int ax = x + DIR_DX[dir];
-                    int ay = y + DIR_DY[dir];
-                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                        if (IsCellWalkableAt(z, ay, ax)) {
-                            adjX = ax;
-                            adjY = ay;
-                            break;
-                        }
-                    }
-                }
-                
-                if (adjX < 0) continue;  // No adjacent walkable tile
-                
-                removeRampCache[removeRampCacheCount++] = (RemoveRampDesignationEntry){x, y, z, adjX, adjY};
+// Helper: Find first adjacent walkable tile. Returns true if found.
+static bool FindAdjacentWalkable(int x, int y, int z, int* outAdjX, int* outAdjY) {
+    for (int dir = 0; dir < 4; dir++) {
+        int ax = x + DIR_DX[dir];
+        int ay = y + DIR_DY[dir];
+        if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+            if (IsCellWalkableAt(z, ay, ax)) {
+                *outAdjX = ax;
+                *outAdjY = ay;
+                return true;
             }
         }
     }
+    return false;
+}
+
+// Rebuild cache for designations requiring adjacent standing position
+static void RebuildAdjacentDesignationCache(DesignationType type, 
+                                            AdjacentDesignationEntry* cache, 
+                                            int* count) {
+    *count = 0;
+    if (activeDesignationCount == 0) return;
+    
+    for (int z = 0; z < gridDepth && *count < MAX_DESIGNATION_CACHE; z++) {
+        for (int y = 0; y < gridHeight && *count < MAX_DESIGNATION_CACHE; y++) {
+            for (int x = 0; x < gridWidth && *count < MAX_DESIGNATION_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != type) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                int adjX, adjY;
+                if (!FindAdjacentWalkable(x, y, z, &adjX, &adjY)) continue;
+                
+                cache[(*count)++] = (AdjacentDesignationEntry){x, y, z, adjX, adjY};
+            }
+        }
+    }
+}
+
+// Rebuild cache for designations where mover stands on the tile
+static void RebuildOnTileDesignationCache(DesignationType type,
+                                          OnTileDesignationEntry* cache,
+                                          int* count) {
+    *count = 0;
+    if (activeDesignationCount == 0) return;
+    
+    for (int z = 0; z < gridDepth && *count < MAX_DESIGNATION_CACHE; z++) {
+        for (int y = 0; y < gridHeight && *count < MAX_DESIGNATION_CACHE; y++) {
+            for (int x = 0; x < gridWidth && *count < MAX_DESIGNATION_CACHE; x++) {
+                Designation* d = GetDesignation(x, y, z);
+                if (!d || d->type != type) continue;
+                if (d->assignedMover != -1) continue;
+                if (d->unreachableCooldown > 0.0f) continue;
+                
+                cache[(*count)++] = (OnTileDesignationEntry){x, y, z};
+            }
+        }
+    }
+}
+
+void RebuildMineDesignationCache(void) {
+    RebuildAdjacentDesignationCache(DESIGNATION_MINE, mineCache, &mineCacheCount);
+}
+
+void RebuildChannelDesignationCache(void) {
+    RebuildOnTileDesignationCache(DESIGNATION_CHANNEL, channelCache, &channelCacheCount);
+}
+
+void RebuildRemoveFloorDesignationCache(void) {
+    RebuildOnTileDesignationCache(DESIGNATION_REMOVE_FLOOR, removeFloorCache, &removeFloorCacheCount);
+}
+
+void RebuildRemoveRampDesignationCache(void) {
+    RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount);
 }
 
 // Find first adjacent tile that is both walkable and reachable from moverCell.
@@ -3112,7 +3061,7 @@ int WorkGiver_Mining(int moverIdx) {
     float bestDistSq = 1e30f;
     
     for (int i = 0; i < mineCacheCount; i++) {
-        MineDesignationEntry* entry = &mineCache[i];
+        AdjacentDesignationEntry* entry = &mineCache[i];
         
         // Only same z-level for now
         if (entry->z != moverZ) continue;
@@ -3191,7 +3140,7 @@ int WorkGiver_Channel(int moverIdx) {
     float bestDistSq = 1e30f;
     
     for (int i = 0; i < channelCacheCount; i++) {
-        ChannelDesignationEntry* entry = &channelCache[i];
+        OnTileDesignationEntry* entry = &channelCache[i];
         
         // Same z-level only for now (mover walks to the tile)
         if (entry->z != moverZ) continue;
@@ -3273,7 +3222,7 @@ int WorkGiver_RemoveFloor(int moverIdx) {
     float bestDistSq = 1e30f;
     
     for (int i = 0; i < removeFloorCacheCount; i++) {
-        RemoveFloorDesignationEntry* entry = &removeFloorCache[i];
+        OnTileDesignationEntry* entry = &removeFloorCache[i];
         
         // Same z-level only for now (mover walks to the tile)
         if (entry->z != moverZ) continue;
@@ -3356,7 +3305,7 @@ int WorkGiver_RemoveRamp(int moverIdx) {
     float bestDistSq = 1e30f;
     
     for (int i = 0; i < removeRampCacheCount; i++) {
-        RemoveRampDesignationEntry* entry = &removeRampCache[i];
+        AdjacentDesignationEntry* entry = &removeRampCache[i];
         
         // Same z-level only for now
         if (entry->z != moverZ) continue;

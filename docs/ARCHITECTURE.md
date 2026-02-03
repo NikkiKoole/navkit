@@ -121,8 +121,8 @@ The ground wear system changes surface overlays based on foot traffic.
 **Terrain generator setup:**
 ```c
 InitGrid();
-if (!g_legacyWalkability) FillGroundLevel();  // z=0 = dirt
-int baseZ = g_legacyWalkability ? 0 : 1;      // buildings start at z=1
+FillGroundLevel();  // z=0 = dirt
+int baseZ = 1;      // buildings start at z=1
 ```
 
 **Affecting ground below mover:**
@@ -130,8 +130,6 @@ int baseZ = g_legacyWalkability ? 0 : 1;      // buildings start at z=1
 // Mover at z=1 walks on dirt at z=0
 int groundZ = (z > 0 && grid[z-1][y][x] == CELL_DIRT) ? z-1 : z;
 ```
-
-**Toggle:** Press **F7** to switch between DF mode and legacy mode.
 
 ---
 
@@ -186,7 +184,6 @@ src/
 
 | Toggle | Key | Variable |
 |--------|-----|----------|
-| Walkability mode | F7 | `g_legacyWalkability` |
 | Pause | Space | - |
 | Z-level | < / > | `currentViewZ` |
 | Save/Load | F5 / F6 | - |

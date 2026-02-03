@@ -486,8 +486,7 @@ int InitGridFromAscii(const char* ascii) {
 
 int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
     // Parse format: "floor:0\n...\nfloor:1\n..."
-    // In standard mode: floor:0 becomes solid ground (CELL_DIRT), floor:1+ becomes walkable air
-    // In legacy mode: all floors use CELL_WALKABLE for '.' cells
+    // floor:0 becomes solid ground (CELL_DIRT), floor:1+ becomes walkable air with HAS_FLOOR flag
     
     // First pass: find dimensions and floor count
     int width = 0;

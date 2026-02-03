@@ -1596,8 +1596,7 @@ describe(unreachable_item_cooldown) {
         }
         
         // Now open a path by removing a wall
-        // In standard mode: CELL_AIR at z=0 is walkable (implicit bedrock)
-        // In legacy mode: need CELL_WALKABLE
+        // CELL_AIR at z=0 is walkable (implicit bedrock below)
         grid[0][3][2] = CELL_AIR;
         MarkChunkDirty(2, 3, 0);
         

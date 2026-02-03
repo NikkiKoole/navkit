@@ -1495,9 +1495,8 @@ describe(ladder_pathfinding) {
         expect(grid[0][1][1] == CELL_LADDER);
         expect(grid[1][1][1] == CELL_LADDER);
         
-        // Check walkability - both floors should be walkable in both modes
-        // In standard mode: z=0 walkable via implicit bedrock, z=1 via HAS_FLOOR
-        // In legacy mode: both have CELL_WALKABLE
+        // Check walkability - both floors should be walkable
+        // z=0 walkable via implicit bedrock, z=1 via HAS_FLOOR
         expect(IsCellWalkableAt(0, 0, 0));
         expect(IsCellWalkableAt(1, 0, 0));
     }
@@ -3017,7 +3016,6 @@ describe(jps_plus_vs_astar_consistency) {
 // Legend: U = LADDER_UP, D = LADDER_DOWN, B = LADDER_BOTH
 
 describe(ladder_placement) {
-    // Ladder placement tests use legacy mode
     it("place_basic - Place ladder on empty ground creates UP and DOWN") {
         // z=1:  .            D
         // z=0:  .  <- place  U
@@ -3142,7 +3140,6 @@ describe(ladder_placement) {
 }
 
 describe(ladder_erase) {
-    // Ladder erase tests use legacy mode
     it("erase_both - Erase BOTH breaks upward connection") {
         // z=4:  D            D
         // z=3:  B            U
