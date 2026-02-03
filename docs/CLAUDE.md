@@ -187,7 +187,22 @@ For any new job type:
 ./bin/path --inspect save.bin.gz --jobs-active     # See assigned jobs
 ```
 
-## 5. Gate for Moving to `done/`
+## 5. UI for Testing
+
+- Is there a way to trigger/test this feature from the UI?
+- Are relevant parameters exposed in ui_panels.c for tuning?
+- Does the inspector show the new state?
+
+## 6. Reuse Existing Systems
+
+Before writing new code, check if existing systems already handle it:
+- Existing job patterns (haul, mine, build, chop)
+- Existing designation patterns
+- Existing item/stockpile patterns
+
+Copy patterns from similar features rather than inventing new approaches.
+
+## 7. Gate for Moving to `done/`
 
 Keep the doc in `doing/` until:
 - End-to-end test passes
