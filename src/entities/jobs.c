@@ -28,6 +28,38 @@
 static const int DIR_DX[4] = {0, 1, 0, -1};
 static const int DIR_DY[4] = {-1, 0, 1, 0};
 
+// Helper: Check if mover's path is exhausted (no path or index exhausted)
+static inline bool IsPathExhausted(Mover* mover) {
+    return mover->pathLength == 0 || mover->pathIndex < 0;
+}
+
+// Helper: Final approach - move mover directly toward target when path exhausted but close
+// Returns true if micro-movement was applied
+static bool TryFinalApproach(Mover* mover, float targetX, float targetY, int targetCellX, int targetCellY, float radius) {
+    if (!IsPathExhausted(mover)) return false;
+    
+    float dx = mover->x - targetX;
+    float dy = mover->y - targetY;
+    float distSq = dx * dx + dy * dy;
+    
+    if (distSq < radius * radius) return false;  // Already in range
+    
+    int moverCellX = (int)(mover->x / CELL_SIZE);
+    int moverCellY = (int)(mover->y / CELL_SIZE);
+    bool inSameOrAdjacentCell = (abs(moverCellX - targetCellX) <= 1 && abs(moverCellY - targetCellY) <= 1);
+    
+    if (!inSameOrAdjacentCell) return false;
+    
+    // Move directly toward target
+    float dist = sqrtf(distSq);
+    float moveSpeed = mover->speed * TICK_DT;
+    if (dist > 0.01f) {
+        mover->x -= (dx / dist) * moveSpeed;
+        mover->y -= (dy / dist) * moveSpeed;
+    }
+    return true;
+}
+
 // =============================================================================
 // Designation Caches - built once per frame for job assignment performance
 // =============================================================================
@@ -368,29 +400,16 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Set goal to item if not already moving there
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
 
-        // Final approach - when path exhausted but not in pickup range, move directly toward item
-        // This handles the case where knot-fix skips to waypoint without snapping position
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            // Move directly toward item (micro-adjustment, not pathfinding)
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward item when close but path exhausted
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -455,29 +474,18 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Request repath if no path and not at destination
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS) {
+        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
             mover->goal.x = job->targetSlotX;
             mover->goal.y = job->targetSlotY;
             mover->goal.z = stockpiles[job->targetStockpile].z;
             mover->needsRepath = true;
         }
 
-        // Final approach - when path exhausted but not at drop location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - job->targetSlotX) <= 1 && abs(moverCellY - job->targetSlotY) <= 1);
-        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward drop location when close but path exhausted
+        TryFinalApproach(mover, targetX, targetY, job->targetSlotX, job->targetSlotY, DROP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -537,27 +545,16 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Request repath if path exhausted and not at destination
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
 
-        // Final approach - when path exhausted but not in pickup range
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward item when close but path exhausted
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -627,29 +624,18 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Request repath if path exhausted and not at destination
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS) {
+        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
             mover->goal.x = job->targetSlotX;
             mover->goal.y = job->targetSlotY;
             mover->goal.z = (int)mover->z;
             mover->needsRepath = true;
         }
 
-        // Final approach - when path exhausted but not at drop location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - job->targetSlotX) <= 1 && abs(moverCellY - job->targetSlotY) <= 1);
-        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward drop location when close but path exhausted
+        TryFinalApproach(mover, targetX, targetY, job->targetSlotX, job->targetSlotY, DROP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -713,23 +699,12 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == job->targetMineZ;
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
 
-        // Final approach - when path exhausted but not at work location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
-        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward work location when close but path exhausted
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             Designation* desig = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
             if (desig) desig->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
@@ -795,23 +770,12 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
 
-        // Final approach - when path exhausted but not at work location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - tx) <= 1 && abs(moverCellY - ty) <= 1);
-        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward work location when close but path exhausted
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -875,23 +839,12 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
 
-        // Final approach - when path exhausted but not at work location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - tx) <= 1 && abs(moverCellY - ty) <= 1);
-        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward work location when close but path exhausted
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -958,23 +911,12 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
 
-        // Final approach - when path exhausted but not at work location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
-        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward work location when close but path exhausted
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -1041,23 +983,12 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
 
-        // Final approach - when path exhausted but not at work location
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
-        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward work location when close but path exhausted
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -1120,27 +1051,16 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Request repath if path exhausted and not at destination
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
 
-        // Final approach - when path exhausted but not in pickup range
-        int moverCellX = (int)(mover->x / CELL_SIZE);
-        int moverCellY = (int)(mover->y / CELL_SIZE);
-        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-            float dist = sqrtf(distSq);
-            float moveSpeed = mover->speed * TICK_DT;
-            if (dist > 0.01f) {
-                mover->x -= (dx / dist) * moveSpeed;
-                mover->y -= (dy / dist) * moveSpeed;
-            }
-        }
+        // Final approach - move directly toward item when close but path exhausted
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -1214,28 +1134,15 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
             ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
              (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
 
-        // Final approach - when path exhausted but not at blueprint
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && !onBlueprint && !adjacentToBlueprint) {
-            // Move toward goal cell center
+        // Final approach - move toward goal when path exhausted but not at blueprint
+        if (IsPathExhausted(mover) && !onBlueprint && !adjacentToBlueprint) {
             float goalX = mover->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
             float goalY = mover->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = mover->x - goalX;
-            float dy = mover->y - goalY;
-            float distSq = dx*dx + dy*dy;
-            bool inSameOrAdjacentCell = (abs(moverCellX - mover->goal.x) <= 1 && abs(moverCellY - mover->goal.y) <= 1);
-            if (distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-                float dist = sqrtf(distSq);
-                float moveSpeed = mover->speed * TICK_DT;
-                if (dist > 0.01f) {
-                    mover->x -= (dx / dist) * moveSpeed;
-                    mover->y -= (dy / dist) * moveSpeed;
-                }
-            }
+            TryFinalApproach(mover, goalX, goalY, mover->goal.x, mover->goal.y, PICKUP_RADIUS);
         }
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -1284,28 +1191,15 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
             ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
              (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
 
-        // Final approach - when path exhausted but not at blueprint
-        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-        if (pathExhausted && !onBlueprint && !adjacentToBlueprint) {
-            // Move toward goal cell center
+        // Final approach - move toward goal when path exhausted but not at blueprint
+        if (IsPathExhausted(mover) && !onBlueprint && !adjacentToBlueprint) {
             float goalX = mover->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
             float goalY = mover->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
-            float dx = mover->x - goalX;
-            float dy = mover->y - goalY;
-            float distSq = dx*dx + dy*dy;
-            bool inSameOrAdjacentCell = (abs(moverCellX - mover->goal.x) <= 1 && abs(moverCellY - mover->goal.y) <= 1);
-            if (distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-                float dist = sqrtf(distSq);
-                float moveSpeed = mover->speed * TICK_DT;
-                if (dist > 0.01f) {
-                    mover->x -= (dx / dist) * moveSpeed;
-                    mover->y -= (dy / dist) * moveSpeed;
-                }
-            }
+            TryFinalApproach(mover, goalX, goalY, mover->goal.x, mover->goal.y, PICKUP_RADIUS);
         }
 
         // Check if stuck
-        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -1393,23 +1287,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             float dy = mover->y - item->y;
             float distSq = dx*dx + dy*dy;
 
-            // Final approach - when path exhausted but not in pickup range, move directly toward item
-            // This handles the case where knot-fix skips to waypoint without snapping position
-            bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-            int moverCellX = (int)(mover->x / CELL_SIZE);
-            int moverCellY = (int)(mover->y / CELL_SIZE);
-            bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-            if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-                float dist = sqrtf(distSq);
-                float moveSpeed = mover->speed * TICK_DT;
-                if (dist > 0.01f) {
-                    mover->x -= (dx / dist) * moveSpeed;
-                    mover->y -= (dy / dist) * moveSpeed;
-                }
-            }
+            // Final approach - move directly toward item when close but path exhausted
+            TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
 
             // Check if stuck
-            if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
                 SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
                 return JOBRUN_FAIL;
             }
@@ -1471,23 +1353,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             float dy = mover->y - targetY;
             float distSq = dx*dx + dy*dy;
 
-            // Final approach - when path exhausted but not in pickup range, move directly toward workshop
-            // This handles the case where knot-fix skips to waypoint without snapping position
-            bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
-            int moverCellX = (int)(mover->x / CELL_SIZE);
-            int moverCellY = (int)(mover->y / CELL_SIZE);
-            bool inSameOrAdjacentCell = (abs(moverCellX - ws->workTileX) <= 1 && abs(moverCellY - ws->workTileY) <= 1);
-            if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
-                float dist = sqrtf(distSq);
-                float moveSpeed = mover->speed * TICK_DT;
-                if (dist > 0.01f) {
-                    mover->x -= (dx / dist) * moveSpeed;
-                    mover->y -= (dy / dist) * moveSpeed;
-                }
-            }
+            // Final approach - move directly toward workshop when close but path exhausted
+            TryFinalApproach(mover, targetX, targetY, ws->workTileX, ws->workTileY, PICKUP_RADIUS);
 
             // Check if stuck
-            if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
                 return JOBRUN_FAIL;
             }
 
