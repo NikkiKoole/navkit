@@ -368,7 +368,8 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Set goal to item if not already moving there
-        if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
@@ -378,7 +379,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         int moverCellX = (int)(mover->x / CELL_SIZE);
         int moverCellY = (int)(mover->y / CELL_SIZE);
         bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-        if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
             // Move directly toward item (micro-adjustment, not pathfinding)
             float dist = sqrtf(distSq);
             float moveSpeed = mover->speed * TICK_DT;
@@ -389,7 +390,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -454,15 +455,29 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         // Request repath if no path and not at destination
-        if (mover->pathLength == 0 && distSq >= DROP_RADIUS * DROP_RADIUS) {
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS) {
             mover->goal.x = job->targetSlotX;
             mover->goal.y = job->targetSlotY;
             mover->goal.z = stockpiles[job->targetStockpile].z;
             mover->needsRepath = true;
         }
 
+        // Final approach - when path exhausted but not at drop location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - job->targetSlotX) <= 1 && abs(moverCellY - job->targetSlotY) <= 1);
+        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
+
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -521,14 +536,28 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
         float dy = mover->y - item->y;
         float distSq = dx*dx + dy*dy;
 
-        // Final approach
-        if (mover->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
+        // Request repath if path exhausted and not at destination
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
 
+        // Final approach - when path exhausted but not in pickup range
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
+
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -590,8 +619,37 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
+        // Check if arrived at drop location
+        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - targetX;
+        float dy = mover->y - targetY;
+        float distSq = dx*dx + dy*dy;
+
+        // Request repath if path exhausted and not at destination
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS) {
+            mover->goal.x = job->targetSlotX;
+            mover->goal.y = job->targetSlotY;
+            mover->goal.z = (int)mover->z;
+            mover->needsRepath = true;
+        }
+
+        // Final approach - when path exhausted but not at drop location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - job->targetSlotX) <= 1 && abs(moverCellY - job->targetSlotY) <= 1);
+        if (pathExhausted && distSq >= DROP_RADIUS * DROP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
+
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -599,13 +657,6 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
-
-        // Check if arrived at drop location
-        float targetX = job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
 
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
@@ -662,9 +713,23 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == job->targetMineZ;
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+
+        // Final approach - when path exhausted but not at work location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
+        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             Designation* desig = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
             if (desig) desig->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
@@ -730,9 +795,23 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+
+        // Final approach - when path exhausted but not at work location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - tx) <= 1 && abs(moverCellY - ty) <= 1);
+        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -796,9 +875,23 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+
+        // Final approach - when path exhausted but not at work location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - tx) <= 1 && abs(moverCellY - ty) <= 1);
+        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -865,9 +958,23 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+
+        // Final approach - when path exhausted but not at work location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
+        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -934,9 +1041,23 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
         float distSq = dx*dx + dy*dy;
 
         bool correctZ = (int)mover->z == tz;
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+
+        // Final approach - when path exhausted but not at work location
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - adjX) <= 1 && abs(moverCellY - adjY) <= 1);
+        if (correctZ && pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
 
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             d->unreachableCooldown = UNREACHABLE_COOLDOWN;
             return JOBRUN_FAIL;
         }
@@ -998,14 +1119,28 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
         float dy = mover->y - item->y;
         float distSq = dx*dx + dy*dy;
 
-        // Final approach
-        if (mover->pathLength == 0 && distSq < CELL_SIZE * CELL_SIZE * 4) {
+        // Request repath if path exhausted and not at destination
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
             mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
             mover->needsRepath = true;
         }
 
+        // Final approach - when path exhausted but not in pickup range
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
+        if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            float dist = sqrtf(distSq);
+            float moveSpeed = mover->speed * TICK_DT;
+            if (dist > 0.01f) {
+                mover->x -= (dx / dist) * moveSpeed;
+                mover->y -= (dy / dist) * moveSpeed;
+            }
+        }
+
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
             return JOBRUN_FAIL;
         }
@@ -1069,16 +1204,6 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
 
         Blueprint* bp = &blueprints[bpIdx];
 
-        // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
-            return JOBRUN_FAIL;
-        }
-
-        // Update carried item position
-        items[itemIdx].x = mover->x;
-        items[itemIdx].y = mover->y;
-        items[itemIdx].z = mover->z;
-
         // Check if arrived at blueprint (on it or adjacent for building over air)
         int moverCellX = (int)(mover->x / CELL_SIZE);
         int moverCellY = (int)(mover->y / CELL_SIZE);
@@ -1088,6 +1213,36 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
         bool adjacentToBlueprint = (moverCellZ == bp->z &&
             ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
              (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
+
+        // Final approach - when path exhausted but not at blueprint
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && !onBlueprint && !adjacentToBlueprint) {
+            // Move toward goal cell center
+            float goalX = mover->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = mover->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = mover->x - goalX;
+            float dy = mover->y - goalY;
+            float distSq = dx*dx + dy*dy;
+            bool inSameOrAdjacentCell = (abs(moverCellX - mover->goal.x) <= 1 && abs(moverCellY - mover->goal.y) <= 1);
+            if (distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+                float dist = sqrtf(distSq);
+                float moveSpeed = mover->speed * TICK_DT;
+                if (dist > 0.01f) {
+                    mover->x -= (dx / dist) * moveSpeed;
+                    mover->y -= (dy / dist) * moveSpeed;
+                }
+            }
+        }
+
+        // Check if stuck
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
 
         if (onBlueprint || adjacentToBlueprint) {
             // Deliver material to blueprint
@@ -1129,8 +1284,28 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
             ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
              (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
 
+        // Final approach - when path exhausted but not at blueprint
+        bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
+        if (pathExhausted && !onBlueprint && !adjacentToBlueprint) {
+            // Move toward goal cell center
+            float goalX = mover->goal.x * CELL_SIZE + CELL_SIZE * 0.5f;
+            float goalY = mover->goal.y * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = mover->x - goalX;
+            float dy = mover->y - goalY;
+            float distSq = dx*dx + dy*dy;
+            bool inSameOrAdjacentCell = (abs(moverCellX - mover->goal.x) <= 1 && abs(moverCellY - mover->goal.y) <= 1);
+            if (distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+                float dist = sqrtf(distSq);
+                float moveSpeed = mover->speed * TICK_DT;
+                if (dist > 0.01f) {
+                    mover->x -= (dx / dist) * moveSpeed;
+                    mover->y -= (dy / dist) * moveSpeed;
+                }
+            }
+        }
+
         // Check if stuck
-        if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+        if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
 
@@ -1220,10 +1395,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
             // Final approach - when path exhausted but not in pickup range, move directly toward item
             // This handles the case where knot-fix skips to waypoint without snapping position
+            bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
             int moverCellX = (int)(mover->x / CELL_SIZE);
             int moverCellY = (int)(mover->y / CELL_SIZE);
             bool inSameOrAdjacentCell = (abs(moverCellX - itemCellX) <= 1 && abs(moverCellY - itemCellY) <= 1);
-            if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
                 float dist = sqrtf(distSq);
                 float moveSpeed = mover->speed * TICK_DT;
                 if (dist > 0.01f) {
@@ -1233,7 +1409,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             // Check if stuck
-            if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
                 SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
                 return JOBRUN_FAIL;
             }
@@ -1297,10 +1473,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
             // Final approach - when path exhausted but not in pickup range, move directly toward workshop
             // This handles the case where knot-fix skips to waypoint without snapping position
+            bool pathExhausted = (mover->pathLength == 0 || mover->pathIndex < 0);
             int moverCellX = (int)(mover->x / CELL_SIZE);
             int moverCellY = (int)(mover->y / CELL_SIZE);
             bool inSameOrAdjacentCell = (abs(moverCellX - ws->workTileX) <= 1 && abs(moverCellY - ws->workTileY) <= 1);
-            if (mover->pathLength == 0 && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
+            if (pathExhausted && distSq >= PICKUP_RADIUS * PICKUP_RADIUS && inSameOrAdjacentCell) {
                 float dist = sqrtf(distSq);
                 float moveSpeed = mover->speed * TICK_DT;
                 if (dist > 0.01f) {
@@ -1310,7 +1487,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             // Check if stuck
-            if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            if (pathExhausted && mover->timeWithoutProgress > JOB_STUCK_TIME) {
                 return JOBRUN_FAIL;
             }
 
