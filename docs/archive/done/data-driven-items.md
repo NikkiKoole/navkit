@@ -1,4 +1,6 @@
-# Data-Driven Items (Future)
+# Data-Driven Items (IMPLEMENTED)
+
+*Archived February 2026 - this has been implemented in item_defs.c*
 
 ## Current State
 
