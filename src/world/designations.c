@@ -675,6 +675,56 @@ int CreateLadderBlueprint(int x, int y, int z) {
     return idx;
 }
 
+int CreateFloorBlueprint(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return -1;
+    }
+    
+    // Can't build floor on a wall
+    if (IsWallCell(grid[z][y][x])) {
+        return -1;
+    }
+    
+    // Already has a floor? (check if walkable and not air/ladder)
+    CellType ct = grid[z][y][x];
+    if (ct == CELL_FLOOR || ct == CELL_DIRT || ct == CELL_GRASS) {
+        return -1;
+    }
+    
+    // Already has a blueprint?
+    if (HasBlueprint(x, y, z)) {
+        return -1;
+    }
+    
+    // Find free slot
+    int idx = -1;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (!blueprints[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    
+    if (idx < 0) return -1;  // No free slots
+    
+    Blueprint* bp = &blueprints[idx];
+    bp->x = x;
+    bp->y = y;
+    bp->z = z;
+    bp->active = true;
+    bp->state = BLUEPRINT_AWAITING_MATERIALS;
+    bp->type = BLUEPRINT_TYPE_FLOOR;
+    bp->requiredMaterials = 1;  // 1 stone block to build a floor
+    bp->deliveredMaterials = 0;
+    bp->reservedItem = -1;
+    bp->assignedBuilder = -1;
+    bp->progress = 0.0f;
+    
+    blueprintCount++;
+    return idx;
+}
+
 void CancelBlueprint(int blueprintIdx) {
     if (blueprintIdx < 0 || blueprintIdx >= MAX_BLUEPRINTS) return;
     
@@ -775,6 +825,11 @@ void CompleteBlueprint(int blueprintIdx) {
         // Place ladder using existing ladder placement logic
         // This handles UP/DOWN/BOTH connections automatically
         PlaceLadder(x, y, z);
+    } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
+        // Place floor - converts air to floor
+        DisplaceWater(x, y, z);
+        grid[z][y][x] = CELL_FLOOR;
+        MarkChunkDirty(x, y, z);
     }
     
     // Remove blueprint

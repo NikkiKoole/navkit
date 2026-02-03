@@ -30,6 +30,7 @@ typedef enum {
     ACTION_WORK_REMOVE_RAMP,
     ACTION_WORK_CONSTRUCT,
     ACTION_WORK_LADDER,
+    ACTION_WORK_FLOOR,
     ACTION_WORK_GATHER,
     // Sandbox actions (sim systems)
     ACTION_SANDBOX_WATER,

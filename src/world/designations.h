@@ -45,6 +45,7 @@ typedef enum {
 typedef enum {
     BLUEPRINT_TYPE_WALL,
     BLUEPRINT_TYPE_LADDER,
+    BLUEPRINT_TYPE_FLOOR,
 } BlueprintType;
 
 typedef struct {
@@ -171,6 +172,10 @@ int CreateBuildBlueprint(int x, int y, int z);
 // Create a blueprint for building a ladder at the given location
 // Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
 int CreateLadderBlueprint(int x, int y, int z);
+
+// Create a blueprint for building a floor at the given location
+// Returns blueprint index, or -1 if failed (already has floor, already has blueprint, etc.)
+int CreateFloorBlueprint(int x, int y, int z);
 
 // Cancel/remove a blueprint
 void CancelBlueprint(int blueprintIdx);
