@@ -68,8 +68,10 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
     for (int checkZ = currentZ - 1; checkZ >= 0; checkZ--) {
         if (IsCellWalkableAt(checkZ, cellY, cellX)) {
             m->z = (float)checkZ;
-            m->needsRepath = true;
             m->fallTimer = 1.0f;
+            // Clear path so mover gets a new goal at the new z-level
+            m->pathLength = 0;
+            m->pathIndex = -1;
             return true;
         }
         if (IsWallCell(grid[checkZ][cellY][cellX])) {
@@ -92,8 +94,10 @@ static bool TryFallToGround(Mover* m, int cellX, int cellY) {
                     m->z = (float)checkZ;
                     m->x = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
                     m->y = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                    m->needsRepath = true;
                     m->fallTimer = 1.0f;
+                    // Clear path so mover gets a new goal at the new z-level
+                    m->pathLength = 0;
+                    m->pathIndex = -1;
                     return true;
                 }
             }
