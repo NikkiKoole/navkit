@@ -352,6 +352,18 @@ static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateLadder(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (CreateLadderBlueprint(dx, dy, z) >= 0) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Created %d ladder blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+    }
+}
+
 static void ExecuteCancelBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1015,6 +1027,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_REMOVE_FLOOR; }
                 if (CheckKey(KEY_Z)) { inputAction = ACTION_WORK_REMOVE_RAMP; }
                 if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
+                if (CheckKey(KEY_L)) { inputAction = ACTION_WORK_LADDER; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 break;
             case MODE_SANDBOX:
@@ -1051,6 +1064,7 @@ void HandleInput(void) {
         case ACTION_WORK_CHANNEL:     backOneLevel = CheckKey(KEY_H); break;
         case ACTION_WORK_REMOVE_RAMP: backOneLevel = CheckKey(KEY_Z); break;
         case ACTION_WORK_CONSTRUCT:   backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_WORK_LADDER:      backOneLevel = CheckKey(KEY_L); break;
         case ACTION_WORK_GATHER:      backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
@@ -1179,6 +1193,10 @@ void HandleInput(void) {
             case ACTION_WORK_CONSTRUCT:
                 if (leftClick) ExecuteDesignateBuild(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_LADDER:
+                if (leftClick) ExecuteDesignateLadder(x1, y1, x2, y2, z);
+                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
                 break;
             case ACTION_WORK_GATHER:
                 if (leftClick) ExecuteCreateGatherZone(x1, y1, x2, y2, z);

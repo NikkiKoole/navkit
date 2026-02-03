@@ -19,19 +19,24 @@ crowd_SRC      := experiments/crowd/demo.c
 path_SRC       := src/unity.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
 
-# Test targets - all use test_unity.c for shared game logic
-test_pathing_SRC    := tests/test_pathfinding.c tests/test_unity.c
-test_mover_SRC      := tests/test_mover.c tests/test_unity.c
+# Test targets - all link against precompiled test_unity.o for shared game logic
+TEST_UNITY_OBJ := $(BINDIR)/test_unity.o
+test_pathing_SRC    := tests/test_pathfinding.c
+test_mover_SRC      := tests/test_mover.c
 test_steering_SRC   := tests/test_steering.c experiments/steering/steering.c
-test_jobs_SRC       := tests/test_jobs.c tests/test_unity.c
-test_water_SRC      := tests/test_water.c tests/test_unity.c
-test_groundwear_SRC := tests/test_groundwear.c tests/test_unity.c
-test_fire_SRC       := tests/test_fire.c tests/test_unity.c
-test_temperature_SRC := tests/test_temperature.c tests/test_unity.c
-test_steam_SRC       := tests/test_steam.c tests/test_unity.c
-test_time_SRC        := tests/test_time.c tests/test_unity.c
-test_time_specs_SRC  := tests/test_time_specs.c tests/test_unity.c
-test_high_speed_SRC  := tests/test_high_speed.c tests/test_unity.c
+test_jobs_SRC       := tests/test_jobs.c
+test_water_SRC      := tests/test_water.c
+test_groundwear_SRC := tests/test_groundwear.c
+test_fire_SRC       := tests/test_fire.c
+test_temperature_SRC := tests/test_temperature.c
+test_steam_SRC       := tests/test_steam.c
+test_time_SRC        := tests/test_time.c
+test_time_specs_SRC  := tests/test_time_specs.c
+test_high_speed_SRC  := tests/test_high_speed.c
+
+# Precompile test_unity.o once (the expensive part)
+$(TEST_UNITY_OBJ): tests/test_unity.c | $(BINDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Soundsystem test - standalone, no test_unity.c needed
 test_soundsystem_SRC := tests/test_soundsystem.c
@@ -50,63 +55,63 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-variable -o $@ $(soundsystem-demo_SRC) $(LDFLAGS)
 
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
-test_pathing: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_pathing_SRC) $(LDFLAGS)
+test_pathing: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_pathing
 
 # Mover test
-test_mover: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(LDFLAGS)
+test_mover: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_mover
 
-# Steering test
+# Steering test (doesn't use test_unity)
 test_steering: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
 	./$(BINDIR)/test_steering
 
 # Jobs test
-test_jobs: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(LDFLAGS)
+test_jobs: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_jobs
 
 # Water test
-test_water: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(LDFLAGS)
+test_water: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_water
 
 # Ground wear test
-test_groundwear: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(LDFLAGS)
+test_groundwear: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_groundwear
 
 # Fire test
-test_fire: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(LDFLAGS)
+test_fire: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_fire
 
 # Temperature test
-test_temperature: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(LDFLAGS)
+test_temperature: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_temperature
 
 # Steam test
-test_steam: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(LDFLAGS)
+test_steam: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_steam
 
 # Time test
-test_time: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(LDFLAGS)
+test_time: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_time
 
 # Time specification tests
-test_time_specs: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(LDFLAGS)
+test_time_specs: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_time_specs
 
 # High game speed safety tests
-test_high_speed: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(LDFLAGS)
+test_high_speed: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_high_speed
 
 # Soundsystem tests - standalone audio library tests
@@ -117,12 +122,12 @@ test_soundsystem: $(BINDIR)
 # Run all tests
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
-# Benchmark targets - all use test_unity.c for shared game logic
-bench_jobs_SRC := tests/bench_jobs.c tests/test_unity.c
+# Benchmark targets - link against precompiled test_unity.o
+bench_jobs_SRC := tests/bench_jobs.c
 
 # Job system benchmark
-bench_jobs: $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_jobs_SRC) $(LDFLAGS)
+bench_jobs: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_jobs
 
 # Run all benchmarks

@@ -42,10 +42,16 @@ typedef enum {
     BLUEPRINT_BUILDING,            // Builder assigned and working
 } BlueprintState;
 
+typedef enum {
+    BLUEPRINT_TYPE_WALL,
+    BLUEPRINT_TYPE_LADDER,
+} BlueprintType;
+
 typedef struct {
     int x, y, z;
     bool active;
     BlueprintState state;
+    BlueprintType type;         // What to build (wall, ladder, etc.)
     
     // Material requirements
     int requiredMaterials;      // How many items needed (1 for simple wall)
@@ -161,6 +167,10 @@ int CountRemoveRampDesignations(void);
 // Create a blueprint for building a wall at the given location
 // Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
 int CreateBuildBlueprint(int x, int y, int z);
+
+// Create a blueprint for building a ladder at the given location
+// Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
+int CreateLadderBlueprint(int x, int y, int z);
 
 // Cancel/remove a blueprint
 void CancelBlueprint(int blueprintIdx);

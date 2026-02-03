@@ -614,7 +614,58 @@ int CreateBuildBlueprint(int x, int y, int z) {
     bp->z = z;
     bp->active = true;
     bp->state = BLUEPRINT_AWAITING_MATERIALS;
+    bp->type = BLUEPRINT_TYPE_WALL;
     bp->requiredMaterials = 1;  // 1 item to build a wall
+    bp->deliveredMaterials = 0;
+    bp->reservedItem = -1;
+    bp->assignedBuilder = -1;
+    bp->progress = 0.0f;
+    
+    blueprintCount++;
+    return idx;
+}
+
+int CreateLadderBlueprint(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return -1;
+    }
+    
+    // Can only build on walkable floor
+    if (!IsCellWalkableAt(z, y, x)) {
+        return -1;
+    }
+    
+    // Already has a blueprint?
+    if (HasBlueprint(x, y, z)) {
+        return -1;
+    }
+    
+    // Already has a ladder?
+    CellType ct = grid[z][y][x];
+    if (ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH) {
+        return -1;
+    }
+    
+    // Find free slot
+    int idx = -1;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (!blueprints[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    
+    if (idx < 0) return -1;  // No free slots
+    
+    Blueprint* bp = &blueprints[idx];
+    bp->x = x;
+    bp->y = y;
+    bp->z = z;
+    bp->active = true;
+    bp->state = BLUEPRINT_AWAITING_MATERIALS;
+    bp->type = BLUEPRINT_TYPE_LADDER;
+    bp->requiredMaterials = 1;  // 1 stone block to build a ladder
     bp->deliveredMaterials = 0;
     bp->reservedItem = -1;
     bp->assignedBuilder = -1;
@@ -707,17 +758,23 @@ void CompleteBlueprint(int blueprintIdx) {
     
     int x = bp->x, y = bp->y, z = bp->z;
     
-    // Push any movers out of this cell before placing the wall
-    PushMoversOutOfCell(x, y, z);
-    
-    // Push any items out of this cell before placing the wall
-    PushItemsOutOfCell(x, y, z);
-    
-    // Convert floor to wall
-    if (IsCellWalkableAt(z, y, x)) {
-        DisplaceWater(x, y, z);
-        grid[z][y][x] = CELL_WALL;
-        MarkChunkDirty(x, y, z);
+    if (bp->type == BLUEPRINT_TYPE_WALL) {
+        // Push any movers out of this cell before placing the wall
+        PushMoversOutOfCell(x, y, z);
+        
+        // Push any items out of this cell before placing the wall
+        PushItemsOutOfCell(x, y, z);
+        
+        // Convert floor to wall
+        if (IsCellWalkableAt(z, y, x)) {
+            DisplaceWater(x, y, z);
+            grid[z][y][x] = CELL_WALL;
+            MarkChunkDirty(x, y, z);
+        }
+    } else if (bp->type == BLUEPRINT_TYPE_LADDER) {
+        // Place ladder using existing ladder placement logic
+        // This handles UP/DOWN/BOTH connections automatically
+        PlaceLadder(x, y, z);
     }
     
     // Remove blueprint

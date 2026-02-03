@@ -66,6 +66,7 @@ static const char* GetActionName(void) {
         case ACTION_WORK_REMOVE_FLOOR: return "REMOVE FLOOR";
         case ACTION_WORK_REMOVE_RAMP:  return "REMOVE RAMP";
         case ACTION_WORK_CONSTRUCT:    return "CONSTRUCT";
+        case ACTION_WORK_LADDER:       return "LADDER";
         case ACTION_WORK_GATHER:       return "GATHER";
         case ACTION_SANDBOX_WATER:   return "WATER";
         case ACTION_SANDBOX_FIRE:    return "FIRE";
@@ -136,6 +137,7 @@ const char* InputMode_GetBarText(void) {
         case ACTION_WORK_REMOVE_FLOOR:
         case ACTION_WORK_REMOVE_RAMP:
         case ACTION_WORK_CONSTRUCT:
+        case ACTION_WORK_LADDER:
         case ACTION_WORK_GATHER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
@@ -284,6 +286,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_REMOVE_FLOOR: actionKey = KEY_R; break;
         case ACTION_WORK_REMOVE_RAMP:  actionKey = KEY_Z; break;
         case ACTION_WORK_CONSTRUCT:    actionKey = KEY_C; break;
+        case ACTION_WORK_LADDER:       actionKey = KEY_L; break;
         case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
         case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
@@ -337,6 +340,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_REMOVE_FLOOR:
         case ACTION_WORK_REMOVE_RAMP:
         case ACTION_WORK_CONSTRUCT:
+        case ACTION_WORK_LADDER:
         case ACTION_WORK_GATHER:
             n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
