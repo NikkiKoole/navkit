@@ -90,9 +90,10 @@ The atlas generator validates that both atlases have matching sprite names.
 ## Run
 
 ```bash
-./bin/path    # pathfinding demo
-./bin/steer   # steering demo
-./bin/crowd   # crowd demo
+./bin/path                # pathfinding demo
+./bin/path --seed 12345   # run with specific world seed (for reproducible terrain)
+./bin/steer               # steering demo
+./bin/crowd               # crowd demo
 ```
 
 Requires raylib.
@@ -106,7 +107,7 @@ In-game:
 Inspect save files from the command line (works with `.bin` and `.gz` files):
 
 ```bash
-./bin/path --inspect debug_save.bin                    # summary
+./bin/path --inspect debug_save.bin                    # summary (includes world seed)
 ./bin/path --inspect saves/bug_name.bin.gz             # works with gzipped files too
 ./bin/path --inspect debug_save.bin --mover 0          # mover details
 ./bin/path --inspect debug_save.bin --item 5           # item details
