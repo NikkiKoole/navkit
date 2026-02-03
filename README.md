@@ -25,7 +25,9 @@ See [src/README.md](src/README.md) for architecture details.
 
 ```bash
 make                        # builds path, steer, crowd, path8
-make test                   # runs all tests
+make test                   # runs all tests (~9s, mover stress tests use 5 iterations)
+make test-quick             # fast tests (~4s, skips mover tests entirely)
+make test-full              # full tests (~37s, mover stress tests use 20 iterations)
 make debug                  # debug build with sanitizers
 make clean                  # removes bin/
 ```
