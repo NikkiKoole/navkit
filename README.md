@@ -117,6 +117,8 @@ Inspect save files from the command line (works with `.bin` and `.gz` files):
 ./bin/path --inspect debug_save.bin --stuck            # movers stuck > 2s
 ./bin/path --inspect debug_save.bin --reserved         # items with reservations
 ./bin/path --inspect debug_save.bin --jobs-active      # all active jobs
+./bin/path --inspect debug_save.bin --entrances        # HPA* graph: chunk entrances summary
+./bin/path --inspect debug_save.bin --entrances 1      # HPA* entrances at z=1 only
 
 # Path testing with algorithm selection
 ./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1              # test path (A* default)
