@@ -119,10 +119,16 @@ test_soundsystem: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	./$(BINDIR)/test_soundsystem
 
-# Run all tests
+# Run all tests (mover uses 5 stress iterations by default)
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
-# Quick tests - skips slow mover tests (~3s instead of ~30s)
+# Full stress tests - mover tests use 20 iterations
+test-full: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -DSTRESS_TEST_ITERATIONS=20 -o $(BINDIR)/test_mover $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/test_mover
+	$(MAKE) test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
+
+# Quick tests - skips mover tests entirely (~4s)
 test-quick: test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
 # Benchmark targets - link against precompiled test_unity.o
