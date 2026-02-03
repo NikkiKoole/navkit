@@ -4,12 +4,19 @@
 #include "../entities/stockpiles.h"
 #include "../entities/items.h"
 #include "designations.h"
+#include "../game_state.h"
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
 
 // Simple Perlin-like noise
 static int permutation[512];
+
+// Seed the random number generator with worldSeed
+// Call at the start of each terrain generator for reproducible results
+static void SeedTerrain(void) {
+    SetRandomSeed((unsigned int)worldSeed);
+}
 
 // Room structure for dungeon generators
 typedef struct {
@@ -23,6 +30,7 @@ void InitGrid(void) {
 
 void GenerateSparse(float density) {
     InitGrid();
+    SeedTerrain();
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
             if ((float)GetRandomValue(0, 100) / 100.0f < density)
@@ -471,6 +479,7 @@ static bool RoomOverlaps(int x, int y, int w, int h, int margin) {
 
 void GenerateDungeonRooms(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     
     // Fill z=1 with walls (to carve rooms)
     for (int y = 0; y < gridHeight; y++)
@@ -542,6 +551,7 @@ void GenerateDungeonRooms(void) {
 
 void GenerateCaves(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     
     // Start with random noise
     for (int y = 0; y < gridHeight; y++) {
@@ -606,6 +616,7 @@ void GenerateCaves(void) {
 
 void GenerateDrunkard(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     
     // Fill z=1 with walls (to carve)
     for (int y = 0; y < gridHeight; y++)
@@ -689,6 +700,7 @@ static void CarveVerticalTunnel(int y1, int y2, int x) {
 
 void GenerateTunneler(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     
     // Fill z=1 with walls (to carve)
     for (int y = 0; y < gridHeight; y++)
@@ -972,7 +984,7 @@ float OctavePerlin3D(float x, float y, float z, int octaves, float persistence) 
 
 void GenerateHills(void) {
     InitGrid();  // Clear cells and flags
-    InitPerlin(GetRandomValue(0, 99999));
+    InitPerlin((int)worldSeed);
     
     // Parameters
     float scale = 0.02f;          // Noise scale (smaller = larger features)
@@ -1005,7 +1017,7 @@ void GenerateHills(void) {
 
 void GeneratePerlin(void) {
     InitGrid();
-    InitPerlin(GetRandomValue(0, 99999));
+    InitPerlin((int)worldSeed);
     float scale = 0.015f;
 
     // First pass: terrain noise for trees
@@ -1074,6 +1086,7 @@ void GeneratePerlin(void) {
 
 void GenerateCity(void) {
     InitGrid();
+    SeedTerrain();
     for (int wy = chunkHeight; wy < gridHeight; wy += chunkHeight / 2) {
         for (int wx = 0; wx < gridWidth; wx++) {
             int gapPos = GetRandomValue(6, 20);
@@ -1225,6 +1238,7 @@ static void BuildBridge(Tower* t1, Tower* t2) {
 
 void GenerateTowers(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     FillGroundLevel();
     
     // Place towers
@@ -2191,6 +2205,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
 
 void GenerateCouncilEstate(void) {
     InitGrid();  // Clear cells and flags properly
+    SeedTerrain();
     FillGroundLevel();
     
     // Scale building count based on grid size
@@ -2371,6 +2386,7 @@ void GenerateCouncilEstate(void) {
 // ============================================================================
 void GenerateMixed(void) {
     InitGrid();
+    SeedTerrain();
     int zoneSize = chunkWidth * 4;
     int zonesX = (gridWidth + zoneSize - 1) / zoneSize;
     int zonesY = (gridHeight + zoneSize - 1) / zoneSize;

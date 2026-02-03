@@ -19,7 +19,7 @@
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
 
-#define INSPECT_SAVE_VERSION 8
+#define INSPECT_SAVE_VERSION 9
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -54,6 +54,7 @@ static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL",
 static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
+static uint64_t insp_worldSeed = 0;
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
 static CellType* insp_gridCells = NULL;
 static WaterCell* insp_waterCells = NULL;
@@ -809,6 +810,9 @@ int InspectSaveFile(int argc, char** argv) {
         return 1;
     }
     
+    // World seed
+    fread(&insp_worldSeed, sizeof(insp_worldSeed), 1, f);
+    
     // Dimensions
     fread(&insp_gridW, 4, 1, f);
     fread(&insp_gridH, 4, 1, f);
@@ -903,6 +907,7 @@ int InspectSaveFile(int argc, char** argv) {
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
+        printf("World seed: %llu\n", (unsigned long long)insp_worldSeed);
         printf("Grid: %dx%dx%d, Chunks: %dx%d\n", insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH);
         
         // Count stats

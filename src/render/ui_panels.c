@@ -1,6 +1,7 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include <time.h>
 
 // ============================================================================
 // TIME OF DAY WIDGET
@@ -162,6 +163,11 @@ void DrawUI(void) {
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
         CycleOption(x, y, "Terrain", terrainNames, 19, &currentTerrain);
+        y += 22;
+        if (PushButton(x, y, "Randomize Seed")) {
+            worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+            AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);
+        }
         y += 22;
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();

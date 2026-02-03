@@ -18,6 +18,9 @@
 // Global State Definitions
 // ============================================================================
 
+// World seed for reproducible terrain generation
+uint64_t worldSeed = 0;
+
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
 Texture2D atlas;
@@ -623,6 +626,25 @@ int main(int argc, char** argv) {
             break;
         }
     }
+
+    // Check for --seed option (for reproducible terrain generation)
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--seed") == 0) {
+            if (i + 1 < argc) {
+                worldSeed = (uint64_t)strtoull(argv[i + 1], NULL, 10);
+            } else {
+                printf("Warning: --seed requires a number\n");
+                printf("Usage: %s --seed <number>\n", argv[0]);
+            }
+            break;
+        }
+    }
+
+    // Generate seed from time if not specified
+    if (worldSeed == 0) {
+        worldSeed = (uint64_t)time(NULL);
+    }
+    printf("World seed: %llu\n", (unsigned long long)worldSeed);
 
     int screenWidth = 1280, screenHeight = 800;
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);

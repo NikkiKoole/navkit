@@ -4,7 +4,7 @@
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 
-#define SAVE_VERSION 8  // Added workshops
+#define SAVE_VERSION 9  // Added worldSeed
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -26,6 +26,9 @@ bool SaveWorld(const char* filename) {
     uint32_t version = SAVE_VERSION;
     fwrite(&magic, sizeof(magic), 1, f);
     fwrite(&version, sizeof(version), 1, f);
+    
+    // World seed (for reproducible terrain regeneration)
+    fwrite(&worldSeed, sizeof(worldSeed), 1, f);
     
     // Grid dimensions
     fwrite(&gridWidth, sizeof(gridWidth), 1, f);
@@ -224,6 +227,9 @@ bool LoadWorld(const char* filename) {
         fclose(f);
         return false;
     }
+    
+    // World seed
+    fread(&worldSeed, sizeof(worldSeed), 1, f);
     
     // Grid dimensions
     int newWidth, newHeight, newDepth, newChunkW, newChunkH;

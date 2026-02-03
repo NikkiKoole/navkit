@@ -64,6 +64,10 @@ typedef struct {
 // Global State (externed here, defined in game_state.c)
 // ============================================================================
 
+// World seed for reproducible terrain generation
+// Set via --seed <number> or auto-generated from time
+extern uint64_t worldSeed;
+
 // View/Camera
 extern float zoom;
 extern Vector2 offset;
