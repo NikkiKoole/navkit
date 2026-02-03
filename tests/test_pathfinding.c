@@ -1492,8 +1492,8 @@ describe(ladder_pathfinding) {
         expect(gridDepth == 2);
         
         // Check ladder is placed correctly on both floors
-        expect(grid[0][1][1] == CELL_LADDER);
-        expect(grid[1][1][1] == CELL_LADDER);
+        expect(grid[0][1][1] == CELL_LADDER_BOTH);
+        expect(grid[1][1][1] == CELL_LADDER_BOTH);
         
         // Check walkability - both floors should be walkable
         // z=0 walkable via implicit bedrock, z=1 via HAS_FLOOR
@@ -1930,8 +1930,8 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
 
         // Now add a ladder at (7, 6) on both floors
-        grid[0][6][7] = CELL_LADDER;
-        grid[1][6][7] = CELL_LADDER;
+        grid[0][6][7] = CELL_LADDER_BOTH;
+        grid[1][6][7] = CELL_LADDER_BOTH;
         MarkChunkDirty(7, 6, 0);
         MarkChunkDirty(7, 6, 1);
 
@@ -2046,7 +2046,7 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
         
         // Add ladder on z=0 first
-        grid[0][10][10] = CELL_LADDER;
+        grid[0][10][10] = CELL_LADDER_BOTH;
         MarkChunkDirty(10, 10, 0);
         UpdateDirtyChunks();
         
@@ -2058,7 +2058,7 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength == 0);
         
         // Now add ladder on z=1
-        grid[1][10][10] = CELL_LADDER;
+        grid[1][10][10] = CELL_LADDER_BOTH;
         MarkChunkDirty(10, 10, 1);
         
         // Add floor on z=1 around the ladder (using CELL_AIR + HAS_FLOOR)
@@ -2145,8 +2145,8 @@ describe(hpa_ladder_pathfinding) {
         BuildGraph();
 
         // Add ladder on both floors
-        grid[0][6][7] = CELL_LADDER;
-        grid[1][6][7] = CELL_LADDER;
+        grid[0][6][7] = CELL_LADDER_BOTH;
+        grid[1][6][7] = CELL_LADDER_BOTH;
         MarkChunkDirty(7, 6, 0);
         MarkChunkDirty(7, 6, 1);
 
@@ -2219,10 +2219,10 @@ describe(hpa_ladder_pathfinding) {
         InitMultiFloorGridFromAscii(map, 8, 8);
         
         // Add some ladders
-        grid[0][4][4] = CELL_LADDER;
-        grid[1][4][4] = CELL_LADDER;
-        grid[0][12][12] = CELL_LADDER;
-        grid[1][12][12] = CELL_LADDER;
+        grid[0][4][4] = CELL_LADDER_BOTH;
+        grid[1][4][4] = CELL_LADDER_BOTH;
+        grid[0][12][12] = CELL_LADDER_BOTH;
+        grid[1][12][12] = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -2289,8 +2289,8 @@ describe(hpa_ladder_pathfinding) {
         InitMultiFloorGridFromAscii(map, 8, 8);
         
         // Add ladder in same chunk where we'll draw walls
-        grid[0][4][4] = CELL_LADDER;
-        grid[1][4][4] = CELL_LADDER;
+        grid[0][4][4] = CELL_LADDER_BOTH;
+        grid[1][4][4] = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -2382,10 +2382,10 @@ describe(hpa_ladder_pathfinding) {
         grid[0][17][12] = CELL_WALL;  // Keep wall
         
         // Ladders on each side of the wall
-        grid[0][17][10] = CELL_LADDER;
-        grid[1][17][10] = CELL_LADDER;
-        grid[0][17][14] = CELL_LADDER;
-        grid[1][17][14] = CELL_LADDER;
+        grid[0][17][10] = CELL_LADDER_BOTH;
+        grid[1][17][10] = CELL_LADDER_BOTH;
+        grid[0][17][14] = CELL_LADDER_BOTH;
+        grid[1][17][14] = CELL_LADDER_BOTH;
         
         BuildEntrances();
         BuildGraph();
@@ -3418,8 +3418,8 @@ describe(df_walkability) {
         // Solid at z=0, ladder at z=1 and z=2
         grid[0][5][5] = CELL_DIRT;
         SET_CELL_FLAG(5, 5, 0, CF_SOLID);
-        grid[1][5][5] = CELL_LADDER;
-        grid[2][5][5] = CELL_LADDER;
+        grid[1][5][5] = CELL_LADDER_BOTH;
+        grid[2][5][5] = CELL_LADDER_BOTH;
         
         // z=1 ladder is walkable (has solid below anyway)
         expect(IsCellWalkableAt(1, 5, 5) == true);
@@ -3447,9 +3447,9 @@ describe(df_ladder_pathfinding) {
             }
         }
         // Ladder shaft at (5,5) from z=1 to z=3 (need to reach z=3 to step off)
-        grid[1][5][5] = CELL_LADDER;
-        grid[2][5][5] = CELL_LADDER;
-        grid[3][5][5] = CELL_LADDER;
+        grid[1][5][5] = CELL_LADDER_BOTH;
+        grid[2][5][5] = CELL_LADDER_BOTH;
+        grid[3][5][5] = CELL_LADDER_BOTH;
         // Solid platform at z=2 adjacent to ladder, for walking at z=3
         grid[2][6][5] = CELL_DIRT;
         

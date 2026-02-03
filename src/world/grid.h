@@ -26,7 +26,6 @@ extern int chunksY;
 
 typedef enum { 
     CELL_WALL, 
-    CELL_LADDER,       // Legacy: alias for CELL_LADDER_BOTH
     CELL_AIR, 
     CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  

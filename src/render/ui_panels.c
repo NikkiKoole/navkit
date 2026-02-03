@@ -273,7 +273,6 @@ void DrawUI(void) {
                         char c;
                         switch (grid[z][row][col]) {
                             case CELL_WALL:        c = '#'; break;
-                            case CELL_LADDER:      c = 'L'; break;  // Legacy
                             case CELL_LADDER_UP:   c = '<'; break;
                             case CELL_LADDER_DOWN: c = '>'; break;
                             case CELL_LADDER_BOTH: c = 'X'; break;

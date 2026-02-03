@@ -76,8 +76,8 @@ static void PlaceLadderNear(int targetX, int targetY, int zLow, int zHigh, int r
             int y = targetY + dy;
             if (x > 0 && x < gridWidth - 1 && y > 0 && y < gridHeight - 1) {
                 if (IsFloorCell(x, y, zLow) && IsFloorCell(x, y, zHigh)) {
-                    grid[zLow][y][x] = CELL_LADDER;
-                    grid[zHigh][y][x] = CELL_LADDER;
+                    grid[zLow][y][x] = CELL_LADDER_BOTH;
+                    grid[zHigh][y][x] = CELL_LADDER_BOTH;
                     return;
                 }
             }
@@ -341,41 +341,41 @@ void GenerateSpiral3D(void) {
     int ladder01_y = centerY - outerRingDist - ringSpacing/2;
     if (ladder01_y < 2) ladder01_y = 2;
     // Place ladder
-    grid[z0][ladder01_y][ladder01_x] = CELL_LADDER;
-    grid[z1][ladder01_y][ladder01_x] = CELL_LADDER;
+    grid[z0][ladder01_y][ladder01_x] = CELL_LADDER_BOTH;
+    grid[z1][ladder01_y][ladder01_x] = CELL_LADDER_BOTH;
     // Ensure path to ladder is clear
     for (int y = ladder01_y; y < centerY - outerRingDist; y++) {
-        if (grid[z0][y][ladder01_x] != CELL_LADDER) PlaceFloor(ladder01_x, y, z0);
-        if (grid[z1][y][ladder01_x] != CELL_LADDER) PlaceFloor(ladder01_x, y, z1);
+        if (grid[z0][y][ladder01_x] != CELL_LADDER_BOTH) PlaceFloor(ladder01_x, y, z0);
+        if (grid[z1][y][ladder01_x] != CELL_LADDER_BOTH) PlaceFloor(ladder01_x, y, z1);
     }
     
     // Ladder 1→2: Must be accessed from EAST (outside the outermost ring, east side)
     int ladder12_x = centerX + outerRingDist + ringSpacing/2;
     int ladder12_y = centerY;
     if (ladder12_x >= gridWidth - 2) ladder12_x = gridWidth - 3;
-    grid[z1][ladder12_y][ladder12_x] = CELL_LADDER;
-    grid[z2][ladder12_y][ladder12_x] = CELL_LADDER;
+    grid[z1][ladder12_y][ladder12_x] = CELL_LADDER_BOTH;
+    grid[z2][ladder12_y][ladder12_x] = CELL_LADDER_BOTH;
     // Ensure path to ladder is clear
     for (int x = centerX + outerRingDist; x <= ladder12_x; x++) {
-        if (grid[z1][ladder12_y][x] != CELL_LADDER) PlaceFloor(x, ladder12_y, z1);
-        if (grid[z2][ladder12_y][x] != CELL_LADDER) PlaceFloor(x, ladder12_y, z2);
+        if (grid[z1][ladder12_y][x] != CELL_LADDER_BOTH) PlaceFloor(x, ladder12_y, z1);
+        if (grid[z2][ladder12_y][x] != CELL_LADDER_BOTH) PlaceFloor(x, ladder12_y, z2);
     }
     
     // Ladder 2→3: Must be accessed from SOUTH (outside the outermost ring, south side)
     int ladder23_x = centerX;
     int ladder23_y = centerY + outerRingDist + ringSpacing/2;
     if (ladder23_y >= gridHeight - 2) ladder23_y = gridHeight - 3;
-    grid[z2][ladder23_y][ladder23_x] = CELL_LADDER;
-    grid[z3][ladder23_y][ladder23_x] = CELL_LADDER;
+    grid[z2][ladder23_y][ladder23_x] = CELL_LADDER_BOTH;
+    grid[z3][ladder23_y][ladder23_x] = CELL_LADDER_BOTH;
     // Ensure path to ladder is clear (from outer ring to ladder)
     for (int y = centerY + outerRingDist; y <= ladder23_y; y++) {
-        if (grid[z2][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z2);
-        if (grid[z3][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z3);
+        if (grid[z2][y][ladder23_x] != CELL_LADDER_BOTH) PlaceFloor(ladder23_x, y, z2);
+        if (grid[z3][y][ladder23_x] != CELL_LADDER_BOTH) PlaceFloor(ladder23_x, y, z3);
     }
     // On z3: ensure path from ladder to the inner ring (south gap)
     // The inner ring is at centerY + innerRing, so connect from ladder to there
     for (int y = centerY + innerRing; y <= ladder23_y; y++) {
-        if (grid[z3][y][ladder23_x] != CELL_LADDER) PlaceFloor(ladder23_x, y, z3);
+        if (grid[z3][y][ladder23_x] != CELL_LADDER_BOTH) PlaceFloor(ladder23_x, y, z3);
     }
     
     // Add a few "decoy" ladders that lead to dead ends or longer routes
@@ -383,8 +383,8 @@ void GenerateSpiral3D(void) {
     int decoy1_x = centerX + outerRingDist + ringSpacing/2;
     int decoy1_y = centerY - ringSpacing;
     if (decoy1_x < gridWidth - 2 && decoy1_y > 1) {
-        grid[z0][decoy1_y][decoy1_x] = CELL_LADDER;
-        grid[z1][decoy1_y][decoy1_x] = CELL_LADDER;
+        grid[z0][decoy1_y][decoy1_x] = CELL_LADDER_BOTH;
+        grid[z1][decoy1_y][decoy1_x] = CELL_LADDER_BOTH;
         // Make sure there's floor around it
         if (grid[z0][decoy1_y][decoy1_x - 1] == CELL_WALL) PlaceFloor(decoy1_x - 1, decoy1_y, z0);
         if (grid[z1][decoy1_y][decoy1_x - 1] == CELL_WALL) PlaceFloor(decoy1_x - 1, decoy1_y, z1);
@@ -394,8 +394,8 @@ void GenerateSpiral3D(void) {
     int decoy2_x = centerX - ringSpacing;
     int decoy2_y = centerY - ringSpacing;
     if (decoy2_x > 1 && decoy2_y > 1) {
-        grid[z0][decoy2_y][decoy2_x] = CELL_LADDER;
-        grid[z1][decoy2_y][decoy2_x] = CELL_LADDER;
+        grid[z0][decoy2_y][decoy2_x] = CELL_LADDER_BOTH;
+        grid[z1][decoy2_y][decoy2_x] = CELL_LADDER_BOTH;
     }
     
     needsRebuild = true;
@@ -1181,7 +1181,7 @@ static void BuildBridge(Tower* t1, Tower* t2) {
         int ladderX = t->x + t->w / 2;
         int ladderY = t->y + t->h / 2;
         for (int z = 1; z <= t->height; z++) {
-            grid[z][ladderY][ladderX] = CELL_LADDER;
+            grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
         }
     }
     
@@ -1388,7 +1388,7 @@ void GenerateTowers(void) {
         int ladderY = t->y + t->h / 2;
         // Ladders on ALL levels of the tower (starting at z=1)
         for (int z = 1; z <= t->height; z++) {
-            grid[z][ladderY][ladderX] = CELL_LADDER;
+            grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
         }
     }
     
@@ -1484,12 +1484,12 @@ void GenerateGalleryFlat(void) {
         int westStairX = buildingX + 1;
         int stairY = buildingY + 1;
         // Ladder in west staircase (on all floors)
-        grid[z][stairY][westStairX] = CELL_LADDER;
+        grid[z][stairY][westStairX] = CELL_LADDER_BOTH;
         
         // East staircase area  
         int eastStairX = buildingX + buildingWidth - 2;
         // Ladder in east staircase (on all floors)
-        grid[z][stairY][eastStairX] = CELL_LADDER;
+        grid[z][stairY][eastStairX] = CELL_LADDER_BOTH;
     }
     
     // Ground floor entrance at z=1 (door in south wall)
@@ -1648,7 +1648,7 @@ void GenerateCastle(void) {
         for (int floor = 0; floor < 3; floor++) {
             int z = floor + 1;
             if (z >= gridDepth) break;
-            grid[z][ladderY][ladderX] = CELL_LADDER;
+            grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
         }
         
         // Door from tower to courtyard at z=1 (toward inside of castle)
@@ -1708,7 +1708,7 @@ void GenerateCastle(void) {
         for (int floor = 0; floor < 3; floor++) {
             int z = floor + 1;
             if (z >= gridDepth) break;
-            grid[z][ladderY][ladderX] = CELL_LADDER;
+            grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
         }
         
         // Door to courtyard at z=1 and connection to wall walk at z=2
@@ -1742,7 +1742,7 @@ void GenerateCastle(void) {
     
     for (int y = courtyardY; y < courtyardY + courtyardH; y++) {
         for (int x = courtyardX; x < courtyardX + courtyardW; x++) {
-            if (grid[1][y][x] != CELL_LADDER) {
+            if (grid[1][y][x] != CELL_LADDER_BOTH) {
                 PlaceFloor(x, y, 1);
             }
         }
@@ -1780,7 +1780,7 @@ void GenerateCastle(void) {
         PlaceFloor(bx + bw / 2, by + bh - 1, 1);
         int lx = (b == 0) ? (bx + 1) : (bx + bw - 2);
         for (int floor = 0; floor < 2 && floor + 1 < gridDepth; floor++) {
-            grid[floor + 1][by + 1][lx] = CELL_LADDER;
+            grid[floor + 1][by + 1][lx] = CELL_LADDER_BOTH;
         }
     }
     
@@ -1959,7 +1959,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                     grid[z][stairY + 1][stairX + 3] = CELL_WALL;
                 }
                 
-                grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
+                grid[z][stairY + 1][stairX + 1] = CELL_LADDER_BOTH;
                 PlaceFloor(stairX + 1, baseY + buildingShort - 1, z);
             }
         } else {
@@ -2064,7 +2064,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
                     grid[z][stairY + 3][stairX + 1] = CELL_WALL;
                 }
                 
-                grid[z][stairY + 1][stairX + 1] = CELL_LADDER;
+                grid[z][stairY + 1][stairX + 1] = CELL_LADDER_BOTH;
                 PlaceFloor(baseX + buildingShort - 1, stairY + 1, z);
             }
         }
@@ -2147,7 +2147,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
             int ladderY = doorsNorth ? (baseY + unitDepth - 2) : (baseY + 1);
             
             for (int z = 0; z < numFloors; z++) {
-                grid[z][ladderY][ladderX] = CELL_LADDER;
+                grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
             }
         }
     } else {
@@ -2197,7 +2197,7 @@ static void BuildTerraceRow(int baseX, int baseY, int numUnits, int unitWidth, i
             int ladderX = doorsNorth ? (baseX + unitDepth - 2) : (baseX + 1);
             
             for (int z = 0; z < numFloors; z++) {
-                grid[z][ladderY][ladderX] = CELL_LADDER;
+                grid[z][ladderY][ladderX] = CELL_LADDER_BOTH;
             }
         }
     }

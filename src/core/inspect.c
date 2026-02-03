@@ -32,20 +32,19 @@
 
 static const char* cellTypeNames[] = {
     "WALL",          // 0
-    "LADDER",        // 1
-    "AIR",           // 2
-    "LADDER_UP",     // 3
-    "LADDER_DOWN",   // 4
-    "LADDER_BOTH",   // 5
-    "DIRT",          // 6
-    "WOOD_WALL",     // 7
-    "BEDROCK",       // 8
-    "RAMP_N",        // 9
-    "RAMP_E",        // 10
-    "RAMP_S",        // 11
-    "RAMP_W"         // 12
+    "AIR",           // 1
+    "LADDER_UP",     // 2
+    "LADDER_DOWN",   // 3
+    "LADDER_BOTH",   // 4
+    "DIRT",          // 5
+    "WOOD_WALL",     // 6
+    "BEDROCK",       // 7
+    "RAMP_N",        // 8
+    "RAMP_E",        // 9
+    "RAMP_S",        // 10
+    "RAMP_W"         // 11
 };
-#define CELL_TYPE_COUNT 13
+#define CELL_TYPE_COUNT 12
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
@@ -514,7 +513,6 @@ static void print_map(int cx, int cy, int cz, int radius) {
                         c = ' '; break;
                     case CELL_DIRT:
                         c = ':'; break;
-                    case CELL_LADDER:
                     case CELL_LADDER_UP:
                     case CELL_LADDER_DOWN:
                     case CELL_LADDER_BOTH:

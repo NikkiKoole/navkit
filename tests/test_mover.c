@@ -1137,8 +1137,8 @@ describe(mover_ladder_transitions) {
                 SET_FLOOR(x, y, 2);          // Now walkable (constructed floor)
             }
         }
-        grid[1][1][2] = CELL_LADDER;
-        grid[2][1][2] = CELL_LADDER;
+        grid[1][1][2] = CELL_LADDER_BOTH;
+        grid[2][1][2] = CELL_LADDER_BOTH;
 
         // Verify walkability
         expect(IsCellWalkableAt(startZ, 1, 0) == true);
@@ -1190,8 +1190,8 @@ describe(mover_ladder_transitions) {
                 SET_FLOOR(x, y, 2);
             }
         }
-        grid[1][1][2] = CELL_LADDER;
-        grid[2][1][2] = CELL_LADDER;
+        grid[1][1][2] = CELL_LADDER_BOTH;
+        grid[2][1][2] = CELL_LADDER_BOTH;
 
         ClearMovers();
         Mover* m = &movers[0];
@@ -1338,7 +1338,7 @@ describe(mover_ladder_transitions) {
         int ladderX = -1, ladderY = -1;
         for (int y = 0; y < gridHeight && ladderX < 0; y++) {
             for (int x = 0; x < gridWidth && ladderX < 0; x++) {
-                if (grid[lowerZ][y][x] == CELL_LADDER && grid[upperZ][y][x] == CELL_LADDER) {
+                if (grid[lowerZ][y][x] == CELL_LADDER_BOTH && grid[upperZ][y][x] == CELL_LADDER_BOTH) {
                     ladderX = x;
                     ladderY = y;
                 }
@@ -1353,7 +1353,7 @@ describe(mover_ladder_transitions) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(lowerZ, y, x) && grid[lowerZ][y][x] != CELL_LADDER) {
+                    if (IsCellWalkableAt(lowerZ, y, x) && grid[lowerZ][y][x] != CELL_LADDER_BOTH) {
                         start = (Point){x, y, lowerZ};
                     }
                 }
@@ -1367,7 +1367,7 @@ describe(mover_ladder_transitions) {
                 int x = ladderX + dx;
                 int y = ladderY + dy;
                 if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {
-                    if (IsCellWalkableAt(upperZ, y, x) && grid[upperZ][y][x] != CELL_LADDER) {
+                    if (IsCellWalkableAt(upperZ, y, x) && grid[upperZ][y][x] != CELL_LADDER_BOTH) {
                         goal = (Point){x, y, upperZ};
                     }
                 }

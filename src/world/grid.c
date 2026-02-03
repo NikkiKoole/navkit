@@ -130,11 +130,11 @@ static void CascadeBreakDown(int x, int y, int z);
 static void CascadeBreakUp(int x, int y, int z);
 
 static bool CanReceiveFromBelow(CellType c) {
-    return c == CELL_LADDER_DOWN || c == CELL_LADDER_BOTH || c == CELL_LADDER;
+    return c == CELL_LADDER_DOWN || c == CELL_LADDER_BOTH || c == CELL_LADDER_BOTH;
 }
 
 static bool CanReceiveFromAbove(CellType c) {
-    return c == CELL_LADDER_UP || c == CELL_LADDER_BOTH || c == CELL_LADDER;
+    return c == CELL_LADDER_UP || c == CELL_LADDER_BOTH || c == CELL_LADDER_BOTH;
 }
 
 static bool IsEmptyCell(CellType c) {
@@ -576,7 +576,7 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
                 if (*p == '#') {
                     grid[currentFloor][y][x] = CELL_WALL;
                 } else if (*p == 'L') {
-                    grid[currentFloor][y][x] = CELL_LADDER;  // Legacy
+                    grid[currentFloor][y][x] = CELL_LADDER_BOTH;  // Legacy
                 } else if (*p == '<') {
                     grid[currentFloor][y][x] = CELL_LADDER_UP;
                 } else if (*p == '>') {
