@@ -125,5 +125,5 @@ The demo visualizes paths, explored nodes, chunk boundaries, and mover state in 
 
 ## See Also
 
-- [todo.md](todo.md) - Planned features and improvements
-- [done/](done/) - Archived design docs for implemented features
+- [../todo/roadmap.md](../todo/roadmap.md) - Planned features and improvements
+- Subfolders here contain design docs for implemented features
