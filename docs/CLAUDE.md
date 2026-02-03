@@ -120,27 +120,53 @@ F6                    # Quick load
 
 ```
 docs/
-├── todo/     # Actionable tasks (pick anything)
-├── doing/    # Active work (one thing at a time)
-├── done/     # Completed features (archive)
-├── bugs/     # Known bugs (open and fixed)
-├── vision/   # Future ideas, not yet planned
+├── todo/           # Actionable tasks (pick anything)
+│   ├── architecture/   # Big refactors, roadmaps, tests
+│   ├── environmental/  # Fire, water, temperature systems
+│   ├── items/          # Items, stockpiles, containers
+│   ├── jobs/           # Job system, zones, crafting
+│   ├── nature/         # Plants, soil, moisture
+│   ├── pathfinding/    # Navigation, movement, spatial
+│   ├── rendering/      # Graphics, sorting, culling
+│   └── world/          # Terrain, building, z-levels
+├── doing/          # Active work (one thing at a time)
+├── done/           # Completed features (same categories as todo/)
+│   └── legacy/     # Old handoffs, archived docs
+├── bugs/           # Known bugs (open and fixed)
+├── vision/         # Future ideas, not yet planned
 ```
 
 ## Workflow
 
 1. **Check `doing/`** - If something is there, continue working on it
-2. **If `doing/` is empty** - Pick anything from `todo/` (no priority order)
-3. **Move the item to `doing/`** - This is now the active work
-4. **Work on it** - Update the doc as you go
-5. **When done** - Move the file to `done/`
+2. **If `doing/` is empty** - Show a summary of all `todo/` items by category
+3. **Pick anything from `todo/`** - All items have equal weight, no priority order
+4. **Move the item to `doing/`** - This is now the active work
+5. **Work on it** - Update the doc as you go
+6. **When done** - Move the file to `done/<category>/`
+
+## Default Start (when `doing/` is empty)
+
+Show hierarchical overview of `todo/`:
+
+```
+todo/
+├── architecture/   (N files)
+│   └── file1.md - brief description
+├── jobs/           (N files)
+│   └── ...
+...
+```
+
+Let user pick what to work on.
 
 ## Guidelines
 
 - Only one thing in `doing/` at a time (focus)
 - All items in `todo/` have equal weight - pick what feels right
 - Update docs as you implement
-- If a todo spawns new todos, add them to `todo/`
+- If a todo spawns new todos, add them to `todo/<category>/`
+- When moving to `done/`, preserve the category folder structure
 
 ---
 
