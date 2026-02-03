@@ -72,10 +72,11 @@ static void SetupOpenGrid(void) {
     
     gridDepth = 1;
     
-    // All floor
+    // All floor (use flag system)
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_FLOOR;
+            grid[0][y][x] = CELL_AIR;
+            SET_FLOOR(x, y, 0);
         }
     }
     
@@ -257,10 +258,11 @@ describe(high_speed_simulation_stability) {
         SetupOpenGrid();
         ResetTestState(12345);
         
-        // Set all cells to grass
+        // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         

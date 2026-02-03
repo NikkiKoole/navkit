@@ -520,9 +520,8 @@ describe(fire_non_flammable) {
         // Wall should have 0 fuel
         expect(GetBaseFuelForCellType(CELL_WALL) == 0);
         
-        // Grass/walkable should have fuel
-        expect(GetBaseFuelForCellType(CELL_GRASS) > 0);
-        expect(GetBaseFuelForCellType(CELL_WALKABLE) > 0);
+        // Dirt (base for grass) should have fuel
+        expect(GetBaseFuelForCellType(CELL_DIRT) > 0);
     }
     
     it("should not spread fire through walls at same z-level") {

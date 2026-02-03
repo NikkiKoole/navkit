@@ -550,8 +550,9 @@ describe(groundwear_edge_cases) {
             "dfgw\n", 4, 1);
         
         grid[0][0][0] = CELL_DIRT;
-        grid[0][0][1] = CELL_FLOOR;
-        grid[0][0][2] = CELL_GRASS;  // Legacy grass cell
+        grid[0][0][1] = CELL_AIR;
+        SET_FLOOR(1, 0, 0);  // Floor uses flag system
+        grid[0][0][2] = CELL_AIR;  // Air cell - not trampled
         grid[0][0][3] = CELL_WALL;
         
         InitGroundWear();
@@ -565,7 +566,7 @@ describe(groundwear_edge_cases) {
         
         expect(GetGroundWear(0, 0, 0) == wearTrampleAmount);  // Dirt - trampled
         expect(GetGroundWear(1, 0, 0) == 0);  // Floor - not trampled
-        expect(GetGroundWear(2, 0, 0) == 0);  // Grass - not trampled (use dirt+overlay)
+        expect(GetGroundWear(2, 0, 0) == 0);  // Air - not trampled
         expect(GetGroundWear(3, 0, 0) == 0);  // Wall - not trampled
     }
     
@@ -603,7 +604,8 @@ describe(groundwear_edge_cases) {
         
         // z=0 is stone/wall, z=1 is floor - no dirt to trample
         grid[0][1][2] = CELL_WALL;
-        grid[1][1][2] = CELL_FLOOR;
+        grid[1][1][2] = CELL_AIR;
+        SET_FLOOR(2, 1, 1);  // Floor uses flag system
         
         InitGroundWear();
         groundWearEnabled = true;

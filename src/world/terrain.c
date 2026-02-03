@@ -50,10 +50,10 @@ static void PlaceFloor(int x, int y, int z) {
     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
 }
 
-// Helper to check if a cell is a floor (HAS_FLOOR flag or CELL_FLOOR type)
+// Helper to check if a cell is a floor (HAS_FLOOR flag)
 static bool IsFloorCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
-    return HAS_FLOOR(x, y, z) || grid[z][y][x] == CELL_FLOOR;
+    return HAS_FLOOR(x, y, z);
 }
 
 // ============================================================================
@@ -1567,7 +1567,7 @@ void GenerateCastle(void) {
     
     // ========================================
     // Wall walk at z=2 (solid floor to stand on in DF-style)
-    // In DF mode, movers at z=2 need solid below, so we place CELL_FLOOR at z=2
+    // In DF mode, movers at z=2 need solid below, so we place floors at z=2
     // which makes z=2 walkable (standing on wall tops)
     // ========================================
     if (gridDepth > 2) {

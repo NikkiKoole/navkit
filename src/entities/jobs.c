@@ -951,11 +951,27 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
             job->targetItem = -1;
             job->step = STEP_CARRYING;
             
-            // Set goal to blueprint
+            // Set goal to blueprint or adjacent cell if blueprint cell is not walkable
             Blueprint* bp = &blueprints[bpIdx];
-            mover->goal.x = bp->x;
-            mover->goal.y = bp->y;
-            mover->goal.z = bp->z;
+            Point goalCell = { bp->x, bp->y, bp->z };
+            
+            if (!IsCellWalkableAt(bp->z, bp->y, bp->x)) {
+                // Find adjacent walkable cell
+                int dx[] = {1, -1, 0, 0};
+                int dy[] = {0, 0, 1, -1};
+                for (int i = 0; i < 4; i++) {
+                    int ax = bp->x + dx[i];
+                    int ay = bp->y + dy[i];
+                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                        if (IsCellWalkableAt(bp->z, ay, ax)) {
+                            goalCell = (Point){ ax, ay, bp->z };
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            mover->goal = goalCell;
             mover->needsRepath = true;
         }
         
@@ -994,14 +1010,17 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
         
-        // Check if arrived at blueprint
-        float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
+        // Check if arrived at blueprint (on it or adjacent for building over air)
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        int moverCellZ = (int)mover->z;
         
-        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+        bool onBlueprint = (moverCellX == bp->x && moverCellY == bp->y && moverCellZ == bp->z);
+        bool adjacentToBlueprint = (moverCellZ == bp->z && 
+            ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
+             (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
+        
+        if (onBlueprint || adjacentToBlueprint) {
             // Deliver material to blueprint
             DeliverMaterialToBlueprint(bpIdx, itemIdx);
             job->carryingItem = -1;
@@ -1028,25 +1047,25 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
     Blueprint* bp = &blueprints[bpIdx];
     
     if (job->step == STEP_MOVING_TO_WORK) {
-        // Set goal to blueprint if not already moving there
-        if (mover->pathLength == 0) {
-            mover->goal = (Point){bp->x, bp->y, bp->z};
-            mover->needsRepath = true;
-        }
+        // Goal was set by WorkGiver - could be blueprint cell or adjacent cell
+        // Don't override it here
         
-        // Check if arrived at blueprint
-        float targetX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
-        float targetY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
-        float dx = mover->x - targetX;
-        float dy = mover->y - targetY;
-        float distSq = dx*dx + dy*dy;
+        // Check if arrived - either on the blueprint cell OR adjacent to it (for building over air)
+        int moverCellX = (int)(mover->x / CELL_SIZE);
+        int moverCellY = (int)(mover->y / CELL_SIZE);
+        int moverCellZ = (int)mover->z;
+        
+        bool onBlueprint = (moverCellX == bp->x && moverCellY == bp->y && moverCellZ == bp->z);
+        bool adjacentToBlueprint = (moverCellZ == bp->z && 
+            ((abs(moverCellX - bp->x) == 1 && moverCellY == bp->y) ||
+             (abs(moverCellY - bp->y) == 1 && moverCellX == bp->x)));
         
         // Check if stuck
         if (mover->pathLength == 0 && mover->timeWithoutProgress > JOB_STUCK_TIME) {
             return JOBRUN_FAIL;
         }
         
-        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+        if (onBlueprint || adjacentToBlueprint) {
             job->step = STEP_WORKING;
             job->progress = 0.0f;
         }
@@ -3408,12 +3427,37 @@ int WorkGiver_Build(int moverIdx) {
     
     Blueprint* bp = &blueprints[bestBpIdx];
     
-    // Check reachability
+    // Check reachability - either to the cell itself, or to an adjacent cell if target is not walkable
     Point bpCell = { bp->x, bp->y, bp->z };
     Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point goalCell = bpCell;
     
     Point tempPath[MAX_PATH];
-    int tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+    int tempLen = 0;
+    
+    if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
+        // Blueprint cell is walkable - path directly to it (e.g. building wall on ground)
+        tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+    } else {
+        // Blueprint cell is not walkable (e.g. floor over air) - find adjacent walkable cell
+        // Check orthogonal neighbors only (no diagonals, like Dwarf Fortress)
+        int dx[] = {1, -1, 0, 0};
+        int dy[] = {0, 0, 1, -1};
+        for (int i = 0; i < 4; i++) {
+            int ax = bp->x + dx[i];
+            int ay = bp->y + dy[i];
+            if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
+            if (!IsCellWalkableAt(bp->z, ay, ax)) continue;
+            
+            Point adjCell = { ax, ay, bp->z };
+            tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
+            if (tempLen > 0) {
+                goalCell = adjCell;
+                break;
+            }
+        }
+    }
+    
     if (tempLen == 0) return -1;
     
     // Create job
@@ -3432,7 +3476,7 @@ int WorkGiver_Build(int moverIdx) {
     
     // Update mover
     m->currentJobId = jobId;
-    m->goal = bpCell;
+    m->goal = goalCell;
     m->needsRepath = true;
     
     RemoveMoverFromIdleList(moverIdx);
@@ -3464,14 +3508,33 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     
     int moverZ = (int)m->z;
     
-    // First check if any blueprint needs materials on this z-level
+    // First check if any blueprint needs materials (check same z OR reachable via adjacent cell)
     bool anyBlueprintNeedsMaterials = false;
     for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
         Blueprint* bp = &blueprints[bpIdx];
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
         if (bp->reservedItem >= 0) continue;
-        if (bp->z != moverZ) continue;
+        // Check if blueprint cell or adjacent cell might be reachable
+        // (detailed path check done later, this is just early bail-out)
+        if (bp->z != moverZ) {
+            // Different z-level - check if any adjacent cell on bp's z is walkable
+            // (could be reachable via ladder)
+            bool hasWalkableAdjacent = false;
+            int dx[] = {1, -1, 0, 0};
+            int dy[] = {0, 0, 1, -1};
+            for (int i = 0; i < 4; i++) {
+                int ax = bp->x + dx[i];
+                int ay = bp->y + dy[i];
+                if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
+                    if (IsCellWalkableAt(bp->z, ay, ax)) {
+                        hasWalkableAdjacent = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasWalkableAdjacent && !IsCellWalkableAt(bp->z, bp->y, bp->x)) continue;
+        }
         anyBlueprintNeedsMaterials = true;
         break;
     }
@@ -3524,16 +3587,48 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     
     if (bestItemIdx < 0) return -1;
     
-    // Now find any blueprint that needs materials (simple linear scan - blueprints are sparse)
+    // Now find any blueprint that needs materials - check reachability via pathfinding
     int bestBpIdx = -1;
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point tempPath[MAX_PATH];
+    
     for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
         Blueprint* bp = &blueprints[bpIdx];
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
         if (bp->reservedItem >= 0) continue;
-        if (bp->z != moverZ) continue;
-        bestBpIdx = bpIdx;
-        break;  // Take first available
+        
+        // Try to find a reachable cell: either the blueprint cell itself or an adjacent one
+        int tempLen = 0;
+        
+        if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
+            // Blueprint cell is walkable - try pathing to it
+            Point bpCell = { bp->x, bp->y, bp->z };
+            tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
+        }
+        
+        if (tempLen == 0) {
+            // Blueprint cell not walkable or not reachable - try adjacent cells
+            int dx[] = {1, -1, 0, 0};
+            int dy[] = {0, 0, 1, -1};
+            for (int i = 0; i < 4; i++) {
+                int ax = bp->x + dx[i];
+                int ay = bp->y + dy[i];
+                if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
+                if (!IsCellWalkableAt(bp->z, ay, ax)) continue;
+                
+                Point adjCell = { ax, ay, bp->z };
+                tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
+                if (tempLen > 0) {
+                    break;  // Found a reachable adjacent cell
+                }
+            }
+        }
+        
+        if (tempLen > 0) {
+            bestBpIdx = bpIdx;
+            break;  // Take first reachable
+        }
     }
     
     if (bestBpIdx < 0) return -1;
@@ -3543,11 +3638,8 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     
     // Check reachability to item
     Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
-    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
-    
-    Point tempPath[MAX_PATH];
-    int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-    if (tempLen == 0) return -1;
+    int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+    if (itemPathLen == 0) return -1;
     
     // Reserve item
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;

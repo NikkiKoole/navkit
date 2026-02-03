@@ -138,8 +138,7 @@ static bool CanReceiveFromAbove(CellType c) {
 }
 
 static bool IsEmptyCell(CellType c) {
-    return c == CELL_AIR || c == CELL_WALKABLE || c == CELL_GRASS || 
-           c == CELL_DIRT || c == CELL_FLOOR;
+    return c == CELL_AIR || c == CELL_WALKABLE || c == CELL_DIRT;
 }
 
 void RecalculateLadderColumn(int x, int y) {

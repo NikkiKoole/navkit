@@ -39,7 +39,8 @@ static void SetupTestGrid(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = (z == 0) ? CELL_FLOOR : CELL_AIR;
+                grid[z][y][x] = CELL_AIR;
+                if (z == 0) SET_FLOOR(x, y, 0);
             }
         }
     }
@@ -74,10 +75,11 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        // Set all cells to grass (flammable)
+        // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         
@@ -101,10 +103,11 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        // Set all cells to grass (flammable)
+        // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         
@@ -130,7 +133,8 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         
@@ -148,7 +152,8 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         
@@ -494,7 +499,8 @@ describe(spec_game_speed) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_GRASS;
+                grid[0][y][x] = CELL_DIRT;
+                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
         ResetTestState(99999);

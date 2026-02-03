@@ -25,17 +25,15 @@ extern int chunksY;
 #define MAX_CHUNKS_Y (MAX_GRID_HEIGHT / 8)
 
 typedef enum { 
-    CELL_WALKABLE,     // Legacy: alias for CELL_GRASS
+    CELL_WALKABLE,     // Legacy: kept for enum stability
     CELL_WALL, 
     CELL_LADDER,       // Legacy: alias for CELL_LADDER_BOTH
     CELL_AIR, 
-    CELL_FLOOR,
     CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
     CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
-    CELL_GRASS,        // Natural ground - can become dirt when trampled
-    CELL_DIRT,         // Worn ground - can become grass when left alone
-    CELL_WOOD_WALL,    // Flammable wall - burns and turns to floor
+    CELL_DIRT,         // Natural ground - grass/bare controlled by surface overlay
+    CELL_WOOD_WALL,    // Flammable wall - burns and turns to air
     CELL_BEDROCK,      // Unmineable bottom layer
     CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
     CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1

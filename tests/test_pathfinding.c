@@ -2091,7 +2091,7 @@ describe(hpa_ladder_pathfinding) {
         }
         expect(edgesFromLow > 1);  // Should have edges to z=0 entrances + ladder link
         
-        // Try to find path - goal is now CELL_FLOOR
+        // Try to find path - goal is now a floor
         startPos = start;
         goalPos = goal;
         RunHPAStar();
@@ -2340,8 +2340,10 @@ describe(hpa_ladder_pathfinding) {
         grid[0][17][13] = CELL_RAMP_E;
         
         // Floor in pit for z0 walkable path between the ramps
-        grid[0][17][11] = CELL_FLOOR;
-        grid[0][17][12] = CELL_FLOOR;
+        grid[0][17][11] = CELL_AIR;
+        SET_FLOOR(11, 17, 0);
+        grid[0][17][12] = CELL_AIR;
+        SET_FLOOR(12, 17, 0);
         
         BuildEntrances();
         BuildGraph();
@@ -2437,7 +2439,14 @@ describe(hpa_ladder_pathfinding) {
         grid[0][12][8] = CELL_RAMP_E;
         // Floor in pit for walking at z0
         for (int x = 5; x <= 8; x++) {
-            grid[0][12][x] = (x == 5) ? CELL_RAMP_W : (x == 8) ? CELL_RAMP_E : CELL_FLOOR;
+            if (x == 5) {
+                grid[0][12][x] = CELL_RAMP_W;
+            } else if (x == 8) {
+                grid[0][12][x] = CELL_RAMP_E;
+            } else {
+                grid[0][12][x] = CELL_AIR;
+                SET_FLOOR(x, 12, 0);
+            }
         }
 
         BuildEntrances();

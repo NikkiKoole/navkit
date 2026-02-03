@@ -2238,7 +2238,8 @@ describe(stockpile_max_stack_size) {
         }
         
         // Remove the wall
-        grid[0][1][4] = CELL_FLOOR;
+        grid[0][1][4] = CELL_AIR;
+        SET_FLOOR(4, 1, 0);
         MarkChunkDirty(4, 1, 0);
         
         // Run until item is delivered
@@ -3551,7 +3552,8 @@ describe(mining_job_assignment) {
         InitDesignations();
         
         // Make one floor cell for mover to stand on
-        grid[0][0][0] = CELL_FLOOR;
+        grid[0][0][0] = CELL_AIR;
+        SET_FLOOR(0, 0, 0);
         
         // Mover at (0,0)
         Mover* m = &movers[0];
@@ -3613,7 +3615,7 @@ describe(mining_job_execution) {
         }
         
         expect(completed == true);
-        // Mined wall becomes walkable (CELL_AIR in standard mode, CELL_FLOOR in legacy)
+        // Mined wall becomes walkable
         expect(grid[0][1][1] != CELL_WALL);
         expect(IsCellWalkableAt(0, 1, 1) == true);
         expect(HasMineDesignation(1, 1, 0) == false);
@@ -3747,7 +3749,8 @@ describe(mining_job_execution) {
         expect(MoverHasMineJob(m));
         
         // Player removes wall manually (simulating editor action)
-        grid[0][1][1] = CELL_FLOOR;
+        grid[0][1][1] = CELL_AIR;
+        SET_FLOOR(1, 1, 0);
         
         // Run one tick to detect wall removal
         Tick();
@@ -3828,8 +3831,8 @@ describe(channel_designation) {
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
                 grid[0][y][x] = CELL_WALL;  // z=0: walls
-                grid[1][y][x] = CELL_FLOOR; // z=1: floor (from init)
-                SET_FLOOR(x, y, 1); // floor at z=1
+                grid[1][y][x] = CELL_AIR;   // z=1: floor
+                SET_FLOOR(x, y, 1);
             }
         }
         
@@ -3894,7 +3897,7 @@ describe(channel_designation) {
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
                 grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
+                grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -3921,7 +3924,7 @@ describe(channel_designation) {
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
                 grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
+                grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }
@@ -3950,8 +3953,8 @@ describe(channel_ramp_detection) {
         // z=1 is all floor
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_FLOOR;
-                grid[1][y][x] = CELL_FLOOR;
+                grid[0][y][x] = CELL_AIR;
+                grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 0);
                 SET_FLOOR(x, y, 1);
             }
@@ -4301,7 +4304,7 @@ describe(channel_workgiver) {
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
                 grid[0][y][x] = CELL_WALL;
-                grid[1][y][x] = CELL_FLOOR;
+                grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
         }

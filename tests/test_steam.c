@@ -333,7 +333,8 @@ describe(water_cycle) {
                     if (x == 0 || x == gridWidth-1 || y == 0 || y == gridHeight-1) {
                         grid[z][y][x] = CELL_WALL;
                     } else {
-                        grid[z][y][x] = (z == 0) ? CELL_FLOOR : CELL_AIR;
+                        grid[z][y][x] = CELL_AIR;
+                        if (z == 0) SET_FLOOR(x, y, 0);
                     }
                 }
             }

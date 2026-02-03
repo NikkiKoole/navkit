@@ -166,8 +166,8 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can place dirt on air, walkable, or grass
-            if (cell == CELL_AIR || cell == CELL_WALKABLE || cell == CELL_GRASS) {
+            // Can place dirt on air or walkable
+            if (cell == CELL_AIR || cell == CELL_WALKABLE) {
                 grid[z][dy][dx] = CELL_DIRT;
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
@@ -700,8 +700,8 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can grow grass on dirt, air, walkable ground, or existing grass
-            if (cell == CELL_AIR || cell == CELL_WALKABLE || cell == CELL_GRASS) {
+            // Can grow grass on dirt, air, or walkable ground
+            if (cell == CELL_AIR || cell == CELL_WALKABLE) {
                 // Convert to dirt first
                 grid[z][dy][dx] = CELL_DIRT;
                 MarkChunkDirty(dx, dy, z);
@@ -732,14 +732,6 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
                     wearGrid[z][dy][dx] = wearMax;  // Set max wear so grass doesn't regrow immediately
                     count++;
                 }
-            }
-            // Also handle legacy CELL_GRASS
-            if (grid[z][dy][dx] == CELL_GRASS) {
-                grid[z][dy][dx] = CELL_DIRT;
-                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                wearGrid[z][dy][dx] = wearMax;
-                MarkChunkDirty(dx, dy, z);
-                count++;
             }
         }
     }

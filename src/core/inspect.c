@@ -505,16 +505,16 @@ static void print_map(int cx, int cy, int cz, int radius) {
             if (water.level > 0) c = '~';
             else if (desig.type == DESIGNATION_MINE) c = 'X';
             else {
-                switch (cell) {
+                // Check for floor flag first (floors are AIR cells with HAS_FLOOR flag)
+                if (insp_cellFlags && (insp_cellFlags[idx] & CELL_FLAG_HAS_FLOOR)) {
+                    c = '.';
+                } else switch (cell) {
                     case CELL_WALL:
                     case CELL_WOOD_WALL:
                     case CELL_BEDROCK:
                         c = '#'; break;
                     case CELL_AIR:
                         c = ' '; break;
-                    case CELL_FLOOR:
-                        c = '.'; break;
-                    case CELL_GRASS:
                     case CELL_WALKABLE:
                         c = ','; break;
                     case CELL_DIRT:

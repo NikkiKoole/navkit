@@ -686,9 +686,9 @@ int CreateFloorBlueprint(int x, int y, int z) {
         return -1;
     }
     
-    // Already has a floor? (check if walkable and not air/ladder)
+    // Already has a floor? (check flag or ground type)
     CellType ct = grid[z][y][x];
-    if (ct == CELL_FLOOR || ct == CELL_DIRT || ct == CELL_GRASS) {
+    if (HAS_FLOOR(x, y, z) || ct == CELL_DIRT) {
         return -1;
     }
     
@@ -826,9 +826,11 @@ void CompleteBlueprint(int blueprintIdx) {
         // This handles UP/DOWN/BOTH connections automatically
         PlaceLadder(x, y, z);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
-        // Place floor - converts air to floor
+        // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
-        grid[z][y][x] = CELL_FLOOR;
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
         MarkChunkDirty(x, y, z);
     }
     

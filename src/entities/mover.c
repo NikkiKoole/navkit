@@ -1034,11 +1034,10 @@ void UpdateMovers(void) {
             
             // Terrain speed modifier based on current cell type
             float terrainSpeedMult = 1.0f;
-            CellType currentCell = grid[currentZ][currentY][currentX];
-            if (currentCell == CELL_FLOOR) {
+            if (HAS_FLOOR(currentX, currentY, currentZ)) {
                 terrainSpeedMult = 1.25f;  // Floor: 1.25x speed
             }
-            // CELL_WALKABLE (grass) uses default 1.0x
+            // Grass/dirt uses default 1.0x
             
             // Water slowdown
             float waterSpeedMult = GetWaterSpeedMultiplier(currentX, currentY, currentZ);

@@ -59,11 +59,11 @@ static int GetFuelAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
     int baseFuel = CellFuel(cell);
     
-    // In DF mode, grass surface on dirt adds extra fuel (like CELL_GRASS)
+    // Grass surface on dirt adds extra fuel
     if (cell == CELL_DIRT) {
         int surface = GET_CELL_SURFACE(x, y, z);
         if (surface == SURFACE_GRASS || surface == SURFACE_TALL_GRASS) {
-            baseFuel = 16;  // Same as CELL_GRASS
+            baseFuel = 16;  // Grass is flammable
         }
     }
     
