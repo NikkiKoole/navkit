@@ -442,7 +442,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     // Initialize minimal state (no window)
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-    gridDepth = 6;
+    gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
             grid[0][y][x] = CELL_DIRT;
@@ -659,7 +659,7 @@ int main(int argc, char** argv) {
     SetTargetFPS(60);
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-    gridDepth = 6;
+    gridDepth = 16;
     // z=0: dirt (solid ground) with grass overlay, z=1+: air (DF-style)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
