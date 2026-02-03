@@ -66,6 +66,7 @@ bool sectionSteam = false;
 bool sectionTemperature = false;
 bool showTemperatureOverlay = false;
 bool sectionEntropy = false;
+bool sectionTrees = false;
 bool sectionMoverWalls = false;
 bool sectionMoverDebug = false;
 bool sectionProfiler = false;
@@ -417,6 +418,7 @@ void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawBlueprintTooltip(int bpIdx, Vector2 mouse);
 void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
+void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
 // From render/ui_panels.c
 void DrawUI(void);
@@ -1136,9 +1138,9 @@ int main(int argc, char** argv) {
                 if (bpIdx >= 0) {
                     DrawBlueprintTooltip(bpIdx, GetMousePosition());
                 }
-                // Check for mining designation at this cell
-                else if (HasMineDesignation(cellX, cellY, currentViewZ)) {
-                    DrawMiningTooltip(cellX, cellY, currentViewZ, GetMousePosition());
+                // Check for any designation at this cell
+                else if (GetDesignation(cellX, cellY, currentViewZ) != NULL) {
+                    DrawDesignationTooltip(cellX, cellY, currentViewZ, GetMousePosition());
                 }
                 else if (paused) {
                     // When paused, show comprehensive cell info

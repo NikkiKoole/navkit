@@ -34,6 +34,7 @@ uint64_t worldSeed = 12345;
 #include "../src/simulation/steam.c"
 #include "../src/simulation/groundwear.c"
 #include "../src/simulation/temperature.c"
+#include "../src/simulation/trees.c"
 
 // Core systems
 #include "../src/core/time.c"

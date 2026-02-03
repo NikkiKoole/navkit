@@ -633,6 +633,7 @@ static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist) {
 // chopperX/Y is where the mover stood - tree falls away from them
 static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
     int woodCount = 0;
+    int leafCount = 0;
     
     // Find base of tree (lowest trunk in column)
     int baseZ = z;
@@ -657,7 +658,7 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
     }
     
     // Remove orphaned leaves (leaves not connected to any remaining trunk)
-    // Simple approach: scan nearby cells for leaves and check connection
+    // Count them for sapling drops
     int searchRadius = 3;
     for (int sz = 0; sz < gridDepth; sz++) {
         for (int sy = y - searchRadius; sy <= y + searchRadius; sy++) {
@@ -667,6 +668,7 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
                     if (!LeafConnectedToTrunk(sx, sy, sz, 4)) {
                         grid[sz][sy][sx] = CELL_AIR;
                         MarkChunkDirty(sx, sy, sz);
+                        leafCount++;
                     }
                 }
             }
@@ -692,6 +694,12 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
     float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
     
+    // World bounds for clamping item positions
+    float minX = CELL_SIZE * 0.5f;
+    float minY = CELL_SIZE * 0.5f;
+    float maxX = (gridWidth - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+    float maxY = (gridHeight - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+    
     for (int i = 0; i < woodCount; i++) {
         // Each log falls progressively further in the fall direction
         float fallDist = (float)(i + 1) * CELL_SIZE * 0.7f;
@@ -704,7 +712,33 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
         float spawnX = treeBaseX + fallDirX * fallDist + perpX * scatter;
         float spawnY = treeBaseY + fallDirY * fallDist + perpY * scatter;
         
+        // Clamp to world bounds
+        if (spawnX < minX) spawnX = minX;
+        if (spawnX > maxX) spawnX = maxX;
+        if (spawnY < minY) spawnY = minY;
+        if (spawnY > maxY) spawnY = maxY;
+        
         SpawnItem(spawnX, spawnY, (float)baseZ, ITEM_WOOD);
+    }
+    
+    // Spawn saplings from leaves (~1 per 5 leaves, minimum 1 if any leaves)
+    int saplingCount = leafCount / 5;
+    if (leafCount > 0 && saplingCount == 0) saplingCount = 1;
+    
+    for (int i = 0; i < saplingCount; i++) {
+        // Scatter saplings around the tree base
+        float angle = (float)i * 2.4f;  // Golden angle for nice distribution
+        float dist = CELL_SIZE * (0.5f + (float)(i % 3) * 0.5f);
+        float spawnX = treeBaseX + cosf(angle) * dist;
+        float spawnY = treeBaseY + sinf(angle) * dist;
+        
+        // Clamp to world bounds
+        if (spawnX < minX) spawnX = minX;
+        if (spawnX > maxX) spawnX = maxX;
+        if (spawnY < minY) spawnY = minY;
+        if (spawnY > maxY) spawnY = maxY;
+        
+        SpawnItem(spawnX, spawnY, (float)baseZ, ITEM_SAPLING);
     }
 }
 
@@ -730,6 +764,152 @@ int CountChopDesignations(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_CHOP) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Gather sapling designation functions
+// =============================================================================
+
+bool DesignateGatherSapling(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must be a sapling cell
+    if (grid[z][y][x] != CELL_SAPLING) {
+        return false;
+    }
+    
+    designations[z][y][x].type = DESIGNATION_GATHER_SAPLING;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasGatherSaplingDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_GATHER_SAPLING;
+}
+
+void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;  // Not needed for now
+    
+    // Remove the sapling cell
+    grid[z][y][x] = CELL_AIR;
+    MarkChunkDirty(x, y, z);
+    
+    // Spawn a sapling item at the location
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    SpawnItem(spawnX, spawnY, (float)z, ITEM_SAPLING);
+    
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+}
+
+int CountGatherSaplingDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_GATHER_SAPLING) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Plant sapling designation functions
+// =============================================================================
+
+bool DesignatePlantSapling(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must be walkable (air above solid ground)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+    
+    // Must be air or grass surface (can't plant on ladders, etc.)
+    CellType cell = grid[z][y][x];
+    if (cell != CELL_AIR) {
+        return false;
+    }
+    
+    // Check if ground below is dirt (for grass check)
+    // Saplings should only be planted on dirt/grass tiles
+    if (z > 0) {
+        CellType below = grid[z-1][y][x];
+        if (below != CELL_DIRT) {
+            return false;
+        }
+    }
+    
+    designations[z][y][x].type = DESIGNATION_PLANT_SAPLING;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasPlantSaplingDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_PLANT_SAPLING;
+}
+
+void CompletePlantSaplingDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;  // Not needed for now
+    
+    // Place the sapling cell
+    grid[z][y][x] = CELL_SAPLING;
+    MarkChunkDirty(x, y, z);
+    
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+}
+
+int CountPlantSaplingDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_PLANT_SAPLING) {
                     count++;
                 }
             }

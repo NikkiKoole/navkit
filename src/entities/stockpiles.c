@@ -295,7 +295,7 @@ int GetStockpileActiveCellCount(int stockpileIdx) {
 void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
     if (!stockpiles[stockpileIdx].active) return;
-    if (type < 0 || type > 2) return;
+    if (type < 0 || type >= ITEM_TYPE_COUNT) return;
     
     stockpiles[stockpileIdx].allowedTypes[type] = allowed;
 }

@@ -21,6 +21,8 @@ typedef enum {
     JOBTYPE_CRAFT,             // Fetch materials, craft at workshop
     JOBTYPE_REMOVE_RAMP,       // Remove ramps (natural or carved)
     JOBTYPE_CHOP,              // Chop down tree
+    JOBTYPE_GATHER_SAPLING,    // Gather a sapling (dig up, creates item)
+    JOBTYPE_PLANT_SAPLING,     // Plant a sapling (haul item, place cell)
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -28,6 +30,7 @@ typedef enum {
 #define STEP_CARRYING          1  // Haul/Clear/HaulToBlueprint: carrying item to destination
 #define STEP_MOVING_TO_WORK    0  // Dig/Build: moving to work site
 #define STEP_WORKING           1  // Dig/Build: performing work
+#define STEP_PLANTING          2  // PlantSapling: working after carrying
 
 // Craft job steps (4-step state machine)
 #define CRAFT_STEP_MOVING_TO_INPUT   0  // Walking to item location
@@ -115,6 +118,8 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* mover, float dt);
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* mover, float dt);
 JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
+JobRunResult RunJob_GatherSapling(Job* job, void* mover, float dt);
+JobRunResult RunJob_PlantSapling(Job* job, void* mover, float dt);
 
 
 
@@ -162,5 +167,7 @@ int WorkGiver_Chop(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
 int WorkGiver_Craft(int moverIdx);
+int WorkGiver_GatherSapling(int moverIdx);
+int WorkGiver_PlantSapling(int moverIdx);
 
 #endif

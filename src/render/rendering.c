@@ -1081,6 +1081,60 @@ void DrawMiningDesignations(void) {
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){50, 200, 200, 255});
                 }
             }
+            // Chop tree designation: brown/orange
+            else if (d->type == DESIGNATION_CHOP) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 100, 50, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){200, 120, 60, 255});
+                }
+            }
+            // Gather sapling designation: light green
+            else if (d->type == DESIGNATION_GATHER_SAPLING) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){150, 255, 150, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){100, 220, 100, 255});
+                }
+            }
+            // Plant sapling designation: dark green
+            else if (d->type == DESIGNATION_PLANT_SAPLING) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){50, 180, 80, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){30, 150, 60, 255});
+                }
+            }
         }
     }
 
@@ -1142,6 +1196,51 @@ void DrawMiningDesignations(void) {
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 200, 180});
+    }
+    
+    // Draw active chop jobs (brown/orange overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_CHOP) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){220, 140, 80, 180});
+    }
+    
+    // Draw active gather sapling jobs (light green overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_GATHER_SAPLING) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 255, 180, 180});
+    }
+    
+    // Draw active plant sapling jobs (dark green overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_PLANT_SAPLING) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 100, 180});
     }
     
     // Draw path of assigned mover when hovering over a designation

@@ -13,6 +13,8 @@ typedef enum {
     DESIGNATION_REMOVE_FLOOR, // Remove constructed floor only (mover may fall!)
     DESIGNATION_REMOVE_RAMP,  // Remove ramps (natural or carved)
     DESIGNATION_CHOP,         // Chop down tree (trunk cell)
+    DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
+    DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
 } DesignationType;
 
 // Per-cell designation data
@@ -29,6 +31,8 @@ typedef struct {
 #define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
 #define CHOP_WORK_TIME 3.0f          // Chopping trees takes longer
+#define GATHER_SAPLING_WORK_TIME 1.0f // Quick to dig up a sapling
+#define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -179,6 +183,42 @@ void CompleteChopDesignation(int x, int y, int z, int moverIdx);
 
 // Count active chop designations
 int CountChopDesignations(void);
+
+// =============================================================================
+// Gather sapling designation functions
+// =============================================================================
+
+// Designate a sapling for gathering
+// Returns true if designation was added, false if cell is not a sapling
+bool DesignateGatherSapling(int x, int y, int z);
+
+// Check if a cell has a gather sapling designation
+bool HasGatherSaplingDesignation(int x, int y, int z);
+
+// Complete a gather sapling designation (called when work finishes)
+// Removes the sapling cell, spawns sapling item
+void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx);
+
+// Count active gather sapling designations
+int CountGatherSaplingDesignations(void);
+
+// =============================================================================
+// Plant sapling designation functions
+// =============================================================================
+
+// Designate a location for planting a sapling
+// Returns true if designation was added, false if cell can't have sapling planted
+bool DesignatePlantSapling(int x, int y, int z);
+
+// Check if a cell has a plant sapling designation
+bool HasPlantSaplingDesignation(int x, int y, int z);
+
+// Complete a plant sapling designation (called when work finishes)
+// Places a sapling cell at location
+void CompletePlantSaplingDesignation(int x, int y, int z, int moverIdx);
+
+// Count active plant sapling designations
+int CountPlantSaplingDesignations(void);
 
 // =============================================================================
 // Blueprint functions

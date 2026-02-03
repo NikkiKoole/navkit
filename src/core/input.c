@@ -368,6 +368,60 @@ static void ExecuteCancelChop(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateGatherSapling(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateGatherSapling(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d sapling%s for gathering", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelGatherSapling(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasGatherSaplingDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d gather sapling designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteDesignatePlantSapling(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignatePlantSapling(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d tile%s for planting", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelPlantSapling(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasPlantSaplingDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d plant sapling designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -834,8 +888,9 @@ void HandleInput(void) {
         Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
         hoveredItemCount = GetItemsAtCell((int)mouseGrid.x, (int)mouseGrid.y, z, hoveredItemCell, 16);
-        // Check for designation hover
-        if (HasMineDesignation((int)mouseGrid.x, (int)mouseGrid.y, z)) {
+        // Check for designation hover (any type, not just mine)
+        Designation* d = GetDesignation((int)mouseGrid.x, (int)mouseGrid.y, z);
+        if (d && d->type != DESIGNATION_NONE) {
             hoveredDesignationX = (int)mouseGrid.x;
             hoveredDesignationY = (int)mouseGrid.y;
             hoveredDesignationZ = z;
@@ -881,6 +936,7 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ORANGE] = !sp->allowedTypes[ITEM_ORANGE]; AddMessage(TextFormat("Orange: %s", sp->allowedTypes[ITEM_ORANGE] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
             if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_T)) { sp->allowedTypes[ITEM_SAPLING] = !sp->allowedTypes[ITEM_SAPLING]; AddMessage(TextFormat("Sapling: %s", sp->allowedTypes[ITEM_SAPLING] ? "ON" : "OFF"), GREEN); return; }
         }
     }
 
@@ -1100,6 +1156,8 @@ void HandleInput(void) {
                 if (CheckKey(KEY_O)) { inputAction = ACTION_WORK_FLOOR; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_WORK_CHOP; }
+                if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
+                if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
                 break;
             case MODE_SANDBOX:
                 if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
@@ -1140,6 +1198,8 @@ void HandleInput(void) {
         case ACTION_WORK_FLOOR:       backOneLevel = CheckKey(KEY_O); break;
         case ACTION_WORK_GATHER:      backOneLevel = CheckKey(KEY_G); break;
         case ACTION_WORK_CHOP:        backOneLevel = CheckKey(KEY_T); break;
+        case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
+        case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
         case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
@@ -1284,6 +1344,14 @@ void HandleInput(void) {
             case ACTION_WORK_CHOP:
                 if (leftClick) ExecuteDesignateChop(x1, y1, x2, y2, z);
                 else ExecuteCancelChop(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_GATHER_SAPLING:
+                if (leftClick) ExecuteDesignateGatherSapling(x1, y1, x2, y2, z);
+                else ExecuteCancelGatherSapling(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_PLANT_SAPLING:
+                if (leftClick) ExecuteDesignatePlantSapling(x1, y1, x2, y2, z);
+                else ExecuteCancelPlantSapling(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

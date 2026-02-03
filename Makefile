@@ -33,6 +33,7 @@ test_steam_SRC       := tests/test_steam.c
 test_time_SRC        := tests/test_time.c
 test_time_specs_SRC  := tests/test_time_specs.c
 test_high_speed_SRC  := tests/test_high_speed.c
+test_trees_SRC       := tests/test_trees.c
 
 # Precompile test_unity.o once (the expensive part)
 $(TEST_UNITY_OBJ): tests/test_unity.c | $(BINDIR)
@@ -114,13 +115,18 @@ test_high_speed: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/test_high_speed
 
+# Trees test
+test_trees: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_trees_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/test_trees
+
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	./$(BINDIR)/test_soundsystem
 
 # Run all tests (mover uses 5 stress iterations by default)
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_trees test_soundsystem
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -129,7 +135,7 @@ test-full: $(TEST_UNITY_OBJ)
 	$(MAKE) test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
 
 # Quick tests - skips mover tests entirely (~4s)
-test-quick: test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_soundsystem
+test-quick: test_pathing test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_time test_time_specs test_high_speed test_trees test_soundsystem
 
 # Benchmark targets - link against precompiled test_unity.o
 bench_jobs_SRC := tests/bench_jobs.c

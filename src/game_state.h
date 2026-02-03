@@ -118,6 +118,7 @@ extern bool sectionSteam;
 extern bool sectionTemperature;
 extern bool showTemperatureOverlay;
 extern bool sectionEntropy;
+extern bool sectionTrees;
 extern bool sectionMoverWalls;
 extern bool sectionMoverDebug;
 extern bool sectionProfiler;

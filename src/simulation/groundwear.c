@@ -2,7 +2,10 @@
 #include "../world/grid.h"
 #include "../core/time.h"
 #include "fire.h"
+#include "trees.h"
+#include "../entities/items.h"
 #include <string.h>
+#include <stdlib.h>
 
 // Wear grid storage (3D)
 int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -18,6 +21,11 @@ int wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
 int wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
 int wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
 float wearRecoveryInterval = 5.0f;  // Decay wear every 5 game-seconds
+
+// Sapling regrowth settings
+bool saplingRegrowthEnabled = true;
+int saplingRegrowthChance = 5;      // 5 per 10000 = 0.05% per interval per tile
+int saplingMinTreeDistance = 4;     // Min 4 tiles from existing trees/saplings
 int wearMax = WEAR_MAX_DEFAULT;
 
 // Internal accumulator for game-time
@@ -39,6 +47,28 @@ static void UpdateSurfaceFromWear(int x, int y, int z) {
     SET_CELL_SURFACE(x, y, z, surface);
 }
 
+// Check if there's a tree or sapling within distance
+static bool HasNearbyTree(int x, int y, int z, int dist) {
+    for (int dz = -1; dz <= dist; dz++) {  // Check up to dist levels above
+        int checkZ = z + dz;
+        if (checkZ < 0 || checkZ >= gridDepth) continue;
+        
+        for (int dy = -dist; dy <= dist; dy++) {
+            for (int dx = -dist; dx <= dist; dx++) {
+                int nx = x + dx;
+                int ny = y + dy;
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                
+                CellType c = grid[checkZ][ny][nx];
+                if (c == CELL_SAPLING || c == CELL_TREE_TRUNK || c == CELL_TREE_LEAVES) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 void InitGroundWear(void) {
     ClearGroundWear();
 }
@@ -53,8 +83,24 @@ void TrampleGround(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return;
     if (z < 0 || z >= gridDepth) return;
     
-    // Check current cell for dirt
+    // Trample saplings - only destroy after significant wear accumulates
     CellType cell = grid[z][y][x];
+    if (cell == CELL_SAPLING) {
+        // Saplings need heavy traffic to be trampled, not just one pass
+        // Use the wear grid to track trampling damage to the sapling
+        int wear = wearGrid[z][y][x];
+        wearGrid[z][y][x] = (wear < wearMax) ? wear + 1 : wearMax;
+        
+        // Only destroy sapling after significant wear (half of max)
+        if (wearGrid[z][y][x] >= wearMax / 2) {
+            grid[z][y][x] = CELL_AIR;
+            MarkChunkDirty(x, y, z);
+            wearGrid[z][y][x] = 0;  // Reset wear
+        }
+        return;  // Don't also trample ground below sapling
+    }
+    
+    // Check current cell for dirt
     int targetZ = z;
     
     // In DF mode, movers walk at z=1 on floors above z=0 dirt
@@ -110,6 +156,25 @@ void UpdateGroundWear(void) {
                 
                 // Update surface overlay based on new wear
                 UpdateSurfaceFromWear(x, y, z);
+                
+                // Sapling regrowth: spawn sapling on tall grass with some chance
+                if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
+                    // Only on fully recovered (tall grass) tiles
+                    // Check if cell above is air (space for sapling)
+                    if (z + 1 < gridDepth && grid[z + 1][y][x] == CELL_AIR) {
+                        // Don't spawn if items are on the tile above
+                        if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
+                        
+                        // Random chance check
+                        if ((rand() % 10000) < saplingRegrowthChance) {
+                            // Check no trees/saplings nearby
+                            if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
+                                // Place sapling in cell above dirt
+                                PlaceSapling(x, y, z + 1);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

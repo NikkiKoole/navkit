@@ -732,7 +732,7 @@ void DrawUI(void) {
     y += 8;
     if (SectionHeader(x, y, "Trees", &sectionTrees)) {
         y += 18;
-        DraggableIntT(x, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 1000,
+        DraggableIntT(x, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 36000,
             TextFormat("Time for sapling to become trunk: %.1f seconds (%d ticks)", saplingGrowTicks / 60.0f, saplingGrowTicks));
         y += 22;
         DraggableIntT(x, y, "Trunk Grow", &trunkGrowTicks, 5.0f, 5, 500,

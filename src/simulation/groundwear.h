@@ -28,6 +28,11 @@ extern int wearDecayRate;        // Wear removed per decay interval
 extern float wearRecoveryInterval; // Game-seconds between decay updates
 extern int wearMax;              // Maximum wear value
 
+// Sapling regrowth on untrampled grass
+extern bool saplingRegrowthEnabled;   // Enable/disable natural sapling spawning
+extern int saplingRegrowthChance;     // Chance per 10000 per interval (default 5 = 0.05%)
+extern int saplingMinTreeDistance;    // Min distance from existing trees/saplings
+
 // Wear grid (parallel to main grid, all z-levels)
 extern int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 

@@ -203,6 +203,87 @@ describe(sapling_gather_job) {
         int saplingCount = CountItemType(ITEM_SAPLING);
         expect(saplingCount > 0);
     }
+    
+    it("should complete gather sapling job end-to-end: move to sapling -> work -> spawn item") {
+        // Setup world - DF mode: z=0 is solid ground, z=1 is walkable
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+        
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 4; y++) {
+                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[1][y][x] = CELL_AIR;   // Air above (walkable)
+            }
+        }
+        
+        int workZ = 1;
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearGatherZones();
+        InitDesignations();
+        InitTrees();
+        ClearJobs();
+        InitJobSystem(MAX_MOVERS);
+        
+        // Create mover at (1,1) with plant capability
+        Mover* m = &movers[0];
+        Point goal = {1, 1, workZ};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, (float)workZ, goal, 100.0f);
+        m->capabilities.canPlant = true;
+        moverCount = 1;
+        AddMoverToIdleList(0);
+        
+        // Place a sapling at (5,1)
+        int saplingX = 5, saplingY = 1, saplingZ = workZ;
+        PlaceSapling(saplingX, saplingY, saplingZ);
+        expect(grid[saplingZ][saplingY][saplingX] == CELL_SAPLING);
+        
+        // Disable tree growth for this test (prevent sapling from growing into trunk)
+        int originalGrowTicks = saplingGrowTicks;
+        saplingGrowTicks = 100000;  // Very long time
+        
+        // Designate sapling for gathering
+        DesignateGatherSapling(saplingX, saplingY, saplingZ);
+        expect(HasGatherSaplingDesignation(saplingX, saplingY, saplingZ) == true);
+        
+        // No sapling items yet
+        expect(CountItemType(ITEM_SAPLING) == 0);
+        
+        // Run simulation - AssignJobs should assign the job via WorkGiver_GatherSapling
+        bool saplingGathered = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (grid[saplingZ][saplingY][saplingX] == CELL_AIR && CountItemType(ITEM_SAPLING) > 0) {
+                saplingGathered = true;
+                break;
+            }
+        }
+        
+        // Verify sapling was gathered
+        expect(saplingGathered == true);
+        expect(grid[saplingZ][saplingY][saplingX] == CELL_AIR);
+        
+        // Verify sapling item was spawned
+        expect(CountItemType(ITEM_SAPLING) > 0);
+        
+        // Verify designation was cleared
+        expect(HasGatherSaplingDesignation(saplingX, saplingY, saplingZ) == false);
+        
+        // Verify mover is back to idle
+        expect(m->currentJobId == -1);
+        
+        // Restore growth ticks
+        saplingGrowTicks = originalGrowTicks;
+    }
 }
 
 describe(sapling_plant_job) {

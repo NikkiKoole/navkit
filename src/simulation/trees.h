@@ -2,6 +2,10 @@
 #ifndef TREES_H
 #define TREES_H
 
+// Runtime configurable growth parameters
+extern int saplingGrowTicks;     // Ticks before sapling becomes trunk (default 100)
+extern int trunkGrowTicks;       // Ticks between trunk growth (default 50)
+
 // Initialize tree growth system
 void InitTrees(void);
 

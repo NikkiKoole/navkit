@@ -110,6 +110,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("S", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_WOOD] ? "W" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_WOOD] ? BROWN : DARKGRAY);
+    fx += MeasureText("W", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_SAPLING] ? "T" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_SAPLING] ? GREEN : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
@@ -675,30 +678,83 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     }
 }
 
-// Draw mining designation tooltip
-void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+// Draw designation tooltip (generic for all designation types)
+void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     Designation* des = GetDesignation(cellX, cellY, cellZ);
-    if (!des || des->type != DESIGNATION_MINE) return;
+    if (!des || des->type == DESIGNATION_NONE) return;
+
+    // Get designation name and colors based on type
+    const char* desName = "Unknown";
+    Color bgColor = (Color){50, 40, 30, 230};
+    Color borderColor = (Color){150, 120, 80, 255};
+    const char* workerName = "Worker";
+    
+    switch (des->type) {
+        case DESIGNATION_MINE:
+            desName = "Mining";
+            bgColor = (Color){40, 50, 60, 230};
+            borderColor = (Color){100, 180, 220, 255};
+            workerName = "Miner";
+            break;
+        case DESIGNATION_CHANNEL:
+            desName = "Channeling";
+            bgColor = (Color){50, 35, 45, 230};
+            borderColor = (Color){220, 130, 180, 255};
+            workerName = "Digger";
+            break;
+        case DESIGNATION_REMOVE_FLOOR:
+            desName = "Remove Floor";
+            bgColor = (Color){50, 45, 30, 230};
+            borderColor = (Color){220, 190, 100, 255};
+            workerName = "Worker";
+            break;
+        case DESIGNATION_REMOVE_RAMP:
+            desName = "Remove Ramp";
+            bgColor = (Color){35, 50, 50, 230};
+            borderColor = (Color){100, 200, 200, 255};
+            workerName = "Worker";
+            break;
+        case DESIGNATION_CHOP:
+            desName = "Chop Tree";
+            bgColor = (Color){50, 35, 25, 230};
+            borderColor = (Color){200, 120, 60, 255};
+            workerName = "Woodcutter";
+            break;
+        case DESIGNATION_GATHER_SAPLING:
+            desName = "Gather Sapling";
+            bgColor = (Color){35, 50, 35, 230};
+            borderColor = (Color){150, 255, 150, 255};
+            workerName = "Gatherer";
+            break;
+        case DESIGNATION_PLANT_SAPLING:
+            desName = "Plant Sapling";
+            bgColor = (Color){25, 45, 30, 230};
+            borderColor = (Color){50, 180, 80, 255};
+            workerName = "Planter";
+            break;
+        default:
+            break;
+    }
 
     char lines[6][64];
     int lineCount = 0;
 
     // Header
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Mining (%d,%d,%d)", cellX, cellY, cellZ);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", desName, cellX, cellY, cellZ);
 
-    // Cell type being mined
+    // Cell type at location
     CellType ct = grid[cellZ][cellY][cellX];
     const char* cellName = CellName(ct);
     snprintf(lines[lineCount++], sizeof(lines[0]), "Target: %s", cellName);
 
     // Assignment status
     if (des->assignedMover >= 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Miner: Mover #%d", des->assignedMover);
+        snprintf(lines[lineCount++], sizeof(lines[0]), "%s: Mover #%d", workerName, des->assignedMover);
         snprintf(lines[lineCount++], sizeof(lines[0]), "Progress: %d%%", (int)(des->progress * 100));
     } else if (des->unreachableCooldown > 0) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Unreachable (%.1fs)", des->unreachableCooldown);
     } else {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for miner");
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for %s", workerName);
     }
 
     // Calculate box dimensions
@@ -719,19 +775,24 @@ void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
     if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
 
-    // Draw background (orange tint for mining)
-    DrawRectangle(tx, ty, boxW, boxH, (Color){50, 40, 30, 230});
-    DrawRectangleLines(tx, ty, boxW, boxH, (Color){150, 120, 80, 255});
+    // Draw background
+    DrawRectangle(tx, ty, boxW, boxH, bgColor);
+    DrawRectangleLines(tx, ty, boxW, boxH, borderColor);
 
     // Draw lines
     int y = ty + padding;
     for (int i = 0; i < lineCount; i++) {
         Color col = WHITE;
-        if (i == 0) col = YELLOW;  // Header
-        else if (strstr(lines[i], "Miner:")) col = GREEN;
+        if (i == 0) col = borderColor;  // Header uses border color
+        else if (strstr(lines[i], workerName)) col = GREEN;
         else if (strstr(lines[i], "Unreachable")) col = RED;
         else if (strstr(lines[i], "Waiting")) col = GRAY;
         DrawTextShadow(lines[i], tx + padding, y, 14, col);
         y += lineH;
     }
+}
+
+// Draw mining designation tooltip (legacy, calls generic)
+void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+    DrawDesignationTooltip(cellX, cellY, cellZ, mouse);
 }

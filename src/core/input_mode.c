@@ -70,6 +70,8 @@ static const char* GetActionName(void) {
         case ACTION_WORK_FLOOR:        return "FLOOR";
         case ACTION_WORK_GATHER:       return "GATHER";
         case ACTION_WORK_CHOP:         return "CHOP";
+        case ACTION_WORK_GATHER_SAPLING: return "GATHER SAPLING";
+        case ACTION_WORK_PLANT_SAPLING:  return "PLANT SAPLING";
         case ACTION_SANDBOX_WATER:   return "WATER";
         case ACTION_SANDBOX_FIRE:    return "FIRE";
         case ACTION_SANDBOX_HEAT:    return "HEAT";
@@ -144,6 +146,8 @@ const char* InputMode_GetBarText(void) {
         case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
         case ACTION_WORK_CHOP:
+        case ACTION_WORK_GATHER_SAPLING:
+        case ACTION_WORK_PLANT_SAPLING:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
             break;
@@ -253,6 +257,8 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "flOor", KEY_O, 2, false, false, false);
                 n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
                 n = AddItem(items, n, "Tree", KEY_T, 0, false, false, false);
+                n = AddItem(items, n, "Sapling", KEY_S, 0, false, false, false);
+                n = AddItem(items, n, "Plant", KEY_P, 0, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             case MODE_SANDBOX:
@@ -303,6 +309,8 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_FLOOR:        actionKey = KEY_O; actionUnderline = 2; break;
         case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
         case ACTION_WORK_CHOP:         actionKey = KEY_T; break;
+        case ACTION_WORK_GATHER_SAPLING: actionKey = KEY_S; break;
+        case ACTION_WORK_PLANT_SAPLING:  actionKey = KEY_P; break;
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
         case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
         case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;
@@ -360,6 +368,8 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
         case ACTION_WORK_CHOP:
+        case ACTION_WORK_GATHER_SAPLING:
+        case ACTION_WORK_PLANT_SAPLING:
             n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
             break;
