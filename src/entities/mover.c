@@ -1231,19 +1231,14 @@ void ProcessMoverRepaths(void) {
 
         Point start = {currentX, currentY, currentZ};
         
-        // Use A* for cross-z paths when ramps exist but HPA* doesn't have ramp links yet
+        // HPA* now supports ramp links for cross-z paths, no need to force A*
         PathAlgorithm algo = moverPathAlgorithm;
-        if (m->goal.z != currentZ && rampCount > 0) {
-            algo = PATH_ALGO_ASTAR;  // Fall back to A* which supports ramps
-            TraceLog(LOG_DEBUG, "Mover %d: cross-z path, using A* (rampCount=%d, ladderLinkCount=%d)", 
-                     i, rampCount, ladderLinkCount);
-        }
         
         Point tempPath[MAX_PATH];
         int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
         
         // If HPA* failed but ramps exist, try A* as fallback
-        // This handles cases where same-z path is blocked but cross-z via ramps works
+        // This handles edge cases where HPA* chunking misses a valid path
         if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
             len = FindPath(PATH_ALGO_ASTAR, start, m->goal, tempPath, MAX_PATH);
         }
@@ -1306,9 +1301,11 @@ void TickWithDt(float dt) {
     }
     
     // Update HPA* graph if any chunks are dirty (do this first, before any pathfinding)
+    PROFILE_BEGIN(HPA);
     if (moverPathAlgorithm == PATH_ALGO_HPA && hpaNeedsRebuild) {
         UpdateDirtyChunks();
     }
+    PROFILE_END(HPA);
     
     // Water simulation
     PROFILE_BEGIN(Water);
@@ -1340,7 +1337,9 @@ void TickWithDt(float dt) {
     UpdateGroundWear();
     
     // Tree growth
+    PROFILE_BEGIN(Trees);
     TreesTick(dt);
+    PROFILE_END(Trees);
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();

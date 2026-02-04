@@ -15,6 +15,7 @@ typedef enum {
     JOBTYPE_CLEAR,             // Pick up item, drop outside stockpile (safe-drop)
     JOBTYPE_MINE,              // Mine a wall
     JOBTYPE_CHANNEL,           // Channel (vertical dig) - removes floor, mines below
+    JOBTYPE_DIG_RAMP,          // Carve a ramp out of wall/dirt
     JOBTYPE_REMOVE_FLOOR,      // Remove constructed floor (mover may fall!)
     JOBTYPE_HAUL_TO_BLUEPRINT, // Pick up item, deliver to blueprint
     JOBTYPE_BUILD,             // Construct at blueprint
@@ -161,6 +162,7 @@ int WorkGiver_Haul(int moverIdx);
 int WorkGiver_Rehaul(int moverIdx);
 int WorkGiver_Mining(int moverIdx);
 int WorkGiver_Channel(int moverIdx);
+int WorkGiver_DigRamp(int moverIdx);
 int WorkGiver_RemoveFloor(int moverIdx);
 int WorkGiver_RemoveRamp(int moverIdx);
 int WorkGiver_Chop(int moverIdx);

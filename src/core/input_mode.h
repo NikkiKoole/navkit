@@ -12,6 +12,14 @@ typedef enum {
     MODE_SANDBOX,   // Sim systems (water, fire, heat, etc.)
 } InputMode;
 
+// Sub-modes within WORK mode
+typedef enum {
+    SUBMODE_NONE,
+    SUBMODE_DIG,      // Mine, Channel, Dig ramp, Remove floor/ramp
+    SUBMODE_BUILD,    // Construct wall, Floor, Ladder, Ramp
+    SUBMODE_HARVEST,  // Chop tree, Gather/Plant sapling
+} WorkSubMode;
+
 // Actions within modes
 typedef enum {
     ACTION_NONE,
@@ -23,18 +31,23 @@ typedef enum {
     ACTION_DRAW_STOCKPILE,
     ACTION_DRAW_DIRT,
     ACTION_DRAW_WORKSHOP,
-    // Work actions (jobs for movers)
+    // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,
+    ACTION_WORK_DIG_RAMP,
     ACTION_WORK_REMOVE_FLOOR,
     ACTION_WORK_REMOVE_RAMP,
+    // Work > Build actions
     ACTION_WORK_CONSTRUCT,
-    ACTION_WORK_LADDER,
     ACTION_WORK_FLOOR,
-    ACTION_WORK_GATHER,
+    ACTION_WORK_LADDER,
+    ACTION_WORK_RAMP,
+    // Work > Harvest actions
     ACTION_WORK_CHOP,
     ACTION_WORK_GATHER_SAPLING,
     ACTION_WORK_PLANT_SAPLING,
+    // Work > Gather (top-level, no submode)
+    ACTION_WORK_GATHER,
     // Sandbox actions (sim systems)
     ACTION_SANDBOX_WATER,
     ACTION_SANDBOX_FIRE,
@@ -48,6 +61,7 @@ typedef enum {
 
 // Current input state
 extern InputMode inputMode;
+extern WorkSubMode workSubMode;  // Sub-mode within WORK
 extern InputAction inputAction;
 extern int selectedMaterial;  // 1-based material index
 
@@ -87,7 +101,7 @@ typedef struct {
     bool isExit;        // True if this key exits the current mode (show in red)
 } BarItem;
 
-#define MAX_BAR_ITEMS 12
+#define MAX_BAR_ITEMS 16
 int InputMode_GetBarItems(BarItem* items);  // Returns count of items
 
 // Trigger a bar item action (called when button clicked)

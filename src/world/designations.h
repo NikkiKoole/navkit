@@ -11,6 +11,7 @@ typedef enum {
     DESIGNATION_NONE,
     DESIGNATION_MINE,
     DESIGNATION_CHANNEL,      // Vertical digging - removes floor and mines level below
+    DESIGNATION_DIG_RAMP,     // Carve a ramp out of wall/dirt (creates ramp facing adjacent floor)
     DESIGNATION_REMOVE_FLOOR, // Remove constructed floor only (mover may fall!)
     DESIGNATION_REMOVE_RAMP,  // Remove ramps (natural or carved)
     DESIGNATION_CHOP,         // Chop down tree (trunk cell)
@@ -29,6 +30,7 @@ typedef struct {
 // Work time for mining/channeling/removing (in seconds at 60 ticks/sec)
 #define MINE_WORK_TIME 2.0f
 #define CHANNEL_WORK_TIME 2.0f
+#define DIG_RAMP_WORK_TIME 2.0f      // Similar to mining - carving a ramp
 #define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
 #define CHOP_WORK_TIME 3.0f          // Chopping trees takes longer
@@ -52,6 +54,7 @@ typedef enum {
     BLUEPRINT_TYPE_WALL,
     BLUEPRINT_TYPE_LADDER,
     BLUEPRINT_TYPE_FLOOR,
+    BLUEPRINT_TYPE_RAMP,
 } BlueprintType;
 
 typedef struct {
@@ -131,6 +134,24 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx);
 
 // Count active channel designations
 int CountChannelDesignations(void);
+
+// =============================================================================
+// Dig ramp designation functions
+// =============================================================================
+
+// Designate a cell for ramp digging (carves ramp from wall/dirt)
+// Returns true if designation was added, false if cell can't have a ramp dug
+bool DesignateDigRamp(int x, int y, int z);
+
+// Check if a cell has a dig ramp designation
+bool HasDigRampDesignation(int x, int y, int z);
+
+// Complete a dig ramp designation (called when work finishes)
+// Carves the cell into a ramp, drops material
+void CompleteDigRampDesignation(int x, int y, int z, int moverIdx);
+
+// Count active dig ramp designations
+int CountDigRampDesignations(void);
 
 // =============================================================================
 // Remove floor designation functions
@@ -237,6 +258,10 @@ int CreateLadderBlueprint(int x, int y, int z);
 // Create a blueprint for building a floor at the given location
 // Returns blueprint index, or -1 if failed (already has floor, already has blueprint, etc.)
 int CreateFloorBlueprint(int x, int y, int z);
+
+// Create a blueprint for building a ramp at the given location
+// Returns blueprint index, or -1 if failed (already has ramp, already has blueprint, etc.)
+int CreateRampBlueprint(int x, int y, int z);
 
 // Cancel/remove a blueprint
 void CancelBlueprint(int blueprintIdx);

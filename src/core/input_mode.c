@@ -5,6 +5,7 @@
 
 // State
 InputMode inputMode = MODE_NORMAL;
+WorkSubMode workSubMode = SUBMODE_NONE;
 InputAction inputAction = ACTION_NONE;
 int selectedMaterial = 1;
 
@@ -19,6 +20,7 @@ bool shouldQuit = false;
 
 void InputMode_Reset(void) {
     inputMode = MODE_NORMAL;
+    workSubMode = SUBMODE_NONE;
     inputAction = ACTION_NONE;
     selectedMaterial = 1;
     isDragging = false;
@@ -30,6 +32,8 @@ void InputMode_Back(void) {
     if (inputAction != ACTION_NONE) {
         inputAction = ACTION_NONE;
         selectedMaterial = 1;
+    } else if (workSubMode != SUBMODE_NONE) {
+        workSubMode = SUBMODE_NONE;
     } else if (inputMode != MODE_NORMAL) {
         inputMode = MODE_NORMAL;
     }
@@ -38,6 +42,7 @@ void InputMode_Back(void) {
 void InputMode_ExitToNormal(void) {
     if (isDragging) return;
     inputMode = MODE_NORMAL;
+    workSubMode = SUBMODE_NONE;
     inputAction = ACTION_NONE;
     selectedMaterial = 1;
 }
@@ -63,15 +68,17 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
         case ACTION_WORK_MINE:         return "MINE";
         case ACTION_WORK_CHANNEL:      return "CHANNEL";
+        case ACTION_WORK_DIG_RAMP:     return "DIG RAMP";
         case ACTION_WORK_REMOVE_FLOOR: return "REMOVE FLOOR";
         case ACTION_WORK_REMOVE_RAMP:  return "REMOVE RAMP";
-        case ACTION_WORK_CONSTRUCT:    return "CONSTRUCT";
-        case ACTION_WORK_LADDER:       return "LADDER";
+        case ACTION_WORK_CONSTRUCT:    return "WALL";
         case ACTION_WORK_FLOOR:        return "FLOOR";
-        case ACTION_WORK_GATHER:       return "GATHER";
-        case ACTION_WORK_CHOP:         return "CHOP";
+        case ACTION_WORK_LADDER:       return "LADDER";
+        case ACTION_WORK_RAMP:         return "RAMP";
+        case ACTION_WORK_CHOP:         return "CHOP TREE";
         case ACTION_WORK_GATHER_SAPLING: return "GATHER SAPLING";
         case ACTION_WORK_PLANT_SAPLING:  return "PLANT SAPLING";
+        case ACTION_WORK_GATHER:       return "GATHER";
         case ACTION_SANDBOX_WATER:   return "WATER";
         case ACTION_SANDBOX_FIRE:    return "FIRE";
         case ACTION_SANDBOX_HEAT:    return "HEAT";
@@ -84,6 +91,15 @@ static const char* GetActionName(void) {
     }
 }
 
+static const char* GetSubModeName(void) {
+    switch (workSubMode) {
+        case SUBMODE_DIG:     return "DIG";
+        case SUBMODE_BUILD:   return "BUILD";
+        case SUBMODE_HARVEST: return "HARVEST";
+        default:              return NULL;
+    }
+}
+
 // Static buffer for bar text
 static char barTextBuffer[256];
 
@@ -93,12 +109,24 @@ const char* InputMode_GetBarText(void) {
     }
     
     if (inputAction == ACTION_NONE) {
-        // In a mode, no action selected - show available actions
+        // In a mode, no action selected - show available actions/submodes
         switch (inputMode) {
             case MODE_DRAW:
                 return "DRAW: [W]all  [F]loor  [L]adder  [S]tockpile    [ESC]Back";
             case MODE_WORK:
-                return "WORK: [M]ine  [C]onstruct  [G]ather  [T]ree    [ESC]Back";
+                if (workSubMode == SUBMODE_NONE) {
+                    return "WORK: [D]ig  [B]uild  [H]arvest  [G]ather    [ESC]Back";
+                }
+                switch (workSubMode) {
+                    case SUBMODE_DIG:
+                        return "WORK > DIG: [M]ine  c[H]annel  dig [R]amp  remove [F]loor  remove ramp[Z]    [ESC]Back";
+                    case SUBMODE_BUILD:
+                        return "WORK > BUILD: [W]all  [F]loor  [L]adder  [R]amp    [ESC]Back";
+                    case SUBMODE_HARVEST:
+                        return "WORK > HARVEST: [C]hop tree  gather [S]apling  [P]lant sapling    [ESC]Back";
+                    default:
+                        return "[ESC]Back";
+                }
             case MODE_SANDBOX:
                 return "SANDBOX: [W]ater  [F]ire  [H]eat  [C]old  s[M]oke  s[T]eam  [G]rass  t[R]ee    [ESC]Back";
             default:
@@ -109,74 +137,87 @@ const char* InputMode_GetBarText(void) {
     // Action selected - show material options or instructions
     const char* actionName = GetActionName();
     const char* modeName = InputMode_GetModeName();
+    const char* subModeName = GetSubModeName();
+    
+    // Build prefix: "MODE > SUBMODE > ACTION:" or "MODE > ACTION:"
+    char prefix[64];
+    if (subModeName) {
+        snprintf(prefix, sizeof(prefix), "%s > %s > %s", modeName, subModeName, actionName);
+    } else {
+        snprintf(prefix, sizeof(prefix), "%s > %s", modeName, actionName);
+    }
     
     switch (inputAction) {
         case ACTION_DRAW_WALL:
             snprintf(barTextBuffer, sizeof(barTextBuffer), 
-                "%s > %s: [1]Stone%s [2]Wood%s    L-drag place  R-drag erase  [ESC]Back",
-                modeName, actionName,
+                "%s: [1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  R-drag erase  [ESC]Back",
+                prefix,
                 selectedMaterial == 1 ? "<" : "",
-                selectedMaterial == 2 ? "<" : "");
+                selectedMaterial == 2 ? "<" : "",
+                selectedMaterial == 3 ? "<" : "");
             break;
         case ACTION_DRAW_FLOOR:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: [1]Stone%s [2]Wood%s    L-drag place  [ESC]Back",
-                modeName, actionName,
+                "%s: [1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  [ESC]Back",
+                prefix,
                 selectedMaterial == 1 ? "<" : "",
-                selectedMaterial == 2 ? "<" : "");
+                selectedMaterial == 2 ? "<" : "",
+                selectedMaterial == 3 ? "<" : "");
             break;
         case ACTION_DRAW_LADDER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag place  [ESC]Back", modeName, actionName);
+                "%s: L-drag place  [ESC]Back", prefix);
             break;
         case ACTION_DRAW_DIRT:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag place  R-drag erase  [ESC]Back", modeName, actionName);
+                "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
             break;
         case ACTION_DRAW_STOCKPILE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag create  R-drag erase  [ESC]Back", modeName, actionName);
+                "%s: L-drag create  R-drag erase  [ESC]Back", prefix);
             break;
         case ACTION_WORK_MINE:
         case ACTION_WORK_CHANNEL:
+        case ACTION_WORK_DIG_RAMP:
         case ACTION_WORK_REMOVE_FLOOR:
         case ACTION_WORK_REMOVE_RAMP:
         case ACTION_WORK_CONSTRUCT:
-        case ACTION_WORK_LADDER:
         case ACTION_WORK_FLOOR:
-        case ACTION_WORK_GATHER:
+        case ACTION_WORK_LADDER:
+        case ACTION_WORK_RAMP:
         case ACTION_WORK_CHOP:
         case ACTION_WORK_GATHER_SAPLING:
         case ACTION_WORK_PLANT_SAPLING:
+        case ACTION_WORK_GATHER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag designate  R-drag cancel  [ESC]Back", modeName, actionName);
+                "%s: L-drag designate  R-drag cancel  [ESC]Back", prefix);
             break;
         case ACTION_SANDBOX_WATER:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag add  R-drag remove  +Shift=source/drain  [ESC]Back", modeName, actionName);
+                "%s: L-drag add  R-drag remove  +Shift=source/drain  [ESC]Back", prefix);
             break;
         case ACTION_SANDBOX_FIRE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag ignite  R-drag extinguish  +Shift=source  [ESC]Back", modeName, actionName);
+                "%s: L-drag ignite  R-drag extinguish  +Shift=source  [ESC]Back", prefix);
             break;
         case ACTION_SANDBOX_HEAT:
         case ACTION_SANDBOX_COLD:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag add  R-drag remove  [ESC]Back", modeName, actionName);
+                "%s: L-drag add  R-drag remove  [ESC]Back", prefix);
             break;
         case ACTION_SANDBOX_SMOKE:
         case ACTION_SANDBOX_STEAM:
         case ACTION_SANDBOX_GRASS:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag add  R-drag remove  [ESC]Back", modeName, actionName);
+                "%s: L-drag add  R-drag remove  [ESC]Back", prefix);
             break;
         case ACTION_SANDBOX_TREE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-click place  R-drag remove  [ESC]Back", modeName, actionName);
+                "%s: L-click place  R-drag remove  [ESC]Back", prefix);
             break;
         default:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s > %s: L-drag  [ESC]Back", modeName, actionName ? actionName : "???");
+                "%s: L-drag  [ESC]Back", prefix);
             break;
     }
     
@@ -247,19 +288,44 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             case MODE_WORK:
-                n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
-                n = AddItem(items, n, "Mine", KEY_M, 0, false, false, false);
-                n = AddItem(items, n, "cHannel", KEY_H, 1, false, false, false);
-                n = AddItem(items, n, "Remove floor", KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "remove ramp (Z)", KEY_Z, 7, false, false, false);
-                n = AddItem(items, n, "Construct", KEY_C, 0, false, false, false);
-                n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
-                n = AddItem(items, n, "flOor", KEY_O, 2, false, false, false);
-                n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
-                n = AddItem(items, n, "Tree", KEY_T, 0, false, false, false);
-                n = AddItem(items, n, "Sapling", KEY_S, 0, false, false, false);
-                n = AddItem(items, n, "Plant", KEY_P, 0, false, false, false);
-                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                if (workSubMode == SUBMODE_NONE) {
+                    // Top-level WORK menu
+                    n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
+                    n = AddItem(items, n, "Dig", KEY_D, 0, false, false, false);
+                    n = AddItem(items, n, "Build", KEY_B, 0, false, false, false);
+                    n = AddItem(items, n, "Harvest", KEY_H, 0, false, false, false);
+                    n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
+                    n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                } else {
+                    // Sub-mode selected
+                    n = AddExitHeader(items, n, "WORK >", KEY_W, 0);
+                    switch (workSubMode) {
+                        case SUBMODE_DIG:
+                            n = AddItem(items, n, "DIG:", KEY_D, 0, true, false, false);
+                            n = AddItem(items, n, "Mine", KEY_M, 0, false, false, false);
+                            n = AddItem(items, n, "cHannel", KEY_H, 1, false, false, false);
+                            n = AddItem(items, n, "dig Ramp", KEY_R, 4, false, false, false);
+                            n = AddItem(items, n, "remove Floor", KEY_F, 7, false, false, false);
+                            n = AddItem(items, n, "remove ramp(Z)", KEY_Z, 12, false, false, false);
+                            break;
+                        case SUBMODE_BUILD:
+                            n = AddItem(items, n, "BUILD:", KEY_B, 0, true, false, false);
+                            n = AddItem(items, n, "Wall", KEY_W, 0, false, false, false);
+                            n = AddItem(items, n, "Floor", KEY_F, 0, false, false, false);
+                            n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
+                            n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
+                            break;
+                        case SUBMODE_HARVEST:
+                            n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
+                            n = AddItem(items, n, "Chop tree", KEY_C, 0, false, false, false);
+                            n = AddItem(items, n, "gather Sapling", KEY_S, 7, false, false, false);
+                            n = AddItem(items, n, "Plant sapling", KEY_P, 0, false, false, false);
+                            break;
+                        default:
+                            break;
+                    }
+                    n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                }
                 break;
             case MODE_SANDBOX:
                 n = AddExitHeader(items, n, "SANDBOX:", KEY_S, 0);
@@ -289,6 +355,21 @@ int InputMode_GetBarItems(BarItem* items) {
         default: break;
     }
     
+    // Submode header for WORK mode (click to go back to submode selection)
+    if (workSubMode != SUBMODE_NONE) {
+        int subKey = 0;
+        const char* subName = NULL;
+        switch (workSubMode) {
+            case SUBMODE_DIG:     subKey = KEY_D; subName = "DIG >"; break;
+            case SUBMODE_BUILD:   subKey = KEY_B; subName = "BUILD >"; break;
+            case SUBMODE_HARVEST: subKey = KEY_H; subName = "HARVEST >"; break;
+            default: break;
+        }
+        if (subName) {
+            n = AddItem(items, n, subName, subKey, 0, true, false, false);
+        }
+    }
+    
     // Action header (click to go back one level)
     int actionKey = 0;
     int actionUnderline = 0;
@@ -300,17 +381,24 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
+        // Dig actions
         case ACTION_WORK_MINE:         actionKey = KEY_M; break;
         case ACTION_WORK_CHANNEL:      actionKey = KEY_H; actionUnderline = 1; break;
-        case ACTION_WORK_REMOVE_FLOOR: actionKey = KEY_R; break;
+        case ACTION_WORK_DIG_RAMP:     actionKey = KEY_R; break;
+        case ACTION_WORK_REMOVE_FLOOR: actionKey = KEY_F; break;
         case ACTION_WORK_REMOVE_RAMP:  actionKey = KEY_Z; break;
-        case ACTION_WORK_CONSTRUCT:    actionKey = KEY_C; break;
+        // Build actions
+        case ACTION_WORK_CONSTRUCT:    actionKey = KEY_W; break;
+        case ACTION_WORK_FLOOR:        actionKey = KEY_F; break;
         case ACTION_WORK_LADDER:       actionKey = KEY_L; break;
-        case ACTION_WORK_FLOOR:        actionKey = KEY_O; actionUnderline = 2; break;
-        case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
-        case ACTION_WORK_CHOP:         actionKey = KEY_T; break;
+        case ACTION_WORK_RAMP:         actionKey = KEY_R; break;
+        // Harvest actions
+        case ACTION_WORK_CHOP:         actionKey = KEY_C; break;
         case ACTION_WORK_GATHER_SAPLING: actionKey = KEY_S; break;
         case ACTION_WORK_PLANT_SAPLING:  actionKey = KEY_P; break;
+        // Gather (top-level)
+        case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
+        // Sandbox actions
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
         case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
         case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;

@@ -92,6 +92,10 @@ static int removeFloorCacheCount = 0;
 static AdjacentDesignationEntry removeRampCache[MAX_DESIGNATION_CACHE];
 static int removeRampCacheCount = 0;
 
+// Dig ramp designation cache (miner stands adjacent to wall being carved)
+static AdjacentDesignationEntry digRampCache[MAX_DESIGNATION_CACHE];
+static int digRampCacheCount = 0;
+
 // Helper: Find first adjacent walkable tile. Returns true if found.
 static bool FindAdjacentWalkable(int x, int y, int z, int* outAdjX, int* outAdjY) {
     for (int dir = 0; dir < 4; dir++) {
@@ -167,6 +171,10 @@ void RebuildRemoveFloorDesignationCache(void) {
 
 void RebuildRemoveRampDesignationCache(void) {
     RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount);
+}
+
+void RebuildDigRampDesignationCache(void) {
+    RebuildAdjacentDesignationCache(DESIGNATION_DIG_RAMP, digRampCache, &digRampCacheCount);
 }
 
 // Find first adjacent tile that is both walkable and reachable from moverCell.
@@ -674,8 +682,9 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
         return JOBRUN_FAIL;
     }
 
-    // Check if the wall was already mined
-    if (grid[job->targetMineZ][job->targetMineY][job->targetMineX] != CELL_WALL) {
+    // Check if the wall/dirt was already mined
+    CellType ct = grid[job->targetMineZ][job->targetMineY][job->targetMineX];
+    if (ct != CELL_WALL && ct != CELL_DIRT) {
         CancelDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return JOBRUN_FAIL;
     }
@@ -795,6 +804,79 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
             // Channeling complete!
             // Pass mover index so CompleteChannelDesignation can handle their descent
             CompleteChannelDesignation(tx, ty, tz, job->assignedMover);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
+// Dig ramp job driver: move adjacent to wall -> carve into ramp
+JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;  // Reusing mine target fields
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_DIG_RAMP) {
+        return JOBRUN_FAIL;
+    }
+
+    // Check if the wall/dirt still exists
+    CellType ct = grid[tz][ty][tx];
+    if (ct != CELL_WALL && ct != CELL_DIRT) {
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        // Use cached adjacent tile (set when job was created)
+        int adjX = job->targetAdjX;
+        int adjY = job->targetAdjY;
+
+        // Set goal if not already moving there
+        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
+            mover->goal = (Point){adjX, adjY, tz};
+            mover->needsRepath = true;
+        }
+
+        // Check if arrived at adjacent tile
+        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == tz;
+
+        // Final approach
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
+
+        // Check if stuck
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        // Progress digging
+        job->progress += dt / DIG_RAMP_WORK_TIME;
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            // Dig ramp complete!
+            CompleteDigRampDesignation(tx, ty, tz, job->assignedMover);
             return JOBRUN_DONE;
         }
 
@@ -1627,6 +1709,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_CLEAR] = RunJob_Clear,
     [JOBTYPE_MINE] = RunJob_Mine,
     [JOBTYPE_CHANNEL] = RunJob_Channel,
+    [JOBTYPE_DIG_RAMP] = RunJob_DigRamp,
     [JOBTYPE_REMOVE_FLOOR] = RunJob_RemoveFloor,
     [JOBTYPE_HAUL_TO_BLUEPRINT] = RunJob_HaulToBlueprint,
     [JOBTYPE_BUILD] = RunJob_Build,
@@ -2248,11 +2331,13 @@ void AssignJobs(void) {
         // Build designation caches ONCE (replaces grid scan per mover)
         RebuildMineDesignationCache();
         RebuildChannelDesignationCache();
+        RebuildDigRampDesignationCache();
         RebuildRemoveFloorDesignationCache();
         RebuildRemoveRampDesignationCache();
 
         bool hasMineWork = (mineCacheCount > 0);
         bool hasChannelWork = (channelCacheCount > 0);
+        bool hasDigRampWork = (digRampCacheCount > 0);
         bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
         bool hasRemoveRampWork = (removeRampCacheCount > 0);
         bool hasChopWork = (CountChopDesignations() > 0);
@@ -2272,7 +2357,7 @@ void AssignJobs(void) {
         }
 
         // Only iterate movers if there's sparse work to do
-        if (hasMineWork || hasChannelWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasGatherSaplingWork || hasPlantSaplingWork || hasBlueprintWork) {
+        if (hasMineWork || hasChannelWork || hasDigRampWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasGatherSaplingWork || hasPlantSaplingWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -2296,7 +2381,12 @@ void AssignJobs(void) {
                     jobId = WorkGiver_Channel(moverIdx);
                 }
 
-                // Remove floor (after channel - lower priority)
+                // Dig ramp (after channel - carve ramp from wall)
+                if (jobId < 0 && hasDigRampWork) {
+                    jobId = WorkGiver_DigRamp(moverIdx);
+                }
+
+                // Remove floor (after dig ramp - lower priority)
                 if (jobId < 0 && hasRemoveFloorWork) {
                     jobId = WorkGiver_RemoveFloor(moverIdx);
                 }
@@ -3201,6 +3291,87 @@ int WorkGiver_Channel(int moverIdx) {
     // Update mover
     m->currentJobId = jobId;
     m->goal = targetCell;  // Walk to the tile itself
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_DigRamp: Find a dig ramp designation to work on
+// Returns job ID if successful, -1 if no job available
+// Mover stands adjacent to the wall and carves it into a ramp
+int WorkGiver_DigRamp(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    // Check capability - uses mining skill
+    if (!m->capabilities.canMine) return -1;
+
+    int moverZ = (int)m->z;
+
+    // Find nearest unassigned dig ramp designation from the pre-built cache
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    int bestAdjX = -1, bestAdjY = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < digRampCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &digRampCache[i];
+
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
+
+        // Check if still unassigned and not marked unreachable this frame
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float workPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float workPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = workPosX - m->x;
+        float dy = workPosY - m->y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Check reachability - try all adjacent walkable tiles until we find one with a valid path
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    if (!FindReachableAdjacentTile(bestDesigX, bestDesigY, bestDesigZ, moverCell, &bestAdjX, &bestAdjY)) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_DIG_RAMP);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;  // Reusing mine target fields
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->targetAdjX = bestAdjX;
+    job->targetAdjY = bestAdjY;
+    job->step = 0;  // STEP_MOVING_TO_WORK
+    job->progress = 0.0f;
+
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);

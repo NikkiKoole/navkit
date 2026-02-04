@@ -1,4 +1,5 @@
 #include "terrain.h"
+#include "cell_defs.h"
 #include "../../vendor/raylib.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
@@ -984,23 +985,42 @@ float OctavePerlin3D(float x, float y, float z, int octaves, float persistence) 
 
 void GenerateHills(void) {
     InitGrid();  // Clear cells and flags
+    SeedTerrain();
     InitPerlin((int)worldSeed);
     
-    // Parameters
-    float scale = 0.02f;          // Noise scale (smaller = larger features)
-    int maxHeight = gridDepth - 2; // Leave room at top
-    int minHeight = 1;             // Minimum ground height
+    // Randomized parameters (defaults: scale=0.02, octaves=4, persistence=0.5, height=1-14)
+    // scale: 0.01 = very large rolling hills, 0.05 = small bumpy terrain
+    float scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);  // 0.01 to 0.05
+    
+    // octaves: more = more detail/roughness, fewer = smoother
+    int octaves = 2 + GetRandomValue(0, 4);  // 2 to 6
+    
+    // persistence: higher = rougher terrain, lower = smoother
+    float persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);  // 0.3 to 0.7
+    
+    // height range
+    int maxHeight = gridDepth - 2 - GetRandomValue(0, 3);  // Leave 2-5 at top
+    int minHeight = 1 + GetRandomValue(0, 2);  // 1 to 3
+    if (maxHeight <= minHeight) maxHeight = minHeight + 2;
+    
+    TraceLog(LOG_INFO, "GenerateHills: scale=%.3f, octaves=%d, persistence=%.2f, height=%d-%d",
+             scale, octaves, persistence, minHeight, maxHeight);
+    
+    // Store heightmap for ramp placement pass
+    int* heightmap = (int*)malloc(gridWidth * gridHeight * sizeof(int));
     
     // Generate heightmap using 2D Perlin noise
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             // Multi-octave noise for natural terrain
-            float n = OctavePerlin(x * scale, y * scale, 4, 0.5f);
+            float n = OctavePerlin(x * scale, y * scale, octaves, persistence);
             
             // Map noise to height (0-1 -> minHeight to maxHeight)
             int height = minHeight + (int)(n * (maxHeight - minHeight));
             if (height < minHeight) height = minHeight;
             if (height >= gridDepth) height = gridDepth - 1;
+            
+            heightmap[y * gridWidth + x] = height;
             
             // Fill with dirt from z=0 up to height
             for (int z = 0; z <= height; z++) {
@@ -1012,6 +1032,75 @@ void GenerateHills(void) {
         }
     }
     
+    // Second pass: Place ramps by carving into hillsides
+    // For natural-looking hills, carve the ramp INTO the higher terrain.
+    // 
+    // If cell A has height 5 and neighbor B (north) has height 6:
+    //   - B has dirt at z6, A has dirt at z5
+    //   - Carve RAMP_S into B at z6 (replacing dirt with ramp)
+    //   - The ramp points SOUTH toward A
+    //   - Enter from north (B's surface at z7), exit south to z6
+    //   - Exit at z6 is A's walking surface (air above z5 dirt) - walkable!
+    //
+    // This places the ramp visually embedded in the hillside.
+    
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int myHeight = heightmap[y * gridWidth + x];
+            
+            // Check each neighbor - if THEY are higher, carve a ramp into THEIR dirt
+            // The ramp points toward us (the lower cell) for going DOWN
+            // Ramps are bidirectional so this also allows going UP
+            
+            // Check North (y-1): if north is higher, carve ramp into north cell
+            // Ramp points NORTH (high side away from lower cell)
+            // Enter from south (lower cell side) at rampZ, exit north at rampZ+1
+            if (y > 0) {
+                int northHeight = heightmap[(y - 1) * gridWidth + x];
+                if (northHeight == myHeight + 1) {
+                    int rampZ = northHeight;  // Carve into their top dirt level
+                    if (rampZ < gridDepth) {
+                        grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                    }
+                }
+            }
+            
+            // Check East (x+1): if east is higher, carve ramp pointing EAST
+            if (x < gridWidth - 1) {
+                int eastHeight = heightmap[y * gridWidth + (x + 1)];
+                if (eastHeight == myHeight + 1) {
+                    int rampZ = eastHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1])) {
+                        grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                    }
+                }
+            }
+            
+            // Check South (y+1): if south is higher, carve ramp pointing SOUTH
+            if (y < gridHeight - 1) {
+                int southHeight = heightmap[(y + 1) * gridWidth + x];
+                if (southHeight == myHeight + 1) {
+                    int rampZ = southHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x])) {
+                        grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                    }
+                }
+            }
+            
+            // Check West (x-1): if west is higher, carve ramp pointing WEST
+            if (x > 0) {
+                int westHeight = heightmap[y * gridWidth + (x - 1)];
+                if (westHeight == myHeight + 1) {
+                    int rampZ = westHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1])) {
+                        grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                    }
+                }
+            }
+        }
+    }
+    
+    free(heightmap);
     needsRebuild = true;
 }
 

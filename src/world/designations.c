@@ -47,8 +47,9 @@ bool DesignateMine(int x, int y, int z) {
         return false;
     }
     
-    // Can only mine walls
-    if (grid[z][y][x] != CELL_WALL) {
+    // Can mine walls and dirt (DF-style: any solid)
+    CellType ct = grid[z][y][x];
+    if (ct != CELL_WALL && ct != CELL_DIRT) {
         return false;
     }
     
@@ -118,11 +119,13 @@ void CompleteMineDesignation(int x, int y, int z) {
         return;
     }
     
+    CellType ct = grid[z][y][x];
+    
     // Convert wall to air with floor
-    if (grid[z][y][x] == CELL_WALL) {
+    if (ct == CELL_WALL) {
         // Get drop item based on wall material (before changing the cell)
         ItemType dropItem = GetWallDropItem(x, y, z);
-        int dropCount = CellDropCount(grid[z][y][x]);
+        int dropCount = CellDropCount(ct);
         MaterialType wallMat = GetWallMaterial(x, y, z);
         
         grid[z][y][x] = CELL_AIR;
@@ -141,6 +144,26 @@ void CompleteMineDesignation(int x, int y, int z) {
         DestabilizeWater(x, y, z);
         
         // Spawn drops based on material
+        if (dropItem != ITEM_NONE && dropCount > 0) {
+            for (int i = 0; i < dropCount; i++) {
+                SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
+            }
+        }
+    }
+    // Convert dirt to air with dirt floor
+    else if (ct == CELL_DIRT) {
+        ItemType dropItem = CellDropsItem(ct);
+        int dropCount = CellDropCount(ct);
+        
+        grid[z][y][x] = CELL_AIR;
+        SET_FLOOR(x, y, z);
+        SetFloorMaterial(x, y, z, MAT_DIRT);  // Dirt floor
+        SetWallMaterial(x, y, z, MAT_NONE);
+        MarkChunkDirty(x, y, z);
+        
+        DestabilizeWater(x, y, z);
+        
+        // Spawn dirt drops
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
                 SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
@@ -445,6 +468,133 @@ int CountChannelDesignations(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_CHANNEL) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Dig ramp designation functions
+// =============================================================================
+
+// Direction offsets for cardinal neighbors (N, E, S, W)
+static const int DIG_RAMP_DIR_DX[4] = {0, 1, 0, -1};
+static const int DIG_RAMP_DIR_DY[4] = {-1, 0, 1, 0};
+// Ramp faces toward the exit (low side) - opposite of high side
+static const CellType DIG_RAMP_TYPES[4] = {CELL_RAMP_S, CELL_RAMP_W, CELL_RAMP_N, CELL_RAMP_E};
+
+// Auto-detect which direction the dug ramp should face
+// Returns ramp type if valid, CELL_AIR if no valid direction
+static CellType AutoDetectDigRampDirection(int x, int y, int z) {
+    // Look for adjacent walkable floor at same level - that's where the ramp exits
+    for (int i = 0; i < 4; i++) {
+        int adjX = x + DIG_RAMP_DIR_DX[i];
+        int adjY = y + DIG_RAMP_DIR_DY[i];
+        
+        if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+        
+        // Check if adjacent cell is walkable (floor or ground)
+        if (IsCellWalkableAt(z, adjY, adjX)) {
+            return DIG_RAMP_TYPES[i];
+        }
+    }
+    return CELL_AIR;  // No valid direction
+}
+
+bool DesignateDigRamp(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    // Can only dig ramps from walls or dirt
+    CellType ct = grid[z][y][x];
+    if (ct != CELL_WALL && ct != CELL_DIRT) {
+        return false;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must have a valid direction for the ramp
+    CellType rampDir = AutoDetectDigRampDirection(x, y, z);
+    if (rampDir == CELL_AIR) {
+        return false;  // No adjacent walkable floor
+    }
+    
+    designations[z][y][x].type = DESIGNATION_DIG_RAMP;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    
+    return true;
+}
+
+bool HasDigRampDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_DIG_RAMP;
+}
+
+void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;  // May be used later for skill effects
+    
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+    
+    CellType ct = grid[z][y][x];
+    
+    // Get material to drop
+    MaterialType mat = GetWallMaterial(x, y, z);
+    ItemType dropItem = MaterialDropsItem(mat);
+    if (dropItem == ITEM_NONE) {
+        // For natural cells, get drop from cell type
+        dropItem = CellDropsItem(ct);
+    }
+    
+    // Determine ramp direction
+    CellType rampType = AutoDetectDigRampDirection(x, y, z);
+    if (rampType == CELL_AIR) {
+        rampType = CELL_RAMP_N;  // Fallback
+    }
+    
+    // Convert to ramp
+    grid[z][y][x] = rampType;
+    SetWallMaterial(x, y, z, mat);  // Preserve material for the ramp
+    
+    // Create floor on top (z+1) if there's space
+    if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
+        SET_FLOOR(x, y, z + 1);
+        SetFloorMaterial(x, y, z + 1, mat);
+    }
+    
+    // Spawn dropped item nearby
+    if (dropItem != ITEM_NONE) {
+        float itemX = x * CELL_SIZE + CELL_SIZE / 2.0f;
+        float itemY = y * CELL_SIZE + CELL_SIZE / 2.0f;
+        SpawnItem(itemX, itemY, z, dropItem);
+    }
+    
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+}
+
+int CountDigRampDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_DIG_RAMP) {
                     count++;
                 }
             }
@@ -1128,6 +1278,57 @@ int CreateFloorBlueprint(int x, int y, int z) {
     return idx;
 }
 
+int CreateRampBlueprint(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return -1;
+    }
+    
+    // Can only build ramp in air
+    CellType ct = grid[z][y][x];
+    if (ct != CELL_AIR) {
+        return -1;
+    }
+    
+    // Must have floor at this position (something to stand on while building)
+    if (!HAS_FLOOR(x, y, z)) {
+        return -1;
+    }
+    
+    // Already has a blueprint?
+    if (HasBlueprint(x, y, z)) {
+        return -1;
+    }
+    
+    // Find free slot
+    int idx = -1;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (!blueprints[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    
+    if (idx < 0) return -1;  // No free slots
+    
+    Blueprint* bp = &blueprints[idx];
+    bp->x = x;
+    bp->y = y;
+    bp->z = z;
+    bp->active = true;
+    bp->state = BLUEPRINT_AWAITING_MATERIALS;
+    bp->type = BLUEPRINT_TYPE_RAMP;
+    bp->requiredMaterials = 1;  // 1 block to build a ramp
+    bp->deliveredMaterialCount = 0;
+    bp->reservedItem = -1;
+    bp->deliveredMaterial = MAT_NONE;
+    bp->assignedBuilder = -1;
+    bp->progress = 0.0f;
+    
+    blueprintCount++;
+    return idx;
+}
+
 void CancelBlueprint(int blueprintIdx) {
     if (blueprintIdx < 0 || blueprintIdx >= MAX_BLUEPRINTS) return;
     
@@ -1221,12 +1422,21 @@ void CompleteBlueprint(int blueprintIdx) {
         // Push any items out of this cell before placing the wall
         PushItemsOutOfCell(x, y, z);
         
-        // Convert floor to wall
+        // Convert floor to wall (or dirt for landscaping)
         if (IsCellWalkableAt(z, y, x)) {
             DisplaceWater(x, y, z);
-            grid[z][y][x] = CELL_WALL;
-            SetWallMaterial(x, y, z, bp->deliveredMaterial);
-            // Floor material preserved - wall is built on top of floor
+            if (bp->deliveredMaterial == MAT_DIRT) {
+                // Dirt creates natural terrain, not a constructed wall
+                grid[z][y][x] = CELL_DIRT;
+                SetWallMaterial(x, y, z, MAT_RAW);  // Natural terrain
+                CLEAR_FLOOR(x, y, z);  // Dirt is solid, no floor on top
+                SetFloorMaterial(x, y, z, MAT_NONE);
+                SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // No grass yet, will grow over time
+            } else {
+                grid[z][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, z, bp->deliveredMaterial);
+                // Floor material preserved - wall is built on top of floor
+            }
             MarkChunkDirty(x, y, z);
         }
     } else if (bp->type == BLUEPRINT_TYPE_LADDER) {
@@ -1242,6 +1452,37 @@ void CompleteBlueprint(int blueprintIdx) {
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
         SetFloorMaterial(x, y, z, bp->deliveredMaterial);
         MarkChunkDirty(x, y, z);
+    } else if (bp->type == BLUEPRINT_TYPE_RAMP) {
+        // Place ramp - auto-detect direction based on adjacent cells
+        DisplaceWater(x, y, z);
+        
+        // Use similar logic to draw tool for auto-detecting ramp direction
+        CellType rampType = CELL_RAMP_N;  // Default
+        
+        // Check for adjacent walls to determine ramp direction
+        // Ramp faces AWAY from wall (toward walkable space)
+        if (y > 0 && IsWallCell(grid[z][y-1][x])) {
+            rampType = CELL_RAMP_S;  // Wall to north, exit south
+        } else if (x < gridWidth - 1 && IsWallCell(grid[z][y][x+1])) {
+            rampType = CELL_RAMP_W;  // Wall to east, exit west
+        } else if (y < gridHeight - 1 && IsWallCell(grid[z][y+1][x])) {
+            rampType = CELL_RAMP_N;  // Wall to south, exit north
+        } else if (x > 0 && IsWallCell(grid[z][y][x-1])) {
+            rampType = CELL_RAMP_E;  // Wall to west, exit east
+        }
+        
+        grid[z][y][x] = rampType;
+        CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
+        SetWallMaterial(x, y, z, bp->deliveredMaterial);
+        
+        // Create floor above the ramp (at z+1)
+        if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
+            SET_FLOOR(x, y, z + 1);
+            SetFloorMaterial(x, y, z + 1, bp->deliveredMaterial);
+        }
+        
+        MarkChunkDirty(x, y, z);
+        if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
     }
     
     // Remove blueprint

@@ -45,7 +45,8 @@ static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
 // ============================================================================
 
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
-    MaterialType mat = (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
+    bool isDirt = (selectedMaterial == 3);
+    MaterialType mat = isDirt ? MAT_DIRT : (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
     int count = 0;
     int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -55,16 +56,40 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 skipped++;
                 continue;
             }
-            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
-                grid[z][dy][dx] = CELL_WALL;
-                SetWallMaterial(dx, dy, z, mat);
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                SetWaterLevel(dx, dy, z, 0);
-                SetWaterSource(dx, dy, z, false);
-                SetWaterDrain(dx, dy, z, false);
-                DestabilizeWater(dx, dy, z);
-                // Mark movers for replanning
+            
+            if (isDirt) {
+                // Dirt creates natural CELL_DIRT terrain
+                if (grid[z][dy][dx] != CELL_DIRT) {
+                    grid[z][dy][dx] = CELL_DIRT;
+                    SetWallMaterial(dx, dy, z, MAT_RAW);  // Natural terrain
+                    CLEAR_FLOOR(dx, dy, z);
+                    SetFloorMaterial(dx, dy, z, MAT_NONE);
+                    SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);  // No grass yet, will grow over time
+                    MarkChunkDirty(dx, dy, z);
+                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                    SetWaterLevel(dx, dy, z, 0);
+                    SetWaterSource(dx, dy, z, false);
+                    SetWaterDrain(dx, dy, z, false);
+                    DestabilizeWater(dx, dy, z);
+                    count++;
+                }
+            } else {
+                // Normal wall with material
+                if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
+                    grid[z][dy][dx] = CELL_WALL;
+                    SetWallMaterial(dx, dy, z, mat);
+                    MarkChunkDirty(dx, dy, z);
+                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                    SetWaterLevel(dx, dy, z, 0);
+                    SetWaterSource(dx, dy, z, false);
+                    SetWaterDrain(dx, dy, z, false);
+                    DestabilizeWater(dx, dy, z);
+                    count++;
+                }
+            }
+            
+            // Mark movers for replanning
+            if (count > 0) {
                 for (int i = 0; i < moverCount; i++) {
                     Mover* m = &movers[i];
                     if (!m->active) continue;
@@ -75,13 +100,12 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                         }
                     }
                 }
-                count++;
             }
         }
     }
     if (count > 0) {
-        const char* matName = (selectedMaterial == 2) ? "wood" : "stone";
-        AddMessage(TextFormat("Placed %d %s wall%s", count, matName, count > 1 ? "s" : ""), GREEN);
+        const char* matName = isDirt ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
+        AddMessage(TextFormat("Placed %d %s%s", count, matName, count > 1 ? " blocks" : " block"), GREEN);
     }
     if (skipped > 0) {
         AddMessage(TextFormat("Skipped %d cell%s (workshop)", skipped, skipped > 1 ? "s" : ""), ORANGE);
@@ -89,7 +113,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
-    MaterialType mat = (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
+    MaterialType mat = (selectedMaterial == 3) ? MAT_DIRT : (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
@@ -105,7 +129,7 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
         }
     }
     if (count > 0) {
-        const char* matName = (selectedMaterial == 2) ? "wood" : "stone";
+        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
         AddMessage(TextFormat("Placed %d %s floor%s", count, matName, count > 1 ? "s" : ""), GREEN);
     }
 }
@@ -292,6 +316,33 @@ static void ExecuteCancelChannel(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateDigRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateDigRamp(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d cell%s for ramp digging", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelDigRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasDigRampDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d dig ramp designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteDesignateRemoveFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -460,6 +511,18 @@ static void ExecuteDesignateFloor(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Created %d floor blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+    }
+}
+
+static void ExecuteDesignateRamp(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (CreateRampBlueprint(dx, dy, z) >= 0) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Created %d ramp blueprint%s", count, count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -1154,17 +1217,37 @@ void HandleInput(void) {
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
                 break;
             case MODE_WORK:
-                if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
-                if (CheckKey(KEY_H)) { inputAction = ACTION_WORK_CHANNEL; }
-                if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_REMOVE_FLOOR; }
-                if (CheckKey(KEY_Z)) { inputAction = ACTION_WORK_REMOVE_RAMP; }
-                if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CONSTRUCT; }
-                if (CheckKey(KEY_L)) { inputAction = ACTION_WORK_LADDER; }
-                if (CheckKey(KEY_O)) { inputAction = ACTION_WORK_FLOOR; }
-                if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
-                if (CheckKey(KEY_T)) { inputAction = ACTION_WORK_CHOP; }
-                if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
-                if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
+                if (workSubMode == SUBMODE_NONE) {
+                    // Top-level WORK menu - select submode or Gather
+                    if (CheckKey(KEY_D)) { workSubMode = SUBMODE_DIG; }
+                    if (CheckKey(KEY_B)) { workSubMode = SUBMODE_BUILD; }
+                    if (CheckKey(KEY_H)) { workSubMode = SUBMODE_HARVEST; }
+                    if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
+                } else {
+                    // In a submode - select action
+                    switch (workSubMode) {
+                        case SUBMODE_DIG:
+                            if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
+                            if (CheckKey(KEY_H)) { inputAction = ACTION_WORK_CHANNEL; }
+                            if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_DIG_RAMP; }
+                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_REMOVE_FLOOR; }
+                            if (CheckKey(KEY_Z)) { inputAction = ACTION_WORK_REMOVE_RAMP; }
+                            break;
+                        case SUBMODE_BUILD:
+                            if (CheckKey(KEY_W)) { inputAction = ACTION_WORK_CONSTRUCT; }
+                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_FLOOR; }
+                            if (CheckKey(KEY_L)) { inputAction = ACTION_WORK_LADDER; }
+                            if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_RAMP; }
+                            break;
+                        case SUBMODE_HARVEST:
+                            if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CHOP; }
+                            if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
+                            if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
+                            break;
+                        default:
+                            break;
+                    }
+                }
                 break;
             case MODE_SANDBOX:
                 if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
@@ -1196,17 +1279,23 @@ void HandleInput(void) {
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
-        // Work actions
-        case ACTION_WORK_MINE:        backOneLevel = CheckKey(KEY_M); break;
-        case ACTION_WORK_CHANNEL:     backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_WORK_REMOVE_RAMP: backOneLevel = CheckKey(KEY_Z); break;
-        case ACTION_WORK_CONSTRUCT:   backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_WORK_LADDER:      backOneLevel = CheckKey(KEY_L); break;
-        case ACTION_WORK_FLOOR:       backOneLevel = CheckKey(KEY_O); break;
-        case ACTION_WORK_GATHER:      backOneLevel = CheckKey(KEY_G); break;
-        case ACTION_WORK_CHOP:        backOneLevel = CheckKey(KEY_T); break;
+        // Dig actions
+        case ACTION_WORK_MINE:         backOneLevel = CheckKey(KEY_M); break;
+        case ACTION_WORK_CHANNEL:      backOneLevel = CheckKey(KEY_H); break;
+        case ACTION_WORK_DIG_RAMP:     backOneLevel = CheckKey(KEY_R); break;
+        case ACTION_WORK_REMOVE_FLOOR: backOneLevel = CheckKey(KEY_F); break;
+        case ACTION_WORK_REMOVE_RAMP:  backOneLevel = CheckKey(KEY_Z); break;
+        // Build actions
+        case ACTION_WORK_CONSTRUCT:    backOneLevel = CheckKey(KEY_W); break;
+        case ACTION_WORK_FLOOR:        backOneLevel = CheckKey(KEY_F); break;
+        case ACTION_WORK_LADDER:       backOneLevel = CheckKey(KEY_L); break;
+        case ACTION_WORK_RAMP:         backOneLevel = CheckKey(KEY_R); break;
+        // Harvest actions
+        case ACTION_WORK_CHOP:         backOneLevel = CheckKey(KEY_C); break;
         case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
+        // Gather (top-level)
+        case ACTION_WORK_GATHER:       backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
         case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
@@ -1221,6 +1310,23 @@ void HandleInput(void) {
     if (backOneLevel) {
         InputMode_Back();
         return;
+    }
+    
+    // Check if pressing the submode key to go back to submode selection
+    // (e.g., pressing D while in WORK > DIG > MINE goes back to WORK > DIG)
+    if (inputMode == MODE_WORK && workSubMode != SUBMODE_NONE && inputAction != ACTION_NONE) {
+        bool backToSubmode = false;
+        switch (workSubMode) {
+            case SUBMODE_DIG:     backToSubmode = CheckKey(KEY_D); break;
+            case SUBMODE_BUILD:   backToSubmode = CheckKey(KEY_B); break;
+            case SUBMODE_HARVEST: backToSubmode = CheckKey(KEY_H); break;
+            default: break;
+        }
+        if (backToSubmode) {
+            inputAction = ACTION_NONE;
+            selectedMaterial = 1;
+            return;
+        }
     }
 
     // ========================================================================
@@ -1324,6 +1430,10 @@ void HandleInput(void) {
                 if (leftClick) ExecuteDesignateChannel(x1, y1, x2, y2, z);
                 else ExecuteCancelChannel(x1, y1, x2, y2, z);
                 break;
+            case ACTION_WORK_DIG_RAMP:
+                if (leftClick) ExecuteDesignateDigRamp(x1, y1, x2, y2, z);
+                else ExecuteCancelDigRamp(x1, y1, x2, y2, z);
+                break;
             case ACTION_WORK_REMOVE_FLOOR:
                 if (leftClick) ExecuteDesignateRemoveFloor(x1, y1, x2, y2, z);
                 else ExecuteCancelRemoveFloor(x1, y1, x2, y2, z);
@@ -1342,6 +1452,10 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_FLOOR:
                 if (leftClick) ExecuteDesignateFloor(x1, y1, x2, y2, z);
+                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
+                break;
+            case ACTION_WORK_RAMP:
+                if (leftClick) ExecuteDesignateRamp(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
                 break;
             case ACTION_WORK_GATHER:
