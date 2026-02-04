@@ -1,1 +1,1 @@
-deliverMaterial vd deliveredMaterials (maybe we can make that one devliverMaterialCount) ?
+deliverMaterial vd deliveredMaterials (maybe we can make that one deliveredMaterialCount) ?
