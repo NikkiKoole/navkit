@@ -60,10 +60,10 @@ static int GetFuelAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
     int baseFuel = CellFuel(cell);
     
-    // Check material for constructed cells - material fuel overrides cell fuel
-    MaterialType mat = GetCellMaterial(x, y, z);
-    if (mat != MAT_NATURAL) {
-        // Constructed cell - use material's fuel value
+    // Check wall material for constructed walls - material fuel overrides cell fuel
+    MaterialType mat = GetWallMaterial(x, y, z);
+    if (mat != MAT_NONE && mat != MAT_RAW) {
+        // Constructed wall - use material's fuel value
         baseFuel = MaterialFuel(mat);
     }
     

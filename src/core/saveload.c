@@ -5,7 +5,7 @@
 #include "../simulation/steam.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 11  // Added Blueprint.deliveredMaterial field
+#define SAVE_VERSION 12  // Split cellMaterial into wallMaterial + floorMaterial
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -84,10 +84,17 @@ bool SaveWorld(const char* filename) {
         }
     }
     
-    // Material grid
+    // Wall material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(cellMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            fwrite(wallMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Floor material grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -312,10 +319,17 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Material grid
+    // Wall material grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fread(cellMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+            fread(wallMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Floor material grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     

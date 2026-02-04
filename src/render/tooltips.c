@@ -325,10 +325,18 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
     }
 
-    // Material (for constructed cells)
-    MaterialType mat = GetCellMaterial(cellX, cellY, cellZ);
-    if (mat != MAT_NATURAL) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Material: %s", MaterialName(mat));
+    // Wall material (for constructed walls)
+    MaterialType wallMat = GetWallMaterial(cellX, cellY, cellZ);
+    if (wallMat != MAT_NONE && wallMat != MAT_RAW) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s", MaterialName(wallMat));
+    } else if (wallMat == MAT_RAW && CellBlocksMovement(ct)) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: raw stone");
+    }
+    
+    // Floor material
+    MaterialType floorMat = GetFloorMaterial(cellX, cellY, cellZ);
+    if (floorMat != MAT_NONE) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s", MaterialName(floorMat));
     }
 
     // Temperature info (all values are now Celsius directly)

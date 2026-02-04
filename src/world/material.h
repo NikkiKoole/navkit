@@ -2,16 +2,19 @@
 #define MATERIAL_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "grid.h"                  // For MAX_GRID_* constants
 #include "../entities/items.h"    // For ItemType
 
-// Material types - what a cell/item is made of
+// Material types - what a wall/floor/item is made of
 typedef enum {
-    MAT_NATURAL = 0,   // Use cell type to determine (dirt=dirt, wall=stone, tree=wood)
-    MAT_STONE,         // Generic stone (from stone blocks)
+    MAT_NONE = 0,      // No wall/floor present at this position
+    MAT_RAW,           // Unprocessed natural material (rough stone, natural rock)
+    MAT_STONE,         // Processed stone (from stone blocks)
     MAT_WOOD,          // Wood material
+    MAT_DIRT,          // Dirt/earth
     MAT_IRON,          // Metal
-    MAT_GLASS,         // Future
+    MAT_GLASS,         // Glass
     MAT_COUNT
 } MaterialType;
 
@@ -28,12 +31,20 @@ typedef struct {
 } MaterialDef;
 
 extern MaterialDef materialDefs[];
-extern uint8_t cellMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
-// Accessors
-#define GetCellMaterial(x,y,z)      (cellMaterial[z][y][x])
-#define SetCellMaterial(x,y,z,m)    (cellMaterial[z][y][x] = (uint8_t)(m))
-#define IsConstructedCell(x,y,z)    (cellMaterial[z][y][x] != MAT_NATURAL)
+// Separate grids for wall and floor materials (like Dwarf Fortress)
+extern uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Wall material accessors
+#define GetWallMaterial(x,y,z)      (wallMaterial[z][y][x])
+#define SetWallMaterial(x,y,z,m)    (wallMaterial[z][y][x] = (uint8_t)(m))
+#define HasWallMaterial(x,y,z)      (wallMaterial[z][y][x] != MAT_NONE)
+
+// Floor material accessors
+#define GetFloorMaterial(x,y,z)     (floorMaterial[z][y][x])
+#define SetFloorMaterial(x,y,z,m)   (floorMaterial[z][y][x] = (uint8_t)(m))
+#define HasFloorMaterial(x,y,z)     (floorMaterial[z][y][x] != MAT_NONE)
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)
@@ -44,8 +55,14 @@ extern uint8_t cellMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 void InitMaterials(void);
 
-// Get what item a cell drops based on its material
-// For natural cells, uses CellDropsItem. For constructed, uses MaterialDropsItem.
-ItemType GetCellDropItem(int x, int y, int z);
+// Check if a wall is constructed (not raw natural rock)
+bool IsConstructedWall(int x, int y, int z);
+
+// Get what item a wall drops based on its material
+// For raw walls, uses CellDropsItem. For constructed, uses MaterialDropsItem.
+ItemType GetWallDropItem(int x, int y, int z);
+
+// Get what item a floor drops based on its material
+ItemType GetFloorDropItem(int x, int y, int z);
 
 #endif

@@ -36,7 +36,7 @@ void InitDesignations(void) {
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         blueprints[i].assignedBuilder = -1;
         blueprints[i].reservedItem = -1;
-        blueprints[i].deliveredMaterial = MAT_NATURAL;
+        blueprints[i].deliveredMaterial = MAT_NONE;
     }
     blueprintCount = 0;
 }
@@ -120,13 +120,21 @@ void CompleteMineDesignation(int x, int y, int z) {
     
     // Convert wall to air with floor
     if (grid[z][y][x] == CELL_WALL) {
-        // Get drop item based on material (before changing the cell)
-        ItemType dropItem = GetCellDropItem(x, y, z);
+        // Get drop item based on wall material (before changing the cell)
+        ItemType dropItem = GetWallDropItem(x, y, z);
         int dropCount = CellDropCount(grid[z][y][x]);
+        MaterialType wallMat = GetWallMaterial(x, y, z);
         
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
-        SetCellMaterial(x, y, z, MAT_NATURAL);  // Reset material
+        
+        // Mining creates floor from wall material
+        // - Natural rock (MAT_RAW) creates rough stone floor
+        // - Constructed walls create floor of same material
+        if (wallMat != MAT_NONE) {
+            SetFloorMaterial(x, y, z, wallMat);
+        }
+        SetWallMaterial(x, y, z, MAT_NONE);  // Wall removed
         MarkChunkDirty(x, y, z);
         
         // Destabilize water at this cell and neighbors so it can flow into the new space
@@ -339,17 +347,18 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     
     // === STEP 1: Get drop items before modifying cells ===
     // Floor at z - get its material before removing
-    ItemType floorDropItem = GetCellDropItem(x, y, z);
-    // Material at z-1 (if solid) - get before mining
-    ItemType minedDropItem = GetCellDropItem(x, y, lowerZ);
+    ItemType floorDropItem = GetFloorDropItem(x, y, z);
+    // Wall material at z-1 (if solid) - get before mining
+    ItemType minedDropItem = GetWallDropItem(x, y, lowerZ);
     CellType cellBelow = grid[lowerZ][y][x];
     bool wasSolid = CellIsSolid(cellBelow);
     int minedDropCount = wasSolid ? CellDropCount(cellBelow) : 0;
+    MaterialType minedWallMat = GetWallMaterial(x, y, lowerZ);
     
     // === STEP 2: Remove the floor at z ===
     CLEAR_FLOOR(x, y, z);
     grid[z][y][x] = CELL_AIR;
-    SetCellMaterial(x, y, z, MAT_NATURAL);  // Reset material
+    SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
     
     // === STEP 3: Mine out z-1 and determine what to create ===
     if (wasSolid) {
@@ -370,7 +379,11 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
             grid[lowerZ][y][x] = CELL_AIR;
             SET_FLOOR(x, y, lowerZ);
         }
-        SetCellMaterial(x, y, lowerZ, MAT_NATURAL);  // Reset material
+        // Mining creates floor from wall material
+        if (minedWallMat != MAT_NONE) {
+            SetFloorMaterial(x, y, lowerZ, minedWallMat);
+        }
+        SetWallMaterial(x, y, lowerZ, MAT_NONE);  // Wall removed
         
         // Spawn drops from the mined material
         if (minedDropItem != ITEM_NONE && minedDropCount > 0) {
@@ -486,15 +499,15 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
         return;
     }
     
-    // Get drop item based on material (before changing the cell)
-    ItemType dropItem = GetCellDropItem(x, y, z);
+    // Get drop item based on floor material (before changing)
+    ItemType dropItem = GetFloorDropItem(x, y, z);
     
     // Drop items on this floor down to z-1
     DropItemsInCell(x, y, z);
     
     // Remove the floor
     CLEAR_FLOOR(x, y, z);
-    SetCellMaterial(x, y, z, MAT_NATURAL);  // Reset material
+    SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
     // Cell type stays as-is (AIR) - we're just removing the floor flag
     
     MarkChunkDirty(x, y, z);
@@ -571,16 +584,21 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
         return;
     }
     
-    // Get drop item based on material (before changing the cell)
-    ItemType dropItem = GetCellDropItem(x, y, z);
+    // Get drop item based on wall material (ramps are walls)
+    ItemType dropItem = GetWallDropItem(x, y, z);
     CellType cell = grid[z][y][x];
     int dropCount = CellIsRamp(cell) ? CellDropCount(cell) : 0;
+    MaterialType rampMat = GetWallMaterial(x, y, z);
     
     // Remove the ramp, replace with floor
     if (CellIsRamp(cell)) {
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
-        SetCellMaterial(x, y, z, MAT_NATURAL);  // Reset material
+        // Ramp removal creates floor from ramp material
+        if (rampMat != MAT_NONE) {
+            SetFloorMaterial(x, y, z, rampMat);
+        }
+        SetWallMaterial(x, y, z, MAT_NONE);  // Ramp/wall removed
         rampCount--;
     }
     
@@ -1000,7 +1018,7 @@ int CreateBuildBlueprint(int x, int y, int z) {
     bp->requiredMaterials = 1;  // 1 item to build a wall
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
-    bp->deliveredMaterial = MAT_NATURAL;
+    bp->deliveredMaterial = MAT_NONE;
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1051,7 +1069,7 @@ int CreateLadderBlueprint(int x, int y, int z) {
     bp->requiredMaterials = 1;  // 1 stone block to build a ladder
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
-    bp->deliveredMaterial = MAT_NATURAL;
+    bp->deliveredMaterial = MAT_NONE;
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1102,7 +1120,7 @@ int CreateFloorBlueprint(int x, int y, int z) {
     bp->requiredMaterials = 1;  // 1 stone block to build a floor
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
-    bp->deliveredMaterial = MAT_NATURAL;
+    bp->deliveredMaterial = MAT_NONE;
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1207,21 +1225,22 @@ void CompleteBlueprint(int blueprintIdx) {
         if (IsCellWalkableAt(z, y, x)) {
             DisplaceWater(x, y, z);
             grid[z][y][x] = CELL_WALL;
-            SetCellMaterial(x, y, z, bp->deliveredMaterial);
+            SetWallMaterial(x, y, z, bp->deliveredMaterial);
+            // Floor material preserved - wall is built on top of floor
             MarkChunkDirty(x, y, z);
         }
     } else if (bp->type == BLUEPRINT_TYPE_LADDER) {
         // Place ladder using existing ladder placement logic
         // This handles UP/DOWN/BOTH connections automatically
         PlaceLadder(x, y, z);
-        SetCellMaterial(x, y, z, bp->deliveredMaterial);
+        SetWallMaterial(x, y, z, bp->deliveredMaterial);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
         // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
-        SetCellMaterial(x, y, z, bp->deliveredMaterial);
+        SetFloorMaterial(x, y, z, bp->deliveredMaterial);
         MarkChunkDirty(x, y, z);
     }
     

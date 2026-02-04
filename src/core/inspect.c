@@ -21,7 +21,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 
-#define INSPECT_SAVE_VERSION 11
+#define INSPECT_SAVE_VERSION 12
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -62,7 +62,8 @@ static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
 static SteamCell* insp_steamCells = NULL;
 static uint8_t* insp_cellFlags = NULL;
-static uint8_t* insp_materialCells = NULL;
+static uint8_t* insp_wallMaterials = NULL;
+static uint8_t* insp_floorMaterials = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
@@ -298,10 +299,16 @@ static void print_cell(int x, int y, int z) {
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
     printf("Type: %s (raw=%d)\n", cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
     
-    // Material (for constructed cells)
-    uint8_t mat = insp_materialCells[idx];
-    if (mat != MAT_NATURAL) {
-        printf("Material: %s (raw=%d)\n", mat < MAT_COUNT ? MaterialName(mat) : "UNKNOWN", (int)mat);
+    // Wall material
+    uint8_t wallMat = insp_wallMaterials[idx];
+    if (wallMat != MAT_NONE) {
+        printf("Wall material: %s (raw=%d)\n", wallMat < MAT_COUNT ? MaterialName(wallMat) : "UNKNOWN", (int)wallMat);
+    }
+    
+    // Floor material
+    uint8_t floorMat = insp_floorMaterials[idx];
+    if (floorMat != MAT_NONE) {
+        printf("Floor material: %s (raw=%d)\n", floorMat < MAT_COUNT ? MaterialName(floorMat) : "UNKNOWN", (int)floorMat);
     }
     
     // Walkability (requires globals to be set up)
@@ -720,6 +727,8 @@ static void cleanup(void) {
     free(insp_smokeCells);
     free(insp_steamCells);
     free(insp_cellFlags);
+    free(insp_wallMaterials);
+    free(insp_floorMaterials);
     free(insp_tempCells);
     free(insp_designations);
     free(insp_items);
@@ -877,7 +886,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
     insp_steamCells = malloc(totalCells * sizeof(SteamCell));
     insp_cellFlags = malloc(totalCells * sizeof(uint8_t));
-    insp_materialCells = malloc(totalCells * sizeof(uint8_t));
+    insp_wallMaterials = malloc(totalCells * sizeof(uint8_t));
+    insp_floorMaterials = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
@@ -887,7 +897,8 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
     fread(insp_steamCells, sizeof(SteamCell), totalCells, f);
     fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
-    fread(insp_materialCells, sizeof(uint8_t), totalCells, f);
+    fread(insp_wallMaterials, sizeof(uint8_t), totalCells, f);
+    fread(insp_floorMaterials, sizeof(uint8_t), totalCells, f);
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     
