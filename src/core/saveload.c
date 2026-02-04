@@ -3,9 +3,11 @@
 #include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
+#include "../simulation/trees.h"
+#include "../simulation/groundwear.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 12  // Split cellMaterial into wallMaterial + floorMaterial
+#define SAVE_VERSION 13  // Add tree settings (saplingGrowTicks, trunkGrowTicks)
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -208,6 +210,13 @@ bool SaveWorld(const char* filename) {
     fwrite(&wearDecayRate, sizeof(wearDecayRate), 1, f);
     fwrite(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fwrite(&wearMax, sizeof(wearMax), 1, f);
+    
+    // Trees
+    fwrite(&saplingGrowTicks, sizeof(saplingGrowTicks), 1, f);
+    fwrite(&trunkGrowTicks, sizeof(trunkGrowTicks), 1, f);
+    fwrite(&saplingRegrowthEnabled, sizeof(saplingRegrowthEnabled), 1, f);
+    fwrite(&saplingRegrowthChance, sizeof(saplingRegrowthChance), 1, f);
+    fwrite(&saplingMinTreeDistance, sizeof(saplingMinTreeDistance), 1, f);
     
     // === END MARKER ===
     marker = MARKER_END;
@@ -470,6 +479,15 @@ bool LoadWorld(const char* filename) {
     fread(&wearDecayRate, sizeof(wearDecayRate), 1, f);
     fread(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
     fread(&wearMax, sizeof(wearMax), 1, f);
+    
+    // Trees (added in version 13)
+    if (version >= 13) {
+        fread(&saplingGrowTicks, sizeof(saplingGrowTicks), 1, f);
+        fread(&trunkGrowTicks, sizeof(trunkGrowTicks), 1, f);
+        fread(&saplingRegrowthEnabled, sizeof(saplingRegrowthEnabled), 1, f);
+        fread(&saplingRegrowthChance, sizeof(saplingRegrowthChance), 1, f);
+        fread(&saplingMinTreeDistance, sizeof(saplingMinTreeDistance), 1, f);
+    }
     
     // === END MARKER ===
     fread(&marker, sizeof(marker), 1, f);

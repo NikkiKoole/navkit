@@ -500,11 +500,16 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     // Run simulation
     clock_t startClock = clock();
     for (int t = 0; t < ticks; t++) {
+        double tickStart = GetTime();
         TickWithDt(TICK_DT);
         ItemsTick(TICK_DT);
         DesignationsTick(TICK_DT);
         AssignJobs();
         JobsTick();
+        double tickTime = (GetTime() - tickStart) * 1000.0;
+        if (tickTime > 100.0) {
+            TraceLog(LOG_WARNING, "SLOW TICK %d: %.1fms", t, tickTime);
+        }
     }
     double elapsed = (double)(clock() - startClock) / CLOCKS_PER_SEC;
     
@@ -530,6 +535,12 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     printf("Movers: %d\n", moverCount);
     printf("Stuck in non-walkable: %d before -> %d after\n", stuckBefore, moversInNonWalkable);
     printf("Stuck (no progress): %d\n", stuckAfter);
+    extern int repathFallbackCount, repathHpaSuccessCount;
+    printf("Repath stats: HPA success=%d, A* fallback=%d (%.1f%% fallback)\n", 
+           repathHpaSuccessCount, repathFallbackCount,
+           (repathFallbackCount + repathHpaSuccessCount) > 0 
+               ? 100.0 * repathFallbackCount / (repathFallbackCount + repathHpaSuccessCount) 
+               : 0.0);
     
     // Check if --mover flag is present for quick mover summary
     for (int i = 1; i < argc; i++) {

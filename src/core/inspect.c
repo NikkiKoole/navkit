@@ -21,7 +21,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 
-#define INSPECT_SAVE_VERSION 12
+#define INSPECT_SAVE_VERSION 13
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)

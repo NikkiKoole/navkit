@@ -36,6 +36,8 @@ static inline float fastInvSqrt(float x) {
 // Globals
 Mover movers[MAX_MOVERS];
 int moverCount = 0;
+int repathFallbackCount = 0;
+int repathHpaSuccessCount = 0;
 unsigned long currentTick = 0;
 bool useStringPulling = true;
 bool endlessMoverMode = true;
@@ -1235,12 +1237,28 @@ void ProcessMoverRepaths(void) {
         PathAlgorithm algo = moverPathAlgorithm;
         
         Point tempPath[MAX_PATH];
+        double pathStart = GetTime();
         int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
+        double pathTime = (GetTime() - pathStart) * 1000.0;
         
         // If HPA* failed but ramps exist, try A* as fallback
         // This handles edge cases where HPA* chunking misses a valid path
         if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
+            repathFallbackCount++;
+            double astarStart = GetTime();
             len = FindPath(PATH_ALGO_ASTAR, start, m->goal, tempPath, MAX_PATH);
+            double astarTime = (GetTime() - astarStart) * 1000.0;
+            if (astarTime > 50.0) {
+                TraceLog(LOG_WARNING, "SLOW A* fallback: mover %d, %.1fms, start(%d,%d,z%d)->goal(%d,%d,z%d), len=%d",
+                    i, astarTime, start.x, start.y, start.z, m->goal.x, m->goal.y, m->goal.z, len);
+            }
+        } else if (len > 0) {
+            repathHpaSuccessCount++;
+        }
+        
+        if (pathTime > 50.0) {
+            TraceLog(LOG_WARNING, "SLOW HPA: mover %d, %.1fms, start(%d,%d,z%d)->goal(%d,%d,z%d), len=%d",
+                i, pathTime, start.x, start.y, start.z, m->goal.x, m->goal.y, m->goal.z, len);
         }
 
         m->pathLength = (len > MAX_MOVER_PATH) ? MAX_MOVER_PATH : len;
