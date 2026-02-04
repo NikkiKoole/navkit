@@ -7,6 +7,8 @@ Now that we have a data-driven material system (`cellMaterial` grid, `MaterialDe
 - All walls render with the same sprite (e.g., orange/brown wall)
 - `MaterialDef` has `spriteOffset` field but it's not used yet
 - Materials: MAT_NATURAL, MAT_STONE, MAT_WOOD, MAT_IRON, MAT_GLASS
+- Sprites are small pixel art with black outlines and colored fills
+- Already have distinct textures: brick pattern, wood plank pattern, dirt variations
 
 ## Goals
 
@@ -16,87 +18,47 @@ Now that we have a data-driven material system (`cellMaterial` grid, `MaterialDe
 
 ---
 
-## Options
+## Decision: Start with Option B (Different Sprites per Material)
 
-### Option A: Tint Only (Simplest)
+After brainstorming, we decided to start with **sprite variants per material** because:
 
-Add a `Color tint` field to `MaterialDef`. When rendering, pass the tint to `DrawTextureRec()`.
+1. We already have distinct sprites (brick texture, plank texture)
+2. Tinting doesn't work well with colored sprites (muddy results)
+3. Black outlines survive tinting, but colored fills get muddy
+4. Clear visual distinction is more valuable than infinite scalability for now
 
-```c
-typedef struct {
-    const char* name;
-    Color tint;           // NEW
-    int spriteOffset;
-    uint8_t flags;
-    uint8_t fuel;
-    ItemType dropsItem;
-} MaterialDef;
+Later, we can add **tinting for sub-varieties** (Option C hybrid) - e.g., oak vs pine vs birch could be the same plank sprite with different brown tints.
 
-// Rendering:
-Color tint = IsConstructedCell(x,y,z) ? materialDefs[GetCellMaterial(x,y,z)].tint : WHITE;
-DrawTextureRec(atlas, sourceRect, pos, tint);
-```
+---
+
+## Options Considered
+
+### Option A: Tint Only
+
+**How it works:** Add `Color tint` to MaterialDef, multiply sprite colors by tint.
 
 **Pros:**
-- Almost zero code change (tint param already exists)
-- Scales infinitely - just define colors for new materials
-- No new art assets needed
+- Almost zero code change
+- Scales infinitely
+- No new art needed
 
 **Cons:**
 - Limited visual variety (just color shifts)
-- Works best with grayscale/desaturated base sprites
-
-**Sprite considerations:**
-- Tinting multiplies pixel colors by tint color
 - Colored sprites + tint = muddy results
-- Grayscale sprites + tint = clean colored result
-- May need to remake sprites as grayscale for best results
+- Would need grayscale base sprites for clean results
 
-### Option B: Tint + Pattern Overlay
-
-Combine tinting with a small set of tileable pattern textures.
-
-```c
-typedef struct {
-    const char* name;
-    Color tint;
-    int patternIndex;     // 0=none, 1=wood grain, 2=stone cracks, 3=metal
-    uint8_t patternAlpha; // How visible (0-255)
-    // ...
-} MaterialDef;
+**Tinting math:**
+```
+Black outline: (0,0,0) × any tint = (0,0,0)  ← stays black, good!
+Brown fill:    (150,100,70) × gray tint (180,180,180) = (105,70,49) ← muddy
+White fill:    (255,255,255) × brown tint = brown ← clean!
 ```
 
-Patterns (small tileable textures, maybe 32x32):
-- `pattern_wood.png` - wood grain lines
-- `pattern_stone.png` - cracks/speckles
-- `pattern_metal.png` - subtle diagonal lines/sheen
+**Conclusion:** Tinting works best with grayscale sprites. Our current colored sprites would need to be remade, or results will be muddy.
 
-Rendering:
-1. Draw base sprite with material tint
-2. Draw pattern overlay with alpha blending
+### Option B: Different Sprites per Material (CHOSEN)
 
-```c
-DrawTextureRec(atlas, wallRect, pos, materialDefs[mat].tint);
-
-if (materialDefs[mat].patternIndex > 0) {
-    Color patternColor = (Color){255, 255, 255, materialDefs[mat].patternAlpha};
-    DrawTextureRec(patterns, patternRects[mat.patternIndex], pos, patternColor);
-}
-```
-
-**Pros:**
-- More visual variety than tint alone
-- Still scales well (few patterns, many colors)
-- 3-4 patterns cover most material categories
-
-**Cons:**
-- Extra draw call per cell with pattern
-- Need to create pattern textures
-- Pattern tiling might look repetitive
-
-### Option C: Sprite Variants per Material
-
-Use `spriteOffset` to select different sprite variants from the atlas.
+**How it works:** Use `spriteOffset` to select different sprite from atlas based on material.
 
 ```c
 int sprite = CellSprite(cell) + MaterialSpriteOffset(mat);
@@ -104,106 +66,138 @@ int sprite = CellSprite(cell) + MaterialSpriteOffset(mat);
 
 **Pros:**
 - Full art control per material
-- Can have very distinct looks
+- Clear visual distinction (planks vs bricks)
+- We already have some sprites for this
 
 **Cons:**
-- Doesn't scale: 5 materials × 10 cell types = 50+ sprites
-- Lots of art work for each new material
-- Atlas gets large
+- Each new material needs new sprites for wall, floor, etc.
+- More art work as materials grow
+- Atlas gets bigger
 
-### Option D: Hybrid Approach
+**Conclusion:** Best for now - we have the sprites, it's clear and readable.
 
-Different strategies for different contexts:
+### Option C: Hybrid (Sprites + Tinting)
 
-- **Natural terrain**: Keep current hand-crafted colored sprites (no tint)
-- **Constructed cells**: Use grayscale sprites + tint based on material
-- **Special materials**: Can have unique sprites via spriteOffset
-
-This preserves the designed look of natural terrain while giving material variety for player constructions.
+**How it works:** Different base sprites per material category, then tint for sub-varieties.
 
 ```c
-if (IsConstructedCell(x, y, z)) {
-    // Use grayscale "constructed" sprite variant + material tint
-    int sprite = GetConstructedSpriteForCell(cell);
-    Color tint = materialDefs[GetCellMaterial(x,y,z)].tint;
-    DrawTextureRec(atlas, spriteRect[sprite], pos, tint);
-} else {
-    // Natural terrain - use original colored sprite, no tint
-    DrawTextureRec(atlas, spriteRect[CellSprite(cell)], pos, WHITE);
-}
+// Wood materials all use plank sprite, but different tints
+MAT_OAK   → plank sprite + dark brown tint
+MAT_PINE  → plank sprite + light brown tint  
+MAT_BIRCH → plank sprite + pale/white tint
+
+// Stone materials all use brick sprite, but different tints
+MAT_GRANITE → brick sprite + gray tint
+MAT_MARBLE  → brick sprite + white tint
 ```
 
+**Pros:**
+- Best of both worlds
+- Base texture from sprite, variety from tint
+- Scales well within material categories
+
+**Cons:**
+- More complex to implement
+- Need to manage both sprite mapping AND tints
+
+**Conclusion:** Good future enhancement once Option B is working.
+
+### Option D: Pattern Overlay
+
+**How it works:** Draw base shape, then overlay tileable pattern texture.
+
+**Pros:**
+- Few patterns cover many materials
+- Could combine with tinting
+
+**Cons:**
+- Extra draw call per cell
+- Need to create pattern textures
+- May look repetitive
+
+**Conclusion:** Interesting but more complex. Consider later if needed.
+
 ---
 
-## Recommendation
+## Implementation Plan (Option B)
 
-**Start with Option A (tint only)** as a proof of concept:
+### Phase 1: Map materials to existing sprites
 
-1. Add `Color tint` to `MaterialDef`
-2. Set distinct colors: wood=brown, stone=gray, iron=darkgray, glass=lightblue
-3. Apply tint when rendering constructed cells
-4. See how it looks with current sprites
+1. Identify which sprites to use:
+   - `MAT_STONE` → brick/block wall sprite (current default)
+   - `MAT_WOOD` → plank/diagonal wall sprite
+   - `MAT_IRON` → could use stone for now, or create metal sprite
+   - `MAT_GLASS` → needs new sprite (transparent?)
+   - `MAT_DIRT` → dirt texture (if we add dirt as building material)
 
-If results are muddy, consider:
-- Creating grayscale versions of wall/floor sprites
-- Or go with hybrid (Option D) where only constructed cells use tinting
+2. Update `MaterialDef.spriteOffset` values in `material.c`
 
-Later, add patterns (Option B) if more variety is needed.
+3. Update rendering code to use:
+   ```c
+   int baseSprite = CellSprite(cell);
+   MaterialType mat = GetCellMaterial(x, y, z);
+   if (mat != MAT_NATURAL) {
+       baseSprite += MaterialSpriteOffset(mat);
+   }
+   ```
+
+### Phase 2: Organize sprite atlas
+
+- Ensure wall variants are laid out with consistent offsets
+- e.g., if SPRITE_wall = 10, then:
+  - SPRITE_wall + 0 = stone wall
+  - SPRITE_wall + 1 = wood wall
+  - SPRITE_wall + 2 = iron wall
+
+### Phase 3: Test and iterate
+
+- Build walls with different materials
+- Verify correct sprites render
+- Add missing sprites as needed
 
 ---
 
-## Implementation Sketch
+## Future: Adding Tinting for Sub-varieties (Option C)
 
-### Phase 1: Add tint field
+Once Option B is working, we can add tinting for sub-types within a material:
 
 ```c
-// material.h
 typedef struct {
     const char* name;
-    Color tint;           // ADD THIS
-    int spriteOffset;
+    int spriteOffset;     // Which base sprite (planks, bricks, etc.)
+    Color tint;           // Color variation within that sprite
     uint8_t flags;
     uint8_t fuel;
     ItemType dropsItem;
 } MaterialDef;
-
-// material.c
-MaterialDef materialDefs[MAT_COUNT] = {
-    [MAT_NATURAL] = {"natural",  WHITE,                 0, 0,            0,   ITEM_NONE},
-    [MAT_STONE]   = {"stone",    (Color){180,180,180,255}, 0, 0,         0,   ITEM_STONE_BLOCKS},
-    [MAT_WOOD]    = {"wood",     (Color){180,120,80,255},  1, MF_FLAMMABLE, 128, ITEM_WOOD},
-    [MAT_IRON]    = {"iron",     (Color){100,100,110,255}, 2, 0,         0,   ITEM_STONE_BLOCKS},
-    [MAT_GLASS]   = {"glass",    (Color){200,220,255,255}, 3, 0,         0,   ITEM_STONE_BLOCKS},
-};
-
-// Add accessor
-#define MaterialTint(m) (materialDefs[m].tint)
 ```
 
-### Phase 2: Apply in rendering
+This would allow:
+- Oak, pine, birch → all use plank sprite, different brown tints
+- Granite, marble, sandstone → all use brick sprite, different gray/white/tan tints
 
-Find where walls are rendered and apply tint for constructed cells.
-
-### Phase 3: Evaluate and iterate
-
-- Do the tints look good with current sprites?
-- If muddy, create grayscale sprite variants
-- If too subtle, add pattern overlays
+**For clean tinting of sub-varieties:**
+- Make the base sprites (planks, bricks) in grayscale/white
+- Tint applies the material color
+- Black outlines stay black (0 × anything = 0)
 
 ---
 
 ## Open Questions
 
-- What do current wall sprites look like? (detailed/colored vs simple)
-- Should natural terrain stay as-is or also get material variety?
-- Do we want sub-types within materials? (oak vs pine vs birch all MAT_WOOD but different tints)
-- How to handle transparency for glass?
+- [x] What do current sprites look like? → Small pixel art, black outlines, colored fills
+- [x] Tinting with current sprites? → Would be muddy, need grayscale for clean results
+- [ ] Which existing sprites map to which materials?
+- [ ] Do we need new sprites for iron/glass/etc.?
+- [ ] How to handle glass transparency?
+- [ ] Do we want sub-types (oak/pine/birch) now or later? → Later
 
 ---
 
-## Related
+## Related Files
 
 - `src/world/material.h` - MaterialDef struct
-- `src/world/material.c` - materialDefs array
+- `src/world/material.c` - materialDefs array with spriteOffset
 - `src/render/rendering.c` - where cells are drawn
+- `assets/atlas.h` - sprite indices
 - Completed: `docs/done/architecture/data-driven-jobs-materials.md`
