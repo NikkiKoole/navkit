@@ -942,6 +942,7 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
             if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
             if (IsKeyPressed(KEY_T)) { sp->allowedTypes[ITEM_SAPLING] = !sp->allowedTypes[ITEM_SAPLING]; AddMessage(TextFormat("Sapling: %s", sp->allowedTypes[ITEM_SAPLING] ? "ON" : "OFF"), GREEN); return; }
+            if (IsKeyPressed(KEY_D)) { sp->allowedTypes[ITEM_DIRT] = !sp->allowedTypes[ITEM_DIRT]; AddMessage(TextFormat("Dirt: %s", sp->allowedTypes[ITEM_DIRT] ? "ON" : "OFF"), BROWN); return; }
         }
     }
 

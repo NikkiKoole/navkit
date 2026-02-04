@@ -4,7 +4,7 @@
 // CellDef fields: name, sprite, flags, insulationTier, fuel, burnsInto, dropsItem, dropCount
 CellDef cellDefs[] = {
     // === GROUND TYPES ===
-    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT,        ITEM_NONE, 0},
+    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT,        ITEM_DIRT, 1},
     
     // === WALLS ===
     // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD material instead

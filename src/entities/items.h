@@ -13,6 +13,7 @@ typedef enum {
     ITEM_STONE_BLOCKS, // Crafted from ORANGE at stonecutter, used for building
     ITEM_WOOD,         // Wood logs from chopping trees
     ITEM_SAPLING,      // Tree saplings - can be planted to grow trees
+    ITEM_DIRT,         // Dirt blocks from digging dirt
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

@@ -13,7 +13,7 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_RAW]     = {"raw",      0,            0,            0,    ITEM_NONE},         // Use CellDropsItem instead
     [MAT_STONE]   = {"stone",    0,            0,            0,    ITEM_STONE_BLOCKS},
     [MAT_WOOD]    = {"wood",     1,            MF_FLAMMABLE, 128,  ITEM_WOOD},         // spriteOffset=1 for wood variant
-    [MAT_DIRT]    = {"dirt",     0,            0,            0,    ITEM_NONE},         // TODO: ITEM_DIRT when added
+    [MAT_DIRT]    = {"dirt",     0,            0,            0,    ITEM_DIRT},
     [MAT_IRON]    = {"iron",     2,            0,            0,    ITEM_STONE_BLOCKS}, // TODO: ITEM_IRON_BAR when added
     [MAT_GLASS]   = {"glass",    3,            0,            0,    ITEM_STONE_BLOCKS}, // TODO: ITEM_GLASS when added
 };

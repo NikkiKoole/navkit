@@ -22,6 +22,7 @@
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_wood_block SPRITE8X8_wood_block
     #define SPRITE_air SPRITE8X8_air
+    #define SPRITE_dirt_block SPRITE8X8_dirt_block
     #define SPRITE_grass_trampled SPRITE8X8_grass_trampled
     #define SPRITE_dirt SPRITE8X8_dirt
     #define SPRITE_tree_leaves SPRITE8X8_tree_leaves
@@ -65,6 +66,7 @@
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_wood_block SPRITE16X16_wood_block
     #define SPRITE_air SPRITE16X16_air
+    #define SPRITE_dirt_block SPRITE16X16_dirt_block
     #define SPRITE_grass_trampled SPRITE16X16_grass_trampled
     #define SPRITE_dirt SPRITE16X16_dirt
     #define SPRITE_tree_leaves SPRITE16X16_tree_leaves

@@ -114,6 +114,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("W", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_SAPLING] ? "T" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_SAPLING] ? GREEN : DARKGRAY);
+    fx += MeasureText("T", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_DIRT] ? "D" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_DIRT] ? BROWN : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
