@@ -5221,7 +5221,7 @@ describe(job_drivers) {
         // Create blueprint at (4,1) - already has materials delivered
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].deliveredMaterialCount = 1;
         
         // Create a build job using the new Job pool
         int jobId = CreateJob(JOBTYPE_BUILD);
@@ -5517,7 +5517,7 @@ describe(job_game_speed) {
         // Create blueprint at (4,1) - ready to build
         int bpIdx = CreateBuildBlueprint(4, 1, buildZ);
         blueprints[bpIdx].state = BLUEPRINT_BUILDING;
-        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].deliveredMaterialCount = 1;
         blueprints[bpIdx].assignedBuilder = 0;
         
         // Create build job
@@ -5545,7 +5545,7 @@ describe(job_game_speed) {
         grid[buildZ][1][4] = CELL_AIR;
         int bpIdx2 = CreateBuildBlueprint(4, 1, buildZ);
         blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
-        blueprints[bpIdx2].deliveredMaterials = 1;
+        blueprints[bpIdx2].deliveredMaterialCount = 1;
         blueprints[bpIdx2].assignedBuilder = 0;
         
         // Create fresh job for 2x test
@@ -5692,7 +5692,7 @@ describe(mover_capabilities) {
         // Create blueprint ready to build
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].deliveredMaterialCount = 1;
         
         // Try to assign jobs
         AssignJobs();
@@ -5763,7 +5763,7 @@ describe(mover_capabilities) {
         // Create blueprint ready to build
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].deliveredMaterialCount = 1;
         
         // Try to assign jobs
         AssignJobs();
@@ -5937,7 +5937,7 @@ describe(workgivers) {
         // Create blueprint ready to build
         int bpIdx = CreateBuildBlueprint(4, 1, 0);
         blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterials = 1;
+        blueprints[bpIdx].deliveredMaterialCount = 1;
         
         // Call WorkGiver_Build directly
         int jobId = WorkGiver_Build(0);

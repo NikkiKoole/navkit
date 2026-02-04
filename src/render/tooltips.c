@@ -623,7 +623,7 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     snprintf(lines[lineCount++], sizeof(lines[0]), "Status: %s", stateName);
 
     // Materials
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", bp->deliveredMaterials, bp->requiredMaterials);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", bp->deliveredMaterialCount, bp->requiredMaterials);
 
     // What it's waiting for
     if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {

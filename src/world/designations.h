@@ -62,7 +62,7 @@ typedef struct {
     
     // Material requirements
     int requiredMaterials;      // How many items needed (1 for simple wall)
-    int deliveredMaterials;     // How many items delivered so far
+    int deliveredMaterialCount;     // How many items delivered so far
     int reservedItem;           // Item index reserved for this blueprint (-1 = none)
     MaterialType deliveredMaterial;  // What material type was delivered (for cell material)
     

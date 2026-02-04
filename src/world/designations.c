@@ -998,7 +998,7 @@ int CreateBuildBlueprint(int x, int y, int z) {
     bp->state = BLUEPRINT_AWAITING_MATERIALS;
     bp->type = BLUEPRINT_TYPE_WALL;
     bp->requiredMaterials = 1;  // 1 item to build a wall
-    bp->deliveredMaterials = 0;
+    bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NATURAL;
     bp->assignedBuilder = -1;
@@ -1049,7 +1049,7 @@ int CreateLadderBlueprint(int x, int y, int z) {
     bp->state = BLUEPRINT_AWAITING_MATERIALS;
     bp->type = BLUEPRINT_TYPE_LADDER;
     bp->requiredMaterials = 1;  // 1 stone block to build a ladder
-    bp->deliveredMaterials = 0;
+    bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NATURAL;
     bp->assignedBuilder = -1;
@@ -1100,7 +1100,7 @@ int CreateFloorBlueprint(int x, int y, int z) {
     bp->state = BLUEPRINT_AWAITING_MATERIALS;
     bp->type = BLUEPRINT_TYPE_FLOOR;
     bp->requiredMaterials = 1;  // 1 stone block to build a floor
-    bp->deliveredMaterials = 0;
+    bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NATURAL;
     bp->assignedBuilder = -1;
@@ -1179,11 +1179,11 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
     DeleteItem(itemIdx);
     
     // Update blueprint
-    bp->deliveredMaterials++;
+    bp->deliveredMaterialCount++;
     bp->reservedItem = -1;
     
     // Check if we have all materials
-    if (bp->deliveredMaterials >= bp->requiredMaterials) {
+    if (bp->deliveredMaterialCount >= bp->requiredMaterials) {
         bp->state = BLUEPRINT_READY_TO_BUILD;
     }
 }

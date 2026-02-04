@@ -230,7 +230,7 @@ static void print_blueprint(int idx) {
     
     printf("Position: (%d, %d, z%d)\n", bp->x, bp->y, bp->z);
     printf("State: %s\n", bp->state < 3 ? blueprintStateNames[bp->state] : "UNKNOWN");
-    printf("Materials: %d/%d delivered\n", bp->deliveredMaterials, bp->requiredMaterials);
+    printf("Materials: %d/%d delivered\n", bp->deliveredMaterialCount, bp->requiredMaterials);
     printf("Reserved item: %d%s\n", bp->reservedItem,
            bp->reservedItem < 0 ? " (none)" : "");
     printf("Assigned builder: %d%s\n", bp->assignedBuilder,
