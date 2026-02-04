@@ -1,6 +1,7 @@
 // render/tooltips.c - Tooltip drawing functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../world/material.h"
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
 #include "../entities/jobs.h"
@@ -322,6 +323,12 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
     } else {
         snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+    }
+
+    // Material (for constructed cells)
+    MaterialType mat = GetCellMaterial(cellX, cellY, cellZ);
+    if (mat != MAT_NATURAL) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Material: %s", MaterialName(mat));
     }
 
     // Temperature info (all values are now Celsius directly)
