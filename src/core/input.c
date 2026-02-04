@@ -2,6 +2,7 @@
 #include "../game_state.h"
 #include "../world/cell_defs.h"
 #include "../world/designations.h"
+#include "../world/material.h"
 #include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -44,7 +45,7 @@ static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
 // ============================================================================
 
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
-    CellType wallType = (selectedMaterial == 2) ? CELL_WOOD_WALL : CELL_WALL;
+    MaterialType mat = (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
     int count = 0;
     int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -54,8 +55,9 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 skipped++;
                 continue;
             }
-            if (grid[z][dy][dx] != wallType) {
-                grid[z][dy][dx] = wallType;
+            if (grid[z][dy][dx] != CELL_WALL || GetCellMaterial(dx, dy, z) != mat) {
+                grid[z][dy][dx] = CELL_WALL;
+                SetCellMaterial(dx, dy, z, mat);
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 SetWaterLevel(dx, dy, z, 0);
@@ -1097,10 +1099,11 @@ void HandleInput(void) {
                     if (IsWorkshopTile(x, y, z)) {
                         // Skip silently in quick-edit mode
                     } else {
-                        CellType wallType = IsKeyDown(KEY_TWO) ? CELL_WOOD_WALL : CELL_WALL;
-                        if (grid[z][y][x] != wallType) {
+                        MaterialType mat = IsKeyDown(KEY_TWO) ? MAT_WOOD : MAT_STONE;
+                        if (grid[z][y][x] != CELL_WALL || GetCellMaterial(x, y, z) != mat) {
                             DisplaceWater(x, y, z);
-                            grid[z][y][x] = wallType;
+                            grid[z][y][x] = CELL_WALL;
+                            SetCellMaterial(x, y, z, mat);
                             MarkChunkDirty(x, y, z);
                             for (int i = 0; i < moverCount; i++) {
                                 Mover* m = &movers[i];

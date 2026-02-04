@@ -3,8 +3,9 @@
 #include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
+#include "../world/material.h"
 
-#define SAVE_VERSION 9  // Added worldSeed
+#define SAVE_VERSION 11  // Added Blueprint.deliveredMaterial field
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -80,6 +81,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Material grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(cellMaterial[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -301,6 +309,13 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(cellFlags[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Material grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(cellMaterial[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     

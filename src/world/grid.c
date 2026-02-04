@@ -1,5 +1,6 @@
 #include "grid.h"
 #include "cell_defs.h"
+#include "material.h"
 #include "pathfinding.h"
 #include <string.h>
 #include <stdio.h>
@@ -43,8 +44,9 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
     rampCount = 0;
 
-    // Clear the grid (all z-levels) and cell flags
+    // Clear the grid (all z-levels), cell flags, and materials
     memset(cellFlags, 0, sizeof(cellFlags));
+    InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {

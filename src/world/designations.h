@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "grid.h"
+#include "material.h"
 #include "../entities/items.h"
 
 // Designation types
@@ -63,6 +64,7 @@ typedef struct {
     int requiredMaterials;      // How many items needed (1 for simple wall)
     int deliveredMaterials;     // How many items delivered so far
     int reservedItem;           // Item index reserved for this blueprint (-1 = none)
+    MaterialType deliveredMaterial;  // What material type was delivered (for cell material)
     
     // Construction progress
     int assignedBuilder;        // Mover index doing the building (-1 = none)

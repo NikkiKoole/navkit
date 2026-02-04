@@ -7,12 +7,13 @@
 
 // Item definitions indexed by ItemType enum
 // Order must match ItemType enum in items.h
+// Fields: name, sprite, flags, maxStack, producesMaterial
 const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
-    [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10 },
-    [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10 },
-    [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10 },
-    [ITEM_ORANGE]       = { "Raw Stone",    SPRITE_crate_orange, IF_STACKABLE, 20 },
-    [ITEM_STONE_BLOCKS] = { "Stone Blocks", SPRITE_stone_block,  IF_STACKABLE | IF_BUILDING_MAT, 20 },
-    [ITEM_WOOD]         = { "Wood",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
-    [ITEM_SAPLING]      = { "Sapling",      SPRITE_tree_sapling, IF_STACKABLE, 20 },
+    [ITEM_RED]          = { "Red Crate",    SPRITE_crate_red,    IF_STACKABLE, 10, MAT_NATURAL },
+    [ITEM_GREEN]        = { "Green Crate",  SPRITE_crate_green,  IF_STACKABLE, 10, MAT_NATURAL },
+    [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10, MAT_NATURAL },
+    [ITEM_ORANGE]       = { "Raw Stone",    SPRITE_crate_orange, IF_STACKABLE, 20, MAT_STONE },
+    [ITEM_STONE_BLOCKS] = { "Stone Blocks", SPRITE_stone_block,  IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_STONE },
+    [ITEM_WOOD]         = { "Wood",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20, MAT_WOOD },
+    [ITEM_SAPLING]      = { "Sapling",      SPRITE_tree_sapling, IF_STACKABLE, 20, MAT_NATURAL },
 };

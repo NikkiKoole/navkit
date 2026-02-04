@@ -22,6 +22,7 @@ uint64_t worldSeed = 12345;
 
 // World systems
 #include "../src/world/cell_defs.c"
+#include "../src/world/material.c"
 #include "../src/world/grid.c"
 #include "../src/world/terrain.c"
 #include "../src/world/pathfinding.c"

@@ -1,31 +1,32 @@
 #include "cell_defs.h"
 #include "../../assets/atlas.h"
 
+// CellDef fields: name, sprite, flags, insulationTier, fuel, burnsInto, dropsItem, dropCount
 CellDef cellDefs[] = {
     // === GROUND TYPES ===
-    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT},
+    [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT,        ITEM_NONE, 0},
     
     // === WALLS ===
-    [CELL_WALL]        = {"stone wall",  SPRITE_wall,        CF_WALL,              INSULATION_TIER_STONE,  0, CELL_WALL},
-    [CELL_WOOD_WALL]   = {"wood wall",   SPRITE_wood_wall,   CF_WALL,              INSULATION_TIER_WOOD, 128, CELL_AIR},
+    // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD material instead
+    [CELL_WALL]        = {"wall",        SPRITE_wall,        CF_WALL,              INSULATION_TIER_STONE,  0, CELL_WALL,        ITEM_ORANGE, 1},  // Base wall - material determines drops/flammability
     
     // === VERTICAL MOVEMENT ===
     // Ladders are walkable via CF_LADDER check, not CF_SOLID (so they don't render as floor in DF mode)
-    [CELL_LADDER_UP]   = {"ladder up",   SPRITE_ladder_up,   CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_UP},
-    [CELL_LADDER_DOWN] = {"ladder down", SPRITE_ladder_down, CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_DOWN},
-    [CELL_LADDER_BOTH] = {"ladder",      SPRITE_ladder,      CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_BOTH},
+    [CELL_LADDER_UP]   = {"ladder up",   SPRITE_ladder_up,   CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_UP,   ITEM_STONE_BLOCKS, 1},
+    [CELL_LADDER_DOWN] = {"ladder down", SPRITE_ladder_down, CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_DOWN, ITEM_STONE_BLOCKS, 1},
+    [CELL_LADDER_BOTH] = {"ladder",      SPRITE_ladder,      CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_BOTH, ITEM_STONE_BLOCKS, 1},
     // Ramps are walkable via CF_RAMP check, directional z-transitions
-    [CELL_RAMP_N]      = {"ramp north",  SPRITE_ramp_n,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_N},
-    [CELL_RAMP_E]      = {"ramp east",   SPRITE_ramp_e,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_E},
-    [CELL_RAMP_S]      = {"ramp south",  SPRITE_ramp_s,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_S},
-    [CELL_RAMP_W]      = {"ramp west",   SPRITE_ramp_w,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_W},
+    [CELL_RAMP_N]      = {"ramp north",  SPRITE_ramp_n,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_N,      ITEM_ORANGE, 1},
+    [CELL_RAMP_E]      = {"ramp east",   SPRITE_ramp_e,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_E,      ITEM_ORANGE, 1},
+    [CELL_RAMP_S]      = {"ramp south",  SPRITE_ramp_s,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_S,      ITEM_ORANGE, 1},
+    [CELL_RAMP_W]      = {"ramp west",   SPRITE_ramp_w,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_W,      ITEM_ORANGE, 1},
     
     // === SPECIAL ===
-    [CELL_AIR]         = {"air",         SPRITE_air,         0,                    INSULATION_TIER_AIR,    0, CELL_AIR},
-    [CELL_BEDROCK]     = {"bedrock",     SPRITE_bedrock,     CF_SOLID | CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE, 0, CELL_BEDROCK},
+    [CELL_AIR]         = {"air",         SPRITE_air,         0,                    INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},
+    [CELL_BEDROCK]     = {"bedrock",     SPRITE_bedrock,     CF_SOLID | CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE, 0, CELL_BEDROCK, ITEM_NONE, 0},  // Unmineable
     
     // === VEGETATION ===
-    [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR},  // Walkable, grows into trunk
-    [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR},  // Solid, choppable, burns
-    [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves, CF_BLOCKS_MOVEMENT,   INSULATION_TIER_AIR,   32, CELL_AIR},  // Blocks movement but not solid (can't stand on)
+    [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_SAPLING, 1},  // Walkable, grows into trunk
+    [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_WOOD, 1},     // Solid, choppable, burns
+    [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves, CF_BLOCKS_MOVEMENT,   INSULATION_TIER_AIR,   32, CELL_AIR,         ITEM_NONE, 0},     // Blocks movement but not solid (can't stand on)
 };

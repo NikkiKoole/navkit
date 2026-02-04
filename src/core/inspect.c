@@ -19,8 +19,9 @@
 #include "../entities/workshops.h"
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
+#include "../world/material.h"
 
-#define INSPECT_SAVE_VERSION 9
+#define INSPECT_SAVE_VERSION 11
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -37,17 +38,16 @@ static const char* cellTypeNames[] = {
     "LADDER_DOWN",   // 3
     "LADDER_BOTH",   // 4
     "DIRT",          // 5
-    "WOOD_WALL",     // 6
-    "BEDROCK",       // 7
-    "RAMP_N",        // 8
-    "RAMP_E",        // 9
-    "RAMP_S",        // 10
-    "RAMP_W",        // 11
-    "SAPLING",       // 12
-    "TREE_TRUNK",    // 13
-    "TREE_LEAVES"    // 14
+    "BEDROCK",       // 6 (was WOOD_WALL, now removed)
+    "RAMP_N",        // 7
+    "RAMP_E",        // 8
+    "RAMP_S",        // 9
+    "RAMP_W",        // 10
+    "SAPLING",       // 11
+    "TREE_TRUNK",    // 12
+    "TREE_LEAVES"    // 13
 };
-#define CELL_TYPE_COUNT 15
+#define CELL_TYPE_COUNT 14
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING"};
@@ -62,6 +62,7 @@ static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
 static SteamCell* insp_steamCells = NULL;
 static uint8_t* insp_cellFlags = NULL;
+static uint8_t* insp_materialCells = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
@@ -297,6 +298,12 @@ static void print_cell(int x, int y, int z) {
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
     printf("Type: %s (raw=%d)\n", cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
     
+    // Material (for constructed cells)
+    uint8_t mat = insp_materialCells[idx];
+    if (mat != MAT_NATURAL) {
+        printf("Material: %s (raw=%d)\n", mat < MAT_COUNT ? MaterialName(mat) : "UNKNOWN", (int)mat);
+    }
+    
     // Walkability (requires globals to be set up)
     bool walkable = IsCellWalkableAt(z, y, x);
     printf("Walkable: %s", walkable ? "YES" : "NO");
@@ -509,7 +516,6 @@ static void print_map(int cx, int cy, int cz, int radius) {
                     c = '.';
                 } else switch (cell) {
                     case CELL_WALL:
-                    case CELL_WOOD_WALL:
                     case CELL_BEDROCK:
                         c = '#'; break;
                     case CELL_AIR:
@@ -871,6 +877,7 @@ int InspectSaveFile(int argc, char** argv) {
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
     insp_steamCells = malloc(totalCells * sizeof(SteamCell));
     insp_cellFlags = malloc(totalCells * sizeof(uint8_t));
+    insp_materialCells = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
@@ -880,6 +887,7 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
     fread(insp_steamCells, sizeof(SteamCell), totalCells, f);
     fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
+    fread(insp_materialCells, sizeof(uint8_t), totalCells, f);
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     

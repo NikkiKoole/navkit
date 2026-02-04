@@ -5,6 +5,7 @@
 
 // Item types (for Phase 0, just colors)
 typedef enum {
+    ITEM_NONE = -1,    // No item (sentinel value for optional returns)
     ITEM_RED,
     ITEM_GREEN,
     ITEM_BLUE,

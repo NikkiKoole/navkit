@@ -5,6 +5,7 @@
 #include "groundwear.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../world/material.h"
 #include "../core/time.h"
 #include <string.h>
 #include <stdlib.h>
@@ -54,13 +55,20 @@ int GetBaseFuelForCellType(CellType cell) {
     return CellFuel(cell);
 }
 
-// Get fuel at a specific position, considering grass surface overlay
+// Get fuel at a specific position, considering material and grass surface overlay
 static int GetFuelAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
     int baseFuel = CellFuel(cell);
     
+    // Check material for constructed cells - material fuel overrides cell fuel
+    MaterialType mat = GetCellMaterial(x, y, z);
+    if (mat != MAT_NATURAL) {
+        // Constructed cell - use material's fuel value
+        baseFuel = MaterialFuel(mat);
+    }
+    
     // Grass surface on dirt adds extra fuel
-    if (cell == CELL_DIRT) {
+    if (cell == CELL_DIRT || cell == CELL_AIR) {
         int surface = GET_CELL_SURFACE(x, y, z);
         if (surface == SURFACE_GRASS || surface == SURFACE_TALL_GRASS) {
             baseFuel = 16;  // Grass is flammable

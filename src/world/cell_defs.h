@@ -3,6 +3,7 @@
 
 #include "grid.h"
 #include "../simulation/temperature.h"
+#include "../entities/items.h"    // For ItemType
 
 // Cell definition - all properties for a cell type in one place
 typedef struct {
@@ -12,6 +13,8 @@ typedef struct {
     uint8_t insulationTier;
     uint8_t fuel;
     CellType burnsInto;
+    ItemType dropsItem;    // What item when mined/deconstructed (ITEM_NONE if nothing)
+    uint8_t dropCount;     // Base drop count
     // Future: uint8_t movementCost;
     // Future: uint8_t hardness;
 } CellDef;
@@ -62,6 +65,8 @@ extern CellDef cellDefs[];
 #define CellInsulationTier(c)   (cellDefs[c].insulationTier)
 #define CellFuel(c)             (cellDefs[c].fuel)
 #define CellBurnsInto(c)        (cellDefs[c].burnsInto)
+#define CellDropsItem(c)        (cellDefs[c].dropsItem)
+#define CellDropCount(c)        (cellDefs[c].dropCount)
 
 // Convenience functions
 #define CellAllowsFluids(c)     (!CellBlocksFluids(c))
