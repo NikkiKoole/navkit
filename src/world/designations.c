@@ -74,6 +74,7 @@ bool DesignateMine(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_MINE);
     
     return true;
 }
@@ -83,8 +84,10 @@ void CancelDesignation(int x, int y, int z) {
         return;
     }
     
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
+    DesignationType oldType = designations[z][y][x].type;
+    if (oldType != DESIGNATION_NONE) {
         activeDesignationCount--;
+        InvalidateDesignationCache(oldType);  // Mark cache dirty
     }
     designations[z][y][x].type = DESIGNATION_NONE;
     designations[z][y][x].assignedMover = -1;
@@ -278,6 +281,7 @@ bool DesignateChannel(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_CHANNEL);
     
     return true;
 }
@@ -567,6 +571,7 @@ bool DesignateDigRamp(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
     
     return true;
 }
@@ -677,6 +682,7 @@ bool DesignateRemoveFloor(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
     
     return true;
 }
@@ -767,6 +773,7 @@ bool DesignateRemoveRamp(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     
     return true;
 }
@@ -872,6 +879,7 @@ bool DesignateChop(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_CHOP);
     
     return true;
 }
@@ -900,6 +908,7 @@ bool DesignateChopFelled(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_CHOP_FELLED);
 
     return true;
 }
@@ -1302,6 +1311,7 @@ bool DesignateGatherSapling(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
     
     return true;
 }
@@ -1389,6 +1399,7 @@ bool DesignatePlantSapling(int x, int y, int z) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
     
     return true;
 }

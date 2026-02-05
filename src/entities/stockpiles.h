@@ -124,6 +124,7 @@ extern StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT][MAT_COUNT];
 void RebuildStockpileSlotCache(void);  // Build cache - O(types * stockpiles * slots)
 int FindStockpileForItemCached(ItemType type, uint8_t material, int* outSlotX, int* outSlotY);  // O(1) lookup
 void InvalidateStockpileSlotCache(ItemType type, uint8_t material);  // Call when a slot is reserved
+void InvalidateStockpileSlotCacheAll(void);  // Mark entire cache dirty (call when stockpiles added/removed/modified)
 
 // Fill/overfull metrics
 float GetStockpileFillRatio(int stockpileIdx);

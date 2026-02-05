@@ -2,6 +2,7 @@
 #define JOBS_H
 
 #include <stdbool.h>
+#include "../world/designations.h"
 
 // =============================================================================
 // Job Pool System
@@ -142,6 +143,7 @@ void RebuildIdleMoverList(void);  // Full rebuild (e.g., after ClearMovers)
 // Core functions
 void AssignJobs(void);           // Match idle movers with available jobs
 void RebuildMineDesignationCache(void);  // Build cache for WorkGiver_Mining (call before mining assignment)
+void InvalidateDesignationCache(DesignationType type);  // Mark cache dirty when designation added/removed
 void JobsTick(void);             // Update job state machines using per-type drivers
 
 // =============================================================================

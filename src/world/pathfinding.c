@@ -1989,12 +1989,9 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
             lastPathTime = (GetTime() - startTime) * 1000.0;
             return resultLen;  // Found path locally, done
         }
-        // Local failed - check if cross-z connections might help
-        if (rampCount == 0 && ladderLinkCount == 0) {
-            lastPathTime = (GetTime() - startTime) * 1000.0;
-            return 0;  // No cross-z connections exist, no path possible
-        }
-        // Fall through to full HPA* search - cross-z might provide a path
+        // Local failed - fall through to full HPA* abstract search
+        // Path might need to route through neighboring chunks, even on same z-level
+        // (e.g., walls blocking direct path within chunk bounds)
     }
 
     // Temporary entrance indices for start and goal

@@ -117,8 +117,11 @@ void RebuildStockpileFreeSlotCounts(void) {
 // =============================================================================
 
 StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT][MAT_COUNT];
+static bool stockpileSlotCacheDirty = true;  // Rebuild on first use and when stockpiles change
 
 void RebuildStockpileSlotCache(void) {
+    if (!stockpileSlotCacheDirty) return;  // Already up-to-date
+    
     // Initialize all entries to "no stockpile available"
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
         for (int m = 0; m < MAT_COUNT; m++) {
@@ -140,6 +143,7 @@ void RebuildStockpileSlotCache(void) {
             }
         }
     }
+    stockpileSlotCacheDirty = false;  // Cache is now up-to-date
 }
 
 int FindStockpileForItemCached(ItemType type, uint8_t material, int* outSlotX, int* outSlotY) {
@@ -174,6 +178,10 @@ void InvalidateStockpileSlotCache(ItemType type, uint8_t material) {
         stockpileSlotCache[type][mat].slotX = -1;
         stockpileSlotCache[type][mat].slotY = -1;
     }
+}
+
+void InvalidateStockpileSlotCacheAll(void) {
+    stockpileSlotCacheDirty = true;
 }
 
 int CreateStockpile(int x, int y, int z, int width, int height) {
@@ -227,6 +235,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             sp->maxStackSize = MAX_STACK_SIZE;
             
             stockpileCount++;
+            InvalidateStockpileSlotCacheAll();  // New stockpile added
             return i;
         }
     }
@@ -237,6 +246,7 @@ void DeleteStockpile(int index) {
     if (index >= 0 && index < MAX_STOCKPILES && stockpiles[index].active) {
         stockpiles[index].active = false;
         stockpileCount--;
+        InvalidateStockpileSlotCacheAll();  // Stockpile deleted
     }
 }
 
@@ -254,6 +264,7 @@ void AddStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             sp->cells[idx] = true;
         }
     }
+    InvalidateStockpileSlotCacheAll();  // Stockpile geometry changed
 }
 
 void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
@@ -293,6 +304,7 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             sp->slotMaterials[idx] = MAT_NONE;
         }
     }
+    InvalidateStockpileSlotCacheAll();  // Stockpile geometry changed
     
     // Check if stockpile is now empty - if so, delete it
     if (GetStockpileActiveCellCount(stockpileIdx) == 0) {

@@ -107,6 +107,30 @@ static int removeRampCacheCount = 0;
 static AdjacentDesignationEntry digRampCache[MAX_DESIGNATION_CACHE];
 static int digRampCacheCount = 0;
 
+// Tree work caches (chop, chop felled, gather sapling, plant sapling)
+static AdjacentDesignationEntry chopCache[MAX_DESIGNATION_CACHE];
+static int chopCacheCount = 0;
+
+static AdjacentDesignationEntry chopFelledCache[MAX_DESIGNATION_CACHE];
+static int chopFelledCacheCount = 0;
+
+static AdjacentDesignationEntry gatherSaplingCache[MAX_DESIGNATION_CACHE];
+static int gatherSaplingCacheCount = 0;
+
+static OnTileDesignationEntry plantSaplingCache[MAX_DESIGNATION_CACHE];
+static int plantSaplingCacheCount = 0;
+
+// Dirty flags - mark caches that need rebuilding
+static bool mineCacheDirty = true;
+static bool channelCacheDirty = true;
+static bool digRampCacheDirty = true;
+static bool removeFloorCacheDirty = true;
+static bool removeRampCacheDirty = true;
+static bool chopCacheDirty = true;
+static bool chopFelledCacheDirty = true;
+static bool gatherSaplingCacheDirty = true;
+static bool plantSaplingCacheDirty = true;
+
 // Helper: Find first adjacent walkable tile. Returns true if found.
 static bool FindAdjacentWalkable(int x, int y, int z, int* outAdjX, int* outAdjY) {
     for (int dir = 0; dir < 4; dir++) {
@@ -169,23 +193,73 @@ static void RebuildOnTileDesignationCache(DesignationType type,
 }
 
 void RebuildMineDesignationCache(void) {
+    if (!mineCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_MINE, mineCache, &mineCacheCount);
+    mineCacheDirty = false;
 }
 
 void RebuildChannelDesignationCache(void) {
+    if (!channelCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CHANNEL, channelCache, &channelCacheCount);
+    channelCacheDirty = false;
 }
 
 void RebuildRemoveFloorDesignationCache(void) {
+    if (!removeFloorCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_REMOVE_FLOOR, removeFloorCache, &removeFloorCacheCount);
+    removeFloorCacheDirty = false;
 }
 
 void RebuildRemoveRampDesignationCache(void) {
+    if (!removeRampCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount);
+    removeRampCacheDirty = false;
 }
 
 void RebuildDigRampDesignationCache(void) {
+    if (!digRampCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_DIG_RAMP, digRampCache, &digRampCacheCount);
+    digRampCacheDirty = false;
+}
+
+void RebuildChopDesignationCache(void) {
+    if (!chopCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_CHOP, chopCache, &chopCacheCount);
+    chopCacheDirty = false;
+}
+
+void RebuildChopFelledDesignationCache(void) {
+    if (!chopFelledCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_CHOP_FELLED, chopFelledCache, &chopFelledCacheCount);
+    chopFelledCacheDirty = false;
+}
+
+void RebuildGatherSaplingDesignationCache(void) {
+    if (!gatherSaplingCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_SAPLING, gatherSaplingCache, &gatherSaplingCacheCount);
+    gatherSaplingCacheDirty = false;
+}
+
+void RebuildPlantSaplingDesignationCache(void) {
+    if (!plantSaplingCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_PLANT_SAPLING, plantSaplingCache, &plantSaplingCacheCount);
+    plantSaplingCacheDirty = false;
+}
+
+// Invalidate designation caches - call when designations are added/removed/completed
+void InvalidateDesignationCache(DesignationType type) {
+    switch (type) {
+        case DESIGNATION_MINE:           mineCacheDirty = true; break;
+        case DESIGNATION_CHANNEL:        channelCacheDirty = true; break;
+        case DESIGNATION_DIG_RAMP:       digRampCacheDirty = true; break;
+        case DESIGNATION_REMOVE_FLOOR:   removeFloorCacheDirty = true; break;
+        case DESIGNATION_REMOVE_RAMP:    removeRampCacheDirty = true; break;
+        case DESIGNATION_CHOP:           chopCacheDirty = true; break;
+        case DESIGNATION_CHOP_FELLED:    chopFelledCacheDirty = true; break;
+        case DESIGNATION_GATHER_SAPLING: gatherSaplingCacheDirty = true; break;
+        case DESIGNATION_PLANT_SAPLING:  plantSaplingCacheDirty = true; break;
+        default: break;
+    }
 }
 
 // Find first adjacent tile that is both walkable and reachable from moverCell.
@@ -2222,25 +2296,29 @@ void AssignJobs(void) {
 
     // =========================================================================
     // PRIORITY 2: Crafting - before hauling so crafters can claim materials
+    // Optimization: Only check as many movers as we have workshops needing crafters
     // =========================================================================
     if (idleMoverCount > 0) {
-        // Check for workshops with runnable bills
-        bool hasWorkshopWork = false;
-        for (int w = 0; w < MAX_WORKSHOPS && !hasWorkshopWork; w++) {
+        // Count workshops needing crafters
+        int workshopsNeedingCrafters = 0;
+        for (int w = 0; w < MAX_WORKSHOPS; w++) {
             Workshop* ws = &workshops[w];
             if (!ws->active) continue;
             if (ws->assignedCrafter >= 0) continue;
-            if (ws->billCount > 0) hasWorkshopWork = true;
+            if (ws->billCount > 0) workshopsNeedingCrafters++;
         }
 
-        if (hasWorkshopWork) {
-            // Copy idle list since WorkGiver modifies it
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (idleCopy) {
-                int idleCopyCount = idleMoverCount;
-                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+        if (workshopsNeedingCrafters > 0) {
+            // Only check this many movers (no point checking more)
+            int moversToCheck = workshopsNeedingCrafters;
+            if (moversToCheck > idleMoverCount) moversToCheck = idleMoverCount;
 
-                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+            // Copy idle list since WorkGiver modifies it
+            int* idleCopy = (int*)malloc(moversToCheck * sizeof(int));
+            if (idleCopy) {
+                memcpy(idleCopy, idleMoverList, moversToCheck * sizeof(int));
+
+                for (int i = 0; i < moversToCheck && idleMoverCount > 0; i++) {
                     int moverIdx = idleCopy[i];
                     if (!moverIsInIdleList[moverIdx]) continue;
                     WorkGiver_Craft(moverIdx);
@@ -2438,16 +2516,20 @@ void AssignJobs(void) {
         RebuildDigRampDesignationCache();
         RebuildRemoveFloorDesignationCache();
         RebuildRemoveRampDesignationCache();
+        RebuildChopDesignationCache();
+        RebuildChopFelledDesignationCache();
+        RebuildGatherSaplingDesignationCache();
+        RebuildPlantSaplingDesignationCache();
 
         bool hasMineWork = (mineCacheCount > 0);
         bool hasChannelWork = (channelCacheCount > 0);
         bool hasDigRampWork = (digRampCacheCount > 0);
         bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
         bool hasRemoveRampWork = (removeRampCacheCount > 0);
-        bool hasChopWork = (CountChopDesignations() > 0);
-        bool hasChopFelledWork = (CountChopFelledDesignations() > 0);
-        bool hasGatherSaplingWork = (CountGatherSaplingDesignations() > 0);
-        bool hasPlantSaplingWork = (CountPlantSaplingDesignations() > 0);
+        bool hasChopWork = (chopCacheCount > 0);
+        bool hasChopFelledWork = (chopFelledCacheCount > 0);
+        bool hasGatherSaplingWork = (gatherSaplingCacheCount > 0);
+        bool hasPlantSaplingWork = (plantSaplingCacheCount > 0);
 
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -2718,50 +2800,39 @@ int WorkGiver_GatherSapling(int moverIdx) {
 
     int moverZ = (int)m->z;
 
-    // Find nearest unassigned gather sapling designation
+    // Find nearest unassigned gather sapling designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
 
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
-                if (d->type != DESIGNATION_GATHER_SAPLING) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                if (z != moverZ) continue;
+    for (int i = 0; i < gatherSaplingCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &gatherSaplingCache[i];
 
-                // Check if sapling cell still exists
-                if (grid[z][y][x] != CELL_SAPLING) continue;
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
 
-                // Find an adjacent walkable tile
-                int dx[] = {1, -1, 0, 0};
-                int dy[] = {0, 0, 1, -1};
-                for (int i = 0; i < 4; i++) {
-                    int adjX = x + dx[i];
-                    int adjY = y + dy[i];
-                    if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
-                    if (!IsCellWalkableAt(z, adjY, adjX)) continue;
+        // Check if still unassigned
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
 
-                    // Distance to adjacent tile
-                    float tileX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float tileY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float distX = tileX - m->x;
-                    float distY = tileY - m->y;
-                    float distSq = distX * distX + distY * distY;
+        // Check if sapling cell still exists
+        if (grid[entry->z][entry->y][entry->x] != CELL_SAPLING) continue;
 
-                    if (distSq < bestDistSq) {
-                        bestDistSq = distSq;
-                        bestDesigX = x;
-                        bestDesigY = y;
-                        bestDesigZ = z;
-                        bestAdjX = adjX;
-                        bestAdjY = adjY;
-                    }
-                    break;
-                }
-            }
+        // Distance to adjacent tile (already cached)
+        float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float adjPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = adjPosX - m->x;
+        float distY = adjPosY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
         }
     }
 
@@ -2813,36 +2884,33 @@ int WorkGiver_PlantSapling(int moverIdx) {
 
     int moverZ = (int)m->z;
 
-    // Find nearest unassigned plant sapling designation
+    // Find nearest unassigned plant sapling designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     float bestDesigDistSq = 1e30f;
 
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
-                if (d->type != DESIGNATION_PLANT_SAPLING) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                if (z != moverZ) continue;  // Same z-level for now
+    for (int i = 0; i < plantSaplingCacheCount; i++) {
+        OnTileDesignationEntry* entry = &plantSaplingCache[i];
 
-                // Check if designation tile is walkable (should be AIR)
-                if (!IsCellWalkableAt(z, y, x)) continue;
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
 
-                // Distance to designation
-                float tileX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-                float tileY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-                float distX = tileX - m->x;
-                float distY = tileY - m->y;
-                float distSq = distX * distX + distY * distY;
+        // Check if still unassigned (cache built once per frame, state may have changed)
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
 
-                if (distSq < bestDesigDistSq) {
-                    bestDesigDistSq = distSq;
-                    bestDesigX = x;
-                    bestDesigY = y;
-                    bestDesigZ = z;
-                }
-            }
+        // Distance to designation
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDesigDistSq) {
+            bestDesigDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
         }
     }
 
@@ -2937,6 +3005,20 @@ int WorkGiver_Craft(int moverIdx) {
     int moverZ = (int)m->z;
 
     // Note: no canCraft capability check for now - any mover can craft
+
+    // Early exit: check if any workshops need crafters on this z-level
+    bool anyAvailable = false;
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (ws->z != moverZ) continue;
+        if (ws->assignedCrafter >= 0) continue;
+        if (ws->billCount > 0) {
+            anyAvailable = true;
+            break;
+        }
+    }
+    if (!anyAvailable) return -1;
 
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
@@ -3686,48 +3768,36 @@ int WorkGiver_Chop(int moverIdx) {
 
     int moverZ = (int)m->z;
 
-    // Find nearest unassigned chop designation
+    // Find nearest unassigned chop designation from cache
     int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
 
-    // Simple search - no cache for chop designations (they're rare)
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
-                if (d->type != DESIGNATION_CHOP) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                if (z != moverZ) continue;  // Same z-level for now
+    for (int i = 0; i < chopCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &chopCache[i];
 
-                // Find an adjacent walkable tile
-                int dx[] = {1, -1, 0, 0};
-                int dy[] = {0, 0, 1, -1};
-                for (int i = 0; i < 4; i++) {
-                    int adjX = x + dx[i];
-                    int adjY = y + dy[i];
-                    if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
-                    if (!IsCellWalkableAt(z, adjY, adjX)) continue;
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
 
-                    // Distance to adjacent tile
-                    float tileX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float tileY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float distX = tileX - m->x;
-                    float distY = tileY - m->y;
-                    float distSq = distX * distX + distY * distY;
+        // Check if still unassigned
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
 
-                    if (distSq < bestDistSq) {
-                        bestDistSq = distSq;
-                        bestDesigX = x;
-                        bestDesigY = y;
-                        bestDesigZ = z;
-                        bestAdjX = adjX;
-                        bestAdjY = adjY;
-                    }
-                    break;  // Found adjacent tile, no need to check others
-                }
-            }
+        // Distance to adjacent tile (already cached)
+        float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float adjPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = adjPosX - m->x;
+        float distY = adjPosY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
         }
     }
 
@@ -3782,42 +3852,35 @@ int WorkGiver_ChopFelled(int moverIdx) {
     int bestAdjX = -1, bestAdjY = -1;
     float bestDistSq = 1e30f;
 
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                Designation* d = &designations[z][y][x];
-                if (d->type != DESIGNATION_CHOP_FELLED) continue;
-                if (d->assignedMover != -1) continue;
-                if (d->unreachableCooldown > 0.0f) continue;
-                if (z != moverZ) continue;
+    for (int i = 0; i < chopFelledCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &chopFelledCache[i];
 
-                if (grid[z][y][x] != CELL_TREE_TRUNK || treePartGrid[z][y][x] != TREE_PART_FELLED) continue;
+        // Only same z-level for now
+        if (entry->z != moverZ) continue;
 
-                int dx[] = {1, -1, 0, 0};
-                int dy[] = {0, 0, 1, -1};
-                for (int i = 0; i < 4; i++) {
-                    int adjX = x + dx[i];
-                    int adjY = y + dy[i];
-                    if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
-                    if (!IsCellWalkableAt(z, adjY, adjX)) continue;
+        // Check if still unassigned
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
 
-                    float tileX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float tileY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
-                    float distX = tileX - m->x;
-                    float distY = tileY - m->y;
-                    float distSq = distX * distX + distY * distY;
+        // Verify felled trunk still exists
+        if (grid[entry->z][entry->y][entry->x] != CELL_TREE_TRUNK) continue;
+        if (treePartGrid[entry->z][entry->y][entry->x] != TREE_PART_FELLED) continue;
 
-                    if (distSq < bestDistSq) {
-                        bestDistSq = distSq;
-                        bestDesigX = x;
-                        bestDesigY = y;
-                        bestDesigZ = z;
-                        bestAdjX = adjX;
-                        bestAdjY = adjY;
-                    }
-                    break;
-                }
-            }
+        // Distance to adjacent tile (already cached)
+        float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float adjPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = adjPosX - m->x;
+        float distY = adjPosY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
         }
     }
 
