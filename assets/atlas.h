@@ -57,6 +57,7 @@
     #define SPRITE_tree_sapling SPRITE8X8_tree_sapling
     #define SPRITE_rock_floor SPRITE8X8_rock_floor
     #define SPRITE_sand SPRITE8X8_sand
+    #define SPRITE_rock_block SPRITE8X8_rock_block
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_wood_wall SPRITE8X8_wood_wall
     #define SPRITE_crate_red SPRITE8X8_crate_red
@@ -109,6 +110,7 @@
     #define SPRITE_tree_sapling SPRITE16X16_tree_sapling
     #define SPRITE_rock_floor SPRITE16X16_rock_floor
     #define SPRITE_sand SPRITE16X16_sand
+    #define SPRITE_rock_block SPRITE16X16_rock_block
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_wood_wall SPRITE16X16_wood_wall
     #define SPRITE_crate_red SPRITE16X16_crate_red

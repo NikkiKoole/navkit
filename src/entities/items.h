@@ -9,7 +9,7 @@ typedef enum {
     ITEM_RED,
     ITEM_GREEN,
     ITEM_BLUE,
-    ITEM_ORANGE,       // Raw stone from mining
+    ITEM_ORANGE,       // Raw stone from mining (rock block)
     ITEM_STONE_BLOCKS, // Crafted from ORANGE at stonecutter, used for building
     ITEM_WOOD,         // Wood logs from chopping trees
     ITEM_SAPLING,      // Tree saplings - can be planted to grow trees
