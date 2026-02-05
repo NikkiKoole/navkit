@@ -228,7 +228,7 @@ describe(spec_steam_rise) {
         ResetTestState(12345);
         
         // Make ambient hot so steam doesn't condense
-        ambientSurfaceTemp = 100;
+        SetAmbientSurfaceTemp(100);
         temperatureEnabled = true;
         steamEnabled = true;
         
@@ -263,7 +263,7 @@ describe(spec_temperature_decay) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.5f;
         heatDecayPercent = 10;
         heatTransferInterval = 100.0f;  // Disable transfer for this test
@@ -286,7 +286,7 @@ describe(spec_temperature_decay) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.5f;
         heatDecayPercent = 10;
         heatTransferInterval = 100.0f;
@@ -308,7 +308,7 @@ describe(spec_temperature_decay) {
     it("higher heatDecayPercent should decay faster") {
         // Test slow decay
         SetupTestGrid();
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.5f;
         heatTransferInterval = 100.0f;
         temperatureEnabled = true;
@@ -322,7 +322,7 @@ describe(spec_temperature_decay) {
         
         // Test fast decay
         SetupTestGrid();
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         tempDecayInterval = 0.5f;
         heatTransferInterval = 100.0f;
         temperatureEnabled = true;
@@ -348,7 +348,7 @@ describe(spec_heat_physics) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         heatTransferInterval = 0.1f;
         tempDecayInterval = 100.0f;  // Disable decay
         heatRiseBoost = 200;         // Heat rises 2x faster

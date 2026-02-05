@@ -67,7 +67,7 @@ extern bool temperatureEnabled;     // Master toggle for temperature simulation
 extern int tempUpdateCount;         // Cells updated last tick (for debug/profiling)
 
 // Tweakable parameters (temps in Celsius, time in game-seconds)
-extern int ambientSurfaceTemp;      // Default surface temperature (default: 20)
+extern int ambientSurfaceTemp;      // Default surface temperature (default: 20) - use SetAmbientSurfaceTemp() to change
 extern int ambientDepthDecay;       // Temperature decrease per Z-level down (default: 0)
 extern float heatTransferInterval;  // Game-seconds between heat transfer steps
 extern float tempDecayInterval;     // Game-seconds between decay toward ambient steps
@@ -118,6 +118,9 @@ bool IsHot(int x, int y, int z);            // temp >= TEMP_HOT
 
 // Mark cell and neighbors as unstable (needs processing)
 void DestabilizeTemperature(int x, int y, int z);
+
+// Change ambient surface temperature (destabilizes all cells that now differ from ambient)
+void SetAmbientSurfaceTemp(int temp);
 
 // Utility: apply heat from fire (called by fire system)
 void ApplyFireHeat(int x, int y, int z, int fireLevel);

@@ -158,7 +158,7 @@ describe(steam_rising) {
         InitTemperature();
         
         // Set ambient hot so steam doesn't condense (need >= 96C / index 73)
-        ambientSurfaceTemp = 100;  // Hot ambient prevents condensation
+        SetAmbientSurfaceTemp(100);  // Hot ambient prevents condensation
         temperatureEnabled = true;
         
         // Run temperature a bit to stabilize hot ambient
@@ -282,7 +282,7 @@ describe(steam_condensation) {
         temperatureEnabled = true;
         
         // Set ambient to cold (so steam will condense)
-        ambientSurfaceTemp = 20;  // 20C, well below condensation point (60C)
+        SetAmbientSurfaceTemp(20);  // 20C, well below condensation point (60C)
         
         // Run temperature first to establish cold ambient
         for (int i = 0; i < 100; i++) UpdateTemperature();
@@ -361,7 +361,7 @@ describe(water_cycle) {
         int initialWater = CountTotalWater();
         
         // z=2, z=3: Cool ambient air for condensation
-        ambientSurfaceTemp = 20;  // Room temperature
+        SetAmbientSurfaceTemp(20);  // Room temperature
         
         // Run the simulation for a while
         for (int i = 0; i < 500; i++) {
@@ -411,7 +411,7 @@ describe(steam_spreading) {
         InitTemperature();
         
         // Set ambient hot so steam doesn't condense (need >= 96C / index 73)
-        ambientSurfaceTemp = 100;  // Hot ambient prevents condensation
+        SetAmbientSurfaceTemp(100);  // Hot ambient prevents condensation
         temperatureEnabled = true;
         
         // Place concentrated steam at center

@@ -58,6 +58,8 @@ void InitTemperature(void) {
         }
     }
     tempUpdateCount = 0;
+    tempSourceCount = 0;
+    tempUnstableCells = 0;
     heatTransferAccum = 0.0f;
     tempDecayAccum = 0.0f;
 }
@@ -84,6 +86,27 @@ int GetAmbientTemperature(int z) {
     if (ambient > TEMP_MAX) ambient = TEMP_MAX;
     
     return ambient;
+}
+
+void SetAmbientSurfaceTemp(int temp) {
+    if (temp == ambientSurfaceTemp) return;
+    
+    ambientSurfaceTemp = temp;
+    
+    // Recalculate tempUnstableCells since ambient changed
+    tempUnstableCells = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        int ambient = GetAmbientTemperature(z);
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                TempCell *cell = &temperatureGrid[z][y][x];
+                // A cell needs processing if unstable OR differs from ambient
+                if (!cell->stable || cell->current != ambient) {
+                    tempUnstableCells++;
+                }
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -250,39 +273,47 @@ void RemoveTemperatureSource(int x, int y, int z) {
 // Stability
 // ============================================================================
 
+// Helper to mark a single cell unstable and update counter
+static void MarkCellUnstable(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+    TempCell *cell = &temperatureGrid[z][y][x];
+    if (cell->stable) {
+        cell->stable = false;
+        int ambient = GetAmbientTemperature(z);
+        // Only increment if it was stable AND at ambient (otherwise already counted)
+        if (cell->current == ambient) {
+            tempUnstableCells++;
+        }
+    }
+}
+
 void DestabilizeTemperature(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
         return;
     }
     
     // Mark this cell unstable
-    temperatureGrid[z][y][x].stable = false;
+    MarkCellUnstable(x, y, z);
     
     // Mark orthogonal neighbors unstable
     for (int i = 0; i < 4; i++) {
         int nx = x + dx[i];
         int ny = y + dy[i];
-        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
-            temperatureGrid[z][ny][nx].stable = false;
-        }
+        MarkCellUnstable(nx, ny, z);
     }
     
     // Mark diagonal neighbors unstable
     for (int i = 0; i < 4; i++) {
         int nx = x + diag_dx[i];
         int ny = y + diag_dy[i];
-        if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
-            temperatureGrid[z][ny][nx].stable = false;
-        }
+        MarkCellUnstable(nx, ny, z);
     }
     
     // Also destabilize vertical neighbors
-    if (z > 0) {
-        temperatureGrid[z-1][y][x].stable = false;
-    }
-    if (z < gridDepth - 1) {
-        temperatureGrid[z+1][y][x].stable = false;
-    }
+    MarkCellUnstable(x, y, z - 1);
+    MarkCellUnstable(x, y, z + 1);
 }
 
 // ============================================================================
@@ -332,9 +363,11 @@ void UpdateTemperature(void) {
         return;
     }
     
-    // Note: We can't early-exit when tempSourceCount == 0 because cells still need
-    // to decay toward ambient temperature. A full optimization would require tracking
-    // how many cells differ from ambient.
+    // Early exit if no cells need processing (all stable at ambient, no sources)
+    if (tempUnstableCells == 0 && tempSourceCount == 0) {
+        tempUpdateCount = 0;
+        return;
+    }
     
     // Reset count only when we're actually going to process
     tempUpdateCount = 0;
@@ -479,7 +512,14 @@ void UpdateTemperature(void) {
                     cell->current = (int16_t)currentTemp;
                     DestabilizeTemperature(x, y, z);
                 } else {
-                    cell->stable = true;
+                    // Cell didn't change - mark stable
+                    if (!cell->stable) {
+                        cell->stable = true;
+                        // If now stable AND at ambient, decrement counter
+                        if (currentTemp == ambient) {
+                            tempUnstableCells--;
+                        }
+                    }
                 }
             }
         }

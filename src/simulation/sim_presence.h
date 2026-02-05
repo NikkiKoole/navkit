@@ -15,6 +15,7 @@ extern int steamActiveCells;
 extern int fireActiveCells;
 extern int smokeActiveCells;
 extern int tempSourceCount;
+extern int tempUnstableCells;  // Cells that are unstable OR differ from ambient
 
 void InitSimPresence(void);
 void RebuildSimPresenceCounts(void);  // Rebuild counters from grids (call after load)

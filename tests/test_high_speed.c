@@ -295,7 +295,7 @@ describe(high_speed_simulation_stability) {
         SetupOpenGrid();
         ResetTestState(12345);
         
-        ambientSurfaceTemp = 20;
+        SetAmbientSurfaceTemp(20);
         heatTransferInterval = 0.1f;
         tempDecayInterval = 0.5f;
         temperatureEnabled = true;
