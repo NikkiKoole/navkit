@@ -648,6 +648,46 @@ int GetStockpilePriority(int stockpileIdx) {
     return stockpiles[stockpileIdx].priority;
 }
 
+float GetStockpileFillRatio(int stockpileIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return 0.0f;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return 0.0f;
+
+    int totalItems = 0;
+    int activeCells = 0;
+    int totalSlots = sp->width * sp->height;
+
+    for (int i = 0; i < totalSlots; i++) {
+        if (!sp->cells[i]) continue;
+        activeCells++;
+        totalItems += sp->slotCounts[i];
+    }
+
+    int maxCapacity = activeCells * sp->maxStackSize;
+    if (maxCapacity <= 0) return 0.0f;
+    return (float)totalItems / (float)maxCapacity;
+}
+
+bool IsStockpileOverfull(int stockpileIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return false;
+
+    int totalItems = 0;
+    int activeCells = 0;
+    int totalSlots = sp->width * sp->height;
+
+    for (int i = 0; i < totalSlots; i++) {
+        if (!sp->cells[i]) continue;
+        activeCells++;
+        totalItems += sp->slotCounts[i];
+        if (sp->slotCounts[i] > sp->maxStackSize) return true;
+    }
+
+    int maxCapacity = activeCells * sp->maxStackSize;
+    return totalItems > maxCapacity;
+}
+
 int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSlotX, int* outSlotY) {
     if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return -1;
     if (currentStockpileIdx < 0 || currentStockpileIdx >= MAX_STOCKPILES) return -1;

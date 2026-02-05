@@ -75,6 +75,8 @@ int GetWaterLevel(int x, int y, int z);
 bool HasWater(int x, int y, int z);
 bool IsUnderwater(int x, int y, int z, int minDepth);  // level >= minDepth
 bool IsFull(int x, int y, int z);                      // level == 7
+bool IsWaterSourceAt(int x, int y, int z);
+bool IsWaterDrainAt(int x, int y, int z);
 
 // Freezing
 bool IsWaterFrozen(int x, int y, int z);               // Check if water is frozen

@@ -119,6 +119,10 @@ void DrawUI(void) {
         y += 22;
         ToggleBool(x, y, "Show Chunks", &showChunkBoundaries);
         y += 22;
+        ToggleBool(x, y, "Show Job Lines", &showJobLines);
+        y += 22;
+        ToggleBool(x, y, "Show Sim Sources", &showSimSources);
+        y += 22;
         ToggleBool(x, y, "Cull Drawing", &cullDrawing);
     }
     y += 22;

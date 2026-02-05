@@ -32,14 +32,17 @@ bool showChunkBoundaries = false;
 bool showMovers = true;
 bool usePixelPerfectMovers = true;
 bool showMoverPaths = false;
+bool showJobLines = false;
 bool showNeighborCounts = false;
 bool showOpenArea = false;
 bool showKnotDetection = false;
 bool showStuckDetection = false;
 bool cullDrawing = true;
 bool showItems = true;
+bool showSimSources = false;
 bool showHelpPanel = false;
 bool paused = false;
+int followMoverIdx = -1;
 
 int pathAlgorithm = 1;
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -394,12 +397,15 @@ void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
 void DrawSteam(void);
+void DrawTemperature(void);
+void DrawSimSources(void);
 void DrawChunkBoundaries(void);
 void DrawEntrances(void);
 void DrawGraph(void);
 void DrawPath(void);
 void DrawAgents(void);
 void DrawMovers(void);
+void DrawJobLines(void);
 void DrawItems(void);
 void DrawGatherZones(void);
 void DrawStockpileTiles(void);
@@ -895,6 +901,18 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (followMoverIdx >= 0) {
+            if (followMoverIdx >= moverCount || !movers[followMoverIdx].active) {
+                followMoverIdx = -1;
+            } else {
+                float centerX = GetScreenWidth() * 0.5f;
+                float centerY = GetScreenHeight() * 0.5f;
+                offset.x = centerX - movers[followMoverIdx].x * zoom;
+                offset.y = centerY - movers[followMoverIdx].y * zoom;
+                currentViewZ = (int)movers[followMoverIdx].z;
+            }
+        }
+
         PROFILE_BEGIN(Render);
         BeginDrawing();
         ClearBackground(BLACK);
@@ -907,6 +925,7 @@ int main(int argc, char** argv) {
         DrawSmoke();
         DrawSteam();
         DrawTemperature();
+        DrawSimSources();
         PROFILE_END(DrawCells);
         if (inputAction == ACTION_WORK_GATHER) {
             DrawGatherZones();
@@ -936,6 +955,7 @@ int main(int argc, char** argv) {
             DrawMovers();
             PROFILE_END(DrawMovers);
         }
+        DrawJobLines();
 
         // Draw workshop preview (3x3) when in workshop placement mode
         if (inputAction == ACTION_DRAW_WORKSHOP && !isDragging) {

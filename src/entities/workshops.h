@@ -23,6 +23,14 @@ typedef enum {
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
+// Workshop visual state (for UI diagnostics)
+typedef enum {
+    WORKSHOP_VISUAL_WORKING,
+    WORKSHOP_VISUAL_OUTPUT_FULL,
+    WORKSHOP_VISUAL_INPUT_EMPTY,
+    WORKSHOP_VISUAL_NO_WORKER,
+} WorkshopVisualState;
+
 // Recipe: defines what a workshop can make
 typedef struct {
     const char* name;
@@ -67,6 +75,12 @@ typedef struct {
     
     // Work state
     int assignedCrafter;  // mover index, -1 = none
+
+    // Diagnostics
+    WorkshopVisualState visualState;
+    float inputStarvationTime;
+    float outputBlockedTime;
+    float lastWorkTime;
     
     // Tile positions (absolute)
     int workTileX, workTileY;    // where crafter stands to work
@@ -88,6 +102,7 @@ extern int stonecutterRecipeCount;
 void ClearWorkshops(void);
 int CreateWorkshop(int x, int y, int z, WorkshopType type);
 void DeleteWorkshop(int index);
+void UpdateWorkshopDiagnostics(float dt);
 
 // Recipe lookup
 Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);

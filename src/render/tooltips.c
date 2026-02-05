@@ -7,6 +7,25 @@
 #include "../entities/jobs.h"
 #include "../world/designations.h"
 
+static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
+    if (ratio < 0.0f) ratio = 0.0f;
+    if (ratio > 1.0f) ratio = 1.0f;
+    int filled = (int)(ratio * width + 0.5f);
+    if (filled > width) filled = width;
+
+    char bar[32];
+    int idx = 0;
+    bar[idx++] = '[';
+    for (int i = 0; i < width; i++) {
+        bar[idx++] = (i < filled) ? '|' : ' ';
+    }
+    bar[idx++] = ']';
+    bar[idx] = '\0';
+
+    int percent = (int)(ratio * 100.0f + 0.5f);
+    snprintf(out, outSize, "%s %d%%", bar, percent);
+}
+
 // Draw stockpile tooltip at mouse position
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (spIdx < 0 || spIdx >= MAX_STOCKPILES) return;
@@ -38,6 +57,9 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     const char* priorityText = TextFormat("Priority: %d", sp->priority);
     const char* stackText = TextFormat("Stack size: %d", sp->maxStackSize);
     const char* storageText = TextFormat("Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
+    char fillMeter[64];
+    BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
+    const char* fillText = TextFormat("Fill: %s", fillMeter);
     const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     const char* helpText = "+/- priority, [/] stack, R/G/B filter";
 
@@ -46,9 +68,10 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int w1 = MeasureText(priorityText, 14);
     int w2 = MeasureText(stackText, 14);
     int w3 = MeasureText(storageText, 14);
-    int w4 = MeasureText(cellText, 14);
-    int w5 = MeasureText("Filters: R G B O", 14);
-    int w6 = MeasureText(helpText, 12);
+    int w4 = MeasureText(fillText, 14);
+    int w5 = MeasureText(cellText, 14);
+    int w6 = MeasureText("Filters: R G B O", 14);
+    int w7 = MeasureText(helpText, 12);
     int maxW = w0;
     if (w1 > maxW) maxW = w1;
     if (w2 > maxW) maxW = w2;
@@ -56,10 +79,12 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (w4 > maxW) maxW = w4;
     if (w5 > maxW) maxW = w5;
     if (w6 > maxW) maxW = w6;
+    if (w7 > maxW) maxW = w7;
 
     int padding = 6;
     int boxW = maxW + padding * 2;
-    int boxH = 14 * 6 + 12 + padding * 2 + 10;
+    int lineH = 16;
+    int boxH = lineH * 8 + padding * 2;
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -82,8 +107,11 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(stackText, tx + padding, y, 14, WHITE);
     y += 16;
 
-    bool overfull = totalItems > maxCapacity;
+    bool overfull = IsStockpileOverfull(spIdx);
     DrawTextShadow(storageText, tx + padding, y, 14, overfull ? RED : WHITE);
+    y += 16;
+
+    DrawTextShadow(fillText, tx + padding, y, 14, WHITE);
     y += 16;
 
     bool cellFull = cellCount >= sp->maxStackSize;
@@ -543,7 +571,7 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     int recipeCount;
     Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
 
-    for (int b = 0; b < ws->billCount && lineCount < 11; b++) {
+    for (int b = 0; b < ws->billCount && lineCount < 15; b++) {
         Bill* bill = &ws->bills[b];
         const char* recipeName = "Unknown";
         if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {

@@ -212,6 +212,11 @@ int GetCellFuel(int x, int y, int z) {
     return fireGrid[z][y][x].fuel;
 }
 
+bool IsFireSourceAt(int x, int y, int z) {
+    if (!FireInBounds(x, y, z)) return false;
+    return fireGrid[z][y][x].isSource;
+}
+
 // Check if any adjacent cell has water
 static bool HasAdjacentWater(int x, int y, int z) {
     if (HasWater(x-1, y, z)) return true;
