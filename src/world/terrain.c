@@ -336,6 +336,28 @@ typedef struct {
     int x, y, z;
 } FloodNode;
 
+typedef struct {
+    int size;
+    int minZ;
+    int maxZ;
+    int floors;
+    int ladders;
+    int ramps;
+    int waterAdj;
+    int boundary;
+    FloodNode sample;
+} ComponentInfo;
+
+static ComponentInfo* componentSortInfos = NULL;
+
+static int CompareComponentSizeAsc(const void* a, const void* b) {
+    int ia = *(const int*)a;
+    int ib = *(const int*)b;
+    int sa = componentSortInfos[ia].size;
+    int sb = componentSortInfos[ib].size;
+    return (sa > sb) - (sa < sb);
+}
+
 static inline int FloodIndex(int x, int y, int z) {
     return (z * gridHeight + y) * gridWidth + x;
 }
@@ -402,7 +424,108 @@ static bool CanStepTo(int fromX, int fromY, int fromZ, int toX, int toY, int toZ
     return false;
 }
 
+static int FloodFillComponent(int startX, int startY, int startZ, uint8_t* visited, FloodNode* queue,
+                              ComponentInfo* info) {
+    int head = 0;
+    int tail = 0;
+    queue[tail++] = (FloodNode){startX, startY, startZ};
+    visited[FloodIndex(startX, startY, startZ)] = 1;
+
+    if (info) {
+        info->size = 0;
+        info->minZ = gridDepth;
+        info->maxZ = -1;
+        info->floors = 0;
+        info->ladders = 0;
+        info->ramps = 0;
+        info->waterAdj = 0;
+        info->boundary = 0;
+        info->sample = (FloodNode){startX, startY, startZ};
+    }
+
+    while (head < tail) {
+        FloodNode node = queue[head++];
+        if (info) {
+            info->size++;
+            if (node.z < info->minZ) info->minZ = node.z;
+            if (node.z > info->maxZ) info->maxZ = node.z;
+            if (HAS_FLOOR(node.x, node.y, node.z)) info->floors++;
+            if (CellIsLadder(grid[node.z][node.y][node.x])) info->ladders++;
+            if (CellIsRamp(grid[node.z][node.y][node.x])) info->ramps++;
+            if (HasWater(node.x, node.y, node.z)) info->waterAdj = 1;
+            if (node.x == 0 || node.x == gridWidth - 1 || node.y == 0 || node.y == gridHeight - 1) {
+                info->boundary = 1;
+            }
+        }
+
+        static const int dxs[4] = {-1, 1, 0, 0};
+        static const int dys[4] = {0, 0, -1, 1};
+        for (int i = 0; i < 4; i++) {
+            int nx = node.x + dxs[i];
+            int ny = node.y + dys[i];
+            int nz = node.z;
+            if (!CanStepTo(node.x, node.y, node.z, nx, ny, nz)) continue;
+            int nidx = FloodIndex(nx, ny, nz);
+            if (visited[nidx]) continue;
+            visited[nidx] = 1;
+            queue[tail++] = (FloodNode){nx, ny, nz};
+        }
+
+        if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z + 1)) {
+            int nidx = FloodIndex(node.x, node.y, node.z + 1);
+            if (!visited[nidx]) {
+                visited[nidx] = 1;
+                queue[tail++] = (FloodNode){node.x, node.y, node.z + 1};
+            }
+        }
+        if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z - 1)) {
+            int nidx = FloodIndex(node.x, node.y, node.z - 1);
+            if (!visited[nidx]) {
+                visited[nidx] = 1;
+                queue[tail++] = (FloodNode){node.x, node.y, node.z - 1};
+            }
+        }
+
+        // Ramp up from ramp cell to exit
+        CellType cell = grid[node.z][node.y][node.x];
+        if (CellIsDirectionalRamp(cell)) {
+            int dx, dy;
+            GetRampHighSideOffset(cell, &dx, &dy);
+            int nx = node.x + dx;
+            int ny = node.y + dy;
+            int nz = node.z + 1;
+            if (CanStepTo(node.x, node.y, node.z, nx, ny, nz)) {
+                int nidx = FloodIndex(nx, ny, nz);
+                if (!visited[nidx]) {
+                    visited[nidx] = 1;
+                    queue[tail++] = (FloodNode){nx, ny, nz};
+                }
+            }
+        }
+
+        // Ramp down to ramp cell below (if exit here)
+        int rx, ry;
+        if (FindRampBelowExitTo(node.x, node.y, node.z, &rx, &ry)) {
+            int nz = node.z - 1;
+            if (CanStepTo(node.x, node.y, node.z, rx, ry, nz)) {
+                int nidx = FloodIndex(rx, ry, nz);
+                if (!visited[nidx]) {
+                    visited[nidx] = 1;
+                    queue[tail++] = (FloodNode){rx, ry, nz};
+                }
+            }
+        }
+    }
+
+    return tail;
+}
+
 static void ReportWalkableComponents(const char* tag) {
+    bool doReport = hillsWaterConnectivityReport;
+    bool doFix = hillsWaterConnectivityFixSmall;
+    int smallThreshold = hillsWaterConnectivitySmallThreshold;
+    if (!doReport && !doFix) return;
+
     int cellCount = gridWidth * gridHeight * gridDepth;
     uint8_t* visited = (uint8_t*)calloc(cellCount, sizeof(uint8_t));
     if (!visited) return;
@@ -422,11 +545,23 @@ static void ReportWalkableComponents(const char* tag) {
         }
     }
 
+    ComponentInfo* infos = (ComponentInfo*)malloc(sizeof(ComponentInfo) * cellCount);
+    if (!infos) {
+        free(queue);
+        free(visited);
+        return;
+    }
+
     int components = 0;
     int largest = 0;
+    int largestIndex = -1;
     int smallComponents = 0;
     int smallCells = 0;
-    const int smallThreshold = 30;
+    int floorHeavy = 0;
+    int rampComponents = 0;
+    int ladderComponents = 0;
+    int waterAdjComponents = 0;
+    int boundaryComponents = 0;
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -435,91 +570,111 @@ static void ReportWalkableComponents(const char* tag) {
                 int startIdx = FloodIndex(x, y, z);
                 if (visited[startIdx]) continue;
 
-                components++;
-                int head = 0;
-                int tail = 0;
-                queue[tail++] = (FloodNode){x, y, z};
-                visited[startIdx] = 1;
+                ComponentInfo info;
+                int size = FloodFillComponent(x, y, z, visited, queue, &info);
+                infos[components] = info;
 
-                int size = 0;
-                while (head < tail) {
-                    FloodNode node = queue[head++];
-                    size++;
-
-                    static const int dxs[4] = {-1, 1, 0, 0};
-                    static const int dys[4] = {0, 0, -1, 1};
-                    for (int i = 0; i < 4; i++) {
-                        int nx = node.x + dxs[i];
-                        int ny = node.y + dys[i];
-                        int nz = node.z;
-                        if (!CanStepTo(node.x, node.y, node.z, nx, ny, nz)) continue;
-                        int nidx = FloodIndex(nx, ny, nz);
-                        if (visited[nidx]) continue;
-                        visited[nidx] = 1;
-                        queue[tail++] = (FloodNode){nx, ny, nz};
-                    }
-
-                    // Ladder/ramp vertical steps
-                    if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z + 1)) {
-                        int nidx = FloodIndex(node.x, node.y, node.z + 1);
-                        if (!visited[nidx]) {
-                            visited[nidx] = 1;
-                            queue[tail++] = (FloodNode){node.x, node.y, node.z + 1};
-                        }
-                    }
-                    if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z - 1)) {
-                        int nidx = FloodIndex(node.x, node.y, node.z - 1);
-                        if (!visited[nidx]) {
-                            visited[nidx] = 1;
-                            queue[tail++] = (FloodNode){node.x, node.y, node.z - 1};
-                        }
-                    }
-
-                    // Ramp up from ramp cell to exit
-                    CellType cell = grid[node.z][node.y][node.x];
-                    if (CellIsDirectionalRamp(cell)) {
-                        int dx, dy;
-                        GetRampHighSideOffset(cell, &dx, &dy);
-                        int nx = node.x + dx;
-                        int ny = node.y + dy;
-                        int nz = node.z + 1;
-                        if (CanStepTo(node.x, node.y, node.z, nx, ny, nz)) {
-                            int nidx = FloodIndex(nx, ny, nz);
-                            if (!visited[nidx]) {
-                                visited[nidx] = 1;
-                                queue[tail++] = (FloodNode){nx, ny, nz};
-                            }
-                        }
-                    }
-
-                    // Ramp down to ramp cell below (if exit here)
-                    int rx, ry;
-                    if (FindRampBelowExitTo(node.x, node.y, node.z, &rx, &ry)) {
-                        int nz = node.z - 1;
-                        if (CanStepTo(node.x, node.y, node.z, rx, ry, nz)) {
-                            int nidx = FloodIndex(rx, ry, nz);
-                            if (!visited[nidx]) {
-                                visited[nidx] = 1;
-                                queue[tail++] = (FloodNode){rx, ry, nz};
-                            }
-                        }
-                    }
+                if (size > largest) {
+                    largest = size;
+                    largestIndex = components;
                 }
-
-                if (size > largest) largest = size;
                 if (size < smallThreshold) {
                     smallComponents++;
                     smallCells += size;
                 }
+                if (info.floors * 10 >= size * 6) floorHeavy++;
+                if (info.ramps > 0) rampComponents++;
+                if (info.ladders > 0) ladderComponents++;
+                if (info.waterAdj) waterAdjComponents++;
+                if (info.boundary) boundaryComponents++;
+
+                components++;
             }
         }
     }
 
     int unreachable = totalWalkable - largest;
     float pct = (totalWalkable > 0) ? (100.0f * (float)unreachable / (float)totalWalkable) : 0.0f;
-    TraceLog(LOG_INFO, "%s connectivity: components=%d largest=%d unreachable=%d (%.1f%%) small=%d cells=%d",
-             tag, components, largest, unreachable, pct, smallComponents, smallCells);
+    if (doReport) {
+        TraceLog(LOG_INFO, "%s connectivity: components=%d largest=%d unreachable=%d (%.1f%%) small=%d cells=%d",
+                 tag, components, largest, unreachable, pct, smallComponents, smallCells);
+        TraceLog(LOG_INFO, "%s connectivity detail: floor-heavy=%d ladders=%d ramps=%d water-adj=%d boundary=%d",
+                 tag, floorHeavy, ladderComponents, rampComponents, waterAdjComponents, boundaryComponents);
 
+        if (components > 0) {
+            int* order = (int*)malloc(sizeof(int) * components);
+            if (order) {
+                for (int i = 0; i < components; i++) order[i] = i;
+                componentSortInfos = infos;
+                qsort(order, components, sizeof(int), CompareComponentSizeAsc);
+
+                int reportSmall = components < 5 ? components : 5;
+                for (int i = 0; i < reportSmall; i++) {
+                    int idx = order[i];
+                    ComponentInfo* ci = &infos[idx];
+                    TraceLog(LOG_INFO, "%s small[%d]: size=%d z=%d..%d floors=%d ramps=%d ladders=%d water=%d boundary=%d sample=(%d,%d,z%d)",
+                             tag, i, ci->size, ci->minZ, ci->maxZ, ci->floors, ci->ramps, ci->ladders,
+                             ci->waterAdj, ci->boundary, ci->sample.x, ci->sample.y, ci->sample.z);
+                }
+
+                int reportLarge = components < 3 ? components : 3;
+                for (int i = 0; i < reportLarge; i++) {
+                    int idx = order[components - 1 - i];
+                    ComponentInfo* ci = &infos[idx];
+                    TraceLog(LOG_INFO, "%s large[%d]: size=%d z=%d..%d floors=%d ramps=%d ladders=%d sample=(%d,%d,z%d)",
+                             tag, i, ci->size, ci->minZ, ci->maxZ, ci->floors, ci->ramps, ci->ladders,
+                             ci->sample.x, ci->sample.y, ci->sample.z);
+                }
+                free(order);
+            }
+        }
+    }
+
+    if (doFix && smallThreshold > 0 && components > 1) {
+        memset(visited, 0, cellCount);
+        int fixedComponents = 0;
+        int fixedCells = 0;
+        int compIndex = 0;
+
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    if (!IsCellWalkableAt(z, y, x)) continue;
+                    int startIdx = FloodIndex(x, y, z);
+                    if (visited[startIdx]) continue;
+
+                    int size = FloodFillComponent(x, y, z, visited, queue, NULL);
+                    if (compIndex != largestIndex && size < smallThreshold) {
+                        for (int i = 0; i < size; i++) {
+                            FloodNode node = queue[i];
+                            CLEAR_FLOOR(node.x, node.y, node.z);
+                            if (node.z == 0) {
+                                grid[node.z][node.y][node.x] = CELL_DIRT;
+                            } else {
+                                grid[node.z][node.y][node.x] = CELL_WALL;
+                            }
+                            SET_CELL_SURFACE(node.x, node.y, node.z, SURFACE_BARE);
+                            if (HasWater(node.x, node.y, node.z)) {
+                                SetWaterLevel(node.x, node.y, node.z, 0);
+                                SetWaterSource(node.x, node.y, node.z, false);
+                                SetWaterDrain(node.x, node.y, node.z, false);
+                            }
+                        }
+                        fixedComponents++;
+                        fixedCells += size;
+                    }
+                    compIndex++;
+                }
+            }
+        }
+
+        if (doReport) {
+            TraceLog(LOG_INFO, "%s connectivity fix: filled %d components (%d cells) under %d",
+                     tag, fixedComponents, fixedCells, smallThreshold);
+        }
+    }
+
+    free(infos);
     free(queue);
     free(visited);
 }

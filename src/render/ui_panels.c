@@ -196,6 +196,15 @@ void DrawUI(void) {
             DraggableFloatT(x, y, "Wetness Bias", &hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
                 "HillsSoilsWater: wetness boost near water (peat/clay bias).");
             y += 22;
+            ToggleBoolT(x, y, "Conn Report", &hillsWaterConnectivityReport,
+                "Logs walkability connectivity stats after generation.");
+            y += 22;
+            ToggleBoolT(x, y, "Fix Tiny Pockets", &hillsWaterConnectivityFixSmall,
+                "Fills tiny disconnected walkable pockets after generation.");
+            y += 22;
+            DraggableIntT(x, y, "Tiny Size", &hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
+                "Size threshold for tiny pocket fill (cells).");
+            y += 22;
         }
         if (PushButton(x, y, "Randomize Seed")) {
             worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);

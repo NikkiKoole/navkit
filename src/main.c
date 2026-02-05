@@ -66,6 +66,9 @@ int hillsWaterRiverWidth = 2;     // radius-ish (1-4)
 int hillsWaterLakeCount = 2;
 int hillsWaterLakeRadius = 6;     // 3-12
 float hillsWaterWetnessBias = 0.25f; // additive near-water wetness boost
+bool hillsWaterConnectivityReport = true;
+bool hillsWaterConnectivityFixSmall = false;
+int hillsWaterConnectivitySmallThreshold = 30;
 
 bool sectionView = false;
 bool sectionPathfinding = false;

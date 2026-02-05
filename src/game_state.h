@@ -113,6 +113,9 @@ extern int hillsWaterRiverWidth;
 extern int hillsWaterLakeCount;
 extern int hillsWaterLakeRadius;
 extern float hillsWaterWetnessBias;
+extern bool hillsWaterConnectivityReport;
+extern bool hillsWaterConnectivityFixSmall;
+extern int hillsWaterConnectivitySmallThreshold;
 
 // UI section collapse state
 extern bool sectionView;
