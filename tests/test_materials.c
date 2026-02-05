@@ -123,8 +123,8 @@ describe(cell_def_drops) {
         expect(CellDropsItem(CELL_AIR) == ITEM_NONE);
     }
     
-    it("should have ITEM_NONE for dirt") {
-        expect(CellDropsItem(CELL_DIRT) == ITEM_NONE);
+    it("should have ITEM_DIRT for dirt") {
+        expect(CellDropsItem(CELL_DIRT) == ITEM_DIRT);
     }
     
     it("should have ITEM_NONE for bedrock") {
@@ -137,8 +137,11 @@ describe(cell_def_drops) {
     
     it("should have dropCount of 0 for non-mineable cells") {
         expect(CellDropCount(CELL_AIR) == 0);
-        expect(CellDropCount(CELL_DIRT) == 0);
         expect(CellDropCount(CELL_BEDROCK) == 0);
+    }
+
+    it("should have dropCount of 1 for dirt") {
+        expect(CellDropCount(CELL_DIRT) == 1);
     }
 }
 
@@ -151,8 +154,8 @@ describe(item_def_materials) {
         expect(ItemProducesMaterial(ITEM_STONE_BLOCKS) == MAT_STONE);
     }
     
-    it("should produce MAT_STONE from raw stone (orange)") {
-        expect(ItemProducesMaterial(ITEM_ROCK) == MAT_STONE);
+    it("should produce MAT_NONE from raw stone (requires stonecutter)") {
+        expect(ItemProducesMaterial(ITEM_ROCK) == MAT_NONE);
     }
     
     it("should produce MAT_NONE from non-building items") {

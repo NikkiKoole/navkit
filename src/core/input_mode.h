@@ -30,6 +30,7 @@ typedef enum {
     ACTION_DRAW_RAMP,
     ACTION_DRAW_STOCKPILE,
     ACTION_DRAW_DIRT,
+    ACTION_DRAW_ROCK,
     ACTION_DRAW_WORKSHOP,
     // Work > Dig actions
     ACTION_WORK_MINE,

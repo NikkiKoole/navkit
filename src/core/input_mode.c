@@ -65,6 +65,7 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_RAMP:       return "RAMP";
         case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
         case ACTION_DRAW_DIRT:       return "DIRT";
+        case ACTION_DRAW_ROCK:       return "ROCK";
         case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
         case ACTION_WORK_MINE:         return "MINE";
         case ACTION_WORK_CHANNEL:      return "CHANNEL";
@@ -113,7 +114,7 @@ const char* InputMode_GetBarText(void) {
         // In a mode, no action selected - show available actions/submodes
         switch (inputMode) {
             case MODE_DRAW:
-                return "DRAW: [W]all  [F]loor  [L]adder  [S]tockpile    [ESC]Back";
+                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  roc[k]  d[I]rt  s[T]one workshop    [ESC]Back";
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
                     return "WORK: [D]ig  [B]uild  [H]arvest  [G]ather    [ESC]Back";
@@ -170,6 +171,10 @@ const char* InputMode_GetBarText(void) {
                 "%s: L-drag place  [ESC]Back", prefix);
             break;
         case ACTION_DRAW_DIRT:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
+            break;
+        case ACTION_DRAW_ROCK:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
             break;
@@ -287,6 +292,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
                 n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
                 n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
+                n = AddItem(items, n, "rocK", KEY_K, 3, false, false, false);
                 n = AddItem(items, n, "sTone workshop", KEY_T, 1, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
@@ -384,6 +390,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_RAMP:      actionKey = KEY_R; break;
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
+        case ACTION_DRAW_ROCK:      actionKey = KEY_K; actionUnderline = 3; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
         // Dig actions
         case ACTION_WORK_MINE:         actionKey = KEY_M; break;
@@ -442,6 +449,10 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;
         case ACTION_DRAW_DIRT:
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
+            break;
+        case ACTION_DRAW_ROCK:
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;

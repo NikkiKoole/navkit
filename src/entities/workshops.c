@@ -113,13 +113,14 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                 }
             }
             
-            // Second pass: push movers out, invalidate paths through blocked tiles
+            // Second pass: push movers out, invalidate paths, mark HPA* chunks dirty
             // Done separately so movers aren't pushed into tiles that will be blocked
             for (int ty = 0; ty < ws->height; ty++) {
                 for (int tx = 0; tx < ws->width; tx++) {
                     if (ws->template[ty * ws->width + tx] == WT_BLOCK) {
                         PushMoversOutOfCell(x + tx, y + ty, z);
                         InvalidatePathsThroughCell(x + tx, y + ty, z);
+                        MarkChunkDirty(x + tx, y + ty, z);  // Update HPA* graph
                     }
                 }
             }
@@ -135,11 +136,12 @@ void DeleteWorkshop(int index) {
     if (index >= 0 && index < MAX_WORKSHOPS && workshops[index].active) {
         Workshop* ws = &workshops[index];
         
-        // Clear blocking flags for machinery tiles
+        // Clear blocking flags for machinery tiles and mark HPA* chunks dirty
         for (int ty = 0; ty < ws->height; ty++) {
             for (int tx = 0; tx < ws->width; tx++) {
                 if (ws->template[ty * ws->width + tx] == WT_BLOCK) {
                     CLEAR_CELL_FLAG(ws->x + tx, ws->y + ty, ws->z, CELL_FLAG_WORKSHOP_BLOCK);
+                    MarkChunkDirty(ws->x + tx, ws->y + ty, ws->z);  // Update HPA* graph
                 }
             }
         }

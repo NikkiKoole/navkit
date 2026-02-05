@@ -223,6 +223,53 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    int skipped = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (IsWorkshopTile(dx, dy, z)) {
+                skipped++;
+                continue;
+            }
+
+            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_RAW) {
+                grid[z][dy][dx] = CELL_WALL;
+                SetWallMaterial(dx, dy, z, MAT_RAW);
+                CLEAR_FLOOR(dx, dy, z);
+                SetFloorMaterial(dx, dy, z, MAT_NONE);
+                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                SetWaterLevel(dx, dy, z, 0);
+                SetWaterSource(dx, dy, z, false);
+                SetWaterDrain(dx, dy, z, false);
+                DestabilizeWater(dx, dy, z);
+                count++;
+            }
+
+            if (count > 0) {
+                for (int i = 0; i < moverCount; i++) {
+                    Mover* m = &movers[i];
+                    if (!m->active) continue;
+                    for (int j = m->pathIndex; j >= 0; j--) {
+                        if (m->path[j].x == dx && m->path[j].y == dy && m->path[j].z == z) {
+                            m->needsRepath = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d rock%s", count, count > 1 ? " tiles" : " tile"), GREEN);
+    }
+    if (skipped > 0) {
+        AddMessage(TextFormat("Skipped %d cell%s (workshop)", skipped, skipped > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1294,6 +1341,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_RAMP; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
                 if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
+                if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_ROCK; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
                 break;
             case MODE_WORK:
@@ -1359,6 +1407,7 @@ void HandleInput(void) {
         case ACTION_DRAW_RAMP:      backOneLevel = CheckKey(KEY_R); break;
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
+        case ACTION_DRAW_ROCK:      backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         // Dig actions
         case ACTION_WORK_MINE:         backOneLevel = CheckKey(KEY_M); break;
@@ -1506,6 +1555,10 @@ void HandleInput(void) {
             case ACTION_DRAW_DIRT:
                 if (leftClick) ExecuteBuildDirt(x1, y1, x2, y2, z);
                 else ExecuteEraseDirt(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_ROCK:
+                if (leftClick) ExecuteBuildRock(x1, y1, x2, y2, z);
+                else ExecuteErase(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_WORKSHOP:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z);
