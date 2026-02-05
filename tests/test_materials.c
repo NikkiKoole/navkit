@@ -105,7 +105,7 @@ describe(material_grid_initialization) {
 
 describe(cell_def_drops) {
     it("should have dropsItem for wall") {
-        expect(CellDropsItem(CELL_WALL) == ITEM_ORANGE);
+        expect(CellDropsItem(CELL_WALL) == ITEM_ROCK);
     }
     
     // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD instead
@@ -152,7 +152,7 @@ describe(item_def_materials) {
     }
     
     it("should produce MAT_STONE from raw stone (orange)") {
-        expect(ItemProducesMaterial(ITEM_ORANGE) == MAT_STONE);
+        expect(ItemProducesMaterial(ITEM_ROCK) == MAT_STONE);
     }
     
     it("should produce MAT_NONE from non-building items") {
@@ -306,8 +306,8 @@ describe(mining_material_drops) {
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_ORANGE (default wall drop)
-        int orangeCount = CountItemsOfType(ITEM_ORANGE);
+        // Should have spawned ITEM_ROCK (default wall drop)
+        int orangeCount = CountItemsOfType(ITEM_ROCK);
         expect(orangeCount == 1);
     }
     
@@ -326,8 +326,8 @@ describe(mining_material_drops) {
         int woodCount = CountItemsOfType(ITEM_WOOD);
         expect(woodCount == 1);
         
-        // Should NOT have spawned ITEM_ORANGE
-        int orangeCount = CountItemsOfType(ITEM_ORANGE);
+        // Should NOT have spawned ITEM_ROCK
+        int orangeCount = CountItemsOfType(ITEM_ROCK);
         expect(orangeCount == 0);
     }
     
@@ -383,7 +383,7 @@ describe(mining_material_drops) {
             "#...\n", 4, 1);
         
         // Natural wall
-        expect(GetWallDropItem(0, 0, 0) == ITEM_ORANGE);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_ROCK);
         
         // Wood wall
         SetWallMaterial(0, 0, 0, MAT_WOOD);
@@ -545,7 +545,7 @@ describe(build_mine_cycle) {
         expect(grid[0][0][1] == CELL_AIR);
         expect(GetWallMaterial(1, 0, 0) == MAT_NONE);
         expect(CountItemsOfType(ITEM_WOOD) == 1);
-        expect(CountItemsOfType(ITEM_ORANGE) == 0);
+        expect(CountItemsOfType(ITEM_ROCK) == 0);
     }
     
     it("should complete full cycle: build stone wall then mine it") {
@@ -570,7 +570,7 @@ describe(build_mine_cycle) {
         
         // Should drop stone blocks, not raw stone
         expect(CountItemsOfType(ITEM_STONE_BLOCKS) == 1);
-        expect(CountItemsOfType(ITEM_ORANGE) == 0);
+        expect(CountItemsOfType(ITEM_ROCK) == 0);
     }
 }
 

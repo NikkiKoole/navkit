@@ -19,6 +19,8 @@ void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 // Global variables needed by terrain generators
 #include <stdint.h>
 uint64_t worldSeed = 12345;
+float rampNoiseScale = 0.04f;
+float rampDensity = 0.6f;
 
 // World systems
 #include "../src/world/cell_defs.c"

@@ -47,6 +47,8 @@ static int MaterialWallSprite(MaterialType mat) {
             return SPRITE_stone_wall;
         case MAT_DIRT:
             return SPRITE_dirt_block;
+        case MAT_RAW:
+            return SPRITE_rock;
         default:
             return SPRITE_wall;
     }

@@ -1012,7 +1012,7 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_R)) { sp->allowedTypes[ITEM_RED] = !sp->allowedTypes[ITEM_RED]; AddMessage(TextFormat("Red: %s", sp->allowedTypes[ITEM_RED] ? "ON" : "OFF"), RED); return; }
             if (IsKeyPressed(KEY_G)) { sp->allowedTypes[ITEM_GREEN] = !sp->allowedTypes[ITEM_GREEN]; AddMessage(TextFormat("Green: %s", sp->allowedTypes[ITEM_GREEN] ? "ON" : "OFF"), GREEN); return; }
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
-            if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ORANGE] = !sp->allowedTypes[ITEM_ORANGE]; AddMessage(TextFormat("Orange: %s", sp->allowedTypes[ITEM_ORANGE] ? "ON" : "OFF"), ORANGE); return; }
+            if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ROCK] = !sp->allowedTypes[ITEM_ROCK]; AddMessage(TextFormat("Rock: %s", sp->allowedTypes[ITEM_ROCK] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
             if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
             if (IsKeyPressed(KEY_T)) { sp->allowedTypes[ITEM_SAPLING] = !sp->allowedTypes[ITEM_SAPLING]; AddMessage(TextFormat("Sapling: %s", sp->allowedTypes[ITEM_SAPLING] ? "ON" : "OFF"), GREEN); return; }

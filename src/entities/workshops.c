@@ -11,7 +11,7 @@ int workshopCount = 0;
 
 // Stonecutter recipes: 1 ORANGE -> 2 STONE_BLOCKS
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ORANGE, 1, ITEM_STONE_BLOCKS, 2, 3.0f },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_STONE_BLOCKS, 2, 3.0f },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 

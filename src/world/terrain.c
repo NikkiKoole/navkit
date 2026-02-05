@@ -2824,7 +2824,7 @@ void GenerateCraftingTest(void) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
             SetStockpileFilter(inputSp, t, false);
         }
-        SetStockpileFilter(inputSp, ITEM_ORANGE, true);
+        SetStockpileFilter(inputSp, ITEM_ROCK, true);
         SetStockpilePriority(inputSp, 7);  // High priority
     }
     

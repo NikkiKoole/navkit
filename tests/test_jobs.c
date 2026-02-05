@@ -3667,7 +3667,7 @@ describe(mining_job_execution) {
         // Find the spawned item and verify it's orange at the mine location
         bool foundOrange = false;
         for (int i = 0; i < MAX_ITEMS; i++) {
-            if (IsItemActive(i) && GetItemType(i) == ITEM_ORANGE) {
+            if (IsItemActive(i) && GetItemType(i) == ITEM_ROCK) {
                 foundOrange = true;
                 // Item should be at the dug location (1,1)
                 int itemX = (int)(GetItemX(i) / CELL_SIZE);
