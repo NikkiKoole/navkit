@@ -5,6 +5,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/sim_presence.h"
 #include "../world/material.h"
 
 #define SAVE_VERSION 13  // Add tree settings (saplingGrowTicks, trunkGrowTicks)
@@ -503,6 +504,9 @@ bool LoadWorld(const char* filename) {
     // Reset simulation accumulators (they weren't saved, grid data was)
     ResetSmokeAccumulators();
     ResetSteamAccumulators();
+    
+    // Rebuild active cell counters from loaded simulation grids
+    RebuildSimPresenceCounts();
     
     // Rebuild HPA* graph after loading - mark all chunks dirty
     hpaNeedsRebuild = true;

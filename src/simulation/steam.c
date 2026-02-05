@@ -1,6 +1,7 @@
 #include "steam.h"
 #include "water.h"
 #include "temperature.h"
+#include "sim_presence.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -38,6 +39,7 @@ void ClearSteam(void) {
     memset(steamGrid, 0, sizeof(steamGrid));
     steamUpdateCount = 0;
     steamRiseAccum = 0.0f;
+    steamActiveCells = 0;
 }
 
 // Reset accumulators (call after loading steam grid from save)
@@ -94,6 +96,13 @@ void SetSteamLevel(int x, int y, int z, int level) {
     int oldLevel = steamGrid[z][y][x].level;
     steamGrid[z][y][x].level = (uint8_t)level;
     
+    // Update presence tracking
+    if (oldLevel == 0 && level > 0) {
+        steamActiveCells++;
+    } else if (oldLevel > 0 && level == 0) {
+        steamActiveCells--;
+    }
+    
     if (oldLevel != level) {
         DestabilizeSteam(x, y, z);
     }
@@ -139,7 +148,12 @@ static int SteamTryRise(int x, int y, int z) {
         if (src->level > 0) {
             int escaped = 1;
             if (escaped > src->level) escaped = src->level;
-            src->level -= escaped;
+            int newLevel = src->level - escaped;
+            // Track counter transition when steam escapes
+            if (src->level > 0 && newLevel == 0) {
+                steamActiveCells--;
+            }
+            src->level = newLevel;
             return escaped;
         }
         return 0;
@@ -167,8 +181,20 @@ static int SteamTryRise(int x, int y, int z) {
     if (flow > src->level) flow = src->level;
     if (flow > space) flow = space;
     
+    // Track counter transitions
+    bool srcWasActive = src->level > 0;
+    bool dstWasActive = dst->level > 0;
+    
     src->level -= flow;
     dst->level += flow;
+    
+    // Update counters for transitions
+    if (srcWasActive && src->level == 0) {
+        steamActiveCells--;
+    }
+    if (!dstWasActive && dst->level > 0) {
+        steamActiveCells++;
+    }
     
     // Mark destination as having received risen steam this tick
     // This prevents the steam from immediately rising again when z+1 is processed
@@ -225,8 +251,14 @@ static bool SteamTrySpread(int x, int y, int z) {
         
         // Spread to lower neighbors
         if (diff >= 2) {
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+            
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                steamActiveCells++;
+            }
             
             DestabilizeSteam(x, y, z);
             DestabilizeSteam(nx, ny, z);
@@ -234,8 +266,14 @@ static bool SteamTrySpread(int x, int y, int z) {
             
             if (cell->level <= 1) break;
         } else if (diff == 1 && cell->level > 1) {
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+            
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                steamActiveCells++;
+            }
             
             DestabilizeSteam(x, y, z);
             DestabilizeSteam(nx, ny, z);
@@ -273,8 +311,12 @@ static bool SteamTryCondense(int x, int y, int z) {
         // Water level is proportional to steam condensed
         AddWater(x, y, waterZ, condenseAmount);
         
-        // Remove steam
-        cell->level -= condenseAmount;
+        // Remove steam - track counter transition
+        int newLevel = cell->level - condenseAmount;
+        if (cell->level > 0 && newLevel == 0) {
+            steamActiveCells--;
+        }
+        cell->level = newLevel;
         
         DestabilizeSteam(x, y, z);
         
@@ -332,6 +374,12 @@ static int steamTick = 0;
 void UpdateSteam(void) {
     if (!steamEnabled) return;
     
+    // Early exit: no steam activity at all
+    if (steamActiveCells == 0) {
+        steamUpdateCount = 0;
+        return;
+    }
+    
     steamUpdateCount = 0;
     steamTick++;
     
@@ -356,7 +404,7 @@ void UpdateSteam(void) {
     bool reverseX = (steamTick & 1);
     bool reverseY = (steamTick & 2);
     
-    // Process from bottom to top (steam rises, so process low cells first)
+    // Process from bottom to top (simple iteration)
     for (int z = 0; z < gridDepth; z++) {
         for (int yi = 0; yi < gridHeight; yi++) {
             int y = reverseY ? (gridHeight - 1 - yi) : yi;

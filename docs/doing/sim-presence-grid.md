@@ -996,6 +996,92 @@ After tests pass, manually verify in game:
 - Load game
 - Verify simulations continue correctly
 
+## A/B Test Results (2026-02-05)
+
+### Test 1: Fire save (active fire + smoke spreading)
+Save: `saves/2026-02-05_10-12-15.bin.gz` - 500 ticks, 3 runs each
+
+| Metric | USE_PRESENCE_GRID=1 | USE_PRESENCE_GRID=0 |
+|--------|---------------------|---------------------|
+| Total time | ~178 ms | ~191 ms |
+| Per tick | 0.36 ms/tick | 0.38 ms/tick |
+| Smoke timing | 0.31 ms | 0.33 ms |
+
+**Result: ~7% faster with presence grid enabled** - marginal improvement, both have active sims so early exits don't apply.
+
+### Test 2: Water save (sparse water, no fire/smoke/steam)
+Save: `saves/2026-02-05_10-25-35.bin.gz` - 500 ticks, 638 active water cells
+
+| Metric | USE_PRESENCE_GRID=1 | USE_PRESENCE_GRID=0 |
+|--------|---------------------|---------------------|
+| Total time | ~224 ms | ~223 ms |
+| Per tick | 0.45 ms/tick | 0.45 ms/tick |
+| Water timing | 0.22 ms | 0.22 ms |
+| Temperature | 0.09 ms | 0.09 ms |
+| Fire/Smoke/Steam | 0.00 ms | 0.00 ms |
+
+**Result: Negligible difference** (~0.5%). The `static inline` functions are properly inlined.
+
+*Note: Initial test showed 732ms vs 224ms but this was a measurement error (likely unclean build or background activity). Subsequent runs with clean builds show identical performance.*
+
+### Analysis
+
+The **counter-based early exits** are the real win:
+- Fire=0.00ms, Smoke=0.00ms, Steam=0.00ms when those simulations have 0 active cells
+- Skipping entire Update functions when `*ActiveCells == 0` eliminates ~1M cell iterations
+
+The presence grid flags add negligible overhead since:
+- Functions are `static inline` and properly inlined by compiler
+- Only called on actual level transitions (0→non-zero or non-zero→0)
+- Memory access to `simPresenceGrid` is cheap when data is in cache
+
+### Conclusion
+
+The current implementation has two optimizations:
+1. **Active cell counters + early exits** - Main benefit, works great
+2. **Per-cell presence grid flags** - Minimal overhead, kept for potential future use (dirty region tracking, debug visualization)
+
+**Recommendation:** Keep `USE_PRESENCE_GRID 0` by default for now since the flags aren't being used for anything yet. Can enable later if we implement inner-loop optimizations that need them.
+
+### Why inner-loop skipping doesn't work
+
+The original plan was to skip cells inside the Update loops:
+```c
+if (!(simPresenceGrid[z][y][x] & SIM_HAS_WATER)) continue;
+```
+
+This **breaks spreading behavior**:
+- Water at (5,5) wants to spread to empty neighbor (5,6)
+- But (5,6) has no `SIM_HAS_WATER` flag, so we skip it
+- The water never flows there
+
+Spreading simulations need to process cells that have content AND their empty neighbors. Skipping empty cells breaks the fundamental spreading mechanic.
+
+### Possible future approaches for inner-loop optimization
+
+1. **Two-pass approach**: 
+   - Pass 1: Mark cells with content + their neighbors as "needs processing"
+   - Pass 2: Only process marked cells
+   - Doubles the passes but could still be faster on very sparse grids
+
+2. **Dirty region tracking**:
+   - Track bounding boxes of active regions
+   - Only iterate within those regions
+   - Works well for spatially coherent simulations (pools, fires)
+
+3. **Sparse active cell list**:
+   - Maintain explicit list of active cell coordinates
+   - Iterate list instead of grid
+   - O(n) where n = active cells
+   - Complex: removal is O(n) unless storing index in cell struct
+
+4. **Neighbor presence expansion**:
+   - When setting presence flag, also set flags on all 6 neighbors
+   - More flags set, but guarantees we process potential receivers
+   - Still need to handle the "frontier" correctly
+
+For now, the counter-based early exits provide the main benefit with zero overhead.
+
 ## Rollback plan
 If issues arise, the change is isolated to:
 - New files: sim_presence.h, sim_presence.c
@@ -1194,3 +1280,95 @@ void UpdateWater(void) {
 2. Presence grid (moderate effort, helps sparse case)
 3. Throttling (trivial, but changes behavior - make it configurable)
 4. Active cell list (complex, only if presence grid isn't enough)
+
+---
+
+## Final Implementation Results (2026-02-05)
+
+### What We Tried
+
+#### Attempt 1: Per-Cell Presence Grid
+Added a 2MB `simPresenceGrid[z][y][x]` with bitflags per simulation type.
+
+**Problem**: Doesn't help with spreading simulations. When water at (5,5) wants to spread to empty neighbor (5,6), we can't skip (5,6) because it has no presence flag - but that's exactly where we need to flow water TO.
+
+**Result**: Abandoned. The inner-loop skip `if (!(simPresenceGrid[z][y][x] & SIM_HAS_WATER)) continue` breaks spreading behavior.
+
+#### Attempt 2: Dirty Chunk Tracking
+Replaced per-cell presence with 16x16 chunk-level dirty tracking:
+- `dirtyChunks[z][cy][cx]` - bitflags for which simulations have activity in chunk
+- `MarkSimChunkAndNeighborsDirty()` - marks chunk + adjacent chunks when cell changes
+- Update loops only iterate dirty chunks
+
+**Problem**: Visual artifacts at chunk boundaries. Fire, smoke, steam, and water all showed visible lines/seams at chunk edges. The non-linear iteration order (chunk-by-chunk instead of row-by-row) caused uneven spreading patterns.
+
+**Diagnosis**: Confirmed with git stash A/B test - original code had smooth spreading, dirty chunk code had visible chunk boundary artifacts.
+
+**Result**: Abandoned. Reverted all simulations to simple iteration.
+
+### What Actually Works
+
+#### Active Cell Counters + Early Exit
+Simple counters tracking how many cells have activity:
+- `waterActiveCells`, `fireActiveCells`, `steamActiveCells`, `smokeActiveCells`, `tempSourceCount`
+- Increment on 0→non-zero transition, decrement on non-zero→0 transition
+- Early exit when counter is 0: `if (waterActiveCells == 0) return;`
+
+**Result**: Huge win for empty/inactive simulations. Zero iteration when nothing active.
+
+#### Stable Cell Skipping
+Each simulation cell has a `stable` flag. Stable cells are skipped in iteration:
+```c
+if (cell->stable && cell->level == 0) continue;
+```
+
+Cells are destabilized when neighbors change. This reduces work in settled simulations.
+
+**Result**: Good optimization for steady-state (pool of water that stopped moving).
+
+### Current State
+
+**sim_presence.h/c** now contains only:
+- Active cell counters (`waterActiveCells`, etc.)
+- `InitSimPresence()` - zeros counters
+- `RebuildSimPresenceCounts()` - rebuilds counters from grids after save load
+
+**All dirty chunk code removed:**
+- No `dirtyChunks` array
+- No `SIM_CHUNK_SIZE`, `SIM_DIRTY_*` defines
+- No `MarkSimChunkDirty`, `IsChunkDirty`, etc.
+- No chunk-based iteration in Update functions
+
+**Simulations use simple iteration:**
+```c
+for (int z = 0; z < gridDepth; z++) {
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            // Skip stable empty cells
+            if (cell->stable && cell->level == 0) continue;
+            ProcessCell(x, y, z);
+        }
+    }
+}
+```
+
+### Lessons Learned
+
+1. **Spreading simulations need neighbors**: Can't skip empty cells because that's where content flows TO. Any optimization that skips cells based on current content breaks spreading.
+
+2. **Iteration order matters**: Chunk-based iteration processes cells in a different order than row-by-row, causing visual artifacts where chunks meet.
+
+3. **Simple is often best**: The straightforward triple-nested loop with stable-cell skipping is hard to beat for spreading simulations without introducing artifacts.
+
+4. **Early exit is the big win**: Checking `if (activeCells == 0) return` at the top of Update functions eliminates ~1M iterations for free when that simulation has no activity.
+
+### Performance Summary
+
+| Optimization | Status | Benefit |
+|--------------|--------|---------|
+| Early exit (counter=0) | ✅ Implemented | ~3ms → 0ms for empty sims |
+| Stable cell skipping | ✅ Implemented | Reduces work in steady state |
+| Per-cell presence grid | ❌ Abandoned | Breaks spreading |
+| Dirty chunk iteration | ❌ Abandoned | Visual artifacts |
+
+The current implementation is simple, correct, and fast enough. Further optimization would require fundamentally different approaches (spatial hashing, event-driven simulation) that aren't worth the complexity.

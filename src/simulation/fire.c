@@ -3,6 +3,7 @@
 #include "smoke.h"
 #include "temperature.h"
 #include "groundwear.h"
+#include "sim_presence.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
@@ -35,12 +36,19 @@ void InitFire(void) {
     ClearFire();
 }
 
+// Helper to check if a fire cell is "active" (needs processing)
+static inline bool FireCellIsActive(int x, int y, int z) {
+    FireCell *fc = &fireGrid[z][y][x];
+    return fc->level > 0 || fc->isSource;
+}
+
 // Clear all fire
 void ClearFire(void) {
     memset(fireGrid, 0, sizeof(fireGrid));
     fireUpdateCount = 0;
     fireSpreadAccum = 0.0f;
     fireFuelAccum = 0.0f;
+    fireActiveCells = 0;
 }
 
 // Bounds check helper
@@ -121,6 +129,16 @@ void SetFireLevel(int x, int y, int z, int level) {
     int oldLevel = cell->level;
     cell->level = (uint16_t)level;
     
+    // Update presence tracking
+    bool wasActive = oldLevel > 0 || cell->isSource;
+    bool isActive = level > 0 || cell->isSource;
+    
+    if (!wasActive && isActive) {
+        fireActiveCells++;
+    } else if (wasActive && !isActive) {
+        fireActiveCells--;
+    }
+    
     // Initialize fuel if igniting for the first time
     if (oldLevel == 0 && level > 0 && cell->fuel == 0) {
         cell->fuel = GetFuelAt(x, y, z);
@@ -140,9 +158,7 @@ void IgniteCell(int x, int y, int z) {
     
     // Initialize fuel from cell type (including grass surface)
     cell->fuel = GetFuelAt(x, y, z);
-    cell->level = FIRE_MAX_LEVEL;
-    
-    DestabilizeFire(x, y, z);
+    SetFireLevel(x, y, z, FIRE_MAX_LEVEL);
 }
 
 // Extinguish fire at a cell
@@ -151,15 +167,17 @@ void ExtinguishCell(int x, int y, int z) {
     
     FireCell* cell = &fireGrid[z][y][x];
     if (cell->level > 0) {
-        cell->level = 0;
-        DestabilizeFire(x, y, z);
+        SetFireLevel(x, y, z, 0);
     }
 }
 
 // Set fire source
 void SetFireSource(int x, int y, int z, bool isSource) {
     if (!FireInBounds(x, y, z)) return;
+    
+    bool wasActive = FireCellIsActive(x, y, z);
     fireGrid[z][y][x].isSource = isSource;
+    
     if (isSource) {
         fireGrid[z][y][x].level = FIRE_MAX_LEVEL;
         fireGrid[z][y][x].fuel = 15;  // Max fuel for sources
@@ -169,6 +187,13 @@ void SetFireSource(int x, int y, int z, bool isSource) {
     } else {
         // Removing fire source also removes heat source
         SetHeatSource(x, y, z, false);
+    }
+    
+    bool isActive = FireCellIsActive(x, y, z);
+    if (!wasActive && isActive) {
+        fireActiveCells++;
+    } else if (wasActive && !isActive) {
+        fireActiveCells--;
     }
 }
 
@@ -240,9 +265,7 @@ static bool FireTrySpread(int x, int y, int z) {
         if ((rand() % 100) < spreadPercent) {
             // Ignite neighbor
             neighbor->fuel = GetFuelAt(nx, ny, z);
-            neighbor->level = FIRE_MIN_SPREAD_LEVEL;  // Start at low intensity
-            
-            DestabilizeFire(nx, ny, z);
+            SetFireLevel(nx, ny, z, FIRE_MIN_SPREAD_LEVEL);  // Start at low intensity
             spread = true;
         }
     }
@@ -277,9 +300,8 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     
     // Water extinguishes fire immediately
     if (HasWater(x, y, z)) {
-        cell->level = 0;
+        SetFireLevel(x, y, z, 0);
         cell->fuel = 0;
-        DestabilizeFire(x, y, z);
         return true;
     }
     
@@ -291,7 +313,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
             // Reduce fire level as fuel depletes
             if (cell->fuel == 0) {
                 // No fuel left - fire dies, mark cell as burned
-                cell->level = 0;
+                SetFireLevel(x, y, z, 0);
                 
                 // Transform cell based on burnsInto property
                 CellType currentCell = grid[z][y][x];
@@ -310,7 +332,6 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                 }
                 
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
-                DestabilizeFire(x, y, z);
                 return true;
             } else if (cell->fuel <= 2 && cell->level > 3) {
                 // Low fuel - reduce intensity
@@ -372,6 +393,12 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
 void UpdateFire(void) {
     if (!fireEnabled) return;
     
+    // Early exit: no fire activity at all
+    if (fireActiveCells == 0) {
+        fireUpdateCount = 0;
+        return;
+    }
+    
     fireUpdateCount = 0;
     
     // Accumulate game time for interval-based updates
@@ -385,7 +412,7 @@ void UpdateFire(void) {
     if (doSpread) fireSpreadAccum -= fireSpreadInterval;
     if (doFuel) fireFuelAccum -= fireFuelInterval;
     
-    // Process from bottom to top (like water)
+    // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {

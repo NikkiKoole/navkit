@@ -1,4 +1,5 @@
 #include "temperature.h"
+#include "sim_presence.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
 #include <stdlib.h>
@@ -175,8 +176,24 @@ void SetHeatSource(int x, int y, int z, bool isSource) {
     }
     
     TempCell *cell = &temperatureGrid[z][y][x];
+    bool wasSource = cell->isHeatSource || cell->isColdSource;
+    
     cell->isHeatSource = isSource;
     cell->isColdSource = false;  // Can't be both
+    
+    bool isNowSource = cell->isHeatSource || cell->isColdSource;
+    
+    if (!wasSource && isNowSource) {
+#if USE_PRESENCE_GRID
+        SetSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
+#endif
+        tempSourceCount++;
+    } else if (wasSource && !isNowSource) {
+#if USE_PRESENCE_GRID
+        ClearSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
+#endif
+        tempSourceCount--;
+    }
     
     if (isSource) {
         cell->current = (int16_t)heatSourceTemp;
@@ -191,8 +208,24 @@ void SetColdSource(int x, int y, int z, bool isSource) {
     }
     
     TempCell *cell = &temperatureGrid[z][y][x];
+    bool wasSource = cell->isHeatSource || cell->isColdSource;
+    
     cell->isColdSource = isSource;
     cell->isHeatSource = false;  // Can't be both
+    
+    bool isNowSource = cell->isHeatSource || cell->isColdSource;
+    
+    if (!wasSource && isNowSource) {
+#if USE_PRESENCE_GRID
+        SetSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
+#endif
+        tempSourceCount++;
+    } else if (wasSource && !isNowSource) {
+#if USE_PRESENCE_GRID
+        ClearSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
+#endif
+        tempSourceCount--;
+    }
     
     if (isSource) {
         cell->current = (int16_t)coldSourceTemp;
@@ -298,6 +331,10 @@ void UpdateTemperature(void) {
     if (!doTransfer && !doDecay) {
         return;
     }
+    
+    // Note: We can't early-exit when tempSourceCount == 0 because cells still need
+    // to decay toward ambient temperature. A full optimization would require tracking
+    // how many cells differ from ambient.
     
     // Reset count only when we're actually going to process
     tempUpdateCount = 0;

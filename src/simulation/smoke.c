@@ -1,4 +1,5 @@
 #include "smoke.h"
+#include "sim_presence.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -47,6 +48,7 @@ void ClearSmoke(void) {
     smokeUpdateCount = 0;
     smokeRiseAccum = 0.0f;
     smokeDissipationAccum = 0.0f;
+    smokeActiveCells = 0;
 }
 
 // Reset accumulators (call after loading smoke grid from save)
@@ -103,6 +105,13 @@ void SetSmokeLevel(int x, int y, int z, int level) {
 
     int oldLevel = smokeGrid[z][y][x].level;
     smokeGrid[z][y][x].level = (uint8_t)level;
+
+    // Update presence tracking
+    if (oldLevel == 0 && level > 0) {
+        smokeActiveCells++;
+    } else if (oldLevel > 0 && level == 0) {
+        smokeActiveCells--;
+    }
 
     if (oldLevel != level) {
         DestabilizeSmoke(x, y, z);
@@ -177,8 +186,20 @@ static int TryRise(int x, int y, int z) {
     if (flow > src->level) flow = src->level;
     if (flow > space) flow = space;
 
+    // Track counter transitions
+    bool srcWasActive = src->level > 0;
+    bool dstWasActive = dst->level > 0;
+
     src->level -= flow;
     dst->level += flow;
+
+    // Update counters for transitions
+    if (srcWasActive && src->level == 0) {
+        smokeActiveCells--;
+    }
+    if (!dstWasActive && dst->level > 0) {
+        smokeActiveCells++;
+    }
 
     // Mark destination as having received risen smoke this tick
     // This prevents the smoke from immediately rising again when z+1 is processed
@@ -232,8 +253,14 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
         // Spread to lower neighbors
         if (diff >= 2) {
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                smokeActiveCells++;
+            }
 
             DestabilizeSmoke(x, y, z);
             DestabilizeSmoke(nx, ny, z);
@@ -241,8 +268,14 @@ static bool SmokeTrySpread(int x, int y, int z) {
 
             if (cell->level <= 1) break;
         } else if (diff == 1 && cell->level > 1) {
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                smokeActiveCells++;
+            }
 
             DestabilizeSmoke(x, y, z);
             DestabilizeSmoke(nx, ny, z);
@@ -312,8 +345,14 @@ static bool TryFillDown(int x, int y, int z) {
             if (transfer > cell->level) transfer = cell->level;
 
             if (transfer > 0) {
+                bool currentWasEmpty = current->level == 0;
                 cell->level -= transfer;
                 current->level += transfer;
+
+                // Track destination becoming active
+                if (currentWasEmpty) {
+                    smokeActiveCells++;
+                }
 
                 DestabilizeSmoke(x, y, z);
                 DestabilizeSmoke(pos.x, pos.y, pos.z);
@@ -422,6 +461,12 @@ static int smokeTick = 0;
 void UpdateSmoke(void) {
     if (!smokeEnabled) return;
 
+    // Early exit: no smoke activity at all
+    if (smokeActiveCells == 0) {
+        smokeUpdateCount = 0;
+        return;
+    }
+
     smokeUpdateCount = 0;
     smokeTick++;
 
@@ -452,23 +497,25 @@ void UpdateSmoke(void) {
     bool reverseX = (smokeTick & 1);
     bool reverseY = (smokeTick & 2);
 
-    // Process from bottom to top (smoke rises, so process low cells first)
+    // Process from bottom to top (simple iteration)
     for (int z = 0; z < gridDepth; z++) {
         for (int yi = 0; yi < gridHeight; yi++) {
             int y = reverseY ? (gridHeight - 1 - yi) : yi;
             for (int xi = 0; xi < gridWidth; xi++) {
                 int x = reverseX ? (gridWidth - 1 - xi) : xi;
+                
                 SmokeCell* cell = &smokeGrid[z][y][x];
 
-                // Don't skip any cells - the stable optimization causes z-level skipping bugs
-                (void)cell->stable;
+                // Skip stable empty cells
+                if (cell->stable && cell->level == 0) {
+                    continue;
+                }
 
                 ProcessSmokeCell(x, y, z, doRise, doDissipate);
                 smokeUpdateCount++;
 
                 // Cap updates per tick
                 if (smokeUpdateCount >= SMOKE_MAX_UPDATES_PER_TICK) {
-                   // printf("HIT UPDATE CAP at z=%d, count=%d\n", z, smokeUpdateCount);
                     return;
                 }
             }

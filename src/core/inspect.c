@@ -730,6 +730,79 @@ static void print_items(const char* filterType) {
     }
 }
 
+static void print_temp(int filterZ) {
+    printf("\n=== TEMPERATURE ===\n");
+    printf("Grid: %dx%dx%d\n", insp_gridW, insp_gridH, insp_gridD);
+    
+    // Chunk size for grouping (matching SIM_CHUNK_SIZE)
+    const int CHUNK = 16;
+    int chunksX = (insp_gridW + CHUNK - 1) / CHUNK;
+    int chunksY = (insp_gridH + CHUNK - 1) / CHUNK;
+    
+    int startZ = (filterZ >= 0) ? filterZ : 0;
+    int endZ = (filterZ >= 0) ? filterZ + 1 : insp_gridD;
+    
+    for (int z = startZ; z < endZ; z++) {
+        printf("\nZ-level %d:\n", z);
+        
+        // Overall stats for this z-level
+        int zAt0 = 0, zAt20 = 0, zOther = 0, zMin = 9999, zMax = -9999;
+        
+        // Show chunk grid with avg temps
+        printf("Chunk temperatures (avg):\n");
+        printf("     ");
+        for (int cx = 0; cx < chunksX; cx++) printf(" %3d ", cx);
+        printf("\n");
+        
+        for (int cy = 0; cy < chunksY; cy++) {
+            printf(" %2d: ", cy);
+            for (int cx = 0; cx < chunksX; cx++) {
+                int sum = 0, count = 0;
+                int cMin = 9999, cMax = -9999;
+                
+                int startX = cx * CHUNK;
+                int startY = cy * CHUNK;
+                int endX = startX + CHUNK; if (endX > insp_gridW) endX = insp_gridW;
+                int endY = startY + CHUNK; if (endY > insp_gridH) endY = insp_gridH;
+                
+                for (int y = startY; y < endY; y++) {
+                    for (int x = startX; x < endX; x++) {
+                        int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+                        int temp = insp_tempCells[idx].current;
+                        sum += temp;
+                        count++;
+                        if (temp < cMin) cMin = temp;
+                        if (temp > cMax) cMax = temp;
+                        
+                        // Z-level stats
+                        if (temp == 0) zAt0++;
+                        else if (temp == 20) zAt20++;
+                        else zOther++;
+                        if (temp < zMin) zMin = temp;
+                        if (temp > zMax) zMax = temp;
+                    }
+                }
+                
+                int avg = count > 0 ? sum / count : 0;
+                // Color-code: if all same temp, show it, otherwise show range
+                if (cMin == cMax) {
+                    printf(" %3d ", avg);
+                } else {
+                    printf("%2d-%2d", cMin, cMax);
+                }
+            }
+            printf("\n");
+        }
+        
+        int totalZ = insp_gridW * insp_gridH;
+        printf("\nZ=%d stats: min=%d, max=%d\n", z, zMin, zMax);
+        printf("  At 0C: %d (%.1f%%), At 20C: %d (%.1f%%), Other: %d (%.1f%%)\n",
+               zAt0, 100.0f * zAt0 / totalZ,
+               zAt20, 100.0f * zAt20 / totalZ,
+               zOther, 100.0f * zOther / totalZ);
+    }
+}
+
 static void cleanup(void) {
     free(insp_gridCells);
     free(insp_waterCells);
@@ -779,8 +852,8 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false, opt_items = false;
-    int opt_entrances_z = -1;
+    bool opt_entrances = false, opt_items = false, opt_temp = false;
+    int opt_entrances_z = -1, opt_temp_z = -1;
     const char* opt_items_filter = NULL;
     
     for (int i = 2; i < argc; i++) {  // Start at 2, skip program name and --inspect
@@ -820,6 +893,10 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--items") == 0) {
             opt_items = true;
             if (i+1 < argc && argv[i+1][0] != '-') opt_items_filter = argv[++i];
+        }
+        else if (strcmp(argv[i], "--temp") == 0) {
+            opt_temp = true;
+            if (i+1 < argc && argv[i+1][0] != '-') opt_temp_z = atoi(argv[++i]);
         }
         else if (argv[i][0] != '-') filename = argv[i];
     }
@@ -970,7 +1047,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances || opt_items);
+                     opt_entrances || opt_items || opt_temp);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -993,10 +1070,32 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Workshops: %d active\n", activeWorkshops);
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
+        
+        // Temperature stats
+        int tempAt0 = 0, tempAt20 = 0, tempOther = 0, tempMin = 9999, tempMax = -9999;
+        int totalCells = insp_gridW * insp_gridH * insp_gridD;
+        for (int z = 0; z < insp_gridD; z++) {
+            for (int y = 0; y < insp_gridH; y++) {
+                for (int x = 0; x < insp_gridW; x++) {
+                    int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+                    int temp = insp_tempCells[idx].current;
+                    if (temp == 0) tempAt0++;
+                    else if (temp == 20) tempAt20++;
+                    else tempOther++;
+                    if (temp < tempMin) tempMin = temp;
+                    if (temp > tempMax) tempMax = temp;
+                }
+            }
+        }
+        printf("\nTemperature: min=%d, max=%d\n", tempMin, tempMax);
+        printf("  At 0C: %d cells (%.1f%%)\n", tempAt0, 100.0f * tempAt0 / totalCells);
+        printf("  At 20C: %d cells (%.1f%%)\n", tempAt20, 100.0f * tempAt20 / totalCells);
+        printf("  Other: %d cells (%.1f%%)\n", tempOther, 100.0f * tempOther / totalCells);
+        
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
-        printf("         --entrances [Z], --items [TYPE]\n");
+        printf("         --entrances [Z], --items [TYPE], --temp [Z]\n");
     }
     
     // Handle queries
@@ -1020,6 +1119,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_jobs_active) print_active_jobs();
     if (opt_entrances) print_entrances(opt_entrances_z);
     if (opt_items) print_items(opt_items_filter);
+    if (opt_temp) print_temp(opt_temp_z);
     
     cleanup();
     return 0;

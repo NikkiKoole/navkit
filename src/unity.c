@@ -19,6 +19,7 @@
 #include "world/designations.c"
 
 // Simulation systems
+#include "simulation/sim_presence.c"
 #include "simulation/water.c"
 #include "simulation/fire.c"
 #include "simulation/smoke.c"

@@ -1,6 +1,7 @@
 #include "water.h"
 #include "steam.h"
 #include "temperature.h"
+#include "sim_presence.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -45,6 +46,7 @@ void ClearWater(void) {
     memset(waterGrid, 0, sizeof(waterGrid));
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
+    waterActiveCells = 0;
 }
 
 // Bounds check helper
@@ -118,6 +120,12 @@ void DisplaceWater(int x, int y, int z) {
     DestabilizeWater(x, y, z);
 }
 
+// Helper to check if a water cell is "active" (needs processing)
+static inline bool WaterCellIsActive(int x, int y, int z) {
+    WaterCell *wc = &waterGrid[z][y][x];
+    return wc->level > 0 || wc->isSource || wc->isDrain;
+}
+
 // Set water level at a cell
 void SetWaterLevel(int x, int y, int z, int level) {
     if (!WaterInBounds(x, y, z)) return;
@@ -126,6 +134,16 @@ void SetWaterLevel(int x, int y, int z, int level) {
     
     int oldLevel = waterGrid[z][y][x].level;
     waterGrid[z][y][x].level = (uint8_t)level;
+    
+    // Update presence grid: track transition from inactive to active or vice versa
+    bool wasActive = oldLevel > 0 || waterGrid[z][y][x].isSource || waterGrid[z][y][x].isDrain;
+    bool isActive = level > 0 || waterGrid[z][y][x].isSource || waterGrid[z][y][x].isDrain;
+    
+    if (!wasActive && isActive) {
+        waterActiveCells++;
+    } else if (wasActive && !isActive) {
+        waterActiveCells--;
+    }
     
     if (oldLevel != level) {
         DestabilizeWater(x, y, z);
@@ -149,7 +167,17 @@ void RemoveWater(int x, int y, int z, int amount) {
 // Set water source
 void SetWaterSource(int x, int y, int z, bool isSource) {
     if (!WaterInBounds(x, y, z)) return;
+    
+    bool wasActive = WaterCellIsActive(x, y, z);
     waterGrid[z][y][x].isSource = isSource;
+    bool isActive = WaterCellIsActive(x, y, z);
+    
+    if (!wasActive && isActive) {
+        waterActiveCells++;
+    } else if (wasActive && !isActive) {
+        waterActiveCells--;
+    }
+    
     if (isSource) {
         DestabilizeWater(x, y, z);
     }
@@ -158,7 +186,17 @@ void SetWaterSource(int x, int y, int z, bool isSource) {
 // Set water drain
 void SetWaterDrain(int x, int y, int z, bool isDrain) {
     if (!WaterInBounds(x, y, z)) return;
+    
+    bool wasActive = WaterCellIsActive(x, y, z);
     waterGrid[z][y][x].isDrain = isDrain;
+    bool isActive = WaterCellIsActive(x, y, z);
+    
+    if (!wasActive && isActive) {
+        waterActiveCells++;
+    } else if (wasActive && !isActive) {
+        waterActiveCells--;
+    }
+    
     if (isDrain) {
         DestabilizeWater(x, y, z);
     }
@@ -227,8 +265,20 @@ static int TryFall(int x, int y, int z) {
     int flow = src->level;
     if (flow > space) flow = space;
     
+    // Track transitions for counter updates
+    bool srcWasActive = src->level > 0;
+    bool dstWasActive = dst->level > 0;
+    
     src->level -= flow;
     dst->level += flow;
+    
+    // Update counters for transitions
+    if (srcWasActive && src->level == 0) {
+        waterActiveCells--;
+    }
+    if (!dstWasActive && dst->level > 0) {
+        waterActiveCells++;
+    }
     
     // Falling water onto full water creates pressure
     if (dst->level == WATER_MAX_LEVEL) {
@@ -281,8 +331,14 @@ static bool WaterTrySpread(int x, int y, int z) {
         // Spread to lower neighbors
         if (diff >= 2) {
             // Big difference: give 1 unit, keep going
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+            
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                waterActiveCells++;
+            }
             
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
@@ -293,8 +349,14 @@ static bool WaterTrySpread(int x, int y, int z) {
         } else if (diff == 1 && cell->level > 1) {
             // Small difference: give 1 unit to ONE neighbor only (randomized)
             // This breaks the staircase pattern over time
+            bool neighborWasEmpty = neighbor->level == 0;
             cell->level -= 1;
             neighbor->level += 1;
+            
+            // Track neighbor becoming active
+            if (neighborWasEmpty) {
+                waterActiveCells++;
+            }
             
             DestabilizeWater(x, y, z);
             DestabilizeWater(nx, ny, z);
@@ -368,8 +430,14 @@ static bool TryPressure(int x, int y, int z) {
             if (transfer > cell->level) transfer = cell->level;
             
             if (transfer > 0) {
+                bool currentWasEmpty = current->level == 0;
                 cell->level -= transfer;
                 current->level += transfer;
+                
+                // Track destination becoming active
+                if (currentWasEmpty) {
+                    waterActiveCells++;
+                }
                 
                 // Propagate pressure info
                 if (current->level == WATER_MAX_LEVEL) {
@@ -469,9 +537,8 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
     
     // Evaporation: level 1 water evaporates when interval elapses
     if (doEvap && waterEvaporationEnabled && cell->level == 1 && !cell->isSource) {
-        cell->level = 0;
+        SetWaterLevel(x, y, z, 0);
         cell->hasPressure = false;
-        DestabilizeWater(x, y, z);
         moved = true;
     }
     
@@ -514,6 +581,12 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
 void UpdateWater(void) {
     if (!waterEnabled) return;
     
+    // Early exit: no water activity at all
+    if (waterActiveCells == 0) {
+        waterUpdateCount = 0;
+        return;
+    }
+    
     waterUpdateCount = 0;
     
     // Accumulate game time for interval-based evaporation
@@ -523,7 +596,7 @@ void UpdateWater(void) {
     bool doEvap = waterEvapAccum >= waterEvapInterval;
     if (doEvap) waterEvapAccum -= waterEvapInterval;
     
-    // Process from bottom to top (so falling water settles properly)
+    // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -602,6 +675,9 @@ void UpdateWaterFreezing(void) {
     if (!waterEnabled) return;
     if (!temperatureEnabled) return;
     
+    // Early exit: no water means nothing to freeze/thaw
+    if (waterActiveCells == 0) return;
+    
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -630,9 +706,9 @@ void UpdateWaterFreezing(void) {
                         if (boilRate > cell->level) boilRate = cell->level;
                         if (boilRate > 3) boilRate = 3;  // Cap at 3 per tick
                         
-                        cell->level -= boilRate;
+                        int newLevel = cell->level - boilRate;
+                        SetWaterLevel(x, y, z, newLevel);
                         GenerateSteamFromBoilingWater(x, y, z, boilRate);
-                        DestabilizeWater(x, y, z);
                     }
                 }
             }
