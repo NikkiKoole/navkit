@@ -14,6 +14,10 @@ typedef enum {
     ITEM_WOOD,         // Wood logs from chopping trees
     ITEM_SAPLING,      // Tree saplings - can be planted to grow trees
     ITEM_DIRT,         // Dirt blocks from digging dirt
+    ITEM_CLAY,         // Clay blocks from clay soil
+    ITEM_GRAVEL,       // Gravel blocks from gravel soil
+    ITEM_SAND,         // Sand blocks from sand soil
+    ITEM_PEAT,         // Peat blocks from peat soil
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

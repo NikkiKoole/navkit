@@ -17,4 +17,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_WOOD]         = { "Wood",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20, MAT_WOOD },
     [ITEM_SAPLING]      = { "Sapling",      SPRITE_tree_sapling, IF_STACKABLE, 20, MAT_NONE },
     [ITEM_DIRT]         = { "Dirt",         SPRITE_dirt_block,   IF_STACKABLE | IF_BUILDING_MAT, 20, MAT_DIRT },
+    [ITEM_CLAY]         = { "Clay",         SPRITE_clay_block,   IF_STACKABLE, 20, MAT_NONE },
+    [ITEM_GRAVEL]       = { "Gravel",       SPRITE_gravel_block, IF_STACKABLE, 20, MAT_NONE },
+    [ITEM_SAND]         = { "Sand",         SPRITE_sand_block,   IF_STACKABLE, 20, MAT_NONE },
+    [ITEM_PEAT]         = { "Peat",         SPRITE_peat_block,   IF_STACKABLE | IF_FUEL, 20, MAT_NONE },
 };

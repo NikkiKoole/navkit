@@ -5,10 +5,10 @@
 CellDef cellDefs[] = {
     // === GROUND TYPES ===
     [CELL_DIRT]        = {"dirt",        SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    1, CELL_DIRT,        ITEM_DIRT, 1},
-    [CELL_CLAY]        = {"clay",        SPRITE_clay,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_CLAY,        ITEM_DIRT, 1},  // TODO: drop clay item
-    [CELL_GRAVEL]      = {"gravel",      SPRITE_gravel,      CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_GRAVEL,      ITEM_DIRT, 1},  // TODO: drop gravel item
-    [CELL_SAND]        = {"sand",        SPRITE_sand,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_SAND,        ITEM_DIRT, 1},  // TODO: drop sand item
-    [CELL_PEAT]        = {"peat",        SPRITE_peat,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    6, CELL_DIRT,        ITEM_DIRT, 1},  // TODO: drop peat item
+    [CELL_CLAY]        = {"clay",        SPRITE_clay,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_CLAY,        ITEM_CLAY, 1},
+    [CELL_GRAVEL]      = {"gravel",      SPRITE_gravel,      CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_GRAVEL,      ITEM_GRAVEL, 1},
+    [CELL_SAND]        = {"sand",        SPRITE_sand,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_SAND,        ITEM_SAND, 1},
+    [CELL_PEAT]        = {"peat",        SPRITE_peat,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    6, CELL_DIRT,        ITEM_PEAT, 1},
     
     // === WALLS ===
     // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD material instead
