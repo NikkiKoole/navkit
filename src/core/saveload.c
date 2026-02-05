@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 14  // Add tree type/part grids
+#define SAVE_VERSION 15  // Add item treeType metadata
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)

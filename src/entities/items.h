@@ -2,6 +2,7 @@
 #define ITEMS_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 // Item types (for Phase 0, just colors)
 typedef enum {
@@ -40,6 +41,7 @@ typedef struct {
     float x, y, z;
     ItemType type;
     ItemState state;
+    uint8_t treeType;        // TreeType for wood items (0 = none/unknown)
     bool active;
     int reservedBy;           // mover index, -1 = none
     float unreachableCooldown; // seconds until retry (0 = can try now)

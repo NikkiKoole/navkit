@@ -129,7 +129,7 @@ Layout (3x3):
 F = fuel input tile (special)
 ```
 
-**Fuel Consumption:** Kiln requires fuel items in input. Each recipe consumes fuel based on heat needed.
+**Fuel Consumption:** Kiln requires fuel items in input tile. Each recipe consumes fuel as an extra input (like a multi-input recipe). This works with current workshop system - no new "fuel over time" mechanic needed.
 
 **Recipes:**
 | Input | Output | Time | Fuel | Notes |
@@ -188,11 +188,21 @@ X = work/heat tile
 - Cooking [future]
 - Light source at night
 
+**Note:** Unlike Kiln (fuel per recipe), Firepit needs continuous fuel consumption over time. 
+
+**Possible approach:** Could use bill system (see `docs/todo/jobs/bill-modes.md`):
+- "Do forever" bill that consumes 1 fuel -> produces heat/light + ash
+- Bill runs continuously as long as fuel is available
+- "Tend Fire" job = hauling fuel to firepit input (like Load Kiln)
+
+This would reuse existing bill modes rather than a new "fuel-over-time" mechanic.
+
 **Recipes:**
 | Input | Output | Time | Notes |
 |-------|--------|------|-------|
-| (fuel) | Heat + Light | continuous | Passive burn [future:fuel-over-time] |
-| 1 ITEM_WOOD | 1 ITEM_ASH | - | Byproduct of burning |
+| 1 ITEM_WOOD | Heat + Light + 1 ITEM_ASH | 30s | Burns one log, repeat via "Do forever" bill |
+| 1 ITEM_CHARCOAL | Heat + Light | 45s | Burns longer, no ash |
+| 4 ITEM_STICKS | Heat + Light | 15s | Quick burn, kindling |
 
 **New Items:**
 - `ITEM_ASH` - Byproduct of burning wood [OPEN LOOP - no current sink]
@@ -359,8 +369,8 @@ Layout (3x3):
 ### Processing Jobs
 | Job | Notes |
 |-----|-------|
-| Tend Fire | Keep firepit/hearth fueled [future:fuel-over-time] |
-| Load Kiln | Ensure kiln has fuel [future:fuel-over-time] |
+| Load Kiln | Haul fuel items to kiln input tile (kiln consumes fuel per recipe) |
+| Tend Fire | Haul fuel to firepit input tile (uses "Do forever" bill, see `docs/todo/jobs/bill-modes.md`) |
 
 ### Construction Jobs
 | Job | Notes |

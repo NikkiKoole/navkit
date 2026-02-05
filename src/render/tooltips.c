@@ -8,6 +8,16 @@
 #include "../world/designations.h"
 #include "../simulation/trees.h"
 
+static void FormatItemName(const Item* item, char* out, size_t outSize) {
+    const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
+    if (item->type == ITEM_WOOD &&
+        item->treeType >= TREE_TYPE_OAK && item->treeType < TREE_TYPE_COUNT) {
+        snprintf(out, outSize, "%s (%s)", base, TreeTypeName((TreeType)item->treeType));
+        return;
+    }
+    snprintf(out, outSize, "%s", base);
+}
+
 static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
     if (ratio < 0.0f) ratio = 0.0f;
     if (ratio > 1.0f) ratio = 1.0f;
@@ -166,7 +176,7 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"
     };
     int jobTypeCount = (int)(sizeof(jobTypeNames) / sizeof(jobTypeNames[0]));
-    const char* jobTypeName = job ? (job->type < jobTypeCount ? jobTypeNames[job->type] : "?") : "IDLE";
+    const char* jobTypeName = job ? (((int)job->type < jobTypeCount) ? jobTypeNames[job->type] : "?") : "IDLE";
 
     int carryingItem = job ? job->carryingItem : -1;
     int targetStockpile = job ? job->targetStockpile : -1;
@@ -196,7 +206,9 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 
     // Carrying item with name
     if (carryingItem >= 0 && items[carryingItem].active) {
-        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: #%d (%s)", carryingItem, ItemName(items[carryingItem].type));
+        char itemName[64];
+        FormatItemName(&items[carryingItem], itemName, sizeof(itemName));
+        snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: #%d (%s)", carryingItem, itemName);
         lineColors[lineCount++] = ORANGE;
     } else {
         snprintf(lines[lineCount], sizeof(lines[0]), "Carrying: none");
@@ -235,11 +247,13 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     float pickupRadius = CELL_SIZE * 0.75f;
     if (job && targetItem >= 0 && items[targetItem].active) {
         Item* item = &items[targetItem];
+        char itemName[64];
+        FormatItemName(item, itemName, sizeof(itemName));
         float dx = m->x - item->x;
         float dy = m->y - item->y;
         float dist = sqrtf(dx*dx + dy*dy);
         snprintf(lines[lineCount], sizeof(lines[0]), "Target: #%d %s at (%.0f,%.0f)", 
-            targetItem, ItemName(item->type), item->x, item->y);
+            targetItem, itemName, item->x, item->y);
         lineColors[lineCount++] = SKYBLUE;
         
         snprintf(lines[lineCount], sizeof(lines[0]), "  dist=%.1f %s", 
@@ -302,7 +316,8 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
     for (int i = 0; i < itemCount && lineCount < 17; i++) {
         int idx = itemIndices[i];
         Item* item = &items[idx];
-        const char* typeName = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
+        char typeName[64];
+        FormatItemName(item, typeName, sizeof(typeName));
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
         lineCount++;
@@ -375,10 +390,10 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             }
         }
         if (isBurned) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s) [BURNED]",
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s%s) [BURNED]",
                 cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
         } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s)",
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s%s)",
                 cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
         }
     } else {

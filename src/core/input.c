@@ -947,6 +947,14 @@ static void ExecutePlaceTree(int x, int y, int z) {
     AddMessage(TextFormat("Planted %s tree at (%d, %d)", TreeTypeName(currentTreeType), x, y), GREEN);
 }
 
+static void CycleSandboxTreeType(void) {
+    currentTreeType = (TreeType)(currentTreeType + 1);
+    if (currentTreeType <= TREE_TYPE_NONE || currentTreeType >= TREE_TYPE_COUNT) {
+        currentTreeType = TREE_TYPE_OAK;
+    }
+    AddMessage(TextFormat("Tree type: %s", TreeTypeName(currentTreeType)), GREEN);
+}
+
 static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1439,6 +1447,13 @@ void HandleInput(void) {
             selectedRampDirection = CELL_AIR;
             AddMessage("Ramp direction: Auto-detect", WHITE);
         }
+    }
+
+    // ========================================================================
+    // Sandbox tree type cycling
+    // ========================================================================
+    if (inputAction == ACTION_SANDBOX_TREE && CheckKey(KEY_T)) {
+        CycleSandboxTreeType();
     }
 
     // ========================================================================

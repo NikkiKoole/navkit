@@ -57,7 +57,7 @@ int currentTerrain = 0;
 const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest"};
 
 TreeType currentTreeType = TREE_TYPE_OAK;
-const char* treeTypeNames[] = {"Oak", "Pine", "Birch", "Willow"};
+const char* treeTypeNames[] = {"None", "Oak", "Pine", "Birch", "Willow"};
 
 // Ramp placement controls (used by hills generators)
 float rampNoiseScale = 0.04f;  // Larger = bigger ramp clusters

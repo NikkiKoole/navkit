@@ -116,7 +116,7 @@ describe(cell_def_drops) {
     }
     
     it("should have dropsItem for sapling") {
-        expect(CellDropsItem(CELL_SAPLING) == ITEM_SAPLING);
+        expect(CellDropsItem(CELL_SAPLING) == ITEM_NONE);
     }
     
     it("should have ITEM_NONE for air") {
@@ -159,7 +159,10 @@ describe(item_def_materials) {
         expect(ItemProducesMaterial(ITEM_RED) == MAT_NONE);
         expect(ItemProducesMaterial(ITEM_GREEN) == MAT_NONE);
         expect(ItemProducesMaterial(ITEM_BLUE) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_SAPLING) == MAT_NONE);
+        expect(ItemProducesMaterial(ITEM_SAPLING_OAK) == MAT_NONE);
+        expect(ItemProducesMaterial(ITEM_SAPLING_PINE) == MAT_NONE);
+        expect(ItemProducesMaterial(ITEM_SAPLING_BIRCH) == MAT_NONE);
+        expect(ItemProducesMaterial(ITEM_SAPLING_WILLOW) == MAT_NONE);
     }
 }
 

@@ -26,6 +26,12 @@ static TreeType NormalizeTreeTypeLocal(TreeType type) {
     return type;
 }
 
+static unsigned int PositionHashLocal(int x, int y, int z) {
+    unsigned int h = (unsigned int)(x * 374761393u + y * 668265263u + z * 2147483647u);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+
 void InitDesignations(void) {
     memset(designations, 0, sizeof(designations));
     // Set all assignedMover to -1
@@ -884,12 +890,22 @@ static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type
     return false;
 }
 
-static int FindSurfaceZAt(int x, int y) {
+static int FindSurfaceZAtLocal(int x, int y) {
     for (int z = gridDepth - 1; z >= 0; z--) {
         if (HAS_FLOOR(x, y, z)) return z;
         if (CellIsSolid(grid[z][y][x])) return z;
     }
     return -1;
+}
+
+static int FindItemSpawnZAtLocal(int x, int y, int fallbackZ) {
+    int surfaceZ = FindSurfaceZAtLocal(x, y);
+    if (surfaceZ < 0) return fallbackZ;
+    if (CellIsSolid(grid[surfaceZ][y][x])) {
+        if (surfaceZ + 1 < gridDepth) return surfaceZ + 1;
+        return surfaceZ;
+    }
+    return surfaceZ;
 }
 
 static int FindTrunkBaseZAt(int x, int y, int z) {
@@ -916,7 +932,7 @@ static int GetTrunkHeightAt(int x, int y, int baseZ) {
 
 // Fell a tree: remove connected trunk/branch/root, create fallen trunk line, drop leaves/saplings
 // chopperX/Y is where the mover stood - tree falls away from them
-static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
+static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     TreeType type = NormalizeTreeTypeLocal((TreeType)treeTypeGrid[z][y][x]);
     int leafCount = 0;
 
@@ -1009,33 +1025,51 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
         }
     }
 
-    // Calculate fall direction (away from chopper)
-    float fallDirX = (float)(x - chopperX);
-    float fallDirY = (float)(y - chopperY);
+    // Calculate fall direction (away from chopper), quantized to 22.5° steps
+    float treeCenterX = (float)x + 0.5f;
+    float treeCenterY = (float)y + 0.5f;
+    float fallDirX = treeCenterX - chopperX;
+    float fallDirY = treeCenterY - chopperY;
     float fallLen = sqrtf(fallDirX * fallDirX + fallDirY * fallDirY);
-    if (fallLen > 0.01f) {
-        fallDirX /= fallLen;
-        fallDirY /= fallLen;
+    const float kPi = 3.14159265f;
+    float angle = 0.0f;
+    if (fallLen < 0.01f) {
+        unsigned int h = PositionHashLocal(x, y, baseZ);
+        angle = (float)(h % 16) * (kPi / 8.0f);
     } else {
-        fallDirX = 1.0f;
-        fallDirY = 0.0f;
+        angle = atan2f(fallDirY, fallDirX);
+        // If near-cardinal, nudge to a diagonal for variety
+        float cardinal = kPi * 0.5f;
+        float nearest = roundf(angle / cardinal) * cardinal;
+        if (fabsf(angle - nearest) < (kPi / 32.0f)) {
+            unsigned int h = PositionHashLocal(x, y, baseZ);
+            float jitter = (h & 1u) ? (kPi / 8.0f) : -(kPi / 8.0f);
+            angle = nearest + jitter;
+        }
     }
+    float angleStep = kPi / 8.0f; // 22.5 degrees
+    angle = roundf(angle / angleStep) * angleStep;
+    float dirX = cosf(angle);
+    float dirY = sinf(angle);
 
-    int stepX = 0;
-    int stepY = 0;
-    if (fabsf(fallDirX) >= fabsf(fallDirY)) {
-        stepX = (fallDirX >= 0.0f) ? 1 : -1;
-    } else {
-        stepY = (fallDirY >= 0.0f) ? 1 : -1;
-    }
-    if (stepX == 0 && stepY == 0) stepX = 1;
+    int endX = x + (int)roundf(dirX * (float)(trunkHeight - 1));
+    int endY = y + (int)roundf(dirY * (float)(trunkHeight - 1));
 
+    int lineX = x;
+    int lineY = y;
+    int dx = abs(endX - x);
+    int sx = x < endX ? 1 : -1;
+    int dy = -abs(endY - y);
+    int sy = y < endY ? 1 : -1;
+    int err = dx + dy;
+
+    int placedSegments = 0;
     for (int i = 0; i < trunkHeight; i++) {
-        int tx = x + stepX * i;
-        int ty = y + stepY * i;
+        int tx = lineX;
+        int ty = lineY;
         if (tx < 0 || tx >= gridWidth || ty < 0 || ty >= gridHeight) break;
 
-        int surfaceZ = FindSurfaceZAt(tx, ty);
+        int surfaceZ = FindSurfaceZAtLocal(tx, ty);
         if (surfaceZ < 0) break;
         int placeZ = surfaceZ + 1;
         if (placeZ < 0 || placeZ >= gridDepth) break;
@@ -1045,6 +1079,34 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
         treeTypeGrid[placeZ][ty][tx] = (uint8_t)type;
         treePartGrid[placeZ][ty][tx] = TREE_PART_FELLED;
         MarkChunkDirty(tx, ty, placeZ);
+        placedSegments++;
+
+        if (lineX == endX && lineY == endY) break;
+        int e2 = 2 * err;
+        if (e2 >= dy) { err += dy; lineX += sx; }
+        if (e2 <= dx) { err += dx; lineY += sy; }
+    }
+
+    if (placedSegments < trunkHeight) {
+        TraceLog(LOG_WARNING, "FellTree: placed %d/%d fallen segments at (%d,%d,z%d)",
+                 placedSegments, trunkHeight, x, y, baseZ);
+    }
+
+    int remainingTrunks = 0;
+    for (int sz = minZ; sz <= maxZ; sz++) {
+        for (int sy = minY; sy <= maxY; sy++) {
+            for (int sx = minX; sx <= maxX; sx++) {
+                if (grid[sz][sy][sx] == CELL_TREE_TRUNK &&
+                    treeTypeGrid[sz][sy][sx] == (uint8_t)type &&
+                    treePartGrid[sz][sy][sx] != TREE_PART_FELLED) {
+                    remainingTrunks++;
+                }
+            }
+        }
+    }
+    if (remainingTrunks > 0) {
+        TraceLog(LOG_WARNING, "FellTree: %d trunk cells remain after removal at (%d,%d,z%d)",
+                 remainingTrunks, x, y, baseZ);
     }
 
     // Spawn leaf items (~1 per 8 leaves, minimum 1 if any leaves)
@@ -1072,7 +1134,14 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
         if (spawnX > maxXf) spawnX = maxXf;
         if (spawnY < minYf) spawnY = minYf;
         if (spawnY > maxYf) spawnY = maxYf;
-        SpawnItem(spawnX, spawnY, (float)baseZ, leafItem);
+        int cellX = (int)(spawnX / CELL_SIZE);
+        int cellY = (int)(spawnY / CELL_SIZE);
+        if (cellX < 0) cellX = 0;
+        if (cellX >= gridWidth) cellX = gridWidth - 1;
+        if (cellY < 0) cellY = 0;
+        if (cellY >= gridHeight) cellY = gridHeight - 1;
+        int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
+        SpawnItem(spawnX, spawnY, (float)itemZ, leafItem);
     }
 
     ItemType saplingItem = SaplingItemFromTreeType(type);
@@ -1085,18 +1154,25 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
         if (spawnX > maxXf) spawnX = maxXf;
         if (spawnY < minYf) spawnY = minYf;
         if (spawnY > maxYf) spawnY = maxYf;
-        SpawnItem(spawnX, spawnY, (float)baseZ, saplingItem);
+        int cellX = (int)(spawnX / CELL_SIZE);
+        int cellY = (int)(spawnY / CELL_SIZE);
+        if (cellX < 0) cellX = 0;
+        if (cellX >= gridWidth) cellX = gridWidth - 1;
+        if (cellY < 0) cellY = 0;
+        if (cellY >= gridHeight) cellY = gridHeight - 1;
+        int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
+        SpawnItem(spawnX, spawnY, (float)itemZ, saplingItem);
     }
 }
 
 void CompleteChopDesignation(int x, int y, int z, int moverIdx) {
-    // Get chopper position for fall direction
-    int chopperX = x;
-    int chopperY = y;
+    // Get chopper position for fall direction (grid coords, allow sub-tile)
+    float chopperX = (float)x + 0.5f;
+    float chopperY = (float)y + 0.5f;
     
     if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
-        chopperX = (int)(movers[moverIdx].x / CELL_SIZE);
-        chopperY = (int)(movers[moverIdx].y / CELL_SIZE);
+        chopperX = movers[moverIdx].x / CELL_SIZE;
+        chopperY = movers[moverIdx].y / CELL_SIZE;
     }
     
     // Fell the entire tree (falls away from chopper)
@@ -1113,6 +1189,8 @@ void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
         return;
     }
 
+    TreeType type = NormalizeTreeTypeLocal((TreeType)treeTypeGrid[z][y][x]);
+
     grid[z][y][x] = CELL_AIR;
     treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
     treePartGrid[z][y][x] = TREE_PART_NONE;
@@ -1120,7 +1198,10 @@ void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
 
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    SpawnItem(spawnX, spawnY, (float)z, ITEM_WOOD);
+    int itemIdx = SpawnItem(spawnX, spawnY, (float)z, ITEM_WOOD);
+    if (itemIdx >= 0) {
+        items[itemIdx].treeType = (uint8_t)type;
+    }
 
     CancelDesignation(x, y, z);
 }

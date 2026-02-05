@@ -35,6 +35,7 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].z = z;
             items[i].type = type;
             items[i].state = ITEM_ON_GROUND;
+            items[i].treeType = 0;
             items[i].active = true;
             items[i].reservedBy = -1;
             items[i].unreachableCooldown = 0.0f;

@@ -215,7 +215,8 @@ const char* InputMode_GetBarText(void) {
             break;
         case ACTION_SANDBOX_TREE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-click place  R-drag remove  [ESC]Back", prefix);
+                "%s: L-click place  R-drag remove  T:cycle (%s)  [ESC]Back", prefix,
+                treeTypeNames[currentTreeType]);
             break;
         default:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
@@ -485,6 +486,7 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;
         case ACTION_SANDBOX_TREE:
+            n = AddItem(items, n, TextFormat("Cycle tree (%s)", treeTypeNames[currentTreeType]), KEY_T, 0, false, false, false);
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;

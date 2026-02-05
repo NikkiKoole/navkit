@@ -1334,6 +1334,24 @@ void DrawMiningDesignations(void) {
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){200, 120, 60, 255});
                 }
             }
+            // Chop felled designation: darker brown
+            else if (d->type == DESIGNATION_CHOP_FELLED) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){140, 80, 40, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){170, 100, 50, 255});
+                }
+            }
             // Gather sapling designation: light green
             else if (d->type == DESIGNATION_GATHER_SAPLING) {
                 float sx = offset.x + x * size;

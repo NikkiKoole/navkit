@@ -20,8 +20,9 @@
 #include "../world/pathfinding.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
+#include "../simulation/trees.h"
 
-#define INSPECT_SAVE_VERSION 14
+#define INSPECT_SAVE_VERSION 15
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -30,6 +31,16 @@
 #define MARKER_VIEW     0x56494557  // "VIEW"
 #define MARKER_SETTINGS 0x53455454  // "SETT"
 #define MARKER_END      0x454E4421  // "END!"
+
+static const char* InspectItemName(const Item* item, char* buffer, size_t bufferSize) {
+    const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
+    if (item->type == ITEM_WOOD &&
+        item->treeType >= TREE_TYPE_OAK && item->treeType < TREE_TYPE_COUNT) {
+        snprintf(buffer, bufferSize, "%s (%s)", base, TreeTypeName((TreeType)item->treeType));
+        return buffer;
+    }
+    return base;
+}
 
 static const char* cellTypeNames[] = {
     "WALL",          // 0
@@ -142,7 +153,11 @@ static void print_item(int idx) {
     printf("Position: (%.2f, %.2f, z%.0f) -> cell (%d, %d)\n",
            item->x, item->y, item->z, (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE));
     printf("Active: %s\n", item->active ? "YES" : "no");
-    printf("Type: %s\n", item->type < ITEM_TYPE_COUNT ? ItemName(item->type) : "?");
+    {
+        char nameBuf[64];
+        const char* typeName = InspectItemName(item, nameBuf, sizeof(nameBuf));
+        printf("Type: %s\n", typeName);
+    }
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");
@@ -394,8 +409,12 @@ static void print_cell(int x, int y, int z) {
         int iy = (int)(insp_items[i].y / CELL_SIZE);
         int iz = (int)insp_items[i].z;
         if (ix == x && iy == y && iz == z) {
-            printf("  Item %d: %s (%s)\n", i, 
-                   ItemName(insp_items[i].type), itemStateNames[insp_items[i].state]);
+            {
+                char nameBuf[64];
+                const char* typeName = InspectItemName(&insp_items[i], nameBuf, sizeof(nameBuf));
+                printf("  Item %d: %s (%s)\n", i, 
+                       typeName, itemStateNames[insp_items[i].state]);
+            }
             found++;
         }
     }
@@ -682,9 +701,13 @@ static void print_reserved_items(void) {
     for (int i = 0; i < insp_itemHWM; i++) {
         if (!insp_items[i].active) continue;
         if (insp_items[i].reservedBy >= 0) {
+        {
+            char nameBuf[64];
+            const char* typeName = InspectItemName(&insp_items[i], nameBuf, sizeof(nameBuf));
             printf("Item %d (%s at %.0f,%.0f): reserved by mover %d\n",
-                   i, ItemName(insp_items[i].type),
+                   i, typeName,
                    insp_items[i].x, insp_items[i].y, insp_items[i].reservedBy);
+        }
             found++;
         }
     }
@@ -711,7 +734,8 @@ static void print_items(const char* filterType) {
     for (int i = 0; i < insp_itemHWM; i++) {
         if (!insp_items[i].active) continue;
         Item* item = &insp_items[i];
-        const char* typeName = ItemName(item->type);
+        char nameBuf[64];
+        const char* typeName = InspectItemName(item, nameBuf, sizeof(nameBuf));
         
         // Filter by type if specified
         if (filterType && strcmp(filterType, typeName) != 0) continue;

@@ -6,6 +6,7 @@
 #include "../entities/items.h"
 #include "designations.h"
 #include "../simulation/water.h"
+#include "../simulation/trees.h"
 #include "../game_state.h"
 #include <math.h>
 #include <string.h>
@@ -24,6 +25,59 @@ static inline int ClampInt(int v, int minV, int maxV) {
     if (v < minV) return minV;
     if (v > maxV) return maxV;
     return v;
+}
+
+static bool CanPlaceWorldGenTreeAt(int x, int y, int baseZ) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+    if (baseZ < 0 || baseZ + 1 >= gridDepth) return false;
+    if (!IsGroundCell(grid[baseZ][y][x])) return false;
+    if (grid[baseZ + 1][y][x] != CELL_AIR) return false;
+    return true;
+}
+
+static TreeType PickTreeTypeForSoilSimple(CellType soil) {
+    switch (soil) {
+        case CELL_PEAT: return TREE_TYPE_WILLOW;
+        case CELL_SAND: return TREE_TYPE_BIRCH;
+        case CELL_GRAVEL: return TREE_TYPE_PINE;
+        case CELL_CLAY: return TREE_TYPE_OAK;
+        case CELL_DIRT:
+        default: return TREE_TYPE_OAK;
+    }
+}
+
+static TreeType PickTreeTypeForWorldGen(CellType soil, float wetness, int slope, bool nearWater, float noise) {
+    if (nearWater || wetness > 0.7f) {
+        if (soil == CELL_PEAT || soil == CELL_DIRT) return TREE_TYPE_WILLOW;
+    }
+
+    if ((soil == CELL_GRAVEL || slope >= 1) && wetness < 0.45f) {
+        return TREE_TYPE_PINE;
+    }
+
+    if (soil == CELL_SAND || soil == CELL_GRAVEL) {
+        return TREE_TYPE_BIRCH;
+    }
+
+    if (soil == CELL_CLAY || soil == CELL_DIRT) {
+        return TREE_TYPE_OAK;
+    }
+
+    if (soil == CELL_PEAT) {
+        return TREE_TYPE_WILLOW;
+    }
+
+    return (noise < 0.5f) ? TREE_TYPE_OAK : TREE_TYPE_BIRCH;
+}
+
+static void PlaceWorldGenTree(int x, int y, int baseZ, TreeType type, bool growFull) {
+    if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) return;
+    int z = baseZ + 1;
+    if (growFull) {
+        TreeGrowFull(x, y, z, type);
+    } else {
+        PlaceSapling(x, y, z, type);
+    }
 }
 
 static inline bool ShouldPlaceRampAt(int x, int y) {
@@ -2369,6 +2423,59 @@ void GenerateHillsSoilsWater(void) {
             placed++;
         }
 
+        // ----------------------------------------------------------------
+        // Tree placement (typed, bias by wetness/slope/near-water)
+        // ----------------------------------------------------------------
+        int treePlaced = 0;
+        float treeScale = 0.028f;
+        int nearWaterRadius = 3;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                int idx = y * gridWidth + x;
+                if (waterMask[idx]) continue;
+
+                int baseZ = surface[idx];
+                if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) continue;
+
+                int height = heightmap[idx];
+                int slope = 0;
+                if (x > 0) slope = (abs(height - heightmap[y * gridWidth + (x - 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x - 1)]) : slope;
+                if (x < gridWidth - 1) slope = (abs(height - heightmap[y * gridWidth + (x + 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x + 1)]) : slope;
+                if (y > 0) slope = (abs(height - heightmap[(y - 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y - 1) * gridWidth + x]) : slope;
+                if (y < gridHeight - 1) slope = (abs(height - heightmap[(y + 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y + 1) * gridWidth + x]) : slope;
+
+                bool nearWater = false;
+                for (int dy = -nearWaterRadius; dy <= nearWaterRadius && !nearWater; dy++) {
+                    for (int dx = -nearWaterRadius; dx <= nearWaterRadius; dx++) {
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        if (waterMask[ny * gridWidth + nx]) {
+                            nearWater = true;
+                            break;
+                        }
+                    }
+                }
+
+                float heightNorm = (maxHeight == minHeight) ? 0.0f : (float)(height - minHeight) / (float)(maxHeight - minHeight);
+                float wetness = 1.0f - heightNorm;
+                if (nearWater) wetness += hillsWaterWetnessBias;
+                wetness = Clamp01(wetness);
+
+                float n = OctavePerlin(x * treeScale, y * treeScale, 3, 0.5f);
+                float density = 0.10f;
+                if (wetness > 0.75f) density *= 0.75f;
+                if (wetness < 0.30f) density *= 0.65f;
+                if (slope >= 2) density *= 0.6f;
+                if (n > density) continue;
+
+                TreeType type = PickTreeTypeForWorldGen(grid[baseZ][y][x], wetness, slope, nearWater, n);
+                PlaceWorldGenTree(x, y, baseZ, type, true);
+                treePlaced++;
+            }
+        }
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d trees", treePlaced);
+
         free(surface);
     }
 
@@ -2384,6 +2491,7 @@ void GenerateHillsSoilsWater(void) {
 
 void GeneratePerlin(void) {
     InitGrid();
+    FillGroundLevel();
     InitPerlin((int)worldSeed);
     float scale = 0.015f;
 
@@ -2398,8 +2506,10 @@ void GeneratePerlin(void) {
             } else {
                 density = 0.02f;  // light debris in city
             }
-            if ((float)GetRandomValue(0, 100) / 100.0f < density)
-                grid[1][y][x] = CELL_WALL;
+            if ((float)GetRandomValue(0, 100) / 100.0f < density) {
+                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                PlaceWorldGenTree(x, y, 0, type, true);
+            }
         }
     }
 
@@ -2454,6 +2564,7 @@ void GeneratePerlin(void) {
 void GenerateCity(void) {
     InitGrid();
     SeedTerrain();
+    FillGroundLevel();
     for (int wy = chunkHeight; wy < gridHeight; wy += chunkHeight / 2) {
         for (int wx = 0; wx < gridWidth; wx++) {
             int gapPos = GetRandomValue(6, 20);
@@ -2476,10 +2587,14 @@ void GenerateCity(void) {
             wy += gapPos + gapSize;
         }
     }
-    for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            if (grid[0][y][x] == CELL_DIRT && GetRandomValue(0, 100) < 5)
-                grid[1][y][x] = CELL_WALL;
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            if (grid[0][y][x] == CELL_DIRT && GetRandomValue(0, 100) < 5) {
+                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                PlaceWorldGenTree(x, y, 0, type, true);
+            }
+        }
+    }
     needsRebuild = true;
 }
 
@@ -3767,7 +3882,8 @@ void GenerateCouncilEstate(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             if (grid[0][y][x] == CELL_DIRT && GetRandomValue(0, 100) < 3) {
-                grid[1][y][x] = CELL_WALL;  // Tree or debris
+                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                PlaceWorldGenTree(x, y, 0, type, true);
             }
         }
     }
@@ -3779,6 +3895,7 @@ void GenerateCouncilEstate(void) {
 void GenerateMixed(void) {
     InitGrid();
     SeedTerrain();
+    FillGroundLevel();
     int zoneSize = chunkWidth * 4;
     int zonesX = (gridWidth + zoneSize - 1) / zoneSize;
     int zonesY = (gridHeight + zoneSize - 1) / zoneSize;
@@ -3825,7 +3942,10 @@ void GenerateMixed(void) {
                 int zx = x / zoneSize, zy = y / zoneSize;
                 bool isCity = (zx < 16 && zy < 16 && zones[zy][zx] == 1);
                 int chance = isCity ? 3 : 15;
-                if (GetRandomValue(0, 100) < chance) grid[1][y][x] = CELL_WALL;
+                if (GetRandomValue(0, 100) < chance) {
+                    TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                    PlaceWorldGenTree(x, y, 0, type, true);
+                }
             }
         }
     }

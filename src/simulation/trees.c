@@ -195,7 +195,7 @@ static void PlaceLeavesDisk(int cx, int cy, int z, int radius, int skipChance, T
     }
 }
 
-static void SpawnLeavesForType(TreeType type, int trunkX, int trunkY, int baseZ, int topZ) {
+static void SpawnLeavesForType(TreeType type, int trunkX, int trunkY, int topZ) {
     unsigned int hash = PositionHash(trunkX, trunkY, topZ);
 
     if (type == TREE_TYPE_OAK) {
@@ -249,17 +249,17 @@ static void SpawnBranchesForType(TreeType type, int trunkX, int trunkY, int base
     int dys[4] = {0, 0, 1, -1};
 
     if (type == TREE_TYPE_OAK) {
-        int levels[2] = { baseZ + 2, baseZ + 3 };
-        for (int i = 0; i < 2; i++) {
+        int levels[3] = { baseZ + 2, baseZ + 3, baseZ + 4 };
+        for (int i = 0; i < 3; i++) {
             int z = levels[i];
             if (z >= topZ) continue;
-            int branchCount = 1 + ((hash >> (i * 3)) % 2);
+            int branchCount = 2 + ((hash >> (i * 3)) % 2); // 2-3 branches per level
             for (int b = 0; b < branchCount; b++) {
                 int dir = (hash >> (b * 5 + i * 2)) % 4;
                 int nx = trunkX + dxs[dir];
                 int ny = trunkY + dys[dir];
                 PlaceBranchCell(nx, ny, z, type);
-                if (((hash >> (b * 7 + 1)) % 100) < 40 && z + 1 < gridDepth) {
+                if (((hash >> (b * 7 + 1)) % 100) < 60 && z + 1 < gridDepth) {
                     PlaceBranchCell(nx, ny, z + 1, type);
                 }
             }
@@ -315,8 +315,8 @@ static void PlaceRootsForTree(int baseX, int baseY, int baseZ, TreeType type) {
         PlaceRootCell(nx, ny, rootZ, type);
     }
 
-    // Optional exposed root adjacent to base
-    if ((hash % 100) < 25) {
+    // Optional exposed root adjacent to base (only for oak/willow)
+    if ((type == TREE_TYPE_OAK || type == TREE_TYPE_WILLOW) && (hash % 100) < 25) {
         int dir = (hash >> 9) % 4;
         int nx = baseX + dxs[dir];
         int ny = baseY + dys[dir];
@@ -389,7 +389,7 @@ static void GrowCell(int x, int y, int z) {
             // Reached target height or blocked - spawn branches and leaves
             int topZ = baseZ + height - 1;
             SpawnBranchesForType(type, x, y, baseZ, topZ);
-            SpawnLeavesForType(type, x, y, baseZ, topZ);
+            SpawnLeavesForType(type, x, y, topZ);
             treeActiveCells--;
         }
     } else if (cell == CELL_TREE_LEAVES) {
@@ -491,7 +491,7 @@ void TreeGrowFull(int x, int y, int z, TreeType type) {
     }
 
     SpawnBranchesForType(type, x, y, baseZ, currentZ);
-    SpawnLeavesForType(type, x, y, baseZ, currentZ);
+    SpawnLeavesForType(type, x, y, currentZ);
 
     if (addedActive) {
         treeActiveCells--;
