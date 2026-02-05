@@ -15,6 +15,11 @@ make debug        # debug build with sanitizers
 
 - Use `LOG_INFO` or `LOG_WARNING` for debug output (`LOG_DEBUG` not visible by default)
 
+## Atlas / Tiles
+
+- We are **8x8-only** for now. The 16x16 atlas is not maintained.
+- If 16x16 is needed again, regenerate the atlas and update 16x16 sprite entries to match 8x8.
+
 ## Code Structure
 
 ```
