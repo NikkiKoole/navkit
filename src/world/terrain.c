@@ -1051,6 +1051,19 @@ void GenerateHills(void) {
             SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
         }
     }
+
+    // Rock layer: keep a soil band on top, rock below
+    const int soilDepth = 4;  // Topsoil + subsoil depth
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int height = heightmap[y * gridWidth + x];
+            if (height < soilDepth) continue;  // too shallow for rock
+            int rockStartZ = height - soilDepth;
+            for (int z = 0; z <= rockStartZ; z++) {
+                grid[z][y][x] = CELL_WALL;  // natural rock (MAT_RAW)
+            }
+        }
+    }
     
     // Second pass: Place ramps by carving into hillsides
     // For natural-looking hills, carve the ramp INTO the higher terrain.
@@ -1191,6 +1204,19 @@ void GenerateHillsSoils(void) {
     float peatNoise = 0.55f;
     int topsoilDepth = 2;
     int clayDepth = 2;
+    int soilDepth = topsoilDepth + clayDepth;
+
+    // Rock layer: keep a soil band on top, rock below
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int height = heightmap[y * gridWidth + x];
+            if (height < soilDepth) continue;  // too shallow for rock
+            int rockStartZ = height - soilDepth;
+            for (int z = 0; z <= rockStartZ; z++) {
+                grid[z][y][x] = CELL_WALL;  // natural rock (MAT_RAW)
+            }
+        }
+    }
 
     // Apply surface soils and subsoil clay blobs
     for (int y = 0; y < gridHeight; y++) {
@@ -1216,8 +1242,13 @@ void GenerateHillsSoils(void) {
                 surface = CELL_PEAT;
             } else if (wetness < 0.35f && sandN > sandNoise) {
                 surface = CELL_SAND;
-            } else if (slope >= 2 || gravelN > gravelNoise) {
-                surface = CELL_GRAVEL;
+            } else {
+                bool rockBelow = (height >= soilDepth);
+                float gravelThreshold = gravelNoise - (rockBelow ? 0.08f : 0.0f);
+                if (gravelThreshold < 0.4f) gravelThreshold = 0.4f;
+                if (slope >= 2 || gravelN > gravelThreshold) {
+                    surface = CELL_GRAVEL;
+                }
             }
 
             grid[height][y][x] = surface;

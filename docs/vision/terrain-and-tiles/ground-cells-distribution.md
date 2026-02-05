@@ -19,6 +19,10 @@ Use 2–3 independent Perlin noise fields and combine with **height** (or slope)
 - `slope[x,y]` (optional): max neighbor height delta.
 
 ## Placement Rules (sketch)
+### 0) Rock Layer (Parent Material)
+- Keep a **soil band** on top and place **rock** below it (e.g., `CELL_WALL` with `MAT_RAW`).
+- This creates a clear soil → rock transition for mining and geology.
+
 ### 1) Topsoil vs Subsoil
 - Define `topsoilDepth = 1..2` tiles from surface.
 - Define `subsoilDepth = 2..4` tiles below surface.
@@ -29,6 +33,7 @@ Use 2–3 independent Perlin noise fields and combine with **height** (or slope)
 
 ### 3) Gravel (Surface / Upper Subsoil)
 - If `slope` is high OR `PerlinB(x,y) > gravelThreshold`, mark surface as `CELL_GRAVEL`.
+- Make gravel **more likely above rock** (lower the threshold if rock is close below).
 - Optionally sprinkle one layer below surface too.
 
 ### 4) Sand vs Peat (Surface)
