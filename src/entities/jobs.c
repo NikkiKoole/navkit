@@ -684,7 +684,7 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
 
     // Check if the wall/dirt was already mined
     CellType ct = grid[job->targetMineZ][job->targetMineY][job->targetMineX];
-    if (ct != CELL_WALL && ct != CELL_DIRT) {
+    if (ct != CELL_WALL && !IsGroundCell(ct)) {
         CancelDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
         return JOBRUN_FAIL;
     }
@@ -829,7 +829,7 @@ JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
 
     // Check if the wall/dirt still exists
     CellType ct = grid[tz][ty][tx];
-    if (ct != CELL_WALL && ct != CELL_DIRT) {
+    if (ct != CELL_WALL && !IsGroundCell(ct)) {
         CancelDesignation(tx, ty, tz);
         return JOBRUN_FAIL;
     }

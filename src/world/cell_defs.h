@@ -80,6 +80,11 @@ static inline bool IsWallCell(CellType cell) {
     return CellBlocksMovement(cell);
 }
 
+static inline bool IsGroundCell(CellType cell) {
+    return cell == CELL_DIRT || cell == CELL_CLAY || cell == CELL_GRAVEL ||
+           cell == CELL_SAND || cell == CELL_PEAT;
+}
+
 // DF-style walkability: walkable if current cell is traversable AND
 // (cell below is solid OR this cell has a constructed floor)
 static inline bool IsCellWalkableAt(int z, int y, int x) {

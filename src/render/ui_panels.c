@@ -168,7 +168,7 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 19, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 20, &currentTerrain);
         y += 22;
         if (PushButton(x, y, "Randomize Seed")) {
             worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
