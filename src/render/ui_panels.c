@@ -205,6 +205,8 @@ void DrawUI(void) {
         if (PushButton(x, y, "Generate Terrain")) {
             GenerateCurrentTerrain();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+            InitSimActivity();
+            InitTemperature();
             BuildEntrances();
             BuildGraph();
             AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
