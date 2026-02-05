@@ -6,6 +6,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../entities/items.h"
+#include "../world/material.h"
 #include <stdlib.h>
 
 // Growth parameters - runtime configurable
@@ -71,6 +72,16 @@ TreeType TreeTypeFromSaplingItem(ItemType type) {
         case ITEM_SAPLING_WILLOW: return TREE_TYPE_WILLOW;
         case ITEM_SAPLING_OAK:
         default: return TREE_TYPE_OAK;
+    }
+}
+
+MaterialType MaterialFromTreeType(TreeType type) {
+    switch (type) {
+        case TREE_TYPE_PINE: return MAT_PINE;
+        case TREE_TYPE_BIRCH: return MAT_BIRCH;
+        case TREE_TYPE_WILLOW: return MAT_WILLOW;
+        case TREE_TYPE_OAK:
+        default: return MAT_OAK;
     }
 }
 

@@ -11,14 +11,14 @@ CellDef cellDefs[] = {
     [CELL_PEAT]        = {"peat",        SPRITE_peat,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    6, CELL_DIRT,        ITEM_PEAT, 1},
     
     // === WALLS ===
-    // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD material instead
+    // Note: CELL_WOOD_WALL removed - use CELL_WALL + wood material instead
     [CELL_WALL]        = {"wall",        SPRITE_wall,        CF_WALL,              INSULATION_TIER_STONE,  0, CELL_WALL,        ITEM_ROCK, 1},  // Base wall - material determines drops/flammability
     
     // === VERTICAL MOVEMENT ===
     // Ladders are walkable via CF_LADDER check, not CF_SOLID (so they don't render as floor in DF mode)
-    [CELL_LADDER_UP]   = {"ladder up",   SPRITE_ladder_up,   CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_UP,   ITEM_STONE_BLOCKS, 1},
-    [CELL_LADDER_DOWN] = {"ladder down", SPRITE_ladder_down, CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_DOWN, ITEM_STONE_BLOCKS, 1},
-    [CELL_LADDER_BOTH] = {"ladder",      SPRITE_ladder,      CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_BOTH, ITEM_STONE_BLOCKS, 1},
+    [CELL_LADDER_UP]   = {"ladder up",   SPRITE_ladder_up,   CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_UP,   ITEM_BLOCKS, 1},
+    [CELL_LADDER_DOWN] = {"ladder down", SPRITE_ladder_down, CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_DOWN, ITEM_BLOCKS, 1},
+    [CELL_LADDER_BOTH] = {"ladder",      SPRITE_ladder,      CF_WALKABLE|CF_LADDER,  INSULATION_TIER_AIR,    0, CELL_LADDER_BOTH, ITEM_BLOCKS, 1},
     // Ramps are walkable via CF_RAMP check, directional z-transitions
     [CELL_RAMP_N]      = {"ramp north",  SPRITE_ramp_n,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_N,      ITEM_ROCK, 1},
     [CELL_RAMP_E]      = {"ramp east",   SPRITE_ramp_e,      CF_RAMP,                INSULATION_TIER_STONE,  0, CELL_RAMP_E,      ITEM_ROCK, 1},

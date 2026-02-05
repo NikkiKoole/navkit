@@ -41,14 +41,15 @@ static void DrawLineToTile(float msx, float msy, int tx, int ty, int tz, Color c
 static int MaterialWallSprite(MaterialType mat) {
     // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
     switch (mat) {
-        case MAT_WOOD:
+        case MAT_OAK:
+        case MAT_PINE:
+        case MAT_BIRCH:
+        case MAT_WILLOW:
             return SPRITE_wood_wall;
-        case MAT_STONE:
+        case MAT_GRANITE:
             return SPRITE_stone_wall;
         case MAT_DIRT:
             return SPRITE_dirt_block;
-        case MAT_RAW:
-            return SPRITE_rock;
         default:
             return SPRITE_wall;
     }
@@ -57,14 +58,15 @@ static int MaterialWallSprite(MaterialType mat) {
 static int MaterialFloorSprite(MaterialType mat) {
     // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
     switch (mat) {
-        case MAT_WOOD:
+        case MAT_OAK:
+        case MAT_PINE:
+        case MAT_BIRCH:
+        case MAT_WILLOW:
             return SPRITE_wood_floor;
-        case MAT_STONE:
+        case MAT_GRANITE:
             return SPRITE_stone_floor;
         case MAT_DIRT:
             return SPRITE_dirt;
-        case MAT_RAW:
-            return SPRITE_rock_floor;
         default:
             return SPRITE_floor;
     }
@@ -108,6 +110,9 @@ static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_WALL) {
         MaterialType mat = GetWallMaterial(x, y, z);
+        if (IsWallNatural(x, y, z)) {
+            return SPRITE_rock;
+        }
         return MaterialWallSprite(mat);
     }
     if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
@@ -118,6 +123,9 @@ static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
 
 static int GetFloorSpriteAt(int x, int y, int z) {
     MaterialType mat = GetFloorMaterial(x, y, z);
+    if (IsFloorNatural(x, y, z) && IsStoneMaterial(mat)) {
+        return SPRITE_rock_floor;
+    }
     return MaterialFloorSprite(mat);
 }
 

@@ -1,6 +1,7 @@
 #include "items.h"
 #include "mover.h"  // for CELL_SIZE
 #include "../world/grid.h"   // for gridWidth, gridHeight, gridDepth
+#include "../world/material.h"  // for MaterialType
 #include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include <math.h>
@@ -16,6 +17,8 @@ void ClearItems(void) {
         items[i].active = false;
         items[i].reservedBy = -1;
         items[i].unreachableCooldown = 0.0f;
+        items[i].material = MAT_NONE;
+        items[i].natural = false;
     }
     itemCount = 0;
     itemHighWaterMark = 0;
@@ -35,7 +38,8 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].z = z;
             items[i].type = type;
             items[i].state = ITEM_ON_GROUND;
-            items[i].treeType = 0;
+            items[i].material = DefaultMaterialForItemType(type);
+            items[i].natural = false;
             items[i].active = true;
             items[i].reservedBy = -1;
             items[i].unreachableCooldown = 0.0f;
@@ -49,6 +53,40 @@ int SpawnItem(float x, float y, float z, ItemType type) {
         }
     }
     return -1;  // no space
+}
+
+int SpawnItemWithMaterial(float x, float y, float z, ItemType type, uint8_t material) {
+    int idx = SpawnItem(x, y, z, type);
+    if (idx >= 0) {
+        items[idx].material = material;
+    }
+    return idx;
+}
+
+uint8_t DefaultMaterialForItemType(ItemType type) {
+    switch (type) {
+        case ITEM_ROCK:
+        case ITEM_BLOCKS:
+            return MAT_GRANITE;
+        case ITEM_WOOD:
+            return MAT_OAK;
+        case ITEM_SAPLING_OAK:
+        case ITEM_LEAVES_OAK:
+            return MAT_OAK;
+        case ITEM_SAPLING_PINE:
+        case ITEM_LEAVES_PINE:
+            return MAT_PINE;
+        case ITEM_SAPLING_BIRCH:
+        case ITEM_LEAVES_BIRCH:
+            return MAT_BIRCH;
+        case ITEM_SAPLING_WILLOW:
+        case ITEM_LEAVES_WILLOW:
+            return MAT_WILLOW;
+        case ITEM_DIRT:
+            return MAT_DIRT;
+        default:
+            return MAT_NONE;
+    }
 }
 
 void DeleteItem(int index) {

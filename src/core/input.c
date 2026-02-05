@@ -46,7 +46,7 @@ static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
 
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
     bool isDirt = (selectedMaterial == 3);
-    MaterialType mat = isDirt ? MAT_DIRT : (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
+    MaterialType mat = isDirt ? MAT_DIRT : (selectedMaterial == 2) ? MAT_OAK : MAT_GRANITE;
     int count = 0;
     int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -61,9 +61,11 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 // Dirt creates natural CELL_DIRT terrain
                 if (grid[z][dy][dx] != CELL_DIRT) {
                     grid[z][dy][dx] = CELL_DIRT;
-                    SetWallMaterial(dx, dy, z, MAT_RAW);  // Natural terrain
+                    SetWallMaterial(dx, dy, z, MAT_DIRT);
+                    SetWallNatural(dx, dy, z);
                     CLEAR_FLOOR(dx, dy, z);
                     SetFloorMaterial(dx, dy, z, MAT_NONE);
+                    ClearFloorNatural(dx, dy, z);
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);  // No grass yet, will grow over time
                     MarkChunkDirty(dx, dy, z);
                     CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
@@ -78,6 +80,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
                     grid[z][dy][dx] = CELL_WALL;
                     SetWallMaterial(dx, dy, z, mat);
+                    ClearWallNatural(dx, dy, z);
                     MarkChunkDirty(dx, dy, z);
                     CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                     SetWaterLevel(dx, dy, z, 0);
@@ -104,7 +107,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
         }
     }
     if (count > 0) {
-        const char* matName = isDirt ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
+        const char* matName = isDirt ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
         AddMessage(TextFormat("Placed %d %s%s", count, matName, count > 1 ? " blocks" : " block"), GREEN);
     }
     if (skipped > 0) {
@@ -113,7 +116,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
-    MaterialType mat = (selectedMaterial == 3) ? MAT_DIRT : (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
+    MaterialType mat = (selectedMaterial == 3) ? MAT_DIRT : (selectedMaterial == 2) ? MAT_OAK : MAT_GRANITE;
     int count = 0;
     int replaced = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -131,16 +134,17 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
                 replaced++;
             }
             SetFloorMaterial(dx, dy, z, mat);
+            ClearFloorNatural(dx, dy, z);
             MarkChunkDirty(dx, dy, z);
             CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
         }
     }
     if (count > 0) {
-        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
+        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
         AddMessage(TextFormat("Placed %d %s floor%s", count, matName, count > 1 ? "s" : ""), GREEN);
     }
     if (replaced > 0) {
-        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
+        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
         AddMessage(TextFormat("Updated %d %s floor%s", replaced, matName, replaced > 1 ? "s" : ""), GREEN);
     }
 }
@@ -210,6 +214,8 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
             // Can place dirt on air
             if (cell == CELL_AIR) {
                 grid[z][dy][dx] = CELL_DIRT;
+                SetWallMaterial(dx, dy, z, MAT_DIRT);
+                SetWallNatural(dx, dy, z);
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 // Set tall grass overlay and reset wear
@@ -233,11 +239,13 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
                 continue;
             }
 
-            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_RAW) {
+            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
                 grid[z][dy][dx] = CELL_WALL;
-                SetWallMaterial(dx, dy, z, MAT_RAW);
+                SetWallMaterial(dx, dy, z, MAT_GRANITE);
+                SetWallNatural(dx, dy, z);
                 CLEAR_FLOOR(dx, dy, z);
                 SetFloorMaterial(dx, dy, z, MAT_NONE);
+                ClearFloorNatural(dx, dy, z);
                 SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
@@ -279,6 +287,8 @@ static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
                 grid[z][dy][dx] = eraseType;
                 MarkChunkDirty(dx, dy, z);
                 SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                SetWallMaterial(dx, dy, z, MAT_NONE);
+                ClearWallNatural(dx, dy, z);
                 count++;
             }
         }
@@ -302,9 +312,15 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                     grid[z][dy][dx] = eraseType;
                     changed = true;
                 }
+                if (changed) {
+                    SetWallMaterial(dx, dy, z, MAT_NONE);
+                    ClearWallNatural(dx, dy, z);
+                }
                 // Also clear floor flag in DF mode
                 if (HAS_FLOOR(dx, dy, z)) {
                     CLEAR_FLOOR(dx, dy, z);
+                    SetFloorMaterial(dx, dy, z, MAT_NONE);
+                    ClearFloorNatural(dx, dy, z);
                     changed = true;
                 }
                 if (changed) {
@@ -1097,8 +1113,8 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_G)) { sp->allowedTypes[ITEM_GREEN] = !sp->allowedTypes[ITEM_GREEN]; AddMessage(TextFormat("Green: %s", sp->allowedTypes[ITEM_GREEN] ? "ON" : "OFF"), GREEN); return; }
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ROCK] = !sp->allowedTypes[ITEM_ROCK]; AddMessage(TextFormat("Rock: %s", sp->allowedTypes[ITEM_ROCK] ? "ON" : "OFF"), ORANGE); return; }
-            if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
-            if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_BLOCKS] = !sp->allowedTypes[ITEM_BLOCKS]; AddMessage(TextFormat("Blocks: %s", sp->allowedTypes[ITEM_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
+            if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood (any): %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
             if (IsKeyPressed(KEY_T)) {
                 bool anySapling = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
                                   sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
@@ -1293,11 +1309,12 @@ void HandleInput(void) {
                     if (IsWorkshopTile(x, y, z)) {
                         // Skip silently in quick-edit mode
                     } else {
-                        MaterialType mat = IsKeyDown(KEY_TWO) ? MAT_WOOD : MAT_STONE;
+                        MaterialType mat = IsKeyDown(KEY_TWO) ? MAT_OAK : MAT_GRANITE;
                         if (grid[z][y][x] != CELL_WALL || GetWallMaterial(x, y, z) != mat) {
                             DisplaceWater(x, y, z);
                             grid[z][y][x] = CELL_WALL;
                             SetWallMaterial(x, y, z, mat);
+                            ClearWallNatural(x, y, z);
                             MarkChunkDirty(x, y, z);
                             for (int i = 0; i < moverCount; i++) {
                                 Mover* m = &movers[i];

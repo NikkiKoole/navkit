@@ -790,7 +790,7 @@ describe(stockpile_sapling_filter) {
         RebuildStockpileFreeSlotCounts();
         
         int outX, outY;
-        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, &outX, &outY);
+        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, MAT_NONE, &outX, &outY);
         
         expect(foundSp == spIdx);
     }
@@ -809,7 +809,7 @@ describe(stockpile_sapling_filter) {
         (void)spIdx;
         
         int outX, outY;
-        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, &outX, &outY);
+        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, MAT_NONE, &outX, &outY);
         
         expect(foundSp == -1);
     }

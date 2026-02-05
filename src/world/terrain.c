@@ -1716,7 +1716,7 @@ void GenerateHills(void) {
             if (height < soilDepth) continue;  // too shallow for rock
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
-                grid[z][y][x] = CELL_WALL;  // natural rock (MAT_RAW)
+                grid[z][y][x] = CELL_WALL;  // natural rock
             }
         }
     }
@@ -1869,7 +1869,7 @@ void GenerateHillsSoils(void) {
             if (height < soilDepth) continue;  // too shallow for rock
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
-                grid[z][y][x] = CELL_WALL;  // natural rock (MAT_RAW)
+                grid[z][y][x] = CELL_WALL;  // natural rock
             }
         }
     }
@@ -4022,7 +4022,7 @@ void GenerateCraftingTest(void) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
             SetStockpileFilter(outputSp, t, false);
         }
-        SetStockpileFilter(outputSp, ITEM_STONE_BLOCKS, true);
+        SetStockpileFilter(outputSp, ITEM_BLOCKS, true);
         SetStockpilePriority(outputSp, 7);
     }
     
@@ -4032,7 +4032,7 @@ void GenerateCraftingTest(void) {
         for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
             SetStockpileFilter(buildSp, t, false);
         }
-        SetStockpileFilter(buildSp, ITEM_STONE_BLOCKS, true);
+        SetStockpileFilter(buildSp, ITEM_BLOCKS, true);
         SetStockpilePriority(buildSp, 5);  // Normal priority
     }
     

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "items.h"
+#include "../world/material.h"
 
 #define MAX_STOCKPILES 64
 #define MAX_STOCKPILE_SIZE 32  // max width/height
@@ -19,6 +20,7 @@ typedef struct {
     // Stacking support
     int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // number of items in stack
     ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // type of items in slot (-1 = empty)
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // material of items in slot (MAT_NONE = empty)
     int maxStackSize;      // per-stockpile stack limit (1-MAX_STACK_SIZE, default MAX_STACK_SIZE)
     // Priority support
     int priority;          // higher = better storage (1-9, default 5)
@@ -55,15 +57,16 @@ int GetStockpileActiveCellCount(int stockpileIdx);
 // Filters
 void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed);
 bool StockpileAcceptsType(int stockpileIdx, ItemType type);
+bool StockpileAcceptsItem(int stockpileIdx, ItemType type, uint8_t material);
 
 // Slot management
-bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, int* outX, int* outY);
+bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, int* outX, int* outY);
 bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx);
 void ReleaseStockpileSlot(int stockpileIdx, int slotX, int slotY);
 void ReleaseAllSlotsForMover(int moverIdx);
 
 // Queries
-int FindStockpileForItem(ItemType type, int* outSlotX, int* outSlotY);  // returns stockpile index or -1
+int FindStockpileForItem(ItemType type, uint8_t material, int* outSlotX, int* outSlotY);  // returns stockpile index or -1
 bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx);
 
 // Placement
@@ -107,18 +110,18 @@ void RebuildStockpileFreeSlotCounts(void);
 // =============================================================================
 // Call RebuildStockpileSlotCache() once per frame before job assignment.
 // Then use FindStockpileForItemCached() instead of FindStockpileForItem().
-// The cache stores one available slot per item type.
+// The cache stores one available slot per item type + material.
 
 typedef struct {
     int stockpileIdx;   // -1 if no stockpile available for this type
     int slotX, slotY;   // slot coordinates (valid only if stockpileIdx >= 0)
 } StockpileSlotCacheEntry;
 
-extern StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT];
+extern StockpileSlotCacheEntry stockpileSlotCache[ITEM_TYPE_COUNT][MAT_COUNT];
 
 void RebuildStockpileSlotCache(void);  // Build cache - O(types * stockpiles * slots)
-int FindStockpileForItemCached(ItemType type, int* outSlotX, int* outSlotY);  // O(1) lookup
-void InvalidateStockpileSlotCache(ItemType type);  // Call when a slot is reserved
+int FindStockpileForItemCached(ItemType type, uint8_t material, int* outSlotX, int* outSlotY);  // O(1) lookup
+void InvalidateStockpileSlotCache(ItemType type, uint8_t material);  // Call when a slot is reserved
 
 // Fill/overfull metrics
 float GetStockpileFillRatio(int stockpileIdx);

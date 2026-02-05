@@ -1,6 +1,7 @@
 // render/ui_panels.c - UI panel drawing functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../world/material.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include <time.h>
@@ -520,7 +521,7 @@ void DrawUI(void) {
                     if (IsCellWalkableAt(currentViewZ, gy, gx)) {
                         float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
                         float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItem(px, py, (float)currentViewZ, ITEM_STONE_BLOCKS);
+                        SpawnItemWithMaterial(px, py, (float)currentViewZ, ITEM_BLOCKS, MAT_GRANITE);
                         break;
                     }
                 }

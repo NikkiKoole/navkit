@@ -10,9 +10,17 @@
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
-    if (item->type == ITEM_WOOD &&
-        item->treeType >= TREE_TYPE_OAK && item->treeType < TREE_TYPE_COUNT) {
-        snprintf(out, outSize, "%s (%s)", base, TreeTypeName((TreeType)item->treeType));
+    MaterialType mat = (MaterialType)item->material;
+    if (mat == MAT_NONE) {
+        mat = (MaterialType)DefaultMaterialForItemType(item->type);
+    }
+    if (mat != MAT_NONE && ItemTypeUsesMaterialName(item->type)) {
+        char matName[32];
+        snprintf(matName, sizeof(matName), "%s", MaterialName(mat));
+        if (matName[0] >= 'a' && matName[0] <= 'z') {
+            matName[0] = (char)(matName[0] - 'a' + 'A');
+        }
+        snprintf(out, outSize, "%s %s", matName, base);
         return;
     }
     snprintf(out, outSize, "%s", base);
@@ -72,7 +80,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
     const char* fillText = TextFormat("Fill: %s", fillMeter);
     const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
-    const char* helpText = "+/- priority, [/] stack, R/G/B filter";
+    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter";
 
     // Measure text
     int w0 = MeasureText(titleText, 14);
@@ -81,7 +89,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int w3 = MeasureText(storageText, 14);
     int w4 = MeasureText(fillText, 14);
     int w5 = MeasureText(cellText, 14);
-    int w6 = MeasureText("Filters: R G B O", 14);
+    int w6 = MeasureText("Filters: R G B O S W T D", 14);
     int w7 = MeasureText(helpText, 12);
     int maxW = w0;
     if (w1 > maxW) maxW = w1;
@@ -145,8 +153,8 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(sp->allowedTypes[ITEM_ROCK] ? "O" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_ROCK] ? ORANGE : DARKGRAY);
     fx += MeasureText("O", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_STONE_BLOCKS] ? "S" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_STONE_BLOCKS] ? GRAY : DARKGRAY);
+    DrawTextShadow(sp->allowedTypes[ITEM_BLOCKS] ? "S" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_BLOCKS] ? GRAY : DARKGRAY);
     fx += MeasureText("S", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_WOOD] ? "W" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_WOOD] ? BROWN : DARKGRAY);
@@ -406,16 +414,22 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 
     // Wall material (for constructed walls)
     MaterialType wallMat = GetWallMaterial(cellX, cellY, cellZ);
-    if (wallMat != MAT_NONE && wallMat != MAT_RAW) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s", MaterialName(wallMat));
-    } else if (wallMat == MAT_RAW && CellBlocksMovement(ct)) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: raw stone");
+    if (wallMat != MAT_NONE && CellBlocksMovement(ct)) {
+        if (IsWallNatural(cellX, cellY, cellZ)) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s (natural)", MaterialName(wallMat));
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s", MaterialName(wallMat));
+        }
     }
     
     // Floor material
     MaterialType floorMat = GetFloorMaterial(cellX, cellY, cellZ);
     if (floorMat != MAT_NONE) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s", MaterialName(floorMat));
+        if (IsFloorNatural(cellX, cellY, cellZ)) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s (natural)", MaterialName(floorMat));
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s", MaterialName(floorMat));
+        }
     }
 
     // Temperature info (all values are now Celsius directly)

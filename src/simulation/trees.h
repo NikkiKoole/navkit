@@ -3,6 +3,7 @@
 #define TREES_H
 
 #include "../world/grid.h"
+#include "../world/material.h"
 #include "../entities/items.h"
 
 // Runtime configurable growth parameters
@@ -14,6 +15,7 @@ const char* TreeTypeName(TreeType type);
 ItemType SaplingItemFromTreeType(TreeType type);
 ItemType LeafItemFromTreeType(TreeType type);
 TreeType TreeTypeFromSaplingItem(ItemType type);
+MaterialType MaterialFromTreeType(TreeType type);
 
 // Initialize tree growth system
 void InitTrees(void);

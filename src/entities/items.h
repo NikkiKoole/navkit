@@ -11,7 +11,7 @@ typedef enum {
     ITEM_GREEN,
     ITEM_BLUE,
     ITEM_ROCK,         // Raw stone from mining (rock block)
-    ITEM_STONE_BLOCKS, // Crafted from ORANGE at stonecutter, used for building
+    ITEM_BLOCKS,       // Crafted blocks (material determines wood vs stone)
     ITEM_WOOD,         // Wood logs from chopping trees
     ITEM_SAPLING_OAK,  // Oak sapling
     ITEM_SAPLING_PINE, // Pine sapling
@@ -41,7 +41,8 @@ typedef struct {
     float x, y, z;
     ItemType type;
     ItemState state;
-    uint8_t treeType;        // TreeType for wood items (0 = none/unknown)
+    uint8_t material;        // MaterialType (stored as u8 to avoid header cycle)
+    bool natural;            // True if item is unprocessed/natural
     bool active;
     int reservedBy;           // mover index, -1 = none
     float unreachableCooldown; // seconds until retry (0 = can try now)
@@ -56,6 +57,8 @@ extern int itemHighWaterMark;  // Highest index + 1 that has ever been active (f
 // Core functions
 void ClearItems(void);
 int SpawnItem(float x, float y, float z, ItemType type);
+int SpawnItemWithMaterial(float x, float y, float z, ItemType type, uint8_t material);
+uint8_t DefaultMaterialForItemType(ItemType type);
 void DeleteItem(int index);
 
 // Reservation
@@ -134,6 +137,11 @@ static inline bool IsSaplingItem(ItemType type) {
 static inline bool IsLeafItem(ItemType type) {
     return type == ITEM_LEAVES_OAK || type == ITEM_LEAVES_PINE ||
            type == ITEM_LEAVES_BIRCH || type == ITEM_LEAVES_WILLOW;
+}
+
+static inline bool ItemTypeUsesMaterialName(ItemType type) {
+    return type == ITEM_WOOD || type == ITEM_BLOCKS || type == ITEM_ROCK ||
+           IsSaplingItem(type) || IsLeafItem(type);
 }
 
 #endif

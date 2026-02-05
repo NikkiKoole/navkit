@@ -35,7 +35,7 @@ typedef enum {
     CELL_GRAVEL,       // Gravel patches
     CELL_SAND,         // Sandy soil
     CELL_PEAT,         // Peat soil (wetlands)
-    CELL_BEDROCK,      // Unmineable bottom layer (was CELL_WOOD_WALL=6, now removed - use CELL_WALL + MAT_WOOD)
+    CELL_BEDROCK,      // Unmineable bottom layer (was CELL_WOOD_WALL=6, now removed - use CELL_WALL + wood material)
     CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
     CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1
     CELL_RAMP_S,       // Ramp: high side south - enter from north at z, exit south at z+1

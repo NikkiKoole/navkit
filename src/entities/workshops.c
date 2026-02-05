@@ -9,9 +9,9 @@
 Workshop workshops[MAX_WORKSHOPS];
 int workshopCount = 0;
 
-// Stonecutter recipes: 1 ORANGE -> 2 STONE_BLOCKS
+// Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_STONE_BLOCKS, 2, 3.0f },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 
@@ -31,7 +31,7 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRa
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
-        if (item->type != recipe->inputType) continue;
+        if (!RecipeInputMatches(recipe, item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
         if ((int)item->z != ws->z) continue;
@@ -47,6 +47,32 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRa
     }
 
     return false;
+}
+
+bool RecipeInputMatches(const Recipe* recipe, const Item* item) {
+    if (!recipe || !item) return false;
+    if (item->type != recipe->inputType) return false;
+
+    if (recipe->inputMaterialMatch == MAT_MATCH_ANY) return true;
+
+    MaterialType mat = (MaterialType)item->material;
+    if (mat == MAT_NONE) {
+        mat = (MaterialType)DefaultMaterialForItemType(item->type);
+    }
+
+    switch (recipe->inputMaterialMatch) {
+        case MAT_MATCH_EXACT:
+            return mat == recipe->inputMaterial;
+        case MAT_MATCH_WOOD:
+            return IsWoodMaterial(mat);
+        case MAT_MATCH_STONE:
+            return IsStoneMaterial(mat);
+        case MAT_MATCH_METAL:
+            return IsMetalMaterial(mat);
+        case MAT_MATCH_ANY:
+        default:
+            return true;
+    }
 }
 
 void ClearWorkshops(void) {
@@ -321,7 +347,7 @@ void UpdateWorkshopDiagnostics(float dt) {
             anyRunnable = true;
 
             int outSlotX, outSlotY;
-            if (FindStockpileForItem(recipe->outputType, &outSlotX, &outSlotY) < 0) {
+            if (FindStockpileForItem(recipe->outputType, MAT_NONE, &outSlotX, &outSlotY) < 0) {
                 continue;
             }
             anyOutputSpace = true;

@@ -4,7 +4,6 @@
 #include "material.h"
 #include "pathfinding.h"
 #include "../entities/items.h"
-#include "../entities/item_defs.h"  // for ItemProducesMaterial
 #include "../entities/mover.h"  // for CELL_SIZE
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
@@ -140,17 +139,22 @@ void CompleteMineDesignation(int x, int y, int z) {
         ItemType dropItem = GetWallDropItem(x, y, z);
         int dropCount = CellDropCount(ct);
         MaterialType wallMat = GetWallMaterial(x, y, z);
+        bool isWallNatural = IsWallNatural(x, y, z);
         
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
         
         // Mining creates floor from wall material
-        // - Natural rock (MAT_RAW) creates rough stone floor
-        // - Constructed walls create floor of same material
         if (wallMat != MAT_NONE) {
             SetFloorMaterial(x, y, z, wallMat);
         }
+        if (isWallNatural) {
+            SetFloorNatural(x, y, z);
+        } else {
+            ClearFloorNatural(x, y, z);
+        }
         SetWallMaterial(x, y, z, MAT_NONE);  // Wall removed
+        ClearWallNatural(x, y, z);
         MarkChunkDirty(x, y, z);
         
         // Destabilize water at this cell and neighbors so it can flow into the new space
@@ -159,7 +163,10 @@ void CompleteMineDesignation(int x, int y, int z) {
         // Spawn drops based on material
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
-                SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
+                uint8_t dropMat = (wallMat != MAT_NONE) ? (uint8_t)wallMat : DefaultMaterialForItemType(dropItem);
+                SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      y * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      (float)z, dropItem, dropMat);
             }
         }
     }
@@ -171,7 +178,9 @@ void CompleteMineDesignation(int x, int y, int z) {
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
         SetFloorMaterial(x, y, z, MAT_DIRT);  // Dirt floor
+        SetFloorNatural(x, y, z);
         SetWallMaterial(x, y, z, MAT_NONE);
+        ClearWallNatural(x, y, z);
         MarkChunkDirty(x, y, z);
         
         DestabilizeWater(x, y, z);
@@ -179,7 +188,10 @@ void CompleteMineDesignation(int x, int y, int z) {
         // Spawn dirt drops
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
-                SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
+                uint8_t dropMat = DefaultMaterialForItemType(dropItem);
+                SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      y * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      (float)z, dropItem, dropMat);
             }
         }
     }
@@ -384,17 +396,20 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     // === STEP 1: Get drop items before modifying cells ===
     // Floor at z - get its material before removing
     ItemType floorDropItem = GetFloorDropItem(x, y, z);
+    MaterialType floorMat = GetFloorMaterial(x, y, z);
     // Wall material at z-1 (if solid) - get before mining
     ItemType minedDropItem = GetWallDropItem(x, y, lowerZ);
     CellType cellBelow = grid[lowerZ][y][x];
     bool wasSolid = CellIsSolid(cellBelow);
     int minedDropCount = wasSolid ? CellDropCount(cellBelow) : 0;
     MaterialType minedWallMat = GetWallMaterial(x, y, lowerZ);
+    bool minedWallNatural = IsWallNatural(x, y, lowerZ);
     
     // === STEP 2: Remove the floor at z ===
     CLEAR_FLOOR(x, y, z);
     grid[z][y][x] = CELL_AIR;
     SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
+    ClearFloorNatural(x, y, z);
     
     // === STEP 3: Mine out z-1 and determine what to create ===
     if (wasSolid) {
@@ -419,14 +434,21 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
         if (minedWallMat != MAT_NONE) {
             SetFloorMaterial(x, y, lowerZ, minedWallMat);
         }
+        if (minedWallNatural) {
+            SetFloorNatural(x, y, lowerZ);
+        } else {
+            ClearFloorNatural(x, y, lowerZ);
+        }
         SetWallMaterial(x, y, lowerZ, MAT_NONE);  // Wall removed
+        ClearWallNatural(x, y, lowerZ);
         
         // Spawn drops from the mined material
         if (minedDropItem != ITEM_NONE && minedDropCount > 0) {
             for (int i = 0; i < minedDropCount; i++) {
-                SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 
-                          y * CELL_SIZE + CELL_SIZE * 0.5f, 
-                          (float)lowerZ, minedDropItem);
+                uint8_t dropMat = (minedWallMat != MAT_NONE) ? (uint8_t)minedWallMat : DefaultMaterialForItemType(minedDropItem);
+                SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      y * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      (float)lowerZ, minedDropItem, dropMat);
             }
         }
     }
@@ -435,9 +457,10 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     
     // Spawn debris from the floor we removed at z (drops to lowerZ)
     if (floorDropItem != ITEM_NONE) {
-        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, 
-                  y * CELL_SIZE + CELL_SIZE * 0.5f, 
-                  (float)lowerZ, floorDropItem);
+        uint8_t dropMat = (floorMat != MAT_NONE) ? (uint8_t)floorMat : DefaultMaterialForItemType(floorDropItem);
+        SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                              y * CELL_SIZE + CELL_SIZE * 0.5f,
+                              (float)lowerZ, floorDropItem, dropMat);
     }
     
     MarkChunkDirty(x, y, z);
@@ -566,11 +589,8 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     
     // Get material to drop
     MaterialType mat = GetWallMaterial(x, y, z);
-    ItemType dropItem = MaterialDropsItem(mat);
-    if (dropItem == ITEM_NONE) {
-        // For natural cells, get drop from cell type
-        dropItem = CellDropsItem(ct);
-    }
+    bool isWallNatural = IsWallNatural(x, y, z);
+    ItemType dropItem = isWallNatural ? CellDropsItem(ct) : MaterialDropsItem(mat);
     
     // Determine ramp direction
     CellType rampType = AutoDetectDigRampDirection(x, y, z);
@@ -581,18 +601,29 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     // Convert to ramp
     grid[z][y][x] = rampType;
     SetWallMaterial(x, y, z, mat);  // Preserve material for the ramp
+    if (isWallNatural) {
+        SetWallNatural(x, y, z);
+    } else {
+        ClearWallNatural(x, y, z);
+    }
     
     // Create floor on top (z+1) if there's space
     if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
         SET_FLOOR(x, y, z + 1);
         SetFloorMaterial(x, y, z + 1, mat);
+        if (isWallNatural) {
+            SetFloorNatural(x, y, z + 1);
+        } else {
+            ClearFloorNatural(x, y, z + 1);
+        }
     }
     
     // Spawn dropped item nearby
     if (dropItem != ITEM_NONE) {
         float itemX = x * CELL_SIZE + CELL_SIZE / 2.0f;
         float itemY = y * CELL_SIZE + CELL_SIZE / 2.0f;
-        SpawnItem(itemX, itemY, z, dropItem);
+        uint8_t dropMat = (mat != MAT_NONE) ? (uint8_t)mat : DefaultMaterialForItemType(dropItem);
+        SpawnItemWithMaterial(itemX, itemY, z, dropItem, dropMat);
     }
     
     // Clear designation
@@ -664,6 +695,7 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     
     // Get drop item based on floor material (before changing)
     ItemType dropItem = GetFloorDropItem(x, y, z);
+    MaterialType floorMat = GetFloorMaterial(x, y, z);
     
     // Drop items on this floor down to z-1
     DropItemsInCell(x, y, z);
@@ -671,13 +703,17 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     // Remove the floor
     CLEAR_FLOOR(x, y, z);
     SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
+    ClearFloorNatural(x, y, z);
     // Cell type stays as-is (AIR) - we're just removing the floor flag
     
     MarkChunkDirty(x, y, z);
     
     // Spawn an item from the removed floor
     if (dropItem != ITEM_NONE) {
-        SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
+        uint8_t dropMat = (floorMat != MAT_NONE) ? (uint8_t)floorMat : DefaultMaterialForItemType(dropItem);
+        SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                              y * CELL_SIZE + CELL_SIZE * 0.5f,
+                              (float)z, dropItem, dropMat);
     }
     
     // Clear designation
@@ -752,6 +788,7 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     CellType cell = grid[z][y][x];
     int dropCount = CellIsRamp(cell) ? CellDropCount(cell) : 0;
     MaterialType rampMat = GetWallMaterial(x, y, z);
+    bool rampNatural = IsWallNatural(x, y, z);
     
     // Remove the ramp, replace with floor
     if (CellIsRamp(cell)) {
@@ -761,7 +798,13 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
         if (rampMat != MAT_NONE) {
             SetFloorMaterial(x, y, z, rampMat);
         }
+        if (rampNatural) {
+            SetFloorNatural(x, y, z);
+        } else {
+            ClearFloorNatural(x, y, z);
+        }
         SetWallMaterial(x, y, z, MAT_NONE);  // Ramp/wall removed
+        ClearWallNatural(x, y, z);
         rampCount--;
     }
     
@@ -770,7 +813,10 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     // Spawn drops from the removed ramp
     if (dropItem != ITEM_NONE && dropCount > 0) {
         for (int i = 0; i < dropCount; i++) {
-            SpawnItem(x * CELL_SIZE + CELL_SIZE * 0.5f, y * CELL_SIZE + CELL_SIZE * 0.5f, (float)z, dropItem);
+            uint8_t dropMat = (rampMat != MAT_NONE) ? (uint8_t)rampMat : DefaultMaterialForItemType(dropItem);
+            SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  y * CELL_SIZE + CELL_SIZE * 0.5f,
+                                  (float)z, dropItem, dropMat);
         }
     }
     
@@ -934,6 +980,7 @@ static int GetTrunkHeightAt(int x, int y, int baseZ) {
 // chopperX/Y is where the mover stood - tree falls away from them
 static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     TreeType type = NormalizeTreeTypeLocal((TreeType)treeTypeGrid[z][y][x]);
+    MaterialType treeMat = MaterialFromTreeType(type);
     int leafCount = 0;
 
     int baseZ = FindTrunkBaseZAt(x, y, z);
@@ -1141,7 +1188,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         if (cellY < 0) cellY = 0;
         if (cellY >= gridHeight) cellY = gridHeight - 1;
         int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
-        SpawnItem(spawnX, spawnY, (float)itemZ, leafItem);
+        SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, leafItem, (uint8_t)treeMat);
     }
 
     ItemType saplingItem = SaplingItemFromTreeType(type);
@@ -1161,7 +1208,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         if (cellY < 0) cellY = 0;
         if (cellY >= gridHeight) cellY = gridHeight - 1;
         int itemZ = FindItemSpawnZAtLocal(cellX, cellY, baseZ);
-        SpawnItem(spawnX, spawnY, (float)itemZ, saplingItem);
+        SpawnItemWithMaterial(spawnX, spawnY, (float)itemZ, saplingItem, (uint8_t)treeMat);
     }
 }
 
@@ -1198,10 +1245,7 @@ void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
 
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    int itemIdx = SpawnItem(spawnX, spawnY, (float)z, ITEM_WOOD);
-    if (itemIdx >= 0) {
-        items[itemIdx].treeType = (uint8_t)type;
-    }
+    SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_WOOD, (uint8_t)MaterialFromTreeType(type));
 
     CancelDesignation(x, y, z);
 }
@@ -1282,7 +1326,9 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     // Spawn a sapling item at the location
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    SpawnItem(spawnX, spawnY, (float)z, SaplingItemFromTreeType(type));
+    SpawnItemWithMaterial(spawnX, spawnY, (float)z,
+                          SaplingItemFromTreeType(type),
+                          (uint8_t)MaterialFromTreeType(type));
     
     // Clear designation
     designations[z][y][x].type = DESIGNATION_NONE;
@@ -1645,7 +1691,11 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
     if (!bp->active) return;
     
     // Record the material type before consuming the item
-    bp->deliveredMaterial = ItemProducesMaterial(items[itemIdx].type);
+    MaterialType mat = (MaterialType)items[itemIdx].material;
+    if (mat == MAT_NONE) {
+        mat = (MaterialType)DefaultMaterialForItemType(items[itemIdx].type);
+    }
+    bp->deliveredMaterial = mat;
     
     // Consume the item
     DeleteItem(itemIdx);
@@ -1681,13 +1731,16 @@ void CompleteBlueprint(int blueprintIdx) {
             if (bp->deliveredMaterial == MAT_DIRT) {
                 // Dirt creates natural terrain, not a constructed wall
                 grid[z][y][x] = CELL_DIRT;
-                SetWallMaterial(x, y, z, MAT_RAW);  // Natural terrain
+                SetWallMaterial(x, y, z, MAT_DIRT);
+                SetWallNatural(x, y, z);
                 CLEAR_FLOOR(x, y, z);  // Dirt is solid, no floor on top
                 SetFloorMaterial(x, y, z, MAT_NONE);
+                ClearFloorNatural(x, y, z);
                 SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // No grass yet, will grow over time
             } else {
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, bp->deliveredMaterial);
+                ClearWallNatural(x, y, z);
                 // Floor material preserved - wall is built on top of floor
             }
             MarkChunkDirty(x, y, z);
@@ -1697,6 +1750,7 @@ void CompleteBlueprint(int blueprintIdx) {
         // This handles UP/DOWN/BOTH connections automatically
         PlaceLadder(x, y, z);
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
+        ClearWallNatural(x, y, z);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
         // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
@@ -1704,6 +1758,7 @@ void CompleteBlueprint(int blueprintIdx) {
         SET_FLOOR(x, y, z);
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
         SetFloorMaterial(x, y, z, bp->deliveredMaterial);
+        ClearFloorNatural(x, y, z);
         MarkChunkDirty(x, y, z);
     } else if (bp->type == BLUEPRINT_TYPE_RAMP) {
         // Place ramp - auto-detect direction based on adjacent cells
@@ -1727,11 +1782,13 @@ void CompleteBlueprint(int blueprintIdx) {
         grid[z][y][x] = rampType;
         CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
+        ClearWallNatural(x, y, z);
         
         // Create floor above the ramp (at z+1)
         if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
             SET_FLOOR(x, y, z + 1);
             SetFloorMaterial(x, y, z + 1, bp->deliveredMaterial);
+            ClearFloorNatural(x, y, z + 1);
         }
         
         MarkChunkDirty(x, y, z);

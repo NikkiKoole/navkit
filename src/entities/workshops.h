@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "items.h"
+#include "../world/material.h"
 
 #define MAX_WORKSHOPS 256
 #define MAX_BILLS_PER_WORKSHOP 10
@@ -32,6 +33,14 @@ typedef enum {
 } WorkshopVisualState;
 
 // Recipe: defines what a workshop can make
+typedef enum {
+    MAT_MATCH_ANY = 0,
+    MAT_MATCH_EXACT,
+    MAT_MATCH_WOOD,
+    MAT_MATCH_STONE,
+    MAT_MATCH_METAL,
+} MaterialMatchType;
+
 typedef struct {
     const char* name;
     ItemType inputType;
@@ -39,6 +48,8 @@ typedef struct {
     ItemType outputType;
     int outputCount;
     float workRequired;  // seconds to complete
+    MaterialMatchType inputMaterialMatch;
+    MaterialType inputMaterial;  // used when inputMaterialMatch == MAT_MATCH_EXACT
 } Recipe;
 
 // Bill modes
@@ -106,6 +117,7 @@ void UpdateWorkshopDiagnostics(float dt);
 
 // Recipe lookup
 Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);
+bool RecipeInputMatches(const Recipe* recipe, const Item* item);
 
 // Bill management
 int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount);

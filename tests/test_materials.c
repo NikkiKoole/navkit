@@ -26,6 +26,16 @@ static int CountItemsOfType(ItemType type) {
     return count;
 }
 
+static int CountItemsOfTypeWithMaterial(ItemType type, MaterialType mat) {
+    int count = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (items[i].active && items[i].type == type && items[i].material == (uint8_t)mat) {
+            count++;
+        }
+    }
+    return count;
+}
+
 // Helper to run fire ticks
 static void RunFireTicks(int n) {
     for (int i = 0; i < n; i++) {
@@ -38,7 +48,7 @@ static void RunFireTicks(int n) {
 // =============================================================================
 
 describe(material_grid_initialization) {
-    it("should initialize wall materials to MAT_RAW and floor materials to MAT_NONE") {
+    it("should initialize wall materials to MAT_GRANITE (natural) and floor materials to MAT_NONE") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n", 4, 2);
@@ -48,8 +58,10 @@ describe(material_grid_initialization) {
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
-                    expect(GetWallMaterial(x, y, z) == MAT_RAW);
+                    expect(GetWallMaterial(x, y, z) == MAT_GRANITE);
+                    expect(IsWallNatural(x, y, z));
                     expect(GetFloorMaterial(x, y, z) == MAT_NONE);
+                    expect(!IsFloorNatural(x, y, z));
                 }
             }
         }
@@ -59,26 +71,28 @@ describe(material_grid_initialization) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         
-        SetWallMaterial(1, 0, 0, MAT_WOOD);
-        expect(GetWallMaterial(1, 0, 0) == MAT_WOOD);
+        SetWallMaterial(1, 0, 0, MAT_OAK);
+        expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
         
-        SetWallMaterial(2, 0, 0, MAT_STONE);
-        expect(GetWallMaterial(2, 0, 0) == MAT_STONE);
+        SetWallMaterial(2, 0, 0, MAT_GRANITE);
+        expect(GetWallMaterial(2, 0, 0) == MAT_GRANITE);
         
-        // Other cells still raw
-        expect(GetWallMaterial(0, 0, 0) == MAT_RAW);
-        expect(GetWallMaterial(3, 0, 0) == MAT_RAW);
+        // Other cells still natural granite
+        expect(GetWallMaterial(0, 0, 0) == MAT_GRANITE);
+        expect(IsWallNatural(0, 0, 0));
+        expect(GetWallMaterial(3, 0, 0) == MAT_GRANITE);
+        expect(IsWallNatural(3, 0, 0));
     }
     
     it("should allow setting and getting floor material") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         
-        SetFloorMaterial(1, 0, 0, MAT_WOOD);
-        expect(GetFloorMaterial(1, 0, 0) == MAT_WOOD);
+        SetFloorMaterial(1, 0, 0, MAT_OAK);
+        expect(GetFloorMaterial(1, 0, 0) == MAT_OAK);
         
-        SetFloorMaterial(2, 0, 0, MAT_STONE);
-        expect(GetFloorMaterial(2, 0, 0) == MAT_STONE);
+        SetFloorMaterial(2, 0, 0, MAT_GRANITE);
+        expect(GetFloorMaterial(2, 0, 0) == MAT_GRANITE);
         
         // Other cells still none
         expect(GetFloorMaterial(0, 0, 0) == MAT_NONE);
@@ -88,14 +102,21 @@ describe(material_grid_initialization) {
     it("should identify constructed walls correctly") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
-        
-        expect(!IsConstructedWall(0, 0, 0));  // MAT_RAW
-        
-        SetWallMaterial(1, 0, 0, MAT_WOOD);
-        expect(IsConstructedWall(1, 0, 0));   // MAT_WOOD
-        
-        SetWallMaterial(2, 0, 0, MAT_STONE);
-        expect(IsConstructedWall(2, 0, 0));   // MAT_STONE
+
+        grid[0][0][0] = CELL_WALL;
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        SetWallNatural(0, 0, 0);
+        expect(!IsConstructedWall(0, 0, 0));  // natural wall
+
+        grid[0][0][1] = CELL_WALL;
+        SetWallMaterial(1, 0, 0, MAT_OAK);
+        ClearWallNatural(1, 0, 0);
+        expect(IsConstructedWall(1, 0, 0));   // constructed wood
+
+        grid[0][0][2] = CELL_WALL;
+        SetWallMaterial(2, 0, 0, MAT_GRANITE);
+        ClearWallNatural(2, 0, 0);
+        expect(IsConstructedWall(2, 0, 0));   // constructed stone
     }
 }
 
@@ -108,7 +129,7 @@ describe(cell_def_drops) {
         expect(CellDropsItem(CELL_WALL) == ITEM_ROCK);
     }
     
-    // Note: CELL_WOOD_WALL removed - use CELL_WALL + MAT_WOOD instead
+    // Note: CELL_WOOD_WALL removed - use CELL_WALL + wood material instead
     // Wood material drops are tested in mining_material_drops
     
     it("should have dropsItem for tree trunk") {
@@ -146,50 +167,33 @@ describe(cell_def_drops) {
 }
 
 describe(item_def_materials) {
-    it("should produce MAT_WOOD from wood item") {
-        expect(ItemProducesMaterial(ITEM_WOOD) == MAT_WOOD);
-    }
-    
-    it("should produce MAT_STONE from stone blocks") {
-        expect(ItemProducesMaterial(ITEM_STONE_BLOCKS) == MAT_STONE);
-    }
-    
-    it("should produce MAT_NONE from raw stone (requires stonecutter)") {
-        expect(ItemProducesMaterial(ITEM_ROCK) == MAT_NONE);
-    }
-    
-    it("should produce MAT_NONE from non-building items") {
-        expect(ItemProducesMaterial(ITEM_RED) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_GREEN) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_BLUE) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_SAPLING_OAK) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_SAPLING_PINE) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_SAPLING_BIRCH) == MAT_NONE);
-        expect(ItemProducesMaterial(ITEM_SAPLING_WILLOW) == MAT_NONE);
+    it("should provide sensible default materials for items") {
+        expect(DefaultMaterialForItemType(ITEM_WOOD) == MAT_OAK);
+        expect(DefaultMaterialForItemType(ITEM_BLOCKS) == MAT_GRANITE);
+        expect(DefaultMaterialForItemType(ITEM_ROCK) == MAT_GRANITE);
+        expect(DefaultMaterialForItemType(ITEM_DIRT) == MAT_DIRT);
+        expect(DefaultMaterialForItemType(ITEM_RED) == MAT_NONE);
     }
 }
 
 describe(material_def_properties) {
     it("should have correct fuel values") {
-        expect(MaterialFuel(MAT_WOOD) == 128);  // Wood burns
-        expect(MaterialFuel(MAT_STONE) == 0);   // Stone doesn't burn
+        expect(MaterialFuel(MAT_OAK) == 128);   // Wood burns
+        expect(MaterialFuel(MAT_GRANITE) == 0); // Stone doesn't burn
         expect(MaterialFuel(MAT_IRON) == 0);    // Iron doesn't burn
-        expect(MaterialFuel(MAT_RAW) == 0);     // Raw uses cell default
         expect(MaterialFuel(MAT_NONE) == 0);    // None has no fuel
     }
     
     it("should have correct flammability flags") {
-        expect(MaterialIsFlammable(MAT_WOOD));
-        expect(!MaterialIsFlammable(MAT_STONE));
+        expect(MaterialIsFlammable(MAT_OAK));
+        expect(!MaterialIsFlammable(MAT_GRANITE));
         expect(!MaterialIsFlammable(MAT_IRON));
-        expect(!MaterialIsFlammable(MAT_RAW));
         expect(!MaterialIsFlammable(MAT_NONE));
     }
     
     it("should have correct drop items") {
-        expect(MaterialDropsItem(MAT_WOOD) == ITEM_WOOD);
-        expect(MaterialDropsItem(MAT_STONE) == ITEM_STONE_BLOCKS);
-        expect(MaterialDropsItem(MAT_RAW) == ITEM_NONE);
+        expect(MaterialDropsItem(MAT_OAK) == ITEM_WOOD);
+        expect(MaterialDropsItem(MAT_GRANITE) == ITEM_BLOCKS);
         expect(MaterialDropsItem(MAT_NONE) == ITEM_NONE);
     }
 }
@@ -224,11 +228,11 @@ describe(blueprint_material_tracking) {
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         expect(bpIdx >= 0);
         
-        // Spawn and deliver wood
-        int itemIdx = SpawnItem(0, 0, 0, ITEM_WOOD);
+        // Spawn and deliver wood (oak)
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_WOOD);
+        expect(blueprints[bpIdx].deliveredMaterial == MAT_OAK);
     }
     
     it("should set stone material when delivering stone blocks") {
@@ -242,11 +246,11 @@ describe(blueprint_material_tracking) {
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         expect(bpIdx >= 0);
         
-        // Spawn and deliver stone blocks
-        int itemIdx = SpawnItem(0, 0, 0, ITEM_STONE_BLOCKS);
+        // Spawn and deliver granite blocks
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_STONE);
+        expect(blueprints[bpIdx].deliveredMaterial == MAT_GRANITE);
     }
     
     it("should set wall material when completing wall blueprint with wood") {
@@ -259,17 +263,18 @@ describe(blueprint_material_tracking) {
         
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
-        // Deliver wood and complete
-        int itemIdx = SpawnItem(0, 0, 0, ITEM_WOOD);
+        // Deliver wood (oak) and complete
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
         // Simulate builder completing
         blueprints[bpIdx].progress = BUILD_WORK_TIME;
         CompleteBlueprint(bpIdx);
         
-        // Cell should be CELL_WALL with MAT_WOOD
+        // Cell should be CELL_WALL with MAT_OAK (constructed)
         expect(grid[0][0][1] == CELL_WALL);
-        expect(GetWallMaterial(1, 0, 0) == MAT_WOOD);
+        expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
+        expect(!IsWallNatural(1, 0, 0));
     }
     
     it("should set wall material when completing wall blueprint with stone") {
@@ -282,16 +287,17 @@ describe(blueprint_material_tracking) {
         
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
-        // Deliver stone and complete
-        int itemIdx = SpawnItem(0, 0, 0, ITEM_STONE_BLOCKS);
+        // Deliver granite blocks and complete
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
         blueprints[bpIdx].progress = BUILD_WORK_TIME;
         CompleteBlueprint(bpIdx);
         
-        // Cell should be CELL_WALL with MAT_STONE
+        // Cell should be CELL_WALL with MAT_GRANITE (constructed)
         expect(grid[0][0][1] == CELL_WALL);
-        expect(GetWallMaterial(1, 0, 0) == MAT_STONE);
+        expect(GetWallMaterial(1, 0, 0) == MAT_GRANITE);
+        expect(!IsWallNatural(1, 0, 0));
     }
 }
 
@@ -300,57 +306,59 @@ describe(blueprint_material_tracking) {
 // =============================================================================
 
 describe(mining_material_drops) {
-    it("should drop based on natural cell type for MAT_RAW wall") {
+    it("should drop based on natural cell type for natural granite wall") {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);  // # = wall
         InitDesignations();
         ClearItems();
         
-        // Wall is raw/natural (MAT_RAW)
-        expect(GetWallMaterial(0, 0, 0) == MAT_RAW);
+        // Wall is natural granite
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        SetWallNatural(0, 0, 0);
+        expect(GetWallMaterial(0, 0, 0) == MAT_GRANITE);
+        expect(IsWallNatural(0, 0, 0));
         expect(grid[0][0][0] == CELL_WALL);
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_ROCK (default wall drop)
-        int orangeCount = CountItemsOfType(ITEM_ROCK);
-        expect(orangeCount == 1);
+        // Should have spawned ITEM_ROCK with granite material
+        expect(CountItemsOfTypeWithMaterial(ITEM_ROCK, MAT_GRANITE) == 1);
     }
     
-    it("should drop ITEM_WOOD when mining MAT_WOOD wall") {
+    it("should drop ITEM_WOOD when mining constructed wood wall") {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         InitDesignations();
         ClearItems();
         
-        // Set wall to wood material
-        SetWallMaterial(0, 0, 0, MAT_WOOD);
+        // Set wall to oak material (constructed)
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        ClearWallNatural(0, 0, 0);
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_WOOD
-        int woodCount = CountItemsOfType(ITEM_WOOD);
-        expect(woodCount == 1);
+        // Should have spawned ITEM_WOOD with oak material
+        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
         
         // Should NOT have spawned ITEM_ROCK
         int orangeCount = CountItemsOfType(ITEM_ROCK);
         expect(orangeCount == 0);
     }
     
-    it("should drop ITEM_STONE_BLOCKS when mining MAT_STONE wall") {
+    it("should drop ITEM_BLOCKS when mining constructed granite wall") {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         InitDesignations();
         ClearItems();
         
-        // Set wall to stone material
-        SetWallMaterial(0, 0, 0, MAT_STONE);
+        // Set wall to granite material (constructed)
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        ClearWallNatural(0, 0, 0);
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_STONE_BLOCKS
-        int stoneCount = CountItemsOfType(ITEM_STONE_BLOCKS);
-        expect(stoneCount == 1);
+        // Should have spawned ITEM_BLOCKS with granite material
+        expect(CountItemsOfTypeWithMaterial(ITEM_BLOCKS, MAT_GRANITE) == 1);
     }
     
     it("should reset wall material to MAT_NONE after mining") {
@@ -359,29 +367,33 @@ describe(mining_material_drops) {
         InitDesignations();
         ClearItems();
         
-        SetWallMaterial(0, 0, 0, MAT_WOOD);
-        expect(GetWallMaterial(0, 0, 0) == MAT_WOOD);
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        ClearWallNatural(0, 0, 0);
+        expect(GetWallMaterial(0, 0, 0) == MAT_OAK);
         
         CompleteMineDesignation(0, 0, 0);
         
         expect(GetWallMaterial(0, 0, 0) == MAT_NONE);
     }
     
-    it("should create rough floor when mining natural rock") {
+    it("should create natural granite floor when mining natural rock") {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         InitDesignations();
         ClearItems();
         
-        // Wall starts as MAT_RAW (natural rock)
-        expect(GetWallMaterial(0, 0, 0) == MAT_RAW);
+        // Wall starts as natural granite
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        SetWallNatural(0, 0, 0);
+        expect(GetWallMaterial(0, 0, 0) == MAT_GRANITE);
         expect(GetFloorMaterial(0, 0, 0) == MAT_NONE);
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Wall removed, floor created with rough stone (MAT_RAW)
+        // Wall removed, floor created with natural granite
         expect(GetWallMaterial(0, 0, 0) == MAT_NONE);
-        expect(GetFloorMaterial(0, 0, 0) == MAT_RAW);
+        expect(GetFloorMaterial(0, 0, 0) == MAT_GRANITE);
+        expect(IsFloorNatural(0, 0, 0));
     }
     
     it("should use GetWallDropItem for correct material-based drops") {
@@ -389,15 +401,19 @@ describe(mining_material_drops) {
             "#...\n", 4, 1);
         
         // Natural wall
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        SetWallNatural(0, 0, 0);
         expect(GetWallDropItem(0, 0, 0) == ITEM_ROCK);
         
         // Wood wall
-        SetWallMaterial(0, 0, 0, MAT_WOOD);
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        ClearWallNatural(0, 0, 0);
         expect(GetWallDropItem(0, 0, 0) == ITEM_WOOD);
         
-        // Stone wall
-        SetWallMaterial(0, 0, 0, MAT_STONE);
-        expect(GetWallDropItem(0, 0, 0) == ITEM_STONE_BLOCKS);
+        // Granite wall
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        ClearWallNatural(0, 0, 0);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
     }
 }
 
@@ -410,13 +426,13 @@ describe(floor_removal_material_drops) {
         
         // Create a constructed floor with wood material
         SET_FLOOR(1, 0, 0);
-        SetFloorMaterial(1, 0, 0, MAT_WOOD);
+        SetFloorMaterial(1, 0, 0, MAT_OAK);
+        ClearFloorNatural(1, 0, 0);
         
         CompleteRemoveFloorDesignation(1, 0, 0, -1);
         
-        // Should have spawned ITEM_WOOD
-        int woodCount = CountItemsOfType(ITEM_WOOD);
-        expect(woodCount == 1);
+        // Should have spawned ITEM_WOOD with oak material
+        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
     }
     
     it("should reset floor material after floor removal") {
@@ -426,7 +442,8 @@ describe(floor_removal_material_drops) {
         ClearItems();
         
         SET_FLOOR(1, 0, 0);
-        SetFloorMaterial(1, 0, 0, MAT_STONE);
+        SetFloorMaterial(1, 0, 0, MAT_GRANITE);
+        ClearFloorNatural(1, 0, 0);
         
         CompleteRemoveFloorDesignation(1, 0, 0, -1);
         
@@ -439,7 +456,7 @@ describe(floor_removal_material_drops) {
 // =============================================================================
 
 describe(material_flammability) {
-    it("should allow CELL_WALL with MAT_WOOD to burn") {
+    it("should allow CELL_WALL with MAT_OAK to burn") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             ".#..\n"
@@ -448,7 +465,8 @@ describe(material_flammability) {
         
         // Set the wall to wood material
         grid[0][1][1] = CELL_WALL;
-        SetWallMaterial(1, 1, 0, MAT_WOOD);
+        SetWallMaterial(1, 1, 0, MAT_OAK);
+        ClearWallNatural(1, 1, 0);
         
         // Try to ignite
         IgniteCell(1, 1, 0);
@@ -457,7 +475,7 @@ describe(material_flammability) {
         expect(HasFire(1, 1, 0));
     }
     
-    it("should NOT allow CELL_WALL with MAT_STONE to burn") {
+    it("should NOT allow CELL_WALL with MAT_GRANITE to burn") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             ".#..\n"
@@ -466,7 +484,8 @@ describe(material_flammability) {
         
         // Set the wall to stone material
         grid[0][1][1] = CELL_WALL;
-        SetWallMaterial(1, 1, 0, MAT_STONE);
+        SetWallMaterial(1, 1, 0, MAT_GRANITE);
+        ClearWallNatural(1, 1, 0);
         
         // Try to ignite
         IgniteCell(1, 1, 0);
@@ -475,16 +494,18 @@ describe(material_flammability) {
         expect(!HasFire(1, 1, 0));
     }
     
-    it("should NOT allow raw natural CELL_WALL to burn") {
+    it("should NOT allow natural granite wall to burn") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             ".#..\n"
             "....\n", 4, 3);
         InitFire();
         
-        // Natural stone wall (MAT_RAW)
+        // Natural granite wall
         grid[0][1][1] = CELL_WALL;
-        expect(GetWallMaterial(1, 1, 0) == MAT_RAW);
+        SetWallMaterial(1, 1, 0, MAT_GRANITE);
+        SetWallNatural(1, 1, 0);
+        expect(GetWallMaterial(1, 1, 0) == MAT_GRANITE);
         
         // Try to ignite
         IgniteCell(1, 1, 0);
@@ -493,7 +514,7 @@ describe(material_flammability) {
         expect(!HasFire(1, 1, 0));
     }
     
-    it("should allow constructed wood wall (CELL_WALL + MAT_WOOD) to burn") {
+    it("should allow constructed wood wall (CELL_WALL + MAT_OAK) to burn") {
         InitGridFromAsciiWithChunkSize(
             "....\n"
             "....\n"
@@ -502,20 +523,21 @@ describe(material_flammability) {
         
         // Place wall with wood material
         grid[0][1][1] = CELL_WALL;
-        SetWallMaterial(1, 1, 0, MAT_WOOD);
+        SetWallMaterial(1, 1, 0, MAT_OAK);
+        ClearWallNatural(1, 1, 0);
         
         // Try to ignite
         IgniteCell(1, 1, 0);
         
-        // Should be burning (MAT_WOOD has fuel=128)
+        // Should be burning (MAT_OAK has fuel=128)
         expect(HasFire(1, 1, 0));
     }
     
     it("should verify material fuel values directly") {
-        expect(MaterialFuel(MAT_WOOD) > 0);     // Wood has fuel
-        expect(MaterialFuel(MAT_STONE) == 0);   // Stone has no fuel
+        expect(MaterialFuel(MAT_OAK) > 0);      // Wood has fuel
+        expect(MaterialFuel(MAT_GRANITE) == 0); // Stone has no fuel
         expect(MaterialFuel(MAT_IRON) == 0);    // Iron has no fuel
-        expect(MaterialFuel(MAT_RAW) == 0);     // Raw defers to cell
+        expect(MaterialFuel(MAT_NONE) == 0);    // None has no fuel
     }
 }
 
@@ -535,13 +557,13 @@ describe(build_mine_cycle) {
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
         // Step 2: Deliver wood and complete build
-        int woodItem = SpawnItem(0, 0, 0, ITEM_WOOD);
+        int woodItem = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, woodItem);
         CompleteBlueprint(bpIdx);
         
         // Verify: wall exists with wood material
         expect(grid[0][0][1] == CELL_WALL);
-        expect(GetWallMaterial(1, 0, 0) == MAT_WOOD);
+        expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
         
         // Step 3: Mine the wall
         ClearItems();  // Clear any leftover items
@@ -550,7 +572,7 @@ describe(build_mine_cycle) {
         // Verify: wall gone, material reset, wood dropped
         expect(grid[0][0][1] == CELL_AIR);
         expect(GetWallMaterial(1, 0, 0) == MAT_NONE);
-        expect(CountItemsOfType(ITEM_WOOD) == 1);
+        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
         expect(CountItemsOfType(ITEM_ROCK) == 0);
     }
     
@@ -563,19 +585,19 @@ describe(build_mine_cycle) {
         // Build with stone
         SET_FLOOR(1, 0, 0);
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
-        int stoneItem = SpawnItem(0, 0, 0, ITEM_STONE_BLOCKS);
+        int stoneItem = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
         DeliverMaterialToBlueprint(bpIdx, stoneItem);
         CompleteBlueprint(bpIdx);
         
         expect(grid[0][0][1] == CELL_WALL);
-        expect(GetWallMaterial(1, 0, 0) == MAT_STONE);
+        expect(GetWallMaterial(1, 0, 0) == MAT_GRANITE);
         
         // Mine it
         ClearItems();
         CompleteMineDesignation(1, 0, 0);
         
         // Should drop stone blocks, not raw stone
-        expect(CountItemsOfType(ITEM_STONE_BLOCKS) == 1);
+        expect(CountItemsOfTypeWithMaterial(ITEM_BLOCKS, MAT_GRANITE) == 1);
         expect(CountItemsOfType(ITEM_ROCK) == 0);
     }
 }

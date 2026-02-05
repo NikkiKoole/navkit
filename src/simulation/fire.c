@@ -70,7 +70,7 @@ static int GetFuelAt(int x, int y, int z) {
     
     // Check wall material for constructed walls - material fuel overrides cell fuel
     MaterialType mat = GetWallMaterial(x, y, z);
-    if (mat != MAT_NONE && mat != MAT_RAW) {
+    if (mat != MAT_NONE && !IsWallNatural(x, y, z)) {
         // Constructed wall - use material's fuel value
         baseFuel = MaterialFuel(mat);
     }

@@ -5,8 +5,6 @@
 #define ITEM_DEFS_H
 
 #include <stdint.h>
-#include "../world/material.h"    // For MaterialType
-
 // Item flags
 #define IF_STACKABLE      (1 << 0)  // Can be stacked in stockpiles
 #define IF_BUILDING_MAT   (1 << 1)  // Can be used for construction (walls, floors, etc.)
@@ -19,7 +17,6 @@ typedef struct {
     int sprite;           // Sprite index from atlas
     uint8_t flags;        // IF_* flags
     uint8_t maxStack;     // Max items per stockpile slot
-    MaterialType producesMaterial;  // What material when used to build
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -30,7 +27,6 @@ extern const ItemDef itemDefs[];
 #define ItemSprite(t)         (itemDefs[t].sprite)
 #define ItemMaxStack(t)       (itemDefs[t].maxStack)
 #define ItemFlags(t)          (itemDefs[t].flags)
-#define ItemProducesMaterial(t) (itemDefs[t].producesMaterial)
 
 // Flag checks
 #define ItemIsStackable(t)    (itemDefs[t].flags & IF_STACKABLE)

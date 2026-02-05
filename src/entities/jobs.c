@@ -17,6 +17,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+static inline uint8_t ResolveItemMaterialForJobs(const Item* item) {
+    if (!item) return MAT_NONE;
+    uint8_t mat = (item->material == MAT_NONE) ? DefaultMaterialForItemType(item->type) : item->material;
+    return (mat < MAT_COUNT) ? mat : MAT_NONE;
+}
+
+static inline bool ItemTypeIsValidForJobs(ItemType type) {
+    return type >= 0 && type < ITEM_TYPE_COUNT;
+}
+
 // Distance thresholds (relative to CELL_SIZE)
 #define PICKUP_RADIUS (CELL_SIZE * 0.75f)  // Large enough to cover same-cell edge cases
 #define DROP_RADIUS (CELL_SIZE * 0.75f)    // Same as pickup - covers whole cell reliably
@@ -438,6 +448,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
                             stockpiles[sourceSp].slots[idx] = -1;
                             stockpiles[sourceSp].slotTypes[idx] = -1;
                             stockpiles[sourceSp].slotCounts[idx] = 0;
+                            stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
                         }
                     }
                 }
@@ -471,7 +482,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         }
 
         // Check if stockpile still accepts this item type
-        if (!StockpileAcceptsType(job->targetStockpile, items[itemIdx].type)) {
+        if (!StockpileAcceptsItem(job->targetStockpile, items[itemIdx].type, items[itemIdx].material)) {
             return JOBRUN_FAIL;
         }
 
@@ -1688,6 +1699,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                             if (sp->slotCounts[slotIdx] == 0) {
                                 sp->slotTypes[slotIdx] = -1;
                                 sp->slots[slotIdx] = -1;
+                                sp->slotMaterials[slotIdx] = MAT_NONE;
                             }
                         }
                         break;
@@ -1739,6 +1751,14 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             if (job->progress >= 1.0f) {
                 // Crafting complete!
 
+                MaterialType inputMat = MAT_NONE;
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    inputMat = (MaterialType)items[job->carryingItem].material;
+                    if (inputMat == MAT_NONE) {
+                        inputMat = (MaterialType)DefaultMaterialForItemType(items[job->carryingItem].type);
+                    }
+                }
+
                 // Consume carried item
                 if (job->carryingItem >= 0 && items[job->carryingItem].active) {
                     items[job->carryingItem].active = false;
@@ -1750,7 +1770,8 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
                 float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
                 for (int i = 0; i < recipe->outputCount; i++) {
-                    SpawnItem(outX, outY, (float)ws->z, recipe->outputType);
+                    uint8_t outMat = (inputMat != MAT_NONE) ? (uint8_t)inputMat : DefaultMaterialForItemType(recipe->outputType);
+                    SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
                 }
 
                 // Update bill progress
@@ -1956,6 +1977,7 @@ static void ClearSourceStockpileSlot(Item* item) {
         stockpiles[sourceSp].slots[idx] = -1;
         stockpiles[sourceSp].slotTypes[idx] = -1;
         stockpiles[sourceSp].slotCounts[idx] = 0;
+        stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
     }
 }
 
@@ -2155,13 +2177,15 @@ void AssignJobs(void) {
     RebuildStockpileFreeSlotCounts();
     RebuildStockpileSlotCache();  // O(1) FindStockpileForItem lookups
 
-    // Check which item types have available stockpiles (from cache)
-    bool typeHasStockpile[ITEM_TYPE_COUNT] = {false};
+    // Check which item types + materials have available stockpiles (from cache)
+    bool typeMatHasStockpile[ITEM_TYPE_COUNT][MAT_COUNT] = {false};
     bool anyTypeHasSlot = false;
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
-        if (stockpileSlotCache[t].stockpileIdx >= 0) {
-            typeHasStockpile[t] = true;
-            anyTypeHasSlot = true;
+        for (int m = 0; m < MAT_COUNT; m++) {
+            if (stockpileSlotCache[t][m].stockpileIdx >= 0) {
+                typeMatHasStockpile[t][m] = true;
+                anyTypeHasSlot = true;
+            }
         }
     }
 
@@ -2184,7 +2208,7 @@ void AssignJobs(void) {
             slotX = (int)(items[itemIdx].x / CELL_SIZE);
             slotY = (int)(items[itemIdx].y / CELL_SIZE);
         } else {
-            spIdx = FindStockpileForItemCached(items[itemIdx].type, &slotX, &slotY);
+            spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
             if (spIdx < 0) safeDrop = true;
         }
 
@@ -2192,7 +2216,7 @@ void AssignJobs(void) {
             SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
         } else if (!safeDrop) {
             // Slot was reserved, invalidate cache for this type
-            InvalidateStockpileSlotCache(items[itemIdx].type);
+            InvalidateStockpileSlotCache(items[itemIdx].type, items[itemIdx].material);
         }
     }
 
@@ -2238,60 +2262,64 @@ void AssignJobs(void) {
             // Check each item type this stockpile accepts
             for (int t = 0; t < ITEM_TYPE_COUNT && idleMoverCount > 0; t++) {
                 if (!sp->allowedTypes[t]) continue;
-                if (!typeHasStockpile[t]) continue;
 
-                // Find a free slot for this type in this stockpile
-                int slotX, slotY;
-                if (!FindFreeStockpileSlot(spIdx, (ItemType)t, &slotX, &slotY)) continue;
+                for (int m = 0; m < MAT_COUNT && idleMoverCount > 0; m++) {
+                    if (!typeMatHasStockpile[t][m]) continue;
 
-                // Search for items near the stockpile center
-                int centerTileX = sp->x + sp->width / 2;
-                int centerTileY = sp->y + sp->height / 2;
+                    // Find a free slot for this type + material in this stockpile
+                    int slotX, slotY;
+                    if (!FindFreeStockpileSlot(spIdx, (ItemType)t, (uint8_t)m, &slotX, &slotY)) continue;
 
-                // Use expanding radius to find closest items first
-                int radii[] = {10, 25, 50, 100};
-                int numRadii = sizeof(radii) / sizeof(radii[0]);
+                    // Search for items near the stockpile center
+                    int centerTileX = sp->x + sp->width / 2;
+                    int centerTileY = sp->y + sp->height / 2;
 
-                for (int r = 0; r < numRadii && idleMoverCount > 0; r++) {
-                    int radius = radii[r];
+                    // Use expanding radius to find closest items first
+                    int radii[] = {10, 25, 50, 100};
+                    int numRadii = sizeof(radii) / sizeof(radii[0]);
 
-                    int minTx = centerTileX - radius;
-                    int maxTx = centerTileX + radius;
-                    int minTy = centerTileY - radius;
-                    int maxTy = centerTileY + radius;
+                    for (int r = 0; r < numRadii && idleMoverCount > 0; r++) {
+                        int radius = radii[r];
 
-                    if (minTx < 0) minTx = 0;
-                    if (minTy < 0) minTy = 0;
-                    if (maxTx >= itemGrid.gridW) maxTx = itemGrid.gridW - 1;
-                    if (maxTy >= itemGrid.gridH) maxTy = itemGrid.gridH - 1;
+                        int minTx = centerTileX - radius;
+                        int maxTx = centerTileX + radius;
+                        int minTy = centerTileY - radius;
+                        int maxTy = centerTileY + radius;
 
-                    bool foundItem = false;
-                    for (int ty = minTy; ty <= maxTy && idleMoverCount > 0 && !foundItem; ty++) {
-                        for (int tx = minTx; tx <= maxTx && idleMoverCount > 0 && !foundItem; tx++) {
-                            int cellIdx = sp->z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-                            int start = itemGrid.cellStarts[cellIdx];
-                            int end = itemGrid.cellStarts[cellIdx + 1];
+                        if (minTx < 0) minTx = 0;
+                        if (minTy < 0) minTy = 0;
+                        if (maxTx >= itemGrid.gridW) maxTx = itemGrid.gridW - 1;
+                        if (maxTy >= itemGrid.gridH) maxTy = itemGrid.gridH - 1;
 
-                            for (int i = start; i < end && idleMoverCount > 0; i++) {
-                                int itemIdx = itemGrid.itemIndices[i];
-                                Item* item = &items[itemIdx];
+                        bool foundItem = false;
+                        for (int ty = minTy; ty <= maxTy && idleMoverCount > 0 && !foundItem; ty++) {
+                            for (int tx = minTx; tx <= maxTx && idleMoverCount > 0 && !foundItem; tx++) {
+                                int cellIdx = sp->z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
+                                int start = itemGrid.cellStarts[cellIdx];
+                                int end = itemGrid.cellStarts[cellIdx + 1];
 
-                                if (!item->active) continue;
-                                if (item->reservedBy != -1) continue;
-                                if (item->state != ITEM_ON_GROUND) continue;
-                                if (item->type != (ItemType)t) continue;
-                                if (item->unreachableCooldown > 0.0f) continue;
-                                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+                                for (int i = start; i < end && idleMoverCount > 0; i++) {
+                                    int itemIdx = itemGrid.itemIndices[i];
+                                    Item* item = &items[itemIdx];
 
-                                if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
-                                    foundItem = true;
-                                    break;
+                                    if (!item->active) continue;
+                                    if (item->reservedBy != -1) continue;
+                                    if (item->state != ITEM_ON_GROUND) continue;
+                                    if (item->type != (ItemType)t) continue;
+                                    if (ResolveItemMaterialForJobs(item) != (uint8_t)m) continue;
+                                    if (item->unreachableCooldown > 0.0f) continue;
+                                    if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
+
+                                    if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
+                                        foundItem = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (foundItem) break;
+                        if (foundItem) break;
+                    }
                 }
             }
         }
@@ -2312,7 +2340,9 @@ void AssignJobs(void) {
                 if (item->reservedBy != -1) continue;
                 if (item->state != ITEM_ON_GROUND) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
-                if (!typeHasStockpile[item->type]) continue;
+                if (!ItemTypeIsValidForJobs(item->type)) continue;
+                uint8_t mat = ResolveItemMaterialForJobs(item);
+                if (!typeMatHasStockpile[item->type][mat]) continue;
                 if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
 
                 int cellX = (int)(item->x / CELL_SIZE);
@@ -2321,11 +2351,11 @@ void AssignJobs(void) {
                 if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
 
                 int slotX, slotY;
-                int spIdx = FindStockpileForItemCached(item->type, &slotX, &slotY);
+                int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
                 if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
-                    InvalidateStockpileSlotCache(item->type);
+                    InvalidateStockpileSlotCache(item->type, item->material);
                 }
             }
         } else {
@@ -2336,7 +2366,9 @@ void AssignJobs(void) {
                 if (item->reservedBy != -1) continue;
                 if (item->state != ITEM_ON_GROUND) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
-                if (!typeHasStockpile[item->type]) continue;
+                if (!ItemTypeIsValidForJobs(item->type)) continue;
+                uint8_t mat = ResolveItemMaterialForJobs(item);
+                if (!typeMatHasStockpile[item->type][mat]) continue;
                 if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
 
                 int cellX = (int)(item->x / CELL_SIZE);
@@ -2345,11 +2377,11 @@ void AssignJobs(void) {
                 if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
 
                 int slotX, slotY;
-                int spIdx = FindStockpileForItemCached(item->type, &slotX, &slotY);
+                int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
                 if (TryAssignItemToMover(j, spIdx, slotX, slotY, false)) {
-                    InvalidateStockpileSlotCache(item->type);
+                    InvalidateStockpileSlotCache(item->type, item->material);
                 }
             }
         }
@@ -2374,10 +2406,10 @@ void AssignJobs(void) {
             int destSlotX, destSlotY;
             int destSp = -1;
 
-            bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
+            bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
 
             if (noLongerAllowed) {
-                destSp = FindStockpileForItemCached(items[j].type, &destSlotX, &destSlotY);
+                destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
             } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
                 destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
             } else {
@@ -2388,7 +2420,7 @@ void AssignJobs(void) {
 
             if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
                 if (noLongerAllowed) {
-                    InvalidateStockpileSlotCache(items[j].type);
+                    InvalidateStockpileSlotCache(items[j].type, items[j].material);
                 }
             }
         }
@@ -2512,7 +2544,7 @@ void AssignJobs(void) {
 // Returns job ID if successful, -1 if no job available
 // Filter context for WorkGiver_Haul spatial search
 typedef struct {
-    bool* typeHasStockpile;  // Pointer to array
+    bool (*typeMatHasStockpile)[MAT_COUNT];  // Pointer to 2D array
 } HaulFilterContext;
 
 static bool HaulItemFilter(int itemIdx, void* userData) {
@@ -2523,7 +2555,9 @@ static bool HaulItemFilter(int itemIdx, void* userData) {
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;
     if (item->unreachableCooldown > 0.0f) return false;
-    if (!ctx->typeHasStockpile[item->type]) return false;
+    if (!ItemTypeIsValidForJobs(item->type)) return false;
+    uint8_t mat = ResolveItemMaterialForJobs(item);
+    if (!ctx->typeMatHasStockpile[item->type][mat]) return false;
     if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
 
     // Skip items on walls
@@ -2541,18 +2575,37 @@ int WorkGiver_Haul(int moverIdx) {
     // Check capability
     if (!m->capabilities.canHaul) return -1;
 
-    // Cache which item types have available stockpiles
-    bool typeHasStockpile[ITEM_TYPE_COUNT] = {false};
+    // Cache which item types + materials have available stockpiles
+    // (Use direct queries here so tests that call WorkGiver_Haul without
+    // RebuildStockpileSlotCache still behave correctly.)
+    bool typeMatHasStockpile[ITEM_TYPE_COUNT][MAT_COUNT] = {false};
     bool anyTypeHasSlot = false;
     for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
-        int slotX, slotY;
-        if (FindStockpileForItem((ItemType)t, &slotX, &slotY) >= 0) {
-            typeHasStockpile[t] = true;
-            anyTypeHasSlot = true;
+        for (int m = 0; m < MAT_COUNT; m++) {
+            int slotX, slotY;
+            if (FindStockpileForItem((ItemType)t, (uint8_t)m, &slotX, &slotY) >= 0) {
+                typeMatHasStockpile[t][m] = true;
+                anyTypeHasSlot = true;
+            }
         }
     }
 
-    if (!anyTypeHasSlot) return -1;
+    if (!anyTypeHasSlot) {
+        // Stockpile free slot counts can be stale when WorkGiver_Haul is called directly
+        // (tests do this without the usual AssignJobs rebuild pass).
+        RebuildStockpileFreeSlotCounts();
+        memset(typeMatHasStockpile, 0, sizeof(typeMatHasStockpile));
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            for (int m = 0; m < MAT_COUNT; m++) {
+                int slotX, slotY;
+                if (FindStockpileForItem((ItemType)t, (uint8_t)m, &slotX, &slotY) >= 0) {
+                    typeMatHasStockpile[t][m] = true;
+                    anyTypeHasSlot = true;
+                }
+            }
+        }
+        if (!anyTypeHasSlot) return -1;
+    }
 
     int moverTileX = (int)(m->x / CELL_SIZE);
     int moverTileY = (int)(m->y / CELL_SIZE);
@@ -2562,7 +2615,7 @@ int WorkGiver_Haul(int moverIdx) {
 
     // Use spatial grid with expanding radius if available
     if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        HaulFilterContext ctx = { .typeHasStockpile = typeHasStockpile };
+        HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile };
 
         // Expanding radius search - find closest items first
         int radii[] = {10, 25, 50, 100};
@@ -2581,7 +2634,9 @@ int WorkGiver_Haul(int moverIdx) {
             if (item->reservedBy != -1) continue;
             if (item->state != ITEM_ON_GROUND) continue;
             if (item->unreachableCooldown > 0.0f) continue;
-            if (!typeHasStockpile[item->type]) continue;
+            if (!ItemTypeIsValidForJobs(item->type)) continue;
+            uint8_t mat = ResolveItemMaterialForJobs(item);
+            if (!typeMatHasStockpile[item->type][mat]) continue;
             if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
 
             // Skip items on walls
@@ -2606,7 +2661,7 @@ int WorkGiver_Haul(int moverIdx) {
 
     // Find stockpile slot
     int slotX, slotY;
-    int spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+    int spIdx = FindStockpileForItem(item->type, item->material, &slotX, &slotY);
     if (spIdx < 0) return -1;
 
     // Check reachability
@@ -2900,7 +2955,7 @@ int WorkGiver_Craft(int moverIdx) {
                 Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
                 if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
                     int outSlotX, outSlotY;
-                    if (FindStockpileForItem(recipes[bill->recipeIdx].outputType, &outSlotX, &outSlotY) >= 0) {
+                    if (FindStockpileForItem(recipes[bill->recipeIdx].outputType, MAT_NONE, &outSlotX, &outSlotY) >= 0) {
                         bill->suspended = false;
                         bill->suspendedNoStorage = false;
                     }
@@ -2919,7 +2974,7 @@ int WorkGiver_Craft(int moverIdx) {
             // Check if there's stockpile space for the output
             // If not, auto-suspend the bill to prevent items piling up
             int outSlotX, outSlotY;
-            if (FindStockpileForItem(recipe->outputType, &outSlotX, &outSlotY) < 0) {
+            if (FindStockpileForItem(recipe->outputType, MAT_NONE, &outSlotX, &outSlotY) < 0) {
                 bill->suspended = true;
                 bill->suspendedNoStorage = true;  // Mark why it was suspended
                 continue;
@@ -2936,7 +2991,7 @@ int WorkGiver_Craft(int moverIdx) {
             for (int i = 0; i < itemHighWaterMark; i++) {
                 Item* item = &items[i];
                 if (!item->active) continue;
-                if (item->type != recipe->inputType) continue;
+                if (!RecipeInputMatches(recipe, item)) continue;
                 if (item->reservedBy != -1) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
                 if ((int)item->z != ws->z) continue;
@@ -3037,7 +3092,7 @@ int WorkGiver_StockpileMaintenance(int moverIdx) {
         slotY = (int)(item->y / CELL_SIZE);
     } else {
         // Clear: find destination stockpile or safe-drop location
-        spIdx = FindStockpileForItem(item->type, &slotX, &slotY);
+        spIdx = FindStockpileForItem(item->type, item->material, &slotX, &slotY);
         if (spIdx < 0) {
             safeDrop = true;  // No stockpile accepts this type, safe-drop it
         }
@@ -3133,11 +3188,11 @@ int WorkGiver_Rehaul(int moverIdx) {
         int destSp = -1;
 
         // Check if item is no longer allowed by current stockpile (filter changed)
-        bool noLongerAllowed = !StockpileAcceptsType(currentSp, items[j].type);
+        bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
 
         if (noLongerAllowed) {
             // Find any stockpile that accepts this item type
-            destSp = FindStockpileForItem(items[j].type, &destSlotX, &destSlotY);
+            destSp = FindStockpileForItem(items[j].type, items[j].material, &destSlotX, &destSlotY);
         } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
             destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
         } else {

@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 15  // Add item treeType metadata
+#define SAVE_VERSION 17  // Add stockpile slot materials (DF-style materials)
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -112,6 +112,20 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Wall natural grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Floor natural grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -260,9 +274,9 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    if (version != SAVE_VERSION) {
-        printf("ERROR: Save version mismatch (file: %d, current: %d)\n", version, SAVE_VERSION);
-        AddMessage(TextFormat("Save version mismatch (file: %d, current: %d)", version, SAVE_VERSION), RED);
+    if (version > SAVE_VERSION || version < 15) {
+        printf("ERROR: Save version mismatch (file: %d, supported: %d-%d)\n", version, 15, SAVE_VERSION);
+        AddMessage(TextFormat("Save version mismatch (file: %d, supported: %d-%d)", version, 15, SAVE_VERSION), RED);
         fclose(f);
         return false;
     }
@@ -370,6 +384,97 @@ bool LoadWorld(const char* filename) {
             fread(floorMaterial[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
+
+    if (version >= 16) {
+        // Wall natural grid
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+
+        // Floor natural grid
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        // Migrate legacy materials (v15): MAT_RAW/MAT_STONE/MAT_WOOD -> new materials + natural flags
+        const uint8_t LEGACY_MAT_NONE = 0;
+        const uint8_t LEGACY_MAT_RAW = 1;
+        const uint8_t LEGACY_MAT_STONE = 2;
+        const uint8_t LEGACY_MAT_WOOD = 3;
+        const uint8_t LEGACY_MAT_DIRT = 4;
+        const uint8_t LEGACY_MAT_IRON = 5;
+        const uint8_t LEGACY_MAT_GLASS = 6;
+        (void)LEGACY_MAT_NONE;
+
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    uint8_t oldWall = wallMaterial[z][y][x];
+                    uint8_t oldFloor = floorMaterial[z][y][x];
+
+                    bool wallNat = false;
+                    bool floorNat = false;
+
+                    switch (oldWall) {
+                        case LEGACY_MAT_RAW:
+                            wallMaterial[z][y][x] = MAT_GRANITE;
+                            wallNat = true;
+                            break;
+                        case LEGACY_MAT_STONE:
+                            wallMaterial[z][y][x] = MAT_GRANITE;
+                            break;
+                        case LEGACY_MAT_WOOD:
+                            wallMaterial[z][y][x] = MAT_OAK;
+                            break;
+                        case LEGACY_MAT_DIRT:
+                            wallMaterial[z][y][x] = MAT_DIRT;
+                            break;
+                        case LEGACY_MAT_IRON:
+                            wallMaterial[z][y][x] = MAT_IRON;
+                            break;
+                        case LEGACY_MAT_GLASS:
+                            wallMaterial[z][y][x] = MAT_GLASS;
+                            break;
+                        default:
+                            wallMaterial[z][y][x] = MAT_NONE;
+                            break;
+                    }
+
+                    switch (oldFloor) {
+                        case LEGACY_MAT_RAW:
+                            floorMaterial[z][y][x] = MAT_GRANITE;
+                            floorNat = true;
+                            break;
+                        case LEGACY_MAT_STONE:
+                            floorMaterial[z][y][x] = MAT_GRANITE;
+                            break;
+                        case LEGACY_MAT_WOOD:
+                            floorMaterial[z][y][x] = MAT_OAK;
+                            break;
+                        case LEGACY_MAT_DIRT:
+                            floorMaterial[z][y][x] = MAT_DIRT;
+                            break;
+                        case LEGACY_MAT_IRON:
+                            floorMaterial[z][y][x] = MAT_IRON;
+                            break;
+                        case LEGACY_MAT_GLASS:
+                            floorMaterial[z][y][x] = MAT_GLASS;
+                            break;
+                        default:
+                            floorMaterial[z][y][x] = MAT_NONE;
+                            break;
+                    }
+
+                    wallNatural[z][y][x] = wallNat ? 1 : 0;
+                    floorNatural[z][y][x] = floorNat ? 1 : 0;
+                }
+            }
+        }
+    }
     
     // Temperature grid
     for (int z = 0; z < gridDepth; z++) {
@@ -403,10 +508,117 @@ bool LoadWorld(const char* filename) {
     
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
-    fread(items, sizeof(Item), itemHighWaterMark, f);
+    if (version >= 16) {
+        fread(items, sizeof(Item), itemHighWaterMark, f);
+    } else {
+        typedef struct {
+            float x, y, z;
+            ItemType type;
+            ItemState state;
+            uint8_t treeType;
+            bool active;
+            int reservedBy;
+            float unreachableCooldown;
+        } ItemV15;
+        ItemV15* legacyItems = malloc(sizeof(ItemV15) * itemHighWaterMark);
+        if (!legacyItems) {
+            fclose(f);
+            AddMessage("Failed to allocate memory for legacy items", RED);
+            return false;
+        }
+        fread(legacyItems, sizeof(ItemV15), itemHighWaterMark, f);
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            items[i].x = legacyItems[i].x;
+            items[i].y = legacyItems[i].y;
+            items[i].z = legacyItems[i].z;
+            items[i].type = legacyItems[i].type;
+            items[i].state = legacyItems[i].state;
+            items[i].active = legacyItems[i].active;
+            items[i].reservedBy = legacyItems[i].reservedBy;
+            items[i].unreachableCooldown = legacyItems[i].unreachableCooldown;
+            items[i].natural = false;
+
+            MaterialType mat = MAT_NONE;
+            TreeType treeType = (TreeType)legacyItems[i].treeType;
+            if (items[i].type == ITEM_WOOD) {
+                mat = MaterialFromTreeType(treeType);
+            } else if (IsSaplingItem(items[i].type)) {
+                mat = MaterialFromTreeType(TreeTypeFromSaplingItem(items[i].type));
+            } else if (IsLeafItem(items[i].type)) {
+                switch (items[i].type) {
+                    case ITEM_LEAVES_PINE: mat = MAT_PINE; break;
+                    case ITEM_LEAVES_BIRCH: mat = MAT_BIRCH; break;
+                    case ITEM_LEAVES_WILLOW: mat = MAT_WILLOW; break;
+                    case ITEM_LEAVES_OAK:
+                    default: mat = MAT_OAK; break;
+                }
+            } else {
+                mat = (MaterialType)DefaultMaterialForItemType(items[i].type);
+            }
+            items[i].material = (uint8_t)mat;
+        }
+        free(legacyItems);
+    }
+
+    // Ensure default materials for any missing entries
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].material == MAT_NONE) {
+            items[i].material = DefaultMaterialForItemType(items[i].type);
+        }
+    }
     
     // Stockpiles
-    fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    if (version >= 17) {
+        fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else {
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV16;
+
+        StockpileV16 legacyStockpiles[MAX_STOCKPILES];
+        fread(legacyStockpiles, sizeof(StockpileV16), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            stockpiles[i].x = legacyStockpiles[i].x;
+            stockpiles[i].y = legacyStockpiles[i].y;
+            stockpiles[i].z = legacyStockpiles[i].z;
+            stockpiles[i].width = legacyStockpiles[i].width;
+            stockpiles[i].height = legacyStockpiles[i].height;
+            stockpiles[i].active = legacyStockpiles[i].active;
+            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
+            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+
+            int totalSlots = MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE;
+            for (int s = 0; s < totalSlots; s++) {
+                if (stockpiles[i].slotCounts[s] > 0 && stockpiles[i].slotTypes[s] >= 0) {
+                    stockpiles[i].slotMaterials[s] = DefaultMaterialForItemType(stockpiles[i].slotTypes[s]);
+                } else {
+                    stockpiles[i].slotMaterials[s] = MAT_NONE;
+                }
+            }
+        }
+    }
     
     // Gather zones
     fread(&gatherZoneCount, sizeof(gatherZoneCount), 1, f);

@@ -22,7 +22,7 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 
-#define INSPECT_SAVE_VERSION 15
+#define INSPECT_SAVE_VERSION 17
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -34,9 +34,17 @@
 
 static const char* InspectItemName(const Item* item, char* buffer, size_t bufferSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
-    if (item->type == ITEM_WOOD &&
-        item->treeType >= TREE_TYPE_OAK && item->treeType < TREE_TYPE_COUNT) {
-        snprintf(buffer, bufferSize, "%s (%s)", base, TreeTypeName((TreeType)item->treeType));
+    MaterialType mat = (MaterialType)item->material;
+    if (mat == MAT_NONE) {
+        mat = (MaterialType)DefaultMaterialForItemType(item->type);
+    }
+    if (mat != MAT_NONE && ItemTypeUsesMaterialName(item->type)) {
+        char matName[32];
+        snprintf(matName, sizeof(matName), "%s", MaterialName(mat));
+        if (matName[0] >= 'a' && matName[0] <= 'z') {
+            matName[0] = (char)(matName[0] - 'a' + 'A');
+        }
+        snprintf(buffer, bufferSize, "%s %s", matName, base);
         return buffer;
     }
     return base;
@@ -81,6 +89,8 @@ static SteamCell* insp_steamCells = NULL;
 static uint8_t* insp_cellFlags = NULL;
 static uint8_t* insp_wallMaterials = NULL;
 static uint8_t* insp_floorMaterials = NULL;
+static uint8_t* insp_wallNatural = NULL;
+static uint8_t* insp_floorNatural = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
@@ -323,13 +333,19 @@ static void print_cell(int x, int y, int z) {
     // Wall material
     uint8_t wallMat = insp_wallMaterials[idx];
     if (wallMat != MAT_NONE) {
-        printf("Wall material: %s (raw=%d)\n", wallMat < MAT_COUNT ? MaterialName(wallMat) : "UNKNOWN", (int)wallMat);
+        const char* naturalTag = (insp_wallNatural && insp_wallNatural[idx]) ? " (natural)" : "";
+        printf("Wall material: %s%s (raw=%d)\n",
+               wallMat < MAT_COUNT ? MaterialName(wallMat) : "UNKNOWN",
+               naturalTag, (int)wallMat);
     }
     
     // Floor material
     uint8_t floorMat = insp_floorMaterials[idx];
     if (floorMat != MAT_NONE) {
-        printf("Floor material: %s (raw=%d)\n", floorMat < MAT_COUNT ? MaterialName(floorMat) : "UNKNOWN", (int)floorMat);
+        const char* naturalTag = (insp_floorNatural && insp_floorNatural[idx]) ? " (natural)" : "";
+        printf("Floor material: %s%s (raw=%d)\n",
+               floorMat < MAT_COUNT ? MaterialName(floorMat) : "UNKNOWN",
+               naturalTag, (int)floorMat);
     }
     
     // Walkability (requires globals to be set up)
@@ -844,6 +860,8 @@ static void cleanup(void) {
     free(insp_cellFlags);
     free(insp_wallMaterials);
     free(insp_floorMaterials);
+    free(insp_wallNatural);
+    free(insp_floorNatural);
     free(insp_tempCells);
     free(insp_designations);
     free(insp_items);
@@ -971,8 +989,8 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version != INSPECT_SAVE_VERSION) {
-        printf("Version mismatch: file=%d, current=%d\n", version, INSPECT_SAVE_VERSION);
+    if (version > INSPECT_SAVE_VERSION || version < 15) {
+        printf("Version mismatch: file=%d, supported=15-%d\n", version, INSPECT_SAVE_VERSION);
         fclose(f);
         return 1;
     }
@@ -1009,6 +1027,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_cellFlags = malloc(totalCells * sizeof(uint8_t));
     insp_wallMaterials = malloc(totalCells * sizeof(uint8_t));
     insp_floorMaterials = malloc(totalCells * sizeof(uint8_t));
+    insp_wallNatural = malloc(totalCells * sizeof(uint8_t));
+    insp_floorNatural = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
@@ -1022,6 +1042,78 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_cellFlags, sizeof(uint8_t), totalCells, f);
     fread(insp_wallMaterials, sizeof(uint8_t), totalCells, f);
     fread(insp_floorMaterials, sizeof(uint8_t), totalCells, f);
+    if (version >= 16) {
+        fread(insp_wallNatural, sizeof(uint8_t), totalCells, f);
+        fread(insp_floorNatural, sizeof(uint8_t), totalCells, f);
+    } else {
+        const uint8_t LEGACY_MAT_RAW = 1;
+        const uint8_t LEGACY_MAT_STONE = 2;
+        const uint8_t LEGACY_MAT_WOOD = 3;
+        const uint8_t LEGACY_MAT_DIRT = 4;
+        const uint8_t LEGACY_MAT_IRON = 5;
+        const uint8_t LEGACY_MAT_GLASS = 6;
+
+        for (int i = 0; i < totalCells; i++) {
+            uint8_t oldWall = insp_wallMaterials[i];
+            uint8_t oldFloor = insp_floorMaterials[i];
+
+            bool wallNat = false;
+            bool floorNat = false;
+
+            switch (oldWall) {
+                case LEGACY_MAT_RAW:
+                    insp_wallMaterials[i] = MAT_GRANITE;
+                    wallNat = true;
+                    break;
+                case LEGACY_MAT_STONE:
+                    insp_wallMaterials[i] = MAT_GRANITE;
+                    break;
+                case LEGACY_MAT_WOOD:
+                    insp_wallMaterials[i] = MAT_OAK;
+                    break;
+                case LEGACY_MAT_DIRT:
+                    insp_wallMaterials[i] = MAT_DIRT;
+                    break;
+                case LEGACY_MAT_IRON:
+                    insp_wallMaterials[i] = MAT_IRON;
+                    break;
+                case LEGACY_MAT_GLASS:
+                    insp_wallMaterials[i] = MAT_GLASS;
+                    break;
+                default:
+                    insp_wallMaterials[i] = MAT_NONE;
+                    break;
+            }
+
+            switch (oldFloor) {
+                case LEGACY_MAT_RAW:
+                    insp_floorMaterials[i] = MAT_GRANITE;
+                    floorNat = true;
+                    break;
+                case LEGACY_MAT_STONE:
+                    insp_floorMaterials[i] = MAT_GRANITE;
+                    break;
+                case LEGACY_MAT_WOOD:
+                    insp_floorMaterials[i] = MAT_OAK;
+                    break;
+                case LEGACY_MAT_DIRT:
+                    insp_floorMaterials[i] = MAT_DIRT;
+                    break;
+                case LEGACY_MAT_IRON:
+                    insp_floorMaterials[i] = MAT_IRON;
+                    break;
+                case LEGACY_MAT_GLASS:
+                    insp_floorMaterials[i] = MAT_GLASS;
+                    break;
+                default:
+                    insp_floorMaterials[i] = MAT_NONE;
+                    break;
+            }
+
+            insp_wallNatural[i] = wallNat ? 1 : 0;
+            insp_floorNatural[i] = floorNat ? 1 : 0;
+        }
+    }
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     
@@ -1036,11 +1128,114 @@ int InspectSaveFile(int argc, char** argv) {
     // Items
     fread(&insp_itemHWM, 4, 1, f);
     insp_items = malloc(insp_itemHWM > 0 ? insp_itemHWM * sizeof(Item) : sizeof(Item));
-    if (insp_itemHWM > 0) fread(insp_items, sizeof(Item), insp_itemHWM, f);
+    if (insp_itemHWM > 0) {
+        if (version >= 16) {
+            fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        } else {
+            typedef struct {
+                float x, y, z;
+                ItemType type;
+                ItemState state;
+                uint8_t treeType;
+                bool active;
+                int reservedBy;
+                float unreachableCooldown;
+            } ItemV15;
+            ItemV15* legacyItems = malloc(sizeof(ItemV15) * insp_itemHWM);
+            if (!legacyItems) {
+                fclose(f);
+                printf("Failed to allocate legacy items\n");
+                return 1;
+            }
+            fread(legacyItems, sizeof(ItemV15), insp_itemHWM, f);
+            for (int i = 0; i < insp_itemHWM; i++) {
+                insp_items[i].x = legacyItems[i].x;
+                insp_items[i].y = legacyItems[i].y;
+                insp_items[i].z = legacyItems[i].z;
+                insp_items[i].type = legacyItems[i].type;
+                insp_items[i].state = legacyItems[i].state;
+                insp_items[i].active = legacyItems[i].active;
+                insp_items[i].reservedBy = legacyItems[i].reservedBy;
+                insp_items[i].unreachableCooldown = legacyItems[i].unreachableCooldown;
+                insp_items[i].natural = false;
+
+                MaterialType mat = MAT_NONE;
+                TreeType treeType = (TreeType)legacyItems[i].treeType;
+                if (insp_items[i].type == ITEM_WOOD) {
+                    mat = MaterialFromTreeType(treeType);
+                } else if (IsSaplingItem(insp_items[i].type)) {
+                    mat = MaterialFromTreeType(TreeTypeFromSaplingItem(insp_items[i].type));
+                } else if (IsLeafItem(insp_items[i].type)) {
+                    switch (insp_items[i].type) {
+                        case ITEM_LEAVES_PINE: mat = MAT_PINE; break;
+                        case ITEM_LEAVES_BIRCH: mat = MAT_BIRCH; break;
+                        case ITEM_LEAVES_WILLOW: mat = MAT_WILLOW; break;
+                        case ITEM_LEAVES_OAK:
+                        default: mat = MAT_OAK; break;
+                    }
+                } else {
+                    mat = (MaterialType)DefaultMaterialForItemType(insp_items[i].type);
+                }
+                insp_items[i].material = (uint8_t)mat;
+            }
+            free(legacyItems);
+        }
+    }
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    if (version >= 17) {
+        fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else {
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV16;
+
+        StockpileV16* legacyStockpiles = malloc(MAX_STOCKPILES * sizeof(StockpileV16));
+        fread(legacyStockpiles, sizeof(StockpileV16), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            insp_stockpiles[i].x = legacyStockpiles[i].x;
+            insp_stockpiles[i].y = legacyStockpiles[i].y;
+            insp_stockpiles[i].z = legacyStockpiles[i].z;
+            insp_stockpiles[i].width = legacyStockpiles[i].width;
+            insp_stockpiles[i].height = legacyStockpiles[i].height;
+            insp_stockpiles[i].active = legacyStockpiles[i].active;
+            memcpy(insp_stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
+            memcpy(insp_stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(insp_stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(insp_stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(insp_stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(insp_stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            insp_stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            insp_stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(insp_stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            insp_stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+
+            int totalSlots = MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE;
+            for (int s = 0; s < totalSlots; s++) {
+                if (insp_stockpiles[i].slotCounts[s] > 0 && insp_stockpiles[i].slotTypes[s] >= 0) {
+                    insp_stockpiles[i].slotMaterials[s] = DefaultMaterialForItemType(insp_stockpiles[i].slotTypes[s]);
+                } else {
+                    insp_stockpiles[i].slotMaterials[s] = MAT_NONE;
+                }
+            }
+        }
+
+        free(legacyStockpiles);
+    }
     
     // Gather zones
     fread(&insp_gatherZoneCount, 4, 1, f);
