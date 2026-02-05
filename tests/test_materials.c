@@ -263,17 +263,17 @@ describe(blueprint_material_tracking) {
         
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
-        // Deliver wood (oak) and complete
-        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
+        // Deliver wood (pine) and complete
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_PINE);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
         // Simulate builder completing
         blueprints[bpIdx].progress = BUILD_WORK_TIME;
         CompleteBlueprint(bpIdx);
         
-        // Cell should be CELL_WALL with MAT_OAK (constructed)
+        // Cell should be CELL_WALL with MAT_PINE (constructed)
         expect(grid[0][0][1] == CELL_WALL);
-        expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
+        expect(GetWallMaterial(1, 0, 0) == MAT_PINE);
         expect(!IsWallNatural(1, 0, 0));
     }
     
