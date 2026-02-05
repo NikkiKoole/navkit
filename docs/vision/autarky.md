@@ -34,3 +34,12 @@ If any of these are missing, add the missing part first or delay the item.
 - Prefer small, complete loops over long lists of single items.
 - When brainstorming, group features into loop bundles (source + sink + feedback).
 - Use this doc as a gate in TODO grooming.
+
+## Terrain As A Source
+Terrain cells are a valid “source” in the loop, but they should still have a sink:
+- **Sink can be an item** (mining yields a material), or
+- **Sink can be a gameplay effect** (movement penalty, fertility, drainage, fire risk).
+
+When adding a new ground cell, define:
+1. Where it appears (generator/distribution).
+2. What it does (items, movement, fertility, or other systemic impact).

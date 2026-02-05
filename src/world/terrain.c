@@ -1104,6 +1104,158 @@ void GenerateHills(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Hills + Soils Generator
+// Uses the Hills heightmap but adds clay/gravel/sand/peat distribution
+// ============================================================================
+
+void GenerateHillsSoils(void) {
+    InitGrid();  // Clear cells and flags
+    SeedTerrain();
+    InitPerlin((int)worldSeed);
+
+    float scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);  // 0.01 to 0.05
+    int octaves = 2 + GetRandomValue(0, 4);                  // 2 to 6
+    float persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);  // 0.3 to 0.7
+
+    int maxHeight = gridDepth - 2 - GetRandomValue(0, 3);  // Leave 2-5 at top
+    int minHeight = 1 + GetRandomValue(0, 2);              // 1 to 3
+    if (maxHeight <= minHeight) maxHeight = minHeight + 2;
+
+    TraceLog(LOG_INFO, "GenerateHillsSoils: scale=%.3f, octaves=%d, persistence=%.2f, height=%d-%d",
+             scale, octaves, persistence, minHeight, maxHeight);
+
+    int* heightmap = (int*)malloc(gridWidth * gridHeight * sizeof(int));
+
+    // Generate heightmap and fill with dirt
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            float n = OctavePerlin(x * scale, y * scale, octaves, persistence);
+
+            int height = minHeight + (int)(n * (maxHeight - minHeight));
+            if (height < minHeight) height = minHeight;
+            if (height >= gridDepth) height = gridDepth - 1;
+
+            heightmap[y * gridWidth + x] = height;
+
+            for (int z = 0; z <= height; z++) {
+                grid[z][y][x] = CELL_DIRT;
+            }
+        }
+    }
+
+    // Soil distribution parameters (tune as needed)
+    float clayScale = 0.03f;
+    float sandScale = 0.02f;
+    float gravelScale = 0.02f;
+    float peatScale = 0.02f;
+    float clayThreshold = 0.58f;
+    float sandNoise = 0.55f;
+    float gravelNoise = 0.62f;
+    float peatNoise = 0.55f;
+    int topsoilDepth = 2;
+    int clayDepth = 2;
+
+    // Apply surface soils and subsoil clay blobs
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int height = heightmap[y * gridWidth + x];
+
+            // Slope proxy (max neighbor delta)
+            int slope = 0;
+            if (x > 0) slope = (abs(height - heightmap[y * gridWidth + (x - 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x - 1)]) : slope;
+            if (x < gridWidth - 1) slope = (abs(height - heightmap[y * gridWidth + (x + 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x + 1)]) : slope;
+            if (y > 0) slope = (abs(height - heightmap[(y - 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y - 1) * gridWidth + x]) : slope;
+            if (y < gridHeight - 1) slope = (abs(height - heightmap[(y + 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y + 1) * gridWidth + x]) : slope;
+
+            float heightNorm = (maxHeight == minHeight) ? 0.0f : (float)(height - minHeight) / (float)(maxHeight - minHeight);
+            float wetness = 1.0f - heightNorm;
+
+            float sandN = OctavePerlin(x * sandScale, y * sandScale, 3, 0.5f);
+            float gravelN = OctavePerlin(x * gravelScale, y * gravelScale, 3, 0.5f);
+            float peatN = OctavePerlin(x * peatScale, y * peatScale, 3, 0.5f);
+
+            CellType surface = CELL_DIRT;
+            if (wetness > 0.65f && peatN > peatNoise) {
+                surface = CELL_PEAT;
+            } else if (wetness < 0.35f && sandN > sandNoise) {
+                surface = CELL_SAND;
+            } else if (slope >= 2 || gravelN > gravelNoise) {
+                surface = CELL_GRAVEL;
+            }
+
+            grid[height][y][x] = surface;
+            if (surface == CELL_DIRT) {
+                SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
+            } else {
+                SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
+            }
+
+            // Clay blobs in subsoil band
+            float clayN = OctavePerlin(x * clayScale, y * clayScale, 3, 0.5f);
+            if (clayN > clayThreshold) {
+                int bandEnd = height - topsoilDepth;
+                if (bandEnd > 0) {
+                    int bandStart = bandEnd - clayDepth + 1;
+                    if (bandStart < 0) bandStart = 0;
+                    for (int z = bandStart; z <= bandEnd && z < gridDepth; z++) {
+                        if (grid[z][y][x] == CELL_DIRT) {
+                            grid[z][y][x] = CELL_CLAY;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Ramp placement pass (same as GenerateHills)
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int myHeight = heightmap[y * gridWidth + x];
+
+            if (y > 0) {
+                int northHeight = heightmap[(y - 1) * gridWidth + x];
+                if (northHeight == myHeight + 1) {
+                    int rampZ = northHeight;
+                    if (rampZ < gridDepth) {
+                        grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                    }
+                }
+            }
+            if (x < gridWidth - 1) {
+                int eastHeight = heightmap[y * gridWidth + (x + 1)];
+                if (eastHeight == myHeight + 1) {
+                    int rampZ = eastHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1])) {
+                        grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                    }
+                }
+            }
+            if (y < gridHeight - 1) {
+                int southHeight = heightmap[(y + 1) * gridWidth + x];
+                if (southHeight == myHeight + 1) {
+                    int rampZ = southHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x])) {
+                        grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                    }
+                }
+            }
+            if (x > 0) {
+                int westHeight = heightmap[y * gridWidth + (x - 1)];
+                if (westHeight == myHeight + 1) {
+                    int rampZ = westHeight;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1])) {
+                        grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                    }
+                }
+            }
+        }
+    }
+
+    free(heightmap);
+    needsRebuild = true;
+}
+
 void GeneratePerlin(void) {
     InitGrid();
     InitPerlin((int)worldSeed);
@@ -2618,4 +2770,3 @@ void GenerateCraftingTest(void) {
     
     needsRebuild = true;
 }
-

@@ -21,6 +21,7 @@
     #define SPRITE_bedrock SPRITE8X8_bedrock
     #define SPRITE_crate_blue SPRITE8X8_crate_blue
     #define SPRITE_wood_block SPRITE8X8_wood_block
+    #define SPRITE_clay SPRITE8X8_clay
     #define SPRITE_air SPRITE8X8_air
     #define SPRITE_dirt_block SPRITE8X8_dirt_block
     #define SPRITE_grass_trampled SPRITE8X8_grass_trampled
@@ -30,6 +31,7 @@
     #define SPRITE_stone_wall SPRITE8X8_stone_wall
     #define SPRITE_ramp_s SPRITE8X8_ramp_s
     #define SPRITE_ramp_e SPRITE8X8_ramp_e
+    #define SPRITE_gravel SPRITE8X8_gravel
     #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_grass_tall SPRITE8X8_grass_tall
     #define SPRITE_ramp_w SPRITE8X8_ramp_w
@@ -37,6 +39,7 @@
     #define SPRITE_stone_floor SPRITE8X8_stone_floor
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_ramp_n SPRITE8X8_ramp_n
+    #define SPRITE_peat SPRITE8X8_peat
     #define SPRITE_apple SPRITE8X8_apple
     #define SPRITE_grass SPRITE8X8_grass
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
@@ -49,6 +52,7 @@
     #define SPRITE_ladder_down SPRITE8X8_ladder_down
     #define SPRITE_tree_sapling SPRITE8X8_tree_sapling
     #define SPRITE_rock_floor SPRITE8X8_rock_floor
+    #define SPRITE_sand SPRITE8X8_sand
     #define SPRITE_crate_green SPRITE8X8_crate_green
     #define SPRITE_wood_wall SPRITE8X8_wood_wall
     #define SPRITE_crate_red SPRITE8X8_crate_red
@@ -65,6 +69,7 @@
     #define SPRITE_bedrock SPRITE16X16_bedrock
     #define SPRITE_crate_blue SPRITE16X16_crate_blue
     #define SPRITE_wood_block SPRITE16X16_wood_block
+    #define SPRITE_clay SPRITE16X16_clay
     #define SPRITE_air SPRITE16X16_air
     #define SPRITE_dirt_block SPRITE16X16_dirt_block
     #define SPRITE_grass_trampled SPRITE16X16_grass_trampled
@@ -74,6 +79,7 @@
     #define SPRITE_stone_wall SPRITE16X16_stone_wall
     #define SPRITE_ramp_s SPRITE16X16_ramp_s
     #define SPRITE_ramp_e SPRITE16X16_ramp_e
+    #define SPRITE_gravel SPRITE16X16_gravel
     #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_grass_tall SPRITE16X16_grass_tall
     #define SPRITE_ramp_w SPRITE16X16_ramp_w
@@ -81,6 +87,7 @@
     #define SPRITE_stone_floor SPRITE16X16_stone_floor
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_ramp_n SPRITE16X16_ramp_n
+    #define SPRITE_peat SPRITE16X16_peat
     #define SPRITE_apple SPRITE16X16_apple
     #define SPRITE_grass SPRITE16X16_grass
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
@@ -93,6 +100,7 @@
     #define SPRITE_ladder_down SPRITE16X16_ladder_down
     #define SPRITE_tree_sapling SPRITE16X16_tree_sapling
     #define SPRITE_rock_floor SPRITE16X16_rock_floor
+    #define SPRITE_sand SPRITE16X16_sand
     #define SPRITE_crate_green SPRITE16X16_crate_green
     #define SPRITE_wood_wall SPRITE16X16_wood_wall
     #define SPRITE_crate_red SPRITE16X16_crate_red

@@ -49,7 +49,7 @@ bool DesignateMine(int x, int y, int z) {
     
     // Can mine walls and dirt (DF-style: any solid)
     CellType ct = grid[z][y][x];
-    if (ct != CELL_WALL && ct != CELL_DIRT) {
+    if (ct != CELL_WALL && !IsGroundCell(ct)) {
         return false;
     }
     
@@ -151,7 +151,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         }
     }
     // Convert dirt to air with dirt floor
-    else if (ct == CELL_DIRT) {
+    else if (IsGroundCell(ct)) {
         ItemType dropItem = CellDropsItem(ct);
         int dropCount = CellDropCount(ct);
         
@@ -512,7 +512,7 @@ bool DesignateDigRamp(int x, int y, int z) {
     
     // Can only dig ramps from walls or dirt
     CellType ct = grid[z][y][x];
-    if (ct != CELL_WALL && ct != CELL_DIRT) {
+    if (ct != CELL_WALL && !IsGroundCell(ct)) {
         return false;
     }
     
@@ -1240,7 +1240,7 @@ int CreateFloorBlueprint(int x, int y, int z) {
     
     // Already has a floor? (check flag or ground type)
     CellType ct = grid[z][y][x];
-    if (HAS_FLOOR(x, y, z) || ct == CELL_DIRT) {
+    if (HAS_FLOOR(x, y, z) || IsGroundCell(ct)) {
         return -1;
     }
     

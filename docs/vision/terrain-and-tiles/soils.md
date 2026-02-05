@@ -39,6 +39,7 @@ Clay	reddish/brown, smooth lumps	holds water, harder to dig
 Gravel	lots of small rocks	non-growable
 Stone ground	flat rocks/plates	non-growable, paths
 Mulch layer	wood chips texture	boosts nearby soil / decorative
+Peat	dark, spongy patches	fuel source / wetland indicator
 3) Edge/detail tiles (makes it look “real” fast)
 
 If you only do a few transitions, do these:
@@ -78,3 +79,6 @@ Fertile: almost chocolate-dark + organic bits
 Wet versions: same as above but slightly darker + tiny highlights
 
 If you tell me your tile size (e.g., 16×16 / 32×32) and whether it’s top-down or isometric, I can turn this into a super specific “draw checklist” per tile (like “3 pebbles here, 2 cracks there, 1 puddle highlight”).
+
+For distribution ideas (where these tiles appear in terrain), see:
+`docs/vision/terrain-and-tiles/ground-cells-distribution.md`
