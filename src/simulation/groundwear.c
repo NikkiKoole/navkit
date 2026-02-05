@@ -1,4 +1,5 @@
 #include "groundwear.h"
+#include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../core/time.h"
 #include "fire.h"
@@ -117,9 +118,15 @@ void TrampleGround(int x, int y, int z) {
     }
     
     // Increase wear (cap at wearMax)
-    int newWear = wearGrid[targetZ][y][x] + wearTrampleAmount;
+    int oldWear = wearGrid[targetZ][y][x];
+    int newWear = oldWear + wearTrampleAmount;
     if (newWear > wearMax) newWear = wearMax;
     wearGrid[targetZ][y][x] = newWear;
+    
+    // Track active worn cells
+    if (oldWear == 0 && newWear > 0) {
+        wearActiveCells++;
+    }
     
     // Update surface overlay based on new wear
     UpdateSurfaceFromWear(x, y, targetZ);
@@ -127,6 +134,11 @@ void TrampleGround(int x, int y, int z) {
 
 void UpdateGroundWear(void) {
     if (!groundWearEnabled) return;
+    
+    // Early exit: no worn cells and sapling regrowth disabled
+    if (wearActiveCells == 0 && !saplingRegrowthEnabled) {
+        return;
+    }
     
     // Accumulate game time for interval-based decay
     wearRecoveryAccum += gameDeltaTime;
@@ -148,10 +160,12 @@ void UpdateGroundWear(void) {
                 if (HasFire(x, y, z)) continue;
                 
                 // Decay wear
-                if (wearGrid[z][y][x] > wearDecayRate) {
-                    wearGrid[z][y][x] -= wearDecayRate;
-                } else {
+                int oldWear = wearGrid[z][y][x];
+                if (oldWear > wearDecayRate) {
+                    wearGrid[z][y][x] = oldWear - wearDecayRate;
+                } else if (oldWear > 0) {
                     wearGrid[z][y][x] = 0;
+                    wearActiveCells--;
                 }
                 
                 // Update surface overlay based on new wear

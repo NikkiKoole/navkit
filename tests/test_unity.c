@@ -29,7 +29,7 @@ uint64_t worldSeed = 12345;
 #include "../src/world/designations.c"
 
 // Simulation systems
-#include "../src/simulation/sim_presence.c"
+#include "../src/core/sim_manager.c"
 #include "../src/simulation/water.c"
 #include "../src/simulation/fire.c"
 #include "../src/simulation/smoke.c"

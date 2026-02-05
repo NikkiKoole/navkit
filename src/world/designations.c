@@ -7,6 +7,7 @@
 #include "../entities/item_defs.h"  // for ItemProducesMaterial
 #include "../entities/mover.h"  // for CELL_SIZE
 #include "../simulation/water.h"
+#include "../core/sim_manager.h"
 #include <string.h>
 #include <math.h>
 
@@ -1104,6 +1105,7 @@ void CompletePlantSaplingDesignation(int x, int y, int z, int moverIdx) {
     
     // Place the sapling cell
     grid[z][y][x] = CELL_SAPLING;
+    treeActiveCells++;
     MarkChunkDirty(x, y, z);
     
     // Clear designation

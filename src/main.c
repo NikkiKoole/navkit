@@ -459,7 +459,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
                 grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
-    InitSimPresence();
+    InitSimActivity();
     InitTemperature();
     InitSteam();
     
@@ -761,7 +761,7 @@ int main(int argc, char** argv) {
                 grid[z][y][x] = CELL_AIR;
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
-    InitSimPresence();
+    InitSimActivity();
     InitTemperature();
     InitSteam();
     BuildEntrances();

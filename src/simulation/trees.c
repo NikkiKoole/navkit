@@ -2,6 +2,7 @@
 // Saplings grow into trunks, trunks grow upward, top spawns leaves
 
 #include "trees.h"
+#include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../entities/items.h"
@@ -199,8 +200,9 @@ static void GrowCell(int x, int y, int z) {
                 growthTimer[z + 1][y][x] = 0;
             }
         } else {
-            // Reached target height or blocked - spawn leaves
+            // Reached target height or blocked - spawn leaves, tree is now mature
             SpawnLeavesAroundTrunk(x, y, z);
+            treeActiveCells--;
         }
         
     } else if (cell == CELL_TREE_LEAVES) {
@@ -216,6 +218,11 @@ static void GrowCell(int x, int y, int z) {
 // Run one tick of tree growth simulation
 void TreesTick(float dt) {
     (void)dt;  // Currently tick-based, not time-based
+    
+    // Early exit: no saplings means no tree growth activity
+    if (treeActiveCells == 0) {
+        return;
+    }
     
     // Update timers and trigger growth
     for (int z = 0; z < gridDepth; z++) {
@@ -255,7 +262,11 @@ void TreeGrowFull(int x, int y, int z) {
     // Place sapling if not already there
     if (grid[z][y][x] != CELL_SAPLING && grid[z][y][x] != CELL_TREE_TRUNK) {
         grid[z][y][x] = CELL_SAPLING;
+        treeActiveCells++;
         MarkChunkDirty(x, y, z);
+    } else if (grid[z][y][x] == CELL_SAPLING) {
+        // Already a sapling, count it as active for the growth cycle
+        treeActiveCells++;
     }
     
     // Grow sapling to trunk (this sets the target height)
@@ -298,5 +309,6 @@ void PlaceSapling(int x, int y, int z) {
     
     grid[z][y][x] = CELL_SAPLING;
     growthTimer[z][y][x] = 0;
+    treeActiveCells++;
     MarkChunkDirty(x, y, z);
 }

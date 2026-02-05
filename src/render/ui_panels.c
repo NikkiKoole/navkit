@@ -194,7 +194,7 @@ void DrawUI(void) {
             FillGroundLevel();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-            InitSimPresence();
+            InitSimActivity();
             InitTemperature();
             BuildEntrances();
             BuildGraph();
@@ -215,7 +215,7 @@ void DrawUI(void) {
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
             BuildEntrances();
             BuildGraph();
-            InitSimPresence();
+            InitSimActivity();
             InitTemperature();
             offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
             offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
@@ -232,7 +232,7 @@ void DrawUI(void) {
             FillGroundLevel();
             InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
             InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-            InitSimPresence();
+            InitSimActivity();
             InitTemperature();
             BuildEntrances();
             BuildGraph();

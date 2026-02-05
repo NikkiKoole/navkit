@@ -3,7 +3,7 @@
 #include "smoke.h"
 #include "temperature.h"
 #include "groundwear.h"
-#include "sim_presence.h"
+#include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"

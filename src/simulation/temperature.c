@@ -1,5 +1,5 @@
 #include "temperature.h"
-#include "sim_presence.h"
+#include "../core/sim_manager.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
 #include <stdlib.h>
