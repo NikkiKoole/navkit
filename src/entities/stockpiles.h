@@ -14,6 +14,7 @@ typedef struct {
     int width, height;
     bool active;
     bool allowedTypes[ITEM_TYPE_COUNT];  // indexed by ItemType
+    bool allowedMaterials[MAT_COUNT];    // indexed by MaterialType
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];     // which cells are active (for non-rectangular shapes)
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];      // item index per tile, -1 = empty
     int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // mover index per tile, -1 = none
@@ -56,6 +57,7 @@ int GetStockpileActiveCellCount(int stockpileIdx);
 
 // Filters
 void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed);
+void SetStockpileMaterialFilter(int stockpileIdx, MaterialType material, bool allowed);
 bool StockpileAcceptsType(int stockpileIdx, ItemType type);
 bool StockpileAcceptsItem(int stockpileIdx, ItemType type, uint8_t material);
 

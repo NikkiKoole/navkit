@@ -1115,6 +1115,34 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ROCK] = !sp->allowedTypes[ITEM_ROCK]; AddMessage(TextFormat("Rock: %s", sp->allowedTypes[ITEM_ROCK] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_BLOCKS] = !sp->allowedTypes[ITEM_BLOCKS]; AddMessage(TextFormat("Blocks: %s", sp->allowedTypes[ITEM_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
             if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood (any): %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_ONE)) {
+                bool newVal = !sp->allowedMaterials[MAT_OAK];
+                sp->allowedMaterials[MAT_OAK] = newVal;
+                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                AddMessage(TextFormat("Wood mat Oak: %s", newVal ? "ON" : "OFF"), BROWN);
+                return;
+            }
+            if (IsKeyPressed(KEY_TWO)) {
+                bool newVal = !sp->allowedMaterials[MAT_PINE];
+                sp->allowedMaterials[MAT_PINE] = newVal;
+                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                AddMessage(TextFormat("Wood mat Pine: %s", newVal ? "ON" : "OFF"), BROWN);
+                return;
+            }
+            if (IsKeyPressed(KEY_THREE)) {
+                bool newVal = !sp->allowedMaterials[MAT_BIRCH];
+                sp->allowedMaterials[MAT_BIRCH] = newVal;
+                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                AddMessage(TextFormat("Wood mat Birch: %s", newVal ? "ON" : "OFF"), BROWN);
+                return;
+            }
+            if (IsKeyPressed(KEY_FOUR)) {
+                bool newVal = !sp->allowedMaterials[MAT_WILLOW];
+                sp->allowedMaterials[MAT_WILLOW] = newVal;
+                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                AddMessage(TextFormat("Wood mat Willow: %s", newVal ? "ON" : "OFF"), BROWN);
+                return;
+            }
             if (IsKeyPressed(KEY_T)) {
                 bool anySapling = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
                                   sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];

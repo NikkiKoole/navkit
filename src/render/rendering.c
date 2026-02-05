@@ -38,6 +38,25 @@ static void DrawLineToTile(float msx, float msy, int tx, int ty, int tz, Color c
     DrawLineEx((Vector2){msx, msy}, (Vector2){ex, ey}, 2.0f, color);
 }
 
+static Color MultiplyColor(Color a, Color b) {
+    return (Color){
+        (unsigned char)((a.r * b.r) / 255),
+        (unsigned char)((a.g * b.g) / 255),
+        (unsigned char)((a.b * b.b) / 255),
+        (unsigned char)((a.a * b.a) / 255)
+    };
+}
+
+static Color MaterialTint(MaterialType mat) {
+    switch (mat) {
+        case MAT_OAK: return (Color){139, 90, 43, 255};
+        case MAT_PINE: return (Color){180, 140, 100, 255};
+        case MAT_BIRCH: return (Color){220, 210, 190, 255};
+        case MAT_WILLOW: return (Color){160, 140, 100, 255};
+        default: return WHITE;
+    }
+}
+
 static int MaterialWallSprite(MaterialType mat) {
     // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
     switch (mat) {
@@ -148,7 +167,6 @@ void DrawCellGrid(void) {
             int zDepth = depthLevels[d];
             if (zDepth < 0) continue;
             
-            Color tint = depthTints[d];
             for (int y = minY; y < maxY; y++) {
                 for (int x = minX; x < maxX; x++) {
                     CellType cellAtDepth = grid[zDepth][y][x];
@@ -169,6 +187,10 @@ void DrawCellGrid(void) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
                     Rectangle src = SpriteGetRect(sprite);
+                    Color tint = depthTints[d];
+                    if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
+                        tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
+                    }
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                 }
             }
@@ -216,7 +238,8 @@ void DrawCellGrid(void) {
                 if (HAS_FLOOR(x, y, z)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     Rectangle src = SpriteGetRect(GetFloorSpriteAt(x, y, z));
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                    Color tint = MaterialTint(GetFloorMaterial(x, y, z));
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                 }
             }
         }
@@ -231,7 +254,11 @@ void DrawCellGrid(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, z, cell);
                 Rectangle src = SpriteGetRect(sprite);
-                Color tint = CellIsRamp(cell) ? (Color){255, 255, 255, 64} : WHITE;
+                Color tint = WHITE;
+                if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
+                    tint = MaterialTint(GetWallMaterial(x, y, z));
+                }
+                if (CellIsRamp(cell)) tint.a = 64;
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -1013,7 +1040,10 @@ void DrawItems(void) {
         Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
 
-        Color tint = (item->reservedBy >= 0) ? (Color) { 200, 200, 200, 255 } : WHITE;
+        Color tint = MaterialTint((MaterialType)item->material);
+        if (item->reservedBy >= 0) {
+            tint = MultiplyColor(tint, (Color){200, 200, 200, 255});
+        }
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
     }
 }
@@ -1107,13 +1137,14 @@ void DrawStockpileItems(void) {
                 int visibleCount = count > 5 ? 5 : count;
                 float itemSize = size * ITEM_SIZE_STOCKPILE;
                 float stackOffset = size * 0.08f;
+                Color tint = MaterialTint((MaterialType)sp->slotMaterials[slotIdx]);
 
                 for (int s = 0; s < visibleCount; s++) {
                     float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
                     float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
                     Rectangle srcItem = SpriteGetRect(sprite);
                     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
-                    DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, WHITE);
+                    DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
                 }
             }
         }

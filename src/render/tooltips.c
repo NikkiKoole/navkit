@@ -80,7 +80,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
     const char* fillText = TextFormat("Fill: %s", fillMeter);
     const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
-    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter";
+    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter, 1-4 wood mats";
 
     // Measure text
     int w0 = MeasureText(titleText, 14);
@@ -90,7 +90,8 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int w4 = MeasureText(fillText, 14);
     int w5 = MeasureText(cellText, 14);
     int w6 = MeasureText("Filters: R G B O S W T D", 14);
-    int w7 = MeasureText(helpText, 12);
+    int w7 = MeasureText("Wood mats: 1 2 3 4", 14);
+    int w8 = MeasureText(helpText, 12);
     int maxW = w0;
     if (w1 > maxW) maxW = w1;
     if (w2 > maxW) maxW = w2;
@@ -99,11 +100,12 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (w5 > maxW) maxW = w5;
     if (w6 > maxW) maxW = w6;
     if (w7 > maxW) maxW = w7;
+    if (w8 > maxW) maxW = w8;
 
     int padding = 6;
     int boxW = maxW + padding * 2;
     int lineH = 16;
-    int boxH = lineH * 8 + padding * 2;
+    int boxH = lineH * 9 + padding * 2;
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -166,6 +168,22 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("T", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_DIRT] ? "D" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_DIRT] ? BROWN : DARKGRAY);
+    y += 18;
+
+    int mx = tx + padding;
+    DrawTextShadow("Wood mats: ", mx, y, 14, WHITE);
+    mx += MeasureText("Wood mats: ", 14);
+    DrawTextShadow(sp->allowedMaterials[MAT_OAK] ? "1" : "-", mx, y, 14,
+        sp->allowedMaterials[MAT_OAK] ? BROWN : DARKGRAY);
+    mx += MeasureText("1", 14) + 4;
+    DrawTextShadow(sp->allowedMaterials[MAT_PINE] ? "2" : "-", mx, y, 14,
+        sp->allowedMaterials[MAT_PINE] ? BROWN : DARKGRAY);
+    mx += MeasureText("2", 14) + 4;
+    DrawTextShadow(sp->allowedMaterials[MAT_BIRCH] ? "3" : "-", mx, y, 14,
+        sp->allowedMaterials[MAT_BIRCH] ? BROWN : DARKGRAY);
+    mx += MeasureText("3", 14) + 4;
+    DrawTextShadow(sp->allowedMaterials[MAT_WILLOW] ? "4" : "-", mx, y, 14,
+        sp->allowedMaterials[MAT_WILLOW] ? BROWN : DARKGRAY);
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);

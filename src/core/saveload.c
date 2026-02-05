@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 17  // Add stockpile slot materials (DF-style materials)
+#define SAVE_VERSION 18  // Add stockpile material filters
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -569,8 +569,52 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= 17) {
+    if (version >= 18) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= 17) {
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV17;
+
+        StockpileV17 legacyStockpiles[MAX_STOCKPILES];
+        fread(legacyStockpiles, sizeof(StockpileV17), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            stockpiles[i].x = legacyStockpiles[i].x;
+            stockpiles[i].y = legacyStockpiles[i].y;
+            stockpiles[i].z = legacyStockpiles[i].z;
+            stockpiles[i].width = legacyStockpiles[i].width;
+            stockpiles[i].height = legacyStockpiles[i].height;
+            stockpiles[i].active = legacyStockpiles[i].active;
+            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
+            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+
+            for (int m = 0; m < MAT_COUNT; m++) {
+                stockpiles[i].allowedMaterials[m] = true;
+            }
+        }
     } else {
         typedef struct {
             int x, y, z;
@@ -616,6 +660,10 @@ bool LoadWorld(const char* filename) {
                 } else {
                     stockpiles[i].slotMaterials[s] = MAT_NONE;
                 }
+            }
+
+            for (int m = 0; m < MAT_COUNT; m++) {
+                stockpiles[i].allowedMaterials[m] = true;
             }
         }
     }

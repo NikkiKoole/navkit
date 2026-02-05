@@ -192,6 +192,10 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
                 sp->allowedTypes[t] = true;
             }
+            // Default: allow all materials
+            for (int m = 0; m < MAT_COUNT; m++) {
+                sp->allowedMaterials[m] = true;
+            }
             
             // Initialize slots as empty
             int totalSlots = sp->width * sp->height;
@@ -330,6 +334,14 @@ void SetStockpileFilter(int stockpileIdx, ItemType type, bool allowed) {
     stockpiles[stockpileIdx].allowedTypes[type] = allowed;
 }
 
+void SetStockpileMaterialFilter(int stockpileIdx, MaterialType material, bool allowed) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
+    if (!stockpiles[stockpileIdx].active) return;
+    if (material < 0 || material >= MAT_COUNT) return;
+
+    stockpiles[stockpileIdx].allowedMaterials[material] = allowed;
+}
+
 bool StockpileAcceptsType(int stockpileIdx, ItemType type) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
     if (!stockpiles[stockpileIdx].active) return false;
@@ -347,6 +359,7 @@ bool StockpileAcceptsItem(int stockpileIdx, ItemType type, uint8_t material) {
 
     MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
     if (IsWoodMaterial(mat) && !sp->allowedTypes[ITEM_WOOD]) return false;
+    if (mat != MAT_NONE && !sp->allowedMaterials[mat]) return false;
 
     return true;
 }

@@ -13,12 +13,18 @@
 #include <string.h>
 #include <math.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define UNUSED __attribute__((unused))
+#else
+#define UNUSED
+#endif
+
 // Helper functions to check mover job state (replaces m->jobState checks)
 static bool MoverIsIdle(Mover* m) {
     return m->currentJobId < 0;
 }
 
-static bool MoverHasHaulJob(Mover* m) {
+static UNUSED bool MoverHasHaulJob(Mover* m) {
     if (m->currentJobId < 0) return false;
     Job* job = GetJob(m->currentJobId);
     return job && job->active && job->type == JOBTYPE_HAUL;
@@ -64,7 +70,7 @@ static bool MoverIsCarrying(Mover* m) {
            && job->step == STEP_CARRYING;
 }
 
-static bool MoverIsMining(Mover* m) {
+static UNUSED bool MoverIsMining(Mover* m) {
     if (m->currentJobId < 0) return false;
     Job* job = GetJob(m->currentJobId);
     if (!job || !job->active) return false;
@@ -4465,6 +4471,7 @@ describe(channel_rectangle_ramps) {
                 }
             }
         }
+        (void)floorCountInArea;
         
         // All 16 cells should be either ramp or floor
         // Border cells (12) should be ramps, interior cells (4) can be floor
@@ -6352,6 +6359,7 @@ describe(final_approach) {
         float itemX = 8 * CELL_SIZE + CELL_SIZE * 0.5f;
         float itemY = 8 * CELL_SIZE + CELL_SIZE * 0.5f;
         int itemIdx = SpawnItem(itemX, itemY, 0.0f, ITEM_RED);
+        (void)itemIdx;
         
         // Stockpile
         int spIdx = CreateStockpile(5, 5, 0, 1, 1);

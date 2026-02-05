@@ -155,7 +155,7 @@ static int GetTrunkHeightFromBase(int x, int y, int baseZ) {
     return height;
 }
 
-static void PlaceLeafCell(int x, int y, int z, TreeType type) {
+static __attribute__((unused)) void PlaceLeafCell(int x, int y, int z, TreeType type) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     if (grid[z][y][x] != CELL_AIR) return;
     grid[z][y][x] = CELL_TREE_LEAVES;

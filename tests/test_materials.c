@@ -15,6 +15,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define UNUSED __attribute__((unused))
+#else
+#define UNUSED
+#endif
+
 // Helper to count items of a specific type
 static int CountItemsOfType(ItemType type) {
     int count = 0;
@@ -37,7 +43,7 @@ static int CountItemsOfTypeWithMaterial(ItemType type, MaterialType mat) {
 }
 
 // Helper to run fire ticks
-static void RunFireTicks(int n) {
+static UNUSED void RunFireTicks(int n) {
     for (int i = 0; i < n; i++) {
         UpdateFire();
     }
