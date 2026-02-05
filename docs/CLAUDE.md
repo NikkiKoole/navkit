@@ -5,11 +5,15 @@
 ## Build & Run
 
 ```bash
-make              # build
+make path         # build main binary (not just `make`)
 ./bin/path        # run
 make test         # run tests
 make debug        # debug build with sanitizers
 ```
+
+## Debug Tips
+
+- Use `LOG_INFO` or `LOG_WARNING` for debug output (`LOG_DEBUG` not visible by default)
 
 ## Code Structure
 
