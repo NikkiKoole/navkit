@@ -80,3 +80,10 @@ Adopt a Dwarf Fortress–style material model where every item carries a specifi
 ## Non-Goals (For Now)
 - Full stone/metal material expansion beyond current needs.
 - Balancing values (density/value/burn rate) beyond initial placeholders.
+
+## Implementation Cautions
+- ITEM_BLOCKS consolidation is high-impact; consider a separate commit for easy rollback.
+- Tree pipeline needs trunk material stored or derivable from TreeType; chop job must propagate it to drops.
+- Natural vs constructed should be explicit: prefer a boolean (cell flag for terrain, item flag for items) over enum variants.
+- Migration must update items in all locations (ground, carried, stockpiles), not just world cells.
+- Consider an initial audit (grep) for MAT_WOOD / ITEM_WOOD usage to scope the changes.
