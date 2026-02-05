@@ -662,8 +662,11 @@ describe(sapling_trampling) {
         PlaceSapling(5, 5, 1);
         expect(grid[1][5][5] == CELL_SAPLING);
         
-        // Trample it
-        TrampleGround(5, 5, 1);
+        // Trample it - saplings require wearMax/2 tramples to be destroyed
+        // (heavy traffic, not just one pass)
+        for (int i = 0; i < wearMax; i++) {
+            TrampleGround(5, 5, 1);
+        }
         
         // Sapling should be destroyed
         expect(grid[1][5][5] == CELL_AIR);

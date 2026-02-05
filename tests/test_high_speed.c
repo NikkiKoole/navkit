@@ -31,6 +31,19 @@
 
 static void SetupCorridorGrid(void) {
     // Create a corridor: mover must go through narrow passage
+    // DF mode: z=0 = ground (dirt), z=1 = walking level with walls
+    InitGridWithSizeAndChunkSize(16, 7, 16, 7);
+    gridDepth = 2;
+    
+    // Fill z=0 with dirt (ground)
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            grid[1][y][x] = CELL_AIR;
+        }
+    }
+    
+    // Place walls at z=1
     // WWWWWWWWWWWWWWWW
     // W..............W
     // W..............W
@@ -38,17 +51,17 @@ static void SetupCorridorGrid(void) {
     // W..............W
     // W..............W
     // WWWWWWWWWWWWWWWW
-    InitGridFromAsciiWithChunkSize(
-        "################\n"
-        "#..............#\n"
-        "#..............#\n"
-        "######..########\n"
-        "#..............#\n"
-        "#..............#\n"
-        "################\n", 16, 7);
-    FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
-    
-    gridDepth = 1;
+    for (int x = 0; x < 16; x++) {
+        grid[1][0][x] = CELL_WALL;  // Top row
+        grid[1][6][x] = CELL_WALL;  // Bottom row
+    }
+    for (int y = 0; y < 7; y++) {
+        grid[1][y][0] = CELL_WALL;   // Left column
+        grid[1][y][15] = CELL_WALL;  // Right column
+    }
+    // Middle wall with gap
+    for (int x = 0; x < 6; x++) grid[1][3][x] = CELL_WALL;
+    for (int x = 8; x < 16; x++) grid[1][3][x] = CELL_WALL;
     
     InitWater();
     InitFire();
@@ -91,18 +104,42 @@ static void SetupOpenGrid(void) {
 
 static void SetupWalledGrid(void) {
     // Grid with walls on all sides and in the middle
-    InitGridFromAsciiWithChunkSize(
-        "################\n"
-        "#......##......#\n"
-        "#......##......#\n"
-        "#......##......#\n"
-        "#..............#\n"
-        "#......##......#\n"
-        "#......##......#\n"
-        "################\n", 16, 8);
-    FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
+    // DF mode: z=0 = ground (dirt), z=1 = walking level with walls
+    InitGridWithSizeAndChunkSize(16, 8, 16, 8);
+    gridDepth = 2;
     
-    gridDepth = 1;
+    // Fill z=0 with dirt, z=1 with air
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            grid[0][y][x] = CELL_DIRT;
+            grid[1][y][x] = CELL_AIR;
+        }
+    }
+    
+    // Place walls at z=1
+    // ################
+    // #......##......#
+    // #......##......#
+    // #......##......#
+    // #..............#
+    // #......##......#
+    // #......##......#
+    // ################
+    for (int x = 0; x < 16; x++) {
+        grid[1][0][x] = CELL_WALL;  // Top row
+        grid[1][7][x] = CELL_WALL;  // Bottom row
+    }
+    for (int y = 0; y < 8; y++) {
+        grid[1][y][0] = CELL_WALL;   // Left column
+        grid[1][y][15] = CELL_WALL;  // Right column
+    }
+    // Middle wall columns (with gap at y=4)
+    for (int y = 1; y < 8; y++) {
+        if (y != 4) {
+            grid[1][y][7] = CELL_WALL;
+            grid[1][y][8] = CELL_WALL;
+        }
+    }
     
     InitWater();
     InitFire();
@@ -119,14 +156,8 @@ static bool IsMoverPositionValid(Mover* m) {
     int cellY = (int)(m->y / CELL_SIZE);
     int cellZ = (int)m->z;
     
-    if (cellX < 0 || cellX >= gridWidth ||
-        cellY < 0 || cellY >= gridHeight ||
-        cellZ < 0 || cellZ >= gridDepth) {
-        return false;  // Out of bounds
-    }
-    
-    CellType cell = grid[cellZ][cellY][cellX];
-    return CellIsWalkable(cell);
+    // Use the proper DF-style walkability check
+    return IsCellWalkableAt(cellZ, cellY, cellX);
 }
 
 // =============================================================================
@@ -142,12 +173,12 @@ describe(high_speed_movement) {
         endlessMoverMode = false;
         
         Mover* m = &movers[0];
-        Point goal = {14, 5, 0};
+        Point goal = {14, 5, 1};  // z=1 walking level
         
         // Start at top-left, goal at bottom-right (must go through corridor gap)
         float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMover(m, startX, startY, 0.0f, goal, MOVER_SPEED);
+        InitMover(m, startX, startY, 1.0f, goal, MOVER_SPEED);  // z=1
         moverCount = 1;
         
         gameSpeed = 10.0f;
@@ -169,11 +200,11 @@ describe(high_speed_movement) {
         endlessMoverMode = false;
         
         Mover* m = &movers[0];
-        Point goal = {14, 5, 0};
+        Point goal = {14, 5, 1};  // z=1 walking level
         
         float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
         float startY = 1 * CELL_SIZE + CELL_SIZE * 0.5f;
-        InitMover(m, startX, startY, 0.0f, goal, MOVER_SPEED);
+        InitMover(m, startX, startY, 1.0f, goal, MOVER_SPEED);  // z=1
         moverCount = 1;
         
         gameSpeed = 100.0f;
@@ -225,13 +256,13 @@ describe(high_speed_movement) {
         // Create 5 movers all trying to cross through the gap
         for (int i = 0; i < 5; i++) {
             Mover* m = &movers[i];
-            Point goal = {14, 4, 0};  // Right side through the gap
+            Point goal = {14, 4, 1};  // Right side through the gap, z=1
             
             float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
             float startY = (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f;
             if (startY >= 7 * CELL_SIZE) startY = 6 * CELL_SIZE + CELL_SIZE * 0.5f;
             
-            InitMover(m, startX, startY, 0.0f, goal, MOVER_SPEED);
+            InitMover(m, startX, startY, 1.0f, goal, MOVER_SPEED);  // z=1
         }
         moverCount = 5;
         
