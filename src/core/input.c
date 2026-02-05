@@ -115,22 +115,33 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
 static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
     MaterialType mat = (selectedMaterial == 3) ? MAT_DIRT : (selectedMaterial == 2) ? MAT_WOOD : MAT_STONE;
     int count = 0;
+    int replaced = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
+            if (CellBlocksMovement(grid[z][dy][dx])) {
+                continue;
+            }
+            bool hadFloor = HAS_FLOOR(dx, dy, z);
             // Set floor flag on AIR cell (for balconies/bridges)
-            if (!HAS_FLOOR(dx, dy, z) && !CellBlocksMovement(grid[z][dy][dx])) {
+            if (!hadFloor) {
                 grid[z][dy][dx] = CELL_AIR;
                 SET_FLOOR(dx, dy, z);
-                SetFloorMaterial(dx, dy, z, mat);
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 count++;
+            } else {
+                replaced++;
             }
+            SetFloorMaterial(dx, dy, z, mat);
+            MarkChunkDirty(dx, dy, z);
+            CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
         }
     }
     if (count > 0) {
         const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
         AddMessage(TextFormat("Placed %d %s floor%s", count, matName, count > 1 ? "s" : ""), GREEN);
+    }
+    if (replaced > 0) {
+        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "stone";
+        AddMessage(TextFormat("Updated %d %s floor%s", replaced, matName, replaced > 1 ? "s" : ""), GREEN);
     }
 }
 
@@ -1061,7 +1072,8 @@ void HandleInput(void) {
     // ========================================================================
 
     // Follow mover (F) - toggles follow for hovered mover (paused)
-    if (CheckKey(KEY_F)) {
+    // Only in normal mode to avoid consuming draw/work/sandbox action keys.
+    if (inputMode == MODE_NORMAL && IsKeyPressed(KEY_F)) {
         if (hoveredMover >= 0 && hoveredMover < moverCount) {
             if (followMoverIdx == hoveredMover) {
                 followMoverIdx = -1;

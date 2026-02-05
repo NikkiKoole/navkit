@@ -39,6 +39,7 @@ static void DrawLineToTile(float msx, float msy, int tx, int ty, int tz, Color c
 }
 
 static int MaterialWallSprite(MaterialType mat) {
+    // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
     switch (mat) {
         case MAT_WOOD:
             return SPRITE_wood_wall;
@@ -52,6 +53,7 @@ static int MaterialWallSprite(MaterialType mat) {
 }
 
 static int MaterialFloorSprite(MaterialType mat) {
+    // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
     switch (mat) {
         case MAT_WOOD:
             return SPRITE_wood_floor;
