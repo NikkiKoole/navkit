@@ -282,8 +282,6 @@ void ApplyFireHeat(int x, int y, int z, int fireLevel) {
 void UpdateTemperature(void) {
     if (!temperatureEnabled) return;
     
-    tempUpdateCount = 0;
-    
     // Accumulate game time for interval-based actions
     heatTransferAccum += gameDeltaTime;
     tempDecayAccum += gameDeltaTime;
@@ -296,8 +294,13 @@ void UpdateTemperature(void) {
     if (doTransfer) heatTransferAccum -= heatTransferInterval;
     if (doDecay) tempDecayAccum -= tempDecayInterval;
     
-    // Early exit if nothing to do this tick
-    if (!doTransfer && !doDecay) return;
+    // Early exit if nothing to do this tick (keep previous count for reporting)
+    if (!doTransfer && !doDecay) {
+        return;
+    }
+    
+    // Reset count only when we're actually going to process
+    tempUpdateCount = 0;
     
     // Process all cells
     for (int z = 0; z < gridDepth; z++) {
@@ -308,7 +311,9 @@ void UpdateTemperature(void) {
                 TempCell *cell = &temperatureGrid[z][y][x];
                 
                 // Skip stable cells (but not if temperature differs from ambient)
-                if (cell->stable && cell->current == ambient) continue;
+                if (cell->stable && cell->current == ambient) {
+                    continue;
+                }
                 
                 // Cap updates per tick
                 if (tempUpdateCount >= TEMP_MAX_UPDATES_PER_TICK) {

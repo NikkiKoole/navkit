@@ -23,7 +23,7 @@ int wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
 float wearRecoveryInterval = 5.0f;  // Decay wear every 5 game-seconds
 
 // Sapling regrowth settings
-bool saplingRegrowthEnabled = true;
+bool saplingRegrowthEnabled = false;
 int saplingRegrowthChance = 5;      // 5 per 10000 = 0.05% per interval per tile
 int saplingMinTreeDistance = 4;     // Min 4 tiles from existing trees/saplings
 int wearMax = WEAR_MAX_DEFAULT;

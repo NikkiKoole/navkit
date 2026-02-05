@@ -506,6 +506,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         DesignationsTick(TICK_DT);
         AssignJobs();
         JobsTick();
+        PROFILE_FRAME_END();  // Store profiler data for this tick
         double tickTime = (GetTime() - tickStart) * 1000.0;
         if (tickTime > 100.0) {
             TraceLog(LOG_WARNING, "SLOW TICK %d: %.1fms", t, tickTime);
@@ -541,6 +542,76 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
            (repathFallbackCount + repathHpaSuccessCount) > 0 
                ? 100.0 * repathFallbackCount / (repathFallbackCount + repathHpaSuccessCount) 
                : 0.0);
+    
+    // Simulation stats (last tick's update counts)
+    extern int waterUpdateCount, fireUpdateCount, steamUpdateCount, smokeUpdateCount, tempUpdateCount;
+    printf("\n=== SIMULATION STATS (last tick) ===\n");
+    printf("Update counts: Water=%d, Fire=%d, Steam=%d, Smoke=%d, Temp=%d\n",
+           waterUpdateCount, fireUpdateCount, steamUpdateCount, smokeUpdateCount, tempUpdateCount);
+    
+    // Simulation timing from profiler
+    extern ProfileSection profilerSections[];
+    extern int profilerSectionCount;
+    printf("Timing (avg ms): ");
+    const char* simNames[] = {"Water", "Fire", "Smoke", "Steam", "Temperature"};
+    for (int s = 0; s < 5; s++) {
+        for (int i = 0; i < profilerSectionCount; i++) {
+            if (strcmp(profilerSections[i].name, simNames[s]) == 0) {
+                printf("%s=%.2f ", simNames[s], ProfileGetAvg(i));
+                break;
+            }
+        }
+    }
+    printf("\n");
+    
+    // Active cell counts
+    extern WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    extern FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    extern SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    int waterCells = 0, fireCells = 0, steamCells = 0, smokeCells = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (waterGrid[z][y][x].level > 0) waterCells++;
+                if (fireGrid[z][y][x].level > 0) fireCells++;
+                if (steamGrid[z][y][x].level > 0) steamCells++;
+                if (smokeGrid[z][y][x].level > 0) smokeCells++;
+            }
+        }
+    }
+    printf("Active cells: Water=%d, Fire=%d, Steam=%d, Smoke=%d\n", 
+           waterCells, fireCells, steamCells, smokeCells);
+    
+    // Smoke per z-level with cell locations
+    extern SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+    int smokeTotalLevel = 0;
+    int smokeMaxZ = -1;
+    int highestSmokeX = -1, highestSmokeY = -1;
+    printf("Smoke per z-level: ");
+    for (int z = 0; z < gridDepth; z++) {
+        int levelSum = 0;
+        int cellCount = 0;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (smokeGrid[z][y][x].level > 0) {
+                    levelSum += smokeGrid[z][y][x].level;
+                    cellCount++;
+                    if (z > smokeMaxZ) {
+                        highestSmokeX = x;
+                        highestSmokeY = y;
+                    }
+                }
+            }
+        }
+        smokeTotalLevel += levelSum;
+        if (levelSum > 0) {
+            printf("z%d=%d(%dc) ", z, levelSum, cellCount);
+            smokeMaxZ = z;
+        }
+    }
+    printf("(total=%d, maxZ=%d at %d,%d)\n", smokeTotalLevel, smokeMaxZ, highestSmokeX, highestSmokeY);
+    
+
     
     // Check if --mover flag is present for quick mover summary
     for (int i = 1; i < argc; i++) {
@@ -741,6 +812,42 @@ int main(int argc, char** argv) {
         }
 
         HandleInput();
+
+        // Handle drag-and-drop of save files
+        if (IsFileDropped()) {
+            FilePathList droppedFiles = LoadDroppedFiles();
+            if (droppedFiles.count > 0) {
+                const char* path = droppedFiles.paths[0];
+                const char* actualFile = path;
+                char tempFile[512] = {0};
+
+                // Handle .gz files by decompressing to /tmp
+                size_t len = strlen(path);
+                if (len > 3 && strcmp(path + len - 3, ".gz") == 0) {
+                    const char* base = strrchr(path, '/');
+                    base = base ? base + 1 : path;
+                    snprintf(tempFile, sizeof(tempFile), "/tmp/%.*s", (int)(strlen(base) - 3), base);
+
+                    char cmd[1024];
+                    snprintf(cmd, sizeof(cmd), "gunzip -c '%s' > '%s'", path, tempFile);
+                    if (system(cmd) == 0) {
+                        actualFile = tempFile;
+                    } else {
+                        AddMessage("Failed to decompress file", RED);
+                        actualFile = NULL;
+                    }
+                }
+
+                if (actualFile && LoadWorld(actualFile)) {
+                    AddMessage(TextFormat("Loaded: %s", path), GREEN);
+                    paused = true;
+                } else if (actualFile) {
+                    AddMessage("Failed to load save file", RED);
+                }
+            }
+            UnloadDroppedFiles(droppedFiles);
+        }
+
         if (!paused) {
             UpdatePathStats();
             if (pathStatsUpdated) {

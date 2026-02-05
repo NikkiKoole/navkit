@@ -383,7 +383,10 @@ static bool ProcessSmokeCell(int x, int y, int z, bool doRise, bool doDissipate)
     }
 
     // Dissipation: smoke gradually fades
-    if (doDissipate && cell->level > 0) {
+    // Skip dissipation for cells that just received risen smoke this tick
+    // This prevents smoke from dissipating immediately after rising, which caused z-level gaps
+    bool justRose = (smokeHasRisen[z][y][x] == smokeRiseGeneration);
+    if (doDissipate && cell->level > 0 && !justRose) {
         // Smoke at lower z-levels (in open air) dissipates faster
         // Smoke at higher z-levels or trapped dissipates slower
         bool isTrapped = cell->hasPressure || (z > 0 && !CanHoldSmoke(x, y, z + 1));
@@ -458,8 +461,7 @@ void UpdateSmoke(void) {
                 SmokeCell* cell = &smokeGrid[z][y][x];
 
                 // Don't skip any cells - the stable optimization causes z-level skipping bugs
-                // TODO: fix stable optimization to account for smoke rising from below
-                (void)cell->stable;  // Silence unused warning
+                (void)cell->stable;
 
                 ProcessSmokeCell(x, y, z, doRise, doDissipate);
                 smokeUpdateCount++;
