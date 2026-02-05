@@ -170,6 +170,12 @@ void DrawUI(void) {
         y += 22;
         CycleOption(x, y, "Terrain", terrainNames, 20, &currentTerrain);
         y += 22;
+        DraggableFloatT(x, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
+            "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
+        y += 22;
+        DraggableFloatT(x, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
+            "Controls ramp cluster size for hills generators (higher = larger clusters).");
+        y += 22;
         if (PushButton(x, y, "Randomize Seed")) {
             worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
             AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);

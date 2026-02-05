@@ -13,6 +13,26 @@
 // Simple Perlin-like noise
 static int permutation[512];
 
+static inline float Clamp01(float v) {
+    if (v < 0.0f) return 0.0f;
+    if (v > 1.0f) return 1.0f;
+    return v;
+}
+
+static inline bool ShouldPlaceRampAt(int x, int y) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+
+    float density = Clamp01(rampDensity);
+    if (density <= 0.0f) return false;
+    if (density >= 0.999f) return true;
+
+    float scale = rampNoiseScale;
+    if (scale <= 0.0f) scale = 0.01f;
+
+    float n = OctavePerlin(x * scale, y * scale, 2, 0.5f);
+    return n <= density;
+}
+
 // Seed the random number generator with worldSeed
 // Call at the start of each terrain generator for reproducible results
 static void SeedTerrain(void) {
@@ -1044,6 +1064,8 @@ void GenerateHills(void) {
     //
     // This places the ramp visually embedded in the hillside.
     
+    int rampCandidates = 0;
+    int rampPlaced = 0;
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             int myHeight = heightmap[y * gridWidth + x];
@@ -1059,8 +1081,10 @@ void GenerateHills(void) {
                 int northHeight = heightmap[(y - 1) * gridWidth + x];
                 if (northHeight == myHeight + 1) {
                     int rampZ = northHeight;  // Carve into their top dirt level
-                    if (rampZ < gridDepth) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1070,8 +1094,11 @@ void GenerateHills(void) {
                 int eastHeight = heightmap[y * gridWidth + (x + 1)];
                 if (eastHeight == myHeight + 1) {
                     int rampZ = eastHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
+                        ShouldPlaceRampAt(x + 1, y)) {
                         grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1081,8 +1108,11 @@ void GenerateHills(void) {
                 int southHeight = heightmap[(y + 1) * gridWidth + x];
                 if (southHeight == myHeight + 1) {
                     int rampZ = southHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
+                        ShouldPlaceRampAt(x, y + 1)) {
                         grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1092,13 +1122,19 @@ void GenerateHills(void) {
                 int westHeight = heightmap[y * gridWidth + (x - 1)];
                 if (westHeight == myHeight + 1) {
                     int rampZ = westHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
+                        ShouldPlaceRampAt(x - 1, y)) {
                         grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        rampPlaced++;
                     }
                 }
             }
         }
     }
+
+    TraceLog(LOG_INFO, "GenerateHills: ramps %d/%d (density=%.2f scale=%.3f)",
+             rampPlaced, rampCandidates, rampDensity, rampNoiseScale);
     
     free(heightmap);
     needsRebuild = true;
@@ -1209,6 +1245,8 @@ void GenerateHillsSoils(void) {
     }
 
     // Ramp placement pass (same as GenerateHills)
+    int rampCandidates = 0;
+    int rampPlaced = 0;
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             int myHeight = heightmap[y * gridWidth + x];
@@ -1217,8 +1255,10 @@ void GenerateHillsSoils(void) {
                 int northHeight = heightmap[(y - 1) * gridWidth + x];
                 if (northHeight == myHeight + 1) {
                     int rampZ = northHeight;
-                    if (rampZ < gridDepth) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1226,8 +1266,11 @@ void GenerateHillsSoils(void) {
                 int eastHeight = heightmap[y * gridWidth + (x + 1)];
                 if (eastHeight == myHeight + 1) {
                     int rampZ = eastHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
+                        ShouldPlaceRampAt(x + 1, y)) {
                         grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1235,8 +1278,11 @@ void GenerateHillsSoils(void) {
                 int southHeight = heightmap[(y + 1) * gridWidth + x];
                 if (southHeight == myHeight + 1) {
                     int rampZ = southHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
+                        ShouldPlaceRampAt(x, y + 1)) {
                         grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        rampPlaced++;
                     }
                 }
             }
@@ -1244,13 +1290,19 @@ void GenerateHillsSoils(void) {
                 int westHeight = heightmap[y * gridWidth + (x - 1)];
                 if (westHeight == myHeight + 1) {
                     int rampZ = westHeight;
-                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1])) {
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
+                        ShouldPlaceRampAt(x - 1, y)) {
                         grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        rampPlaced++;
                     }
                 }
             }
         }
     }
+
+    TraceLog(LOG_INFO, "GenerateHillsSoils: ramps %d/%d (density=%.2f scale=%.3f)",
+             rampPlaced, rampCandidates, rampDensity, rampNoiseScale);
 
     free(heightmap);
     needsRebuild = true;

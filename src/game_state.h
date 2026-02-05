@@ -106,6 +106,8 @@ extern const char* toolNames[];
 // Terrain selection
 extern int currentTerrain;
 extern const char* terrainNames[];
+extern float rampNoiseScale;
+extern float rampDensity;
 
 // UI section collapse state
 extern bool sectionView;

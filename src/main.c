@@ -56,6 +56,10 @@ int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
 const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "CraftTest"};
 
+// Ramp placement controls (used by hills generators)
+float rampNoiseScale = 0.04f;  // Larger = bigger ramp clusters
+float rampDensity = 0.6f;      // 0..1, probability-like density
+
 bool sectionView = false;
 bool sectionPathfinding = false;
 bool sectionMapEditing = false;
