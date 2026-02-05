@@ -473,7 +473,17 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
     int len = FindPath(algo, start, goal, outPath, MAX_PATH);
     
     if (len > 0) {
-        printf("Path: FOUND (%d steps)\n", len);
+        // Check if path crosses z-levels
+        int minZ = outPath[0].z, maxZ = outPath[0].z;
+        for (int i = 1; i < len; i++) {
+            if (outPath[i].z < minZ) minZ = outPath[i].z;
+            if (outPath[i].z > maxZ) maxZ = outPath[i].z;
+        }
+        if (minZ == maxZ) {
+            printf("Path: FOUND (%d steps, all at z%d)\n", len, minZ);
+        } else {
+            printf("Path: FOUND (%d steps, z%d to z%d)\n", len, minZ, maxZ);
+        }
     } else {
         printf("Path: NOT FOUND\n");
     }

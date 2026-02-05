@@ -1942,6 +1942,9 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
     int startChunk = GetChunk(start.x, start.y, start.z);
     int goalChunk = GetChunk(goal.x, goal.y, goal.z);
 
+    // Debug logging for cross-z paths (disabled by default)
+    bool debugCrossZ = false;
+
     // Special case: start and goal in same chunk - try local A* first
     if (startChunk == goalChunk) {
         resultLen = ReconstructLocalPath(start.x, start.y, start.z, 
@@ -2005,6 +2008,30 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
         }
     }
 
+    // Debug: report entrances found
+    if (debugCrossZ) {
+        TraceLog(LOG_INFO, "  startChunk=%d, entrances found: %d", startChunk, startTargetCount);
+        TraceLog(LOG_INFO, "  goalChunk=%d, entrances found: %d", goalChunk, goalTargetCount);
+        // Show entrance positions and where their edges lead
+        for (int i = 0; i < startTargetCount && i < 3; i++) {
+            int ent = startTargetIdx[i];
+            TraceLog(LOG_INFO, "    start ent[%d]: (%d,%d,z%d) edges=%d", 
+                     ent, entrances[ent].x, entrances[ent].y, entrances[ent].z, adjListCount[ent]);
+            // Show first few edge destinations
+            for (int j = 0; j < adjListCount[ent] && j < 3; j++) {
+                int edgeIdx = adjList[ent][j];
+                int neighbor = graphEdges[edgeIdx].to;
+                TraceLog(LOG_INFO, "      -> ent[%d]: (%d,%d,z%d)", 
+                         neighbor, entrances[neighbor].x, entrances[neighbor].y, entrances[neighbor].z);
+            }
+        }
+        for (int i = 0; i < goalTargetCount && i < 3; i++) {
+            int ent = goalTargetIdx[i];
+            TraceLog(LOG_INFO, "    goal ent[%d]: (%d,%d,z%d) edges=%d", 
+                     ent, entrances[ent].x, entrances[ent].y, entrances[ent].z, adjListCount[ent]);
+        }
+    }
+
     // ==========================================================================
     // CONNECT PHASE: Find costs from start/goal to all entrances in their chunks
     // Uses multi-target Dijkstra - single search finds all targets efficiently
@@ -2048,6 +2075,44 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
         }
     }
     nodesExplored++;
+
+    // Debug: report connect phase results
+    if (debugCrossZ) {
+        TraceLog(LOG_INFO, "  start connects to %d entrances", startEdgeCount);
+        TraceLog(LOG_INFO, "  goal connects to %d entrances", goalEdgeCount);
+        // Report if any connected entrances have cross-z edges and what z-levels they reach
+        int startCrossZEdges = 0;
+        int startReachesUp = 0, startReachesDown = 0;
+        for (int i = 0; i < startEdgeCount; i++) {
+            int ent = startEdgeTargets[i];
+            for (int j = 0; j < adjListCount[ent]; j++) {
+                int edgeIdx = adjList[ent][j];
+                int neighbor = graphEdges[edgeIdx].to;
+                if (entrances[neighbor].z != entrances[ent].z) {
+                    startCrossZEdges++;
+                    if (entrances[neighbor].z > entrances[ent].z) startReachesUp++;
+                    else startReachesDown++;
+                }
+            }
+        }
+        int goalCrossZEdges = 0;
+        int goalReachesUp = 0, goalReachesDown = 0;
+        for (int i = 0; i < goalEdgeCount; i++) {
+            int ent = goalEdgeTargets[i];
+            for (int j = 0; j < adjListCount[ent]; j++) {
+                int edgeIdx = adjList[ent][j];
+                int neighbor = graphEdges[edgeIdx].to;
+                if (entrances[neighbor].z != entrances[ent].z) {
+                    goalCrossZEdges++;
+                    if (entrances[neighbor].z > entrances[ent].z) goalReachesUp++;
+                    else goalReachesDown++;
+                }
+            }
+        }
+        TraceLog(LOG_INFO, "  start z=%d has %d cross-z edges (up:%d, down:%d), goal z=%d has %d (up:%d, down:%d)",
+                 start.z, startCrossZEdges, startReachesUp, startReachesDown,
+                 goal.z, goalCrossZEdges, goalReachesUp, goalReachesDown);
+    }
 
     // A* on abstract graph using binary heap
     double abstractStartTime = GetTime();
@@ -2140,6 +2205,15 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
     }
     hpaAbstractTime = (GetTime() - abstractStartTime) * 1000.0;
 
+    // Debug: report abstract search result
+    if (debugCrossZ) {
+        if (abstractPathLength > 0) {
+            TraceLog(LOG_INFO, "  abstract path found, length: %d", abstractPathLength);
+        } else {
+            TraceLog(LOG_INFO, "  FAILED: abstract search found no path");
+        }
+    }
+
     // Now refine abstract path to cell-level path
     double refineStartTime = GetTime();
     if (abstractPathLength > 0) {
@@ -2211,6 +2285,15 @@ int FindPathHPA(Point start, Point goal, Point* outPath, int maxLen) {
         }
     }
     hpaRefinementTime = (GetTime() - refineStartTime) * 1000.0;
+
+    // Debug: report refinement result
+    if (debugCrossZ && abstractPathLength > 0) {
+        if (resultLen > 0) {
+            TraceLog(LOG_INFO, "  refined path length: %d", resultLen);
+        } else {
+            TraceLog(LOG_INFO, "  FAILED: refinement returned 0");
+        }
+    }
 
     lastPathTime = (GetTime() - startTime) * 1000.0;
     return resultLen;

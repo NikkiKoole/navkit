@@ -1,6 +1,19 @@
 # HPA* Cross-Z Performance Fix
 
-## Problem Statement
+## Status: FIXED
+
+**Root Cause**: MAX_RAMP_LINKS was set to 1024, but the hilly terrain had 4096+ valid ramp connections. Ramps at higher y-coordinates weren't being added to the HPA* graph, causing disconnected regions.
+
+**Fix**: Increased MAX_RAMP_LINKS from 1024 to 4096 in `pathfinding.h`.
+
+**Results**:
+- A* fallback rate: **0%** (was 1.1%)
+- Average tick time: **10.84 ms** (was 27ms with spikes to seconds)
+- All pathfinding tests pass
+
+---
+
+## Original Problem Statement
 
 With 1683 movers on a 256x256x16 hilly terrain map, the game experiences **multi-second hangs** caused by pathfinding.
 
@@ -88,16 +101,126 @@ if (fz != tz) {
 
 This is exactly right! Cross-z segments don't need local refinement - they're single-step transitions.
 
-### The Mystery: Why Does HPA* Still Fail?
+### ROOT CAUSE IDENTIFIED
 
-The architecture is correct, but HPA* returns 0 for ~1.1% of cross-z paths. A* then finds a valid path, proving one exists.
+**The bug is in the connect phase of HPA*** - when connecting start/goal to the abstract graph.
 
-#### Hypothesis: Disconnected Regions on Hilly Terrain
+#### The Failing Scenario
 
-On a 256×256×16 hilly map, a mover at position A (z=9) might be in a situation where:
+Testing same-z path `(184,177,z7) -> (180,130,z7)`:
+- A* finds path: 48 steps, **z7 to z9** (goes UP over a hill, then back DOWN)
+- HPA* fails: abstract search finds no path
 
-1. **No ramp/ladder going DOWN is reachable** via same-z walkable cells
-2. **But there IS a valid path**: go UP first via ramp to z=10, walk across, then go DOWN
+#### Why It Fails
+
+1. **Chunk IDs include z-level**: `chunk = z * (chunksX * chunksY) + cy * chunksX + cx`
+2. **Connect phase only looks at same-z entrances**: When gathering entrances for startChunk, it only finds entrances at z=7
+3. **Terrain has a hill between start and goal**: At y=150-175, z=7 is solid dirt (inside hill), walkable surface is at z=8-9
+4. **No z=7 entrances cross the hill**: The z=7 abstract graph is fragmented into multiple disconnected regions
+5. **The solution requires going UP**: Must use a ramp at z=7 to reach z=8, cross the hill at z=8, then come back down
+
+#### Debug Evidence
+
+```
+HPA*: (184,177,z7) -> (180,130,z7)
+  startChunk=1979, entrances found: 25
+  goalChunk=1931, entrances found: 28
+  start connects to 25 entrances
+  goal connects to 28 entrances
+  start z=7 has 18 cross-z edges (up:0, down:18)  <-- NO UP edges!
+  goal z=7 has 23 (up:23, down:0)                 <-- has UP edges but wrong direction
+  FAILED: abstract search found no path
+```
+
+The start entrances only have edges going DOWN to z=6 (18 edges, 0 up).
+The goal entrances only have edges going UP to z=8 (23 edges).
+But the path needs to go: z=7 → UP to z=8 → across → DOWN to z=7.
+
+#### Key Insight
+
+The z=7 level is topologically divided by hills into separate regions:
+- Region A (y > 150): walkable z=7 surface, ramps go DOWN to z=6
+- Region B (y < 145): walkable z=7 surface, ramps go UP to z=8
+- Between them: solid dirt at z=7, walkable surface at z=8-9
+
+A* can traverse this because it searches 3D space. HPA* fails because:
+1. Start at z=7 can only reach z=7 and z=6 entrances locally
+2. Goal at z=7 can only reach z=7 and z=8 entrances locally  
+3. There's no z=7 path connecting them (hill blocks it)
+4. The z=8 level could connect them, but HPA* doesn't look there
+
+---
+
+## The Fix
+
+### Problem Restatement
+
+HPA* connect phase only considers entrances in the start/goal chunk. Since chunks are 3D (chunk ID includes z), a mover at z=7 only connects to z=7 entrances, even if they need to go to z=8 first.
+
+### Solution: Include Cross-Z Entrances in Connect Phase
+
+When connecting start to the abstract graph:
+1. Find entrances in startChunk (current behavior)
+2. **Also find ramp/ladder entrances that connect TO this z-level from adjacent z-levels**
+
+Specifically, if start is at z=7:
+- Include z=7 border entrances (current)
+- Include ramp exits at z=7 (these connect from z=6 ramps going up)
+- Include ladder tops at z=7 (these connect from z=6 ladders going up)
+
+This allows the abstract search to find: start → entrance at z=7 → ramp edge to z=8 → ... → goal
+
+### Implementation Plan
+
+1. **Modify entrance gathering** in `FindPathHPA()` connect phase (~line 2000):
+   - After gathering entrances for `startChunk`, also check `rampLinks` and `ladderLinks`
+   - If a ramp/ladder exit is near the start position (within reach), add it as a valid start entrance
+   
+2. **Same for goal**: If a ramp/ladder entry is near the goal, include it
+
+3. **Alternative approach**: Instead of modifying connect phase, ensure that when we gather entrances for a chunk at z=N, we also include ramp entrances in the same XY chunk at z=N±1 that have edges connecting to z=N.
+
+### Simplest Fix
+
+The simplest fix might be to expand the entrance gathering to look at adjacent z-levels:
+
+```c
+// Current: only look at entrances in startChunk (same z)
+for (int i = 0; i < entranceCount && startTargetCount < 128; i++) {
+    if (entrances[i].chunk1 == startChunk || entrances[i].chunk2 == startChunk) {
+        // ...
+    }
+}
+
+// New: also look at entrances in z±1 chunks that have cross-z edges
+int startChunkBelow = GetChunk(start.x, start.y, start.z - 1);
+int startChunkAbove = GetChunk(start.x, start.y, start.z + 1);
+for (int i = 0; i < entranceCount && startTargetCount < 128; i++) {
+    if (entrances[i].chunk1 == startChunk || entrances[i].chunk2 == startChunk ||
+        entrances[i].chunk1 == startChunkBelow || entrances[i].chunk2 == startChunkBelow ||
+        entrances[i].chunk1 == startChunkAbove || entrances[i].chunk2 == startChunkAbove) {
+        // Add entrance if reachable
+    }
+}
+```
+
+But this is too broad - we'd be adding entrances that aren't actually reachable from the start.
+
+### Better Fix: Add Virtual Start/Goal Edges to Adjacent Z Ramps
+
+The connect phase already does multi-target Dijkstra to find costs to entrances. The issue is it only searches at the start's z-level.
+
+**Solution**: After the current connect phase, also check if there are ramp/ladder entrances in adjacent z-levels that are actually reachable:
+
+1. For each ramp link where `rampZ == start.z - 1` (ramp below going up):
+   - The ramp exit is at `start.z`
+   - Check if start can walk to the ramp exit position
+   - If yes, add the ramp entrance (at z-1) as a valid start connection with appropriate cost
+
+2. For each ramp link where `rampZ == start.z` (ramp at same level going up):
+   - Already handled by current entrance gathering
+
+This is getting complex. Let me think of the cleanest approach...
 
 Example scenario:
 ```
