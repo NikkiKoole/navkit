@@ -85,7 +85,7 @@ static bool IsFloorCell(int x, int y, int z) {
 }
 
 // Forward declaration (defined later in file)
-static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ);
+static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ, int* surface);
 
 static int FindSurfaceZAt(int x, int y) {
     for (int z = gridDepth - 1; z >= 0; z--) {
@@ -133,7 +133,42 @@ static void FlattenAreaTo(int baseX, int baseY, int w, int h, int targetZ, int* 
     }
 }
 
-static void PlaceMiniTowerAt(int baseX, int baseY, int baseZ, int w, int h, int floors) {
+static void CarveEntryApron(int outsideX, int outsideY, int baseZ, int* surface) {
+    int startX = outsideX - 1;
+    int startY = outsideY - 1;
+    int endX = outsideX + 1;
+    int endY = outsideY + 1;
+    if (startX < 0) startX = 0;
+    if (startY < 0) startY = 0;
+    if (endX >= gridWidth) endX = gridWidth - 1;
+    if (endY >= gridHeight) endY = gridHeight - 1;
+    int w = endX - startX + 1;
+    int h = endY - startY + 1;
+
+    if (surface) {
+        FlattenAreaTo(startX, startY, w, h, baseZ, surface);
+    } else {
+        for (int y = startY; y <= endY; y++) {
+            for (int x = startX; x <= endX; x++) {
+                if (baseZ >= 0 && baseZ < gridDepth) {
+                    grid[baseZ][y][x] = CELL_DIRT;
+                    SET_CELL_SURFACE(x, y, baseZ, SURFACE_BARE);
+                }
+            }
+        }
+    }
+
+    int airZ = baseZ + 1;
+    if (airZ >= gridDepth) return;
+    for (int y = startY; y <= endY; y++) {
+        for (int x = startX; x <= endX; x++) {
+            grid[airZ][y][x] = CELL_AIR;
+            SET_CELL_SURFACE(x, y, airZ, SURFACE_BARE);
+        }
+    }
+}
+
+static void PlaceMiniTowerAt(int baseX, int baseY, int baseZ, int w, int h, int floors, int* surface) {
     int maxFloors = gridDepth - (baseZ + 1);
     if (floors > maxFloors) floors = maxFloors;
     if (floors < 1) floors = 1;
@@ -162,15 +197,61 @@ static void PlaceMiniTowerAt(int baseX, int baseY, int baseZ, int w, int h, int 
     }
 
     int doorSide = GetRandomValue(0, 3);
+    if (surface) {
+        int bestSide = doorSide;
+        int bestScore = 999999;
+        int candidates[4][2] = {
+            {baseX + w / 2, baseY - 1},         // North outside
+            {baseX + w, baseY + h / 2},         // East outside
+            {baseX + w / 2, baseY + h},         // South outside
+            {baseX - 1, baseY + h / 2}          // West outside
+        };
+        for (int s = 0; s < 4; s++) {
+            int ox = candidates[s][0];
+            int oy = candidates[s][1];
+            if (ox < 0 || ox >= gridWidth || oy < 0 || oy >= gridHeight) continue;
+            int oidx = oy * gridWidth + ox;
+            int outsideZ = surface[oidx];
+            int heightDiff = outsideZ - baseZ;
+            if (heightDiff < 0) heightDiff = 0;
+            int score = heightDiff * 100 + outsideZ;
+            if (score < bestScore) {
+                bestScore = score;
+                bestSide = s;
+            }
+        }
+        doorSide = bestSide;
+    }
+
+    int doorX = baseX + w / 2;
+    int doorY = baseY + h / 2;
+    int outsideX = doorX;
+    int outsideY = doorY;
     switch (doorSide) {
-        case 0: PlaceFloor(baseX + w / 2, baseY, baseZ + 1); break;          // North
-        case 1: PlaceFloor(baseX + w - 1, baseY + h / 2, baseZ + 1); break;  // East
-        case 2: PlaceFloor(baseX + w / 2, baseY + h - 1, baseZ + 1); break;  // South
-        case 3: PlaceFloor(baseX, baseY + h / 2, baseZ + 1); break;          // West
+        case 0:
+            doorX = baseX + w / 2; doorY = baseY;
+            outsideX = doorX; outsideY = baseY - 1;
+            break;
+        case 1:
+            doorX = baseX + w - 1; doorY = baseY + h / 2;
+            outsideX = baseX + w; outsideY = doorY;
+            break;
+        case 2:
+            doorX = baseX + w / 2; doorY = baseY + h - 1;
+            outsideX = doorX; outsideY = baseY + h;
+            break;
+        case 3:
+            doorX = baseX; doorY = baseY + h / 2;
+            outsideX = baseX - 1; outsideY = doorY;
+            break;
+    }
+    PlaceFloor(doorX, doorY, baseZ + 1);
+    if (surface && outsideX >= 0 && outsideX < gridWidth && outsideY >= 0 && outsideY < gridHeight) {
+        CarveEntryApron(outsideX, outsideY, baseZ, surface);
     }
 }
 
-static void PlaceMiniGalleryFlatAt(int baseX, int baseY, int baseZ, int numApartments, int numFloors) {
+static void PlaceMiniGalleryFlatAt(int baseX, int baseY, int baseZ, int numApartments, int numFloors, int* surface) {
     int apartmentWidth = 4;
     int apartmentDepth = 4;
     int corridorWidth = 2;
@@ -239,6 +320,208 @@ static void PlaceMiniGalleryFlatAt(int baseX, int baseY, int baseZ, int numApart
     int entranceX = baseX + buildingWidth / 2;
     PlaceFloor(entranceX, baseY + buildingDepth - 1, baseZ + 1);
     PlaceFloor(entranceX + 2, baseY + buildingDepth - 1, baseZ + 1);
+
+    int outsideY = baseY + buildingDepth;
+    if (outsideY < gridHeight) {
+        CarveEntryApron(entranceX, outsideY, baseZ, surface);
+        CarveEntryApron(entranceX + 2, outsideY, baseZ, surface);
+    }
+}
+
+// ============================================================================
+// Connectivity Check (Flood-fill)
+// ============================================================================
+
+typedef struct {
+    int x, y, z;
+} FloodNode;
+
+static inline int FloodIndex(int x, int y, int z) {
+    return (z * gridHeight + y) * gridWidth + x;
+}
+
+static bool FindRampBelowExitTo(int x, int y, int z, int* outX, int* outY) {
+    if (z - 1 < 0) return false;
+    // For each direction, check if ramp at z-1 points to (x,y)
+    static const int rampDirs[4][3] = {
+        {0, -1, CELL_RAMP_S}, // Ramp north (y-1) pointing south to us
+        {0, 1, CELL_RAMP_N},  // Ramp south (y+1) pointing north to us
+        {-1, 0, CELL_RAMP_E}, // Ramp west (x-1) pointing east to us
+        {1, 0, CELL_RAMP_W}   // Ramp east (x+1) pointing west to us
+    };
+    for (int i = 0; i < 4; i++) {
+        int rx = x + rampDirs[i][0];
+        int ry = y + rampDirs[i][1];
+        if (rx < 0 || rx >= gridWidth || ry < 0 || ry >= gridHeight) continue;
+        if (grid[z - 1][ry][rx] == (CellType)rampDirs[i][2]) {
+            if (outX) *outX = rx;
+            if (outY) *outY = ry;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool CanStepTo(int fromX, int fromY, int fromZ, int toX, int toY, int toZ) {
+    if (toX < 0 || toX >= gridWidth || toY < 0 || toY >= gridHeight || toZ < 0 || toZ >= gridDepth) return false;
+    if (!IsCellWalkableAt(toZ, toY, toX)) return false;
+
+    if (toZ == fromZ) {
+        return CanEnterRampFromSide(toX, toY, toZ, fromX, fromY);
+    }
+
+    if (toX != fromX || toY != fromY) {
+        // Vertical transitions only support same x,y (ladders) or ramp exits (handled below)
+        // We'll allow ramp up separately by matching explicit exit coords.
+    }
+
+    if (toZ == fromZ + 1) {
+        if (toX == fromX && toY == fromY) {
+            if (CanClimbUpAt(fromX, fromY, fromZ)) return true;
+            if (HasRampPointingTo(fromX, fromY, fromZ) && IsCellWalkableAt(toZ, toY, toX)) return true;
+        }
+
+        CellType cell = grid[fromZ][fromY][fromX];
+        if (CellIsDirectionalRamp(cell)) {
+            int dx, dy;
+            GetRampHighSideOffset(cell, &dx, &dy);
+            if (fromX + dx == toX && fromY + dy == toY) {
+                return true;
+            }
+        }
+    } else if (toZ == fromZ - 1) {
+        if (toX == fromX && toY == fromY) {
+            if (CanClimbDownAt(fromX, fromY, fromZ)) return true;
+        }
+        int rx, ry;
+        if (FindRampBelowExitTo(fromX, fromY, fromZ, &rx, &ry)) {
+            if (rx == toX && ry == toY) return true;
+        }
+    }
+
+    return false;
+}
+
+static void ReportWalkableComponents(const char* tag) {
+    int cellCount = gridWidth * gridHeight * gridDepth;
+    uint8_t* visited = (uint8_t*)calloc(cellCount, sizeof(uint8_t));
+    if (!visited) return;
+
+    FloodNode* queue = (FloodNode*)malloc(sizeof(FloodNode) * cellCount);
+    if (!queue) {
+        free(visited);
+        return;
+    }
+
+    int totalWalkable = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (IsCellWalkableAt(z, y, x)) totalWalkable++;
+            }
+        }
+    }
+
+    int components = 0;
+    int largest = 0;
+    int smallComponents = 0;
+    int smallCells = 0;
+    const int smallThreshold = 30;
+
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (!IsCellWalkableAt(z, y, x)) continue;
+                int startIdx = FloodIndex(x, y, z);
+                if (visited[startIdx]) continue;
+
+                components++;
+                int head = 0;
+                int tail = 0;
+                queue[tail++] = (FloodNode){x, y, z};
+                visited[startIdx] = 1;
+
+                int size = 0;
+                while (head < tail) {
+                    FloodNode node = queue[head++];
+                    size++;
+
+                    static const int dxs[4] = {-1, 1, 0, 0};
+                    static const int dys[4] = {0, 0, -1, 1};
+                    for (int i = 0; i < 4; i++) {
+                        int nx = node.x + dxs[i];
+                        int ny = node.y + dys[i];
+                        int nz = node.z;
+                        if (!CanStepTo(node.x, node.y, node.z, nx, ny, nz)) continue;
+                        int nidx = FloodIndex(nx, ny, nz);
+                        if (visited[nidx]) continue;
+                        visited[nidx] = 1;
+                        queue[tail++] = (FloodNode){nx, ny, nz};
+                    }
+
+                    // Ladder/ramp vertical steps
+                    if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z + 1)) {
+                        int nidx = FloodIndex(node.x, node.y, node.z + 1);
+                        if (!visited[nidx]) {
+                            visited[nidx] = 1;
+                            queue[tail++] = (FloodNode){node.x, node.y, node.z + 1};
+                        }
+                    }
+                    if (CanStepTo(node.x, node.y, node.z, node.x, node.y, node.z - 1)) {
+                        int nidx = FloodIndex(node.x, node.y, node.z - 1);
+                        if (!visited[nidx]) {
+                            visited[nidx] = 1;
+                            queue[tail++] = (FloodNode){node.x, node.y, node.z - 1};
+                        }
+                    }
+
+                    // Ramp up from ramp cell to exit
+                    CellType cell = grid[node.z][node.y][node.x];
+                    if (CellIsDirectionalRamp(cell)) {
+                        int dx, dy;
+                        GetRampHighSideOffset(cell, &dx, &dy);
+                        int nx = node.x + dx;
+                        int ny = node.y + dy;
+                        int nz = node.z + 1;
+                        if (CanStepTo(node.x, node.y, node.z, nx, ny, nz)) {
+                            int nidx = FloodIndex(nx, ny, nz);
+                            if (!visited[nidx]) {
+                                visited[nidx] = 1;
+                                queue[tail++] = (FloodNode){nx, ny, nz};
+                            }
+                        }
+                    }
+
+                    // Ramp down to ramp cell below (if exit here)
+                    int rx, ry;
+                    if (FindRampBelowExitTo(node.x, node.y, node.z, &rx, &ry)) {
+                        int nz = node.z - 1;
+                        if (CanStepTo(node.x, node.y, node.z, rx, ry, nz)) {
+                            int nidx = FloodIndex(rx, ry, nz);
+                            if (!visited[nidx]) {
+                                visited[nidx] = 1;
+                                queue[tail++] = (FloodNode){rx, ry, nz};
+                            }
+                        }
+                    }
+                }
+
+                if (size > largest) largest = size;
+                if (size < smallThreshold) {
+                    smallComponents++;
+                    smallCells += size;
+                }
+            }
+        }
+    }
+
+    int unreachable = totalWalkable - largest;
+    float pct = (totalWalkable > 0) ? (100.0f * (float)unreachable / (float)totalWalkable) : 0.0f;
+    TraceLog(LOG_INFO, "%s connectivity: components=%d largest=%d unreachable=%d (%.1f%%) small=%d cells=%d",
+             tag, components, largest, unreachable, pct, smallComponents, smallCells);
+
+    free(queue);
+    free(visited);
 }
 
 // ============================================================================
@@ -1920,19 +2203,21 @@ void GenerateHillsSoilsWater(void) {
             FlattenAreaTo(x, y, w, h, baseZ, surface);
 
             if (kind == 0) {
-                PlaceMiniTowerAt(x, y, baseZ, w, h, 2 + GetRandomValue(0, 1));
+                PlaceMiniTowerAt(x, y, baseZ, w, h, 2 + GetRandomValue(0, 1), surface);
             } else if (kind == 1) {
-                PlaceMiniGalleryFlatAt(x, y, baseZ, galleryApts, galleryFloors);
+                PlaceMiniGalleryFlatAt(x, y, baseZ, galleryApts, galleryFloors, surface);
             } else {
                 int floors = 3 + GetRandomValue(0, 1);
                 bool vertical = (GetRandomValue(0, 1) == 1);
-                BuildTowerBlockAt(x, y, w, h, floors, vertical, baseZ + 1);
+                BuildTowerBlockAt(x, y, w, h, floors, vertical, baseZ + 1, surface);
             }
             placed++;
         }
 
         free(surface);
     }
+
+    ReportWalkableComponents("HillsSoilsWater");
 
     free(heightmap);
     free(waterMask);
@@ -2745,7 +3030,7 @@ void GenerateCastle(void) {
 // If vertical=true, the building is rotated 90 degrees (gallery on east side instead of south)
 // width/height are the TOTAL footprint dimensions (X and Y) including gallery
 // baseZ is the first building floor level (ground is baseZ-1)
-static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ) {
+static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ, int* surface) {
     int maxFloors = gridDepth - baseZ;
     if (floors > maxFloors) floors = maxFloors;
     if (floors < 1) floors = 1;
@@ -3009,6 +3294,16 @@ static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int f
         }
         PlaceFloor(baseX, galleryY, groundZ);
         PlaceFloor(baseX + width - 1, galleryY, groundZ);
+
+        int outsideY = galleryY + galleryWidth;
+        if (outsideY < gridHeight) {
+            for (int s = 0; s < numStairCores; s++) {
+                int stairX = baseX + stairPositions[s];
+                CarveEntryApron(stairX + 1, outsideY, groundZ, surface);
+            }
+            CarveEntryApron(baseX, outsideY, groundZ, surface);
+            CarveEntryApron(baseX + width - 1, outsideY, groundZ, surface);
+        }
     } else {
         int galleryX = baseX + buildingShort;
         for (int s = 0; s < numStairCores; s++) {
@@ -3019,11 +3314,21 @@ static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int f
         }
         PlaceFloor(galleryX, baseY, groundZ);
         PlaceFloor(galleryX, baseY + height - 1, groundZ);
+
+        int outsideX = galleryX + galleryWidth;
+        if (outsideX < gridWidth) {
+            for (int s = 0; s < numStairCores; s++) {
+                int stairY = baseY + stairPositions[s];
+                CarveEntryApron(outsideX, stairY + 1, groundZ, surface);
+            }
+            CarveEntryApron(outsideX, baseY, groundZ, surface);
+            CarveEntryApron(outsideX, baseY + height - 1, groundZ, surface);
+        }
     }
 }
 
 static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
-    BuildTowerBlockAt(baseX, baseY, width, height, floors, vertical, 1);
+    BuildTowerBlockAt(baseX, baseY, width, height, floors, vertical, 1, NULL);
 }
 
 // Helper: Build 2-story terraced housing row where each unit has its own internal staircase
