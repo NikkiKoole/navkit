@@ -7,7 +7,7 @@ Adopt a Dwarf Fortress–style material model where every item carries a specifi
 - Add wood materials: MAT_OAK, MAT_PINE, MAT_BIRCH, MAT_WILLOW.
 - Introduce a single common stone material: MAT_GRANITE (replacing generic “rock”).
 - Preserve existing metal concepts and expand later.
-- Keep existing items like ITEM_WOOD, ITEM_WOOD_BLOCKS, ITEM_PLANKS, etc.
+- Keep existing item *forms* like logs, planks, blocks, etc., but encode the species via material.
 
 ## Data Model Changes
 - Every item in the world carries a material field (if not already present), including wood, leaves, stone, and crafted goods.
@@ -23,7 +23,8 @@ Adopt a Dwarf Fortress–style material model where every item carries a specifi
 
 ## Item Definitions
 - ITEM_WOOD and related items become material-driven instead of type-driven.
-- Leaf items also carry the tree material (e.g., MAT_OAK leaves).
+- Prefer a single block item type (e.g., ITEM_BLOCKS) with material = MAT_GRANITE / MAT_OAK / etc.
+- Leaf items also carry the tree material (e.g., MAT_OAK leaves), but should use an IsLeafItem() helper for behavior.
 - Items should stack only when type and material match.
 - Item names should include material when appropriate (e.g., "Oak Wood", "Pine Planks").
 
@@ -44,6 +45,13 @@ Adopt a Dwarf Fortress–style material model where every item carries a specifi
 ## Rendering (Short-Term)
 - It is acceptable to reuse existing sprites while materials are still being added.
 - Tooltips and UI should always reflect the true material, even if sprites are generic for now.
+## Rendering (Tint Table)
+- Add a simple material->tint map for wood species (optional at first, but good for visual clarity).
+
+## Material Display Rules
+- Prefer "<Material> <ItemName>" for items (e.g., "Oak Wood", "Pine Planks", "Granite Blocks").
+- Prefer "<Material> <Structure>" for constructions (e.g., "Oak Wall", "Pine Floor").
+- Tooltips should show both the base item/type and material when relevant.
 
 ## Save/Load
 - Bump save version.
@@ -54,6 +62,12 @@ Adopt a Dwarf Fortress–style material model where every item carries a specifi
 - Preserve "natural/unprocessed" status separately from material.
 - Natural rock should be MAT_GRANITE with a natural flag; constructed/cut stone is still MAT_GRANITE but not natural.
 - Use the natural flag to decide drop behavior and which workshop conversions are required.
+
+## Recipes / Crafting Matching
+- Recipes should be able to require:
+  - Specific material (e.g., MAT_OAK).
+  - Material category (e.g., any IsWoodMaterial()).
+  - Any material (e.g., any ITEM_WOOD).
 
 ## Tests
 - Update materials tests to assert wood materials are preserved through drop/craft/build.
