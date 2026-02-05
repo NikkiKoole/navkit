@@ -168,14 +168,35 @@ void DrawUI(void) {
         y += 18;
         CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
         y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 20, &currentTerrain);
+        CycleOption(x, y, "Terrain", terrainNames, 21, &currentTerrain);
         y += 22;
-        DraggableFloatT(x, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
-            "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
-        y += 22;
-        DraggableFloatT(x, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
-            "Controls ramp cluster size for hills generators (higher = larger clusters).");
-        y += 22;
+        bool isHillsTerrain = (currentTerrain == 17 || currentTerrain == 18 || currentTerrain == 19);
+        bool isHillsWater = (currentTerrain == 19);
+        if (isHillsTerrain) {
+            DraggableFloatT(x, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
+                "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
+            y += 22;
+            DraggableFloatT(x, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
+                "Controls ramp cluster size for hills generators (higher = larger clusters).");
+            y += 22;
+        }
+        if (isHillsWater) {
+            DraggableIntT(x, y, "River Count", &hillsWaterRiverCount, 1.0f, 0, 6,
+                "HillsSoilsWater: number of rivers (0 disables rivers).");
+            y += 22;
+            DraggableIntT(x, y, "River Width", &hillsWaterRiverWidth, 1.0f, 1, 4,
+                "HillsSoilsWater: river width radius (1-4).");
+            y += 22;
+            DraggableIntT(x, y, "Lake Count", &hillsWaterLakeCount, 1.0f, 0, 6,
+                "HillsSoilsWater: number of lakes (0 disables lakes).");
+            y += 22;
+            DraggableIntT(x, y, "Lake Radius", &hillsWaterLakeRadius, 1.0f, 3, 12,
+                "HillsSoilsWater: lake radius (3-12).");
+            y += 22;
+            DraggableFloatT(x, y, "Wetness Bias", &hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
+                "HillsSoilsWater: wetness boost near water (peat/clay bias).");
+            y += 22;
+        }
         if (PushButton(x, y, "Randomize Seed")) {
             worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
             AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);

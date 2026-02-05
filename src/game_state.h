@@ -108,6 +108,11 @@ extern int currentTerrain;
 extern const char* terrainNames[];
 extern float rampNoiseScale;
 extern float rampDensity;
+extern int hillsWaterRiverCount;
+extern int hillsWaterRiverWidth;
+extern int hillsWaterLakeCount;
+extern int hillsWaterLakeRadius;
+extern float hillsWaterWetnessBias;
 
 // UI section collapse state
 extern bool sectionView;

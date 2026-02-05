@@ -54,11 +54,18 @@ const char* toolNames[] = {"Draw Wall", "Draw Floor", "Draw Ladder", "Erase", "S
 
 int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
-const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "CraftTest"};
+const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest"};
 
 // Ramp placement controls (used by hills generators)
 float rampNoiseScale = 0.04f;  // Larger = bigger ramp clusters
 float rampDensity = 0.6f;      // 0..1, probability-like density
+
+// HillsSoilsWater controls
+int hillsWaterRiverCount = 2;
+int hillsWaterRiverWidth = 2;     // radius-ish (1-4)
+int hillsWaterLakeCount = 2;
+int hillsWaterLakeRadius = 6;     // 3-12
+float hillsWaterWetnessBias = 0.25f; // additive near-water wetness boost
 
 bool sectionView = false;
 bool sectionPathfinding = false;
@@ -194,7 +201,8 @@ void GenerateCurrentTerrain(void) {
         case 16: GenerateCouncilEstate(); break;
         case 17: GenerateHills(); break;
         case 18: GenerateHillsSoils(); break;
-        case 19: GenerateCraftingTest(); break;
+        case 19: GenerateHillsSoilsWater(); break;
+        case 20: GenerateCraftingTest(); break;
     }
 }
 

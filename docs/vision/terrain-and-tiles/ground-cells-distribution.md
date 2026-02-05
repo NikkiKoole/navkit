@@ -55,3 +55,7 @@ Use a simple “wetness proxy”:
 - These rules should be considered “art knobs” to tune per biome.
 - Note: We are standardizing on **8x8** tiles only for now; the 16x16 atlas is not maintained.
 - TODO: If 16x16 ever returns, regenerate the atlas and update 16x16 sprite entries to match 8x8.
+
+## Generator Notes
+- `HillsSoilsWater` adds rivers + shallow lakes and biases clay/peat toward low, wet, and near-water areas.
+- The generator uses a simple height + wetness + proximity-to-water model (good enough for now, tunable later).

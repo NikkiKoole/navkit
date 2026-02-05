@@ -5,6 +5,7 @@
 #include "../entities/stockpiles.h"
 #include "../entities/items.h"
 #include "designations.h"
+#include "../simulation/water.h"
 #include "../game_state.h"
 #include <math.h>
 #include <string.h>
@@ -16,6 +17,12 @@ static int permutation[512];
 static inline float Clamp01(float v) {
     if (v < 0.0f) return 0.0f;
     if (v > 1.0f) return 1.0f;
+    return v;
+}
+
+static inline int ClampInt(int v, int minV, int maxV) {
+    if (v < minV) return minV;
+    if (v > maxV) return maxV;
     return v;
 }
 
@@ -75,6 +82,163 @@ static void PlaceFloor(int x, int y, int z) {
 static bool IsFloorCell(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
     return HAS_FLOOR(x, y, z);
+}
+
+// Forward declaration (defined later in file)
+static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ);
+
+static int FindSurfaceZAt(int x, int y) {
+    for (int z = gridDepth - 1; z >= 0; z--) {
+        if (CellIsSolid(grid[z][y][x])) return z;
+    }
+    return 0;
+}
+
+static bool AreaIsFlatAndDry(int baseX, int baseY, int w, int h, int maxDelta,
+                             const int* surface, const bool* waterMask, int* outBaseZ) {
+    int minZ = 9999;
+    int maxZ = -9999;
+    for (int y = baseY; y < baseY + h; y++) {
+        for (int x = baseX; x < baseX + w; x++) {
+            int idx = y * gridWidth + x;
+            if (waterMask[idx]) return false;
+            int z = surface[idx];
+            if (z < minZ) minZ = z;
+            if (z > maxZ) maxZ = z;
+        }
+    }
+    if (maxZ - minZ > maxDelta) return false;
+    if (outBaseZ) *outBaseZ = minZ;
+    return true;
+}
+
+static void FlattenAreaTo(int baseX, int baseY, int w, int h, int targetZ, int* surface) {
+    for (int y = baseY; y < baseY + h; y++) {
+        for (int x = baseX; x < baseX + w; x++) {
+            int idx = y * gridWidth + x;
+            int current = surface[idx];
+            if (current > targetZ) {
+                for (int z = targetZ + 1; z <= current; z++) {
+                    grid[z][y][x] = CELL_AIR;
+                    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                }
+            } else if (current < targetZ) {
+                for (int z = current + 1; z <= targetZ; z++) {
+                    grid[z][y][x] = CELL_DIRT;
+                    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                }
+            }
+            surface[idx] = targetZ;
+        }
+    }
+}
+
+static void PlaceMiniTowerAt(int baseX, int baseY, int baseZ, int w, int h, int floors) {
+    int maxFloors = gridDepth - (baseZ + 1);
+    if (floors > maxFloors) floors = maxFloors;
+    if (floors < 1) floors = 1;
+
+    int ladderX = baseX + w / 2;
+    int ladderY = baseY + h / 2;
+
+    for (int z = 0; z < floors; z++) {
+        int buildZ = baseZ + 1 + z;
+        for (int py = baseY; py < baseY + h; py++) {
+            for (int px = baseX; px < baseX + w; px++) {
+                bool isBorder = (px == baseX || px == baseX + w - 1 ||
+                                 py == baseY || py == baseY + h - 1);
+                bool isLadder = (px == ladderX && py == ladderY);
+                if (isBorder) {
+                    grid[buildZ][py][px] = CELL_WALL;
+                } else if (!isLadder) {
+                    PlaceFloor(px, py, buildZ);
+                }
+            }
+        }
+    }
+
+    for (int z = 0; z < floors; z++) {
+        grid[baseZ + 1 + z][ladderY][ladderX] = CELL_LADDER_BOTH;
+    }
+
+    int doorSide = GetRandomValue(0, 3);
+    switch (doorSide) {
+        case 0: PlaceFloor(baseX + w / 2, baseY, baseZ + 1); break;          // North
+        case 1: PlaceFloor(baseX + w - 1, baseY + h / 2, baseZ + 1); break;  // East
+        case 2: PlaceFloor(baseX + w / 2, baseY + h - 1, baseZ + 1); break;  // South
+        case 3: PlaceFloor(baseX, baseY + h / 2, baseZ + 1); break;          // West
+    }
+}
+
+static void PlaceMiniGalleryFlatAt(int baseX, int baseY, int baseZ, int numApartments, int numFloors) {
+    int apartmentWidth = 4;
+    int apartmentDepth = 4;
+    int corridorWidth = 2;
+    int stairWidth = 2;
+
+    if (numApartments < 2) numApartments = 2;
+    if (numApartments > 4) numApartments = 4;
+
+    int buildingWidth = stairWidth + numApartments * apartmentWidth + stairWidth;
+    int buildingDepth = apartmentDepth + corridorWidth;
+
+    int maxFloors = gridDepth - (baseZ + 1);
+    if (numFloors > maxFloors) numFloors = maxFloors;
+    if (numFloors < 1) numFloors = 1;
+
+    for (int floor = 0; floor < numFloors; floor++) {
+        int z = baseZ + 1 + floor;
+
+        for (int x = baseX; x < baseX + buildingWidth; x++) {
+            grid[z][baseY][x] = CELL_WALL;
+            grid[z][baseY + buildingDepth - 1][x] = CELL_WALL;
+        }
+        for (int y = baseY; y < baseY + buildingDepth; y++) {
+            grid[z][y][baseX] = CELL_WALL;
+            grid[z][y][baseX + buildingWidth - 1] = CELL_WALL;
+        }
+
+        for (int y = baseY + 1; y < baseY + buildingDepth - 1; y++) {
+            for (int x = baseX + 1; x < baseX + buildingWidth - 1; x++) {
+                PlaceFloor(x, y, z);
+            }
+        }
+
+        int apartmentStartX = baseX + stairWidth;
+        for (int apt = 0; apt < numApartments; apt++) {
+            int aptX = apartmentStartX + apt * apartmentWidth;
+            if (apt > 0) {
+                for (int y = baseY; y < baseY + apartmentDepth; y++) {
+                    grid[z][y][aptX] = CELL_WALL;
+                }
+            }
+            for (int x = aptX; x < aptX + apartmentWidth && x < baseX + buildingWidth - stairWidth; x++) {
+                grid[z][baseY + apartmentDepth - 1][x] = CELL_WALL;
+            }
+            int doorX = aptX + apartmentWidth / 2;
+            if (doorX < baseX + buildingWidth - stairWidth) {
+                PlaceFloor(doorX, baseY + apartmentDepth - 1, z);
+            }
+        }
+
+        int lastWallX = apartmentStartX + numApartments * apartmentWidth;
+        if (lastWallX < baseX + buildingWidth - 1) {
+            for (int y = baseY; y < baseY + apartmentDepth; y++) {
+                grid[z][y][lastWallX] = CELL_WALL;
+            }
+        }
+
+        int westStairX = baseX + 1;
+        int stairY = baseY + 1;
+        grid[z][stairY][westStairX] = CELL_LADDER_BOTH;
+
+        int eastStairX = baseX + buildingWidth - 2;
+        grid[z][stairY][eastStairX] = CELL_LADDER_BOTH;
+    }
+
+    int entranceX = baseX + buildingWidth / 2;
+    PlaceFloor(entranceX, baseY + buildingDepth - 1, baseZ + 1);
+    PlaceFloor(entranceX + 2, baseY + buildingDepth - 1, baseZ + 1);
 }
 
 // ============================================================================
@@ -1339,6 +1503,445 @@ void GenerateHillsSoils(void) {
     needsRebuild = true;
 }
 
+// ============================================================================
+// Hills + Soils + Water (Rivers/Lakes) Generator
+// Adds rivers and shallow lakes, and biases clay/peat toward wetter areas
+// ============================================================================
+
+void GenerateHillsSoilsWater(void) {
+    InitGrid();
+    SeedTerrain();
+    InitPerlin((int)worldSeed);
+    InitWater();
+
+    float scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);          // 0.01 to 0.05
+    int octaves = 2 + GetRandomValue(0, 4);                           // 2 to 6
+    float persistence = 0.3f + (GetRandomValue(0, 40) / 100.0f);      // 0.3 to 0.7
+
+    int maxHeight = gridDepth - 3 - GetRandomValue(0, 3);            // Leave 3-6 at top
+    int minHeight = 2 + GetRandomValue(0, 2);                        // 2 to 4
+    if (maxHeight <= minHeight) maxHeight = minHeight + 3;
+
+    TraceLog(LOG_INFO, "GenerateHillsSoilsWater: scale=%.3f, octaves=%d, persistence=%.2f, height=%d-%d",
+             scale, octaves, persistence, minHeight, maxHeight);
+
+    int cellCount = gridWidth * gridHeight;
+    int* heightmap = (int*)malloc(cellCount * sizeof(int));
+    bool* waterMask = (bool*)calloc(cellCount, sizeof(bool));
+    bool* riverMask = (bool*)calloc(cellCount, sizeof(bool));
+    bool* lakeMask = (bool*)calloc(cellCount, sizeof(bool));
+    if (!heightmap || !waterMask || !riverMask || !lakeMask) {
+        if (heightmap) free(heightmap);
+        if (waterMask) free(waterMask);
+        if (riverMask) free(riverMask);
+        if (lakeMask) free(lakeMask);
+        return;
+    }
+
+    // Generate heightmap and fill with dirt
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            float n = OctavePerlin(x * scale, y * scale, octaves, persistence);
+
+            int height = minHeight + (int)(n * (maxHeight - minHeight));
+            if (height < minHeight) height = minHeight;
+            if (height >= gridDepth) height = gridDepth - 1;
+
+            int idx = y * gridWidth + x;
+            heightmap[idx] = height;
+
+            for (int z = 0; z <= height; z++) {
+                grid[z][y][x] = CELL_DIRT;
+            }
+        }
+    }
+
+    // Soil distribution parameters
+    float clayScale = 0.03f;
+    float sandScale = 0.02f;
+    float gravelScale = 0.02f;
+    float peatScale = 0.02f;
+    float clayThreshold = 0.58f;
+    float sandNoise = 0.55f;
+    float gravelNoise = 0.62f;
+    float peatNoise = 0.55f;
+    int topsoilDepth = 2;
+    int clayDepth = 2;
+    int soilDepth = topsoilDepth + clayDepth;
+
+    // Rock layer: keep a soil band on top, rock below
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int height = heightmap[y * gridWidth + x];
+            if (height < soilDepth) continue;
+            int rockStartZ = height - soilDepth;
+            for (int z = 0; z <= rockStartZ; z++) {
+                grid[z][y][x] = CELL_WALL;
+            }
+        }
+    }
+
+    // --------------------------------------------------------------------
+    // Rivers
+    // --------------------------------------------------------------------
+    float meanderScale = 0.015f;
+    int riverCount = ClampInt(hillsWaterRiverCount, 0, 6);
+    if (gridWidth * gridHeight <= 80 * 80 && riverCount > 1) riverCount = 1;
+    int maxSteps = gridWidth + gridHeight;
+
+    for (int r = 0; r < riverCount; r++) {
+        int sourceX = -1, sourceY = -1;
+        for (int attempts = 0; attempts < 200; attempts++) {
+            int x = GetRandomValue(2, gridWidth - 3);
+            int y = GetRandomValue(2, gridHeight - 3);
+            int h = heightmap[y * gridWidth + x];
+            float hNorm = (float)(h - minHeight) / (float)(maxHeight - minHeight);
+            if (hNorm > 0.7f) {
+                sourceX = x;
+                sourceY = y;
+                break;
+            }
+        }
+        if (sourceX < 0) continue;
+
+        int cx = sourceX;
+        int cy = sourceY;
+        int riverSeed = GetRandomValue(0, 10000);
+
+        for (int step = 0; step < maxSteps; step++) {
+            int idx = cy * gridWidth + cx;
+
+            int baseRadius = ClampInt(hillsWaterRiverWidth, 1, 4);
+            int radius = baseRadius + GetRandomValue(-1, 1);
+            radius = ClampInt(radius, 1, 4);
+            int depth = 1 + (radius >= 3 ? 1 : 0);
+
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    if (dx*dx + dy*dy > radius*radius) continue;
+                    int nx = cx + dx;
+                    int ny = cy + dy;
+                    if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
+
+                    int nidx = ny * gridWidth + nx;
+                    int currentHeight = heightmap[nidx];
+                    int bedZ = currentHeight - 1 - depth;
+                    if (bedZ < 0) bedZ = 0;
+
+                    for (int z = bedZ + 1; z <= currentHeight; z++) {
+                        grid[z][ny][nx] = CELL_AIR;
+                        SET_CELL_SURFACE(nx, ny, z, SURFACE_BARE);
+                    }
+
+                    heightmap[nidx] = bedZ;
+                    waterMask[nidx] = true;
+                    riverMask[nidx] = true;
+
+                    int waterZ = bedZ + 1;
+                    if (waterZ < gridDepth) {
+                        SetWaterLevel(nx, ny, waterZ, WATER_MAX_LEVEL);
+                    }
+                }
+            }
+
+            int sourceWaterZ = heightmap[idx] + 1;
+            if (step == 0 && sourceWaterZ < gridDepth) {
+                SetWaterSource(cx, cy, sourceWaterZ, true);
+            }
+
+            if (cx == 0 || cy == 0 || cx == gridWidth - 1 || cy == gridHeight - 1) {
+                break;
+            }
+
+            int bestX = cx;
+            int bestY = cy;
+            float bestScore = 1e9f;
+            for (int d = 0; d < 4; d++) {
+                int nx = cx + (d == 0 ? -1 : d == 1 ? 1 : 0);
+                int ny = cy + (d == 2 ? -1 : d == 3 ? 1 : 0);
+                if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
+                int nidx = ny * gridWidth + nx;
+                float meander = OctavePerlin((nx + riverSeed) * meanderScale, (ny + riverSeed) * meanderScale, 2, 0.5f);
+                float score = (float)heightmap[nidx] + meander * 2.0f;
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestX = nx;
+                    bestY = ny;
+                }
+            }
+
+            if (bestX == cx && bestY == cy) break;
+            cx = bestX;
+            cy = bestY;
+        }
+    }
+
+    // --------------------------------------------------------------------
+    // Shallow Lakes
+    // --------------------------------------------------------------------
+    int lakeCount = ClampInt(hillsWaterLakeCount, 0, 6);
+    if (gridWidth * gridHeight <= 80 * 80 && lakeCount > 1) lakeCount = 1;
+    for (int l = 0; l < lakeCount; l++) {
+        int centerX = -1, centerY = -1;
+        for (int attempts = 0; attempts < 200; attempts++) {
+            int x = GetRandomValue(4, gridWidth - 5);
+            int y = GetRandomValue(4, gridHeight - 5);
+            int h = heightmap[y * gridWidth + x];
+            float hNorm = (float)(h - minHeight) / (float)(maxHeight - minHeight);
+            if (hNorm < 0.35f) {
+                centerX = x;
+                centerY = y;
+                break;
+            }
+        }
+        if (centerX < 0) continue;
+
+        int baseRadius = ClampInt(hillsWaterLakeRadius, 3, 12);
+        int radius = baseRadius + GetRandomValue(-2, 2);
+        radius = ClampInt(radius, 3, 12);
+        int centerIdx = centerY * gridWidth + centerX;
+        int lakeSurfaceZ = ClampInt(heightmap[centerIdx] - 1, 1, gridDepth - 2);
+        int lakeBedZ = lakeSurfaceZ - 1;
+
+        for (int dy = -radius; dy <= radius; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                if (dx*dx + dy*dy > radius*radius) continue;
+                int x = centerX + dx;
+                int y = centerY + dy;
+                if (x < 1 || x >= gridWidth - 1 || y < 1 || y >= gridHeight - 1) continue;
+
+                int idx = y * gridWidth + x;
+                int currentHeight = heightmap[idx];
+                if (currentHeight < lakeBedZ) continue;
+
+                for (int z = lakeBedZ + 1; z <= currentHeight; z++) {
+                    grid[z][y][x] = CELL_AIR;
+                    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                }
+
+                heightmap[idx] = lakeBedZ;
+                waterMask[idx] = true;
+                lakeMask[idx] = true;
+
+                if (lakeSurfaceZ < gridDepth) {
+                    SetWaterLevel(x, y, lakeSurfaceZ, WATER_MAX_LEVEL);
+                }
+            }
+        }
+
+        if (lakeSurfaceZ < gridDepth) {
+            SetWaterSource(centerX, centerY, lakeSurfaceZ, true);
+        }
+    }
+
+    // --------------------------------------------------------------------
+    // Apply surface soils + subsoil clay
+    // --------------------------------------------------------------------
+    int nearWaterRadius = 3;
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int idx = y * gridWidth + x;
+            int height = heightmap[idx];
+
+            int slope = 0;
+            if (x > 0) slope = (abs(height - heightmap[y * gridWidth + (x - 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x - 1)]) : slope;
+            if (x < gridWidth - 1) slope = (abs(height - heightmap[y * gridWidth + (x + 1)]) > slope) ? abs(height - heightmap[y * gridWidth + (x + 1)]) : slope;
+            if (y > 0) slope = (abs(height - heightmap[(y - 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y - 1) * gridWidth + x]) : slope;
+            if (y < gridHeight - 1) slope = (abs(height - heightmap[(y + 1) * gridWidth + x]) > slope) ? abs(height - heightmap[(y + 1) * gridWidth + x]) : slope;
+
+            bool nearWater = false;
+            for (int dy = -nearWaterRadius; dy <= nearWaterRadius && !nearWater; dy++) {
+                for (int dx = -nearWaterRadius; dx <= nearWaterRadius; dx++) {
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                    if (waterMask[ny * gridWidth + nx]) {
+                        nearWater = true;
+                        break;
+                    }
+                }
+            }
+
+            float heightNorm = (maxHeight == minHeight) ? 0.0f : (float)(height - minHeight) / (float)(maxHeight - minHeight);
+            float wetness = 1.0f - heightNorm;
+            if (nearWater) wetness += hillsWaterWetnessBias;
+            wetness = Clamp01(wetness);
+
+            float sandN = OctavePerlin(x * sandScale, y * sandScale, 3, 0.5f);
+            float gravelN = OctavePerlin(x * gravelScale, y * gravelScale, 3, 0.5f);
+            float peatN = OctavePerlin(x * peatScale, y * peatScale, 3, 0.5f);
+
+            CellType surface = CELL_DIRT;
+            if (waterMask[idx]) {
+                surface = (riverMask[idx] || slope >= 2 || gravelN > 0.55f) ? CELL_GRAVEL : CELL_SAND;
+            } else if (wetness > 0.7f && peatN > peatNoise) {
+                surface = CELL_PEAT;
+            } else if (wetness < 0.35f && sandN > sandNoise) {
+                surface = CELL_SAND;
+            } else {
+                bool rockBelow = (height >= soilDepth);
+                float gravelThreshold = gravelNoise - (rockBelow ? 0.08f : 0.0f);
+                if (gravelThreshold < 0.4f) gravelThreshold = 0.4f;
+                if (slope >= 2 || gravelN > gravelThreshold) {
+                    surface = CELL_GRAVEL;
+                }
+            }
+
+            grid[height][y][x] = surface;
+            if (surface == CELL_DIRT && !nearWater) {
+                SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
+            } else if (surface == CELL_DIRT) {
+                SET_CELL_SURFACE(x, y, height, SURFACE_GRASS);
+            } else {
+                SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
+            }
+
+            float clayN = OctavePerlin(x * clayScale, y * clayScale, 3, 0.5f);
+            if (clayN > clayThreshold || (nearWater && wetness > 0.6f)) {
+                int bandEnd = height - topsoilDepth;
+                if (bandEnd > 0) {
+                    int bandStart = bandEnd - clayDepth + 1;
+                    if (bandStart < 0) bandStart = 0;
+                    for (int z = bandStart; z <= bandEnd && z < gridDepth; z++) {
+                        if (grid[z][y][x] == CELL_DIRT) {
+                            grid[z][y][x] = CELL_CLAY;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --------------------------------------------------------------------
+    // Ramp placement pass (same as GenerateHills)
+    // --------------------------------------------------------------------
+    int rampCandidates = 0;
+    int rampPlaced = 0;
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            int myHeight = heightmap[y * gridWidth + x];
+
+            if (y > 0) {
+                int northHeight = heightmap[(y - 1) * gridWidth + x];
+                if (northHeight == myHeight + 1) {
+                    int rampZ = northHeight;
+                    rampCandidates++;
+                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
+                        grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        rampPlaced++;
+                    }
+                }
+            }
+            if (x < gridWidth - 1) {
+                int eastHeight = heightmap[y * gridWidth + (x + 1)];
+                if (eastHeight == myHeight + 1) {
+                    int rampZ = eastHeight;
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
+                        ShouldPlaceRampAt(x + 1, y)) {
+                        grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        rampPlaced++;
+                    }
+                }
+            }
+            if (y < gridHeight - 1) {
+                int southHeight = heightmap[(y + 1) * gridWidth + x];
+                if (southHeight == myHeight + 1) {
+                    int rampZ = southHeight;
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
+                        ShouldPlaceRampAt(x, y + 1)) {
+                        grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        rampPlaced++;
+                    }
+                }
+            }
+            if (x > 0) {
+                int westHeight = heightmap[y * gridWidth + (x - 1)];
+                if (westHeight == myHeight + 1) {
+                    int rampZ = westHeight;
+                    rampCandidates++;
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
+                        ShouldPlaceRampAt(x - 1, y)) {
+                        grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        rampPlaced++;
+                    }
+                }
+            }
+        }
+    }
+
+    TraceLog(LOG_INFO, "GenerateHillsSoilsWater: ramps %d/%d (density=%.2f scale=%.3f)",
+             rampPlaced, rampCandidates, rampDensity, rampNoiseScale);
+
+    // --------------------------------------------------------------------
+    // Small buildings (towers + gallery flats + council blocks)
+    // --------------------------------------------------------------------
+    int* surface = (int*)malloc(cellCount * sizeof(int));
+    if (surface) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                surface[y * gridWidth + x] = FindSurfaceZAt(x, y);
+            }
+        }
+
+        int buildingAttempts = 60;
+        int placed = 0;
+        for (int attempt = 0; attempt < buildingAttempts && placed < 6; attempt++) {
+            int kind = GetRandomValue(0, 2);  // 0: tower, 1: gallery, 2: council
+            int w = 0, h = 0;
+            int galleryApts = 0;
+            int galleryFloors = 0;
+            if (kind == 0) {
+                w = 3 + GetRandomValue(0, 2);
+                h = 3 + GetRandomValue(0, 2);
+            }
+            if (kind == 1) {
+                int apartmentWidth = 4;
+                int apartmentDepth = 4;
+                int corridorWidth = 2;
+                int stairWidth = 2;
+                galleryApts = 2 + GetRandomValue(0, 2);
+                w = stairWidth + galleryApts * apartmentWidth + stairWidth;
+                h = apartmentDepth + corridorWidth;
+                galleryFloors = 2 + GetRandomValue(0, 1);
+            }
+            if (kind == 2) {
+                w = 16 + GetRandomValue(0, 6);
+                h = 8 + GetRandomValue(0, 4);
+            }
+
+            int x = GetRandomValue(2, gridWidth - w - 2);
+            int y = GetRandomValue(2, gridHeight - h - 2);
+
+            int baseZ = 0;
+            if (!AreaIsFlatAndDry(x, y, w, h, 1, surface, waterMask, &baseZ)) continue;
+            if (baseZ + 2 >= gridDepth) continue;
+            FlattenAreaTo(x, y, w, h, baseZ, surface);
+
+            if (kind == 0) {
+                PlaceMiniTowerAt(x, y, baseZ, w, h, 2 + GetRandomValue(0, 1));
+            } else if (kind == 1) {
+                PlaceMiniGalleryFlatAt(x, y, baseZ, galleryApts, galleryFloors);
+            } else {
+                int floors = 3 + GetRandomValue(0, 1);
+                bool vertical = (GetRandomValue(0, 1) == 1);
+                BuildTowerBlockAt(x, y, w, h, floors, vertical, baseZ + 1);
+            }
+            placed++;
+        }
+
+        free(surface);
+    }
+
+    free(heightmap);
+    free(waterMask);
+    free(riverMask);
+    free(lakeMask);
+
+    needsRebuild = true;
+}
+
 void GeneratePerlin(void) {
     InitGrid();
     InitPerlin((int)worldSeed);
@@ -2136,14 +2739,13 @@ void GenerateCastle(void) {
 // - Multi-level with ladders for vertical connections
 // ============================================================================
 
-// Helper: Build a massive tower block at position with specified floors
+// Helper: Build a tower block at position with specified floors
 // UK council tower blocks are large with multiple stairwell cores
 // Features external gallery walkways (balconies) running the length of the building
 // If vertical=true, the building is rotated 90 degrees (gallery on east side instead of south)
 // width/height are the TOTAL footprint dimensions (X and Y) including gallery
-static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
-    // z=0 is ground (dirt), buildings start at z=1
-    int baseZ = 1;
+// baseZ is the first building floor level (ground is baseZ-1)
+static void BuildTowerBlockAt(int baseX, int baseY, int width, int height, int floors, bool vertical, int baseZ) {
     int maxFloors = gridDepth - baseZ;
     if (floors > maxFloors) floors = maxFloors;
     if (floors < 1) floors = 1;
@@ -2180,7 +2782,7 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
     }
     
     for (int floor = 0; floor < floors; floor++) {
-        int z = baseZ + floor;
+            int z = baseZ + floor;
         if (!vertical) {
             // === HORIZONTAL ORIENTATION (gallery on south) ===
             // X extent: baseX to baseX + width
@@ -2395,27 +2997,33 @@ static void BuildTowerBlock(int baseX, int baseY, int width, int height, int flo
     }
     
     // === Ground floor entrances ===
+    int groundZ = baseZ - 1;
+    if (groundZ < 0) groundZ = 0;
     if (!vertical) {
         int galleryY = baseY + buildingShort;
         for (int s = 0; s < numStairCores; s++) {
             int stairX = baseX + stairPositions[s];
             if (galleryY + galleryWidth < gridHeight) {
-                PlaceFloor(stairX + 1, galleryY + galleryWidth - 1, 0);
+                PlaceFloor(stairX + 1, galleryY + galleryWidth - 1, groundZ);
             }
         }
-        PlaceFloor(baseX, galleryY, 0);
-        PlaceFloor(baseX + width - 1, galleryY, 0);
+        PlaceFloor(baseX, galleryY, groundZ);
+        PlaceFloor(baseX + width - 1, galleryY, groundZ);
     } else {
         int galleryX = baseX + buildingShort;
         for (int s = 0; s < numStairCores; s++) {
             int stairY = baseY + stairPositions[s];
             if (galleryX + galleryWidth < gridWidth) {
-                PlaceFloor(galleryX + galleryWidth - 1, stairY + 1, 0);
+                PlaceFloor(galleryX + galleryWidth - 1, stairY + 1, groundZ);
             }
         }
-        PlaceFloor(galleryX, baseY, 0);
-        PlaceFloor(galleryX, baseY + height - 1, 0);
+        PlaceFloor(galleryX, baseY, groundZ);
+        PlaceFloor(galleryX, baseY + height - 1, groundZ);
     }
+}
+
+static void BuildTowerBlock(int baseX, int baseY, int width, int height, int floors, bool vertical) {
+    BuildTowerBlockAt(baseX, baseY, width, height, floors, vertical, 1);
 }
 
 // Helper: Build 2-story terraced housing row where each unit has its own internal staircase

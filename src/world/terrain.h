@@ -23,6 +23,7 @@ void GenerateSpiral3D(void);      // 3D concentric rings with spiral traversal
 void GenerateCouncilEstate(void); // UK council estate with tower blocks and low-rise
 void GenerateHills(void);         // Natural hills/mountains using Perlin heightmap
 void GenerateHillsSoils(void);    // Hills with soil bands (clay/gravel/sand/peat)
+void GenerateHillsSoilsWater(void); // Hills + soils + rivers/lakes
 void GenerateCraftingTest(void);  // Crafting system test scenario
 
 // Perlin noise utilities
