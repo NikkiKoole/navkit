@@ -38,19 +38,45 @@ static void DrawLineToTile(float msx, float msy, int tx, int ty, int tz, Color c
     DrawLineEx((Vector2){msx, msy}, (Vector2){ex, ey}, 2.0f, color);
 }
 
+static int MaterialWallSprite(MaterialType mat) {
+    switch (mat) {
+        case MAT_WOOD:
+            return SPRITE_wood_wall;
+        case MAT_STONE:
+            return SPRITE_stone_wall;
+        case MAT_DIRT:
+            return SPRITE_dirt_block;
+        default:
+            return SPRITE_wall;
+    }
+}
+
+static int MaterialFloorSprite(MaterialType mat) {
+    switch (mat) {
+        case MAT_WOOD:
+            return SPRITE_wood_floor;
+        case MAT_STONE:
+            return SPRITE_stone_floor;
+        case MAT_DIRT:
+            return SPRITE_dirt;
+        case MAT_RAW:
+            return SPRITE_rock_floor;
+        default:
+            return SPRITE_floor;
+    }
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
-    int sprite = CellSprite(cell);
     if (cell == CELL_WALL) {
         MaterialType mat = GetWallMaterial(x, y, z);
-        sprite += MaterialSpriteOffset(mat);
+        return MaterialWallSprite(mat);
     }
-    return sprite;
+    return CellSprite(cell);
 }
 
 static int GetFloorSpriteAt(int x, int y, int z) {
     MaterialType mat = GetFloorMaterial(x, y, z);
-    int sprite = SPRITE_floor + MaterialSpriteOffset(mat);
-    return sprite;
+    return MaterialFloorSprite(mat);
 }
 
 void DrawCellGrid(void) {
