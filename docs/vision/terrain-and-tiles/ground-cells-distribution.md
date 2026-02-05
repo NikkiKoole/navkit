@@ -53,3 +53,5 @@ Use a simple “wetness proxy”:
 - Keep all distributions optional per generator (hills/maze/etc.).
 - Start with **clay only**, then add gravel/sand/peat once the visuals are solid.
 - These rules should be considered “art knobs” to tune per biome.
+- Note: We are standardizing on **8x8** tiles only for now; the 16x16 atlas is not maintained.
+- TODO: If 16x16 ever returns, regenerate the atlas and update 16x16 sprite entries to match 8x8.
