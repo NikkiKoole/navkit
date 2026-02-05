@@ -1,6 +1,7 @@
 #include "workshops.h"
 #include "stockpiles.h"
 #include "mover.h"
+#include "jobs.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include <string.h>
@@ -23,12 +24,41 @@ static const char* workshopTemplates[] = {
         "...",
 };
 
+static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRadius) {
+    if (searchRadius == 0) searchRadius = 100;  // Large default
+    int bestDistSq = searchRadius * searchRadius;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (item->type != recipe->inputType) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != ws->z) continue;
+
+        int itemTileX = (int)(item->x / CELL_SIZE);
+        int itemTileY = (int)(item->y / CELL_SIZE);
+        int dx = itemTileX - ws->x;
+        int dy = itemTileY - ws->y;
+        int distSq = dx * dx + dy * dy;
+        if (distSq > bestDistSq) continue;
+
+        return true;
+    }
+
+    return false;
+}
+
 void ClearWorkshops(void) {
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         workshops[i].active = false;
         workshops[i].assignedCrafter = -1;
         workshops[i].billCount = 0;
         workshops[i].linkedInputCount = 0;
+        workshops[i].visualState = WORKSHOP_VISUAL_NO_WORKER;
+        workshops[i].inputStarvationTime = 0.0f;
+        workshops[i].outputBlockedTime = 0.0f;
+        workshops[i].lastWorkTime = 0.0f;
     }
     workshopCount = 0;
 }
@@ -45,6 +75,10 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->assignedCrafter = -1;
             ws->billCount = 0;
             ws->linkedInputCount = 0;
+            ws->visualState = WORKSHOP_VISUAL_NO_WORKER;
+            ws->inputStarvationTime = 0.0f;
+            ws->outputBlockedTime = 0.0f;
+            ws->lastWorkTime = 0.0f;
             
             // Default 3x3 footprint
             ws->width = 3;
@@ -244,4 +278,70 @@ bool IsWorkshopBlocking(int tileX, int tileY, int z) {
     if (tileX < 0 || tileX >= gridWidth || tileY < 0 || tileY >= gridHeight || z < 0 || z >= gridDepth) 
         return false;
     return HAS_CELL_FLAG(tileX, tileY, z, CELL_FLAG_WORKSHOP_BLOCK);
+}
+
+void UpdateWorkshopDiagnostics(float dt) {
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+
+        bool isWorking = false;
+        if (ws->assignedCrafter >= 0 && ws->assignedCrafter < moverCount) {
+            Mover* m = &movers[ws->assignedCrafter];
+            if (m->active && m->currentJobId >= 0) {
+                Job* job = GetJob(m->currentJobId);
+                if (job && job->type == JOBTYPE_CRAFT && job->targetWorkshop == w) {
+                    isWorking = true;
+                }
+            }
+        }
+
+        bool anyRunnable = false;
+        bool anyOutputSpace = false;
+        bool anyInput = false;
+
+        int recipeCount;
+        Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+
+        for (int b = 0; b < ws->billCount; b++) {
+            Bill* bill = &ws->bills[b];
+            if (bill->suspended) {
+                if (bill->suspendedNoStorage) {
+                    anyRunnable = true;
+                }
+                continue;
+            }
+            if (!ShouldBillRun(ws, bill)) continue;
+
+            if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
+            Recipe* recipe = &recipes[bill->recipeIdx];
+
+            anyRunnable = true;
+
+            int outSlotX, outSlotY;
+            if (FindStockpileForItem(recipe->outputType, &outSlotX, &outSlotY) < 0) {
+                continue;
+            }
+            anyOutputSpace = true;
+
+            if (WorkshopHasInputForRecipe(ws, recipe, bill->ingredientSearchRadius)) {
+                anyInput = true;
+                break;
+            }
+        }
+
+        bool outputBlocked = anyRunnable && !anyOutputSpace;
+        bool inputMissing = anyOutputSpace && !anyInput;
+
+        if (outputBlocked) ws->outputBlockedTime += dt;
+        else ws->outputBlockedTime = 0.0f;
+
+        if (inputMissing) ws->inputStarvationTime += dt;
+        else ws->inputStarvationTime = 0.0f;
+
+        if (isWorking) ws->visualState = WORKSHOP_VISUAL_WORKING;
+        else if (outputBlocked) ws->visualState = WORKSHOP_VISUAL_OUTPUT_FULL;
+        else if (inputMissing) ws->visualState = WORKSHOP_VISUAL_INPUT_EMPTY;
+        else ws->visualState = WORKSHOP_VISUAL_NO_WORKER;
+    }
 }

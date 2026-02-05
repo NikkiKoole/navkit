@@ -120,4 +120,8 @@ void RebuildStockpileSlotCache(void);  // Build cache - O(types * stockpiles * s
 int FindStockpileForItemCached(ItemType type, int* outSlotX, int* outSlotY);  // O(1) lookup
 void InvalidateStockpileSlotCache(ItemType type);  // Call when a slot is reserved
 
+// Fill/overfull metrics
+float GetStockpileFillRatio(int stockpileIdx);
+bool IsStockpileOverfull(int stockpileIdx);
+
 #endif

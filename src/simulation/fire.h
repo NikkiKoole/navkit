@@ -58,6 +58,7 @@ void SetFireSource(int x, int y, int z, bool isSource);
 int GetFireLevel(int x, int y, int z);
 bool HasFire(int x, int y, int z);
 int GetCellFuel(int x, int y, int z);  // Get remaining fuel
+bool IsFireSourceAt(int x, int y, int z);
 
 // Mark cell and neighbors as unstable
 void DestabilizeFire(int x, int y, int z);

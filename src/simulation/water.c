@@ -223,6 +223,16 @@ bool IsUnderwater(int x, int y, int z, int minDepth) {
     return GetWaterLevel(x, y, z) >= minDepth;
 }
 
+bool IsWaterSourceAt(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return false;
+    return waterGrid[z][y][x].isSource;
+}
+
+bool IsWaterDrainAt(int x, int y, int z) {
+    if (!WaterInBounds(x, y, z)) return false;
+    return waterGrid[z][y][x].isDrain;
+}
+
 // Get speed multiplier for water (DF-style 1-7 scale)
 float GetWaterSpeedMultiplier(int x, int y, int z) {
     int level = GetWaterLevel(x, y, z);

@@ -1059,6 +1059,23 @@ void HandleInput(void) {
     // ========================================================================
     // Global controls (always active)
     // ========================================================================
+
+    // Follow mover (F) - toggles follow for hovered mover (paused)
+    if (CheckKey(KEY_F)) {
+        if (hoveredMover >= 0 && hoveredMover < moverCount) {
+            if (followMoverIdx == hoveredMover) {
+                followMoverIdx = -1;
+                AddMessage("Follow: off", GRAY);
+            } else {
+                followMoverIdx = hoveredMover;
+                currentViewZ = (int)movers[hoveredMover].z;
+                AddMessage(TextFormat("Follow: Mover #%d", hoveredMover), GREEN);
+            }
+        } else if (followMoverIdx >= 0) {
+            followMoverIdx = -1;
+            AddMessage("Follow: off", GRAY);
+        }
+    }
     
     // Zoom
     float wheel = GetMouseWheelMove();
@@ -1074,6 +1091,10 @@ void HandleInput(void) {
 
     // Pan
     if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+        if (followMoverIdx >= 0) {
+            followMoverIdx = -1;
+            AddMessage("Follow: off", GRAY);
+        }
         Vector2 d = GetMouseDelta();
         offset.x += d.x;
         offset.y += d.y;

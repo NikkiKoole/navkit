@@ -81,14 +81,17 @@ extern bool showChunkBoundaries;
 extern bool showMovers;
 extern bool usePixelPerfectMovers;
 extern bool showMoverPaths;
+extern bool showJobLines;
 extern bool showNeighborCounts;
 extern bool showOpenArea;
 extern bool showKnotDetection;
 extern bool showStuckDetection;
 extern bool cullDrawing;
 extern bool showItems;
+extern bool showSimSources;
 extern bool showHelpPanel;
 extern bool paused;
+extern int followMoverIdx;
 
 // Pathfinding settings
 extern int pathAlgorithm;

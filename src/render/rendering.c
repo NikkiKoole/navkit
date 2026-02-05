@@ -1,6 +1,7 @@
 // render/rendering.c - Core rendering functions
 #include "../game_state.h"
 #include "../world/cell_defs.h"
+#include "../world/material.h"
 #include "../world/designations.h"
 #include "../core/input_mode.h"
 #include "../core/time.h"
@@ -28,6 +29,28 @@ static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int
         if (*maxX > gridWidth) *maxX = gridWidth;
         if (*maxY > gridHeight) *maxY = gridHeight;
     }
+}
+
+static void DrawLineToTile(float msx, float msy, int tx, int ty, int tz, Color color) {
+    if (tz != currentViewZ) return;
+    float ex = offset.x + (tx * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+    float ey = offset.y + (ty * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+    DrawLineEx((Vector2){msx, msy}, (Vector2){ex, ey}, 2.0f, color);
+}
+
+static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
+    int sprite = CellSprite(cell);
+    if (cell == CELL_WALL) {
+        MaterialType mat = GetWallMaterial(x, y, z);
+        sprite += MaterialSpriteOffset(mat);
+    }
+    return sprite;
+}
+
+static int GetFloorSpriteAt(int x, int y, int z) {
+    MaterialType mat = GetFloorMaterial(x, y, z);
+    int sprite = SPRITE_floor + MaterialSpriteOffset(mat);
+    return sprite;
 }
 
 void DrawCellGrid(void) {
@@ -68,7 +91,8 @@ void DrawCellGrid(void) {
                     if (!visible) continue;
                     
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    Rectangle src = SpriteGetRect(CellSprite(cellAtDepth));
+                    int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
+                    Rectangle src = SpriteGetRect(sprite);
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                 }
             }
@@ -87,7 +111,10 @@ void DrawCellGrid(void) {
                     // Draw floor from below if the cell below is solid and current is air/walkable
                     if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        Rectangle src = SpriteGetRect(CellSprite(cellBelow));
+                        int sprite = (cellBelow == CELL_WALL)
+                            ? GetWallSpriteAt(x, y, zBelow, cellBelow)
+                            : CellSprite(cellBelow);
+                        Rectangle src = SpriteGetRect(sprite);
                         // Wall tops (looking down at a wall from above) tinted blue
                         // to distinguish from walls at current level (depth cue)
                         Color tint = CellBlocksMovement(cellBelow) ? (Color){140, 160, 200, 255} : WHITE;
@@ -114,7 +141,7 @@ void DrawCellGrid(void) {
             for (int x = minX; x < maxX; x++) {
                 if (HAS_FLOOR(x, y, z)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    Rectangle src = SpriteGetRect(SPRITE_floor);
+                    Rectangle src = SpriteGetRect(GetFloorSpriteAt(x, y, z));
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
                 }
             }
@@ -128,7 +155,8 @@ void DrawCellGrid(void) {
                 // Skip air - floor was already drawn from z-1 or HAS_FLOOR
                 if (cell == CELL_AIR) continue;
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                Rectangle src = SpriteGetRect(CellSprite(cell));
+                int sprite = GetWallSpriteAt(x, y, z, cell);
+                Rectangle src = SpriteGetRect(sprite);
                 Color tint = CellIsRamp(cell) ? (Color){255, 255, 255, 64} : WHITE;
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
@@ -488,6 +516,44 @@ void DrawTemperature(void) {
     }
 }
 
+void DrawSimSources(void) {
+    if (!showSimSources) return;
+
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    float marker = size * 0.2f;
+    if (marker < 3.0f) marker = 3.0f;
+    float pad = 2.0f;
+
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            float sx = offset.x + x * size;
+            float sy = offset.y + y * size;
+
+            if (IsWaterSourceAt(x, y, z)) {
+                DrawRectangle((int)(sx + pad), (int)(sy + pad), (int)marker, (int)marker, BLUE);
+            }
+            if (IsWaterDrainAt(x, y, z)) {
+                DrawRectangle((int)(sx + size - marker - pad), (int)(sy + pad), (int)marker, (int)marker, DARKBLUE);
+            }
+            if (IsHeatSource(x, y, z)) {
+                DrawRectangle((int)(sx + pad), (int)(sy + size - marker - pad), (int)marker, (int)marker, ORANGE);
+            }
+            if (IsColdSource(x, y, z)) {
+                DrawRectangle((int)(sx + size - marker - pad), (int)(sy + size - marker - pad), (int)marker, (int)marker, SKYBLUE);
+            }
+            if (IsFireSourceAt(x, y, z)) {
+                DrawRectangle((int)(sx + size * 0.5f - marker * 0.5f), (int)(sy + size * 0.5f - marker * 0.5f),
+                              (int)marker, (int)marker, RED);
+            }
+        }
+    }
+}
+
 void DrawFrozenWater(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -758,6 +824,91 @@ void DrawMovers(void) {
     }
 }
 
+void DrawJobLines(void) {
+    if (!showJobLines) return;
+
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+        if (m->currentJobId < 0) continue;
+
+        Job* job = GetJob(m->currentJobId);
+        if (!job || !job->active) continue;
+
+        float msx = offset.x + m->x * zoom;
+        float msy = offset.y + m->y * zoom;
+
+        Color color = YELLOW;
+        switch (job->type) {
+            case JOBTYPE_MINE:
+            case JOBTYPE_CHANNEL:
+            case JOBTYPE_DIG_RAMP:
+            case JOBTYPE_REMOVE_FLOOR:
+            case JOBTYPE_REMOVE_RAMP:
+            case JOBTYPE_CHOP:
+            case JOBTYPE_GATHER_SAPLING:
+            case JOBTYPE_PLANT_SAPLING:
+                color = SKYBLUE;
+                if (job->targetMineX >= 0) {
+                    DrawLineToTile(msx, msy, job->targetMineX, job->targetMineY, job->targetMineZ, color);
+                }
+                break;
+            case JOBTYPE_BUILD:
+                color = GREEN;
+                if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
+                    Blueprint* bp = &blueprints[job->targetBlueprint];
+                    if (bp->active) {
+                        DrawLineToTile(msx, msy, bp->x, bp->y, bp->z, color);
+                    }
+                }
+                break;
+            case JOBTYPE_HAUL:
+            case JOBTYPE_CLEAR:
+            case JOBTYPE_HAUL_TO_BLUEPRINT: {
+                color = YELLOW;
+                if (job->step == STEP_MOVING_TO_PICKUP || job->step == STEP_CARRYING) {
+                    if (job->targetItem >= 0 && items[job->targetItem].active) {
+                        Item* item = &items[job->targetItem];
+                        int itemX = (int)(item->x / CELL_SIZE);
+                        int itemY = (int)(item->y / CELL_SIZE);
+                        DrawLineToTile(msx, msy, itemX, itemY, (int)item->z, color);
+                    }
+                }
+                if (job->step == STEP_CARRYING) {
+                    if (job->type == JOBTYPE_HAUL && job->targetStockpile >= 0) {
+                        DrawLineToTile(msx, msy, job->targetSlotX, job->targetSlotY, (int)m->z, color);
+                    } else if (job->type == JOBTYPE_HAUL_TO_BLUEPRINT && job->targetBlueprint >= 0) {
+                        Blueprint* bp = &blueprints[job->targetBlueprint];
+                        if (bp->active) {
+                            DrawLineToTile(msx, msy, bp->x, bp->y, bp->z, color);
+                        }
+                    }
+                }
+                break;
+            }
+            case JOBTYPE_CRAFT: {
+                color = ORANGE;
+                if (job->step == CRAFT_STEP_MOVING_TO_INPUT || job->step == CRAFT_STEP_PICKING_UP) {
+                    if (job->targetItem >= 0 && items[job->targetItem].active) {
+                        Item* item = &items[job->targetItem];
+                        int itemX = (int)(item->x / CELL_SIZE);
+                        int itemY = (int)(item->y / CELL_SIZE);
+                        DrawLineToTile(msx, msy, itemX, itemY, (int)item->z, color);
+                    }
+                } else if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
+                    Workshop* ws = &workshops[job->targetWorkshop];
+                    if (ws->active) {
+                        DrawLineToTile(msx, msy, ws->workTileX, ws->workTileY, ws->z, color);
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
 void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -832,6 +983,14 @@ void DrawStockpileTiles(void) {
                     DrawRectangle((int)sx, (int)sy, (int)size, (int)size, (Color){100, 255, 100, alpha});
                 }
             }
+        }
+
+        if (IsStockpileOverfull(i)) {
+            float sx = offset.x + sp->x * size;
+            float sy = offset.y + sp->y * size;
+            float w = sp->width * size;
+            float h = sp->height * size;
+            DrawRectangleLinesEx((Rectangle){sx, sy, w, h}, 2.0f, RED);
         }
     }
 }

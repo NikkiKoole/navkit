@@ -1666,6 +1666,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
         case CRAFT_STEP_WORKING: {
             // Progress crafting
             job->progress += dt / job->workRequired;
+            ws->lastWorkTime = (float)gameTime;
 
             if (job->progress >= 1.0f) {
                 // Crafting complete!
@@ -1764,6 +1765,8 @@ void JobsTick(void) {
         }
         // JOBRUN_RUNNING - continue next tick
     }
+
+    UpdateWorkshopDiagnostics(gameDeltaTime);
 }
 
 // =============================================================================
