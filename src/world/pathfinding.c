@@ -928,6 +928,24 @@ void BuildGraph(void) {
     
     TraceLog(LOG_INFO, "Built graph: %d edges (%d ladder links, %d ramp links) in %.2fms", 
              graphEdgeCount, ladderLinkCount, rampLinkCount, (GetTime() - startTime) * 1000);
+    
+    // Warn if any limits were hit - these cause pathfinding failures
+    if (entranceCount >= MAX_ENTRANCES) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: entranceCount=%d >= MAX_ENTRANCES=%d - pathfinding will fail!", 
+                 entranceCount, MAX_ENTRANCES);
+    }
+    if (graphEdgeCount >= MAX_EDGES) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: graphEdgeCount=%d >= MAX_EDGES=%d - pathfinding will fail!", 
+                 graphEdgeCount, MAX_EDGES);
+    }
+    if (ladderLinkCount >= MAX_LADDERS) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: ladderLinkCount=%d >= MAX_LADDERS=%d - pathfinding will fail!", 
+                 ladderLinkCount, MAX_LADDERS);
+    }
+    if (rampLinkCount >= MAX_RAMP_LINKS) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: rampLinkCount=%d >= MAX_RAMP_LINKS=%d - pathfinding will fail!", 
+                 rampLinkCount, MAX_RAMP_LINKS);
+    }
 }
 
 // ============== Incremental Update Functions ==============
@@ -1542,6 +1560,24 @@ void UpdateDirtyChunks(void) {
                 chunkDirty[z][cy][cx] = false;
     needsRebuild = false;
     hpaNeedsRebuild = false;
+
+    // Warn if any limits were hit during incremental update
+    if (entranceCount >= MAX_ENTRANCES) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: entranceCount=%d >= MAX_ENTRANCES=%d - pathfinding will fail!", 
+                 entranceCount, MAX_ENTRANCES);
+    }
+    if (graphEdgeCount >= MAX_EDGES) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: graphEdgeCount=%d >= MAX_EDGES=%d - pathfinding will fail!", 
+                 graphEdgeCount, MAX_EDGES);
+    }
+    if (ladderLinkCount >= MAX_LADDERS) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: ladderLinkCount=%d >= MAX_LADDERS=%d - pathfinding will fail!", 
+                 ladderLinkCount, MAX_LADDERS);
+    }
+    if (rampLinkCount >= MAX_RAMP_LINKS) {
+        TraceLog(LOG_WARNING, "HPA* LIMIT HIT: rampLinkCount=%d >= MAX_RAMP_LINKS=%d - pathfinding will fail!", 
+                 rampLinkCount, MAX_RAMP_LINKS);
+    }
 
     (void)startTime;  // Unused now
 }

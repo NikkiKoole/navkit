@@ -49,7 +49,7 @@ extern LadderLink ladderLinks[MAX_LADDERS];
 extern int ladderLinkCount;
 
 // Ramp links connect entrances on different z-levels (similar to ladders but directional)
-#define MAX_RAMP_LINKS 4096
+#define MAX_RAMP_LINKS 8192
 typedef struct {
     int rampX, rampY, rampZ;  // Ramp cell position (on lower z)
     int exitX, exitY;          // Exit position at z+1 (high side of ramp)
