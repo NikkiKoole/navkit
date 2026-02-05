@@ -3,6 +3,7 @@
 
 #include "grid.h"
 #include "../simulation/temperature.h"
+#include "../simulation/water.h"      // For deep water walkability check
 #include "../entities/items.h"    // For ItemType
 
 // Cell definition - all properties for a cell type in one place
@@ -98,6 +99,10 @@ static inline bool IsCellWalkableAt(int z, int y, int x) {
     
     // Can't walk through blocked structures (workshops, furniture, etc.)
     if (cellFlags[z][y][x] & CELL_FLAG_WORKSHOP_BLOCK) return false;
+    
+    // Can't walk through deep water (level 4+ blocks movement)
+    // Movers can wade through shallow water (1-3) but not swim through deep water
+    if (waterGrid[z][y][x].level >= WATER_BLOCKS_MOVEMENT) return false;
     
     // Ladders are always walkable (special case - they provide their own support)
     if (CellIsLadder(cellHere)) return true;

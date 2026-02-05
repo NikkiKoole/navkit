@@ -8,6 +8,7 @@
 // Water level constants (DF-style: 1-7 scale)
 #define WATER_MAX_LEVEL 7           // Maximum water depth per cell (7/7 = full)
 #define WATER_MIN_FLOW 1            // Minimum level difference to trigger spread
+#define WATER_BLOCKS_MOVEMENT 4     // Water level that blocks walking (movers can wade 1-3)
 
 // Pressure settings
 #define WATER_PRESSURE_SEARCH_LIMIT 64  // Max cells to search when tracing pressure

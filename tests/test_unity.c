@@ -22,6 +22,16 @@ uint64_t worldSeed = 12345;
 float rampNoiseScale = 0.04f;
 float rampDensity = 0.6f;
 
+// HillsSoilsWater terrain generator knobs
+int hillsWaterRiverCount = 2;
+int hillsWaterRiverWidth = 2;
+int hillsWaterLakeCount = 1;
+int hillsWaterLakeRadius = 6;
+float hillsWaterWetnessBias = 0.15f;
+bool hillsWaterConnectivityReport = false;
+bool hillsWaterConnectivityFixSmall = true;
+int hillsWaterConnectivitySmallThreshold = 50;
+
 // World systems
 #include "../src/world/cell_defs.c"
 #include "../src/world/material.c"
