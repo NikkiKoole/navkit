@@ -70,10 +70,48 @@ static int MaterialFloorSprite(MaterialType mat) {
     }
 }
 
+static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
+    TreeType type = (TreeType)treeTypeGrid[z][y][x];
+    if (type <= TREE_TYPE_NONE || type >= TREE_TYPE_COUNT) {
+        return CellSprite(cell);
+    }
+    switch (cell) {
+        case CELL_TREE_TRUNK:
+            switch (type) {
+                case TREE_TYPE_PINE: return SPRITE_tree_trunk_pine;
+                case TREE_TYPE_BIRCH: return SPRITE_tree_trunk_birch;
+                case TREE_TYPE_WILLOW: return SPRITE_tree_trunk_willow;
+                case TREE_TYPE_OAK:
+                default: return SPRITE_tree_trunk_oak;
+            }
+        case CELL_TREE_LEAVES:
+            switch (type) {
+                case TREE_TYPE_PINE: return SPRITE_tree_leaves_pine;
+                case TREE_TYPE_BIRCH: return SPRITE_tree_leaves_birch;
+                case TREE_TYPE_WILLOW: return SPRITE_tree_leaves_willow;
+                case TREE_TYPE_OAK:
+                default: return SPRITE_tree_leaves_oak;
+            }
+        case CELL_SAPLING:
+            switch (type) {
+                case TREE_TYPE_PINE: return SPRITE_tree_sapling_pine;
+                case TREE_TYPE_BIRCH: return SPRITE_tree_sapling_birch;
+                case TREE_TYPE_WILLOW: return SPRITE_tree_sapling_willow;
+                case TREE_TYPE_OAK:
+                default: return SPRITE_tree_sapling_oak;
+            }
+        default:
+            return CellSprite(cell);
+    }
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     if (cell == CELL_WALL) {
         MaterialType mat = GetWallMaterial(x, y, z);
         return MaterialWallSprite(mat);
+    }
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+        return GetTreeSpriteAt(x, y, z, cell);
     }
     return CellSprite(cell);
 }
@@ -141,9 +179,7 @@ void DrawCellGrid(void) {
                     // Draw floor from below if the cell below is solid and current is air/walkable
                     if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        int sprite = (cellBelow == CELL_WALL)
-                            ? GetWallSpriteAt(x, y, zBelow, cellBelow)
-                            : CellSprite(cellBelow);
+                        int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
                         // Wall tops (looking down at a wall from above) tinted blue
                         // to distinguish from walls at current level (depth cue)

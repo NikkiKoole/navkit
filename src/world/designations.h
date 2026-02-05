@@ -15,6 +15,7 @@ typedef enum {
     DESIGNATION_REMOVE_FLOOR, // Remove constructed floor only (mover may fall!)
     DESIGNATION_REMOVE_RAMP,  // Remove ramps (natural or carved)
     DESIGNATION_CHOP,         // Chop down tree (trunk cell)
+    DESIGNATION_CHOP_FELLED,  // Chop up felled trunk (fallen log)
     DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
 } DesignationType;
@@ -34,6 +35,7 @@ typedef struct {
 #define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
 #define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
 #define CHOP_WORK_TIME 3.0f          // Chopping trees takes longer
+#define CHOP_FELLED_WORK_TIME 2.0f   // Chopping fallen trunks
 #define GATHER_SAPLING_WORK_TIME 1.0f // Quick to dig up a sapling
 #define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
 
@@ -200,12 +202,24 @@ bool DesignateChop(int x, int y, int z);
 // Check if a cell has a chop designation
 bool HasChopDesignation(int x, int y, int z);
 
+// Designate a fallen trunk for chopping
+bool DesignateChopFelled(int x, int y, int z);
+
+// Check if a cell has a chop-felled designation
+bool HasChopFelledDesignation(int x, int y, int z);
+
 // Complete a chop designation (called when work finishes)
 // Fells the tree, spawns wood items
 void CompleteChopDesignation(int x, int y, int z, int moverIdx);
 
+// Complete a chop-felled designation (turns fallen trunk into wood items)
+void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx);
+
 // Count active chop designations
 int CountChopDesignations(void);
+
+// Count active chop-felled designations
+int CountChopFelledDesignations(void);
 
 // =============================================================================
 // Gather sapling designation functions
@@ -238,7 +252,7 @@ bool HasPlantSaplingDesignation(int x, int y, int z);
 
 // Complete a plant sapling designation (called when work finishes)
 // Places a sapling cell at location
-void CompletePlantSaplingDesignation(int x, int y, int z, int moverIdx);
+void CompletePlantSaplingDesignation(int x, int y, int z, TreeType type, int moverIdx);
 
 // Count active plant sapling designations
 int CountPlantSaplingDesignations(void);

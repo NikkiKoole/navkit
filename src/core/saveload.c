@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 13  // Add tree settings (saplingGrowTicks, trunkGrowTicks)
+#define SAVE_VERSION 14  // Add tree type/part grids
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -49,6 +49,20 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(grid[z][y], sizeof(CellType), gridWidth, f);
+        }
+    }
+
+    // Tree type grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(treeTypeGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Tree part grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(treePartGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -291,6 +305,20 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(grid[z][y], sizeof(CellType), gridWidth, f);
+        }
+    }
+
+    // Tree type grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(treeTypeGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Tree part grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(treePartGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     

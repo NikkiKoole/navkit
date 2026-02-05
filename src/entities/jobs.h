@@ -24,6 +24,7 @@ typedef enum {
     JOBTYPE_CHOP,              // Chop down tree
     JOBTYPE_GATHER_SAPLING,    // Gather a sapling (dig up, creates item)
     JOBTYPE_PLANT_SAPLING,     // Plant a sapling (haul item, place cell)
+    JOBTYPE_CHOP_FELLED,       // Chop up fallen trunks
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -166,6 +167,7 @@ int WorkGiver_DigRamp(int moverIdx);
 int WorkGiver_RemoveFloor(int moverIdx);
 int WorkGiver_RemoveRamp(int moverIdx);
 int WorkGiver_Chop(int moverIdx);
+int WorkGiver_ChopFelled(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
 int WorkGiver_Craft(int moverIdx);

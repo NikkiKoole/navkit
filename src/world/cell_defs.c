@@ -30,7 +30,7 @@ CellDef cellDefs[] = {
     [CELL_BEDROCK]     = {"bedrock",     SPRITE_bedrock,     CF_SOLID | CF_BLOCKS_MOVEMENT | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE, 0, CELL_BEDROCK, ITEM_NONE, 0},  // Unmineable
     
     // === VEGETATION ===
-    [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_SAPLING, 1},  // Walkable, grows into trunk
-    [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_WOOD, 1},     // Solid, choppable, burns
-    [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves, CF_BLOCKS_MOVEMENT,   INSULATION_TIER_AIR,   32, CELL_AIR,         ITEM_NONE, 0},     // Blocks movement but not solid (can't stand on)
+    [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling_oak, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},  // Walkable, grows into trunk (rendering uses tree type)
+    [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_WOOD, 1},     // Solid, choppable, burns (rendering uses tree type)
+    [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves_oak, 0,                    INSULATION_TIER_AIR,   32, CELL_AIR,         ITEM_NONE, 0},     // Canopy - doesn't block ground movement (rendering uses tree type)
 };

@@ -7,6 +7,7 @@
 #include "../entities/item_defs.h"  // for ItemProducesMaterial
 #include "../entities/mover.h"  // for CELL_SIZE
 #include "../simulation/water.h"
+#include "../simulation/trees.h"
 #include "../core/sim_manager.h"
 #include <string.h>
 #include <math.h>
@@ -19,6 +20,11 @@ int activeDesignationCount = 0;
 // Blueprint storage
 Blueprint blueprints[MAX_BLUEPRINTS];
 int blueprintCount = 0;
+
+static TreeType NormalizeTreeTypeLocal(TreeType type) {
+    if (type <= TREE_TYPE_NONE || type >= TREE_TYPE_COUNT) return TREE_TYPE_OAK;
+    return type;
+}
 
 void InitDesignations(void) {
     memset(designations, 0, sizeof(designations));
@@ -806,6 +812,9 @@ bool DesignateChop(int x, int y, int z) {
     if (grid[z][y][x] != CELL_TREE_TRUNK) {
         return false;
     }
+    if (treePartGrid[z][y][x] == TREE_PART_FELLED) {
+        return false;
+    }
     
     designations[z][y][x].type = DESIGNATION_CHOP;
     designations[z][y][x].assignedMover = -1;
@@ -822,61 +831,176 @@ bool HasChopDesignation(int x, int y, int z) {
     return designations[z][y][x].type == DESIGNATION_CHOP;
 }
 
-// Helper: Check if a leaf cell is connected to a trunk within distance
-static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist) {
+bool DesignateChopFelled(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    if (grid[z][y][x] != CELL_TREE_TRUNK || treePartGrid[z][y][x] != TREE_PART_FELLED) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_CHOP_FELLED;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+
+    return true;
+}
+
+bool HasChopFelledDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_CHOP_FELLED;
+}
+
+// Helper: Check if a leaf cell is connected to a trunk of same type within distance
+static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type) {
     for (int checkZ = z; checkZ >= 0 && checkZ >= z - maxDist; checkZ--) {
-        if (grid[checkZ][y][x] == CELL_TREE_TRUNK) return true;
+        if (grid[checkZ][y][x] == CELL_TREE_TRUNK &&
+            treeTypeGrid[checkZ][y][x] == (uint8_t)type &&
+            treePartGrid[checkZ][y][x] != TREE_PART_FELLED) {
+            return true;
+        }
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 if (dx == 0 && dy == 0) continue;
                 int nx = x + dx;
                 int ny = y + dy;
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK) return true;
+                if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK &&
+                    treeTypeGrid[checkZ][ny][nx] == (uint8_t)type &&
+                    treePartGrid[checkZ][ny][nx] != TREE_PART_FELLED) {
+                    return true;
+                }
             }
         }
     }
     return false;
 }
 
-// Fell a tree: remove all trunk cells in column and connected leaves
-// chopperX/Y is where the mover stood - tree falls away from them
-static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
-    int woodCount = 0;
-    int leafCount = 0;
-    
-    // Find base of tree (lowest trunk in column)
+static int FindSurfaceZAt(int x, int y) {
+    for (int z = gridDepth - 1; z >= 0; z--) {
+        if (HAS_FLOOR(x, y, z)) return z;
+        if (CellIsSolid(grid[z][y][x])) return z;
+    }
+    return -1;
+}
+
+static int FindTrunkBaseZAt(int x, int y, int z) {
     int baseZ = z;
-    while (baseZ > 0 && grid[baseZ - 1][y][x] == CELL_TREE_TRUNK) {
+    while (baseZ > 0 &&
+           grid[baseZ - 1][y][x] == CELL_TREE_TRUNK &&
+           treePartGrid[baseZ - 1][y][x] == TREE_PART_TRUNK) {
         baseZ--;
     }
-    
-    // Remove all trunk cells going upward from base
+    return baseZ;
+}
+
+static int GetTrunkHeightAt(int x, int y, int baseZ) {
+    int height = 0;
     for (int tz = baseZ; tz < gridDepth; tz++) {
-        if (grid[tz][y][x] != CELL_TREE_TRUNK) break;
-        grid[tz][y][x] = CELL_AIR;
-        MarkChunkDirty(x, y, tz);
-        woodCount++;
-        
-        // Clear any designation on this trunk cell
-        if (designations[tz][y][x].type != DESIGNATION_NONE) {
-            activeDesignationCount--;
-            designations[tz][y][x].type = DESIGNATION_NONE;
-            designations[tz][y][x].assignedMover = -1;
-            designations[tz][y][x].progress = 0.0f;
+        if (grid[tz][y][x] == CELL_TREE_TRUNK && treePartGrid[tz][y][x] == TREE_PART_TRUNK) {
+            height++;
+        } else {
+            break;
         }
     }
-    
-    // Remove orphaned leaves (leaves not connected to any remaining trunk)
-    // Count them for sapling drops
-    int searchRadius = 3;
-    for (int sz = 0; sz < gridDepth; sz++) {
-        for (int sy = y - searchRadius; sy <= y + searchRadius; sy++) {
-            for (int sx = x - searchRadius; sx <= x + searchRadius; sx++) {
-                if (sx < 0 || sx >= gridWidth || sy < 0 || sy >= gridHeight) continue;
-                if (grid[sz][sy][sx] == CELL_TREE_LEAVES) {
-                    if (!LeafConnectedToTrunk(sx, sy, sz, 4)) {
+    return height;
+}
+
+// Fell a tree: remove connected trunk/branch/root, create fallen trunk line, drop leaves/saplings
+// chopperX/Y is where the mover stood - tree falls away from them
+static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
+    TreeType type = NormalizeTreeTypeLocal((TreeType)treeTypeGrid[z][y][x]);
+    int leafCount = 0;
+
+    int baseZ = FindTrunkBaseZAt(x, y, z);
+    int trunkHeight = GetTrunkHeightAt(x, y, baseZ);
+    if (trunkHeight <= 0) trunkHeight = 1;
+
+    // Remove all connected trunk cells (trunk/branch/root) for this tree type
+    int minX = x, maxX = x, minY = y, maxY = y, minZ = z, maxZ = z;
+
+    enum { TREE_STACK_MAX = 4096 };
+    int stackX[TREE_STACK_MAX];
+    int stackY[TREE_STACK_MAX];
+    int stackZ[TREE_STACK_MAX];
+    int stackCount = 0;
+
+    stackX[stackCount] = x;
+    stackY[stackCount] = y;
+    stackZ[stackCount] = z;
+    stackCount++;
+
+    while (stackCount > 0) {
+        stackCount--;
+        int cx = stackX[stackCount];
+        int cy = stackY[stackCount];
+        int cz = stackZ[stackCount];
+
+        if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight || cz < 0 || cz >= gridDepth) continue;
+        if (grid[cz][cy][cx] != CELL_TREE_TRUNK) continue;
+        if (treeTypeGrid[cz][cy][cx] != (uint8_t)type) continue;
+        if (treePartGrid[cz][cy][cx] == TREE_PART_FELLED) continue;
+
+        grid[cz][cy][cx] = CELL_AIR;
+        treeTypeGrid[cz][cy][cx] = TREE_TYPE_NONE;
+        treePartGrid[cz][cy][cx] = TREE_PART_NONE;
+        MarkChunkDirty(cx, cy, cz);
+
+        if (designations[cz][cy][cx].type != DESIGNATION_NONE) {
+            activeDesignationCount--;
+            designations[cz][cy][cx].type = DESIGNATION_NONE;
+            designations[cz][cy][cx].assignedMover = -1;
+            designations[cz][cy][cx].progress = 0.0f;
+        }
+
+        if (cx < minX) minX = cx;
+        if (cx > maxX) maxX = cx;
+        if (cy < minY) minY = cy;
+        if (cy > maxY) maxY = cy;
+        if (cz < minZ) minZ = cz;
+        if (cz > maxZ) maxZ = cz;
+
+        const int dxs[6] = {1, -1, 0, 0, 0, 0};
+        const int dys[6] = {0, 0, 1, -1, 0, 0};
+        const int dzs[6] = {0, 0, 0, 0, 1, -1};
+        for (int i = 0; i < 6; i++) {
+            int nx = cx + dxs[i];
+            int ny = cy + dys[i];
+            int nz = cz + dzs[i];
+            if (stackCount >= TREE_STACK_MAX) break;
+            stackX[stackCount] = nx;
+            stackY[stackCount] = ny;
+            stackZ[stackCount] = nz;
+            stackCount++;
+        }
+    }
+
+    // Remove leaves of this tree type in a padded bounding box
+    int pad = 4;
+    int minLX = minX - pad; if (minLX < 0) minLX = 0;
+    int maxLX = maxX + pad; if (maxLX >= gridWidth) maxLX = gridWidth - 1;
+    int minLY = minY - pad; if (minLY < 0) minLY = 0;
+    int maxLY = maxY + pad; if (maxLY >= gridHeight) maxLY = gridHeight - 1;
+    int minLZ = minZ - 1; if (minLZ < 0) minLZ = 0;
+    int maxLZ = maxZ + 3; if (maxLZ >= gridDepth) maxLZ = gridDepth - 1;
+
+    for (int sz = minLZ; sz <= maxLZ; sz++) {
+        for (int sy = minLY; sy <= maxLY; sy++) {
+            for (int sx = minLX; sx <= maxLX; sx++) {
+                if (grid[sz][sy][sx] == CELL_TREE_LEAVES &&
+                    treeTypeGrid[sz][sy][sx] == (uint8_t)type) {
+                    if (!LeafConnectedToTrunk(sx, sy, sz, 4, type)) {
                         grid[sz][sy][sx] = CELL_AIR;
+                        treeTypeGrid[sz][sy][sx] = TREE_TYPE_NONE;
+                        treePartGrid[sz][sy][sx] = TREE_PART_NONE;
                         MarkChunkDirty(sx, sy, sz);
                         leafCount++;
                     }
@@ -884,71 +1008,84 @@ static void FellTree(int x, int y, int z, int chopperX, int chopperY) {
             }
         }
     }
-    
+
     // Calculate fall direction (away from chopper)
     float fallDirX = (float)(x - chopperX);
     float fallDirY = (float)(y - chopperY);
-    
-    // Normalize fall direction
     float fallLen = sqrtf(fallDirX * fallDirX + fallDirY * fallDirY);
     if (fallLen > 0.01f) {
         fallDirX /= fallLen;
         fallDirY /= fallLen;
     } else {
-        // Chopper is on the tree tile somehow, pick a random direction
         fallDirX = 1.0f;
         fallDirY = 0.0f;
     }
-    
-    // Spawn wood items scattered along the fall direction
-    float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
-    float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    
-    // World bounds for clamping item positions
-    float minX = CELL_SIZE * 0.5f;
-    float minY = CELL_SIZE * 0.5f;
-    float maxX = (gridWidth - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
-    float maxY = (gridHeight - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
-    
-    for (int i = 0; i < woodCount; i++) {
-        // Each log falls progressively further in the fall direction
-        float fallDist = (float)(i + 1) * CELL_SIZE * 0.7f;
-        
-        // Add some perpendicular scatter for variety
-        float perpX = -fallDirY;
-        float perpY = fallDirX;
-        float scatter = ((float)((i * 7) % 5) - 2.0f) * 4.0f;  // -8 to +8 pixels
-        
-        float spawnX = treeBaseX + fallDirX * fallDist + perpX * scatter;
-        float spawnY = treeBaseY + fallDirY * fallDist + perpY * scatter;
-        
-        // Clamp to world bounds
-        if (spawnX < minX) spawnX = minX;
-        if (spawnX > maxX) spawnX = maxX;
-        if (spawnY < minY) spawnY = minY;
-        if (spawnY > maxY) spawnY = maxY;
-        
-        SpawnItem(spawnX, spawnY, (float)baseZ, ITEM_WOOD);
+
+    int stepX = 0;
+    int stepY = 0;
+    if (fabsf(fallDirX) >= fabsf(fallDirY)) {
+        stepX = (fallDirX >= 0.0f) ? 1 : -1;
+    } else {
+        stepY = (fallDirY >= 0.0f) ? 1 : -1;
     }
-    
-    // Spawn saplings from leaves (~1 per 5 leaves, minimum 1 if any leaves)
+    if (stepX == 0 && stepY == 0) stepX = 1;
+
+    for (int i = 0; i < trunkHeight; i++) {
+        int tx = x + stepX * i;
+        int ty = y + stepY * i;
+        if (tx < 0 || tx >= gridWidth || ty < 0 || ty >= gridHeight) break;
+
+        int surfaceZ = FindSurfaceZAt(tx, ty);
+        if (surfaceZ < 0) break;
+        int placeZ = surfaceZ + 1;
+        if (placeZ < 0 || placeZ >= gridDepth) break;
+        if (grid[placeZ][ty][tx] != CELL_AIR) break;
+
+        grid[placeZ][ty][tx] = CELL_TREE_TRUNK;
+        treeTypeGrid[placeZ][ty][tx] = (uint8_t)type;
+        treePartGrid[placeZ][ty][tx] = TREE_PART_FELLED;
+        MarkChunkDirty(tx, ty, placeZ);
+    }
+
+    // Spawn leaf items (~1 per 8 leaves, minimum 1 if any leaves)
+    int leafItemCount = leafCount / 8;
+    if (leafCount > 0 && leafItemCount == 0) leafItemCount = 1;
+
+    // Spawn saplings (~1 per 5 leaves, minimum 1 if any leaves)
     int saplingCount = leafCount / 5;
     if (leafCount > 0 && saplingCount == 0) saplingCount = 1;
-    
+
+    float treeBaseX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float treeBaseY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    float minXf = CELL_SIZE * 0.5f;
+    float minYf = CELL_SIZE * 0.5f;
+    float maxXf = (gridWidth - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+    float maxYf = (gridHeight - 1) * CELL_SIZE + CELL_SIZE * 0.5f;
+
+    ItemType leafItem = LeafItemFromTreeType(type);
+    for (int i = 0; i < leafItemCount; i++) {
+        float angle = (float)i * 2.4f;
+        float dist = CELL_SIZE * (0.4f + (float)(i % 3) * 0.4f);
+        float spawnX = treeBaseX + cosf(angle) * dist;
+        float spawnY = treeBaseY + sinf(angle) * dist;
+        if (spawnX < minXf) spawnX = minXf;
+        if (spawnX > maxXf) spawnX = maxXf;
+        if (spawnY < minYf) spawnY = minYf;
+        if (spawnY > maxYf) spawnY = maxYf;
+        SpawnItem(spawnX, spawnY, (float)baseZ, leafItem);
+    }
+
+    ItemType saplingItem = SaplingItemFromTreeType(type);
     for (int i = 0; i < saplingCount; i++) {
-        // Scatter saplings around the tree base
-        float angle = (float)i * 2.4f;  // Golden angle for nice distribution
+        float angle = (float)i * 2.4f;
         float dist = CELL_SIZE * (0.5f + (float)(i % 3) * 0.5f);
         float spawnX = treeBaseX + cosf(angle) * dist;
         float spawnY = treeBaseY + sinf(angle) * dist;
-        
-        // Clamp to world bounds
-        if (spawnX < minX) spawnX = minX;
-        if (spawnX > maxX) spawnX = maxX;
-        if (spawnY < minY) spawnY = minY;
-        if (spawnY > maxY) spawnY = maxY;
-        
-        SpawnItem(spawnX, spawnY, (float)baseZ, ITEM_SAPLING);
+        if (spawnX < minXf) spawnX = minXf;
+        if (spawnX > maxXf) spawnX = maxXf;
+        if (spawnY < minYf) spawnY = minYf;
+        if (spawnY > maxYf) spawnY = maxYf;
+        SpawnItem(spawnX, spawnY, (float)baseZ, saplingItem);
     }
 }
 
@@ -968,12 +1105,46 @@ void CompleteChopDesignation(int x, int y, int z, int moverIdx) {
     // Designation already cleared in FellTree
 }
 
+void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+
+    if (grid[z][y][x] != CELL_TREE_TRUNK || treePartGrid[z][y][x] != TREE_PART_FELLED) {
+        CancelDesignation(x, y, z);
+        return;
+    }
+
+    grid[z][y][x] = CELL_AIR;
+    treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
+    treePartGrid[z][y][x] = TREE_PART_NONE;
+    MarkChunkDirty(x, y, z);
+
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    SpawnItem(spawnX, spawnY, (float)z, ITEM_WOOD);
+
+    CancelDesignation(x, y, z);
+}
+
 int CountChopDesignations(void) {
     int count = 0;
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_CHOP) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+int CountChopFelledDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_CHOP_FELLED) {
                     count++;
                 }
             }
@@ -1022,12 +1193,15 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     
     // Remove the sapling cell
     grid[z][y][x] = CELL_AIR;
+    TreeType type = NormalizeTreeTypeLocal((TreeType)treeTypeGrid[z][y][x]);
+    treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
+    treePartGrid[z][y][x] = TREE_PART_NONE;
     MarkChunkDirty(x, y, z);
     
     // Spawn a sapling item at the location
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    SpawnItem(spawnX, spawnY, (float)z, ITEM_SAPLING);
+    SpawnItem(spawnX, spawnY, (float)z, SaplingItemFromTreeType(type));
     
     // Clear designation
     designations[z][y][x].type = DESIGNATION_NONE;
@@ -1076,11 +1250,10 @@ bool DesignatePlantSapling(int x, int y, int z) {
         return false;
     }
     
-    // Check if ground below is dirt (for grass check)
-    // Saplings should only be planted on dirt/grass tiles
+    // Check if ground below is soil
     if (z > 0) {
         CellType below = grid[z-1][y][x];
-        if (below != CELL_DIRT) {
+        if (!IsGroundCell(below)) {
             return false;
         }
     }
@@ -1100,13 +1273,10 @@ bool HasPlantSaplingDesignation(int x, int y, int z) {
     return designations[z][y][x].type == DESIGNATION_PLANT_SAPLING;
 }
 
-void CompletePlantSaplingDesignation(int x, int y, int z, int moverIdx) {
+void CompletePlantSaplingDesignation(int x, int y, int z, TreeType type, int moverIdx) {
     (void)moverIdx;  // Not needed for now
-    
-    // Place the sapling cell
-    grid[z][y][x] = CELL_SAPLING;
-    treeActiveCells++;
-    MarkChunkDirty(x, y, z);
+
+    PlaceSapling(x, y, z, type);
     
     // Clear designation
     designations[z][y][x].type = DESIGNATION_NONE;

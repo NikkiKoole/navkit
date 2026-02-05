@@ -47,6 +47,28 @@ typedef enum {
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Tree type and part grids (only meaningful for saplings/trunks/leaves)
+typedef enum {
+    TREE_TYPE_NONE = 0,
+    TREE_TYPE_OAK,
+    TREE_TYPE_PINE,
+    TREE_TYPE_BIRCH,
+    TREE_TYPE_WILLOW,
+    TREE_TYPE_COUNT
+} TreeType;
+
+typedef enum {
+    TREE_PART_NONE = 0,
+    TREE_PART_TRUNK,
+    TREE_PART_BRANCH,
+    TREE_PART_ROOT,
+    TREE_PART_FELLED,
+    TREE_PART_COUNT
+} TreePart;
+
+extern uint8_t treeTypeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t treePartGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)
 extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 

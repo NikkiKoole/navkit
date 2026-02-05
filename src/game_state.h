@@ -116,6 +116,8 @@ extern float hillsWaterWetnessBias;
 extern bool hillsWaterConnectivityReport;
 extern bool hillsWaterConnectivityFixSmall;
 extern int hillsWaterConnectivitySmallThreshold;
+extern TreeType currentTreeType;
+extern const char* treeTypeNames[];
 
 // UI section collapse state
 extern bool sectionView;

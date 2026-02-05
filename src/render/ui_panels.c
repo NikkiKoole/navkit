@@ -795,6 +795,20 @@ void DrawUI(void) {
         y += 22;
         DraggableIntT(x, y, "Min Tree Distance", &saplingMinTreeDistance, 1.0f, 1, 10,
             TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
+        y += 22;
+        DrawTextShadow(TextFormat("Place Tree: %s", TreeTypeName(currentTreeType)), x, y, 14, GRAY);
+        y += 18;
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Oak", &clicked); if (clicked) currentTreeType = TREE_TYPE_OAK;
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Pine", &clicked); if (clicked) currentTreeType = TREE_TYPE_PINE;
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Birch", &clicked); if (clicked) currentTreeType = TREE_TYPE_BIRCH;
+            clicked = false;
+            PushButtonInline(bx, y, "Willow", &clicked); if (clicked) currentTreeType = TREE_TYPE_WILLOW;
+        }
     }
     y += 22;
 

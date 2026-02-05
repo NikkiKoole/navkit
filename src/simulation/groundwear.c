@@ -70,6 +70,17 @@ static bool HasNearbyTree(int x, int y, int z, int dist) {
     return false;
 }
 
+static TreeType PickTreeTypeForSoil(CellType soil) {
+    switch (soil) {
+        case CELL_PEAT: return TREE_TYPE_WILLOW;
+        case CELL_SAND: return TREE_TYPE_BIRCH;
+        case CELL_GRAVEL: return TREE_TYPE_PINE;
+        case CELL_CLAY: return TREE_TYPE_OAK;
+        case CELL_DIRT:
+        default: return TREE_TYPE_OAK;
+    }
+}
+
 void InitGroundWear(void) {
     ClearGroundWear();
 }
@@ -95,6 +106,8 @@ void TrampleGround(int x, int y, int z) {
         // Only destroy sapling after significant wear (half of max)
         if (wearGrid[z][y][x] >= wearMax / 2) {
             grid[z][y][x] = CELL_AIR;
+            treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
+            treePartGrid[z][y][x] = TREE_PART_NONE;
             MarkChunkDirty(x, y, z);
             wearGrid[z][y][x] = 0;  // Reset wear
         }
@@ -153,38 +166,38 @@ void UpdateGroundWear(void) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
                 
-                // Only process dirt tiles
-                if (cell != CELL_DIRT) continue;
+                // Only process soil tiles
+                if (!IsGroundCell(cell)) continue;
+                bool isDirt = (cell == CELL_DIRT);
                 
                 // Skip if on fire - don't regrow grass while burning
                 if (HasFire(x, y, z)) continue;
                 
-                // Decay wear
-                int oldWear = wearGrid[z][y][x];
-                if (oldWear > wearDecayRate) {
-                    wearGrid[z][y][x] = oldWear - wearDecayRate;
-                } else if (oldWear > 0) {
-                    wearGrid[z][y][x] = 0;
-                    wearActiveCells--;
+                if (isDirt) {
+                    // Decay wear
+                    int oldWear = wearGrid[z][y][x];
+                    if (oldWear > wearDecayRate) {
+                        wearGrid[z][y][x] = oldWear - wearDecayRate;
+                    } else if (oldWear > 0) {
+                        wearGrid[z][y][x] = 0;
+                        wearActiveCells--;
+                    }
+
+                    // Update surface overlay based on new wear
+                    UpdateSurfaceFromWear(x, y, z);
                 }
-                
-                // Update surface overlay based on new wear
-                UpdateSurfaceFromWear(x, y, z);
                 
                 // Sapling regrowth: spawn sapling on tall grass with some chance
                 if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
-                    // Only on fully recovered (tall grass) tiles
-                    // Check if cell above is air (space for sapling)
-                    if (z + 1 < gridDepth && grid[z + 1][y][x] == CELL_AIR) {
-                        // Don't spawn if items are on the tile above
-                        if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
-                        
-                        // Random chance check
-                        if ((rand() % 10000) < saplingRegrowthChance) {
-                            // Check no trees/saplings nearby
-                            if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
-                                // Place sapling in cell above dirt
-                                PlaceSapling(x, y, z + 1);
+                    // For dirt, require fully recovered grass; for other soils, just require no wear
+                    if (!isDirt || GET_CELL_SURFACE(x, y, z) == SURFACE_TALL_GRASS) {
+                        if (z + 1 < gridDepth && grid[z + 1][y][x] == CELL_AIR) {
+                            if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
+                            if ((rand() % 10000) < saplingRegrowthChance) {
+                                if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
+                                    TreeType type = PickTreeTypeForSoil(grid[z][y][x]);
+                                    PlaceSapling(x, y, z + 1, type);
+                                }
                             }
                         }
                     }

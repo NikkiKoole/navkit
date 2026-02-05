@@ -12,7 +12,14 @@ typedef enum {
     ITEM_ROCK,         // Raw stone from mining (rock block)
     ITEM_STONE_BLOCKS, // Crafted from ORANGE at stonecutter, used for building
     ITEM_WOOD,         // Wood logs from chopping trees
-    ITEM_SAPLING,      // Tree saplings - can be planted to grow trees
+    ITEM_SAPLING_OAK,  // Oak sapling
+    ITEM_SAPLING_PINE, // Pine sapling
+    ITEM_SAPLING_BIRCH,// Birch sapling
+    ITEM_SAPLING_WILLOW,// Willow sapling
+    ITEM_LEAVES_OAK,   // Oak leaves
+    ITEM_LEAVES_PINE,  // Pine leaves
+    ITEM_LEAVES_BIRCH, // Birch leaves
+    ITEM_LEAVES_WILLOW,// Willow leaves
     ITEM_DIRT,         // Dirt blocks from digging dirt
     ITEM_CLAY,         // Clay blocks from clay soil
     ITEM_GRAVEL,       // Gravel blocks from gravel soil
@@ -116,5 +123,15 @@ static inline float GetItemY(int itemIdx) { return items[itemIdx].y; }
 static inline int GetItemZ(int itemIdx) { return (int)items[itemIdx].z; }
 static inline ItemType GetItemType(int itemIdx) { return items[itemIdx].type; }
 static inline int GetItemReservedBy(int itemIdx) { return items[itemIdx].reservedBy; }
+
+static inline bool IsSaplingItem(ItemType type) {
+    return type == ITEM_SAPLING_OAK || type == ITEM_SAPLING_PINE ||
+           type == ITEM_SAPLING_BIRCH || type == ITEM_SAPLING_WILLOW;
+}
+
+static inline bool IsLeafItem(ItemType type) {
+    return type == ITEM_LEAVES_OAK || type == ITEM_LEAVES_PINE ||
+           type == ITEM_LEAVES_BIRCH || type == ITEM_LEAVES_WILLOW;
+}
 
 #endif

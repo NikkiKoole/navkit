@@ -6,6 +6,7 @@
 #include "../entities/item_defs.h"
 #include "../entities/jobs.h"
 #include "../world/designations.h"
+#include "../simulation/trees.h"
 
 static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
     if (ratio < 0.0f) ratio = 0.0f;
@@ -140,8 +141,10 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(sp->allowedTypes[ITEM_WOOD] ? "W" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_WOOD] ? BROWN : DARKGRAY);
     fx += MeasureText("W", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_SAPLING] ? "T" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_SAPLING] ? GREEN : DARKGRAY);
+    bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
+                          sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
+    DrawTextShadow(saplingAllowed ? "T" : "-", fx, y, 14,
+        saplingAllowed ? GREEN : DARKGRAY);
     fx += MeasureText("T", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_DIRT] ? "D" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_DIRT] ? BROWN : DARKGRAY);
@@ -158,8 +161,12 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
-    const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP"};
-    const char* jobTypeName = job ? (job->type < 10 ? jobTypeNames[job->type] : "?") : "IDLE";
+    const char* jobTypeNames[] = {
+        "NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP",
+        "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"
+    };
+    int jobTypeCount = (int)(sizeof(jobTypeNames) / sizeof(jobTypeNames[0]));
+    const char* jobTypeName = job ? (job->type < jobTypeCount ? jobTypeNames[job->type] : "?") : "IDLE";
 
     int carryingItem = job ? job->carryingItem : -1;
     int targetStockpile = job ? job->targetStockpile : -1;
@@ -349,11 +356,37 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     // Cell type
     CellType ct = grid[cellZ][cellY][cellX];
     const char* cellTypeName = CellName(ct);
+    TreeType treeType = TREE_TYPE_NONE;
+    TreePart treePart = TREE_PART_NONE;
+    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
+        treeType = (TreeType)treeTypeGrid[cellZ][cellY][cellX];
+        treePart = (TreePart)treePartGrid[cellZ][cellY][cellX];
+    }
     bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
-    if (isBurned) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
+    if (treeType != TREE_TYPE_NONE) {
+        const char* partName = NULL;
+        if (ct == CELL_TREE_TRUNK) {
+            switch (treePart) {
+                case TREE_PART_TRUNK: partName = "trunk"; break;
+                case TREE_PART_BRANCH: partName = "branch"; break;
+                case TREE_PART_ROOT: partName = "root"; break;
+                case TREE_PART_FELLED: partName = "felled"; break;
+                default: break;
+            }
+        }
+        if (isBurned) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s) [BURNED]",
+                cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s)",
+                cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
+        }
     } else {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+        if (isBurned) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s", cellTypeName);
+        }
     }
 
     // Wall material (for constructed walls)
@@ -764,6 +797,12 @@ void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             desName = "Chop Tree";
             bgColor = (Color){50, 35, 25, 230};
             borderColor = (Color){200, 120, 60, 255};
+            workerName = "Woodcutter";
+            break;
+        case DESIGNATION_CHOP_FELLED:
+            desName = "Chop Felled";
+            bgColor = (Color){45, 40, 30, 230};
+            borderColor = (Color){190, 140, 70, 255};
             workerName = "Woodcutter";
             break;
         case DESIGNATION_GATHER_SAPLING:

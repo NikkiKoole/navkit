@@ -44,6 +44,7 @@ typedef enum {
     ACTION_WORK_RAMP,
     // Work > Harvest actions
     ACTION_WORK_CHOP,
+    ACTION_WORK_CHOP_FELLED,
     ACTION_WORK_GATHER_SAPLING,
     ACTION_WORK_PLANT_SAPLING,
     // Work > Gather (top-level, no submode)

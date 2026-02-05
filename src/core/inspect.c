@@ -21,7 +21,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 
-#define INSPECT_SAVE_VERSION 13
+#define INSPECT_SAVE_VERSION 14
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -38,25 +38,31 @@ static const char* cellTypeNames[] = {
     "LADDER_DOWN",   // 3
     "LADDER_BOTH",   // 4
     "DIRT",          // 5
-    "BEDROCK",       // 6 (was WOOD_WALL, now removed)
-    "RAMP_N",        // 7
-    "RAMP_E",        // 8
-    "RAMP_S",        // 9
-    "RAMP_W",        // 10
-    "SAPLING",       // 11
-    "TREE_TRUNK",    // 12
-    "TREE_LEAVES"    // 13
+    "CLAY",          // 6
+    "GRAVEL",        // 7
+    "SAND",          // 8
+    "PEAT",          // 9
+    "BEDROCK",       // 10 (was WOOD_WALL, now removed)
+    "RAMP_N",        // 11
+    "RAMP_E",        // 12
+    "RAMP_S",        // 13
+    "RAMP_W",        // 14
+    "SAPLING",       // 15
+    "TREE_TRUNK",    // 16
+    "TREE_LEAVES"    // 17
 };
-#define CELL_TYPE_COUNT 14
+#define CELL_TYPE_COUNT 18
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
-static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING"};
-static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "REMOVE_FLOOR", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING"};
+static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"};
+static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP", "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
 static uint64_t insp_worldSeed = 0;
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
 static CellType* insp_gridCells = NULL;
+static uint8_t* insp_treeTypes = NULL;
+static uint8_t* insp_treeParts = NULL;
 static WaterCell* insp_waterCells = NULL;
 static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
@@ -805,6 +811,8 @@ static void print_temp(int filterZ) {
 
 static void cleanup(void) {
     free(insp_gridCells);
+    free(insp_treeTypes);
+    free(insp_treeParts);
     free(insp_waterCells);
     free(insp_fireCells);
     free(insp_smokeCells);
@@ -968,6 +976,8 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Allocate and read grid data
     insp_gridCells = malloc(totalCells * sizeof(CellType));
+    insp_treeTypes = malloc(totalCells * sizeof(uint8_t));
+    insp_treeParts = malloc(totalCells * sizeof(uint8_t));
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
     insp_fireCells = malloc(totalCells * sizeof(FireCell));
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
@@ -979,6 +989,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_designations = malloc(totalCells * sizeof(Designation));
     
     fread(insp_gridCells, sizeof(CellType), totalCells, f);
+    fread(insp_treeTypes, sizeof(uint8_t), totalCells, f);
+    fread(insp_treeParts, sizeof(uint8_t), totalCells, f);
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
     fread(insp_fireCells, sizeof(FireCell), totalCells, f);
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);

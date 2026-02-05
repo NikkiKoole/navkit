@@ -435,6 +435,33 @@ static void ExecuteCancelChop(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateChopFelled(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateChopFelled(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d fallen log%s for chopping", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+static void ExecuteCancelChopFelled(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasChopFelledDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d chop-felled designation%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecuteDesignateGatherSapling(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -904,7 +931,7 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
 static void ExecutePlaceTree(int x, int y, int z) {
     // Check if we can place a tree here (need solid ground below or at z=0)
     CellType cell = grid[z][y][x];
-    if (cell != CELL_AIR && cell != CELL_DIRT) {
+    if (cell != CELL_AIR && !IsGroundCell(cell)) {
         AddMessage("Can't place tree here", RED);
         return;
     }
@@ -916,8 +943,8 @@ static void ExecutePlaceTree(int x, int y, int z) {
     }
     
     // Grow a full tree instantly
-    TreeGrowFull(x, y, z);
-    AddMessage(TextFormat("Planted tree at (%d, %d)", x, y), GREEN);
+    TreeGrowFull(x, y, z, currentTreeType);
+    AddMessage(TextFormat("Planted %s tree at (%d, %d)", TreeTypeName(currentTreeType), x, y), GREEN);
 }
 
 static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
@@ -927,6 +954,8 @@ static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
             CellType cell = grid[z][dy][dx];
             if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
                 grid[z][dy][dx] = CELL_AIR;
+                treeTypeGrid[z][dy][dx] = TREE_TYPE_NONE;
+                treePartGrid[z][dy][dx] = TREE_PART_NONE;
                 MarkChunkDirty(dx, dy, z);
                 count++;
             }
@@ -1015,7 +1044,17 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ROCK] = !sp->allowedTypes[ITEM_ROCK]; AddMessage(TextFormat("Rock: %s", sp->allowedTypes[ITEM_ROCK] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_STONE_BLOCKS] = !sp->allowedTypes[ITEM_STONE_BLOCKS]; AddMessage(TextFormat("Stone Blocks: %s", sp->allowedTypes[ITEM_STONE_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
             if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood: %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
-            if (IsKeyPressed(KEY_T)) { sp->allowedTypes[ITEM_SAPLING] = !sp->allowedTypes[ITEM_SAPLING]; AddMessage(TextFormat("Sapling: %s", sp->allowedTypes[ITEM_SAPLING] ? "ON" : "OFF"), GREEN); return; }
+            if (IsKeyPressed(KEY_T)) {
+                bool anySapling = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
+                                  sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
+                bool newVal = !anySapling;
+                sp->allowedTypes[ITEM_SAPLING_OAK] = newVal;
+                sp->allowedTypes[ITEM_SAPLING_PINE] = newVal;
+                sp->allowedTypes[ITEM_SAPLING_BIRCH] = newVal;
+                sp->allowedTypes[ITEM_SAPLING_WILLOW] = newVal;
+                AddMessage(TextFormat("Saplings: %s", newVal ? "ON" : "OFF"), GREEN);
+                return;
+            }
             if (IsKeyPressed(KEY_D)) { sp->allowedTypes[ITEM_DIRT] = !sp->allowedTypes[ITEM_DIRT]; AddMessage(TextFormat("Dirt: %s", sp->allowedTypes[ITEM_DIRT] ? "ON" : "OFF"), BROWN); return; }
         }
     }
@@ -1274,6 +1313,7 @@ void HandleInput(void) {
                             break;
                         case SUBMODE_HARVEST:
                             if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CHOP; }
+                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_CHOP_FELLED; }
                             if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
                             if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
                             break;
@@ -1325,6 +1365,7 @@ void HandleInput(void) {
         case ACTION_WORK_RAMP:         backOneLevel = CheckKey(KEY_R); break;
         // Harvest actions
         case ACTION_WORK_CHOP:         backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_WORK_CHOP_FELLED:  backOneLevel = CheckKey(KEY_F); break;
         case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
         // Gather (top-level)
@@ -1498,6 +1539,10 @@ void HandleInput(void) {
             case ACTION_WORK_CHOP:
                 if (leftClick) ExecuteDesignateChop(x1, y1, x2, y2, z);
                 else ExecuteCancelChop(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_CHOP_FELLED:
+                if (leftClick) ExecuteDesignateChopFelled(x1, y1, x2, y2, z);
+                else ExecuteCancelChopFelled(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_GATHER_SAPLING:
                 if (leftClick) ExecuteDesignateGatherSapling(x1, y1, x2, y2, z);

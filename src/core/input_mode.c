@@ -76,6 +76,7 @@ static const char* GetActionName(void) {
         case ACTION_WORK_LADDER:       return "LADDER";
         case ACTION_WORK_RAMP:         return "RAMP";
         case ACTION_WORK_CHOP:         return "CHOP TREE";
+        case ACTION_WORK_CHOP_FELLED:  return "CHOP FELLED";
         case ACTION_WORK_GATHER_SAPLING: return "GATHER SAPLING";
         case ACTION_WORK_PLANT_SAPLING:  return "PLANT SAPLING";
         case ACTION_WORK_GATHER:       return "GATHER";
@@ -123,7 +124,7 @@ const char* InputMode_GetBarText(void) {
                     case SUBMODE_BUILD:
                         return "WORK > BUILD: [W]all  [F]loor  [L]adder  [R]amp    [ESC]Back";
                     case SUBMODE_HARVEST:
-                        return "WORK > HARVEST: [C]hop tree  gather [S]apling  [P]lant sapling    [ESC]Back";
+                        return "WORK > HARVEST: [C]hop tree  chop [F]elled  gather [S]apling  [P]lant sapling    [ESC]Back";
                     default:
                         return "[ESC]Back";
                 }
@@ -186,6 +187,7 @@ const char* InputMode_GetBarText(void) {
         case ACTION_WORK_LADDER:
         case ACTION_WORK_RAMP:
         case ACTION_WORK_CHOP:
+        case ACTION_WORK_CHOP_FELLED:
         case ACTION_WORK_GATHER_SAPLING:
         case ACTION_WORK_PLANT_SAPLING:
         case ACTION_WORK_GATHER:
@@ -318,6 +320,7 @@ int InputMode_GetBarItems(BarItem* items) {
                         case SUBMODE_HARVEST:
                             n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
                             n = AddItem(items, n, "Chop tree", KEY_C, 0, false, false, false);
+                            n = AddItem(items, n, "Chop felled", KEY_F, 0, false, false, false);
                             n = AddItem(items, n, "gather Sapling", KEY_S, 7, false, false, false);
                             n = AddItem(items, n, "Plant sapling", KEY_P, 0, false, false, false);
                             break;
@@ -394,6 +397,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_RAMP:         actionKey = KEY_R; break;
         // Harvest actions
         case ACTION_WORK_CHOP:         actionKey = KEY_C; break;
+        case ACTION_WORK_CHOP_FELLED:  actionKey = KEY_F; break;
         case ACTION_WORK_GATHER_SAPLING: actionKey = KEY_S; break;
         case ACTION_WORK_PLANT_SAPLING:  actionKey = KEY_P; break;
         // Gather (top-level)
@@ -456,6 +460,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
         case ACTION_WORK_CHOP:
+        case ACTION_WORK_CHOP_FELLED:
         case ACTION_WORK_GATHER_SAPLING:
         case ACTION_WORK_PLANT_SAPLING:
             n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
