@@ -7,6 +7,7 @@ Context
 Tracks
 - Speech and Communication: `docs/vision/sound-and-mind-speech-comm.md`
 - Birdsong and Sexual Selection: `docs/vision/sound-and-mind-birdsong-sex.md`
+- System Design: `docs/vision/sound-and-mind-design.md`
 
 Shared Foundations
 - Signals only emerge when they change outcomes.
