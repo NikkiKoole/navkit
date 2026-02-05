@@ -120,7 +120,7 @@ int abstractPathLength = 0;
 // ============================================================================
 // Hash table for O(1) entrance position lookup (used in incremental updates)
 // ============================================================================
-#define ENTRANCE_HASH_SIZE 8192  // Power of 2, should be > 2x max entrances
+#define ENTRANCE_HASH_SIZE 32768  // Power of 2, should be > 2x max entrances (MAX_ENTRANCES=16384)
 
 typedef struct {
     int x, y, z;    // Position (key)

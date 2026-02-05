@@ -892,8 +892,12 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t nodeDataSize = sizeof(AStarNode) * MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH;
             size_t chunkDirtySize = sizeof(bool) * MAX_GRID_DEPTH * MAX_CHUNKS_Y * MAX_CHUNKS_X;
             size_t ladderLinksSize = sizeof(LadderLink) * MAX_LADDERS;
+            size_t rampLinksSize = sizeof(RampLink) * MAX_RAMP_LINKS;
             size_t abstractNodesSize = sizeof(AbstractNode) * MAX_ABSTRACT_NODES;
             size_t abstractPathSize = sizeof(int) * (MAX_ENTRANCES + 2);
+            size_t adjListSize = sizeof(int) * MAX_ENTRANCES * MAX_EDGES_PER_NODE;  // adjList[MAX_ENTRANCES][MAX_EDGES_PER_NODE]
+            size_t adjListCountSize = sizeof(int) * MAX_ENTRANCES;
+            size_t entranceHashSize = 16 * 32768;  // EntranceHashEntry (16 bytes) * ENTRANCE_HASH_SIZE
 
             // Entities
             size_t moversSize = sizeof(Mover) * MAX_MOVERS;
@@ -910,7 +914,7 @@ void DrawProfilerPanel(float rightEdge, float y) {
             size_t itemSpatialGrid = (itemGrid.cellCount + 1) * sizeof(int) * 2 + MAX_ITEMS * sizeof(int);
 
             size_t totalGrid = gridSize + designationsSize + waterSize + fireSize + smokeSize + steamSize + temperatureSize + cellFlagsSize + groundWearSize;
-            size_t totalPathfinding = entrancesSize + pathSize + edgesSize + nodeDataSize + chunkDirtySize + ladderLinksSize + abstractNodesSize + abstractPathSize;
+            size_t totalPathfinding = entrancesSize + pathSize + edgesSize + nodeDataSize + chunkDirtySize + ladderLinksSize + rampLinksSize + abstractNodesSize + abstractPathSize + adjListSize + adjListCountSize + entranceHashSize;
             size_t totalEntities = moversSize + moverRenderSize + itemsSize + jobsSize + stockpilesSize + blueprintsSize + gatherZonesSize + workshopsSize;
             size_t totalSpatial = moverSpatialGrid + itemSpatialGrid;
             size_t total = totalGrid + totalPathfinding + totalEntities + totalSpatial;
@@ -945,11 +949,15 @@ void DrawProfilerPanel(float rightEdge, float y) {
             MEM_SUBSECTION("Pathfinding", totalPathfinding, sectionMemPath);
             if (sectionMemPath) {
                 DrawTextShadow(TextFormat("  NodeData:     %5.1f MB", nodeDataSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  AdjList:      %5.1f MB", adjListSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  Path:         %5.1f MB", pathSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  Entrances:    %5.1f MB", entrancesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  EntranceHash: %5.1f KB", entranceHashSize / 1024.0f), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  Edges:        %5.1f MB", edgesSize / (1024.0f * 1024.0f)), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  LadderLinks:  %5.1f KB", ladderLinksSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  RampLinks:    %5.1f KB", rampLinksSize / 1024.0f), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  AbstractNodes:%5.1f KB", abstractNodesSize / 1024.0f), x, y, 14, WHITE); y += 16;
+                DrawTextShadow(TextFormat("  AdjListCount: %5.1f KB", adjListCountSize / 1024.0f), x, y, 14, WHITE); y += 16;
                 DrawTextShadow(TextFormat("  ChunkDirty:   %5.1f KB", chunkDirtySize / 1024.0f), x, y, 14, WHITE); y += 16;
             }
 

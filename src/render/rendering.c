@@ -705,6 +705,13 @@ void DrawAgents(void) {
 void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    
+    // Frustum culling bounds with one cell margin for partially visible movers
+    float margin = size;
+    float minX = -margin;
+    float maxX = GetScreenWidth() + margin;
+    float minY = -margin;
+    float maxY = GetScreenHeight() + margin;
 
     for (int i = 0; i < moverCount; i++) {
         Mover* m = &movers[i];
@@ -716,6 +723,9 @@ void DrawMovers(void) {
         // Screen position
         float sx = offset.x + m->x * zoom;
         float sy = offset.y + m->y * zoom;
+        
+        // Frustum cull - skip movers outside visible area
+        if (sx < minX || sx > maxX || sy < minY || sy > maxY) continue;
         if (usePixelPerfectMovers) {
             sx = roundf(sx);
             sy = roundf(sy);
