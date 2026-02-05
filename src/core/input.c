@@ -1219,10 +1219,10 @@ void HandleInput(void) {
 
 
 
-    // Re-tap mode key exits to normal
-    if (inputMode == MODE_DRAW && CheckKey(KEY_D)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_WORK && CheckKey(KEY_W)) { InputMode_ExitToNormal(); return; }
-    if (inputMode == MODE_SANDBOX && CheckKey(KEY_S)) { InputMode_ExitToNormal(); return; }
+    // Re-tap mode key exits to normal (only at top level, not when in submode/action)
+    if (inputMode == MODE_DRAW && inputAction == ACTION_NONE && CheckKey(KEY_D)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_WORK && workSubMode == SUBMODE_NONE && inputAction == ACTION_NONE && CheckKey(KEY_W)) { InputMode_ExitToNormal(); return; }
+    if (inputMode == MODE_SANDBOX && inputAction == ACTION_NONE && CheckKey(KEY_S)) { InputMode_ExitToNormal(); return; }
 
     // ========================================================================
     // Mode selection (only in normal mode)
