@@ -151,11 +151,15 @@ static bool AngleInArc(float angle, float arcStart, float arcEnd) {
 
 // Get slice index for an angle within a ring's arc
 static int AngleToSliceInArc(float angle, float arcStart, float arcEnd, int sliceCount) {
-    // Map angle to position within the arc [0, 1)
-    float arcSize = arcEnd - arcStart;
-    if (arcSize < 0) arcSize += PI * 2.0f;
+    // Normalize to [0, 2*PI) first
+    float a = fmodf(angle + PI * 4.0f, PI * 2.0f);
+    float s = fmodf(arcStart + PI * 4.0f, PI * 2.0f);
+    float e = fmodf(arcEnd + PI * 4.0f, PI * 2.0f);
 
-    float rel = angle - arcStart;
+    float arcSize = e - s;
+    if (arcSize <= 0) arcSize += PI * 2.0f;
+
+    float rel = a - s;
     if (rel < 0) rel += PI * 2.0f;
 
     float t = rel / arcSize;
@@ -167,9 +171,11 @@ static int AngleToSliceInArc(float angle, float arcStart, float arcEnd, int slic
 
 // Get the angular position of a slice within an arc
 static float SliceAngle(int sliceIdx, float arcStart, float arcEnd, int sliceCount) {
-    float arcSize = arcEnd - arcStart;
-    if (arcSize < 0) arcSize += PI * 2.0f;
-    return arcStart + arcSize * ((float)sliceIdx + 0.5f) / (float)sliceCount;
+    float s = fmodf(arcStart + PI * 4.0f, PI * 2.0f);
+    float e = fmodf(arcEnd + PI * 4.0f, PI * 2.0f);
+    float arcSize = e - s;
+    if (arcSize <= 0) arcSize += PI * 2.0f;
+    return s + arcSize * ((float)sliceIdx + 0.5f) / (float)sliceCount;
 }
 
 // ============================================================================
@@ -504,14 +510,19 @@ void PieMenu_Draw(void) {
             int tw = MeasureText(label, fontSize);
             int padding = 6;
 
-            // Background rect
+            // Background rect (always drawn for readability)
+            Color bgCol;
             if (hovered) {
-                DrawRectangle(lx - tw / 2 - padding, ly - fontSize / 2 - padding,
-                    tw + padding * 2, fontSize + padding * 2, (Color){ 60, 60, 90, 200 });
+                bgCol = (Color){ 60, 60, 90, 230 };
             } else if (selected) {
-                DrawRectangle(lx - tw / 2 - padding, ly - fontSize / 2 - padding,
-                    tw + padding * 2, fontSize + padding * 2, (Color){ 40, 40, 60, 160 });
+                bgCol = (Color){ 50, 50, 80, 230 };
+            } else if (muted) {
+                bgCol = (Color){ 15, 15, 25, 140 };
+            } else {
+                bgCol = (Color){ 20, 20, 35, 220 };
             }
+            DrawRectangle(lx - tw / 2 - padding, ly - fontSize / 2 - padding,
+                tw + padding * 2, fontSize + padding * 2, bgCol);
 
             // Text color
             Color textCol;
