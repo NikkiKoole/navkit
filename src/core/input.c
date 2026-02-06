@@ -278,6 +278,39 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+// Helper to build soil (all soil types follow same pattern)
+static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soilType, MaterialType material, const char* name) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            CellType cell = grid[z][dy][dx];
+            // Can place soil on air
+            if (cell == CELL_AIR) {
+                grid[z][dy][dx] = soilType;
+                SetWallMaterial(dx, dy, z, material);
+                SetWallNatural(dx, dy, z);
+                CLEAR_FLOOR(dx, dy, z);
+                SetFloorMaterial(dx, dy, z, MAT_NONE);
+                ClearFloorNatural(dx, dy, z);
+                MarkChunkDirty(dx, dy, z);
+                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
+                
+                // Set surface based on soil type
+                if (soilType == CELL_DIRT) {
+                    SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
+                } else {
+                    SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
+                }
+                
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d %s%s", count, name, count > 1 ? " tiles" : " tile"), GREEN);
+    }
+}
+
 static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1385,6 +1418,7 @@ void HandleInput(void) {
                 if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
                 if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_RAMP; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
+                if (CheckKey(KEY_O)) { inputAction = ACTION_DRAW_SOIL; }
                 if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
                 if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_ROCK; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
@@ -1438,6 +1472,19 @@ void HandleInput(void) {
         }
         return;
     }
+    
+    // ========================================================================
+    // Soil type selection (when ACTION_DRAW_SOIL is active)
+    // ========================================================================
+    
+    if (inputAction == ACTION_DRAW_SOIL) {
+        if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_SOIL_DIRT; }
+        if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_SOIL_CLAY; }
+        if (CheckKey(KEY_G)) { inputAction = ACTION_DRAW_SOIL_GRAVEL; }
+        if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_SOIL_SAND; }
+        if (CheckKey(KEY_P)) { inputAction = ACTION_DRAW_SOIL_PEAT; }
+        return;
+    }
 
     // ========================================================================
     // Re-tap action key to go back one level
@@ -1454,6 +1501,12 @@ void HandleInput(void) {
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_ROCK:      backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
+        case ACTION_DRAW_SOIL:      backOneLevel = CheckKey(KEY_O); break;
+        case ACTION_DRAW_SOIL_DIRT:  backOneLevel = CheckKey(KEY_D); break;
+        case ACTION_DRAW_SOIL_CLAY:  backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_DRAW_SOIL_GRAVEL: backOneLevel = CheckKey(KEY_G); break;
+        case ACTION_DRAW_SOIL_SAND:  backOneLevel = CheckKey(KEY_S); break;
+        case ACTION_DRAW_SOIL_PEAT:  backOneLevel = CheckKey(KEY_P); break;
         // Dig actions
         case ACTION_WORK_MINE:         backOneLevel = CheckKey(KEY_M); break;
         case ACTION_WORK_CHANNEL:      backOneLevel = CheckKey(KEY_H); break;
@@ -1607,6 +1660,21 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_WORKSHOP:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z);
+                break;
+            case ACTION_DRAW_SOIL_DIRT:
+                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_DIRT, MAT_DIRT, "dirt");
+                break;
+            case ACTION_DRAW_SOIL_CLAY:
+                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_DIRT, "clay");
+                break;
+            case ACTION_DRAW_SOIL_GRAVEL:
+                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_DIRT, "gravel");
+                break;
+            case ACTION_DRAW_SOIL_SAND:
+                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_DIRT, "sand");
+                break;
+            case ACTION_DRAW_SOIL_PEAT:
+                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_DIRT, "peat");
                 break;
             // Work actions
             case ACTION_WORK_MINE:

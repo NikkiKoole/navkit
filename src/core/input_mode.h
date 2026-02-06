@@ -32,6 +32,12 @@ typedef enum {
     ACTION_DRAW_DIRT,
     ACTION_DRAW_ROCK,
     ACTION_DRAW_WORKSHOP,
+    ACTION_DRAW_SOIL,      // Soil category - sub-actions for each type
+    ACTION_DRAW_SOIL_DIRT,
+    ACTION_DRAW_SOIL_CLAY,
+    ACTION_DRAW_SOIL_GRAVEL,
+    ACTION_DRAW_SOIL_SAND,
+    ACTION_DRAW_SOIL_PEAT,
     // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,

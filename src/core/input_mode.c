@@ -67,6 +67,12 @@ static const char* GetActionName(void) {
         case ACTION_DRAW_DIRT:       return "DIRT";
         case ACTION_DRAW_ROCK:       return "ROCK";
         case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
+        case ACTION_DRAW_SOIL:       return "SOIL";
+        case ACTION_DRAW_SOIL_DIRT:  return "DIRT";
+        case ACTION_DRAW_SOIL_CLAY:  return "CLAY";
+        case ACTION_DRAW_SOIL_GRAVEL: return "GRAVEL";
+        case ACTION_DRAW_SOIL_SAND:  return "SAND";
+        case ACTION_DRAW_SOIL_PEAT:  return "PEAT";
         case ACTION_WORK_MINE:         return "MINE";
         case ACTION_WORK_CHANNEL:      return "CHANNEL";
         case ACTION_WORK_DIG_RAMP:     return "DIG RAMP";
@@ -114,7 +120,7 @@ const char* InputMode_GetBarText(void) {
         // In a mode, no action selected - show available actions/submodes
         switch (inputMode) {
             case MODE_DRAW:
-                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  roc[k]  d[I]rt  s[T]one workshop    [ESC]Back";
+                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  s[O]il  roc[k]  d[I]rt  s[T]one workshop    [ESC]Back";
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
                     return "WORK: [D]ig  [B]uild  [H]arvest  [G]ather    [ESC]Back";
@@ -177,6 +183,18 @@ const char* InputMode_GetBarText(void) {
         case ACTION_DRAW_ROCK:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
                 "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
+            break;
+        case ACTION_DRAW_SOIL:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s: [D]irt  [C]lay  [G]ravel  [S]and  [P]eat    [ESC]Back", prefix);
+            break;
+        case ACTION_DRAW_SOIL_DIRT:
+        case ACTION_DRAW_SOIL_CLAY:
+        case ACTION_DRAW_SOIL_GRAVEL:
+        case ACTION_DRAW_SOIL_SAND:
+        case ACTION_DRAW_SOIL_PEAT:
+            snprintf(barTextBuffer, sizeof(barTextBuffer),
+                "%s: L-drag place  +Shift=pile mode  [ESC]Back", prefix);
             break;
         case ACTION_DRAW_STOCKPILE:
             snprintf(barTextBuffer, sizeof(barTextBuffer),
@@ -291,6 +309,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
                 n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
                 n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
+                n = AddItem(items, n, "sOil", KEY_O, 1, false, false, false);
                 n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
                 n = AddItem(items, n, "rocK", KEY_K, 3, false, false, false);
                 n = AddItem(items, n, "sTone workshop", KEY_T, 1, false, false, false);
@@ -392,6 +411,12 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
         case ACTION_DRAW_ROCK:      actionKey = KEY_K; actionUnderline = 3; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
+        case ACTION_DRAW_SOIL:      actionKey = KEY_O; actionUnderline = 1; break;
+        case ACTION_DRAW_SOIL_DIRT:  actionKey = KEY_D; break;
+        case ACTION_DRAW_SOIL_CLAY:  actionKey = KEY_C; break;
+        case ACTION_DRAW_SOIL_GRAVEL: actionKey = KEY_G; break;
+        case ACTION_DRAW_SOIL_SAND:  actionKey = KEY_S; break;
+        case ACTION_DRAW_SOIL_PEAT:  actionKey = KEY_P; break;
         // Dig actions
         case ACTION_WORK_MINE:         actionKey = KEY_M; break;
         case ACTION_WORK_CHANNEL:      actionKey = KEY_H; actionUnderline = 1; break;
@@ -462,6 +487,21 @@ int InputMode_GetBarItems(BarItem* items) {
             break;
         case ACTION_DRAW_WORKSHOP:
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
+            break;
+        case ACTION_DRAW_SOIL:
+            n = AddItem(items, n, "Dirt", KEY_D, 0, false, false, false);
+            n = AddItem(items, n, "Clay", KEY_C, 0, false, false, false);
+            n = AddItem(items, n, "Gravel", KEY_G, 0, false, false, false);
+            n = AddItem(items, n, "Sand", KEY_S, 0, false, false, false);
+            n = AddItem(items, n, "Peat", KEY_P, 0, false, false, false);
+            break;
+        case ACTION_DRAW_SOIL_DIRT:
+        case ACTION_DRAW_SOIL_CLAY:
+        case ACTION_DRAW_SOIL_GRAVEL:
+        case ACTION_DRAW_SOIL_SAND:
+        case ACTION_DRAW_SOIL_PEAT:
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
             break;
         case ACTION_WORK_MINE:
         case ACTION_WORK_CHANNEL:
