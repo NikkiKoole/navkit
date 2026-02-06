@@ -16,8 +16,9 @@ TARGETS := steer crowd path soundsystem-demo
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
-path_SRC       := src/unity.c
+path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
+sound_phrase_wav_SRC := tools/sound_phrase_wav.c src/sound/sound_phrase.c
 
 # Test targets - all link against precompiled test_unity.o for shared game logic
 TEST_UNITY_OBJ := $(BINDIR)/test_unity.o
@@ -159,6 +160,8 @@ path: $(BINDIR) $(BINDIR)/path
 steer: $(BINDIR) $(BINDIR)/steer
 crowd: $(BINDIR) $(BINDIR)/crowd
 soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
+sound-phrase-wav: $(BINDIR)
+	$(CC) $(CFLAGS) -o $(BINDIR)/sound_phrase_wav $(sound_phrase_wav_SRC) -lm
 
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
@@ -228,4 +231,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo asan debug fast release atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs
