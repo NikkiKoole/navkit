@@ -3465,11 +3465,13 @@ describe(df_ladder_pathfinding) {
         if (test_verbose) printf("Goal (5,6,z=3) walkable: %d\n", IsCellWalkableAt(3, 6, 5));
         if (test_verbose) printf("Ladder z=1 (5,5) walkable: %d\n", IsCellWalkableAt(1, 5, 5));
         if (test_verbose) printf("Ladder z=2 (5,5) walkable: %d\n", IsCellWalkableAt(2, 5, 5));
-        if (test_verbose) printf("Ladder count: %d, entrance count: %d\n", ladderLinkCount, entranceCount);
-        
-        if (ladderLinkCount > 0) {
-            printf("Ladder link 0: x=%d y=%d zLow=%d zHigh=%d\n", 
-                ladderLinks[0].x, ladderLinks[0].y, ladderLinks[0].zLow, ladderLinks[0].zHigh);
+        if (test_verbose) {
+            printf("Ladder count: %d, entrance count: %d\n", ladderLinkCount, entranceCount);
+            
+            if (ladderLinkCount > 0) {
+                printf("Ladder link 0: x=%d y=%d zLow=%d zHigh=%d\n", 
+                    ladderLinks[0].x, ladderLinks[0].y, ladderLinks[0].zLow, ladderLinks[0].zHigh);
+            }
         }
         
         // Path from z=1 ground to z=3 platform (step off ladder at z=2, walk to z=3)

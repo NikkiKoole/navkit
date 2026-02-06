@@ -336,7 +336,7 @@ describe(temperature_underground_ambient) {
         int deepAmbient = GetAmbientTemperature(0);
         
         if (test_verbose) printf("Surface ambient (z=%d): %d\n", gridDepth - 1, surfaceAmbient);
-        printf("Deep ambient (z=0): %d\n", deepAmbient);
+        if (test_verbose) printf("Deep ambient (z=0): %d\n", deepAmbient);
         
         expect(surfaceAmbient == ambientSurfaceTemp);
         expect(deepAmbient == ambientSurfaceTemp);  // Same when decay is 0
@@ -397,7 +397,7 @@ describe(temperature_heated_room) {
         InitTemperature();
         
         int initialTemp = GetTemperature(3, 3, 0);
-        printf("Initial room temp: %d\n", initialTemp);
+        if (test_verbose) printf("Initial room temp: %d\n", initialTemp);
         
         // Place heat source inside room (100C)
         SetHeatSource(3, 3, 0, true);
@@ -407,7 +407,7 @@ describe(temperature_heated_room) {
         
         // Room interior should be warmer than initial
         int roomTemp = GetAverageTemp(2, 2, 4, 4, 0);
-        printf("Heated room avg temp: %d\n", roomTemp);
+        if (test_verbose) printf("Heated room avg temp: %d\n", roomTemp);
         
         // Interior cells (excluding source) should be significantly warmer
         expect(roomTemp > initialTemp + 20);
@@ -439,7 +439,7 @@ describe(temperature_fire_heating) {
         expect(fireTemp >= 80);  // At least fire minimum in Celsius
         expect(fireTemp > initialTemp);
         
-        printf("Fire heat test: initial=%d, after fire=%d\n", initialTemp, fireTemp);
+        if (test_verbose) printf("Fire heat test: initial=%d, after fire=%d\n", initialTemp, fireTemp);
     }
     
     it("should not lower temperature with fire heat") {
@@ -487,7 +487,7 @@ describe(temperature_room_size_heating) {
         int smallRoomTemp = GetTemperature(2, 2, 0);  // Center of small room
         int largeRoomCorner = GetTemperature(8, 2, 0); // Corner of large room
         
-        printf("Small room center: %d, Large room corner: %d\n", smallRoomTemp, largeRoomCorner);
+        if (test_verbose) printf("Small room center: %d, Large room corner: %d\n", smallRoomTemp, largeRoomCorner);
         
         // Small room should reach equilibrium faster (its cells warm up more)
         // Heat source is 100C, so small room interior should be very warm
@@ -523,7 +523,7 @@ describe(temperature_decay) {
         expect(finalTemp < 100);
         expect(finalTemp < ambient + 30);  // Roughly near ambient
         
-        printf("Decay test: started at 100, ended at %d (ambient=%d)\n", 
+        if (test_verbose) printf("Decay test: started at 100, ended at %d (ambient=%d)\n", 
                finalTemp, ambient);
     }
     
@@ -549,7 +549,7 @@ describe(temperature_decay) {
         expect(finalTemp > 0);
         expect(finalTemp > ambient - 30);  // Roughly near ambient
         
-        printf("Cold decay test: started at 0, ended at %d (ambient=%d)\n", 
+        if (test_verbose) printf("Cold decay test: started at 0, ended at %d (ambient=%d)\n", 
                finalTemp, ambient);
     }
 }
@@ -572,15 +572,23 @@ describe(temperature_depth_gradient) {
         }
         
         // Test ambient calculation
-        printf("Ambient temperatures by depth:\n");
+        if (test_verbose) {
+            printf("Ambient temperatures by depth:\n");
+            for (int z = 0; z < gridDepth; z++) {
+                int ambient = GetAmbientTemperature(z);
+                int expectedDepth = (gridDepth - 1) - z;
+                int expected = ambientSurfaceTemp - (expectedDepth * ambientDepthDecay);
+                if (expected < 0) expected = 0;
+                
+                printf("  z=%d (depth=%d): ambient=%d, expected=%d\n", 
+                       z, expectedDepth, ambient, expected);
+            }
+        }
         for (int z = 0; z < gridDepth; z++) {
             int ambient = GetAmbientTemperature(z);
             int expectedDepth = (gridDepth - 1) - z;
             int expected = ambientSurfaceTemp - (expectedDepth * ambientDepthDecay);
             if (expected < 0) expected = 0;
-            
-            printf("  z=%d (depth=%d): ambient=%d, expected=%d\n", 
-                   z, expectedDepth, ambient, expected);
             
             expect(ambient == expected);
         }
@@ -618,7 +626,7 @@ describe(temperature_cold_source) {
         int neighborTemp = GetTemperature(1, 2, 0);
         expect(neighborTemp < ambient);
         
-        printf("Cold source test: center=%d, neighbor=%d, ambient=%d\n",
+        if (test_verbose) printf("Cold source test: center=%d, neighbor=%d, ambient=%d\n",
                GetTemperature(2, 2, 0), neighborTemp, ambient);
     }
     
@@ -759,7 +767,7 @@ describe(temperature_edge_cases) {
         // Middle cell should be somewhere in between
         int middleTemp = GetTemperature(3, 1, 0);
         
-        printf("Heat/cold battle: hot=%d, middle=%d, cold=%d\n",
+        if (test_verbose) printf("Heat/cold battle: hot=%d, middle=%d, cold=%d\n",
                GetTemperature(1, 1, 0), middleTemp, GetTemperature(5, 1, 0));
         
         // Should be between the two extremes
@@ -791,7 +799,7 @@ describe(temperature_stability) {
             if (tempUpdateCount == 0) break;
         }
         
-        printf("Stability test: updates=%d after stabilization\n", tempUpdateCount);
+        if (test_verbose) printf("Stability test: updates=%d after stabilization\n", tempUpdateCount);
         
         // Should have stabilized (very few updates)
         expect(tempUpdateCount < 10);

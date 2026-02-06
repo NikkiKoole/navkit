@@ -502,7 +502,7 @@ describe(heaters_evaporate_water) {
             
             int water = CountTotalWater();
             if (ticks % 1000 == 0) {
-                printf("Tick %d: water=%d\n", ticks, water);
+                if (test_verbose) printf("Tick %d: water=%d\n", ticks, water);
             }
             if (water == 0) break;
         }

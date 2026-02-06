@@ -27,7 +27,6 @@ static bool test_verbose = false;
 
 
 // Global flag for verbose output in tests
-static bool test_verbose = false;
 
 // Undefine macros that collide with local variable names in tests
 #undef masterVolume
@@ -3473,7 +3472,6 @@ describe(multi_instance_isolation) {
 
 
 // Global flag for verbose output in tests
-static bool test_verbose = false;
 
 // Save macro definitions and undefine them
 #pragma push_macro("dubLoop")
