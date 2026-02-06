@@ -855,7 +855,9 @@ static void ExecuteEraseStockpile(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
-static void ExecutePlaceWorkshop(int x, int y, int z) {
+static const char* workshopTypeNamesInput[] = { "Stonecutter", "Sawmill", "Kiln" };
+
+static void ExecutePlaceWorkshop(int x, int y, int z, WorkshopType type) {
     // Check if area is clear (3x3 walkable, no other workshops)
     for (int dy = 0; dy < 3; dy++) {
         for (int dx = 0; dx < 3; dx++) {
@@ -876,9 +878,9 @@ static void ExecutePlaceWorkshop(int x, int y, int z) {
         }
     }
     
-    int idx = CreateWorkshop(x, y, z, WORKSHOP_STONECUTTER);
+    int idx = CreateWorkshop(x, y, z, type);
     if (idx >= 0) {
-        AddMessage(TextFormat("Built stonecutter workshop #%d", idx), GREEN);
+        AddMessage(TextFormat("Built %s workshop #%d", workshopTypeNamesInput[type], idx), GREEN);
     } else {
         AddMessage(TextFormat("Failed to create workshop (max %d)", MAX_WORKSHOPS), RED);
     }
@@ -1287,32 +1289,32 @@ void HandleInput(void) {
             if (IsKeyPressed(KEY_B)) { sp->allowedTypes[ITEM_BLUE] = !sp->allowedTypes[ITEM_BLUE]; AddMessage(TextFormat("Blue: %s", sp->allowedTypes[ITEM_BLUE] ? "ON" : "OFF"), BLUE); return; }
             if (IsKeyPressed(KEY_O)) { sp->allowedTypes[ITEM_ROCK] = !sp->allowedTypes[ITEM_ROCK]; AddMessage(TextFormat("Rock: %s", sp->allowedTypes[ITEM_ROCK] ? "ON" : "OFF"), ORANGE); return; }
             if (IsKeyPressed(KEY_S)) { sp->allowedTypes[ITEM_BLOCKS] = !sp->allowedTypes[ITEM_BLOCKS]; AddMessage(TextFormat("Blocks: %s", sp->allowedTypes[ITEM_BLOCKS] ? "ON" : "OFF"), GRAY); return; }
-            if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_WOOD] = !sp->allowedTypes[ITEM_WOOD]; AddMessage(TextFormat("Wood (any): %s", sp->allowedTypes[ITEM_WOOD] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_W)) { sp->allowedTypes[ITEM_LOG] = !sp->allowedTypes[ITEM_LOG]; AddMessage(TextFormat("Wood (any): %s", sp->allowedTypes[ITEM_LOG] ? "ON" : "OFF"), BROWN); return; }
             if (IsKeyPressed(KEY_ONE)) {
                 bool newVal = !sp->allowedMaterials[MAT_OAK];
                 sp->allowedMaterials[MAT_OAK] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
                 AddMessage(TextFormat("Wood mat Oak: %s", newVal ? "ON" : "OFF"), BROWN);
                 return;
             }
             if (IsKeyPressed(KEY_TWO)) {
                 bool newVal = !sp->allowedMaterials[MAT_PINE];
                 sp->allowedMaterials[MAT_PINE] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
                 AddMessage(TextFormat("Wood mat Pine: %s", newVal ? "ON" : "OFF"), BROWN);
                 return;
             }
             if (IsKeyPressed(KEY_THREE)) {
                 bool newVal = !sp->allowedMaterials[MAT_BIRCH];
                 sp->allowedMaterials[MAT_BIRCH] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
                 AddMessage(TextFormat("Wood mat Birch: %s", newVal ? "ON" : "OFF"), BROWN);
                 return;
             }
             if (IsKeyPressed(KEY_FOUR)) {
                 bool newVal = !sp->allowedMaterials[MAT_WILLOW];
                 sp->allowedMaterials[MAT_WILLOW] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_WOOD] = true;
+                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
                 AddMessage(TextFormat("Wood mat Willow: %s", newVal ? "ON" : "OFF"), BROWN);
                 return;
             }
@@ -1328,6 +1330,10 @@ void HandleInput(void) {
                 return;
             }
             if (IsKeyPressed(KEY_D)) { sp->allowedTypes[ITEM_DIRT] = !sp->allowedTypes[ITEM_DIRT]; AddMessage(TextFormat("Dirt: %s", sp->allowedTypes[ITEM_DIRT] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_P)) { sp->allowedTypes[ITEM_PLANKS] = !sp->allowedTypes[ITEM_PLANKS]; AddMessage(TextFormat("Planks: %s", sp->allowedTypes[ITEM_PLANKS] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_K)) { sp->allowedTypes[ITEM_STICKS] = !sp->allowedTypes[ITEM_STICKS]; AddMessage(TextFormat("Sticks: %s", sp->allowedTypes[ITEM_STICKS] ? "ON" : "OFF"), BROWN); return; }
+            if (IsKeyPressed(KEY_C)) { sp->allowedTypes[ITEM_CHARCOAL] = !sp->allowedTypes[ITEM_CHARCOAL]; AddMessage(TextFormat("Charcoal: %s", sp->allowedTypes[ITEM_CHARCOAL] ? "ON" : "OFF"), DARKGRAY); return; }
+            if (IsKeyPressed(KEY_I)) { sp->allowedTypes[ITEM_BRICKS] = !sp->allowedTypes[ITEM_BRICKS]; AddMessage(TextFormat("Bricks: %s", sp->allowedTypes[ITEM_BRICKS] ? "ON" : "OFF"), ORANGE); return; }
         }
     }
 
@@ -1337,11 +1343,20 @@ void HandleInput(void) {
     if (hoveredWorkshop >= 0 && inputMode == MODE_NORMAL) {
         Workshop* ws = &workshops[hoveredWorkshop];
         
-        // B = Add bill (Cut Stone Blocks, Do Forever)
+        // B = Add bill (first recipe, Do Forever)
         if (IsKeyPressed(KEY_B)) {
             if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
-                AddBill(hoveredWorkshop, 0, BILL_DO_FOREVER, 0);
-                AddMessage(TextFormat("Added bill: Cut Stone Blocks (Do Forever)"), GREEN);
+                int recipeCount;
+                Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+                if (recipeCount > 0) {
+                    // Cycle through recipes: add the next one not yet in the bill list
+                    int recipeIdx = 0;
+                    if (ws->billCount > 0) {
+                        recipeIdx = (ws->bills[ws->billCount - 1].recipeIdx + 1) % recipeCount;
+                    }
+                    AddBill(hoveredWorkshop, recipeIdx, BILL_DO_FOREVER, 0);
+                    AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[recipeIdx].name), GREEN);
+                }
             } else {
                 AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
             }
@@ -1617,6 +1632,13 @@ void HandleInput(void) {
     // Soil type selection (when ACTION_DRAW_SOIL is active)
     // ========================================================================
     
+    if (inputAction == ACTION_DRAW_WORKSHOP) {
+        if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_WORKSHOP_STONECUTTER; }
+        if (CheckKey(KEY_A)) { inputAction = ACTION_DRAW_WORKSHOP_SAWMILL; }
+        if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_WORKSHOP_KILN; }
+        return;
+    }
+
     if (inputAction == ACTION_DRAW_SOIL) {
         if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_SOIL_DIRT; }
         if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_SOIL_CLAY; }
@@ -1641,6 +1663,9 @@ void HandleInput(void) {
         case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
         case ACTION_DRAW_ROCK:      backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
+        case ACTION_DRAW_WORKSHOP_STONECUTTER: backOneLevel = CheckKey(KEY_S); break;
+        case ACTION_DRAW_WORKSHOP_SAWMILL:     backOneLevel = CheckKey(KEY_A); break;
+        case ACTION_DRAW_WORKSHOP_KILN:        backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_SOIL:      backOneLevel = CheckKey(KEY_O); break;
         case ACTION_DRAW_SOIL_DIRT:  backOneLevel = CheckKey(KEY_D); break;
         case ACTION_DRAW_SOIL_CLAY:  backOneLevel = CheckKey(KEY_C); break;
@@ -1826,8 +1851,14 @@ void HandleInput(void) {
                 if (leftClick) ExecuteBuildRock(x1, y1, x2, y2, z);
                 else ExecuteErase(x1, y1, x2, y2, z);
                 break;
-            case ACTION_DRAW_WORKSHOP:
-                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z);
+            case ACTION_DRAW_WORKSHOP_STONECUTTER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_STONECUTTER);
+                break;
+            case ACTION_DRAW_WORKSHOP_SAWMILL:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_SAWMILL);
+                break;
+            case ACTION_DRAW_WORKSHOP_KILN:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_KILN);
                 break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {

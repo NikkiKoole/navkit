@@ -139,7 +139,7 @@ describe(cell_def_drops) {
     // Wood material drops are tested in mining_material_drops
     
     it("should have dropsItem for tree trunk") {
-        expect(CellDropsItem(CELL_TREE_TRUNK) == ITEM_WOOD);
+        expect(CellDropsItem(CELL_TREE_TRUNK) == ITEM_LOG);
     }
     
     it("should have dropsItem for sapling") {
@@ -174,7 +174,7 @@ describe(cell_def_drops) {
 
 describe(item_def_materials) {
     it("should provide sensible default materials for items") {
-        expect(DefaultMaterialForItemType(ITEM_WOOD) == MAT_OAK);
+        expect(DefaultMaterialForItemType(ITEM_LOG) == MAT_OAK);
         expect(DefaultMaterialForItemType(ITEM_BLOCKS) == MAT_GRANITE);
         expect(DefaultMaterialForItemType(ITEM_ROCK) == MAT_GRANITE);
         expect(DefaultMaterialForItemType(ITEM_DIRT) == MAT_DIRT);
@@ -198,7 +198,7 @@ describe(material_def_properties) {
     }
     
     it("should have correct drop items") {
-        expect(MaterialDropsItem(MAT_OAK) == ITEM_WOOD);
+        expect(MaterialDropsItem(MAT_OAK) == ITEM_LOG);
         expect(MaterialDropsItem(MAT_GRANITE) == ITEM_BLOCKS);
         expect(MaterialDropsItem(MAT_NONE) == ITEM_NONE);
     }
@@ -235,7 +235,7 @@ describe(blueprint_material_tracking) {
         expect(bpIdx >= 0);
         
         // Spawn and deliver wood (oak)
-        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
         expect(blueprints[bpIdx].deliveredMaterial == MAT_OAK);
@@ -270,7 +270,7 @@ describe(blueprint_material_tracking) {
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
         // Deliver wood (pine) and complete
-        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_PINE);
+        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_PINE);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
         // Simulate builder completing
@@ -331,7 +331,7 @@ describe(mining_material_drops) {
         expect(CountItemsOfTypeWithMaterial(ITEM_ROCK, MAT_GRANITE) == 1);
     }
     
-    it("should drop ITEM_WOOD when mining constructed wood wall") {
+    it("should drop ITEM_LOG when mining constructed wood wall") {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         InitDesignations();
@@ -343,8 +343,8 @@ describe(mining_material_drops) {
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_WOOD with oak material
-        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
+        // Should have spawned ITEM_LOG with oak material
+        expect(CountItemsOfTypeWithMaterial(ITEM_LOG, MAT_OAK) == 1);
         
         // Should NOT have spawned ITEM_ROCK
         int orangeCount = CountItemsOfType(ITEM_ROCK);
@@ -414,7 +414,7 @@ describe(mining_material_drops) {
         // Wood wall
         SetWallMaterial(0, 0, 0, MAT_OAK);
         ClearWallNatural(0, 0, 0);
-        expect(GetWallDropItem(0, 0, 0) == ITEM_WOOD);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_LOG);
         
         // Granite wall
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
@@ -437,8 +437,8 @@ describe(floor_removal_material_drops) {
         
         CompleteRemoveFloorDesignation(1, 0, 0, -1);
         
-        // Should have spawned ITEM_WOOD with oak material
-        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
+        // Should have spawned ITEM_LOG with oak material
+        expect(CountItemsOfTypeWithMaterial(ITEM_LOG, MAT_OAK) == 1);
     }
     
     it("should reset floor material after floor removal") {
@@ -563,7 +563,7 @@ describe(build_mine_cycle) {
         int bpIdx = CreateBuildBlueprint(1, 0, 0);
         
         // Step 2: Deliver wood and complete build
-        int woodItem = SpawnItemWithMaterial(0, 0, 0, ITEM_WOOD, MAT_OAK);
+        int woodItem = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, woodItem);
         CompleteBlueprint(bpIdx);
         
@@ -578,7 +578,7 @@ describe(build_mine_cycle) {
         // Verify: wall gone, material reset, wood dropped
         expect(grid[0][0][1] == CELL_AIR);
         expect(GetWallMaterial(1, 0, 0) == MAT_NONE);
-        expect(CountItemsOfTypeWithMaterial(ITEM_WOOD, MAT_OAK) == 1);
+        expect(CountItemsOfTypeWithMaterial(ITEM_LOG, MAT_OAK) == 1);
         expect(CountItemsOfType(ITEM_ROCK) == 0);
     }
     

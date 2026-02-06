@@ -22,7 +22,9 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 
-#define INSPECT_SAVE_VERSION 18
+#define INSPECT_SAVE_VERSION 20
+#define INSPECT_V19_ITEM_TYPE_COUNT 23
+#define INSPECT_V18_ITEM_TYPE_COUNT 21
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -1161,7 +1163,7 @@ int InspectSaveFile(int argc, char** argv) {
 
                 MaterialType mat = MAT_NONE;
                 TreeType treeType = (TreeType)legacyItems[i].treeType;
-                if (insp_items[i].type == ITEM_WOOD) {
+                if (insp_items[i].type == ITEM_LOG) {
                     mat = MaterialFromTreeType(treeType);
                 } else if (IsSaplingItem(insp_items[i].type)) {
                     mat = MaterialFromTreeType(TreeTypeFromSaplingItem(insp_items[i].type));
@@ -1184,8 +1186,108 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Stockpiles
     insp_stockpiles = malloc(MAX_STOCKPILES * sizeof(Stockpile));
-    if (version >= 18) {
+    if (version >= 20) {
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= 19) {
+        // V19: had 23 item types (before ITEM_BRICKS/ITEM_CHARCOAL)
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[INSPECT_V19_ITEM_TYPE_COUNT];
+            bool allowedMaterials[MAT_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } InspStockpileV19;
+
+        InspStockpileV19* legacyStockpiles = malloc(MAX_STOCKPILES * sizeof(InspStockpileV19));
+        fread(legacyStockpiles, sizeof(InspStockpileV19), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            memset(&insp_stockpiles[i], 0, sizeof(Stockpile));
+            insp_stockpiles[i].x = legacyStockpiles[i].x;
+            insp_stockpiles[i].y = legacyStockpiles[i].y;
+            insp_stockpiles[i].z = legacyStockpiles[i].z;
+            insp_stockpiles[i].width = legacyStockpiles[i].width;
+            insp_stockpiles[i].height = legacyStockpiles[i].height;
+            insp_stockpiles[i].active = legacyStockpiles[i].active;
+            for (int t = 0; t < INSPECT_V19_ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
+            }
+            for (int t = INSPECT_V19_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(insp_stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
+            memcpy(insp_stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(insp_stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(insp_stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(insp_stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(insp_stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(insp_stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            insp_stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            insp_stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(insp_stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            insp_stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+        }
+        free(legacyStockpiles);
+    } else if (version >= 18) {
+        // V18: had 21 item types (before ITEM_PLANKS/ITEM_STICKS)
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[INSPECT_V18_ITEM_TYPE_COUNT];
+            bool allowedMaterials[MAT_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } InspStockpileV18;
+
+        InspStockpileV18* legacyStockpiles = malloc(MAX_STOCKPILES * sizeof(InspStockpileV18));
+        fread(legacyStockpiles, sizeof(InspStockpileV18), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            memset(&insp_stockpiles[i], 0, sizeof(Stockpile));
+            insp_stockpiles[i].x = legacyStockpiles[i].x;
+            insp_stockpiles[i].y = legacyStockpiles[i].y;
+            insp_stockpiles[i].z = legacyStockpiles[i].z;
+            insp_stockpiles[i].width = legacyStockpiles[i].width;
+            insp_stockpiles[i].height = legacyStockpiles[i].height;
+            insp_stockpiles[i].active = legacyStockpiles[i].active;
+            for (int t = 0; t < INSPECT_V18_ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
+            }
+            for (int t = INSPECT_V18_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                insp_stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(insp_stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
+            memcpy(insp_stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(insp_stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(insp_stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(insp_stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(insp_stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(insp_stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            insp_stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            insp_stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(insp_stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            insp_stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+        }
+        free(legacyStockpiles);
     } else if (version >= 17) {
         typedef struct {
             int x, y, z;

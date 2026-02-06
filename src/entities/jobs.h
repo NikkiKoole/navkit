@@ -35,11 +35,14 @@ typedef enum {
 #define STEP_WORKING           1  // Dig/Build: performing work
 #define STEP_PLANTING          2  // PlantSapling: working after carrying
 
-// Craft job steps (4-step state machine)
+// Craft job steps (7-step state machine, steps 4-6 only used when recipe needs fuel)
 #define CRAFT_STEP_MOVING_TO_INPUT   0  // Walking to item location
 #define CRAFT_STEP_PICKING_UP        1  // At item, picking up
 #define CRAFT_STEP_MOVING_TO_WORKSHOP 2 // Carrying item to workshop
 #define CRAFT_STEP_WORKING           3  // At workshop, crafting
+#define CRAFT_STEP_MOVING_TO_FUEL    4  // Walking to fuel item (after depositing main input)
+#define CRAFT_STEP_PICKING_UP_FUEL   5  // At fuel item, picking up
+#define CRAFT_STEP_CARRYING_FUEL     6  // Carrying fuel to workshop
 
 // Job struct - contains all data for a single job
 typedef struct {
@@ -70,6 +73,9 @@ typedef struct {
 
     // Carried item (for haul jobs and craft jobs)
     int carryingItem;
+    
+    // Fuel item (for craft jobs with fuel requirement)
+    int fuelItem;  // reserved fuel item index, -1 = none
 } Job;
 
 #define MAX_JOBS 10000

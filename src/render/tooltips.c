@@ -158,8 +158,8 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(sp->allowedTypes[ITEM_BLOCKS] ? "S" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_BLOCKS] ? GRAY : DARKGRAY);
     fx += MeasureText("S", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_WOOD] ? "W" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_WOOD] ? BROWN : DARKGRAY);
+    DrawTextShadow(sp->allowedTypes[ITEM_LOG] ? "W" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_LOG] ? BROWN : DARKGRAY);
     fx += MeasureText("W", 14) + 4;
     bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
                           sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
@@ -168,6 +168,18 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     fx += MeasureText("T", 14) + 4;
     DrawTextShadow(sp->allowedTypes[ITEM_DIRT] ? "D" : "-", fx, y, 14,
         sp->allowedTypes[ITEM_DIRT] ? BROWN : DARKGRAY);
+    fx += MeasureText("D", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_PLANKS] ? "P" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_PLANKS] ? BROWN : DARKGRAY);
+    fx += MeasureText("P", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_STICKS] ? "K" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_STICKS] ? BROWN : DARKGRAY);
+    fx += MeasureText("K", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_BRICKS] ? "I" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_BRICKS] ? ORANGE : DARKGRAY);
+    fx += MeasureText("I", 14) + 4;
+    DrawTextShadow(sp->allowedTypes[ITEM_CHARCOAL] ? "C" : "-", fx, y, 14,
+        sp->allowedTypes[ITEM_CHARCOAL] ? GRAY : DARKGRAY);
     y += 18;
 
     int mx = tx + padding;
@@ -624,14 +636,14 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     Workshop* ws = &workshops[wsIdx];
     if (!ws->active) return;
 
-    const char* workshopTypeNames[] = {"Stonecutter"};
+    const char* workshopTypeNames[] = {"Stonecutter", "Sawmill", "Kiln"};
     const char* billModeNames[] = {"Do X times", "Do until X", "Do forever"};
 
     char lines[12][80];
     int lineCount = 0;
 
     // Header
-    const char* typeName = (ws->type < 1) ? workshopTypeNames[ws->type] : "Unknown";
+    const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopTypeNames[ws->type] : "Unknown";
     snprintf(lines[lineCount++], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
 
     // Position info

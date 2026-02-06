@@ -68,7 +68,9 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_ROCK:
         case ITEM_BLOCKS:
             return MAT_GRANITE;
-        case ITEM_WOOD:
+        case ITEM_LOG:
+        case ITEM_PLANKS:
+        case ITEM_STICKS:
             return MAT_OAK;
         case ITEM_SAPLING_OAK:
         case ITEM_LEAVES_OAK:
@@ -84,6 +86,10 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
             return MAT_WILLOW;
         case ITEM_DIRT:
             return MAT_DIRT;
+        case ITEM_BRICKS:
+            return MAT_NONE;
+        case ITEM_CHARCOAL:
+            return MAT_NONE;
         default:
             return MAT_NONE;
     }

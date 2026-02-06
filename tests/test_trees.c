@@ -205,7 +205,7 @@ describe(tree_sapling_drops) {
         // Fell should create felled trunk segments (wood comes after chopping them)
         expect(CountFelledTrunks() > 0);
         expect(ChopFirstFelledTrunk() == true);
-        int woodAfter = CountItemType(ITEM_WOOD);
+        int woodAfter = CountItemType(ITEM_LOG);
         expect(woodAfter > 0);
     }
     
@@ -865,7 +865,7 @@ describe(tree_full_lifecycle) {
         // Fell should create felled trunk segments, then chopping yields wood
         expect(CountFelledTrunks() > 0);
         expect(ChopFirstFelledTrunk() == true);
-        expect(CountItemType(ITEM_WOOD) > 0);
+        expect(CountItemType(ITEM_LOG) > 0);
     }
 }
 

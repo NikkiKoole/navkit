@@ -31,7 +31,10 @@ typedef enum {
     ACTION_DRAW_STOCKPILE,
     ACTION_DRAW_DIRT,
     ACTION_DRAW_ROCK,
-    ACTION_DRAW_WORKSHOP,
+    ACTION_DRAW_WORKSHOP,  // Workshop category - sub-actions for each type
+    ACTION_DRAW_WORKSHOP_STONECUTTER,
+    ACTION_DRAW_WORKSHOP_SAWMILL,
+    ACTION_DRAW_WORKSHOP_KILN,
     ACTION_DRAW_SOIL,      // Soil category - sub-actions for each type
     ACTION_DRAW_SOIL_DIRT,
     ACTION_DRAW_SOIL_CLAY,

@@ -14,7 +14,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BLUE]         = { "Blue Crate",   SPRITE_crate_blue,   IF_STACKABLE, 10 },
     [ITEM_ROCK]         = { "Raw Stone",    SPRITE_rock_block, IF_STACKABLE, 20 },
     [ITEM_BLOCKS]       = { "Blocks",       SPRITE_stone_block,  IF_STACKABLE | IF_BUILDING_MAT, 20 },
-    [ITEM_WOOD]         = { "Wood",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
+    [ITEM_LOG]         = { "Log",         SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
     [ITEM_SAPLING_OAK]  = { "Sapling",  SPRITE_tree_sapling_oak,   IF_STACKABLE, 20 },
     [ITEM_SAPLING_PINE] = { "Sapling",  SPRITE_tree_sapling_pine,  IF_STACKABLE, 20 },
     [ITEM_SAPLING_BIRCH]= { "Sapling",  SPRITE_tree_sapling_birch, IF_STACKABLE, 20 },
@@ -28,4 +28,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_GRAVEL]       = { "Gravel",       SPRITE_gravel_block, IF_STACKABLE, 20 },
     [ITEM_SAND]         = { "Sand",         SPRITE_sand_block,   IF_STACKABLE, 20 },
     [ITEM_PEAT]         = { "Peat",         SPRITE_peat_block,   IF_STACKABLE | IF_FUEL, 20 },
+    [ITEM_PLANKS]       = { "Planks",       SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
+    [ITEM_STICKS]       = { "Sticks",       SPRITE_wood_block,   IF_STACKABLE | IF_FUEL, 20 },
+    [ITEM_BRICKS]       = { "Bricks",       SPRITE_clay_block,   IF_STACKABLE | IF_BUILDING_MAT, 20 },
+    [ITEM_CHARCOAL]     = { "Charcoal",     SPRITE_wood_block,   IF_STACKABLE | IF_FUEL, 20 },
 };

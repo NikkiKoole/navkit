@@ -1254,7 +1254,7 @@ void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
 
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
-    SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_WOOD, (uint8_t)MaterialFromTreeType(type));
+    SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_LOG, (uint8_t)MaterialFromTreeType(type));
 
     CancelDesignation(x, y, z);
 }

@@ -12,10 +12,10 @@ uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 MaterialDef materialDefs[MAT_COUNT] = {
     //                 name       spriteOffset  flags         fuel  dropsItem
     [MAT_NONE]    = {"none",     0,            0,            0,    ITEM_NONE},        // No material present
-    [MAT_OAK]     = {"Oak",      1,            MF_FLAMMABLE, 128,  ITEM_WOOD},
-    [MAT_PINE]    = {"Pine",     1,            MF_FLAMMABLE, 128,  ITEM_WOOD},
-    [MAT_BIRCH]   = {"Birch",    1,            MF_FLAMMABLE, 128,  ITEM_WOOD},
-    [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 128,  ITEM_WOOD},
+    [MAT_OAK]     = {"Oak",      1,            MF_FLAMMABLE, 128,  ITEM_LOG},
+    [MAT_PINE]    = {"Pine",     1,            MF_FLAMMABLE, 128,  ITEM_LOG},
+    [MAT_BIRCH]   = {"Birch",    1,            MF_FLAMMABLE, 128,  ITEM_LOG},
+    [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 128,  ITEM_LOG},
     [MAT_GRANITE] = {"Granite",  0,            0,            0,    ITEM_BLOCKS},
     [MAT_DIRT]    = {"Dirt",     0,            0,            0,    ITEM_DIRT},
     [MAT_IRON]    = {"Iron",     2,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_IRON_BAR when added

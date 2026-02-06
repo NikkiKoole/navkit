@@ -11,9 +11,23 @@ int workshopCount = 0;
 
 // Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
+
+// Sawmill recipes: logs -> planks or sticks (material-preserving)
+Recipe sawmillRecipes[] = {
+    { "Saw Planks", ITEM_LOG, 1, ITEM_PLANKS, 4, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Cut Sticks", ITEM_LOG, 1, ITEM_STICKS, 8, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+};
+int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
+
+// Kiln recipes: fire processing with fuel
+Recipe kilnRecipes[] = {
+    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_BRICKS,   2, 5.0f, MAT_MATCH_ANY, MAT_NONE, 1 },
+    { "Make Charcoal", ITEM_LOG,  1, ITEM_CHARCOAL,  3, 6.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+};
+int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
 // Workshop templates (ASCII art, row-major, top-to-bottom)
 // . = floor (walkable), # = machinery (blocked), X = work tile, O = output
@@ -21,6 +35,14 @@ static const char* workshopTemplates[] = {
     [WORKSHOP_STONECUTTER] = 
         "##O"
         "#X."
+        "...",
+    [WORKSHOP_SAWMILL] =
+        "##O"
+        "#X."
+        "...",
+    [WORKSHOP_KILN] =
+        "#F#"
+        "#XO"
         "...",
 };
 
@@ -47,6 +69,58 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRa
     }
 
     return false;
+}
+
+// Check if any unreserved fuel item (IF_FUEL flag) exists within search radius
+bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
+    if (searchRadius == 0) searchRadius = 100;
+    int bestDistSq = searchRadius * searchRadius;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (!(ItemFlags(item->type) & IF_FUEL)) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != ws->z) continue;
+
+        int itemTileX = (int)(item->x / CELL_SIZE);
+        int itemTileY = (int)(item->y / CELL_SIZE);
+        int dx = itemTileX - ws->x;
+        int dy = itemTileY - ws->y;
+        int distSq = dx * dx + dy * dy;
+        if (distSq > bestDistSq) continue;
+
+        return true;
+    }
+    return false;
+}
+
+// Find nearest unreserved fuel item within search radius
+int FindNearestFuelItem(Workshop* ws, int searchRadius) {
+    if (searchRadius == 0) searchRadius = 100;
+    int bestDistSq = searchRadius * searchRadius;
+    int bestIdx = -1;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        Item* item = &items[i];
+        if (!item->active) continue;
+        if (!(ItemFlags(item->type) & IF_FUEL)) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != ws->z) continue;
+
+        int itemTileX = (int)(item->x / CELL_SIZE);
+        int itemTileY = (int)(item->y / CELL_SIZE);
+        int dx = itemTileX - ws->x;
+        int dy = itemTileY - ws->y;
+        int distSq = dx * dx + dy * dy;
+        if (distSq > bestDistSq) continue;
+
+        bestDistSq = distSq;
+        bestIdx = i;
+    }
+    return bestIdx;
 }
 
 bool RecipeInputMatches(const Recipe* recipe, const Item* item) {
@@ -116,6 +190,8 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->workTileY = y;
             ws->outputTileX = x;
             ws->outputTileY = y;
+            ws->fuelTileX = -1;
+            ws->fuelTileY = -1;
             
             // First pass: copy template and set blocking flags
             for (int ty = 0; ty < ws->height; ty++) {
@@ -130,6 +206,9 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
                     } else if (c == WT_OUTPUT) {
                         ws->outputTileX = x + tx;
                         ws->outputTileY = y + ty;
+                    } else if (c == WT_FUEL) {
+                        ws->fuelTileX = x + tx;
+                        ws->fuelTileY = y + ty;
                     }
                     
                     // Set blocking flag for machinery tiles
@@ -182,6 +261,12 @@ Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount) {
         case WORKSHOP_STONECUTTER:
             *outCount = stonecutterRecipeCount;
             return stonecutterRecipes;
+        case WORKSHOP_SAWMILL:
+            *outCount = sawmillRecipeCount;
+            return sawmillRecipes;
+        case WORKSHOP_KILN:
+            *outCount = kilnRecipeCount;
+            return kilnRecipes;
         default:
             *outCount = 0;
             return NULL;

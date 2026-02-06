@@ -8,7 +8,9 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 18  // Add stockpile material filters
+#define SAVE_VERSION 20  // Add ITEM_BRICKS, ITEM_CHARCOAL (kiln)
+#define V19_ITEM_TYPE_COUNT 23  // ITEM_TYPE_COUNT before ITEM_BRICKS/ITEM_CHARCOAL were added
+#define V18_ITEM_TYPE_COUNT 21  // ITEM_TYPE_COUNT before ITEM_PLANKS/ITEM_STICKS were added
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -540,7 +542,7 @@ bool LoadWorld(const char* filename) {
 
             MaterialType mat = MAT_NONE;
             TreeType treeType = (TreeType)legacyItems[i].treeType;
-            if (items[i].type == ITEM_WOOD) {
+            if (items[i].type == ITEM_LOG) {
                 mat = MaterialFromTreeType(treeType);
             } else if (IsSaplingItem(items[i].type)) {
                 mat = MaterialFromTreeType(TreeTypeFromSaplingItem(items[i].type));
@@ -569,8 +571,107 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= 18) {
+    if (version >= 20) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= 19) {
+        // V19: had 23 item types (before ITEM_BRICKS/ITEM_CHARCOAL)
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[V19_ITEM_TYPE_COUNT];
+            bool allowedMaterials[MAT_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV19;
+
+        StockpileV19 legacyStockpiles[MAX_STOCKPILES];
+        fread(legacyStockpiles, sizeof(StockpileV19), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            memset(&stockpiles[i], 0, sizeof(Stockpile));
+            stockpiles[i].x = legacyStockpiles[i].x;
+            stockpiles[i].y = legacyStockpiles[i].y;
+            stockpiles[i].z = legacyStockpiles[i].z;
+            stockpiles[i].width = legacyStockpiles[i].width;
+            stockpiles[i].height = legacyStockpiles[i].height;
+            stockpiles[i].active = legacyStockpiles[i].active;
+            for (int t = 0; t < V19_ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
+            }
+            for (int t = V19_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
+            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+        }
+    } else if (version >= 18) {
+        // V18: had 21 item types (before ITEM_PLANKS/ITEM_STICKS)
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[V18_ITEM_TYPE_COUNT];
+            bool allowedMaterials[MAT_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV18;
+
+        StockpileV18 legacyStockpiles[MAX_STOCKPILES];
+        fread(legacyStockpiles, sizeof(StockpileV18), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            memset(&stockpiles[i], 0, sizeof(Stockpile));
+            stockpiles[i].x = legacyStockpiles[i].x;
+            stockpiles[i].y = legacyStockpiles[i].y;
+            stockpiles[i].z = legacyStockpiles[i].z;
+            stockpiles[i].width = legacyStockpiles[i].width;
+            stockpiles[i].height = legacyStockpiles[i].height;
+            stockpiles[i].active = legacyStockpiles[i].active;
+            // Copy old allowedTypes and default new ones to true
+            for (int t = 0; t < V18_ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
+            }
+            for (int t = V18_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
+            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+        }
     } else if (version >= 17) {
         typedef struct {
             int x, y, z;

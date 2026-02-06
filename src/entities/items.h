@@ -12,7 +12,7 @@ typedef enum {
     ITEM_BLUE,
     ITEM_ROCK,         // Raw stone from mining (rock block)
     ITEM_BLOCKS,       // Crafted blocks (material determines wood vs stone)
-    ITEM_WOOD,         // Wood logs from chopping trees
+    ITEM_LOG,          // Raw logs from chopping felled trees
     ITEM_SAPLING_OAK,  // Oak sapling
     ITEM_SAPLING_PINE, // Pine sapling
     ITEM_SAPLING_BIRCH,// Birch sapling
@@ -26,6 +26,10 @@ typedef enum {
     ITEM_GRAVEL,       // Gravel blocks from gravel soil
     ITEM_SAND,         // Sand blocks from sand soil
     ITEM_PEAT,         // Peat blocks from peat soil
+    ITEM_PLANKS,       // Sawn lumber from sawmill
+    ITEM_STICKS,       // Small pieces from sawmill
+    ITEM_BRICKS,       // Fired clay bricks from kiln
+    ITEM_CHARCOAL,     // Charcoal from kiln (efficient fuel)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -140,8 +144,8 @@ static inline bool IsLeafItem(ItemType type) {
 }
 
 static inline bool ItemTypeUsesMaterialName(ItemType type) {
-    return type == ITEM_WOOD || type == ITEM_BLOCKS || type == ITEM_ROCK ||
-           IsSaplingItem(type) || IsLeafItem(type);
+    return type == ITEM_LOG || type == ITEM_BLOCKS || type == ITEM_ROCK ||
+           type == ITEM_PLANKS || IsSaplingItem(type) || IsLeafItem(type);
 }
 
 #endif

@@ -1810,6 +1810,112 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                // If recipe needs fuel and we haven't fetched it yet, go fetch fuel
+                if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
+                    // Deposit main input at workshop (it stays "carried" conceptually but mover is at workshop)
+                    // Now go fetch the fuel
+                    job->step = CRAFT_STEP_MOVING_TO_FUEL;
+                } else {
+                    job->step = CRAFT_STEP_WORKING;
+                    job->progress = 0.0f;
+                    job->workRequired = recipe->workRequired;
+                }
+            }
+            break;
+        }
+
+        case CRAFT_STEP_MOVING_TO_FUEL: {
+            // Walk to fuel item
+            int fuelIdx = job->fuelItem;
+            if (fuelIdx < 0 || !items[fuelIdx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* fuelItem = &items[fuelIdx];
+            if (fuelItem->reservedBy != moverIdx) {
+                return JOBRUN_FAIL;
+            }
+
+            int fuelCellX = (int)(fuelItem->x / CELL_SIZE);
+            int fuelCellY = (int)(fuelItem->y / CELL_SIZE);
+            int fuelCellZ = (int)(fuelItem->z);
+
+            if (mover->goal.x != fuelCellX || mover->goal.y != fuelCellY || mover->goal.z != fuelCellZ) {
+                mover->goal = (Point){fuelCellX, fuelCellY, fuelCellZ};
+                mover->needsRepath = true;
+            }
+
+            float dx = mover->x - fuelItem->x;
+            float dy = mover->y - fuelItem->y;
+            float distSq = dx*dx + dy*dy;
+
+            TryFinalApproach(mover, fuelItem->x, fuelItem->y, fuelCellX, fuelCellY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                SetItemUnreachableCooldown(fuelIdx, UNREACHABLE_COOLDOWN);
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+                job->step = CRAFT_STEP_PICKING_UP_FUEL;
+            }
+            break;
+        }
+
+        case CRAFT_STEP_PICKING_UP_FUEL: {
+            int fuelIdx = job->fuelItem;
+            if (fuelIdx < 0 || !items[fuelIdx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* fuelItem = &items[fuelIdx];
+
+            // Pick up from stockpile if needed (same pattern as CRAFT_STEP_PICKING_UP)
+            if (fuelItem->state == ITEM_IN_STOCKPILE) {
+                for (int s = 0; s < MAX_STOCKPILES; s++) {
+                    Stockpile* sp = &stockpiles[s];
+                    if (!sp->active) continue;
+                    int localX = (int)(fuelItem->x / CELL_SIZE) - sp->x;
+                    int localY = (int)(fuelItem->y / CELL_SIZE) - sp->y;
+                    if (localX >= 0 && localX < sp->width &&
+                        localY >= 0 && localY < sp->height) {
+                        int slotIdx = localY * sp->width + localX;
+                        if (sp->slotCounts[slotIdx] > 0) {
+                            sp->slotCounts[slotIdx]--;
+                            if (sp->slotCounts[slotIdx] == 0) {
+                                sp->slotTypes[slotIdx] = -1;
+                                sp->slots[slotIdx] = -1;
+                                sp->slotMaterials[slotIdx] = MAT_NONE;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+            fuelItem->state = ITEM_CARRIED;
+            job->step = CRAFT_STEP_CARRYING_FUEL;
+            break;
+        }
+
+        case CRAFT_STEP_CARRYING_FUEL: {
+            // Walk back to workshop work tile
+            if (mover->goal.x != ws->workTileX || mover->goal.y != ws->workTileY || mover->goal.z != ws->z) {
+                mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+                mover->needsRepath = true;
+            }
+
+            float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = mover->x - targetX;
+            float dy = mover->y - targetY;
+            float distSq = dx*dx + dy*dy;
+
+            TryFinalApproach(mover, targetX, targetY, ws->workTileX, ws->workTileY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
                 job->step = CRAFT_STEP_WORKING;
                 job->progress = 0.0f;
                 job->workRequired = recipe->workRequired;
@@ -1839,6 +1945,13 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                     itemCount--;
                 }
                 job->carryingItem = -1;
+
+                // Consume fuel item (if any - don't preserve its material)
+                if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+                    items[job->fuelItem].active = false;
+                    itemCount--;
+                }
+                job->fuelItem = -1;
 
                 // Spawn output items at workshop output tile
                 float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -2105,6 +2218,19 @@ static void CancelJob(Mover* m, int moverIdx) {
                     bp->progress = 0.0f;  // Reset progress
                 }
             }
+        }
+
+        // Release fuel item reservation (for craft jobs with fuel)
+        if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+            Item* fuelItem = &items[job->fuelItem];
+            if (fuelItem->state == ITEM_CARRIED) {
+                // Drop fuel item at mover position
+                fuelItem->state = ITEM_ON_GROUND;
+                fuelItem->x = m->x;
+                fuelItem->y = m->y;
+                fuelItem->z = m->z;
+            }
+            fuelItem->reservedBy = -1;
         }
 
         // Release workshop reservation (for craft jobs)
@@ -3110,15 +3236,30 @@ int WorkGiver_Craft(int moverIdx) {
             tempLen = FindPath(moverPathAlgorithm, itemCell, workCell, tempPath, MAX_PATH);
             if (tempLen == 0) continue;
 
+            // Check fuel availability for fuel-requiring recipes
+            int fuelIdx = -1;
+            if (recipe->fuelRequired > 0) {
+                if (!WorkshopHasFuelForRecipe(ws, searchRadius)) continue;
+                fuelIdx = FindNearestFuelItem(ws, searchRadius);
+                if (fuelIdx < 0 || fuelIdx == itemIdx) continue;
+                // Verify fuel item is reachable from workshop
+                Point fuelCell = { (int)(items[fuelIdx].x / CELL_SIZE), (int)(items[fuelIdx].y / CELL_SIZE), (int)items[fuelIdx].z };
+                Point workCell2 = { ws->workTileX, ws->workTileY, ws->z };
+                int fuelPathLen = FindPath(moverPathAlgorithm, workCell2, fuelCell, tempPath, MAX_PATH);
+                if (fuelPathLen == 0) continue;
+            }
+
             // Reserve item and workshop
             item->reservedBy = moverIdx;
             ws->assignedCrafter = moverIdx;
+            if (fuelIdx >= 0) items[fuelIdx].reservedBy = moverIdx;
 
             // Create job
             int jobId = CreateJob(JOBTYPE_CRAFT);
             if (jobId < 0) {
                 item->reservedBy = -1;
                 ws->assignedCrafter = -1;
+                if (fuelIdx >= 0) items[fuelIdx].reservedBy = -1;
                 return -1;
             }
 
@@ -3130,6 +3271,7 @@ int WorkGiver_Craft(int moverIdx) {
             job->step = CRAFT_STEP_MOVING_TO_INPUT;
             job->progress = 0.0f;
             job->carryingItem = -1;
+            job->fuelItem = fuelIdx;
 
             // Update mover
             m->currentJobId = jobId;

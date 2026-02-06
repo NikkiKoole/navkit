@@ -16,11 +16,14 @@ typedef enum {
     WT_BLOCK = '#',   // non-walkable machinery
     WT_WORK  = 'X',   // work tile (walkable)
     WT_OUTPUT = 'O',  // output tile (walkable)
+    WT_FUEL  = 'F',   // fuel input tile (walkable)
 } WorkshopTileType;
 
 // Workshop types
 typedef enum {
     WORKSHOP_STONECUTTER,
+    WORKSHOP_SAWMILL,
+    WORKSHOP_KILN,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -50,6 +53,7 @@ typedef struct {
     float workRequired;  // seconds to complete
     MaterialMatchType inputMaterialMatch;
     MaterialType inputMaterial;  // used when inputMaterialMatch == MAT_MATCH_EXACT
+    int fuelRequired;            // number of fuel items consumed (0 = no fuel needed)
 } Recipe;
 
 // Bill modes
@@ -96,6 +100,7 @@ typedef struct {
     // Tile positions (absolute)
     int workTileX, workTileY;    // where crafter stands to work
     int outputTileX, outputTileY; // where finished items spawn
+    int fuelTileX, fuelTileY;    // fuel input tile (-1,-1 if no fuel tile)
     
     // Linked stockpiles (optional, for future)
     int linkedInputStockpiles[MAX_LINKED_STOCKPILES];
@@ -108,6 +113,10 @@ extern int workshopCount;
 // Recipe data
 extern Recipe stonecutterRecipes[];
 extern int stonecutterRecipeCount;
+extern Recipe sawmillRecipes[];
+extern int sawmillRecipeCount;
+extern Recipe kilnRecipes[];
+extern int kilnRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);
@@ -124,6 +133,10 @@ int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount);
 void RemoveBill(int workshopIdx, int billIdx);
 void SuspendBill(int workshopIdx, int billIdx, bool suspended);
 bool ShouldBillRun(Workshop* ws, Bill* bill);
+
+// Fuel queries
+bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius);
+int FindNearestFuelItem(Workshop* ws, int searchRadius);
 
 // Queries
 int FindWorkshopAt(int tileX, int tileY, int z);
