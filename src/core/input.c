@@ -15,6 +15,9 @@
 bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
 
+// Pile mode configuration
+float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
+
 // ============================================================================
 // Helper: Clamp coordinates to grid bounds
 // ============================================================================
@@ -309,6 +312,96 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
     if (count > 0) {
         AddMessage(TextFormat("Placed %d %s%s", count, name, count > 1 ? " tiles" : " tile"), GREEN);
     }
+}
+
+// Pile mode: place soil with gravity and spreading
+static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType material, const char* name) {
+    // Try to place at target position with gravity
+    int placeZ = z;
+    
+    // Step 1: Apply gravity - drop down until we find support
+    while (placeZ > 0) {
+        CellType below = grid[placeZ - 1][y][x];
+        // If there's solid support below, we can place here
+        if (CellIsSolid(below)) {
+            break;
+        }
+        // Otherwise keep falling
+        placeZ--;
+    }
+    
+    // Step 2: Try to place at the landing position
+    if (grid[placeZ][y][x] == CELL_AIR) {
+        // Air at landing spot - place soil here
+        grid[placeZ][y][x] = soilType;
+        SetWallMaterial(x, y, placeZ, material);
+        SetWallNatural(x, y, placeZ);
+        CLEAR_FLOOR(x, y, placeZ);
+        SetFloorMaterial(x, y, placeZ, MAT_NONE);
+        ClearFloorNatural(x, y, placeZ);
+        MarkChunkDirty(x, y, placeZ);
+        CLEAR_CELL_FLAG(x, y, placeZ, CELL_FLAG_BURNED);
+        
+        if (soilType == CELL_DIRT) {
+            SET_CELL_SURFACE(x, y, placeZ, SURFACE_TALL_GRASS);
+        } else {
+            SET_CELL_SURFACE(x, y, placeZ, SURFACE_BARE);
+        }
+        return;
+    }
+    
+    // Step 3: Landing spot is occupied - try to spread to adjacent cells
+    // Search in expanding radius up to soilPileRadius
+    int maxRadius = (int)soilPileRadius;
+    for (int r = 1; r <= maxRadius; r++) {
+        // Try spreading in this radius
+        for (int dy = -r; dy <= r; dy++) {
+            for (int dx = -r; dx <= r; dx++) {
+                // Skip cells outside circle
+                if (dx * dx + dy * dy > r * r) continue;
+                
+                int nx = x + dx;
+                int ny = y + dy;
+                
+                // Bounds check
+                if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                
+                // Try priority: up first, then horizontal, then down
+                int tryZ[] = {placeZ + 1, placeZ, placeZ - 1};
+                for (int i = 0; i < 3; i++) {
+                    int nz = tryZ[i];
+                    if (nz < 0 || nz >= gridDepth) continue;
+                    
+                    // Check if this spot is valid
+                    if (grid[nz][ny][nx] != CELL_AIR) continue;
+                    
+                    // Check if there's support (for horizontal/down placement)
+                    if (nz > 0 && i > 0) {  // Not placing up
+                        CellType below = grid[nz - 1][ny][nx];
+                        if (!CellIsSolid(below)) continue;  // No support
+                    }
+                    
+                    // Found valid spot! Place soil here
+                    grid[nz][ny][nx] = soilType;
+                    SetWallMaterial(nx, ny, nz, material);
+                    SetWallNatural(nx, ny, nz);
+                    CLEAR_FLOOR(nx, ny, nz);
+                    SetFloorMaterial(nx, ny, nz, MAT_NONE);
+                    ClearFloorNatural(nx, ny, nz);
+                    MarkChunkDirty(nx, ny, nz);
+                    CLEAR_CELL_FLAG(nx, ny, nz, CELL_FLAG_BURNED);
+                    
+                    if (soilType == CELL_DIRT) {
+                        SET_CELL_SURFACE(nx, ny, nz, SURFACE_TALL_GRASS);
+                    } else {
+                        SET_CELL_SURFACE(nx, ny, nz, SURFACE_BARE);
+                    }
+                    return;  // Successfully placed
+                }
+            }
+        }
+    }
+    // Could not find anywhere to place within radius
 }
 
 static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
@@ -1619,6 +1712,34 @@ void HandleInput(void) {
         dragStartY = (int)gp.y;
         isDragging = true;
     }
+    
+    // Pile mode: continuous placement while dragging with shift
+    if (isDragging && shift && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        Vector2 gp = ScreenToGrid(GetMousePosition());
+        int mouseX = (int)gp.x;
+        int mouseY = (int)gp.y;
+        
+        // Execute pile placement at current mouse position
+        switch (inputAction) {
+            case ACTION_DRAW_SOIL_DIRT:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_DIRT, MAT_DIRT, "dirt");
+                break;
+            case ACTION_DRAW_SOIL_CLAY:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_CLAY, MAT_DIRT, "clay");
+                break;
+            case ACTION_DRAW_SOIL_GRAVEL:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_GRAVEL, MAT_DIRT, "gravel");
+                break;
+            case ACTION_DRAW_SOIL_SAND:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_SAND, MAT_DIRT, "sand");
+                break;
+            case ACTION_DRAW_SOIL_PEAT:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_PEAT, MAT_DIRT, "peat");
+                break;
+            default:
+                break;
+        }
+    }
 
     // End drag - execute action
     if (isDragging && (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
@@ -1662,19 +1783,50 @@ void HandleInput(void) {
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z);
                 break;
             case ACTION_DRAW_SOIL_DIRT:
-                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_DIRT, MAT_DIRT, "dirt");
+                if (leftClick) {
+                    if (shift) {
+                        // Pile mode - place single block at drag start with gravity/spreading
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_DIRT, MAT_DIRT, "dirt");
+                    } else {
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_DIRT, MAT_DIRT, "dirt");
+                    }
+                }
                 break;
             case ACTION_DRAW_SOIL_CLAY:
-                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_DIRT, "clay");
+                if (leftClick) {
+                    if (shift) {
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_CLAY, MAT_DIRT, "clay");
+                    } else {
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_DIRT, "clay");
+                    }
+                }
                 break;
             case ACTION_DRAW_SOIL_GRAVEL:
-                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_DIRT, "gravel");
+                if (leftClick) {
+                    if (shift) {
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_GRAVEL, MAT_DIRT, "gravel");
+                    } else {
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_DIRT, "gravel");
+                    }
+                }
                 break;
             case ACTION_DRAW_SOIL_SAND:
-                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_DIRT, "sand");
+                if (leftClick) {
+                    if (shift) {
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_SAND, MAT_DIRT, "sand");
+                    } else {
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_DIRT, "sand");
+                    }
+                }
                 break;
             case ACTION_DRAW_SOIL_PEAT:
-                if (leftClick) ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_DIRT, "peat");
+                if (leftClick) {
+                    if (shift) {
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_PEAT, MAT_DIRT, "peat");
+                    } else {
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_DIRT, "peat");
+                    }
+                }
                 break;
             // Work actions
             case ACTION_WORK_MINE:

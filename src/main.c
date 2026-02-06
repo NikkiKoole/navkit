@@ -1341,6 +1341,13 @@ int main(int argc, char** argv) {
 
                 x += btnW + spacing;
             }
+            
+            // Pile radius control (show when in soil drawing mode)
+            if (inputAction >= ACTION_DRAW_SOIL_DIRT && inputAction <= ACTION_DRAW_SOIL_PEAT) {
+                x += 40;  // Extra spacing before control
+                DraggableFloatT(x, barY + 5, "Pile Radius", &soilPileRadius, 0.5f, 1.0f, 10.0f,
+                    "Shift+draw: How far soil spreads when piling (1-10)");
+            }
         }
 
         DrawMessages(GetScreenWidth(), GetScreenHeight());

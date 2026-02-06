@@ -128,9 +128,23 @@ int SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token) {
 
     switch (token->kind) {
         case SOUND_TOKEN_BIRD:
-            return playBird(token->freq, (BirdType)token->variant);
+        {
+            int v = playBird(token->freq, (BirdType)token->variant);
+            if (v >= 0) {
+                synthVoices[v].sustain = 0.0f;
+                synthVoices[v].release = fmaxf(0.03f, token->duration * 0.35f);
+            }
+            return v;
+        }
         case SOUND_TOKEN_VOWEL:
-            return playVowel(token->freq, (VowelType)token->variant);
+        {
+            int v = playVowel(token->freq, (VowelType)token->variant);
+            if (v >= 0) {
+                synthVoices[v].sustain = 0.0f;
+                synthVoices[v].release = fmaxf(0.04f, token->duration * 0.45f);
+            }
+            return v;
+        }
         case SOUND_TOKEN_CONSONANT:
             noteAttack = 0.001f;
             noteDecay = 0.05f;

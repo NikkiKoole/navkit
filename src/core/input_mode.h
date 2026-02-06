@@ -73,6 +73,9 @@ extern WorkSubMode workSubMode;  // Sub-mode within WORK
 extern InputAction inputAction;
 extern int selectedMaterial;  // 1-based material index
 
+// Soil pile mode settings
+extern float soilPileRadius;  // How far soil spreads in pile mode (shift+draw)
+
 // Drag state
 extern bool isDragging;
 extern int dragStartX;

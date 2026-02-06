@@ -242,9 +242,23 @@ SoundPhrase SoundMakeCall(uint32_t seed) {
     int tokens = SoundRngInt(&rng, pal->callTokensMin, pal->callTokensMax);
 
     // Short motif + tiny response
-    addMotif(&phrase, &rng, tokens, baseMidi, false, pal);
+    addMotif(&phrase, &rng, tokens, baseMidi, true, pal);
     if (SoundRngInt(&rng, 0, 1) == 1) {
         SoundPhraseAdd(&phrase, makeConsonantToken(&rng, baseMidi, pal));
+    }
+
+    // Ensure at least one vowel and one consonant for audible variety
+    bool hasVowel = false;
+    bool hasConsonant = false;
+    for (int i = 0; i < phrase.count; i++) {
+        if (phrase.tokens[i].kind == SOUND_TOKEN_VOWEL) hasVowel = true;
+        if (phrase.tokens[i].kind == SOUND_TOKEN_CONSONANT) hasConsonant = true;
+    }
+    if (!hasVowel && phrase.count > 0) {
+        phrase.tokens[phrase.count - 1] = makeVowelToken(&rng, baseMidi, pal);
+    }
+    if (!hasConsonant && phrase.count > 1) {
+        phrase.tokens[phrase.count - 2] = makeConsonantToken(&rng, baseMidi, pal);
     }
 
     return phrase;
