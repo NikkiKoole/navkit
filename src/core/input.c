@@ -242,8 +242,8 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
                 continue;
             }
 
-            if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
-                grid[z][dy][dx] = CELL_WALL;
+            if (grid[z][dy][dx] != CELL_ROCK || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
+                grid[z][dy][dx] = CELL_ROCK;
                 SetWallMaterial(dx, dy, z, MAT_GRANITE);
                 SetWallNatural(dx, dy, z);
                 CLEAR_FLOOR(dx, dy, z);
@@ -316,6 +316,7 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
 
 // Pile mode: place soil with gravity and spreading
 static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType material, const char* name) {
+    (void)name;
     // Try to place at target position with gravity
     int placeZ = z;
     
@@ -1793,6 +1794,9 @@ void HandleInput(void) {
         
         // Execute pile placement at current mouse position
         switch (inputAction) {
+            case ACTION_DRAW_ROCK:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_ROCK, MAT_GRANITE, "rock");
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 ExecutePileSoil(mouseX, mouseY, z, CELL_DIRT, MAT_DIRT, "dirt");
                 break;
@@ -1848,7 +1852,13 @@ void HandleInput(void) {
                 else ExecuteEraseDirt(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_ROCK:
-                if (leftClick) ExecuteBuildRock(x1, y1, x2, y2, z);
+                if (leftClick) {
+                    if (shift) {
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_ROCK, MAT_GRANITE, "rock");
+                    } else {
+                        ExecuteBuildRock(x1, y1, x2, y2, z);
+                    }
+                }
                 else ExecuteErase(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_WORKSHOP_STONECUTTER:

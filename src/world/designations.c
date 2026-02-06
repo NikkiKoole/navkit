@@ -173,25 +173,38 @@ void CompleteMineDesignation(int x, int y, int z) {
             }
         }
     }
-    // Convert dirt to air with dirt floor
+    // Convert ground to air with floor
     else if (IsGroundCell(ct)) {
         ItemType dropItem = CellDropsItem(ct);
         int dropCount = CellDropCount(ct);
+        MaterialType floorMat = MAT_DIRT;
+        bool floorIsNatural = true;
+        
+        if (ct == CELL_ROCK) {
+            floorMat = GetWallMaterial(x, y, z);
+            floorIsNatural = IsWallNatural(x, y, z);
+        }
         
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
-        SetFloorMaterial(x, y, z, MAT_DIRT);  // Dirt floor
-        SetFloorNatural(x, y, z);
+        SetFloorMaterial(x, y, z, floorMat);
+        if (floorIsNatural) {
+            SetFloorNatural(x, y, z);
+        } else {
+            ClearFloorNatural(x, y, z);
+        }
         SetWallMaterial(x, y, z, MAT_NONE);
         ClearWallNatural(x, y, z);
         MarkChunkDirty(x, y, z);
         
         DestabilizeWater(x, y, z);
         
-        // Spawn dirt drops
+        // Spawn drops
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
-                uint8_t dropMat = DefaultMaterialForItemType(dropItem);
+                uint8_t dropMat = (ct == CELL_ROCK && floorMat != MAT_NONE)
+                    ? (uint8_t)floorMat
+                    : DefaultMaterialForItemType(dropItem);
                 SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
                                       y * CELL_SIZE + CELL_SIZE * 0.5f,
                                       (float)z, dropItem, dropMat);

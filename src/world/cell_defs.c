@@ -9,6 +9,7 @@ CellDef cellDefs[] = {
     [CELL_GRAVEL]      = {"gravel",      SPRITE_gravel,      CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_GRAVEL,      ITEM_GRAVEL, 1},
     [CELL_SAND]        = {"sand",        SPRITE_sand,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_SAND,        ITEM_SAND, 1},
     [CELL_PEAT]        = {"peat",        SPRITE_peat,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    6, CELL_DIRT,        ITEM_PEAT, 1},
+    [CELL_ROCK]        = {"rock",        SPRITE_rock,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_STONE,  0, CELL_ROCK,        ITEM_ROCK, 1},
     
     // === WALLS ===
     // Note: CELL_WOOD_WALL removed - use CELL_WALL + wood material instead

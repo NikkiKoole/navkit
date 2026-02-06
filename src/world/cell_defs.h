@@ -83,7 +83,7 @@ static inline bool IsWallCell(CellType cell) {
 
 static inline bool IsGroundCell(CellType cell) {
     return cell == CELL_DIRT || cell == CELL_CLAY || cell == CELL_GRAVEL ||
-           cell == CELL_SAND || cell == CELL_PEAT;
+           cell == CELL_SAND || cell == CELL_PEAT || cell == CELL_ROCK;
 }
 
 // DF-style walkability: walkable if current cell is traversable AND
