@@ -331,8 +331,13 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
     }
     
     // Step 2: Try to place at the landing position
-    if (grid[placeZ][y][x] == CELL_AIR) {
-        // Air at landing spot - place soil here
+    CellType landingCell = grid[placeZ][y][x];
+    if (landingCell == CELL_AIR || CellIsDirectionalRamp(landingCell)) {
+        // Air or ramp at landing spot - place/fill with soil here
+        if (CellIsDirectionalRamp(landingCell)) {
+            // If it was a ramp, we're filling it up - decrease ramp count
+            rampCount--;
+        }
         grid[placeZ][y][x] = soilType;
         SetWallMaterial(x, y, placeZ, material);
         SetWallNatural(x, y, placeZ);
@@ -347,6 +352,23 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
         } else {
             SET_CELL_SURFACE(x, y, placeZ, SURFACE_BARE);
         }
+        
+        // Try to create ramps at adjacent edges for organic look
+        int dirOffsets[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // N, E, S, W
+        for (int d = 0; d < 4; d++) {
+            int adjX = x + dirOffsets[d][0];
+            int adjY = y + dirOffsets[d][1];
+            
+            if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+            
+            if (grid[placeZ][adjY][adjX] == CELL_AIR) {
+                CellType rampDir = AutoDetectRampDirection(adjX, adjY, placeZ);
+                if (rampDir != CELL_AIR) {
+                    PlaceRamp(adjX, adjY, placeZ, rampDir);
+                }
+            }
+        }
+        
         return;
     }
     
@@ -372,8 +394,9 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                     int nz = tryZ[i];
                     if (nz < 0 || nz >= gridDepth) continue;
                     
-                    // Check if this spot is valid
-                    if (grid[nz][ny][nx] != CELL_AIR) continue;
+                    // Check if this spot is valid (air or ramp can be filled)
+                    CellType targetCell = grid[nz][ny][nx];
+                    if (targetCell != CELL_AIR && !CellIsDirectionalRamp(targetCell)) continue;
                     
                     // Check if there's support (for horizontal/down placement)
                     if (nz > 0 && i > 0) {  // Not placing up
@@ -382,6 +405,10 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                     }
                     
                     // Found valid spot! Place soil here
+                    if (CellIsDirectionalRamp(targetCell)) {
+                        // Filling up a ramp - decrease count
+                        rampCount--;
+                    }
                     grid[nz][ny][nx] = soilType;
                     SetWallMaterial(nx, ny, nz, material);
                     SetWallNatural(nx, ny, nz);
@@ -396,6 +423,26 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                     } else {
                         SET_CELL_SURFACE(nx, ny, nz, SURFACE_BARE);
                     }
+                    
+                    // Try to create organic-looking ramps at adjacent edges
+                    // Check all 4 cardinal directions for potential ramp placement
+                    int dirOffsets[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // N, E, S, W
+                    for (int d = 0; d < 4; d++) {
+                        int adjX = nx + dirOffsets[d][0];
+                        int adjY = ny + dirOffsets[d][1];
+                        
+                        // Bounds check
+                        if (adjX < 0 || adjX >= gridWidth || adjY < 0 || adjY >= gridHeight) continue;
+                        
+                        // If adjacent cell at same level is air, try to place a ramp
+                        if (grid[nz][adjY][adjX] == CELL_AIR) {
+                            CellType rampDir = AutoDetectRampDirection(adjX, adjY, nz);
+                            if (rampDir != CELL_AIR) {
+                                PlaceRamp(adjX, adjY, nz, rampDir);
+                            }
+                        }
+                    }
+                    
                     return;  // Successfully placed
                 }
             }

@@ -47,6 +47,11 @@ static float midiToFreq(int midi) {
     return 440.0f * powf(2.0f, (midi - 69) / 12.0f);
 }
 
+static float freqToMidi(float freq) {
+    if (freq <= 0.0f) return 69.0f;
+    return 69.0f + 12.0f * (logf(freq / 440.0f) / logf(2.0f));
+}
+
 static int pickScaleDegree(SoundRng* rng, const int* scale, int scaleLen) {
     return scale[SoundRngInt(rng, 0, scaleLen - 1)];
 }
@@ -296,6 +301,79 @@ SoundPhrase SoundMakeCallVowelOnly(uint32_t seed) {
         SoundPhraseAdd(&phrase, makeVowelToken(&rng, baseMidi, pal));
     }
     return phrase;
+}
+
+SoundPhrase SoundMakeResponseVariation(const SoundPhrase* call, uint32_t seed) {
+    SoundPhrase response;
+    SoundPhraseReset(&response, seed);
+    if (!call || call->count == 0) return response;
+
+    response = *call;
+    response.seed = seed;
+    response.totalDuration = 0.0f;
+    for (int i = 0; i < response.count; i++) {
+        response.totalDuration += response.tokens[i].duration + response.tokens[i].gap;
+    }
+    SoundPhraseMutate(&response, seed, 0.15f);
+    return response;
+}
+
+SoundPhrase SoundMakeResponseContrast(const SoundPhrase* call, uint32_t seed) {
+    const SoundPalette* pal = SoundPaletteGetDefault();
+    SoundPhrase response;
+    SoundPhraseReset(&response, seed);
+    if (!call || call->count == 0) return response;
+
+    // Detect dominant type
+    int birds = 0;
+    int vowels = 0;
+    for (int i = 0; i < call->count; i++) {
+        if (call->tokens[i].kind == SOUND_TOKEN_BIRD) birds++;
+        if (call->tokens[i].kind == SOUND_TOKEN_VOWEL) vowels++;
+    }
+    bool preferVowels = birds >= vowels;
+
+    SoundRng rng;
+    SoundRngSeed(&rng, seed);
+
+    float baseMidi = SoundRngFloat(&rng, pal->callBaseMidiMin, pal->callBaseMidiMax);
+    for (int i = 0; i < call->count; i++) {
+        SoundToken t;
+        if (preferVowels) {
+            t = makeVowelToken(&rng, baseMidi, pal);
+        } else {
+            t = makeBirdToken(&rng, baseMidi, pal);
+        }
+        t.duration = call->tokens[i].duration;
+        t.gap = call->tokens[i].gap;
+        t.intensity = call->tokens[i].intensity;
+        SoundPhraseAdd(&response, t);
+    }
+    return response;
+}
+
+SoundPhrase SoundMakeResponseMirror(const SoundPhrase* call, uint32_t seed) {
+    SoundPhrase response;
+    SoundPhraseReset(&response, seed);
+    if (!call || call->count == 0) return response;
+
+    float minFreq = 1e9f;
+    float maxFreq = 0.0f;
+    for (int i = 0; i < call->count; i++) {
+        float f = call->tokens[i].freq;
+        if (f < minFreq) minFreq = f;
+        if (f > maxFreq) maxFreq = f;
+    }
+    float centerMidi = freqToMidi((minFreq + maxFreq) * 0.5f);
+
+    for (int i = call->count - 1; i >= 0; i--) {
+        SoundToken t = call->tokens[i];
+        float midi = freqToMidi(t.freq);
+        float mirrored = centerMidi - (midi - centerMidi);
+        t.freq = midiToFreq((int)roundf(mirrored));
+        SoundPhraseAdd(&response, t);
+    }
+    return response;
 }
 
 SoundPhrase SoundMakeSongPhrase(uint32_t seed) {

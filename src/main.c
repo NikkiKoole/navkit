@@ -54,6 +54,9 @@ static float soundDebugInterval = 2.5f;
 static uint32_t soundDebugSeed = 1;
 static SoundSynth* soundDebugSynth = NULL;
 static const char* soundPalettePath = "assets/sound/phrase_palette.cfg";
+static bool soundDebugResponsePending = false;
+static float soundDebugResponseTimer = 0.0f;
+static SoundPhrase soundDebugResponse;
 
 int pathAlgorithm = 1;
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -145,7 +148,7 @@ static void SoundDebugToggle(void) {
     soundDebugEnabled = !soundDebugEnabled;
     if (soundDebugEnabled) {
         SoundDebugEnsure();
-        AddMessage("Sound debug: on (KP2 call, KP3 song, KP5 bird, KP6 vowel)", GREEN);
+        AddMessage("Sound debug: on (KP2 call, KP3 song, KP5 bird, KP6 vowel, KP7-9 call/response)", GREEN);
     } else {
         if (soundDebugSynth) {
             SoundSynthShutdownAudio(soundDebugSynth);
@@ -178,6 +181,36 @@ static void SoundDebugPlaySong(void) {
     SoundSynthPlaySong(soundDebugSynth, &song);
 }
 
+static void SoundDebugScheduleResponse(const SoundPhrase* call, SoundPhrase response) {
+    soundDebugResponse = response;
+    soundDebugResponsePending = (response.count > 0);
+    soundDebugResponseTimer = call ? (call->totalDuration + 0.15f) : 0.3f;
+}
+
+static void SoundDebugCallResponseVariation(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase call = SoundMakeCall(soundDebugSeed++);
+    SoundPhrase response = SoundMakeResponseVariation(&call, soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &call);
+    SoundDebugScheduleResponse(&call, response);
+}
+
+static void SoundDebugCallResponseContrast(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase call = SoundMakeCall(soundDebugSeed++);
+    SoundPhrase response = SoundMakeResponseContrast(&call, soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &call);
+    SoundDebugScheduleResponse(&call, response);
+}
+
+static void SoundDebugCallResponseMirror(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase call = SoundMakeCall(soundDebugSeed++);
+    SoundPhrase response = SoundMakeResponseMirror(&call, soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &call);
+    SoundDebugScheduleResponse(&call, response);
+}
+
 static void SoundDebugUpdate(float dt) {
     if (!soundDebugEnabled || !soundDebugSynth) return;
     SoundSynthUpdate(soundDebugSynth, dt);
@@ -186,6 +219,15 @@ static void SoundDebugUpdate(float dt) {
     if (soundDebugTimer >= soundDebugInterval) {
         SoundDebugPlayCall();
         soundDebugTimer = 0.0f;
+    }
+}
+
+static void SoundDebugUpdateResponse(float dt) {
+    if (!soundDebugResponsePending || !soundDebugSynth) return;
+    soundDebugResponseTimer -= dt;
+    if (soundDebugResponseTimer <= 0.0f) {
+        SoundSynthPlayPhrase(soundDebugSynth, &soundDebugResponse);
+        soundDebugResponsePending = false;
     }
 }
 
@@ -931,6 +973,18 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_KP_6)) {
             SoundDebugPlayVowelOnly();
         }
+        if (IsKeyPressed(KEY_KP_7)) {
+            soundDebugAuto = false;
+            SoundDebugCallResponseVariation();
+        }
+        if (IsKeyPressed(KEY_KP_8)) {
+            soundDebugAuto = false;
+            SoundDebugCallResponseContrast();
+        }
+        if (IsKeyPressed(KEY_KP_9)) {
+            soundDebugAuto = false;
+            SoundDebugCallResponseMirror();
+        }
 
         // Handle drag-and-drop of save files
         if (IsFileDropped()) {
@@ -984,6 +1038,7 @@ int main(int argc, char** argv) {
         }
         UpdateMessages(frameTime, paused);
         SoundDebugUpdate(frameTime);
+        SoundDebugUpdateResponse(frameTime);
 
         if (!paused) {
             bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
