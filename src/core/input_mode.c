@@ -520,14 +520,19 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_WORK_CHANNEL:
         case ACTION_WORK_REMOVE_FLOOR:
         case ACTION_WORK_REMOVE_RAMP:
-        case ACTION_WORK_CONSTRUCT:
-        case ACTION_WORK_LADDER:
-        case ACTION_WORK_FLOOR:
         case ACTION_WORK_GATHER:
         case ACTION_WORK_CHOP:
         case ACTION_WORK_CHOP_FELLED:
         case ACTION_WORK_GATHER_SAPLING:
         case ACTION_WORK_PLANT_SAPLING:
+            n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+            break;
+        case ACTION_WORK_CONSTRUCT:
+        case ACTION_WORK_LADDER:
+        case ACTION_WORK_FLOOR:
+        case ACTION_WORK_RAMP:
+            n = AddItem(items, n, TextFormat("Mat: %s", GetSelectedBuildMaterialName()), KEY_M, 0, false, false, false);
             n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
             break;

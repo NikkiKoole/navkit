@@ -1495,6 +1495,7 @@ int CreateBuildBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1546,6 +1547,7 @@ int CreateLadderBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1597,6 +1599,7 @@ int CreateFloorBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     
@@ -1648,6 +1651,7 @@ int CreateRampBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
     

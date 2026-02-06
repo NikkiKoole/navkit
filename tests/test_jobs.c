@@ -6081,6 +6081,230 @@ describe(workgivers) {
  * =============================================================================
  */
 
+/* =============================================================================
+ * Blueprint Material Selection Tests
+ * Tests that blueprints with requiredItemType filter which items movers haul.
+ * =============================================================================
+ */
+
+describe(blueprint_material_selection) {
+    it("should only haul matching item type to blueprint with requiredItemType") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+
+        // Log at (1,1) - closer
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        // Bricks at (2,1) - farther
+        int brickIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
+
+        // Blueprint wants bricks specifically
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+
+        AssignJobs();
+
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(MoverGetTargetItem(m) == brickIdx);
+        expect(blueprints[bpIdx].reservedItem == brickIdx);
+    }
+
+    it("should haul any building mat when requiredItemType is ITEM_TYPE_COUNT") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+
+        // Log at (1,1)
+        int logIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+
+        // Blueprint accepts any material (default)
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        expect(blueprints[bpIdx].requiredItemType == ITEM_TYPE_COUNT);
+
+        AssignJobs();
+
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(MoverGetTargetItem(m) == logIdx);
+    }
+
+    it("should not assign haul job when only wrong material available") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+
+        // Only logs available
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+
+        // Blueprint wants bricks - no bricks exist
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+
+        AssignJobs();
+
+        expect(MoverIsIdle(m));
+        expect(blueprints[bpIdx].reservedItem == -1);
+    }
+
+    it("should pick nearest matching item not nearest overall") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+
+        // Log at (1,1) - very close but wrong type
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        // Bricks at (3,1) - farther but correct type
+        int brickIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
+
+        // Blueprint wants bricks
+        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+
+        AssignJobs();
+
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(MoverGetTargetItem(m) == brickIdx);
+    }
+
+    it("should match different items to different blueprints by type") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        ClearJobs();
+
+        // Two movers
+        Mover* m0 = &movers[0];
+        Point goal0 = {0, 0, 0};
+        InitMover(m0, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal0, 100.0f);
+
+        Mover* m1 = &movers[1];
+        Point goal1 = {5, 0, 0};
+        InitMover(m1, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal1, 100.0f);
+
+        moverCount = 2;
+        RebuildIdleMoverList();
+
+        // Bricks and log
+        int brickIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
+        int logIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+
+        // Blueprint A wants bricks, Blueprint B wants logs
+        int bpA = CreateBuildBlueprint(2, 4, 0);
+        blueprints[bpA].requiredItemType = ITEM_BRICKS;
+
+        int bpB = CreateBuildBlueprint(4, 4, 0);
+        blueprints[bpB].requiredItemType = ITEM_LOG;
+
+        AssignJobs();
+
+        // Both movers should have haul jobs
+        expect(MoverHasHaulToBlueprintJob(m0) || MoverHasHaulToBlueprintJob(m1));
+
+        // Check that bricks go to bpA and logs go to bpB
+        expect(blueprints[bpA].reservedItem == brickIdx);
+        expect(blueprints[bpB].reservedItem == logIdx);
+    }
+
+    it("should store requiredItemType on blueprint creation") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        InitDesignations();
+
+        // Default creation gives ITEM_TYPE_COUNT
+        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        expect(bpIdx >= 0);
+        expect(blueprints[bpIdx].requiredItemType == ITEM_TYPE_COUNT);
+
+        // Can set after creation
+        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+        expect(blueprints[bpIdx].requiredItemType == ITEM_BRICKS);
+    }
+}
+
 describe(final_approach) {
     it("should complete haul job when path exhausted but close to item") {
         // Scenario: mover's path ends one step away from item
@@ -6470,6 +6694,9 @@ int main(int argc, char* argv[]) {
     
     // WorkGivers tests (Phase 4 of Jobs Refactor)
     test(workgivers);
+    
+    // Blueprint material selection tests
+    test(blueprint_material_selection);
     
     // Final approach tests (mover arrival fix)
     test(final_approach);

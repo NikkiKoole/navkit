@@ -79,7 +79,25 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     char fillMeter[64];
     BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
     const char* fillText = TextFormat("Fill: %s", fillMeter);
-    const char* cellText = TextFormat("Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
+    // Cell contents with item name
+    char cellBuf[80];
+    if (cellCount > 0 && slotIdx >= 0 && slotIdx < totalSlots) {
+        ItemType st = sp->slotTypes[slotIdx];
+        uint8_t sm = sp->slotMaterials[slotIdx];
+        if (sm == MAT_NONE) sm = DefaultMaterialForItemType(st);
+        if (st < ITEM_TYPE_COUNT && sm != MAT_NONE && ItemTypeUsesMaterialName(st)) {
+            snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d %s %s",
+                     cellX, cellY, cellCount, sp->maxStackSize, MaterialName(sm), ItemName(st));
+        } else if (st < ITEM_TYPE_COUNT) {
+            snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d %s",
+                     cellX, cellY, cellCount, sp->maxStackSize, ItemName(st));
+        } else {
+            snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
+        }
+    } else {
+        snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
+    }
+    const char* cellText = cellBuf;
     const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter, 1-4 wood mats";
 
     // Measure text
@@ -799,7 +817,7 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 
     const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building"};
 
-    char lines[8][64];
+    char lines[9][64];
     int lineCount = 0;
 
     // Header
@@ -811,6 +829,11 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 
     // Materials
     snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", bp->deliveredMaterialCount, bp->requiredMaterials);
+
+    // Required material type
+    if (bp->requiredItemType != ITEM_TYPE_COUNT) {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Requires: %s", ItemName(bp->requiredItemType));
+    }
 
     // What it's waiting for
     if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
@@ -855,6 +878,7 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     for (int i = 0; i < lineCount; i++) {
         Color col = WHITE;
         if (i == 0) col = YELLOW;  // Header
+        else if (strstr(lines[i], "Requires:")) col = SKYBLUE;
         else if (strstr(lines[i], "Awaiting")) col = ORANGE;
         else if (strstr(lines[i], "Ready")) col = GREEN;
         else if (strstr(lines[i], "Building")) col = SKYBLUE;

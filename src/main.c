@@ -7,6 +7,7 @@
 #include "world/cell_defs.h"
 #include "world/designations.h"
 #include "core/input_mode.h"
+#include "core/pie_menu.h"
 #include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
 #include "sound/sound_phrase.h"
@@ -1424,6 +1425,9 @@ int main(int argc, char** argv) {
                     "Shift+draw: How far soil spreads when piling (1-10)");
             }
         }
+
+        // Pie menu overlay
+        PieMenu_Draw();
 
         DrawMessages(GetScreenWidth(), GetScreenHeight());
 

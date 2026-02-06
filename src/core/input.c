@@ -10,6 +10,7 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/trees.h"
 #include "input_mode.h"
+#include "pie_menu.h"
 
 // Forward declarations
 bool SaveWorld(const char* filename);
@@ -17,6 +18,53 @@ bool LoadWorld(const char* filename);
 
 // Pile mode configuration
 float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
+
+// Build material selection (persists during session)
+static ItemType selectedBuildMaterial = ITEM_TYPE_COUNT;  // ITEM_TYPE_COUNT = any
+
+// Right-click tap detection for pie menu
+static Vector2 rightClickStart = {0};
+static double rightClickTime = 0.0;
+#define RIGHT_TAP_MAX_DIST 5.0f
+#define RIGHT_TAP_MAX_TIME 0.25
+
+static void CycleBuildMaterial(void) {
+    // Build list of IF_BUILDING_MAT item types
+    ItemType buildMats[ITEM_TYPE_COUNT];
+    int count = 0;
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        if (ItemIsBuildingMat((ItemType)t)) {
+            buildMats[count++] = (ItemType)t;
+        }
+    }
+    if (count == 0) return;
+
+    // Find current position and advance
+    if (selectedBuildMaterial == ITEM_TYPE_COUNT) {
+        selectedBuildMaterial = buildMats[0];
+    } else {
+        bool found = false;
+        for (int i = 0; i < count; i++) {
+            if (buildMats[i] == selectedBuildMaterial) {
+                if (i + 1 < count) {
+                    selectedBuildMaterial = buildMats[i + 1];
+                } else {
+                    selectedBuildMaterial = ITEM_TYPE_COUNT;  // Wrap to "Any"
+                }
+                found = true;
+                break;
+            }
+        }
+        if (!found) selectedBuildMaterial = ITEM_TYPE_COUNT;
+    }
+
+    const char* name = (selectedBuildMaterial == ITEM_TYPE_COUNT) ? "Any" : ItemName(selectedBuildMaterial);
+    AddMessage(TextFormat("Build material: %s", name), BLUE);
+}
+
+const char* GetSelectedBuildMaterialName(void) {
+    return (selectedBuildMaterial == ITEM_TYPE_COUNT) ? "Any" : ItemName(selectedBuildMaterial);
+}
 
 // ============================================================================
 // Helper: Clamp coordinates to grid bounds
@@ -757,7 +805,11 @@ static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CreateBuildBlueprint(dx, dy, z) >= 0) count++;
+            int bpIdx = CreateBuildBlueprint(dx, dy, z);
+            if (bpIdx >= 0) {
+                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
+                count++;
+            }
         }
     }
     if (count > 0) {
@@ -769,7 +821,11 @@ static void ExecuteDesignateLadder(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CreateLadderBlueprint(dx, dy, z) >= 0) count++;
+            int bpIdx = CreateLadderBlueprint(dx, dy, z);
+            if (bpIdx >= 0) {
+                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
+                count++;
+            }
         }
     }
     if (count > 0) {
@@ -781,7 +837,11 @@ static void ExecuteDesignateFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CreateFloorBlueprint(dx, dy, z) >= 0) count++;
+            int bpIdx = CreateFloorBlueprint(dx, dy, z);
+            if (bpIdx >= 0) {
+                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
+                count++;
+            }
         }
     }
     if (count > 0) {
@@ -793,7 +853,11 @@ static void ExecuteDesignateRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            if (CreateRampBlueprint(dx, dy, z) >= 0) count++;
+            int bpIdx = CreateRampBlueprint(dx, dy, z);
+            if (bpIdx >= 0) {
+                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
+                count++;
+            }
         }
     }
     if (count > 0) {
@@ -1263,6 +1327,58 @@ void HandleInput(void) {
     }
 
     // ========================================================================
+    // Pie menu (Tab to toggle, or right-click tap)
+    // ========================================================================
+    if (IsKeyPressed(KEY_TAB)) {
+        if (PieMenu_IsOpen()) {
+            PieMenu_Close();
+        } else {
+            Vector2 mouse = GetMousePosition();
+            PieMenu_Open(mouse.x, mouse.y);
+        }
+    }
+    // Track right-click press for tap detection
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        rightClickStart = GetMousePosition();
+        rightClickTime = GetTime();
+    }
+    // Right-click tap (quick release, no drag) → open pie menu in toggle mode
+    if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT) && !PieMenu_IsOpen()) {
+        Vector2 mouse = GetMousePosition();
+        float dx = mouse.x - rightClickStart.x;
+        float dy = mouse.y - rightClickStart.y;
+        float dist = sqrtf(dx * dx + dy * dy);
+        double elapsed = GetTime() - rightClickTime;
+        if (dist < RIGHT_TAP_MAX_DIST && elapsed < RIGHT_TAP_MAX_TIME) {
+            PieMenu_Open(mouse.x, mouse.y);
+            isDragging = false;
+            return;
+        }
+    }
+    // Right-click hold (past tap time, no drag) → open pie menu in hold-drag mode
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && !PieMenu_IsOpen()) {
+        double elapsed = GetTime() - rightClickTime;
+        if (elapsed >= RIGHT_TAP_MAX_TIME) {
+            Vector2 mouse = GetMousePosition();
+            float dx = mouse.x - rightClickStart.x;
+            float dy = mouse.y - rightClickStart.y;
+            float dist = sqrtf(dx * dx + dy * dy);
+            if (dist < RIGHT_TAP_MAX_DIST) {
+                PieMenu_OpenHold(rightClickStart.x, rightClickStart.y);
+                isDragging = false;
+                return;
+            }
+        }
+    }
+    if (PieMenu_IsOpen()) {
+        PieMenu_Update();
+        return;  // Block all other input while pie menu is open
+    }
+    if (PieMenu_JustClosed()) {
+        return;  // Suppress input for one frame after pie menu closes
+    }
+
+    // ========================================================================
     // Stockpile hover controls (always active when hovering)
     // ========================================================================
     if (hoveredStockpile >= 0) {
@@ -1543,7 +1659,7 @@ void HandleInput(void) {
                         }
                     }
                 }
-                if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+                if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && (GetTime() - rightClickTime) > RIGHT_TAP_MAX_TIME) {
                     if (IsLadderCell(grid[z][y][x])) {
                         EraseLadder(x, y, z);
                     } else {
@@ -1756,6 +1872,17 @@ void HandleInput(void) {
         if (IsKeyPressed(KEY_A)) {
             selectedRampDirection = CELL_AIR;
             AddMessage("Ramp direction: Auto-detect", WHITE);
+        }
+    }
+
+    // ========================================================================
+    // Build material cycling (M key when in build actions)
+    // ========================================================================
+    if (inputAction == ACTION_WORK_CONSTRUCT || inputAction == ACTION_WORK_FLOOR ||
+        inputAction == ACTION_WORK_LADDER || inputAction == ACTION_WORK_RAMP) {
+        if (IsKeyPressed(KEY_M)) {
+            CycleBuildMaterial();
+            return;
         }
     }
 

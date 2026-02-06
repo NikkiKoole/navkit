@@ -40,6 +40,7 @@
 #include "core/time.c"
 #include "core/inspect.c"
 #include "core/input_mode.c"
+#include "core/pie_menu.c"
 #include "core/input.c"
 #include "core/saveload.c"
 

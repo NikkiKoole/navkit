@@ -118,6 +118,62 @@ No changes needed. Wall/floor appearance already depends on `deliveredMaterial` 
 
 New field on every Blueprint. Bump save version, default `requiredItemType = ITEM_TYPE_COUNT` for old saves. Straightforward, same pattern as stockpile migrations.
 
+## Tests (write before implementing)
+
+Existing tests in `test_jobs.c` under `building_blueprint` and `building_job_execution` cover the current "any material" flow. New tests to add:
+
+### Material filtering
+
+1. **should only haul matching item type to blueprint with requiredItemType**
+   - Spawn ITEM_BRICKS and ITEM_LOG on map
+   - Create blueprint with `requiredItemType = ITEM_BRICKS`
+   - AssignJobs → mover should pick up bricks, not the log
+
+2. **should haul any building mat when requiredItemType is ITEM_TYPE_COUNT**
+   - Spawn ITEM_LOG on map (nearest)
+   - Create blueprint with `requiredItemType = ITEM_TYPE_COUNT`
+   - AssignJobs → mover picks up the log (backward compatible)
+
+3. **should not assign haul job when only wrong material available**
+   - Spawn ITEM_LOG on map
+   - Create blueprint with `requiredItemType = ITEM_BRICKS`
+   - AssignJobs → mover stays idle, blueprint unreserved
+
+4. **should pick nearest matching item, not nearest overall**
+   - Spawn ITEM_LOG at (1,1) and ITEM_BRICKS at (3,1)
+   - Create blueprint with `requiredItemType = ITEM_BRICKS`
+   - AssignJobs → mover targets bricks at (3,1), ignores closer log
+
+### Multiple blueprints with different materials
+
+5. **should match different items to different blueprints by type**
+   - Spawn ITEM_BRICKS and ITEM_LOG
+   - Create blueprint A with `requiredItemType = ITEM_BRICKS`
+   - Create blueprint B with `requiredItemType = ITEM_LOG`
+   - Two movers, AssignJobs → each mover gets the right item for their blueprint
+
+6. **should not steal specific-type item for any-type blueprint**
+   - Spawn one ITEM_BRICKS (only one on map)
+   - Create blueprint A with `requiredItemType = ITEM_BRICKS`
+   - Create blueprint B with `requiredItemType = ITEM_TYPE_COUNT`
+   - One mover, AssignJobs → mover hauls bricks to blueprint A (not B)
+   - (This test only matters if we implement priority; skip if going with "player responsibility")
+
+### Blueprint creation
+
+7. **should store requiredItemType on blueprint creation**
+   - CreateBuildBlueprint with specific type → `bp->requiredItemType == ITEM_BRICKS`
+   - CreateBuildBlueprint without type → `bp->requiredItemType == ITEM_TYPE_COUNT`
+
+### Save/load round-trip
+
+8. **should preserve requiredItemType through save/load**
+   - Create blueprint with `requiredItemType = ITEM_BRICKS`
+   - Save → load → `bp->requiredItemType` still ITEM_BRICKS
+
+9. **should default requiredItemType to ITEM_TYPE_COUNT for old saves**
+   - Load a V-old save → all blueprints have `requiredItemType == ITEM_TYPE_COUNT`
+
 ## Also Consider
 
 - **ITEM_TILES**: New kiln recipe "Fire Tiles" (clay -> tiles). Tiles and bricks both have `IF_BUILDING_MAT`, both work for walls and floors. Visual difference only.

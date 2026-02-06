@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 20  // Add ITEM_BRICKS, ITEM_CHARCOAL (kiln)
+#define SAVE_VERSION 21  // Add requiredItemType to Blueprint
 #define V19_ITEM_TYPE_COUNT 23  // ITEM_TYPE_COUNT before ITEM_BRICKS/ITEM_CHARCOAL were added
 #define V18_ITEM_TYPE_COUNT 21  // ITEM_TYPE_COUNT before ITEM_PLANKS/ITEM_STICKS were added
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
@@ -774,7 +774,43 @@ bool LoadWorld(const char* filename) {
     fread(gatherZones, sizeof(GatherZone), MAX_GATHER_ZONES, f);
     
     // Blueprints
-    fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    if (version >= 21) {
+        fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    } else {
+        // V20 and earlier: Blueprint without requiredItemType field
+        typedef struct {
+            int x, y, z;
+            bool active;
+            BlueprintState state;
+            BlueprintType type;
+            int requiredMaterials;
+            int deliveredMaterialCount;
+            int reservedItem;
+            MaterialType deliveredMaterial;
+            int assignedBuilder;
+            float progress;
+        } BlueprintV20;
+
+        BlueprintV20 legacyBlueprints[MAX_BLUEPRINTS];
+        fread(legacyBlueprints, sizeof(BlueprintV20), MAX_BLUEPRINTS, f);
+
+        for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+            memset(&blueprints[i], 0, sizeof(Blueprint));
+            blueprints[i].x = legacyBlueprints[i].x;
+            blueprints[i].y = legacyBlueprints[i].y;
+            blueprints[i].z = legacyBlueprints[i].z;
+            blueprints[i].active = legacyBlueprints[i].active;
+            blueprints[i].state = legacyBlueprints[i].state;
+            blueprints[i].type = legacyBlueprints[i].type;
+            blueprints[i].requiredMaterials = legacyBlueprints[i].requiredMaterials;
+            blueprints[i].deliveredMaterialCount = legacyBlueprints[i].deliveredMaterialCount;
+            blueprints[i].reservedItem = legacyBlueprints[i].reservedItem;
+            blueprints[i].deliveredMaterial = legacyBlueprints[i].deliveredMaterial;
+            blueprints[i].requiredItemType = ITEM_TYPE_COUNT;  // Default: any building mat
+            blueprints[i].assignedBuilder = legacyBlueprints[i].assignedBuilder;
+            blueprints[i].progress = legacyBlueprints[i].progress;
+        }
+    }
     
     // Workshops
     fread(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);

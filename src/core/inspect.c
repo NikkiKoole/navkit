@@ -22,7 +22,7 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 
-#define INSPECT_SAVE_VERSION 20
+#define INSPECT_SAVE_VERSION 21
 #define INSPECT_V19_ITEM_TYPE_COUNT 23
 #define INSPECT_V18_ITEM_TYPE_COUNT 21
 #define INSPECT_SAVE_MAGIC 0x4E41564B
@@ -265,6 +265,8 @@ static void print_blueprint(int idx) {
     printf("Position: (%d, %d, z%d)\n", bp->x, bp->y, bp->z);
     printf("State: %s\n", bp->state < 3 ? blueprintStateNames[bp->state] : "UNKNOWN");
     printf("Materials: %d/%d delivered\n", bp->deliveredMaterialCount, bp->requiredMaterials);
+    printf("Required item type: %s\n",
+           bp->requiredItemType < ITEM_TYPE_COUNT ? ItemName(bp->requiredItemType) : "Any");
     printf("Reserved item: %d%s\n", bp->reservedItem,
            bp->reservedItem < 0 ? " (none)" : "");
     printf("Assigned builder: %d%s\n", bp->assignedBuilder,
@@ -1396,7 +1398,44 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Blueprints
     insp_blueprints = malloc(MAX_BLUEPRINTS * sizeof(Blueprint));
-    fread(insp_blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    if (version >= 21) {
+        fread(insp_blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
+    } else {
+        // V20 and earlier: Blueprint without requiredItemType field
+        typedef struct {
+            int x, y, z;
+            bool active;
+            BlueprintState state;
+            BlueprintType type;
+            int requiredMaterials;
+            int deliveredMaterialCount;
+            int reservedItem;
+            MaterialType deliveredMaterial;
+            int assignedBuilder;
+            float progress;
+        } BlueprintV20;
+
+        BlueprintV20* legacyBP = malloc(MAX_BLUEPRINTS * sizeof(BlueprintV20));
+        fread(legacyBP, sizeof(BlueprintV20), MAX_BLUEPRINTS, f);
+
+        for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+            memset(&insp_blueprints[i], 0, sizeof(Blueprint));
+            insp_blueprints[i].x = legacyBP[i].x;
+            insp_blueprints[i].y = legacyBP[i].y;
+            insp_blueprints[i].z = legacyBP[i].z;
+            insp_blueprints[i].active = legacyBP[i].active;
+            insp_blueprints[i].state = legacyBP[i].state;
+            insp_blueprints[i].type = legacyBP[i].type;
+            insp_blueprints[i].requiredMaterials = legacyBP[i].requiredMaterials;
+            insp_blueprints[i].deliveredMaterialCount = legacyBP[i].deliveredMaterialCount;
+            insp_blueprints[i].reservedItem = legacyBP[i].reservedItem;
+            insp_blueprints[i].deliveredMaterial = legacyBP[i].deliveredMaterial;
+            insp_blueprints[i].requiredItemType = ITEM_TYPE_COUNT;
+            insp_blueprints[i].assignedBuilder = legacyBP[i].assignedBuilder;
+            insp_blueprints[i].progress = legacyBP[i].progress;
+        }
+        free(legacyBP);
+    }
     
     // Workshops
     insp_workshops = malloc(MAX_WORKSHOPS * sizeof(Workshop));

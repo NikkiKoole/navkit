@@ -4178,18 +4178,65 @@ int WorkGiver_Build(int moverIdx) {
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint
 // Returns job ID if successful, -1 if no job available
-// Filter for blueprint haul items (building materials only)
+// Filter for blueprint haul items (building materials, optionally filtered by type)
 static bool BlueprintHaulItemFilter(int itemIdx, void* userData) {
-    (void)userData;
+    ItemType required = *(ItemType*)userData;
     Item* item = &items[itemIdx];
 
     if (!item->active) return false;
-    if (!ItemIsBuildingMat(item->type)) return false;  // Only building materials
+    if (!ItemIsBuildingMat(item->type)) return false;
+    if (required != ITEM_TYPE_COUNT && item->type != required) return false;
     if (item->reservedBy != -1) return false;
-    if (item->state != ITEM_ON_GROUND) return false;  // Spatial grid only has ground items
+    if (item->state != ITEM_ON_GROUND) return false;
     if (item->unreachableCooldown > 0.0f) return false;
 
     return true;
+}
+
+// Find nearest matching building material for a blueprint's requiredItemType
+static int FindNearestBuildingMat(int moverTileX, int moverTileY, int moverZ, float mx, float my, ItemType required) {
+    int bestItemIdx = -1;
+    float bestDistSq = 1e30f;
+
+    // Try spatial grid first for ground items
+    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        int radii[] = {10, 25, 50, 100};
+        int numRadii = sizeof(radii) / sizeof(radii[0]);
+
+        for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {
+            bestItemIdx = FindFirstItemInRadius(moverTileX, moverTileY, moverZ, radii[r],
+                                                BlueprintHaulItemFilter, &required);
+        }
+
+        if (bestItemIdx >= 0) {
+            float dx = items[bestItemIdx].x - mx;
+            float dy = items[bestItemIdx].y - my;
+            bestDistSq = dx * dx + dy * dy;
+        }
+    }
+
+    // Linear scan fallback (for tests, plus checks stockpile items)
+    for (int j = 0; j < itemHighWaterMark; j++) {
+        Item* item = &items[j];
+        if (!item->active) continue;
+        if (!ItemIsBuildingMat(item->type)) continue;
+        if (required != ITEM_TYPE_COUNT && item->type != required) continue;
+        if (item->reservedBy != -1) continue;
+        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+        if (item->unreachableCooldown > 0.0f) continue;
+        if ((int)item->z != moverZ) continue;
+
+        float dx = item->x - mx;
+        float dy = item->y - my;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestItemIdx = j;
+        }
+    }
+
+    return bestItemIdx;
 }
 
 int WorkGiver_BlueprintHaul(int moverIdx) {
@@ -4199,19 +4246,23 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     if (!m->capabilities.canHaul) return -1;
 
     int moverZ = (int)m->z;
+    int moverTileX = (int)(m->x / CELL_SIZE);
+    int moverTileY = (int)(m->y / CELL_SIZE);
+    Point moverCell = { moverTileX, moverTileY, moverZ };
+    Point tempPath[MAX_PATH];
 
-    // First check if any blueprint needs materials (check same z OR reachable via adjacent cell)
-    bool anyBlueprintNeedsMaterials = false;
+    // Blueprint-driven: for each blueprint needing materials, find a matching item
+    int bestBpIdx = -1;
+    int bestItemIdx = -1;
+
     for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
         Blueprint* bp = &blueprints[bpIdx];
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
         if (bp->reservedItem >= 0) continue;
-        // Check if blueprint cell or adjacent cell might be reachable
-        // (detailed path check done later, this is just early bail-out)
+
+        // Quick z-level reachability check
         if (bp->z != moverZ) {
-            // Different z-level - check if any adjacent cell on bp's z is walkable
-            // (could be reachable via ladder)
             bool hasWalkableAdjacent = false;
             int dx[] = {1, -1, 0, 0};
             int dy[] = {0, 0, 1, -1};
@@ -4227,80 +4278,18 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
             }
             if (!hasWalkableAdjacent && !IsCellWalkableAt(bp->z, bp->y, bp->x)) continue;
         }
-        anyBlueprintNeedsMaterials = true;
-        break;
-    }
-    if (!anyBlueprintNeedsMaterials) return -1;
 
-    int moverTileX = (int)(m->x / CELL_SIZE);
-    int moverTileY = (int)(m->y / CELL_SIZE);
+        // Find nearest item matching this blueprint's required type
+        int itemIdx = FindNearestBuildingMat(moverTileX, moverTileY, moverZ, m->x, m->y, bp->requiredItemType);
+        if (itemIdx < 0) continue;
 
-    // Find nearest building material
-    int bestItemIdx = -1;
-    float bestDistSq = 1e30f;
-
-    // Try spatial grid first for ground items
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        int radii[] = {10, 25, 50, 100};
-        int numRadii = sizeof(radii) / sizeof(radii[0]);
-
-        for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {
-            bestItemIdx = FindFirstItemInRadius(moverTileX, moverTileY, moverZ, radii[r],
-                                                BlueprintHaulItemFilter, NULL);
-        }
-
-        // Get distance for found item
-        if (bestItemIdx >= 0) {
-            float dx = items[bestItemIdx].x - m->x;
-            float dy = items[bestItemIdx].y - m->y;
-            bestDistSq = dx * dx + dy * dy;
-        }
-    }
-
-    // Linear scan for all building materials (fallback for tests, plus checks stockpile items)
-    for (int j = 0; j < itemHighWaterMark; j++) {
-        Item* item = &items[j];
-        if (!item->active) continue;
-        if (!ItemIsBuildingMat(item->type)) continue;
-        if (item->reservedBy != -1) continue;
-        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
-        if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != moverZ) continue;
-
-        float dx = item->x - m->x;
-        float dy = item->y - m->y;
-        float distSq = dx * dx + dy * dy;
-
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestItemIdx = j;
-        }
-    }
-
-    if (bestItemIdx < 0) return -1;
-
-    // Now find any blueprint that needs materials - check reachability via pathfinding
-    int bestBpIdx = -1;
-    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
-    Point tempPath[MAX_PATH];
-
-    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
-        Blueprint* bp = &blueprints[bpIdx];
-        if (!bp->active) continue;
-        if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
-        if (bp->reservedItem >= 0) continue;
-
-        // Try to find a reachable cell: either the blueprint cell itself or an adjacent one
+        // Check blueprint reachability via pathfinding
         int tempLen = 0;
-
         if (IsCellWalkableAt(bp->z, bp->y, bp->x)) {
-            // Blueprint cell is walkable - try pathing to it
             Point bpCell = { bp->x, bp->y, bp->z };
             tempLen = FindPath(moverPathAlgorithm, moverCell, bpCell, tempPath, MAX_PATH);
         }
-
         if (tempLen == 0) {
-            // Blueprint cell not walkable or not reachable - try adjacent cells
             int dx[] = {1, -1, 0, 0};
             int dy[] = {0, 0, 1, -1};
             for (int i = 0; i < 4; i++) {
@@ -4308,37 +4297,31 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
                 int ay = bp->y + dy[i];
                 if (ax < 0 || ax >= gridWidth || ay < 0 || ay >= gridHeight) continue;
                 if (!IsCellWalkableAt(bp->z, ay, ax)) continue;
-
                 Point adjCell = { ax, ay, bp->z };
                 tempLen = FindPath(moverPathAlgorithm, moverCell, adjCell, tempPath, MAX_PATH);
-                if (tempLen > 0) {
-                    break;  // Found a reachable adjacent cell
-                }
+                if (tempLen > 0) break;
             }
         }
+        if (tempLen == 0) continue;
 
-        if (tempLen > 0) {
-            bestBpIdx = bpIdx;
-            break;  // Take first reachable
-        }
+        // Check item reachability
+        Point itemCell = { (int)(items[itemIdx].x / CELL_SIZE), (int)(items[itemIdx].y / CELL_SIZE), (int)items[itemIdx].z };
+        int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+        if (itemPathLen == 0) continue;
+
+        // Found a valid blueprint + item pair
+        bestBpIdx = bpIdx;
+        bestItemIdx = itemIdx;
+        break;
     }
 
-    if (bestBpIdx < 0) return -1;
+    if (bestBpIdx < 0 || bestItemIdx < 0) return -1;
 
-    Item* item = &items[bestItemIdx];
     Blueprint* bp = &blueprints[bestBpIdx];
-
-    // Check reachability to item
-    Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
-    int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-    if (itemPathLen == 0) return -1;
 
     // Reserve item
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
     bp->reservedItem = bestItemIdx;
-
-    // NOTE: Don't call ClearSourceStockpileSlot here - RunJob_HaulToBlueprint handles it
-    // when the item is actually picked up. This avoids making items invisible in stockpile.
 
     // Create job
     int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
@@ -4356,7 +4339,7 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     job->targetSlotY = bp->y;
     job->step = 0;  // STEP_MOVING_TO_PICKUP
 
-    // Update mover
+    Point itemCell = { (int)(items[bestItemIdx].x / CELL_SIZE), (int)(items[bestItemIdx].y / CELL_SIZE), (int)items[bestItemIdx].z };
     m->currentJobId = jobId;
     m->goal = itemCell;
     m->needsRepath = true;
