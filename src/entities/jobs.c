@@ -1812,7 +1812,18 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
                 // If recipe needs fuel and we haven't fetched it yet, go fetch fuel
                 if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
-                    // Deposit main input at workshop (it stays "carried" conceptually but mover is at workshop)
+                    // Deposit main input at workshop work tile
+                    if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                        Item* carried = &items[job->carryingItem];
+                        carried->state = ITEM_ON_GROUND;
+                        carried->x = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                        carried->y = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                        carried->z = (float)ws->z;
+                        // Keep it reserved so nobody else grabs it
+                    }
+                    // Remember deposited input in targetItem so WORKING step can consume it
+                    job->targetItem = job->carryingItem;
+                    job->carryingItem = -1;
                     // Now go fetch the fuel
                     job->step = CRAFT_STEP_MOVING_TO_FUEL;
                 } else {
@@ -1928,23 +1939,33 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             job->progress += dt / job->workRequired;
             ws->lastWorkTime = (float)gameTime;
 
+            // Kiln emits smoke while working
+            if (ws->type == WORKSHOP_KILN && ws->fuelTileX >= 0) {
+                if (GetRandomValue(0, 3) == 0) {
+                    AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 5);
+                }
+            }
+
             if (job->progress >= 1.0f) {
                 // Crafting complete!
 
+                // Find the input item - either still carried (no-fuel path) or deposited (fuel path, stored in targetItem)
+                int inputItemIdx = job->carryingItem >= 0 ? job->carryingItem : job->targetItem;
                 MaterialType inputMat = MAT_NONE;
-                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-                    inputMat = (MaterialType)items[job->carryingItem].material;
+                if (inputItemIdx >= 0 && items[inputItemIdx].active) {
+                    inputMat = (MaterialType)items[inputItemIdx].material;
                     if (inputMat == MAT_NONE) {
-                        inputMat = (MaterialType)DefaultMaterialForItemType(items[job->carryingItem].type);
+                        inputMat = (MaterialType)DefaultMaterialForItemType(items[inputItemIdx].type);
                     }
                 }
 
-                // Consume carried item
-                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-                    items[job->carryingItem].active = false;
+                // Consume input item
+                if (inputItemIdx >= 0 && items[inputItemIdx].active) {
+                    items[inputItemIdx].active = false;
                     itemCount--;
                 }
                 job->carryingItem = -1;
+                job->targetItem = -1;
 
                 // Consume fuel item (if any - don't preserve its material)
                 if (job->fuelItem >= 0 && items[job->fuelItem].active) {
@@ -2247,6 +2268,7 @@ static void CancelJob(Mover* m, int moverIdx) {
 
     // Reset mover state (only currentJobId remains - legacy fields removed)
     m->currentJobId = -1;
+    ClearMoverPath(moverIdx);
 
     // Add back to idle list
     AddMoverToIdleList(moverIdx);

@@ -1344,24 +1344,21 @@ void HandleInput(void) {
     if (hoveredWorkshop >= 0 && inputMode == MODE_NORMAL) {
         Workshop* ws = &workshops[hoveredWorkshop];
         
-        // B = Add bill (first recipe, Do Forever)
-        if (IsKeyPressed(KEY_B)) {
-            if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
-                int recipeCount;
-                Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
-                if (recipeCount > 0) {
-                    // Cycle through recipes: add the next one not yet in the bill list
-                    int recipeIdx = 0;
-                    if (ws->billCount > 0) {
-                        recipeIdx = (ws->bills[ws->billCount - 1].recipeIdx + 1) % recipeCount;
+        // 1-9 = Add bill for specific recipe
+        {
+            int recipeCount;
+            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            for (int r = 0; r < recipeCount && r < 9; r++) {
+                if (IsKeyPressed(KEY_ONE + r)) {
+                    if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
+                        AddBill(hoveredWorkshop, r, BILL_DO_FOREVER, 0);
+                        AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[r].name), GREEN);
+                    } else {
+                        AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
                     }
-                    AddBill(hoveredWorkshop, recipeIdx, BILL_DO_FOREVER, 0);
-                    AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[recipeIdx].name), GREEN);
+                    return;
                 }
-            } else {
-                AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
             }
-            return;
         }
         
         // X = Remove last bill

@@ -647,55 +647,119 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     const char* workshopTypeNames[] = {"Stonecutter", "Sawmill", "Kiln"};
     const char* billModeNames[] = {"Do X times", "Do until X", "Do forever"};
 
-    char lines[12][80];
+    char lines[30][80];
+    Color lineColors[30];
     int lineCount = 0;
 
     // Header
     const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopTypeNames[ws->type] : "Unknown";
-    snprintf(lines[lineCount++], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
+    snprintf(lines[lineCount], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
+    lineColors[lineCount] = YELLOW;
+    lineCount++;
 
     // Position info
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Position: (%d, %d, z%d)", ws->x, ws->y, ws->z);
+    snprintf(lines[lineCount], sizeof(lines[0]), "Position: (%d, %d, z%d)", ws->x, ws->y, ws->z);
+    lineColors[lineCount] = WHITE;
+    lineCount++;
 
     // Crafter status
     if (ws->assignedCrafter >= 0) {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Crafter: Mover #%d", ws->assignedCrafter);
+        snprintf(lines[lineCount], sizeof(lines[0]), "Crafter: Mover #%d", ws->assignedCrafter);
+        lineColors[lineCount] = GREEN;
     } else {
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Crafter: None");
+        snprintf(lines[lineCount], sizeof(lines[0]), "Crafter: None");
+        lineColors[lineCount] = GRAY;
     }
-
-    // Bills
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Bills: %d", ws->billCount);
+    lineCount++;
 
     // Get recipes for this workshop type
     int recipeCount;
     Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
 
-    for (int b = 0; b < ws->billCount && lineCount < 15; b++) {
-        Bill* bill = &ws->bills[b];
-        const char* recipeName = "Unknown";
-        if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
-            recipeName = recipes[bill->recipeIdx].name;
-        }
-        const char* modeName = (bill->mode < 3) ? billModeNames[bill->mode] : "?";
-        
-        char statusStr[32] = "";
-        if (bill->suspended && bill->suspendedNoStorage) {
-            snprintf(statusStr, sizeof(statusStr), " [NO STORAGE]");
-        } else if (bill->suspended) {
-            snprintf(statusStr, sizeof(statusStr), " [PAUSED]");
-        } else if (bill->mode == BILL_DO_X_TIMES) {
-            snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
-        } else if (bill->mode == BILL_DO_UNTIL_X) {
-            snprintf(statusStr, sizeof(statusStr), " (until %d)", bill->targetCount);
-        }
+    // Active bills
+    if (ws->billCount > 0) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Bills:");
+        lineColors[lineCount] = WHITE;
+        lineCount++;
 
-        snprintf(lines[lineCount++], sizeof(lines[0]), " %d. %s (%s)%s", 
-            b + 1, recipeName, modeName, statusStr);
+        for (int b = 0; b < ws->billCount && lineCount < 24; b++) {
+            Bill* bill = &ws->bills[b];
+            const char* recipeName = "Unknown";
+            Recipe* recipe = NULL;
+            if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
+                recipe = &recipes[bill->recipeIdx];
+                recipeName = recipe->name;
+            }
+            const char* modeName = (bill->mode < 3) ? billModeNames[bill->mode] : "?";
+            
+            char statusStr[32] = "";
+            if (bill->suspended && bill->suspendedNoStorage) {
+                snprintf(statusStr, sizeof(statusStr), " [NO STORAGE]");
+            } else if (bill->suspended) {
+                snprintf(statusStr, sizeof(statusStr), " [PAUSED]");
+            } else if (bill->mode == BILL_DO_X_TIMES) {
+                snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
+            } else if (bill->mode == BILL_DO_UNTIL_X) {
+                snprintf(statusStr, sizeof(statusStr), " (until %d)", bill->targetCount);
+            }
+
+            snprintf(lines[lineCount], sizeof(lines[0]), " %d. %s (%s)%s", 
+                b + 1, recipeName, modeName, statusStr);
+            if (bill->suspended && bill->suspendedNoStorage) {
+                lineColors[lineCount] = ORANGE;
+            } else if (bill->suspended) {
+                lineColors[lineCount] = RED;
+            } else {
+                lineColors[lineCount] = (Color){200, 180, 140, 255};
+            }
+            lineCount++;
+
+            // Show why bill can't run (missing input or fuel)
+            if (recipe && !bill->suspended && ws->assignedCrafter < 0 && lineCount < 24) {
+                bool hasInput = false;
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    Item* item = &items[i];
+                    if (!item->active) continue;
+                    if ((int)item->z != ws->z) continue;
+                    if (RecipeInputMatches(recipe, item)) { hasInput = true; break; }
+                }
+                bool needsFuel = recipe->fuelRequired > 0;
+                bool hasFuel = !needsFuel || WorkshopHasFuelForRecipe(ws, 100);
+
+                if (!hasInput && !hasFuel) {
+                    snprintf(lines[lineCount], sizeof(lines[0]), "    Needs: %s + fuel", ItemName(recipe->inputType));
+                    lineColors[lineCount] = (Color){255, 120, 120, 255};
+                    lineCount++;
+                } else if (!hasInput) {
+                    snprintf(lines[lineCount], sizeof(lines[0]), "    Needs: %s", ItemName(recipe->inputType));
+                    lineColors[lineCount] = (Color){255, 120, 120, 255};
+                    lineCount++;
+                } else if (!hasFuel) {
+                    snprintf(lines[lineCount], sizeof(lines[0]), "    Needs: fuel");
+                    lineColors[lineCount] = (Color){255, 120, 120, 255};
+                    lineCount++;
+                }
+            }
+        }
+    }
+
+    // Available recipes (add with number keys)
+    if (recipeCount > 0 && lineCount < 26) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Add recipe:");
+        lineColors[lineCount] = WHITE;
+        lineCount++;
+        for (int r = 0; r < recipeCount && r < 9 && lineCount < 28; r++) {
+            snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s -> %s)", 
+                r + 1, recipes[r].name, ItemName(recipes[r].inputType), ItemName(recipes[r].outputType));
+            lineColors[lineCount] = (Color){140, 180, 200, 255};
+            lineCount++;
+        }
     }
 
     // Help text
-    snprintf(lines[lineCount++], sizeof(lines[0]), "B:add  X:remove  P:pause  D:delete");
+    snprintf(lines[lineCount], sizeof(lines[0]), "X:remove  P:pause  D:delete");
+    lineColors[lineCount] = GRAY;
+    lineCount++;
 
     // Calculate box dimensions
     int maxW = 0;
@@ -719,34 +783,11 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     DrawRectangle(tx, ty, boxW, boxH, (Color){40, 35, 30, 230});
     DrawRectangleLines(tx, ty, boxW, boxH, (Color){120, 100, 80, 255});
 
-    // Draw lines with color coding
+    // Draw lines with stored colors
     int y = ty + padding;
-    DrawTextShadow(lines[0], tx + padding, y, 14, YELLOW);  // Header
-    y += lineH;
-    DrawTextShadow(lines[1], tx + padding, y, 14, WHITE);   // Position
-    y += lineH;
-    DrawTextShadow(lines[2], tx + padding, y, 14, ws->assignedCrafter >= 0 ? GREEN : GRAY);  // Crafter
-    y += lineH;
-    DrawTextShadow(lines[3], tx + padding, y, 14, WHITE);   // Bills count
-    y += lineH;
-    
-    // Bill lines
-    int billLines = ws->billCount;
-    for (int i = 0; i < billLines && (4 + i) < lineCount; i++) {
-        Bill* bill = &ws->bills[i];
-        Color col = (Color){200, 180, 140, 255};
-        if (bill->suspended && bill->suspendedNoStorage) {
-            col = ORANGE;  // Auto-suspended due to no storage
-        } else if (bill->suspended) {
-            col = RED;     // Manually paused
-        }
-        DrawTextShadow(lines[4 + i], tx + padding, y, 14, col);
+    for (int i = 0; i < lineCount; i++) {
+        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
         y += lineH;
-    }
-    
-    // Help text (last line)
-    if (lineCount > 4 + billLines) {
-        DrawTextShadow(lines[4 + billLines], tx + padding, y, 14, GRAY);
     }
 }
 

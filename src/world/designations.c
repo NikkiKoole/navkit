@@ -222,6 +222,9 @@ void CompleteMineDesignation(int x, int y, int z) {
     
     // Validate nearby ramps - mining may have removed solid support
     ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
+    
+    // Invalidate mine cache so newly-adjacent designations become reachable
+    InvalidateDesignationCache(DESIGNATION_MINE);
 }
 
 int CountMineDesignations(void) {

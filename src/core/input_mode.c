@@ -123,7 +123,7 @@ const char* InputMode_GetBarText(void) {
         // In a mode, no action selected - show available actions/submodes
         switch (inputMode) {
             case MODE_DRAW:
-                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  s[O]il  roc[k]  d[I]rt  s[T]one workshop    [ESC]Back";
+                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  s[O]il  roc[k]  d[I]rt  workshop([T])    [ESC]Back";
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
                     return "WORK: [D]ig  [B]uild  [H]arvest  [G]ather    [ESC]Back";
@@ -315,7 +315,7 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "sOil", KEY_O, 1, false, false, false);
                 n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
                 n = AddItem(items, n, "rocK", KEY_K, 3, false, false, false);
-                n = AddItem(items, n, "sTone workshop", KEY_T, 1, false, false, false);
+                n = AddItem(items, n, "workshop(T)", KEY_T, 9, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             case MODE_WORK:
@@ -349,7 +349,7 @@ int InputMode_GetBarItems(BarItem* items) {
                         case SUBMODE_HARVEST:
                             n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
                             n = AddItem(items, n, "Chop tree", KEY_C, 0, false, false, false);
-                            n = AddItem(items, n, "Chop felled", KEY_F, 0, false, false, false);
+                            n = AddItem(items, n, "chop Felled", KEY_F, 5, false, false, false);
                             n = AddItem(items, n, "gather Sapling", KEY_S, 7, false, false, false);
                             n = AddItem(items, n, "Plant sapling", KEY_P, 0, false, false, false);
                             break;

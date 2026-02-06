@@ -930,6 +930,12 @@ void UpdateMovers(void) {
             continue;
         }
 
+        // Clear stale paths on stuck jobless movers
+        if (m->currentJobId < 0 && m->pathLength > 0 && m->timeWithoutProgress > STUCK_REPATH_TIME) {
+            ClearMoverPath(i);
+            m->timeWithoutProgress = 0.0f;
+        }
+
         // Handle movers that need a new goal (reached destination or have no path)
         if (m->pathIndex < 0 || m->pathLength == 0) {
             // Track stuck time for movers with jobs but no path

@@ -87,7 +87,7 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_DIRT:
             return MAT_DIRT;
         case ITEM_BRICKS:
-            return MAT_NONE;
+            return MAT_BRICK;
         case ITEM_CHARCOAL:
             return MAT_NONE;
         default:

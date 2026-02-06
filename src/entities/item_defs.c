@@ -30,6 +30,6 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_PEAT]         = { "Peat",         SPRITE_peat_block,   IF_STACKABLE | IF_FUEL, 20 },
     [ITEM_PLANKS]       = { "Planks",       SPRITE_wood_block,   IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
     [ITEM_STICKS]       = { "Sticks",       SPRITE_wood_block,   IF_STACKABLE | IF_FUEL, 20 },
-    [ITEM_BRICKS]       = { "Bricks",       SPRITE_clay_block,   IF_STACKABLE | IF_BUILDING_MAT, 20 },
+    [ITEM_BRICKS]       = { "Bricks",       SPRITE_crate_orange, IF_STACKABLE | IF_BUILDING_MAT, 20 },
     [ITEM_CHARCOAL]     = { "Charcoal",     SPRITE_wood_block,   IF_STACKABLE | IF_FUEL, 20 },
 };

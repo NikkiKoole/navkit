@@ -18,6 +18,7 @@ typedef enum {
     MAT_GRANITE,
     // Earth/other materials
     MAT_DIRT,          // Dirt/earth
+    MAT_BRICK,         // Fired clay bricks
     MAT_IRON,          // Metal
     MAT_GLASS,         // Glass
     MAT_COUNT

@@ -1125,7 +1125,9 @@ int main(int argc, char** argv) {
         DrawJobLines();
 
         // Draw workshop preview (3x3) when in workshop placement mode
-        if (inputAction == ACTION_DRAW_WORKSHOP && !isDragging) {
+        if ((inputAction == ACTION_DRAW_WORKSHOP_STONECUTTER ||
+             inputAction == ACTION_DRAW_WORKSHOP_SAWMILL ||
+             inputAction == ACTION_DRAW_WORKSHOP_KILN) && !isDragging) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
             float size = CELL_SIZE * zoom;

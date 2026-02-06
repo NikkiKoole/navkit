@@ -18,6 +18,7 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 128,  ITEM_LOG},
     [MAT_GRANITE] = {"Granite",  0,            0,            0,    ITEM_BLOCKS},
     [MAT_DIRT]    = {"Dirt",     0,            0,            0,    ITEM_DIRT},
+    [MAT_BRICK]   = {"Brick",    0,            0,            0,    ITEM_BRICKS},
     [MAT_IRON]    = {"Iron",     2,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_IRON_BAR when added
     [MAT_GLASS]   = {"Glass",    3,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_GLASS when added
 };
