@@ -145,7 +145,7 @@ static void SoundDebugToggle(void) {
     soundDebugEnabled = !soundDebugEnabled;
     if (soundDebugEnabled) {
         SoundDebugEnsure();
-        AddMessage("Sound debug: on (F10 call, F11 song)", GREEN);
+        AddMessage("Sound debug: on (KP2 call, KP3 song)", GREEN);
     } else {
         if (soundDebugSynth) {
             SoundSynthShutdownAudio(soundDebugSynth);
@@ -899,18 +899,18 @@ int main(int argc, char** argv) {
         HandleInput();
 
         // Sound debug toggles (independent from input modes)
-        if (IsKeyPressed(KEY_F9)) {
+        if (IsKeyPressed(KEY_KP_1)) {
             SoundDebugToggle();
         }
-        if (IsKeyPressed(KEY_F8)) {
+        if (IsKeyPressed(KEY_KP_4)) {
             soundDebugAuto = !soundDebugAuto;
             AddMessage(TextFormat("Sound debug auto: %s", soundDebugAuto ? "ON" : "OFF"),
                        soundDebugAuto ? GREEN : GRAY);
         }
-        if (IsKeyPressed(KEY_F10)) {
+        if (IsKeyPressed(KEY_KP_2)) {
             SoundDebugPlayCall();
         }
-        if (IsKeyPressed(KEY_F11)) {
+        if (IsKeyPressed(KEY_KP_3)) {
             SoundDebugPlaySong();
         }
 

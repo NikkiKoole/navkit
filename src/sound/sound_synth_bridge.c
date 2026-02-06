@@ -12,6 +12,7 @@ typedef struct {
     int tokenIndex;
     float tokenTimer;
     float gapTimer;
+    int currentVoice;
     bool active;
     SoundSong song;
     int phraseIndex;
@@ -118,33 +119,30 @@ static void applyTokenEnvelope(const SoundToken* token) {
     noteVolume = token->intensity;
 }
 
-void SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token) {
-    if (!synth || !token) return;
-    if (!synth->audioReady) return;
+int SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token) {
+    if (!synth || !token) return -1;
+    if (!synth->audioReady) return -1;
 
     synthCtx = &synth->synth;
     applyTokenEnvelope(token);
 
     switch (token->kind) {
         case SOUND_TOKEN_BIRD:
-            playBird(token->freq, (BirdType)token->variant);
-            break;
+            return playBird(token->freq, (BirdType)token->variant);
         case SOUND_TOKEN_VOWEL:
-            playVowel(token->freq, (VowelType)token->variant);
-            break;
+            return playVowel(token->freq, (VowelType)token->variant);
         case SOUND_TOKEN_CONSONANT:
             noteAttack = 0.001f;
             noteDecay = 0.05f;
             noteSustain = 0.0f;
             noteRelease = 0.02f;
             noteVolume = token->intensity;
-            playNote(token->freq, WAVE_NOISE);
-            break;
+            return playNote(token->freq, WAVE_NOISE);
         case SOUND_TOKEN_TONE:
         default:
-            playNote(token->freq, WAVE_TRIANGLE);
-            break;
+            return playNote(token->freq, WAVE_TRIANGLE);
     }
+    return -1;
 }
 
 void SoundSynthPlayPhrase(SoundSynth* synth, const SoundPhrase* phrase) {
@@ -153,6 +151,7 @@ void SoundSynthPlayPhrase(SoundSynth* synth, const SoundPhrase* phrase) {
     synth->player.tokenIndex = 0;
     synth->player.tokenTimer = 0.0f;
     synth->player.gapTimer = 0.0f;
+    synth->player.currentVoice = -1;
     synth->player.active = (phrase->count > 0);
     synth->player.songActive = false;
 }
@@ -174,26 +173,31 @@ void SoundSynthUpdate(SoundSynth* synth, float dt) {
     if (!synth || (!synth->player.active && !synth->player.songActive)) return;
     SoundPhrasePlayer* p = &synth->player;
 
-    if (p->tokenIndex >= p->phrase.count) {
-        p->active = false;
-        if (p->songActive) {
-            p->phraseIndex++;
-            if (p->phraseIndex < p->song.phraseCount) {
-                SoundSynthPlayPhrase(synth, &p->song.phrases[p->phraseIndex]);
-                p->songActive = true;
-            } else {
-                p->songActive = false;
-            }
-        }
-        return;
-    }
-
     if (p->tokenTimer > 0.0f) p->tokenTimer -= dt;
     if (p->gapTimer > 0.0f) p->gapTimer -= dt;
 
+    if (p->tokenTimer <= 0.0f && p->currentVoice >= 0) {
+        releaseNote(p->currentVoice);
+        p->currentVoice = -1;
+    }
+
     if (p->tokenTimer <= 0.0f && p->gapTimer <= 0.0f) {
+        if (p->tokenIndex >= p->phrase.count) {
+            p->active = false;
+            if (p->songActive) {
+                p->phraseIndex++;
+                if (p->phraseIndex < p->song.phraseCount) {
+                    SoundSynthPlayPhrase(synth, &p->song.phrases[p->phraseIndex]);
+                    p->songActive = true;
+                } else {
+                    p->songActive = false;
+                }
+            }
+            return;
+        }
+
         const SoundToken* token = &p->phrase.tokens[p->tokenIndex++];
-        SoundSynthPlayToken(synth, token);
+        p->currentVoice = SoundSynthPlayToken(synth, token);
         p->tokenTimer = token->duration;
         p->gapTimer = token->gap;
     }

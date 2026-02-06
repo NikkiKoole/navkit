@@ -12,7 +12,7 @@ void SoundSynthDestroy(SoundSynth* synth);
 bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames);
 void SoundSynthShutdownAudio(SoundSynth* synth);
 
-void SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token);
+int SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token);
 void SoundSynthPlayPhrase(SoundSynth* synth, const SoundPhrase* phrase);
 void SoundSynthPlaySong(SoundSynth* synth, const SoundSong* song);
 void SoundSynthUpdate(SoundSynth* synth, float dt);

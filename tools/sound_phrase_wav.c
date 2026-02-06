@@ -48,28 +48,25 @@ static void applyTokenEnvelope(const SoundToken* token) {
     noteVolume = token->intensity;
 }
 
-static void triggerToken(const SoundToken* token) {
+static int triggerToken(const SoundToken* token) {
     applyTokenEnvelope(token);
     switch (token->kind) {
         case SOUND_TOKEN_BIRD:
-            playBird(token->freq, (BirdType)token->variant);
-            break;
+            return playBird(token->freq, (BirdType)token->variant);
         case SOUND_TOKEN_VOWEL:
-            playVowel(token->freq, (VowelType)token->variant);
-            break;
+            return playVowel(token->freq, (VowelType)token->variant);
         case SOUND_TOKEN_CONSONANT:
             noteAttack = 0.001f;
             noteDecay = 0.05f;
             noteSustain = 0.0f;
             noteRelease = 0.02f;
             noteVolume = token->intensity;
-            playNote(token->freq, WAVE_NOISE);
-            break;
+            return playNote(token->freq, WAVE_NOISE);
         case SOUND_TOKEN_TONE:
         default:
-            playNote(token->freq, WAVE_TRIANGLE);
-            break;
+            return playNote(token->freq, WAVE_TRIANGLE);
     }
+    return -1;
 }
 
 static int renderFrames(int16_t* out, int start, int frames, int sampleRate) {
@@ -90,10 +87,13 @@ static int renderPhrase(int16_t* out, int start, int sampleRate, const SoundPhra
     int cursor = start;
     for (int i = 0; i < phrase->count; i++) {
         const SoundToken* token = &phrase->tokens[i];
-        triggerToken(token);
+        int voiceIdx = triggerToken(token);
         int durFrames = (int)ceilf(token->duration * sampleRate);
         int gapFrames = (int)ceilf(token->gap * sampleRate);
         cursor = renderFrames(out, cursor, durFrames, sampleRate);
+        if (voiceIdx >= 0) {
+            releaseNote(voiceIdx);
+        }
         cursor = renderFrames(out, cursor, gapFrames, sampleRate);
     }
     return cursor;
