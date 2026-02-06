@@ -16,7 +16,7 @@ TARGETS := steer crowd path soundsystem-demo
 # Source files for each target (using unity build for path)
 steer_SRC      := experiments/steering/demo.c experiments/steering/steering.c
 crowd_SRC      := experiments/crowd/demo.c
-path_SRC       := src/unity.c
+path_SRC       := src/unity.c src/sound/sound_phrase.c src/sound/sound_synth_bridge.c
 soundsystem-demo_SRC := soundsystem/demo/demo.c
 sound_phrase_wav_SRC := tools/sound_phrase_wav.c src/sound/sound_phrase.c
 

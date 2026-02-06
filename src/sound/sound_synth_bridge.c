@@ -1,8 +1,11 @@
 #include "sound_synth_bridge.h"
 #include <stdlib.h>
 #include <string.h>
-#include "raylib.h"
-#include "../../soundsystem/soundsystem.h"
+#include "../../vendor/raylib.h"
+#include "soundsystem/engines/synth.h"
+#if __has_include("soundsystem/engines/scw_data.h")
+#include "soundsystem/engines/scw_data.h"
+#endif
 
 typedef struct {
     SoundPhrase phrase;
@@ -16,7 +19,7 @@ typedef struct {
 } SoundPhrasePlayer;
 
 struct SoundSynth {
-    SoundSystem sound;
+    SynthContext synth;
     AudioStream stream;
     int sampleRate;
     int bufferFrames;
@@ -31,7 +34,7 @@ static void SoundSynthCallback(void* buffer, unsigned int frames) {
     if (!g_soundSynth) return;
     short* out = (short*)buffer;
     float dt = 1.0f / (float)g_soundSynth->sampleRate;
-    useSoundSystem(&g_soundSynth->sound);
+    synthCtx = &g_soundSynth->synth;
 
     for (unsigned int i = 0; i < frames; i++) {
         float sample = 0.0f;
@@ -75,9 +78,9 @@ bool SoundSynthInitAudio(SoundSynth* synth, int sampleRate, int bufferFrames) {
     SetAudioStreamCallback(synth->stream, SoundSynthCallback);
     PlayAudioStream(synth->stream);
 
-    initSoundSystem(&synth->sound);
-    useSoundSystem(&synth->sound);
-#if __has_include("../../soundsystem/engines/scw_data.h")
+    initSynthContext(&synth->synth);
+    synthCtx = &synth->synth;
+#if __has_include("soundsystem/engines/scw_data.h")
     loadEmbeddedSCWs();
 #endif
 
@@ -119,7 +122,7 @@ void SoundSynthPlayToken(SoundSynth* synth, const SoundToken* token) {
     if (!synth || !token) return;
     if (!synth->audioReady) return;
 
-    useSoundSystem(&synth->sound);
+    synthCtx = &synth->synth;
     applyTokenEnvelope(token);
 
     switch (token->kind) {
