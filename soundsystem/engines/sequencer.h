@@ -478,6 +478,7 @@ static int seqGetNoteForStep(Pattern* p, int track, int step) {
 }
 
 // Enable/disable note pool for a step
+__attribute__((unused))
 static void seqSetNotePoolEnabled(int track, int step, bool enabled) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -486,6 +487,7 @@ static void seqSetNotePoolEnabled(int track, int step, bool enabled) {
 }
 
 // Set note pool chord type for a step
+__attribute__((unused))
 static void seqSetNotePoolChord(int track, int step, ChordType chordType) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -494,6 +496,7 @@ static void seqSetNotePoolChord(int track, int step, ChordType chordType) {
 }
 
 // Set note pool pick mode for a step
+__attribute__((unused))
 static void seqSetNotePoolPickMode(int track, int step, PickMode pickMode) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -502,6 +505,7 @@ static void seqSetNotePoolPickMode(int track, int step, PickMode pickMode) {
 }
 
 // Reset note pool cycle position for a step
+__attribute__((unused))
 static void seqResetNotePoolCycle(int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -511,6 +515,7 @@ static void seqResetNotePoolCycle(int track, int step) {
 }
 
 // Toggle note pool enabled for a step
+__attribute__((unused))
 static void seqToggleNotePool(int track, int step) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -519,6 +524,7 @@ static void seqToggleNotePool(int track, int step) {
 }
 
 // Cycle through chord types for a step
+__attribute__((unused))
 static void seqCycleNotePoolChord(int track, int step, int direction) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -530,6 +536,7 @@ static void seqCycleNotePoolChord(int track, int step, int direction) {
 }
 
 // Cycle through pick modes for a step
+__attribute__((unused))
 static void seqCycleNotePoolPick(int track, int step, int direction) {
     if (track < 0 || track >= SEQ_MELODY_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -552,6 +559,7 @@ static void plockIndexAdd(Pattern *p, int plockIdx) {
 }
 
 // Remove a p-lock from the step index (call before removing from plocks array)
+__attribute__((unused))
 static void plockIndexRemove(Pattern *p, int plockIdx) {
     PLock *pl = &p->plocks[plockIdx];
     int track = pl->track, step = pl->step;
@@ -1362,6 +1370,7 @@ static void seqSetMelodyVolume(int melodyTrack, float volume) {
 // ============================================================================
 
 // Set timing nudge for a specific step (in ticks, -12 to +12 typical)
+__attribute__((unused))
 static void seqSetStepNudge(int track, int step, float nudgeTicks) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -1373,6 +1382,7 @@ static void seqSetStepNudge(int track, int step, float nudgeTicks) {
 }
 
 // Clear timing nudge for a specific step
+__attribute__((unused))
 static void seqClearStepNudge(int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS) return;
     if (step < 0 || step >= SEQ_MAX_STEPS) return;
@@ -1381,6 +1391,7 @@ static void seqClearStepNudge(int track, int step) {
 }
 
 // Get nudge value for a step (returns 0 if not set)
+__attribute__((unused))
 static float seqGetStepNudge(int track, int step) {
     if (track < 0 || track >= SEQ_DRUM_TRACKS) return 0.0f;
     if (step < 0 || step >= SEQ_MAX_STEPS) return 0.0f;

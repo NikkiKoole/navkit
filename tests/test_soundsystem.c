@@ -3138,8 +3138,8 @@ describe(tempo_synced_lfo) {
         v.filterLfoRate = 0.0f;  // Free rate ignored when synced
         
         // Process some samples - LFO should modulate
-        float minCutoff = 1.0f;
-        float maxCutoff = 0.0f;
+        __attribute__((unused)) float minCutoff = 1.0f;
+        __attribute__((unused)) float maxCutoff = 0.0f;
         
         for (int i = 0; i < SAMPLE_RATE / 2; i++) {
             processVoice(&v, (float)SAMPLE_RATE);

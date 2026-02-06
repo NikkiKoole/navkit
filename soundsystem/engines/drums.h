@@ -674,6 +674,7 @@ static float processDrums(float dt) {
 // Process drums with selected source separated out for sidechain routing
 // sidechainOut receives the sidechain source sample, other drums returned
 // sidechainSource: 0=Kick, 1=Snare, 2=Clap, 3=HiHat, 4=All
+__attribute__((unused))
 static float processDrumsWithSidechain(float dt, int sidechainSource, float *sidechainOut) {
     _ensureDrumsCtx();
     float sample = 0.0f;
@@ -738,6 +739,7 @@ static float processDrumsWithSidechain(float dt, int sidechainSource, float *sid
 
 // Process a single drum type and return its sample
 // Useful for routing individual drum sounds to separate buses
+__attribute__((unused))
 static float processDrumType(DrumType type, float dt) {
     _ensureDrumsCtx();
     

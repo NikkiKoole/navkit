@@ -18,7 +18,7 @@ describe(time_initialization) {
         
         expect(gameSpeed == 1.0f);
         expect(gameTime == 0.0);
-        expect(gameDeltaTime == 0.0f);
+        expect(gameDeltaTime == TICK_DT);
         expect(timeOfDay == 6.0f);
         expect(dayNumber == 1);
         expect(dayLength == 60.0f);

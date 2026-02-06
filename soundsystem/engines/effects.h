@@ -1613,6 +1613,7 @@ static float processBuses(float busInputs[NUM_BUSES], float* reverbSend, float d
 }
 
 // Full pipeline: buses → master effects → output
+__attribute__((unused))
 static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
     _ensureMixerCtx();
     _ensureFxCtx();
@@ -1671,6 +1672,7 @@ static float processMixerOutput(float busInputs[NUM_BUSES], float dt) {
 
 // === BUS PARAMETER SETTERS ===
 
+__attribute__((unused))
 static void setBusVolume(int bus, float volume) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1678,6 +1680,7 @@ static void setBusVolume(int bus, float volume) {
     }
 }
 
+__attribute__((unused))
 static void setBusPan(int bus, float pan) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1687,6 +1690,7 @@ static void setBusPan(int bus, float pan) {
     }
 }
 
+__attribute__((unused))
 static void setBusMute(int bus, bool mute) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1702,6 +1706,7 @@ static void setBusSolo(int bus, bool solo) {
     }
 }
 
+__attribute__((unused))
 static void setBusFilter(int bus, bool enabled, float cutoff, float resonance, int type) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1712,6 +1717,7 @@ static void setBusFilter(int bus, bool enabled, float cutoff, float resonance, i
     }
 }
 
+__attribute__((unused))
 static void setBusDistortion(int bus, bool enabled, float drive, float mix) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1721,6 +1727,7 @@ static void setBusDistortion(int bus, bool enabled, float drive, float mix) {
     }
 }
 
+__attribute__((unused))
 static void setBusDelay(int bus, bool enabled, float time, float feedback, float mix) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1731,6 +1738,7 @@ static void setBusDelay(int bus, bool enabled, float time, float feedback, float
     }
 }
 
+__attribute__((unused))
 static void setBusDelaySync(int bus, bool tempoSync, int division) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1739,6 +1747,7 @@ static void setBusDelaySync(int bus, bool tempoSync, int division) {
     }
 }
 
+__attribute__((unused))
 static void setBusReverbSend(int bus, float amount) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {
@@ -1746,6 +1755,7 @@ static void setBusReverbSend(int bus, float amount) {
     }
 }
 
+__attribute__((unused))
 static void setMixerTempo(float bpm) {
     _ensureMixerCtx();
     if (bpm > 0.0f) {
@@ -1754,6 +1764,7 @@ static void setMixerTempo(float bpm) {
 }
 
 // Get bus output (for external access, e.g., metering)
+__attribute__((unused))
 static float getBusOutput(int bus) {
     _ensureMixerCtx();
     if (bus >= 0 && bus < NUM_BUSES) {

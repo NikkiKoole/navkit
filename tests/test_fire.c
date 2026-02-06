@@ -32,6 +32,7 @@ static void RunFireAndSmokeTicks(int n) {
 }
 
 // Helper to count total fire in the grid
+__attribute__((unused))
 static int CountTotalFire(void) {
     int total = 0;
     for (int z = 0; z < gridDepth; z++) {
@@ -58,6 +59,7 @@ static int CountTotalSmoke(void) {
 }
 
 // Helper to count burning cells
+__attribute__((unused))
 static int CountBurningCells(void) {
     int count = 0;
     for (int z = 0; z < gridDepth; z++) {

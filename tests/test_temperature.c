@@ -17,6 +17,7 @@ static void RunTempTicks(int n) {
 }
 
 // Helper to count cells at a given temperature
+__attribute__((unused))
 static int CountCellsAtTemp(int targetTemp) {
     int count = 0;
     for (int z = 0; z < gridDepth; z++) {

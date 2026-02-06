@@ -2894,6 +2894,7 @@ static int initVoiceCommon(float freq, WaveType wave, const VoiceInitParams *par
 }
 
 // Helper to set up arpeggiator notes from an array of frequencies
+__attribute__((unused))
 static void setArpNotes(Voice *v, float *freqs, int count, ArpMode mode, ArpRateDiv rateDiv, float freeRate) {
     v->arpEnabled = true;
     v->arpCount = (count > 8) ? 8 : count;
@@ -2910,6 +2911,7 @@ static void setArpNotes(Voice *v, float *freqs, int count, ArpMode mode, ArpRate
 }
 
 // Helper to initialize unison on a voice
+__attribute__((unused))
 static void initUnison(Voice *v, int count, float detuneCents, float mix) {
     v->unisonCount = (count < 1) ? 1 : ((count > 4) ? 4 : count);
     v->unisonDetune = detuneCents;
@@ -2985,6 +2987,7 @@ static const VoiceInitParams VOICE_INIT_PLUCK = {
 };
 
 // Play a plucked string (Karplus-Strong)
+__attribute__((unused))
 static int playPluck(float freq, float brightness, float damping) {
     int voiceIdx = initVoiceCommon(freq, WAVE_PLUCK, &VOICE_INIT_PLUCK, NULL);
     initPluck(&synthVoices[voiceIdx], freq, 44100.0f, brightness, damping);
@@ -2992,6 +2995,7 @@ static int playPluck(float freq, float brightness, float damping) {
 }
 
 // Play additive synthesis note
+__attribute__((unused))
 static int playAdditive(float freq, AdditivePreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_ADDITIVE, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3003,6 +3007,7 @@ static int playAdditive(float freq, AdditivePreset preset) {
 }
 
 // Play mallet percussion note
+__attribute__((unused))
 static int playMallet(float freq, MalletPreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_MALLET, &VOICE_INIT_PERC, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3017,6 +3022,7 @@ static int playMallet(float freq, MalletPreset preset) {
 }
 
 // Play granular synthesis note
+__attribute__((unused))
 static int playGranular(float freq, int scwIndex) {
     int voiceIdx = initVoiceCommon(freq, WAVE_GRANULAR, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3036,6 +3042,7 @@ static int playGranular(float freq, int scwIndex) {
 }
 
 // Play FM synthesis note
+__attribute__((unused))
 static int playFM(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_FM, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3048,6 +3055,7 @@ static int playFM(float freq) {
 }
 
 // Play phase distortion (CZ-style) note
+__attribute__((unused))
 static int playPD(float freq) {
     int voiceIdx = initVoiceCommon(freq, WAVE_PD, &VOICE_INIT_SYNTH, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3073,6 +3081,7 @@ static const VoiceInitParams VOICE_INIT_BIRD = {
 };
 
 // Play membrane (tabla/conga) note
+__attribute__((unused))
 static int playMembrane(float freq, MembranePreset preset) {
     int voiceIdx = initVoiceCommon(freq, WAVE_MEMBRANE, &VOICE_INIT_MEMBRANE, NULL);
     Voice *v = &synthVoices[voiceIdx];
@@ -3106,6 +3115,7 @@ static int playBird(float freq, BirdType type) {
 
 // Play vowel on a specific voice (for speech system)
 // Uses same parameters as playVowel() but targets a specific voice index
+__attribute__((unused))
 static void playVowelOnVoice(int voiceIdx, float freq, VowelType vowel) {
     Voice *v = &synthVoices[voiceIdx];
     float oldFilterLp = v->filterLp;
@@ -3162,6 +3172,7 @@ static float mutate(float value, float amount) {
 }
 
 // Helper to init a voice with sensible defaults (useful for testing or direct voice manipulation)
+__attribute__((unused))
 static void initVoiceDefaults(Voice *v, WaveType wave, float freq) {
     memset(v, 0, sizeof(Voice));
     v->wave = wave;
@@ -3201,36 +3212,42 @@ static void initSfxVoice(Voice *v, float freq, WaveType wave, float vol,
 }
 
 // SFX functions
+__attribute__((unused))
 static void sfxJump(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(150.0f, 0.15f), WAVE_SQUARE, mutate(0.5f, 0.1f),
                  0.01f, mutate(0.15f, 0.1f), 0.05f, mutate(10.0f, 0.2f));
 }
 
+__attribute__((unused))
 static void sfxCoin(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(1200.0f, 0.08f), WAVE_SQUARE, mutate(0.4f, 0.1f),
                  0.005f, mutate(0.1f, 0.15f), 0.05f, mutate(20.0f, 0.15f));
 }
 
+__attribute__((unused))
 static void sfxHurt(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(200.0f, 0.25f), WAVE_NOISE, mutate(0.5f, 0.1f),
                  0.01f, mutate(0.2f, 0.2f), mutate(0.1f, 0.2f), mutate(-3.0f, 0.3f));
 }
 
+__attribute__((unused))
 static void sfxExplosion(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(80.0f, 0.3f), WAVE_NOISE, mutate(0.6f, 0.1f),
                  0.01f, mutate(0.5f, 0.25f), mutate(0.3f, 0.2f), mutate(-1.0f, 0.4f));
 }
 
+__attribute__((unused))
 static void sfxPowerup(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(300.0f, 0.12f), WAVE_TRIANGLE, mutate(0.4f, 0.1f),
                  0.01f, mutate(0.3f, 0.15f), mutate(0.2f, 0.1f), mutate(8.0f, 0.2f));
 }
 
+__attribute__((unused))
 static void sfxBlip(void) {
     int v = findVoice();
     initSfxVoice(&synthVoices[v], mutate(800.0f, 0.1f), WAVE_SQUARE, mutate(0.3f, 0.1f),
@@ -3312,12 +3329,14 @@ static int constrainToScale(int midiNote) {
 }
 
 // Convert MIDI note to frequency with optional scale lock
+__attribute__((unused))
 static float midiToFreqScaled(int midiNote) {
     int constrained = constrainToScale(midiNote);
     return 440.0f * powf(2.0f, (constrained - 69) / 12.0f);
 }
 
 // Get scale degree (1-7 for diatonic scales, 0 if not in scale)
+__attribute__((unused))
 static int getScaleDegree(int midiNote) {
     if (scaleType == SCALE_CHROMATIC) return (midiNote % 12) + 1;
     
@@ -3333,6 +3352,7 @@ static int getScaleDegree(int midiNote) {
 }
 
 // Check if a note is in the current scale
+__attribute__((unused))
 static bool isInScale(int midiNote) {
     if (!scaleLockEnabled || scaleType == SCALE_CHROMATIC) return true;
     int noteInOctave = ((midiNote % 12) - scaleRoot + 12) % 12;
