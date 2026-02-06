@@ -182,7 +182,7 @@ void CompleteMineDesignation(int x, int y, int z) {
     else if (IsGroundCell(ct)) {
         ItemType dropItem = CellDropsItem(ct);
         int dropCount = CellDropCount(ct);
-        MaterialType floorMat = MAT_DIRT;
+        MaterialType floorMat = MaterialForGroundCell(ct);
         bool floorIsNatural = true;
         
         if (ct == CELL_ROCK) {

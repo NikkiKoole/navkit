@@ -2020,38 +2020,38 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_SOIL_CLAY:
                 if (leftClick) {
-                    if (shift) {
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_CLAY, MAT_DIRT, "clay");
-                    } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_DIRT, "clay");
-                    }
+                if (shift) {
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_CLAY, MAT_CLAY, "clay");
+                } else {
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_CLAY, "clay");
+                }
                 }
                 break;
             case ACTION_DRAW_SOIL_GRAVEL:
                 if (leftClick) {
-                    if (shift) {
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_GRAVEL, MAT_DIRT, "gravel");
-                    } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_DIRT, "gravel");
-                    }
+                if (shift) {
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_GRAVEL, MAT_GRAVEL, "gravel");
+                } else {
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_GRAVEL, "gravel");
+                }
                 }
                 break;
             case ACTION_DRAW_SOIL_SAND:
                 if (leftClick) {
-                    if (shift) {
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_SAND, MAT_DIRT, "sand");
-                    } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_DIRT, "sand");
-                    }
+                if (shift) {
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_SAND, MAT_SAND, "sand");
+                } else {
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_SAND, "sand");
+                }
                 }
                 break;
             case ACTION_DRAW_SOIL_PEAT:
                 if (leftClick) {
-                    if (shift) {
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_PEAT, MAT_DIRT, "peat");
-                    } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_DIRT, "peat");
-                    }
+                if (shift) {
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_PEAT, MAT_PEAT, "peat");
+                } else {
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_PEAT, "peat");
+                }
                 }
                 break;
             // Work actions

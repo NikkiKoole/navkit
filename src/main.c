@@ -6,6 +6,7 @@
 #include "game_state.h"
 #include "world/cell_defs.h"
 #include "world/designations.h"
+#include "world/material.h"
 #include "core/input_mode.h"
 #include "core/pie_menu.h"
 #include "entities/workshops.h"
@@ -323,6 +324,7 @@ void GenerateCurrentTerrain(void) {
         case 19: GenerateHillsSoilsWater(); break;
         case 20: GenerateCraftingTest(); break;
     }
+    SyncMaterialsToTerrain();
 }
 
 // ============================================================================

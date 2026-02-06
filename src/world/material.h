@@ -21,6 +21,11 @@ typedef enum {
     MAT_BRICK,         // Fired clay bricks
     MAT_IRON,          // Metal
     MAT_GLASS,         // Glass
+    // Soil materials
+    MAT_CLAY,          // Clay soil
+    MAT_GRAVEL,        // Gravel soil
+    MAT_SAND,          // Sand soil
+    MAT_PEAT,          // Peat soil
     MAT_COUNT
 } MaterialType;
 
@@ -114,5 +119,11 @@ ItemType GetWallDropItem(int x, int y, int z);
 
 // Get what item a floor drops based on its material
 ItemType GetFloorDropItem(int x, int y, int z);
+
+// Map ground cell types to their material (returns MAT_NONE if not ground)
+MaterialType MaterialForGroundCell(CellType cell);
+
+// Sync wall materials/finishes for natural ground cells after terrain generation
+void SyncMaterialsToTerrain(void);
 
 #endif

@@ -48,6 +48,13 @@ static Color MultiplyColor(Color a, Color b) {
     };
 }
 
+static Color FloorDarkenTint(Color base) {
+    base.r = (unsigned char)((base.r * 75) / 100);
+    base.g = (unsigned char)((base.g * 75) / 100);
+    base.b = (unsigned char)((base.b * 75) / 100);
+    return base;
+}
+
 static Color MaterialTint(MaterialType mat) {
     switch (mat) {
         case MAT_OAK: return (Color){139, 90, 43, 255};
@@ -70,6 +77,14 @@ static int MaterialWallSprite(MaterialType mat) {
             return SPRITE_stone_wall;
         case MAT_DIRT:
             return SPRITE_dirt_block;
+        case MAT_CLAY:
+            return SPRITE_clay_block;
+        case MAT_GRAVEL:
+            return SPRITE_gravel_block;
+        case MAT_SAND:
+            return SPRITE_sand_block;
+        case MAT_PEAT:
+            return SPRITE_peat_block;
         default:
             return SPRITE_wall;
     }
@@ -84,9 +99,17 @@ static int MaterialFloorSprite(MaterialType mat) {
         case MAT_WILLOW:
             return SPRITE_wood_floor;
         case MAT_GRANITE:
-            return SPRITE_stone_floor;
+            return SPRITE_rock;
         case MAT_DIRT:
             return SPRITE_dirt;
+        case MAT_CLAY:
+            return SPRITE_clay;
+        case MAT_GRAVEL:
+            return SPRITE_gravel;
+        case MAT_SAND:
+            return SPRITE_sand;
+        case MAT_PEAT:
+            return SPRITE_peat;
         default:
             return SPRITE_floor;
     }
@@ -100,6 +123,11 @@ static int FinishSprite(SurfaceFinish finish) {
         case FINISH_ROUGH:
         default: return SPRITE_finish_rough;
     }
+}
+
+static Color FinishOverlayTint(Color base) {
+    base.a = (unsigned char)((base.a * 50) / 100);  // 50% opacity
+    return base;
 }
 
 static float FinishInsetPixels(void) {
@@ -171,9 +199,6 @@ static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
 
 static int GetFloorSpriteAt(int x, int y, int z) {
     MaterialType mat = GetFloorMaterial(x, y, z);
-    if (IsFloorNatural(x, y, z) && IsStoneMaterial(mat)) {
-        return SPRITE_rock_floor;
-    }
     return MaterialFloorSprite(mat);
 }
 
@@ -225,7 +250,7 @@ void DrawCellGrid(void) {
                     if (cellAtDepth == CELL_WALL) {
                         int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, zDepth));
                         Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, tint);
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(tint));
                     }
                 }
             }
@@ -249,7 +274,7 @@ void DrawCellGrid(void) {
                         // Wall tops (looking down at a wall from above) tinted blue
                         // to distinguish from walls at current level (depth cue)
                         Color tint = CellBlocksMovement(cellBelow) ? (Color){140, 160, 200, 255} : WHITE;
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, FloorDarkenTint(tint));
                     }
                 }
             }
@@ -261,7 +286,7 @@ void DrawCellGrid(void) {
                     if (cellHere == CELL_AIR) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         Rectangle src = SpriteGetRect(SPRITE_bedrock);
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, FloorDarkenTint(WHITE));
                     }
                 }
             }
@@ -274,21 +299,14 @@ void DrawCellGrid(void) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     MaterialType mat = GetFloorMaterial(x, y, z);
                     int sprite = GetFloorSpriteAt(x, y, z);
-                    Color tint = MaterialTint(mat);
-                    float inset = roundf(FinishInsetPixels() * zoom);
-                    DrawInsetSprite(sprite, dest, inset, tint);
-
-                    // Border frame (optional sprite)
-                    {
-                        Rectangle borderSrc = SpriteGetRect(SPRITE_tile_border);
-                        DrawTexturePro(atlas, borderSrc, dest, (Vector2){0,0}, 0, WHITE);
-                    }
+                    Color tint = FloorDarkenTint(MaterialTint(mat));
+                    DrawInsetSprite(sprite, dest, 0.0f, tint);
 
                     // Finish overlay
                     {
                         int finishSprite = FinishSprite((SurfaceFinish)GetFloorFinish(x, y, z));
                         Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, WHITE);
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(WHITE));
                     }
                 }
             }
@@ -314,7 +332,7 @@ void DrawCellGrid(void) {
                 if (cell == CELL_WALL) {
                     int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, z));
                     Rectangle finishSrc = SpriteGetRect(finishSprite);
-                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, tint);
+                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(tint));
                 }
             }
         }
@@ -360,23 +378,7 @@ void DrawCellGrid(void) {
             }
         }
         
-        // Draw shadows from blocks above (z+1)
-        // Only on floors/air - walls are vertical surfaces, shadows fall on their tops (not visible)
-        if (z + 1 < gridDepth) {
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cellHere = grid[z][y][x];
-                    // Skip walls - shadow falls on top of wall, not its face
-                    if (CellBlocksMovement(cellHere)) continue;
-                    
-                    CellType cellAbove = grid[z + 1][y][x];
-                    if (CellIsSolid(cellAbove)) {
-                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        DrawRectangleRec(dest, (Color){0, 0, 0, 80});
-                    }
-                }
-            }
-        }
+        // Shadows from blocks above disabled (per user request)
 }
 
 void DrawGrassOverlay(void) {

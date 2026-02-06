@@ -17,7 +17,7 @@ typedef struct {
     bool allowedMaterials[MAT_COUNT];    // indexed by MaterialType
     bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];     // which cells are active (for non-rectangular shapes)
     int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];      // item index per tile, -1 = empty
-    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // mover index per tile, -1 = none
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // reservation count per tile, 0 = none
     // Stacking support
     int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // number of items in stack
     ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // type of items in slot (-1 = empty)

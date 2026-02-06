@@ -23,6 +23,10 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_BRICK]   = {"Brick",    0,            0,            0,    ITEM_BRICKS},
     [MAT_IRON]    = {"Iron",     2,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_IRON_BAR when added
     [MAT_GLASS]   = {"Glass",    3,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_GLASS when added
+    [MAT_CLAY]    = {"Clay",     0,            0,            0,    ITEM_CLAY},
+    [MAT_GRAVEL]  = {"Gravel",   0,            0,            0,    ITEM_GRAVEL},
+    [MAT_SAND]    = {"Sand",     0,            0,            0,    ITEM_SAND},
+    [MAT_PEAT]    = {"Peat",     0,            0,            6,    ITEM_PEAT},
 };
 
 void InitMaterials(void) {
@@ -33,6 +37,33 @@ void InitMaterials(void) {
     memset(floorNatural, 0, sizeof(floorNatural));
     memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
     memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
+}
+
+MaterialType MaterialForGroundCell(CellType cell) {
+    switch (cell) {
+        case CELL_DIRT: return MAT_DIRT;
+        case CELL_CLAY: return MAT_CLAY;
+        case CELL_GRAVEL: return MAT_GRAVEL;
+        case CELL_SAND: return MAT_SAND;
+        case CELL_PEAT: return MAT_PEAT;
+        case CELL_ROCK: return MAT_GRANITE;
+        default: return MAT_NONE;
+    }
+}
+
+void SyncMaterialsToTerrain(void) {
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                CellType cell = grid[z][y][x];
+                MaterialType mat = MaterialForGroundCell(cell);
+                if (mat == MAT_NONE) continue;
+                SetWallMaterial(x, y, z, mat);
+                SetWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_ROUGH);
+            }
+        }
+    }
 }
 
 // Check if a wall is constructed (not natural terrain)

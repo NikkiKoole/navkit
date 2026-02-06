@@ -94,7 +94,6 @@ void RebuildStockpileFreeSlotCounts(void) {
         int totalSlots = sp->width * sp->height;
         for (int s = 0; s < totalSlots; s++) {
             if (!sp->cells[s]) continue;            // inactive cell
-            if (sp->reservedBy[s] != -1) continue;  // reserved
             if (sp->groundItemIdx[s] >= 0) continue; // ground item blocking
             
             // Check walkability
@@ -104,7 +103,7 @@ void RebuildStockpileFreeSlotCounts(void) {
             int worldY = sp->y + ly;
             if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
             
-            if (sp->slotCounts[s] < sp->maxStackSize) {
+            if (sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize) {
                 freeCount++;
             }
         }
@@ -210,7 +209,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             for (int s = 0; s < totalSlots; s++) {
                 sp->cells[s] = true;    // all cells active initially
                 sp->slots[s] = -1;      // no item
-                sp->reservedBy[s] = -1; // not reserved
+                sp->reservedBy[s] = 0; // not reserved
                 sp->slotCounts[s] = 0;  // no items stacked
                 sp->slotTypes[s] = -1;  // no type
                 sp->slotMaterials[s] = MAT_NONE; // no material
@@ -298,7 +297,7 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             sp->cells[idx] = false;
             // Clear slot data
             sp->slots[idx] = -1;
-            sp->reservedBy[idx] = -1;
+            sp->reservedBy[idx] = 0;
             sp->slotCounts[idx] = 0;
             sp->slotTypes[idx] = -1;
             sp->slotMaterials[idx] = MAT_NONE;
@@ -389,12 +388,12 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
 
     MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
     
-    // First pass: find a partial stack of same type that isn't full or reserved
+    // First pass: find a partial stack of same type that still has room
+    // (accounting for both existing items and pending reservations)
     for (int ly = 0; ly < sp->height; ly++) {
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
             if (!sp->cells[idx]) continue;            // skip inactive cells
-            if (sp->reservedBy[idx] != -1) continue;  // skip reserved
             if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
             // Skip cells that aren't walkable (e.g., above ramps)
@@ -405,8 +404,8 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
             if (sp->slotTypes[idx] == type &&
                 sp->slotMaterials[idx] == mat &&
                 sp->slotCounts[idx] > 0 &&
-                sp->slotCounts[idx] < sp->maxStackSize) {
-                // Found partial stack of same type
+                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                // Found partial stack of same type with room
                 *outX = worldX;
                 *outY = worldY;
                 return true;
@@ -414,12 +413,14 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
         }
     }
     
-    // Second pass: find an empty slot
+    // Second pass: find an empty unreserved slot
+    // (Don't reuse reserved empty slots — we don't know what type they're reserved for,
+    // which could lead to mixed-type stacks)
     for (int ly = 0; ly < sp->height; ly++) {
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
             if (!sp->cells[idx]) continue;            // skip inactive cells
-            if (sp->reservedBy[idx] != -1) continue;  // skip reserved
+            if (sp->reservedBy[idx] > 0) continue;    // skip reserved empty slots
             if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
             
             // Skip cells that aren't walkable (e.g., above ramps)
@@ -440,6 +441,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
 }
 
 bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx) {
+    (void)moverIdx;  // Reservations are tracked by count, not mover ID
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
     Stockpile* sp = &stockpiles[stockpileIdx];
     if (!sp->active) return false;
@@ -450,12 +452,10 @@ bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx) 
     
     int idx = SlotIndex(sp, lx, ly);
     
-    // Can reserve if: (empty OR partial stack not full) AND not already reserved
-    bool hasRoom = (sp->slotCounts[idx] == 0) || (sp->slotCounts[idx] < sp->maxStackSize);
-    if (!hasRoom) return false;                   // slot is full
-    if (sp->reservedBy[idx] != -1) return false;  // already reserved
+    // Can reserve if slot has room for another item (counting existing + pending)
+    if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) return false;
     
-    sp->reservedBy[idx] = moverIdx;
+    sp->reservedBy[idx]++;
     return true;
 }
 
@@ -469,18 +469,19 @@ void ReleaseStockpileSlot(int stockpileIdx, int slotX, int slotY) {
     if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) return;
     
     int idx = SlotIndex(sp, lx, ly);
-    sp->reservedBy[idx] = -1;
+    if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;
 }
 
 void ReleaseAllSlotsForMover(int moverIdx) {
+    (void)moverIdx;  // No longer tracking individual movers
+    // This is only called from ClearMovers() which clears all movers,
+    // so we just zero all reservation counts
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         Stockpile* sp = &stockpiles[i];
         int totalSlots = sp->width * sp->height;
         for (int s = 0; s < totalSlots; s++) {
-            if (sp->reservedBy[s] == moverIdx) {
-                sp->reservedBy[s] = -1;
-            }
+            sp->reservedBy[s] = 0;
         }
     }
 }
@@ -555,7 +556,7 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     
     int idx = SlotIndex(sp, lx, ly);
     sp->slots[idx] = itemIdx;
-    sp->reservedBy[idx] = -1;  // no longer reserved, now occupied
+    if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
     
     // Update stacking info
     if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active) {

@@ -9,6 +9,7 @@
 #include "../world/material.h"
 
 #define SAVE_VERSION 22  // Add wall/floor finish grids
+#define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
 #define V19_ITEM_TYPE_COUNT 23  // ITEM_TYPE_COUNT before ITEM_BRICKS/ITEM_CHARCOAL were added
 #define V18_ITEM_TYPE_COUNT 21  // ITEM_TYPE_COUNT before ITEM_PLANKS/ITEM_STICKS were added
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
@@ -611,8 +612,70 @@ bool LoadWorld(const char* filename) {
     }
     
     // Stockpiles
-    if (version >= 20) {
+    if (version >= 22) {
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    } else if (version >= 20) {
+        // V21/V20: Stockpile struct before MAT_COUNT expansion
+        typedef struct {
+            int x, y, z;
+            int width, height;
+            bool active;
+            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool allowedMaterials[V21_MAT_COUNT];
+            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int maxStackSize;
+            int priority;
+            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+            int freeSlotCount;
+        } StockpileV21;
+
+        StockpileV21 legacyStockpiles[MAX_STOCKPILES];
+        fread(legacyStockpiles, sizeof(StockpileV21), MAX_STOCKPILES, f);
+
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            memset(&stockpiles[i], 0, sizeof(Stockpile));
+            stockpiles[i].x = legacyStockpiles[i].x;
+            stockpiles[i].y = legacyStockpiles[i].y;
+            stockpiles[i].z = legacyStockpiles[i].z;
+            stockpiles[i].width = legacyStockpiles[i].width;
+            stockpiles[i].height = legacyStockpiles[i].height;
+            stockpiles[i].active = legacyStockpiles[i].active;
+            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
+
+            // Copy old materials, allow new materials by default
+            for (int m = 0; m < V21_MAT_COUNT; m++) {
+                stockpiles[i].allowedMaterials[m] = legacyStockpiles[i].allowedMaterials[m];
+            }
+            for (int m = V21_MAT_COUNT; m < MAT_COUNT; m++) {
+                stockpiles[i].allowedMaterials[m] = true;
+            }
+
+            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
+            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
+            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
+            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
+            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
+            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
+            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
+            stockpiles[i].priority = legacyStockpiles[i].priority;
+            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
+            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
+
+            // Clamp any invalid slot types/materials to avoid crashes
+            for (int s = 0; s < MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE; s++) {
+                if (stockpiles[i].slotTypes[s] < 0 || stockpiles[i].slotTypes[s] >= ITEM_TYPE_COUNT) {
+                    stockpiles[i].slotTypes[s] = ITEM_NONE;
+                }
+                if (stockpiles[i].slotMaterials[s] >= MAT_COUNT) {
+                    stockpiles[i].slotMaterials[s] = MAT_NONE;
+                }
+            }
+        }
     } else if (version >= 19) {
         // V19: had 23 item types (before ITEM_BRICKS/ITEM_CHARCOAL)
         typedef struct {
@@ -807,6 +870,12 @@ bool LoadWorld(const char* filename) {
                 stockpiles[i].allowedMaterials[m] = true;
             }
         }
+    }
+    
+    // Clear transient reservation counts (not meaningful across save/load)
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        if (!stockpiles[i].active) continue;
+        memset(stockpiles[i].reservedBy, 0, sizeof(stockpiles[i].reservedBy));
     }
     
     // Gather zones

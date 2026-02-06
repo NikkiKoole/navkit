@@ -633,7 +633,8 @@ describe(stockpile_system) {
         bool reserved = ReserveStockpileSlot(spIdx, slotX, slotY, 0);  // mover 0
         expect(reserved == true);
         
-        // Should not find another free slot now
+        // Should not find free slot (1 tile, reserved empty slots are skipped
+        // because we don't know what type they're reserved for)
         int slotX2, slotY2;
         bool found2 = FindFreeStockpileSlot(spIdx, ITEM_RED, MAT_NONE, &slotX2, &slotY2);
         expect(found2 == false);
@@ -1872,6 +1873,79 @@ describe(stacking_merging) {
         int slot2Count = GetStockpileSlotCount(spIdx, 6, 5);
         expect(slot1Count == 10);  // First slot still full
         expect(slot2Count == 1);   // New item in second slot
+    }
+    
+    it("should stack items when multiple movers haul same type simultaneously") {
+        // Test: multiple movers hauling the same item type should stack into
+        // partial stacks rather than each getting a separate empty slot.
+        // Pre-fill a slot to create a partial stack so the first pass can match.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create 5 movers spread around the map
+        for (int i = 0; i < 5; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 5;
+        
+        // Stockpile with 2 tiles — forces stacking since 5 items > 2 slots
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        // Pre-fill slot 0 with 1 red item to create a partial stack
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 1);
+        
+        // Spawn 5 red items near each other
+        int itemIndices[5];
+        for (int i = 0; i < 5; i++) {
+            itemIndices[i] = SpawnItem((8) * CELL_SIZE + CELL_SIZE * 0.5f, (2 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        }
+        
+        // Run simulation until all items are in stockpile
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if all items are in stockpile
+            bool allDone = true;
+            for (int j = 0; j < 5; j++) {
+                if (items[itemIndices[j]].state != ITEM_IN_STOCKPILE) {
+                    allDone = false;
+                    break;
+                }
+            }
+            if (allDone) break;
+        }
+        
+        // All items should be in the stockpile
+        for (int i = 0; i < 5; i++) {
+            expect(items[itemIndices[i]].state == ITEM_IN_STOCKPILE);
+        }
+        
+        // With 2 slots and 6 total items (1 pre-filled + 5 hauled),
+        // items must stack. With the old bug, movers would fail to find
+        // slots once both are reserved and items would never all make it in.
+        int count0 = GetStockpileSlotCount(spIdx, 5, 5);
+        int count1 = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(count0 + count1 == 6);  // All 6 items accounted for
+        expect(count0 > 1);            // First slot has stacked items
     }
 }
 
@@ -5313,8 +5387,8 @@ describe(job_drivers) {
         // Job should be cancelled, reservations released
         expect(m->currentJobId == -1);
         expect(GetJob(jobId)->active == false);
-        // Slot should be released (check reservation)
-        expect(stockpiles[sp].reservedBy[0] == -1);
+        // Slot should be released (check reservation count)
+        expect(stockpiles[sp].reservedBy[0] == 0);
     }
     
     it("should return mover to idle when job completes") {
