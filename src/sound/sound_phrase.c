@@ -264,6 +264,40 @@ SoundPhrase SoundMakeCall(uint32_t seed) {
     return phrase;
 }
 
+SoundPhrase SoundMakeCallBirdOnly(uint32_t seed) {
+    const SoundPalette* pal = SoundPaletteGetDefault();
+    SoundRng rng;
+    SoundRngSeed(&rng, seed);
+
+    SoundPhrase phrase;
+    SoundPhraseReset(&phrase, seed);
+
+    float baseMidi = SoundRngFloat(&rng, pal->callBaseMidiMin, pal->callBaseMidiMax);
+    int tokens = SoundRngInt(&rng, pal->callTokensMin, pal->callTokensMax);
+
+    for (int i = 0; i < tokens; i++) {
+        SoundPhraseAdd(&phrase, makeBirdToken(&rng, baseMidi, pal));
+    }
+    return phrase;
+}
+
+SoundPhrase SoundMakeCallVowelOnly(uint32_t seed) {
+    const SoundPalette* pal = SoundPaletteGetDefault();
+    SoundRng rng;
+    SoundRngSeed(&rng, seed);
+
+    SoundPhrase phrase;
+    SoundPhraseReset(&phrase, seed);
+
+    float baseMidi = SoundRngFloat(&rng, pal->callBaseMidiMin, pal->callBaseMidiMax);
+    int tokens = SoundRngInt(&rng, pal->callTokensMin, pal->callTokensMax);
+
+    for (int i = 0; i < tokens; i++) {
+        SoundPhraseAdd(&phrase, makeVowelToken(&rng, baseMidi, pal));
+    }
+    return phrase;
+}
+
 SoundPhrase SoundMakeSongPhrase(uint32_t seed) {
     const SoundPalette* pal = SoundPaletteGetDefault();
     SoundRng rng;

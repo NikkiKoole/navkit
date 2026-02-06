@@ -145,7 +145,7 @@ static void SoundDebugToggle(void) {
     soundDebugEnabled = !soundDebugEnabled;
     if (soundDebugEnabled) {
         SoundDebugEnsure();
-        AddMessage("Sound debug: on (KP2 call, KP3 song)", GREEN);
+        AddMessage("Sound debug: on (KP2 call, KP3 song, KP5 bird, KP6 vowel)", GREEN);
     } else {
         if (soundDebugSynth) {
             SoundSynthShutdownAudio(soundDebugSynth);
@@ -157,6 +157,18 @@ static void SoundDebugToggle(void) {
 static void SoundDebugPlayCall(void) {
     if (!soundDebugEnabled || !soundDebugSynth) return;
     SoundPhrase phrase = SoundMakeCall(soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &phrase);
+}
+
+static void SoundDebugPlayBirdOnly(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase phrase = SoundMakeCallBirdOnly(soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &phrase);
+}
+
+static void SoundDebugPlayVowelOnly(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase phrase = SoundMakeCallVowelOnly(soundDebugSeed++);
     SoundSynthPlayPhrase(soundDebugSynth, &phrase);
 }
 
@@ -912,6 +924,12 @@ int main(int argc, char** argv) {
         }
         if (IsKeyPressed(KEY_KP_3)) {
             SoundDebugPlaySong();
+        }
+        if (IsKeyPressed(KEY_KP_5)) {
+            SoundDebugPlayBirdOnly();
+        }
+        if (IsKeyPressed(KEY_KP_6)) {
+            SoundDebugPlayVowelOnly();
         }
 
         // Handle drag-and-drop of save files

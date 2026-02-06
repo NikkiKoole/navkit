@@ -90,6 +90,8 @@ void SoundPhraseReset(SoundPhrase* phrase, uint32_t seed);
 bool SoundPhraseAdd(SoundPhrase* phrase, SoundToken token);
 
 SoundPhrase SoundMakeCall(uint32_t seed);
+SoundPhrase SoundMakeCallBirdOnly(uint32_t seed);
+SoundPhrase SoundMakeCallVowelOnly(uint32_t seed);
 SoundPhrase SoundMakeSongPhrase(uint32_t seed);
 SoundSong SoundMakeSong(uint32_t seed);
 void SoundPhraseMutate(SoundPhrase* phrase, uint32_t seed, float amount);
