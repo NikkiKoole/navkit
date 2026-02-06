@@ -22,7 +22,7 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 
-#define INSPECT_SAVE_VERSION 21
+#define INSPECT_SAVE_VERSION 22
 #define INSPECT_V19_ITEM_TYPE_COUNT 23
 #define INSPECT_V18_ITEM_TYPE_COUNT 21
 #define INSPECT_SAVE_MAGIC 0x4E41564B
@@ -77,6 +77,7 @@ static const char* cellTypeNames[] = {
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"};
 static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP", "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING"};
+static const char* finishNames[] = {"ROUGH", "SMOOTH", "POLISHED", "ENGRAVED"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
 static uint64_t insp_worldSeed = 0;
@@ -93,6 +94,8 @@ static uint8_t* insp_wallMaterials = NULL;
 static uint8_t* insp_floorMaterials = NULL;
 static uint8_t* insp_wallNatural = NULL;
 static uint8_t* insp_floorNatural = NULL;
+static uint8_t* insp_wallFinish = NULL;
+static uint8_t* insp_floorFinish = NULL;
 static TempCell* insp_tempCells = NULL;
 static Designation* insp_designations = NULL;
 static int insp_itemHWM = 0;
@@ -341,6 +344,12 @@ static void print_cell(int x, int y, int z) {
         printf("Wall material: %s%s (raw=%d)\n",
                wallMat < MAT_COUNT ? MaterialName(wallMat) : "UNKNOWN",
                naturalTag, (int)wallMat);
+        if (insp_wallFinish) {
+            uint8_t finish = insp_wallFinish[idx];
+            printf("Wall finish: %s (raw=%d)\n",
+                   finish < FINISH_COUNT ? finishNames[finish] : "UNKNOWN",
+                   (int)finish);
+        }
     }
     
     // Floor material
@@ -350,6 +359,12 @@ static void print_cell(int x, int y, int z) {
         printf("Floor material: %s%s (raw=%d)\n",
                floorMat < MAT_COUNT ? MaterialName(floorMat) : "UNKNOWN",
                naturalTag, (int)floorMat);
+        if (insp_floorFinish) {
+            uint8_t finish = insp_floorFinish[idx];
+            printf("Floor finish: %s (raw=%d)\n",
+                   finish < FINISH_COUNT ? finishNames[finish] : "UNKNOWN",
+                   (int)finish);
+        }
     }
     
     // Walkability (requires globals to be set up)
@@ -866,6 +881,8 @@ static void cleanup(void) {
     free(insp_floorMaterials);
     free(insp_wallNatural);
     free(insp_floorNatural);
+    free(insp_wallFinish);
+    free(insp_floorFinish);
     free(insp_tempCells);
     free(insp_designations);
     free(insp_items);
@@ -1033,6 +1050,8 @@ int InspectSaveFile(int argc, char** argv) {
     insp_floorMaterials = malloc(totalCells * sizeof(uint8_t));
     insp_wallNatural = malloc(totalCells * sizeof(uint8_t));
     insp_floorNatural = malloc(totalCells * sizeof(uint8_t));
+    insp_wallFinish = malloc(totalCells * sizeof(uint8_t));
+    insp_floorFinish = malloc(totalCells * sizeof(uint8_t));
     insp_tempCells = malloc(totalCells * sizeof(TempCell));
     insp_designations = malloc(totalCells * sizeof(Designation));
     
@@ -1116,6 +1135,16 @@ int InspectSaveFile(int argc, char** argv) {
 
             insp_wallNatural[i] = wallNat ? 1 : 0;
             insp_floorNatural[i] = floorNat ? 1 : 0;
+        }
+    }
+
+    if (version >= 22) {
+        fread(insp_wallFinish, sizeof(uint8_t), totalCells, f);
+        fread(insp_floorFinish, sizeof(uint8_t), totalCells, f);
+    } else {
+        for (int i = 0; i < totalCells; i++) {
+            insp_wallFinish[i] = (insp_wallNatural && insp_wallNatural[i]) ? FINISH_ROUGH : FINISH_SMOOTH;
+            insp_floorFinish[i] = (insp_floorNatural && insp_floorNatural[i]) ? FINISH_ROUGH : FINISH_SMOOTH;
         }
     }
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);

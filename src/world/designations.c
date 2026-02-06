@@ -156,12 +156,17 @@ void CompleteMineDesignation(int x, int y, int z) {
         } else {
             ClearFloorNatural(x, y, z);
         }
+        SetFloorFinish(x, y, z, DefaultFinishForNatural(isWallNatural));
         SetWallMaterial(x, y, z, MAT_NONE);  // Wall removed
         ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_ROUGH);
         MarkChunkDirty(x, y, z);
         
         // Destabilize water at this cell and neighbors so it can flow into the new space
         DestabilizeWater(x, y, z);
+        
+        // Clear unreachable cooldowns for nearby items - they may now be reachable
+        ClearUnreachableCooldownsNearCell(x, y, z, 5);
         
         // Spawn drops based on material
         if (dropItem != ITEM_NONE && dropCount > 0) {
@@ -193,11 +198,16 @@ void CompleteMineDesignation(int x, int y, int z) {
         } else {
             ClearFloorNatural(x, y, z);
         }
+        SetFloorFinish(x, y, z, DefaultFinishForNatural(floorIsNatural));
         SetWallMaterial(x, y, z, MAT_NONE);
         ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_ROUGH);
         MarkChunkDirty(x, y, z);
         
         DestabilizeWater(x, y, z);
+        
+        // Clear unreachable cooldowns for nearby items - they may now be reachable
+        ClearUnreachableCooldownsNearCell(x, y, z, 5);
         
         // Spawn drops
         if (dropItem != ITEM_NONE && dropCount > 0) {
@@ -430,6 +440,7 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     grid[z][y][x] = CELL_AIR;
     SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
     ClearFloorNatural(x, y, z);
+    SetFloorFinish(x, y, z, FINISH_ROUGH);
     
     // === STEP 3: Mine out z-1 and determine what to create ===
     if (wasSolid) {
@@ -459,8 +470,10 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
         } else {
             ClearFloorNatural(x, y, lowerZ);
         }
+        SetFloorFinish(x, y, lowerZ, DefaultFinishForNatural(minedWallNatural));
         SetWallMaterial(x, y, lowerZ, MAT_NONE);  // Wall removed
         ClearWallNatural(x, y, lowerZ);
+        SetWallFinish(x, y, lowerZ, FINISH_ROUGH);
         
         // Spawn drops from the mined material
         if (minedDropItem != ITEM_NONE && minedDropCount > 0) {
@@ -627,6 +640,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     } else {
         ClearWallNatural(x, y, z);
     }
+    SetWallFinish(x, y, z, DefaultFinishForNatural(isWallNatural));
     
     // Create floor on top (z+1) if there's space
     if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
@@ -637,6 +651,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
         } else {
             ClearFloorNatural(x, y, z + 1);
         }
+        SetFloorFinish(x, y, z + 1, DefaultFinishForNatural(isWallNatural));
     }
     
     // Spawn dropped item nearby
@@ -726,6 +741,7 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     CLEAR_FLOOR(x, y, z);
     SetFloorMaterial(x, y, z, MAT_NONE);  // Floor removed
     ClearFloorNatural(x, y, z);
+    SetFloorFinish(x, y, z, FINISH_ROUGH);
     // Cell type stays as-is (AIR) - we're just removing the floor flag
     
     MarkChunkDirty(x, y, z);
@@ -826,8 +842,10 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
         } else {
             ClearFloorNatural(x, y, z);
         }
+        SetFloorFinish(x, y, z, DefaultFinishForNatural(rampNatural));
         SetWallMaterial(x, y, z, MAT_NONE);  // Ramp/wall removed
         ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_ROUGH);
         rampCount--;
     }
     
@@ -1764,14 +1782,17 @@ void CompleteBlueprint(int blueprintIdx) {
                 grid[z][y][x] = CELL_DIRT;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_ROUGH);
                 CLEAR_FLOOR(x, y, z);  // Dirt is solid, no floor on top
                 SetFloorMaterial(x, y, z, MAT_NONE);
                 ClearFloorNatural(x, y, z);
+                SetFloorFinish(x, y, z, FINISH_ROUGH);
                 SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // No grass yet, will grow over time
             } else {
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, bp->deliveredMaterial);
                 ClearWallNatural(x, y, z);
+                SetWallFinish(x, y, z, FINISH_SMOOTH);
                 // Floor material preserved - wall is built on top of floor
             }
             MarkChunkDirty(x, y, z);
@@ -1782,6 +1803,7 @@ void CompleteBlueprint(int blueprintIdx) {
         PlaceLadder(x, y, z);
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
         ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_SMOOTH);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
         // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
@@ -1790,6 +1812,7 @@ void CompleteBlueprint(int blueprintIdx) {
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
         SetFloorMaterial(x, y, z, bp->deliveredMaterial);
         ClearFloorNatural(x, y, z);
+        SetFloorFinish(x, y, z, FINISH_SMOOTH);
         MarkChunkDirty(x, y, z);
     } else if (bp->type == BLUEPRINT_TYPE_RAMP) {
         // Place ramp - auto-detect direction based on adjacent cells
@@ -1814,12 +1837,14 @@ void CompleteBlueprint(int blueprintIdx) {
         CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
         ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_SMOOTH);
         
         // Create floor above the ramp (at z+1)
         if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
             SET_FLOOR(x, y, z + 1);
             SetFloorMaterial(x, y, z + 1, bp->deliveredMaterial);
             ClearFloorNatural(x, y, z + 1);
+            SetFloorFinish(x, y, z + 1, FINISH_SMOOTH);
         }
         
         MarkChunkDirty(x, y, z);

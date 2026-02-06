@@ -246,6 +246,27 @@ void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
     }
 }
 
+void ClearUnreachableCooldownsNearCell(int x, int y, int z, int radius) {
+    // Clear unreachable cooldowns for items near a cell where terrain changed
+    // This allows immediate re-evaluation of item reachability after mining/building
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].unreachableCooldown <= 0.0f) continue;
+        
+        int itemX = (int)(items[i].x / CELL_SIZE);
+        int itemY = (int)(items[i].y / CELL_SIZE);
+        int itemZ = (int)items[i].z;
+        
+        int dx = itemX - x;
+        int dy = itemY - y;
+        int dz = itemZ - z;
+        
+        if (dx*dx + dy*dy + dz*dz <= radius*radius) {
+            items[i].unreachableCooldown = 0.0f;
+        }
+    }
+}
+
 static inline int clampi_item(int v, int lo, int hi) {
     if (v < lo) return lo;
     if (v > hi) return hi;

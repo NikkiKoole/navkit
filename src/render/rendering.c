@@ -7,6 +7,7 @@
 #include "../core/time.h"
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
+#include <math.h>
 
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
@@ -89,6 +90,34 @@ static int MaterialFloorSprite(MaterialType mat) {
         default:
             return SPRITE_floor;
     }
+}
+
+static int FinishSprite(SurfaceFinish finish) {
+    switch (finish) {
+        case FINISH_SMOOTH: return SPRITE_finish_smooth;
+        case FINISH_POLISHED: return SPRITE_finish_polished;
+        case FINISH_ENGRAVED: return SPRITE_finish_engraved;
+        case FINISH_ROUGH:
+        default: return SPRITE_finish_rough;
+    }
+}
+
+static float FinishInsetPixels(void) {
+#if TILE_SIZE == 8
+    return 1.0f;
+#else
+    return 2.0f;
+#endif
+}
+
+static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint) {
+    if (sprite < 0) return;
+    float insetW = dest.width - inset * 2.0f;
+    float insetH = dest.height - inset * 2.0f;
+    if (insetW <= 0 || insetH <= 0) return;
+    Rectangle src = SpriteGetRect(sprite);
+    Rectangle insetDest = { dest.x + inset, dest.y + inset, insetW, insetH };
+    DrawTexturePro(atlas, src, insetDest, (Vector2){0,0}, 0, tint);
 }
 
 static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
@@ -192,6 +221,12 @@ void DrawCellGrid(void) {
                         tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                     }
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+
+                    if (cellAtDepth == CELL_WALL) {
+                        int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, zDepth));
+                        Rectangle finishSrc = SpriteGetRect(finishSprite);
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, tint);
+                    }
                 }
             }
         }
@@ -237,9 +272,24 @@ void DrawCellGrid(void) {
             for (int x = minX; x < maxX; x++) {
                 if (HAS_FLOOR(x, y, z)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    Rectangle src = SpriteGetRect(GetFloorSpriteAt(x, y, z));
-                    Color tint = MaterialTint(GetFloorMaterial(x, y, z));
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                    MaterialType mat = GetFloorMaterial(x, y, z);
+                    int sprite = GetFloorSpriteAt(x, y, z);
+                    Color tint = MaterialTint(mat);
+                    float inset = roundf(FinishInsetPixels() * zoom);
+                    DrawInsetSprite(sprite, dest, inset, tint);
+
+                    // Border frame (optional sprite)
+                    {
+                        Rectangle borderSrc = SpriteGetRect(SPRITE_tile_border);
+                        DrawTexturePro(atlas, borderSrc, dest, (Vector2){0,0}, 0, WHITE);
+                    }
+
+                    // Finish overlay
+                    {
+                        int finishSprite = FinishSprite((SurfaceFinish)GetFloorFinish(x, y, z));
+                        Rectangle finishSrc = SpriteGetRect(finishSprite);
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, WHITE);
+                    }
                 }
             }
         }
@@ -260,6 +310,12 @@ void DrawCellGrid(void) {
                 }
                 if (CellIsRamp(cell)) tint.a = 64;
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+
+                if (cell == CELL_WALL) {
+                    int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, z));
+                    Rectangle finishSrc = SpriteGetRect(finishSprite);
+                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, tint);
+                }
             }
         }
         

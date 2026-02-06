@@ -8,7 +8,7 @@
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 
-#define SAVE_VERSION 21  // Add requiredItemType to Blueprint
+#define SAVE_VERSION 22  // Add wall/floor finish grids
 #define V19_ITEM_TYPE_COUNT 23  // ITEM_TYPE_COUNT before ITEM_BRICKS/ITEM_CHARCOAL were added
 #define V18_ITEM_TYPE_COUNT 21  // ITEM_TYPE_COUNT before ITEM_PLANKS/ITEM_STICKS were added
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
@@ -128,6 +128,20 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Wall finish grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Floor finish grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -473,6 +487,32 @@ bool LoadWorld(const char* filename) {
 
                     wallNatural[z][y][x] = wallNat ? 1 : 0;
                     floorNatural[z][y][x] = floorNat ? 1 : 0;
+                }
+            }
+        }
+    }
+
+    if (version >= 22) {
+        // Wall finish grid
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+
+        // Floor finish grid
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        // Default finishes based on natural/constructed flags
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    wallFinish[z][y][x] = (uint8_t)DefaultFinishForNatural(IsWallNatural(x, y, z));
+                    floorFinish[z][y][x] = (uint8_t)DefaultFinishForNatural(IsFloorNatural(x, y, z));
                 }
             }
         }

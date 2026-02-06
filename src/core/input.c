@@ -114,6 +114,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                     grid[z][dy][dx] = CELL_DIRT;
                     SetWallMaterial(dx, dy, z, MAT_DIRT);
                     SetWallNatural(dx, dy, z);
+                    SetWallFinish(dx, dy, z, FINISH_ROUGH);
                     CLEAR_FLOOR(dx, dy, z);
                     SetFloorMaterial(dx, dy, z, MAT_NONE);
                     ClearFloorNatural(dx, dy, z);
@@ -132,6 +133,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                     grid[z][dy][dx] = CELL_WALL;
                     SetWallMaterial(dx, dy, z, mat);
                     ClearWallNatural(dx, dy, z);
+                    SetWallFinish(dx, dy, z, FINISH_SMOOTH);
                     MarkChunkDirty(dx, dy, z);
                     CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                     SetWaterLevel(dx, dy, z, 0);
@@ -186,6 +188,7 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
             }
             SetFloorMaterial(dx, dy, z, mat);
             ClearFloorNatural(dx, dy, z);
+            SetFloorFinish(dx, dy, z, FINISH_SMOOTH);
             MarkChunkDirty(dx, dy, z);
             CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
         }
@@ -267,6 +270,7 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
                 grid[z][dy][dx] = CELL_DIRT;
                 SetWallMaterial(dx, dy, z, MAT_DIRT);
                 SetWallNatural(dx, dy, z);
+                SetWallFinish(dx, dy, z, FINISH_ROUGH);
                 MarkChunkDirty(dx, dy, z);
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 // Set tall grass overlay and reset wear
@@ -294,6 +298,7 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
                 grid[z][dy][dx] = CELL_ROCK;
                 SetWallMaterial(dx, dy, z, MAT_GRANITE);
                 SetWallNatural(dx, dy, z);
+                SetWallFinish(dx, dy, z, FINISH_ROUGH);
                 CLEAR_FLOOR(dx, dy, z);
                 SetFloorMaterial(dx, dy, z, MAT_NONE);
                 ClearFloorNatural(dx, dy, z);
@@ -340,6 +345,7 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
                 grid[z][dy][dx] = soilType;
                 SetWallMaterial(dx, dy, z, material);
                 SetWallNatural(dx, dy, z);
+                SetWallFinish(dx, dy, z, FINISH_ROUGH);
                 CLEAR_FLOOR(dx, dy, z);
                 SetFloorMaterial(dx, dy, z, MAT_NONE);
                 ClearFloorNatural(dx, dy, z);
@@ -390,6 +396,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
         grid[placeZ][y][x] = soilType;
         SetWallMaterial(x, y, placeZ, material);
         SetWallNatural(x, y, placeZ);
+        SetWallFinish(x, y, placeZ, FINISH_ROUGH);
         CLEAR_FLOOR(x, y, placeZ);
         SetFloorMaterial(x, y, placeZ, MAT_NONE);
         ClearFloorNatural(x, y, placeZ);
@@ -461,6 +468,7 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                     grid[nz][ny][nx] = soilType;
                     SetWallMaterial(nx, ny, nz, material);
                     SetWallNatural(nx, ny, nz);
+                    SetWallFinish(nx, ny, nz, FINISH_ROUGH);
                     CLEAR_FLOOR(nx, ny, nz);
                     SetFloorMaterial(nx, ny, nz, MAT_NONE);
                     ClearFloorNatural(nx, ny, nz);
@@ -511,6 +519,7 @@ static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
                 SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
                 SetWallMaterial(dx, dy, z, MAT_NONE);
                 ClearWallNatural(dx, dy, z);
+                SetWallFinish(dx, dy, z, FINISH_ROUGH);
                 count++;
             }
         }
@@ -537,12 +546,14 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                 if (changed) {
                     SetWallMaterial(dx, dy, z, MAT_NONE);
                     ClearWallNatural(dx, dy, z);
+                    SetWallFinish(dx, dy, z, FINISH_ROUGH);
                 }
                 // Also clear floor flag in DF mode
                 if (HAS_FLOOR(dx, dy, z)) {
                     CLEAR_FLOOR(dx, dy, z);
                     SetFloorMaterial(dx, dy, z, MAT_NONE);
                     ClearFloorNatural(dx, dy, z);
+                    SetFloorFinish(dx, dy, z, FINISH_ROUGH);
                     changed = true;
                 }
                 if (changed) {
@@ -1647,6 +1658,7 @@ void HandleInput(void) {
                             grid[z][y][x] = CELL_WALL;
                             SetWallMaterial(x, y, z, mat);
                             ClearWallNatural(x, y, z);
+                            SetWallFinish(x, y, z, FINISH_SMOOTH);
                             MarkChunkDirty(x, y, z);
                             for (int i = 0; i < moverCount; i++) {
                                 Mover* m = &movers[i];

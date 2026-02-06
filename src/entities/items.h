@@ -77,6 +77,7 @@ int FindNearestUnreservedItemNaive(float x, float y, float z);  // O(MAX_ITEMS) 
 void ItemsTick(float dt);              // Optimized - iterates to itemHighWaterMark
 void ItemsTickNaive(float dt);         // O(MAX_ITEMS) brute force
 void SetItemUnreachableCooldown(int itemIndex, float cooldown);
+void ClearUnreachableCooldownsNearCell(int x, int y, int z, int radius); // Clear cooldowns when terrain changes
 
 // Ground item queries for stockpile blocking
 // Returns the index of a ground item at the given tile, or -1 if none

@@ -24,6 +24,15 @@ typedef enum {
     MAT_COUNT
 } MaterialType;
 
+// Surface finish states (applied as overlays, not material variants)
+typedef enum {
+    FINISH_ROUGH = 0,
+    FINISH_SMOOTH,
+    FINISH_POLISHED,
+    FINISH_ENGRAVED,
+    FINISH_COUNT
+} SurfaceFinish;
+
 // Material flags
 #define MF_FLAMMABLE  (1 << 0)  // Can catch fire
 
@@ -44,6 +53,9 @@ extern uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Natural flags for wall and floor materials
 extern uint8_t wallNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+// Finish grids for wall and floor surfaces
+extern uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Wall material accessors
 #define GetWallMaterial(x,y,z)      (wallMaterial[z][y][x])
@@ -53,6 +65,9 @@ extern uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define IsWallNatural(x,y,z)        (wallNatural[z][y][x] != 0)
 #define SetWallNatural(x,y,z)       (wallNatural[z][y][x] = 1)
 #define ClearWallNatural(x,y,z)     (wallNatural[z][y][x] = 0)
+// Wall finish accessors
+#define GetWallFinish(x,y,z)        (wallFinish[z][y][x])
+#define SetWallFinish(x,y,z,f)      (wallFinish[z][y][x] = (uint8_t)(f))
 
 // Floor material accessors
 #define GetFloorMaterial(x,y,z)     (floorMaterial[z][y][x])
@@ -62,6 +77,9 @@ extern uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define IsFloorNatural(x,y,z)       (floorNatural[z][y][x] != 0)
 #define SetFloorNatural(x,y,z)      (floorNatural[z][y][x] = 1)
 #define ClearFloorNatural(x,y,z)    (floorNatural[z][y][x] = 0)
+// Floor finish accessors
+#define GetFloorFinish(x,y,z)       (floorFinish[z][y][x])
+#define SetFloorFinish(x,y,z,f)     (floorFinish[z][y][x] = (uint8_t)(f))
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)
@@ -81,6 +99,10 @@ static inline bool IsStoneMaterial(MaterialType mat) {
 }
 static inline bool IsMetalMaterial(MaterialType mat) {
     return mat == MAT_IRON;
+}
+
+static inline SurfaceFinish DefaultFinishForNatural(bool natural) {
+    return natural ? FINISH_ROUGH : FINISH_SMOOTH;
 }
 
 // Check if a wall is constructed (not natural terrain)

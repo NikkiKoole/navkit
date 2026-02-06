@@ -8,6 +8,8 @@ uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t wallNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
     //                 name       spriteOffset  flags         fuel  dropsItem
@@ -29,6 +31,8 @@ void InitMaterials(void) {
     memset(floorMaterial, MAT_NONE, sizeof(floorMaterial));
     memset(wallNatural, 1, sizeof(wallNatural));
     memset(floorNatural, 0, sizeof(floorNatural));
+    memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
+    memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
 }
 
 // Check if a wall is constructed (not natural terrain)
