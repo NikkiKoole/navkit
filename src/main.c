@@ -9,6 +9,8 @@
 #include "core/input_mode.h"
 #include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
+#include "sound/sound_phrase.h"
+#include "sound/sound_synth_bridge.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -43,6 +45,15 @@ bool showSimSources = false;
 bool showHelpPanel = false;
 bool paused = false;
 int followMoverIdx = -1;
+
+// Sound debug (phrase/songs experiments)
+static bool soundDebugEnabled = false;
+static bool soundDebugAuto = true;
+static float soundDebugTimer = 0.0f;
+static float soundDebugInterval = 2.5f;
+static uint32_t soundDebugSeed = 1;
+static SoundSynth* soundDebugSynth = NULL;
+static const char* soundPalettePath = "assets/sound/phrase_palette.cfg";
 
 int pathAlgorithm = 1;
 const char* algorithmNames[] = {"A*", "HPA*", "JPS", "JPS+"};
@@ -118,6 +129,53 @@ MoverRenderData moverRenderData[MAX_MOVERS];
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+static void SoundDebugEnsure(void) {
+    if (!soundDebugSynth) {
+        soundDebugSynth = SoundSynthCreate();
+    }
+    if (soundDebugSynth && !SoundSynthInitAudio(soundDebugSynth, 44100, 512)) {
+        AddMessage("Sound debug: failed to init audio", RED);
+        return;
+    }
+    SoundPaletteLoadDefault(soundPalettePath);
+}
+
+static void SoundDebugToggle(void) {
+    soundDebugEnabled = !soundDebugEnabled;
+    if (soundDebugEnabled) {
+        SoundDebugEnsure();
+        AddMessage("Sound debug: on (F10 call, F11 song)", GREEN);
+    } else {
+        if (soundDebugSynth) {
+            SoundSynthShutdownAudio(soundDebugSynth);
+        }
+        AddMessage("Sound debug: off", GRAY);
+    }
+}
+
+static void SoundDebugPlayCall(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundPhrase phrase = SoundMakeCall(soundDebugSeed++);
+    SoundSynthPlayPhrase(soundDebugSynth, &phrase);
+}
+
+static void SoundDebugPlaySong(void) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundSong song = SoundMakeSong(soundDebugSeed++);
+    SoundSynthPlaySong(soundDebugSynth, &song);
+}
+
+static void SoundDebugUpdate(float dt) {
+    if (!soundDebugEnabled || !soundDebugSynth) return;
+    SoundSynthUpdate(soundDebugSynth, dt);
+    if (!soundDebugAuto) return;
+    soundDebugTimer += dt;
+    if (soundDebugTimer >= soundDebugInterval) {
+        SoundDebugPlayCall();
+        soundDebugTimer = 0.0f;
+    }
+}
 
 Color GetRandomColor(void) {
     return (Color){
@@ -840,6 +898,22 @@ int main(int argc, char** argv) {
 
         HandleInput();
 
+        // Sound debug toggles (independent from input modes)
+        if (IsKeyPressed(KEY_F9)) {
+            SoundDebugToggle();
+        }
+        if (IsKeyPressed(KEY_F8)) {
+            soundDebugAuto = !soundDebugAuto;
+            AddMessage(TextFormat("Sound debug auto: %s", soundDebugAuto ? "ON" : "OFF"),
+                       soundDebugAuto ? GREEN : GRAY);
+        }
+        if (IsKeyPressed(KEY_F10)) {
+            SoundDebugPlayCall();
+        }
+        if (IsKeyPressed(KEY_F11)) {
+            SoundDebugPlaySong();
+        }
+
         // Handle drag-and-drop of save files
         if (IsFileDropped()) {
             FilePathList droppedFiles = LoadDroppedFiles();
@@ -891,6 +965,7 @@ int main(int argc, char** argv) {
             }
         }
         UpdateMessages(frameTime, paused);
+        SoundDebugUpdate(frameTime);
 
         if (!paused) {
             bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
@@ -1323,6 +1398,10 @@ int main(int argc, char** argv) {
     }
     UnloadTexture(atlas);
     UnloadFont(comicFont);
+    if (soundDebugSynth) {
+        SoundSynthDestroy(soundDebugSynth);
+        soundDebugSynth = NULL;
+    }
     CloseWindow();
     return 0;
 }

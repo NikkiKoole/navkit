@@ -36,6 +36,10 @@
 #include "entities/mover.c"
 #include "entities/jobs.c"
 
+// Sound experiments
+#include "sound/sound_phrase.c"
+#include "sound/sound_synth_bridge.c"
+
 // Core systems
 #include "core/time.c"
 #include "core/inspect.c"

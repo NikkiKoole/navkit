@@ -5,9 +5,11 @@ Context
 - The project already has a synth engine in `soundsystem/engines/synth.h` for agent vocal output.
 
 Tracks
-- Speech and Communication: `docs/vision/sound-and-mind-speech-comm.md`
-- Birdsong and Sexual Selection: `docs/vision/sound-and-mind-birdsong-sex.md`
-- System Design: `docs/vision/sound-and-mind-design.md`
+- Speech and Communication: `docs/todo/sounds/sound-and-mind-speech-comm.md`
+- Birdsong and Sexual Selection: `docs/todo/sounds/sound-and-mind-birdsong-sex.md`
+- System Design: `docs/todo/sounds/sound-and-mind-design.md`
+- Concept Generator Spec: `docs/todo/sounds/sound-concept-generator.md`
+- Needs and Emotions Groundwork: `docs/todo/sounds/sound-needs-emotions-groundwork.md`
 
 Shared Foundations
 - Signals only emerge when they change outcomes.

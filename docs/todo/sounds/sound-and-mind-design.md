@@ -222,7 +222,7 @@ Authoritative Sources To Scan
 - `src/world/material.h` for MaterialType (resource concepts).
 
 Generated Outputs (Concept Coverage)
-- `docs/vision/concepts/coverage.md`
+- `docs/todo/sounds/concepts/coverage.md`
 - One row per enum value, with:
 - Concept id, source enum, tags, status (mapped or TODO), and notes.
 
