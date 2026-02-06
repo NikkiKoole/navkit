@@ -3479,8 +3479,6 @@ describe(df_ladder_pathfinding) {
         goalPos = (Point){5, 6, 3};   // Goal at z=3 (walking on z=2 platform)
         RunAStar();
         
-        printf("Path length: %d\n", pathLength);
-        
         expect(pathLength > 0);  // Should find path
         
         // Verify path goes through ladder (z changes)

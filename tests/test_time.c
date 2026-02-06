@@ -309,5 +309,5 @@ int main(int argc, char* argv[]) {
     // Large scales
     test(time_large_scales);
     
-    return 0;
+    return summary();
 }

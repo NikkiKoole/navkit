@@ -653,5 +653,5 @@ int main(int argc, char* argv[]) {
     // Integration tests
     test(build_mine_cycle);
     
-    return 0;
+    return summary();
 }

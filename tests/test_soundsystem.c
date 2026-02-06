@@ -14,19 +14,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
-// Global flag for verbose output in tests
-static bool test_verbose = false;
-
 // Define sample rate before including headers
 #define SAMPLE_RATE 44100
 
 // Include the soundsystem headers (implementation mode)
 #define SOUNDSYSTEM_IMPLEMENTATION
 #include "../soundsystem/soundsystem.h"
-
-
-// Global flag for verbose output in tests
 
 // Undefine macros that collide with local variable names in tests
 #undef masterVolume
@@ -4302,8 +4295,13 @@ describe(bus_reverb_send) {
 // ============================================================================
 
 int main(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
+    // Check for quiet mode flag
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] == 'q') {
+            set_quiet_mode(1);
+            break;
+        }
+    }
     
     // P-lock system tests
     test(plock_system);

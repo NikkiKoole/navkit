@@ -114,6 +114,10 @@ static int _c89spec_tests_failed  = 0;
 /* quiet mode - only show failures                                            */
 static int _c89spec_quiet_mode = 0;
 
+/* spinner for quiet mode                                                     */
+static const char _c89spec_spinner[] = "|/-\\";
+static int _c89spec_spinner_index = 0;
+
 /* store current requirement for potential failure reporting                   */
 static const char * _c89spec_current_requirement = NULL;
 static const char * _c89spec_current_module = NULL;
@@ -180,10 +184,8 @@ void _c89spec_end_it(void) {
 void _c89spec_expect_passed(void) {
    if (!_c89spec_quiet_mode) {
       printf("\r\t%s[x]\t",_C89SPEC_GREEN_COLOR);
-   } else {
-      printf(".");
-      fflush(stdout);
    }
+   /* In quiet mode, show nothing */
    _c89spec_tests_passed++;
 }
 
