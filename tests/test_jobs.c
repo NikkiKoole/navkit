@@ -13,6 +13,10 @@
 #include <string.h>
 #include <math.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 #if defined(__GNUC__) || defined(__clang__)
 #define UNUSED __attribute__((unused))
 #else
@@ -5478,7 +5482,7 @@ describe(job_game_speed) {
         
         // At 2x speed, should complete in roughly half the ticks
         // Allow some tolerance (within 20%)
-        printf("Mine: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
+        if (test_verbose) printf("Mine: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
                ticksAt1x, ticksAt2x, (float)ticksAt1x / ticksAt2x);
         expect(ticksAt2x < ticksAt1x);
         expect(ticksAt2x <= (ticksAt1x / 2) + 5);  // Should be ~half, with small tolerance
@@ -5577,7 +5581,7 @@ describe(job_game_speed) {
         expect(grid[buildZ][1][4] == CELL_WALL);
         
         // At 2x speed, should complete in roughly half the ticks
-        printf("Build: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
+        if (test_verbose) printf("Build: ticksAt1x=%d, ticksAt2x=%d, ratio=%.2f\n", 
                ticksAt1x, ticksAt2x, (float)ticksAt1x / ticksAt2x);
         expect(ticksAt2x < ticksAt1x);
         expect(ticksAt2x <= (ticksAt1x / 2) + 5);
@@ -6614,10 +6618,16 @@ describe(final_approach) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
+    if (quiet) {
+        set_quiet_mode(1);
+    }
         SetTraceLogLevel(LOG_NONE);
     }
 

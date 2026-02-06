@@ -97,6 +97,34 @@ These overlays are material‑agnostic.
 
 ---
 
+## 5.4 Avoiding Combinatorial Explosion (Explicit Rule)
+
+**Rule:** finishes do **not** multiply materials.
+
+We use a *single* finish overlay set (rough/smooth/polished/engraved) across **all** materials.
+
+This keeps art growth linear:
+- Add a new **material** → add **one** base sprite (optional variants later).
+- Add a new **finish** → add **one** overlay sprite.
+
+No “material × finish” sprite combinations.
+
+---
+
+## 5.5 Dirt + Grass Layering
+
+Dirt is a **material**. Grass is a **surface overlay** (already stored in `CELL_SURFACE_MASK`).
+
+So the render order stays clean:
+1. Base dirt floor (inset)
+2. Border frame
+3. Finish overlay (usually ROUGH or SMOOTH)
+4. Grass overlay (if present)
+
+This means grass never creates new material sprites and does not multiply finish variants.
+
+---
+
 ## 6) Data Model Additions
 
 ### 6.1 Finish enum

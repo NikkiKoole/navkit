@@ -60,77 +60,77 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_pathing
+	./$(BINDIR)/test_pathing -q
 
 # Mover test
 test_mover: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mover_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_mover
+	./$(BINDIR)/test_mover -q
 
 # Steering test (doesn't use test_unity)
 test_steering: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steering_SRC) $(LDFLAGS)
-	./$(BINDIR)/test_steering
+	./$(BINDIR)/test_steering -q
 
 # Jobs test
 test_jobs: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_jobs
+	./$(BINDIR)/test_jobs -q
 
 # Water test
 test_water: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_water_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_water
+	./$(BINDIR)/test_water -q
 
 # Ground wear test
 test_groundwear: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_groundwear_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_groundwear
+	./$(BINDIR)/test_groundwear -q
 
 # Fire test
 test_fire: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_fire_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_fire
+	./$(BINDIR)/test_fire -q
 
 # Temperature test
 test_temperature: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_temperature_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_temperature
+	./$(BINDIR)/test_temperature -q
 
 # Steam test
 test_steam: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_steam_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_steam
+	./$(BINDIR)/test_steam -q
 
 # Materials test
 test_materials: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_materials_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_materials
+	./$(BINDIR)/test_materials -q
 
 # Time test
 test_time: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_time
+	./$(BINDIR)/test_time -q
 
 # Time specification tests
 test_time_specs: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_time_specs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_time_specs
+	./$(BINDIR)/test_time_specs -q
 
 # High game speed safety tests
 test_high_speed: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_high_speed_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_high_speed
+	./$(BINDIR)/test_high_speed -q
 
 # Trees test
 test_trees: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_trees_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
-	./$(BINDIR)/test_trees
+	./$(BINDIR)/test_trees -q
 
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
-	./$(BINDIR)/test_soundsystem
+	./$(BINDIR)/test_soundsystem -q
 
 # Run all tests (mover uses 5 stress iterations by default)
 test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_soundsystem

@@ -68,6 +68,9 @@ DEALINGS IN THE SOFTWARE.
 /* return the tests final result                                              */
 int summary(void);
 
+/* Enable quiet mode - only show failures                                     */
+void set_quiet_mode(int enabled);
+
 /* private functions                                                          */
 void _c89spec_test_module(const char * module,void (*func)(void));
 void _c89spec_begin_it(const char * requirement);
@@ -108,6 +111,13 @@ static int _c89spec_tests_execs   = 0;
 static int _c89spec_tests_passed  = 0;
 static int _c89spec_tests_failed  = 0;
 
+/* quiet mode - only show failures                                            */
+static int _c89spec_quiet_mode = 0;
+
+/* store current requirement for potential failure reporting                   */
+static const char * _c89spec_current_requirement = NULL;
+static const char * _c89spec_current_module = NULL;
+
 /* profiler global vars                                                       */
 static clock_t _c89spec_clock_begin;
 static clock_t _c89spec_clock_end;
@@ -133,17 +143,25 @@ static const char * _C89SPEC_BLACK_COLOR  = "\033[1;30m";
 #endif
 
 void _c89spec_test_module(const char * module,void (*func)(void)) {
-   printf("\n%s%s%s%s\n",_C89SPEC_UNDERSCORE \
-                        ,_C89SPEC_BLUE_COLOR \
-                        ,module \
-                        ,_C89SPEC_NO_COLOR); \
-   func(); \
-   printf("%s\n\n",_C89SPEC_NO_COLOR);
+   _c89spec_current_module = module;
+   if (!_c89spec_quiet_mode) {
+      printf("\n%s%s%s%s\n",_C89SPEC_UNDERSCORE \
+                           ,_C89SPEC_BLUE_COLOR \
+                           ,module \
+                           ,_C89SPEC_NO_COLOR);
+   }
+   func();
+   if (!_c89spec_quiet_mode) {
+      printf("%s\n\n",_C89SPEC_NO_COLOR);
+   }
 }
 
 void _c89spec_begin_it(const char * requirement) {
    _c89spec_tests_execs++;
-   printf("\n%s\t[?] %s", _C89SPEC_NO_COLOR ,requirement); \
+   _c89spec_current_requirement = requirement;
+   if (!_c89spec_quiet_mode) {
+      printf("\n%s\t[?] %s", _C89SPEC_NO_COLOR, requirement);
+   }
    _c89spec_clock_begin = clock();
 }
 
@@ -151,23 +169,48 @@ void _c89spec_end_it(void) {
    _c89spec_clock_end = clock();
    _c89spec_test_time = (double)(_c89spec_clock_end - _c89spec_clock_begin)
                         / CLOCKS_PER_SEC;
-   (_c89spec_test_time > C89SPEC_PROFILE_THRESHOLD)
-      ? printf("%s",_C89SPEC_RED_COLOR)
-      : printf("%s",_C89SPEC_BLACK_COLOR);
-   //printf(" (%.2f seconds)", _c89spec_test_time);
+   if (!_c89spec_quiet_mode) {
+      (_c89spec_test_time > C89SPEC_PROFILE_THRESHOLD)
+         ? printf("%s",_C89SPEC_RED_COLOR)
+         : printf("%s",_C89SPEC_BLACK_COLOR);
+      //printf(" (%.2f seconds)", _c89spec_test_time);
+   }
 }
 
 void _c89spec_expect_passed(void) {
-   printf("\r\t%s[x]\t",_C89SPEC_GREEN_COLOR);
+   if (!_c89spec_quiet_mode) {
+      printf("\r\t%s[x]\t",_C89SPEC_GREEN_COLOR);
+   } else {
+      printf(".");
+      fflush(stdout);
+   }
    _c89spec_tests_passed++;
 }
 
 void _c89spec_expect_failed(const char * scalar) {
-   printf("\r\t%s[ ]\n\t\t%s",_C89SPEC_RED_COLOR,scalar);
+   if (_c89spec_quiet_mode) {
+      /* In quiet mode, show F and then the failure with context */
+      printf("%sF%s\n", _C89SPEC_RED_COLOR, _C89SPEC_NO_COLOR);
+      if (_c89spec_current_module) {
+         printf("\n%s%s%s%s\n", _C89SPEC_UNDERSCORE, _C89SPEC_BLUE_COLOR, 
+                _c89spec_current_module, _C89SPEC_NO_COLOR);
+      }
+      printf("\t%s[ ] %s\n", _C89SPEC_RED_COLOR, _c89spec_current_requirement);
+      printf("\t\t%s%s\n", _C89SPEC_RED_COLOR, scalar);
+   } else {
+      printf("\r\t%s[ ]\n\t\t%s", _C89SPEC_RED_COLOR, scalar);
+   }
    _c89spec_tests_failed++;
 }
 
+void set_quiet_mode(int enabled) {
+   _c89spec_quiet_mode = enabled;
+}
+
 int summary(void) {
+   if (_c89spec_quiet_mode) {
+      printf("\n");  // Add newline after dots
+   }
    printf ("Total: %s%d%s\n",_C89SPEC_BLUE_COLOR
                             ,_c89spec_tests_execs
                             ,_C89SPEC_NO_COLOR);

@@ -8,6 +8,10 @@
 #include <string.h>
 #include <math.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // Helper to run water simulation for N ticks
 static void RunWaterTicks(int n) {
     for (int i = 0; i < n; i++) {
@@ -293,9 +297,11 @@ describe(water_basic_flow) {
         }
         
         // Print current state for debugging
-        printf("Staircase test levels: ");
-        for (int i = 0; i < 10; i++) printf("%d ", levels[i]);
-        printf("(total=%d)\n", total);
+        if (test_verbose) {
+            printf("Staircase test levels: ");
+            for (int i = 0; i < 10; i++) printf("%d ", levels[i]);
+            printf("(total=%d)\n", total);
+        }
         
         // Total water should be conserved (35 units)
         expect(total == 35);
@@ -651,11 +657,11 @@ describe(water_pressure) {
         RunWaterTicks(500);
         
         // Debug: print water levels at right side
-        printf("U-bend pressure test (source at z=3):\n");
-        printf("  Right side z=0: %d\n", GetWaterLevel(7, 1, 0));
-        printf("  Right side z=1: %d (wall)\n", GetWaterLevel(7, 1, 1));
-        printf("  Right side z=2: %d (should have water)\n", GetWaterLevel(7, 1, 2));
-        printf("  Right side z=3: %d (should be 0 or low)\n", GetWaterLevel(7, 1, 3));
+        if (test_verbose) printf("U-bend pressure test (source at z=3):\n");
+        if (test_verbose) printf("  Right side z=0: %d\n", GetWaterLevel(7, 1, 0));
+        if (test_verbose) printf("  Right side z=1: %d (wall)\n", GetWaterLevel(7, 1, 1));
+        if (test_verbose) printf("  Right side z=2: %d (should have water)\n", GetWaterLevel(7, 1, 2));
+        if (test_verbose) printf("  Right side z=3: %d (should be 0 or low)\n", GetWaterLevel(7, 1, 3));
         
         // Water SHOULD reach z=2 on the right (sourceZ - 1 = 3 - 1 = 2)
         expect(GetWaterLevel(7, 1, 2) > 0);
@@ -1244,10 +1250,16 @@ describe(water_freezing) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
+    if (quiet) {
+        set_quiet_mode(1);
+    }
         SetTraceLogLevel(LOG_NONE);
     }
     

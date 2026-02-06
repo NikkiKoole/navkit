@@ -14,12 +14,20 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // Define sample rate before including headers
 #define SAMPLE_RATE 44100
 
 // Include the soundsystem headers (implementation mode)
 #define SOUNDSYSTEM_IMPLEMENTATION
 #include "../soundsystem/soundsystem.h"
+
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
 
 // Undefine macros that collide with local variable names in tests
 #undef masterVolume
@@ -3462,6 +3470,10 @@ describe(multi_instance_isolation) {
 // Helper to access DubLoopParams from EffectsContext without macro interference
 // Need to temporarily undefine macros that collide with struct member names
 #include <stddef.h>
+
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
 
 // Save macro definitions and undefine them
 #pragma push_macro("dubLoop")

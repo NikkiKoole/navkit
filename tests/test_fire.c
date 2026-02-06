@@ -9,6 +9,10 @@
 #include <string.h>
 #include <math.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // Helper to run fire simulation for N ticks
 static void RunFireTicks(int n) {
     for (int i = 0; i < n; i++) {
@@ -368,7 +372,7 @@ describe(smoke_rising) {
             }
         }
         
-        printf("Total smoke levels: z0=%d, z1=%d, z2=%d\n", smokeAtZ0, smokeAtZ1, smokeAtZ2);
+        if (test_verbose) printf("Total smoke levels: z0=%d, z1=%d, z2=%d\n", smokeAtZ0, smokeAtZ1, smokeAtZ2);
         
         // Should have smoke at higher levels (smoke rises)
         expect(smokeAtZ1 > 0 || smokeAtZ2 > 0);
@@ -427,7 +431,7 @@ describe(fire_water_extinguishing) {
         RunFireAndSmokeTicks(50);
         
         int smokeBeforeExtinguish = CountTotalSmoke();
-        printf("Smoke before extinguish: %d\n", smokeBeforeExtinguish);
+        if (test_verbose) printf("Smoke before extinguish: %d\n", smokeBeforeExtinguish);
         
         // Extinguish with water
         SetWaterLevel(1, 1, 0, WATER_MAX_LEVEL);
@@ -439,7 +443,7 @@ describe(fire_water_extinguishing) {
         
         // Some smoke should still exist (though it will dissipate)
         int smokeAfterExtinguish = CountTotalSmoke();
-        printf("Smoke after extinguish: %d\n", smokeAfterExtinguish);
+        if (test_verbose) printf("Smoke after extinguish: %d\n", smokeAfterExtinguish);
         
         // Smoke was generated before, verify it existed
         expect(smokeBeforeExtinguish > 0);
@@ -613,17 +617,19 @@ describe(fire_non_flammable) {
         RunFireTicks(1000);
         
         // Debug: print fire/burn state
-        printf("Walkability mode: standard (DF-style)\n");
-        printf("Fire state at z=0 after 1000 ticks:\n");
-        for (int y = 0; y < 3; y++) {
-            for (int x = 0; x < 7; x++) {
-                char c = '.';
-                if (x == 3) c = '#';  // wall above
-                if (HasFire(x, y, 0)) c = 'F';
-                else if (HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) c = 'B';
-                printf("%c", c);
+        if (test_verbose) {
+            printf("Walkability mode: standard (DF-style)\n");
+            printf("Fire state at z=0 after 1000 ticks:\n");
+            for (int y = 0; y < 3; y++) {
+                for (int x = 0; x < 7; x++) {
+                    char c = '.';
+                    if (x == 3) c = '#';  // wall above
+                    if (HasFire(x, y, 0)) c = 'F';
+                    else if (HAS_CELL_FLAG(x, y, 0, CELL_FLAG_BURNED)) c = 'B';
+                    printf("%c", c);
+                }
+                printf("\n");
             }
-            printf("\n");
         }
         
         // Fire should NOT have spread to the right side (under the wall)
@@ -636,7 +642,7 @@ describe(fire_non_flammable) {
                 }
             }
         }
-        printf("Right side burned/burning cells: %d\n", rightSideBurned);
+        if (test_verbose) printf("Right side burned/burning cells: %d\n", rightSideBurned);
         expect(rightSideBurned == 0);
         
         // Fire should exist on left side
@@ -800,7 +806,7 @@ describe(smoke_multi_z_rising) {
             }
         }
         
-        printf("Smoke at z=1: %s, z=2: %s, z=3: %s\n",
+        if (test_verbose) printf("Smoke at z=1: %s, z=2: %s, z=3: %s\n",
                smokeAtZ1 ? "yes" : "no",
                smokeAtZ2 ? "yes" : "no",
                smokeAtZ3 ? "yes" : "no");
@@ -839,7 +845,7 @@ describe(smoke_multi_z_rising) {
             }
         }
         
-        printf("Smoke by z-level: z0=%d z1=%d z2=%d z3=%d z4=%d z5=%d\n",
+        if (test_verbose) printf("Smoke by z-level: z0=%d z1=%d z2=%d z3=%d z4=%d z5=%d\n",
                smokeByZ[0], smokeByZ[1], smokeByZ[2], smokeByZ[3], smokeByZ[4], smokeByZ[5]);
         
         // Key test: intermediate levels (z1-z4) must have smoke
@@ -856,7 +862,7 @@ describe(smoke_multi_z_rising) {
         int intermediateTotal = smokeByZ[1] + smokeByZ[2] + smokeByZ[3] + smokeByZ[4];
         int topLevel = smokeByZ[5];
         
-        printf("Intermediate total=%d, top level=%d\n", intermediateTotal, topLevel);
+        if (test_verbose) printf("Intermediate total=%d, top level=%d\n", intermediateTotal, topLevel);
         
         // Intermediate levels combined should have at least as much smoke as top
         // (smoke should be distributed, not concentrated at top)
@@ -916,7 +922,7 @@ describe(smoke_closed_room_filling) {
             }
         }
         
-        printf("Closed room smoke: z0=%d, z1=%d, z2=%d\n", smokeAtZ0, smokeAtZ1, smokeAtZ2);
+        if (test_verbose) printf("Closed room smoke: z0=%d, z1=%d, z2=%d\n", smokeAtZ0, smokeAtZ1, smokeAtZ2);
         
         // Room should have smoke at multiple levels
         // Higher levels should fill first, then pressure fills down
@@ -972,7 +978,7 @@ describe(smoke_chimney_ventilation) {
         // Smoke should escape through chimney to z=4
         int smokeAboveCeiling = GetSmokeLevel(4, 4, 4);
         
-        printf("Smoke above chimney (z=4): %d\n", smokeAboveCeiling);
+        if (test_verbose) printf("Smoke above chimney (z=4): %d\n", smokeAboveCeiling);
         
         // Should have some smoke escaping through chimney
         // Note: smoke dissipates, so we just check it can rise through
@@ -1062,10 +1068,16 @@ describe(fire_edge_cases) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
+    if (quiet) {
+        set_quiet_mode(1);
+    }
         SetTraceLogLevel(LOG_NONE);
     }
     

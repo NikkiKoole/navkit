@@ -9,6 +9,10 @@
 #include <string.h>
 #include <math.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // Helper to run temperature simulation for N ticks
 static void RunTempTicks(int n) {
     for (int i = 0; i < n; i++) {
@@ -331,7 +335,7 @@ describe(temperature_underground_ambient) {
         int surfaceAmbient = GetAmbientTemperature(gridDepth - 1);
         int deepAmbient = GetAmbientTemperature(0);
         
-        printf("Surface ambient (z=%d): %d\n", gridDepth - 1, surfaceAmbient);
+        if (test_verbose) printf("Surface ambient (z=%d): %d\n", gridDepth - 1, surfaceAmbient);
         printf("Deep ambient (z=0): %d\n", deepAmbient);
         
         expect(surfaceAmbient == ambientSurfaceTemp);
@@ -830,10 +834,16 @@ describe(temperature_stability) {
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
+    if (quiet) {
+        set_quiet_mode(1);
+    }
         SetTraceLogLevel(LOG_NONE);
     }
     

@@ -25,6 +25,10 @@
 #include <string.h>
 #include <math.h>
 
+
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -482,10 +486,16 @@ describe(extreme_speed_edge_cases) {
 
 int main(int argc, char* argv[]) {
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
+    if (quiet) {
+        set_quiet_mode(1);
+    }
         SetTraceLogLevel(LOG_NONE);
     }
     

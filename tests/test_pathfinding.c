@@ -7,6 +7,9 @@
 #include "../src/world/terrain.h"
 #include "../src/world/pathfinding.h"
 
+// Global flag for verbose output in tests
+static bool test_verbose = false;
+
 // Test grid size - fixed at 96x96 (works with various chunk sizes)
 #define TEST_GRID_SIZE 96
 #define TEST_CHUNK_SIZE 32
@@ -3458,11 +3461,11 @@ describe(df_ladder_pathfinding) {
         BuildGraph();
         
         // Debug output
-        printf("Start (5,3,z=1) walkable: %d\n", IsCellWalkableAt(1, 3, 5));
-        printf("Goal (5,6,z=3) walkable: %d\n", IsCellWalkableAt(3, 6, 5));
-        printf("Ladder z=1 (5,5) walkable: %d\n", IsCellWalkableAt(1, 5, 5));
-        printf("Ladder z=2 (5,5) walkable: %d\n", IsCellWalkableAt(2, 5, 5));
-        printf("Ladder count: %d, entrance count: %d\n", ladderLinkCount, entranceCount);
+        if (test_verbose) printf("Start (5,3,z=1) walkable: %d\n", IsCellWalkableAt(1, 3, 5));
+        if (test_verbose) printf("Goal (5,6,z=3) walkable: %d\n", IsCellWalkableAt(3, 6, 5));
+        if (test_verbose) printf("Ladder z=1 (5,5) walkable: %d\n", IsCellWalkableAt(1, 5, 5));
+        if (test_verbose) printf("Ladder z=2 (5,5) walkable: %d\n", IsCellWalkableAt(2, 5, 5));
+        if (test_verbose) printf("Ladder count: %d, entrance count: %d\n", ladderLinkCount, entranceCount);
         
         if (ladderLinkCount > 0) {
             printf("Ladder link 0: x=%d y=%d zLow=%d zHigh=%d\n", 
@@ -3638,13 +3641,19 @@ static void run_all_tests(void) {
 }
 
 int main(int argc, char* argv[]) {
-    // Suppress logs by default, use -v for verbose
+    // Suppress logs by default, use -v for verbose, -q for quiet
     bool verbose = false;
+    bool quiet = false;
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') verbose = true;
+        if (argv[i][0] == '-' && argv[i][1] == 'q') quiet = true;
     }
+    test_verbose = verbose;
     if (!verbose) {
         SetTraceLogLevel(LOG_NONE);
+    }
+    if (quiet) {
+        set_quiet_mode(1);
     }
     
     run_all_tests();
