@@ -1064,6 +1064,14 @@ int main(int argc, char** argv) {
                 JobsTick();
                 PROFILE_END(JobsTick);
                 
+                // Periodically validate simulation activity counters (every 60 seconds)
+                static float simValidationTimer = 0.0f;
+                simValidationTimer += tickDt;
+                if (simValidationTimer >= 60.0f) {
+                    ValidateSimActivityCounts();
+                    simValidationTimer = 0.0f;
+                }
+                
                 if (useFixedTimestep) {
                     accumulator -= TICK_DT;
                     if (accumulator > TICK_DT) {

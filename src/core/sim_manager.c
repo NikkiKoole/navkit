@@ -8,6 +8,7 @@
 #include "../simulation/groundwear.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "raylib.h"
 
 // Active cell counts for early exit
 int waterActiveCells = 0;
@@ -84,4 +85,54 @@ void RebuildSimActivityCounts(void) {
             }
         }
     }
+}
+
+// Validate activity counters against actual grid state, auto-correct if drift detected
+// Returns true if counters are valid, false if drift was detected and corrected
+bool ValidateSimActivityCounts(void) {
+    int actualWater = 0, actualSteam = 0, actualFire = 0, actualSmoke = 0;
+    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualWear = 0;
+    
+    // Count actual active cells from grids (same logic as RebuildSimActivityCounts)
+    for (int z = 0; z < gridDepth; z++) {
+        int ambient = GetAmbientTemperature(z);
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                WaterCell *wc = &waterGrid[z][y][x];
+                if (wc->level > 0 || wc->isSource || wc->isDrain) actualWater++;
+                if (GetSteamLevel(x, y, z) > 0) actualSteam++;
+                FireCell *fc = &fireGrid[z][y][x];
+                if (fc->level > 0 || fc->isSource) actualFire++;
+                if (GetSmokeLevel(x, y, z) > 0) actualSmoke++;
+                if (IsHeatSource(x, y, z) || IsColdSource(x, y, z)) actualTempSource++;
+                TempCell *tc = &temperatureGrid[z][y][x];
+                if (!tc->stable || tc->current != ambient) actualTempUnstable++;
+                CellType cell = grid[z][y][x];
+                if (cell == CELL_SAPLING) actualTree++;
+                if (cell == CELL_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
+            }
+        }
+    }
+    
+    bool valid = true;
+    
+    #define CHECK_COUNTER(name, actual) \
+        if (name != actual) { \
+            TraceLog(LOG_WARNING, "Activity counter drift: " #name " = %d, actual = %d (correcting)", name, actual); \
+            name = actual; \
+            valid = false; \
+        }
+    
+    CHECK_COUNTER(waterActiveCells, actualWater);
+    CHECK_COUNTER(steamActiveCells, actualSteam);
+    CHECK_COUNTER(fireActiveCells, actualFire);
+    CHECK_COUNTER(smokeActiveCells, actualSmoke);
+    CHECK_COUNTER(tempSourceCount, actualTempSource);
+    CHECK_COUNTER(tempUnstableCells, actualTempUnstable);
+    CHECK_COUNTER(treeActiveCells, actualTree);
+    CHECK_COUNTER(wearActiveCells, actualWear);
+    
+    #undef CHECK_COUNTER
+    
+    return valid;
 }

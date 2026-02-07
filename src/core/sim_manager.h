@@ -21,5 +21,6 @@ extern int wearActiveCells;    // Dirt tiles with wear > 0
 
 void InitSimActivity(void);
 void RebuildSimActivityCounts(void);  // Rebuild counters from grids (call after load)
+bool ValidateSimActivityCounts(void); // Validate counters, auto-correct if drift detected (returns true if valid)
 
 #endif // SIM_MANAGER_H
