@@ -131,6 +131,49 @@ static bool chopFelledCacheDirty = true;
 static bool gatherSaplingCacheDirty = true;
 static bool plantSaplingCacheDirty = true;
 
+// Forward declarations for designation cache rebuild functions
+static void RebuildChannelDesignationCache(void);
+static void RebuildRemoveFloorDesignationCache(void);
+static void RebuildRemoveRampDesignationCache(void);
+static void RebuildDigRampDesignationCache(void);
+static void RebuildChopDesignationCache(void);
+static void RebuildChopFelledDesignationCache(void);
+static void RebuildGatherSaplingDesignationCache(void);
+static void RebuildPlantSaplingDesignationCache(void);
+
+// Designation Job Specification - consolidates designation type with job handling
+typedef struct {
+    DesignationType desigType;
+    JobType jobType;
+    void (*RebuildCache)(void);
+    int (*WorkGiver)(int moverIdx);
+    void* cacheArray;     // pointer to the static cache array (AdjacentDesignationEntry[] or OnTileDesignationEntry[])
+    int* cacheCount;      // pointer to the static count
+    bool* cacheDirty;     // pointer to the static dirty flag
+} DesignationJobSpec;
+
+// Table of all designation types (defines coordination between designation, job, cache, and workgiver)
+static DesignationJobSpec designationSpecs[] = {
+    {DESIGNATION_MINE, JOBTYPE_MINE, RebuildMineDesignationCache, WorkGiver_Mining, 
+     mineCache, &mineCacheCount, &mineCacheDirty},
+    {DESIGNATION_CHANNEL, JOBTYPE_CHANNEL, RebuildChannelDesignationCache, WorkGiver_Channel,
+     channelCache, &channelCacheCount, &channelCacheDirty},
+    {DESIGNATION_DIG_RAMP, JOBTYPE_DIG_RAMP, RebuildDigRampDesignationCache, WorkGiver_DigRamp,
+     digRampCache, &digRampCacheCount, &digRampCacheDirty},
+    {DESIGNATION_REMOVE_FLOOR, JOBTYPE_REMOVE_FLOOR, RebuildRemoveFloorDesignationCache, WorkGiver_RemoveFloor,
+     removeFloorCache, &removeFloorCacheCount, &removeFloorCacheDirty},
+    {DESIGNATION_REMOVE_RAMP, JOBTYPE_REMOVE_RAMP, RebuildRemoveRampDesignationCache, WorkGiver_RemoveRamp,
+     removeRampCache, &removeRampCacheCount, &removeRampCacheDirty},
+    {DESIGNATION_CHOP, JOBTYPE_CHOP, RebuildChopDesignationCache, WorkGiver_Chop,
+     chopCache, &chopCacheCount, &chopCacheDirty},
+    {DESIGNATION_CHOP_FELLED, JOBTYPE_CHOP_FELLED, RebuildChopFelledDesignationCache, WorkGiver_ChopFelled,
+     chopFelledCache, &chopFelledCacheCount, &chopFelledCacheDirty},
+    {DESIGNATION_GATHER_SAPLING, JOBTYPE_GATHER_SAPLING, RebuildGatherSaplingDesignationCache, WorkGiver_GatherSapling,
+     gatherSaplingCache, &gatherSaplingCacheCount, &gatherSaplingCacheDirty},
+    {DESIGNATION_PLANT_SAPLING, JOBTYPE_PLANT_SAPLING, RebuildPlantSaplingDesignationCache, WorkGiver_PlantSapling,
+     plantSaplingCache, &plantSaplingCacheCount, &plantSaplingCacheDirty},
+};
+
 // Helper: Find first adjacent walkable tile. Returns true if found.
 static bool FindAdjacentWalkable(int x, int y, int z, int* outAdjX, int* outAdjY) {
     for (int dir = 0; dir < 4; dir++) {
@@ -198,49 +241,49 @@ void RebuildMineDesignationCache(void) {
     mineCacheDirty = false;
 }
 
-void RebuildChannelDesignationCache(void) {
+static void RebuildChannelDesignationCache(void) {
     if (!channelCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CHANNEL, channelCache, &channelCacheCount);
     channelCacheDirty = false;
 }
 
-void RebuildRemoveFloorDesignationCache(void) {
+static void RebuildRemoveFloorDesignationCache(void) {
     if (!removeFloorCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_REMOVE_FLOOR, removeFloorCache, &removeFloorCacheCount);
     removeFloorCacheDirty = false;
 }
 
-void RebuildRemoveRampDesignationCache(void) {
+static void RebuildRemoveRampDesignationCache(void) {
     if (!removeRampCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_REMOVE_RAMP, removeRampCache, &removeRampCacheCount);
     removeRampCacheDirty = false;
 }
 
-void RebuildDigRampDesignationCache(void) {
+static void RebuildDigRampDesignationCache(void) {
     if (!digRampCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_DIG_RAMP, digRampCache, &digRampCacheCount);
     digRampCacheDirty = false;
 }
 
-void RebuildChopDesignationCache(void) {
+static void RebuildChopDesignationCache(void) {
     if (!chopCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_CHOP, chopCache, &chopCacheCount);
     chopCacheDirty = false;
 }
 
-void RebuildChopFelledDesignationCache(void) {
+static void RebuildChopFelledDesignationCache(void) {
     if (!chopFelledCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_CHOP_FELLED, chopFelledCache, &chopFelledCacheCount);
     chopFelledCacheDirty = false;
 }
 
-void RebuildGatherSaplingDesignationCache(void) {
+static void RebuildGatherSaplingDesignationCache(void) {
     if (!gatherSaplingCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_GATHER_SAPLING, gatherSaplingCache, &gatherSaplingCacheCount);
     gatherSaplingCacheDirty = false;
 }
 
-void RebuildPlantSaplingDesignationCache(void) {
+static void RebuildPlantSaplingDesignationCache(void) {
     if (!plantSaplingCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_PLANT_SAPLING, plantSaplingCache, &plantSaplingCacheCount);
     plantSaplingCacheDirty = false;
@@ -248,17 +291,11 @@ void RebuildPlantSaplingDesignationCache(void) {
 
 // Invalidate designation caches - call when designations are added/removed/completed
 void InvalidateDesignationCache(DesignationType type) {
-    switch (type) {
-        case DESIGNATION_MINE:           mineCacheDirty = true; break;
-        case DESIGNATION_CHANNEL:        channelCacheDirty = true; break;
-        case DESIGNATION_DIG_RAMP:       digRampCacheDirty = true; break;
-        case DESIGNATION_REMOVE_FLOOR:   removeFloorCacheDirty = true; break;
-        case DESIGNATION_REMOVE_RAMP:    removeRampCacheDirty = true; break;
-        case DESIGNATION_CHOP:           chopCacheDirty = true; break;
-        case DESIGNATION_CHOP_FELLED:    chopFelledCacheDirty = true; break;
-        case DESIGNATION_GATHER_SAPLING: gatherSaplingCacheDirty = true; break;
-        case DESIGNATION_PLANT_SAPLING:  plantSaplingCacheDirty = true; break;
-        default: break;
+    for (int i = 0; i < (int)(sizeof(designationSpecs) / sizeof(designationSpecs[0])); i++) {
+        if (designationSpecs[i].desigType == type) {
+            *designationSpecs[i].cacheDirty = true;
+            break;
+        }
     }
 }
 
@@ -2693,26 +2730,22 @@ void AssignJobs(void) {
     // Skip entirely if no sparse targets exist (performance optimization)
     // =========================================================================
     if (idleMoverCount > 0) {
-        // Build designation caches ONCE (replaces grid scan per mover)
-        RebuildMineDesignationCache();
-        RebuildChannelDesignationCache();
-        RebuildDigRampDesignationCache();
-        RebuildRemoveFloorDesignationCache();
-        RebuildRemoveRampDesignationCache();
-        RebuildChopDesignationCache();
-        RebuildChopFelledDesignationCache();
-        RebuildGatherSaplingDesignationCache();
-        RebuildPlantSaplingDesignationCache();
-
-        bool hasMineWork = (mineCacheCount > 0);
-        bool hasChannelWork = (channelCacheCount > 0);
-        bool hasDigRampWork = (digRampCacheCount > 0);
-        bool hasRemoveFloorWork = (removeFloorCacheCount > 0);
-        bool hasRemoveRampWork = (removeRampCacheCount > 0);
-        bool hasChopWork = (chopCacheCount > 0);
-        bool hasChopFelledWork = (chopFelledCacheCount > 0);
-        bool hasGatherSaplingWork = (gatherSaplingCacheCount > 0);
-        bool hasPlantSaplingWork = (plantSaplingCacheCount > 0);
+        // Rebuild all dirty designation caches (table-driven)
+        int designationSpecCount = sizeof(designationSpecs) / sizeof(designationSpecs[0]);
+        for (int i = 0; i < designationSpecCount; i++) {
+            if (*designationSpecs[i].cacheDirty) {
+                designationSpecs[i].RebuildCache();
+            }
+        }
+        
+        // Check if any designation work exists
+        bool hasDesignationWork = false;
+        for (int i = 0; i < designationSpecCount; i++) {
+            if (*designationSpecs[i].cacheCount > 0) {
+                hasDesignationWork = true;
+                break;
+            }
+        }
 
         // Quick check: any blueprints needing materials or building?
         bool hasBlueprintWork = false;
@@ -2727,7 +2760,7 @@ void AssignJobs(void) {
         }
 
         // Only iterate movers if there's sparse work to do
-        if (hasMineWork || hasChannelWork || hasDigRampWork || hasRemoveFloorWork || hasRemoveRampWork || hasChopWork || hasChopFelledWork || hasGatherSaplingWork || hasPlantSaplingWork || hasBlueprintWork) {
+        if (hasDesignationWork || hasBlueprintWork) {
             // Copy idle list since WorkGivers modify it
             int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
             if (!idleCopy) return;
@@ -2740,52 +2773,15 @@ void AssignJobs(void) {
                 // Skip if already assigned by hauling above
                 if (!moverIsInIdleList[moverIdx]) continue;
 
-                // Try sparse-target WorkGivers only (skip hauling WorkGivers)
+                // Try designation WorkGivers in priority order (table order = priority)
                 int jobId = -1;
-                if (hasMineWork) {
-                    jobId = WorkGiver_Mining(moverIdx);
+                for (int j = 0; j < designationSpecCount && jobId < 0; j++) {
+                    if (*designationSpecs[j].cacheCount > 0) {
+                        jobId = designationSpecs[j].WorkGiver(moverIdx);
+                    }
                 }
 
-                // Channel (after mining - similar priority)
-                if (jobId < 0 && hasChannelWork) {
-                    jobId = WorkGiver_Channel(moverIdx);
-                }
-
-                // Dig ramp (after channel - carve ramp from wall)
-                if (jobId < 0 && hasDigRampWork) {
-                    jobId = WorkGiver_DigRamp(moverIdx);
-                }
-
-                // Remove floor (after dig ramp - lower priority)
-                if (jobId < 0 && hasRemoveFloorWork) {
-                    jobId = WorkGiver_RemoveFloor(moverIdx);
-                }
-
-                // Remove ramp (after remove floor - lower priority)
-                if (jobId < 0 && hasRemoveRampWork) {
-                    jobId = WorkGiver_RemoveRamp(moverIdx);
-                }
-
-                // Chop trees (after remove ramp)
-                if (jobId < 0 && hasChopWork) {
-                    jobId = WorkGiver_Chop(moverIdx);
-                }
-
-                // Chop felled trunks (after standing trees)
-                if (jobId < 0 && hasChopFelledWork) {
-                    jobId = WorkGiver_ChopFelled(moverIdx);
-                }
-
-                // Gather saplings (after chop)
-                if (jobId < 0 && hasGatherSaplingWork) {
-                    jobId = WorkGiver_GatherSapling(moverIdx);
-                }
-
-                // Plant saplings (after gather)
-                if (jobId < 0 && hasPlantSaplingWork) {
-                    jobId = WorkGiver_PlantSapling(moverIdx);
-                }
-
+                // Try blueprint work (haul materials or build)
                 if (jobId < 0 && hasBlueprintWork) {
                     jobId = WorkGiver_BlueprintHaul(moverIdx);
                     if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
