@@ -71,8 +71,7 @@ static int CountStandingTrunks(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_TRUNK &&
-                    treePartGrid[z][y][x] == TREE_PART_TRUNK) {
+                if (grid[z][y][x] == CELL_TREE_TRUNK) {
                     count++;
                 }
             }
@@ -94,8 +93,7 @@ static int CountFelledTrunks(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_TRUNK &&
-                    treePartGrid[z][y][x] == TREE_PART_FELLED) {
+                if (grid[z][y][x] == CELL_TREE_FELLED) {
                     count++;
                 }
             }
@@ -108,8 +106,7 @@ static bool ChopFirstFelledTrunk(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                if (grid[z][y][x] == CELL_TREE_TRUNK &&
-                    treePartGrid[z][y][x] == TREE_PART_FELLED) {
+                if (grid[z][y][x] == CELL_TREE_FELLED) {
                     CompleteChopFelledDesignation(x, y, z, -1);
                     return true;
                 }
@@ -199,7 +196,7 @@ describe(tree_sapling_drops) {
         // Tree should be gone (base is air or felled trunk)
         bool baseClearOrFelled =
             (grid[1][5][5] == CELL_AIR) ||
-            (grid[1][5][5] == CELL_TREE_TRUNK && treePartGrid[1][5][5] == TREE_PART_FELLED);
+            (grid[1][5][5] == CELL_TREE_FELLED);
         expect(baseClearOrFelled);
         
         // Should have dropped sapling items
@@ -859,7 +856,7 @@ describe(tree_full_lifecycle) {
         // Tree should be felled (base is air or felled trunk)
         bool baseClearOrFelled =
             (grid[1][5][5] == CELL_AIR) ||
-            (grid[1][5][5] == CELL_TREE_TRUNK && treePartGrid[1][5][5] == TREE_PART_FELLED);
+            (grid[1][5][5] == CELL_TREE_FELLED);
         expect(baseClearOrFelled);
         expect(CountStandingTrunks() == 0);
         

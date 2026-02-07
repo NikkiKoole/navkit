@@ -106,8 +106,7 @@ void TrampleGround(int x, int y, int z) {
         // Only destroy sapling after significant wear (half of max)
         if (wearGrid[z][y][x] >= wearMax / 2) {
             grid[z][y][x] = CELL_AIR;
-            treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
-            treePartGrid[z][y][x] = TREE_PART_NONE;
+            SetWallMaterial(x, y, z, MAT_NONE);
             MarkChunkDirty(x, y, z);
             wearGrid[z][y][x] = 0;  // Reset wear
         }

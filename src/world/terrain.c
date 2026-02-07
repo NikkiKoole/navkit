@@ -1,5 +1,6 @@
 #include "terrain.h"
 #include "cell_defs.h"
+#include "material.h"
 #include "../../vendor/raylib.h"
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
@@ -32,40 +33,40 @@ static bool CanPlaceWorldGenTreeAt(int x, int y, int baseZ) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
     if (baseZ < 0 || baseZ + 1 >= gridDepth) return false;
     if (!IsGroundCell(grid[baseZ][y][x])) return false;
-    if (grid[baseZ][y][x] == CELL_ROCK) return false;  // Trees avoid rock
+    if (GetWallMaterial(x, y, baseZ) == MAT_GRANITE) return false;  // Trees avoid rock
     if (grid[baseZ + 1][y][x] != CELL_AIR) return false;
     return true;
 }
 
-static TreeType PickTreeTypeForSoilSimple(CellType soil) {
-    switch (soil) {
-        case CELL_PEAT: return TREE_TYPE_WILLOW;
-        case CELL_SAND: return TREE_TYPE_BIRCH;
-        case CELL_GRAVEL: return TREE_TYPE_PINE;
-        case CELL_CLAY: return TREE_TYPE_OAK;
-        case CELL_DIRT:
+static TreeType PickTreeTypeForSoilSimple(MaterialType mat) {
+    switch (mat) {
+        case MAT_PEAT: return TREE_TYPE_WILLOW;
+        case MAT_SAND: return TREE_TYPE_BIRCH;
+        case MAT_GRAVEL: return TREE_TYPE_PINE;
+        case MAT_CLAY: return TREE_TYPE_OAK;
+        case MAT_DIRT:
         default: return TREE_TYPE_OAK;
     }
 }
 
-static TreeType PickTreeTypeForWorldGen(CellType soil, float wetness, int slope, bool nearWater, float noise) {
+static TreeType PickTreeTypeForWorldGen(MaterialType mat, float wetness, int slope, bool nearWater, float noise) {
     if (nearWater || wetness > 0.7f) {
-        if (soil == CELL_PEAT || soil == CELL_DIRT) return TREE_TYPE_WILLOW;
+        if (mat == MAT_PEAT || mat == MAT_DIRT) return TREE_TYPE_WILLOW;
     }
 
-    if ((soil == CELL_GRAVEL || slope >= 1) && wetness < 0.45f) {
+    if ((mat == MAT_GRAVEL || slope >= 1) && wetness < 0.45f) {
         return TREE_TYPE_PINE;
     }
 
-    if (soil == CELL_SAND || soil == CELL_GRAVEL) {
+    if (mat == MAT_SAND || mat == MAT_GRAVEL) {
         return TREE_TYPE_BIRCH;
     }
 
-    if (soil == CELL_CLAY || soil == CELL_DIRT) {
+    if (mat == MAT_CLAY || mat == MAT_DIRT) {
         return TREE_TYPE_OAK;
     }
 
-    if (soil == CELL_PEAT) {
+    if (mat == MAT_PEAT) {
         return TREE_TYPE_WILLOW;
     }
 
@@ -124,8 +125,10 @@ void GenerateSparse(float density) {
     SeedTerrain();
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++)
-            if ((float)GetRandomValue(0, 100) / 100.0f < density)
-                grid[1][y][x] = CELL_ROCK;  // Natural rock at z=1 (walking level)
+            if ((float)GetRandomValue(0, 100) / 100.0f < density) {
+                grid[1][y][x] = CELL_TERRAIN;  // Natural rock at z=1 (walking level)
+                SetWallMaterial(x, y, 1, MAT_GRANITE);
+            }
     needsRebuild = true;
 }
 
@@ -187,7 +190,8 @@ static void FlattenAreaTo(int baseX, int baseY, int w, int h, int targetZ, int* 
                 }
             } else if (current < targetZ) {
                 for (int z = current + 1; z <= targetZ; z++) {
-                    grid[z][y][x] = CELL_DIRT;
+                    grid[z][y][x] = CELL_TERRAIN;
+                    SetWallMaterial(x, y, z, MAT_DIRT);
                     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                 }
             }
@@ -214,7 +218,8 @@ static void CarveEntryApron(int outsideX, int outsideY, int baseZ, int* surface)
         for (int y = startY; y <= endY; y++) {
             for (int x = startX; x <= endX; x++) {
                 if (baseZ >= 0 && baseZ < gridDepth) {
-                    grid[baseZ][y][x] = CELL_DIRT;
+                    grid[baseZ][y][x] = CELL_TERRAIN;
+                    SetWallMaterial(x, y, baseZ, MAT_DIRT);
                     SET_CELL_SURFACE(x, y, baseZ, SURFACE_BARE);
                 }
             }
@@ -712,9 +717,11 @@ static void ReportWalkableComponents(const char* tag) {
                             FloodNode node = queue[i];
                             CLEAR_FLOOR(node.x, node.y, node.z);
                             if (node.z == 0) {
-                                grid[node.z][node.y][node.x] = CELL_DIRT;
+                                grid[node.z][node.y][node.x] = CELL_TERRAIN;
+                                SetWallMaterial(node.x, node.y, node.z, MAT_DIRT);
                             } else {
-                                grid[node.z][node.y][node.x] = CELL_ROCK;
+                                grid[node.z][node.y][node.x] = CELL_TERRAIN;
+                                SetWallMaterial(node.x, node.y, node.z, MAT_GRANITE);
                             }
                             SET_CELL_SURFACE(node.x, node.y, node.z, SURFACE_BARE);
                             if (HasWater(node.x, node.y, node.z)) {
@@ -785,7 +792,8 @@ void GenerateLabyrinth3D(void) {
     for (int z = baseZ; z < baseZ + numLevels; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[z][y][x] = CELL_ROCK;
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
             }
         }
     }
@@ -943,7 +951,8 @@ void GenerateSpiral3D(void) {
                 bool isGap = (gapSide == 0) && (x >= gapCenter - gapSize/2) && (x <= gapCenter + gapSize/2);
                 if (!isGap) {
                     for (int t = 0; t < wallThickness && top + t < gridHeight; t++) {
-                        grid[z][top + t][x] = CELL_ROCK;
+                        grid[z][top + t][x] = CELL_TERRAIN;
+                        SetWallMaterial(x, top + t, z, MAT_GRANITE);
                     }
                 }
             }
@@ -954,7 +963,8 @@ void GenerateSpiral3D(void) {
                 bool isGap = (gapSide == 2) && (x >= gapCenter - gapSize/2) && (x <= gapCenter + gapSize/2);
                 if (!isGap) {
                     for (int t = 0; t < wallThickness && bottom - t >= 0; t++) {
-                        grid[z][bottom - t][x] = CELL_ROCK;
+                        grid[z][bottom - t][x] = CELL_TERRAIN;
+                        SetWallMaterial(x, bottom - t, z, MAT_GRANITE);
                     }
                 }
             }
@@ -965,7 +975,8 @@ void GenerateSpiral3D(void) {
                 bool isGap = (gapSide == 3) && (y >= gapCenter - gapSize/2) && (y <= gapCenter + gapSize/2);
                 if (!isGap) {
                     for (int t = 0; t < wallThickness && left + t < gridWidth; t++) {
-                        grid[z][y][left + t] = CELL_ROCK;
+                        grid[z][y][left + t] = CELL_TERRAIN;
+                        SetWallMaterial(left + t, y, z, MAT_GRANITE);
                     }
                 }
             }
@@ -976,7 +987,8 @@ void GenerateSpiral3D(void) {
                 bool isGap = (gapSide == 1) && (y >= gapCenter - gapSize/2) && (y <= gapCenter + gapSize/2);
                 if (!isGap) {
                     for (int t = 0; t < wallThickness && right - t >= 0; t++) {
-                        grid[z][y][right - t] = CELL_ROCK;
+                        grid[z][y][right - t] = CELL_TERRAIN;
+                        SetWallMaterial(right - t, y, z, MAT_GRANITE);
                     }
                 }
             }
@@ -990,14 +1002,18 @@ void GenerateSpiral3D(void) {
     int innerRing = ringSpacing;
     for (int x = centerX - innerRing; x <= centerX + innerRing; x++) {
         if (x > 0 && x < gridWidth - 1) {
-            grid[z3][centerY - innerRing][x] = CELL_ROCK;
-            grid[z3][centerY + innerRing][x] = CELL_ROCK;
+            grid[z3][centerY - innerRing][x] = CELL_TERRAIN;
+            SetWallMaterial(x, centerY - innerRing, z3, MAT_GRANITE);
+            grid[z3][centerY + innerRing][x] = CELL_TERRAIN;
+            SetWallMaterial(x, centerY + innerRing, z3, MAT_GRANITE);
         }
     }
     for (int y = centerY - innerRing; y <= centerY + innerRing; y++) {
         if (y > 0 && y < gridHeight - 1) {
-            grid[z3][y][centerX - innerRing] = CELL_ROCK;
-            grid[z3][y][centerX + innerRing] = CELL_ROCK;
+            grid[z3][y][centerX - innerRing] = CELL_TERRAIN;
+            SetWallMaterial(centerX - innerRing, y, z3, MAT_GRANITE);
+            grid[z3][y][centerX + innerRing] = CELL_TERRAIN;
+            SetWallMaterial(centerX + innerRing, y, z3, MAT_GRANITE);
         }
     }
     // Gaps on all sides for level 3
@@ -1169,8 +1185,10 @@ void GenerateDungeonRooms(void) {
     
     // Fill z=1 with rock (to carve rooms)
     for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            grid[1][y][x] = CELL_ROCK;
+        for (int x = 0; x < gridWidth; x++) {
+            grid[1][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+        }
     
     dungeonRoomCount = 0;
     
@@ -1244,15 +1262,22 @@ void GenerateCaves(void) {
         for (int x = 0; x < gridWidth; x++) {
             // Border is always rock
             if (x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1) {
-                grid[0][y][x] = CELL_ROCK;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_GRANITE);
             } else {
-                grid[0][y][x] = (GetRandomValue(0, 100) < 45) ? CELL_ROCK : CELL_DIRT;
+                if (GetRandomValue(0, 100) < 45) {
+                    grid[0][y][x] = CELL_TERRAIN;
+                    SetWallMaterial(x, y, 0, MAT_GRANITE);
+                } else {
+                    grid[0][y][x] = CELL_TERRAIN;
+                    SetWallMaterial(x, y, 0, MAT_DIRT);
+                }
             }
         }
     }
     
     // Temporary buffer for cellular automata
-    CellType* temp = (CellType*)malloc(gridWidth * gridHeight * sizeof(CellType));
+    MaterialType* temp = (MaterialType*)malloc(gridWidth * gridHeight * sizeof(MaterialType));
     
     // Run cellular automata iterations
     for (int iter = 0; iter < 5; iter++) {
@@ -1262,17 +1287,18 @@ void GenerateCaves(void) {
                 int walls = 0;
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dx = -1; dx <= 1; dx++) {
-                        if (grid[0][y + dy][x + dx] == CELL_ROCK) walls++;
+                        if (GetWallMaterial(x + dx, y + dy, 0) == MAT_GRANITE) walls++;
                     }
                 }
                 // 4-5 rule: become rock if >= 5 neighbors are rock
-                temp[y * gridWidth + x] = (walls >= 5) ? CELL_ROCK : CELL_DIRT;
+                temp[y * gridWidth + x] = (walls >= 5) ? MAT_GRANITE : MAT_DIRT;
             }
         }
         // Copy back
         for (int y = 1; y < gridHeight - 1; y++) {
             for (int x = 1; x < gridWidth - 1; x++) {
-                grid[0][y][x] = temp[y * gridWidth + x];
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, (MaterialType)temp[y * gridWidth + x]);
             }
         }
     }
@@ -1287,7 +1313,8 @@ void GenerateCaves(void) {
             for (int dx = -r; dx <= r; dx++) {
                 int nx = cx + dx, ny = cy + dy;
                 if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
-                    grid[0][ny][nx] = CELL_DIRT;
+                    grid[0][ny][nx] = CELL_TERRAIN;
+                    SetWallMaterial(nx, ny, 0, MAT_DIRT);
                 }
             }
         }
@@ -1306,8 +1333,10 @@ void GenerateDrunkard(void) {
     
     // Fill z=1 with rock (to carve)
     for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            grid[1][y][x] = CELL_ROCK;
+        for (int x = 0; x < gridWidth; x++) {
+            grid[1][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+        }
     
     // Start from center
     int x = gridWidth / 2;
@@ -1321,7 +1350,7 @@ void GenerateDrunkard(void) {
     
     for (int step = 0; step < maxSteps && floorCount < targetFloor; step++) {
         // Carve current position
-        if (grid[1][y][x] == CELL_ROCK) {
+        if (grid[1][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 1) == MAT_GRANITE) {
             grid[1][y][x] = CELL_AIR;
             floorCount++;
         }
@@ -1390,8 +1419,10 @@ void GenerateTunneler(void) {
     
     // Fill z=1 with rock (to carve)
     for (int y = 0; y < gridHeight; y++)
-        for (int x = 0; x < gridWidth; x++)
-            grid[1][y][x] = CELL_ROCK;
+        for (int x = 0; x < gridWidth; x++) {
+            grid[1][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 1, MAT_GRANITE);
+        }
     
     // Scale room count based on world size
     // Roughly 1 room per 150 tiles, with min 5 and max 100
@@ -1518,7 +1549,8 @@ void GenerateConcentricMaze(void) {
         for (int x = left; x <= right; x++) {
             if (gapSide == 3 && x >= gapStart && x < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && top + t < gridHeight; t++) {
-                grid[1][top + t][x] = CELL_ROCK;
+                grid[1][top + t][x] = CELL_TERRAIN;
+                SetWallMaterial(x, top + t, 1, MAT_GRANITE);
             }
         }
         
@@ -1529,7 +1561,8 @@ void GenerateConcentricMaze(void) {
         for (int x = left; x <= right; x++) {
             if (gapSide == 1 && x >= gapStart && x < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && bottom - t >= 0; t++) {
-                grid[1][bottom - t][x] = CELL_ROCK;
+                grid[1][bottom - t][x] = CELL_TERRAIN;
+                SetWallMaterial(x, bottom - t, 1, MAT_GRANITE);
             }
         }
         
@@ -1540,7 +1573,8 @@ void GenerateConcentricMaze(void) {
         for (int y = top; y <= bottom; y++) {
             if (gapSide == 2 && y >= gapStart && y < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && left + t < gridWidth; t++) {
-                grid[1][y][left + t] = CELL_ROCK;
+                grid[1][y][left + t] = CELL_TERRAIN;
+                SetWallMaterial(left + t, y, 1, MAT_GRANITE);
             }
         }
         
@@ -1551,7 +1585,8 @@ void GenerateConcentricMaze(void) {
         for (int y = top; y <= bottom; y++) {
             if (gapSide == 0 && y >= gapStart && y < gapStart + gapSize) continue;
             for (int t = 0; t < wallThickness && right - t >= 0; t++) {
-                grid[1][y][right - t] = CELL_ROCK;
+                grid[1][y][right - t] = CELL_TERRAIN;
+                SetWallMaterial(right - t, y, 1, MAT_GRANITE);
             }
         }
     }
@@ -1709,7 +1744,8 @@ void GenerateHills(void) {
             
             // Fill with dirt from z=0 up to height
             for (int z = 0; z <= height; z++) {
-                grid[z][y][x] = CELL_DIRT;
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_DIRT);
             }
             
             // Add grass surface on top
@@ -1725,7 +1761,8 @@ void GenerateHills(void) {
             if (height < soilDepth) continue;  // too shallow for rock
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
-                grid[z][y][x] = CELL_ROCK;  // natural rock
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
             }
         }
     }
@@ -1854,7 +1891,8 @@ void GenerateHillsSoils(void) {
             heightmap[y * gridWidth + x] = height;
 
             for (int z = 0; z <= height; z++) {
-                grid[z][y][x] = CELL_DIRT;
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_DIRT);
             }
         }
     }
@@ -1879,7 +1917,8 @@ void GenerateHillsSoils(void) {
             if (height < soilDepth) continue;  // too shallow for rock
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
-                grid[z][y][x] = CELL_ROCK;  // natural rock
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
             }
         }
     }
@@ -1903,22 +1942,23 @@ void GenerateHillsSoils(void) {
             float gravelN = OctavePerlin(x * gravelScale, y * gravelScale, 3, 0.5f);
             float peatN = OctavePerlin(x * peatScale, y * peatScale, 3, 0.5f);
 
-            CellType surface = CELL_DIRT;
+            MaterialType surfaceMat = MAT_DIRT;
             if (wetness > 0.65f && peatN > peatNoise) {
-                surface = CELL_PEAT;
+                surfaceMat = MAT_PEAT;
             } else if (wetness < 0.35f && sandN > sandNoise) {
-                surface = CELL_SAND;
+                surfaceMat = MAT_SAND;
             } else {
                 bool rockBelow = (height >= soilDepth);
                 float gravelThreshold = gravelNoise - (rockBelow ? 0.08f : 0.0f);
                 if (gravelThreshold < 0.4f) gravelThreshold = 0.4f;
                 if (slope >= 2 || gravelN > gravelThreshold) {
-                    surface = CELL_GRAVEL;
+                    surfaceMat = MAT_GRAVEL;
                 }
             }
 
-            grid[height][y][x] = surface;
-            if (surface == CELL_DIRT) {
+            grid[height][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, height, surfaceMat);
+            if (surfaceMat == MAT_DIRT) {
                 SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
             } else {
                 SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
@@ -1932,8 +1972,8 @@ void GenerateHillsSoils(void) {
                     int bandStart = bandEnd - clayDepth + 1;
                     if (bandStart < 0) bandStart = 0;
                     for (int z = bandStart; z <= bandEnd && z < gridDepth; z++) {
-                        if (grid[z][y][x] == CELL_DIRT) {
-                            grid[z][y][x] = CELL_CLAY;
+                        if (GetWallMaterial(x, y, z) == MAT_DIRT) {
+                            SetWallMaterial(x, y, z, MAT_CLAY);
                         }
                     }
                 }
@@ -2054,7 +2094,8 @@ void GenerateHillsSoilsWater(void) {
             heightmap[idx] = height;
 
             for (int z = 0; z <= height; z++) {
-                grid[z][y][x] = CELL_DIRT;
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_DIRT);
             }
         }
     }
@@ -2079,7 +2120,8 @@ void GenerateHillsSoilsWater(void) {
             if (height < soilDepth) continue;
             int rockStartZ = height - soilDepth;
             for (int z = 0; z <= rockStartZ; z++) {
-                grid[z][y][x] = CELL_ROCK;
+                grid[z][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, z, MAT_GRANITE);
             }
         }
     }
@@ -2274,26 +2316,27 @@ void GenerateHillsSoilsWater(void) {
             float gravelN = OctavePerlin(x * gravelScale, y * gravelScale, 3, 0.5f);
             float peatN = OctavePerlin(x * peatScale, y * peatScale, 3, 0.5f);
 
-            CellType surface = CELL_DIRT;
+            MaterialType surfaceMat = MAT_DIRT;
             if (waterMask[idx]) {
-                surface = (riverMask[idx] || slope >= 2 || gravelN > 0.55f) ? CELL_GRAVEL : CELL_SAND;
+                surfaceMat = (riverMask[idx] || slope >= 2 || gravelN > 0.55f) ? MAT_GRAVEL : MAT_SAND;
             } else if (wetness > 0.7f && peatN > peatNoise) {
-                surface = CELL_PEAT;
+                surfaceMat = MAT_PEAT;
             } else if (wetness < 0.35f && sandN > sandNoise) {
-                surface = CELL_SAND;
+                surfaceMat = MAT_SAND;
             } else {
                 bool rockBelow = (height >= soilDepth);
                 float gravelThreshold = gravelNoise - (rockBelow ? 0.08f : 0.0f);
                 if (gravelThreshold < 0.4f) gravelThreshold = 0.4f;
                 if (slope >= 2 || gravelN > gravelThreshold) {
-                    surface = CELL_GRAVEL;
+                    surfaceMat = MAT_GRAVEL;
                 }
             }
 
-            grid[height][y][x] = surface;
-            if (surface == CELL_DIRT && !nearWater) {
+            grid[height][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, height, surfaceMat);
+            if (surfaceMat == MAT_DIRT && !nearWater) {
                 SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
-            } else if (surface == CELL_DIRT) {
+            } else if (surfaceMat == MAT_DIRT) {
                 SET_CELL_SURFACE(x, y, height, SURFACE_GRASS);
             } else {
                 SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
@@ -2306,8 +2349,8 @@ void GenerateHillsSoilsWater(void) {
                     int bandStart = bandEnd - clayDepth + 1;
                     if (bandStart < 0) bandStart = 0;
                     for (int z = bandStart; z <= bandEnd && z < gridDepth; z++) {
-                        if (grid[z][y][x] == CELL_DIRT) {
-                            grid[z][y][x] = CELL_CLAY;
+                        if (GetWallMaterial(x, y, z) == MAT_DIRT) {
+                            SetWallMaterial(x, y, z, MAT_CLAY);
                         }
                     }
                 }
@@ -2481,7 +2524,7 @@ void GenerateHillsSoilsWater(void) {
                 if (slope >= 2) density *= 0.6f;
                 if (n > density) continue;
 
-                TreeType type = PickTreeTypeForWorldGen(grid[baseZ][y][x], wetness, slope, nearWater, n);
+                TreeType type = PickTreeTypeForWorldGen(GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
                 PlaceWorldGenTree(x, y, baseZ, type, true);
                 treePlaced++;
             }
@@ -2519,7 +2562,7 @@ void GeneratePerlin(void) {
                 density = 0.02f;  // light debris in city
             }
             if ((float)GetRandomValue(0, 100) / 100.0f < density) {
-                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
                 PlaceWorldGenTree(x, y, 0, type, true);
             }
         }
@@ -2601,8 +2644,8 @@ void GenerateCity(void) {
     }
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][y][x] == CELL_DIRT && GetRandomValue(0, 100) < 5) {
-                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+            if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT && GetRandomValue(0, 100) < 5) {
+                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
                 PlaceWorldGenTree(x, y, 0, type, true);
             }
         }
@@ -3893,8 +3936,8 @@ void GenerateCouncilEstate(void) {
     // This adds visual interest to the green spaces around the estate
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][y][x] == CELL_DIRT && GetRandomValue(0, 100) < 3) {
-                TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+            if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT && GetRandomValue(0, 100) < 3) {
+                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
                 PlaceWorldGenTree(x, y, 0, type, true);
             }
         }
@@ -3955,7 +3998,7 @@ void GenerateMixed(void) {
                 bool isCity = (zx < 16 && zy < 16 && zones[zy][zx] == 1);
                 int chance = isCity ? 3 : 15;
                 if (GetRandomValue(0, 100) < chance) {
-                    TreeType type = PickTreeTypeForSoilSimple(grid[0][y][x]);
+                    TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
                     PlaceWorldGenTree(x, y, 0, type, true);
                 }
             }
@@ -3990,7 +4033,8 @@ void GenerateCraftingTest(void) {
     // Fill z=0 with dirt (ground) - this is the walkable level
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
         }
     }

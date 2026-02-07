@@ -196,12 +196,28 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
 }
 
 static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
-    TreeType type = (TreeType)treeTypeGrid[z][y][x];
+    // Get tree type from wall material
+    MaterialType mat = GetWallMaterial(x, y, z);
+    TreeType type = TreeTypeFromMaterial(mat);
+    
     if (type <= TREE_TYPE_NONE || type >= TREE_TYPE_COUNT) {
         return CellSprite(cell);
     }
+    
+    // Handle all tree cell types (trunk, branch, root, felled, leaves, sapling)
     switch (cell) {
         case CELL_TREE_TRUNK:
+        case CELL_TREE_BRANCH:
+        case CELL_TREE_FELLED:
+            switch (type) {
+                case TREE_TYPE_PINE: return SPRITE_tree_trunk_pine;
+                case TREE_TYPE_BIRCH: return SPRITE_tree_trunk_birch;
+                case TREE_TYPE_WILLOW: return SPRITE_tree_trunk_willow;
+                case TREE_TYPE_OAK:
+                default: return SPRITE_tree_trunk_oak;
+            }
+        case CELL_TREE_ROOT:
+            // Roots use slightly darker sprites (could add dedicated root sprites later)
             switch (type) {
                 case TREE_TYPE_PINE: return SPRITE_tree_trunk_pine;
                 case TREE_TYPE_BIRCH: return SPRITE_tree_trunk_birch;
@@ -238,7 +254,9 @@ static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
         }
         return MaterialWallSprite(mat);
     }
-    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+    // Handle all tree cell types
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || 
+        cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
         return GetTreeSpriteAt(x, y, z, cell);
     }
     return CellSprite(cell);

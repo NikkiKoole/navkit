@@ -16,6 +16,7 @@ ItemType SaplingItemFromTreeType(TreeType type);
 ItemType LeafItemFromTreeType(TreeType type);
 TreeType TreeTypeFromSaplingItem(ItemType type);
 MaterialType MaterialFromTreeType(TreeType type);
+TreeType TreeTypeFromMaterial(MaterialType mat);
 
 // Initialize tree growth system
 void InitTrees(void);

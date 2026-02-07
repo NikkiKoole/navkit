@@ -405,29 +405,23 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     CellType ct = grid[cellZ][cellY][cellX];
     const char* cellTypeName = CellName(ct);
     TreeType treeType = TREE_TYPE_NONE;
-    TreePart treePart = TREE_PART_NONE;
-    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
-        treeType = (TreeType)treeTypeGrid[cellZ][cellY][cellX];
-        treePart = (TreePart)treePartGrid[cellZ][cellY][cellX];
+    
+    // Check if this is a tree cell - get type from wall material
+    if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT || 
+        ct == CELL_TREE_FELLED || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
+        MaterialType mat = GetWallMaterial(cellX, cellY, cellZ);
+        treeType = TreeTypeFromMaterial(mat);
     }
+    
     bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
     if (treeType != TREE_TYPE_NONE) {
-        const char* partName = NULL;
-        if (ct == CELL_TREE_TRUNK) {
-            switch (treePart) {
-                case TREE_PART_TRUNK: partName = "trunk"; break;
-                case TREE_PART_BRANCH: partName = "branch"; break;
-                case TREE_PART_ROOT: partName = "root"; break;
-                case TREE_PART_FELLED: partName = "felled"; break;
-                default: break;
-            }
-        }
+        // Cell type name already includes part info (trunk, branch, root, felled)
         if (isBurned) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s%s) [BURNED]",
-                cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s) [BURNED]",
+                cellTypeName, TreeTypeName(treeType));
         } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s%s%s)",
-                cellTypeName, TreeTypeName(treeType), partName ? ", " : "", partName ? partName : "");
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s)",
+                cellTypeName, TreeTypeName(treeType));
         }
     } else {
         if (isBurned) {

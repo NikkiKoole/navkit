@@ -85,6 +85,16 @@ MaterialType MaterialFromTreeType(TreeType type) {
     }
 }
 
+TreeType TreeTypeFromMaterial(MaterialType mat) {
+    switch (mat) {
+        case MAT_PINE: return TREE_TYPE_PINE;
+        case MAT_BIRCH: return TREE_TYPE_BIRCH;
+        case MAT_WILLOW: return TREE_TYPE_WILLOW;
+        case MAT_OAK: return TREE_TYPE_OAK;
+        default: return TREE_TYPE_OAK;
+    }
+}
+
 static void GetTreeHeightRange(TreeType type, int* outMin, int* outMax) {
     switch (type) {
         case TREE_TYPE_PINE:
@@ -113,6 +123,7 @@ void InitTrees(void) {
 // Check if a leaf cell is connected to a trunk of the same type within distance
 static bool IsConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type) {
     int horizRadius = 3;
+    MaterialType mat = MaterialFromTreeType(type);
 
     for (int checkZ = z; checkZ >= 0 && checkZ >= z - maxDist; checkZ--) {
         for (int dy = -horizRadius; dy <= horizRadius; dy++) {
@@ -121,8 +132,8 @@ static bool IsConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type) 
                 int ny = y + dy;
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
                 if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK &&
-                    treeTypeGrid[checkZ][ny][nx] == (uint8_t)type &&
-                    treePartGrid[checkZ][ny][nx] != TREE_PART_FELLED) {
+                    GetWallMaterial(nx, ny, checkZ) == mat &&
+                    grid[checkZ][ny][nx] != CELL_TREE_FELLED) {
                     return true;
                 }
             }
@@ -131,12 +142,11 @@ static bool IsConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type) 
     return false;
 }
 
-// Find base of main trunk column (TREE_PART_TRUNK only)
+// Find base of main trunk column (CELL_TREE_TRUNK only)
 static int FindTrunkBaseZ(int x, int y, int z) {
     int baseZ = z;
     while (baseZ > 0 &&
-           grid[baseZ - 1][y][x] == CELL_TREE_TRUNK &&
-           treePartGrid[baseZ - 1][y][x] == TREE_PART_TRUNK) {
+           grid[baseZ - 1][y][x] == CELL_TREE_TRUNK) {
         baseZ--;
     }
     return baseZ;
@@ -146,7 +156,7 @@ static int FindTrunkBaseZ(int x, int y, int z) {
 static int GetTrunkHeightFromBase(int x, int y, int baseZ) {
     int height = 0;
     for (int checkZ = baseZ; checkZ < gridDepth; checkZ++) {
-        if (grid[checkZ][y][x] == CELL_TREE_TRUNK && treePartGrid[checkZ][y][x] == TREE_PART_TRUNK) {
+        if (grid[checkZ][y][x] == CELL_TREE_TRUNK) {
             height++;
         } else {
             break;
@@ -159,26 +169,23 @@ static __attribute__((unused)) void PlaceLeafCell(int x, int y, int z, TreeType 
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     if (grid[z][y][x] != CELL_AIR) return;
     grid[z][y][x] = CELL_TREE_LEAVES;
-    treeTypeGrid[z][y][x] = (uint8_t)type;
-    treePartGrid[z][y][x] = TREE_PART_NONE;
+    SetWallMaterial(x, y, z, MaterialFromTreeType(type));
     MarkChunkDirty(x, y, z);
 }
 
 static void PlaceBranchCell(int x, int y, int z, TreeType type) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     if (grid[z][y][x] != CELL_AIR && grid[z][y][x] != CELL_TREE_LEAVES) return;
-    grid[z][y][x] = CELL_TREE_TRUNK;
-    treeTypeGrid[z][y][x] = (uint8_t)type;
-    treePartGrid[z][y][x] = TREE_PART_BRANCH;
+    grid[z][y][x] = CELL_TREE_BRANCH;
+    SetWallMaterial(x, y, z, MaterialFromTreeType(type));
     MarkChunkDirty(x, y, z);
 }
 
 static void PlaceRootCell(int x, int y, int z, TreeType type) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     if (!IsGroundCell(grid[z][y][x])) return;
-    grid[z][y][x] = CELL_TREE_TRUNK;
-    treeTypeGrid[z][y][x] = (uint8_t)type;
-    treePartGrid[z][y][x] = TREE_PART_ROOT;
+    grid[z][y][x] = CELL_TREE_ROOT;
+    SetWallMaterial(x, y, z, MaterialFromTreeType(type));
     MarkChunkDirty(x, y, z);
 }
 
@@ -198,8 +205,7 @@ static void PlaceLeavesDisk(int cx, int cy, int z, int radius, int skipChance, T
 
             if (grid[z][ny][nx] == CELL_AIR) {
                 grid[z][ny][nx] = CELL_TREE_LEAVES;
-                treeTypeGrid[z][ny][nx] = (uint8_t)type;
-                treePartGrid[z][ny][nx] = TREE_PART_NONE;
+                SetWallMaterial(nx, ny, z, MaterialFromTreeType(type));
                 MarkChunkDirty(nx, ny, z);
             }
         }
@@ -333,9 +339,8 @@ static void PlaceRootsForTree(int baseX, int baseY, int baseZ, TreeType type) {
         int ny = baseY + dys[dir];
         if (nx >= 0 && nx < gridWidth && ny >= 0 && ny < gridHeight) {
             if (grid[baseZ][ny][nx] == CELL_AIR && baseZ > 0 && CellIsSolid(grid[baseZ - 1][ny][nx])) {
-                grid[baseZ][ny][nx] = CELL_TREE_TRUNK;
-                treeTypeGrid[baseZ][ny][nx] = (uint8_t)type;
-                treePartGrid[baseZ][ny][nx] = TREE_PART_ROOT;
+                grid[baseZ][ny][nx] = CELL_TREE_ROOT;
+                SetWallMaterial(nx, ny, baseZ, MaterialFromTreeType(type));
                 MarkChunkDirty(nx, ny, baseZ);
             }
         }
@@ -352,12 +357,12 @@ static void GrowCell(int x, int y, int z) {
             return;  // Item present, don't grow
         }
 
-        TreeType type = NormalizeTreeType((TreeType)treeTypeGrid[z][y][x]);
+        TreeType type = TreeTypeFromMaterial(GetWallMaterial(x, y, z));
+        type = NormalizeTreeType(type);
 
         // Sapling grows into trunk
         grid[z][y][x] = CELL_TREE_TRUNK;
-        treeTypeGrid[z][y][x] = (uint8_t)type;
-        treePartGrid[z][y][x] = TREE_PART_TRUNK;
+        SetWallMaterial(x, y, z, MaterialFromTreeType(type));
         MarkChunkDirty(x, y, z);
 
         // Set target height for this tree based on position (deterministic randomness)
@@ -373,11 +378,10 @@ static void GrowCell(int x, int y, int z) {
         // Roots on conversion
         PlaceRootsForTree(x, y, z, type);
     } else if (cell == CELL_TREE_TRUNK) {
-        if (treePartGrid[z][y][x] != TREE_PART_TRUNK) return;
-
         // Check if we should grow upward
         int baseZ = FindTrunkBaseZ(x, y, z);
-        TreeType type = NormalizeTreeType((TreeType)treeTypeGrid[baseZ][y][x]);
+        TreeType type = TreeTypeFromMaterial(GetWallMaterial(x, y, baseZ));
+        type = NormalizeTreeType(type);
         int maxHeight = targetHeight[baseZ][y][x];
         if (maxHeight == 0) {
             int minH, maxH;
@@ -391,8 +395,7 @@ static void GrowCell(int x, int y, int z) {
             CellType above = grid[z + 1][y][x];
             if (above == CELL_AIR || above == CELL_TREE_LEAVES) {
                 grid[z + 1][y][x] = CELL_TREE_TRUNK;
-                treeTypeGrid[z + 1][y][x] = (uint8_t)type;
-                treePartGrid[z + 1][y][x] = TREE_PART_TRUNK;
+                SetWallMaterial(x, y, z + 1, MaterialFromTreeType(type));
                 MarkChunkDirty(x, y, z + 1);
                 growthTimer[z + 1][y][x] = 0;
             }
@@ -404,11 +407,11 @@ static void GrowCell(int x, int y, int z) {
             treeActiveCells--;
         }
     } else if (cell == CELL_TREE_LEAVES) {
-        TreeType type = NormalizeTreeType((TreeType)treeTypeGrid[z][y][x]);
+        TreeType type = TreeTypeFromMaterial(GetWallMaterial(x, y, z));
+        type = NormalizeTreeType(type);
         if (!IsConnectedToTrunk(x, y, z, LEAF_TRUNK_CHECK_DIST, type)) {
             grid[z][y][x] = CELL_AIR;
-            treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
-            treePartGrid[z][y][x] = TREE_PART_NONE;
+            SetWallMaterial(x, y, z, MAT_NONE);
             MarkChunkDirty(x, y, z);
         }
     }
@@ -433,11 +436,9 @@ void TreesTick(float dt) {
                         GrowCell(x, y, z);
                     }
                 } else if (cell == CELL_TREE_TRUNK) {
-                    if (treePartGrid[z][y][x] != TREE_PART_TRUNK) continue;
                     // Only grow from topmost trunk in a column
                     if (z + 1 >= gridDepth ||
-                        grid[z + 1][y][x] != CELL_TREE_TRUNK ||
-                        treePartGrid[z + 1][y][x] != TREE_PART_TRUNK) {
+                        grid[z + 1][y][x] != CELL_TREE_TRUNK) {
                         growthTimer[z][y][x]++;
                         if (growthTimer[z][y][x] >= trunkGrowTicks) {
                             GrowCell(x, y, z);
@@ -463,13 +464,12 @@ void TreeGrowFull(int x, int y, int z, TreeType type) {
     bool addedActive = false;
     if (grid[z][y][x] != CELL_SAPLING && grid[z][y][x] != CELL_TREE_TRUNK) {
         grid[z][y][x] = CELL_SAPLING;
-        treeTypeGrid[z][y][x] = (uint8_t)type;
-        treePartGrid[z][y][x] = TREE_PART_NONE;
+        SetWallMaterial(x, y, z, MaterialFromTreeType(type));
         treeActiveCells++;
         addedActive = true;
         MarkChunkDirty(x, y, z);
     } else if (grid[z][y][x] == CELL_SAPLING) {
-        treeTypeGrid[z][y][x] = (uint8_t)type;
+        SetWallMaterial(x, y, z, MaterialFromTreeType(type));
         treeActiveCells++;
         addedActive = true;
     }
@@ -495,8 +495,7 @@ void TreeGrowFull(int x, int y, int z, TreeType type) {
         if (above != CELL_AIR && above != CELL_TREE_LEAVES) break;
 
         grid[currentZ + 1][y][x] = CELL_TREE_TRUNK;
-        treeTypeGrid[currentZ + 1][y][x] = (uint8_t)type;
-        treePartGrid[currentZ + 1][y][x] = TREE_PART_TRUNK;
+        SetWallMaterial(x, y, currentZ + 1, MaterialFromTreeType(type));
         MarkChunkDirty(x, y, currentZ + 1);
         currentZ++;
     }
@@ -518,8 +517,7 @@ void PlaceSapling(int x, int y, int z, TreeType type) {
 
     type = NormalizeTreeType(type);
     grid[z][y][x] = CELL_SAPLING;
-    treeTypeGrid[z][y][x] = (uint8_t)type;
-    treePartGrid[z][y][x] = TREE_PART_NONE;
+    SetWallMaterial(x, y, z, MaterialFromTreeType(type));
 
     unsigned int hash = PositionHash(x, y, z);
     growthTimer[z][y][x] = hash % saplingGrowTicks;

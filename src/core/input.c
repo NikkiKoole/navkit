@@ -1160,11 +1160,11 @@ static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+            if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT ||
+                cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
                 CancelDesignation(dx, dy, z);
                 grid[z][dy][dx] = CELL_AIR;
-                treeTypeGrid[z][dy][dx] = TREE_TYPE_NONE;
-                treePartGrid[z][dy][dx] = TREE_PART_NONE;
+                SetWallMaterial(dx, dy, z, MAT_NONE);
                 MarkChunkDirty(dx, dy, z);
                 count++;
             }
