@@ -1373,7 +1373,7 @@ int InspectSaveFile(int argc, char** argv) {
             int x, y, z;
             int width, height;
             bool active;
-            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool allowedTypes[V17_ITEM_TYPE_COUNT];
             bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -1419,7 +1419,7 @@ int InspectSaveFile(int argc, char** argv) {
             int x, y, z;
             int width, height;
             bool active;
-            bool allowedTypes[ITEM_TYPE_COUNT];
+            bool allowedTypes[V16_ITEM_TYPE_COUNT];
             bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
