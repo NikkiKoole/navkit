@@ -1282,7 +1282,7 @@ void HandleInput(void) {
     // ========================================================================
     // Pie menu (Tab to toggle, or right-click tap)
     // ========================================================================
-#if 1
+#if 0
     if (IsKeyPressed(KEY_TAB)) {
         if (PieMenu_IsOpen()) {
             PieMenu_Close();
