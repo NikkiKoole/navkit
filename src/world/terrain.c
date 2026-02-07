@@ -1799,7 +1799,9 @@ void GenerateHills(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
                         ShouldPlaceRampAt(x, y - 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y - 1, rampZ);
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        SetWallMaterial(x, y - 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -1813,7 +1815,9 @@ void GenerateHills(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
                         ShouldPlaceRampAt(x + 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x + 1, y, rampZ);
                         grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        SetWallMaterial(x + 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -1827,7 +1831,9 @@ void GenerateHills(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
                         ShouldPlaceRampAt(x, y + 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y + 1, rampZ);
                         grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        SetWallMaterial(x, y + 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -1841,7 +1847,9 @@ void GenerateHills(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
                         ShouldPlaceRampAt(x - 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x - 1, y, rampZ);
                         grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        SetWallMaterial(x - 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -1995,7 +2003,9 @@ void GenerateHillsSoils(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
                         ShouldPlaceRampAt(x, y - 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y - 1, rampZ);
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        SetWallMaterial(x, y - 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2007,7 +2017,9 @@ void GenerateHillsSoils(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
                         ShouldPlaceRampAt(x + 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x + 1, y, rampZ);
                         grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        SetWallMaterial(x + 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2019,7 +2031,9 @@ void GenerateHillsSoils(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
                         ShouldPlaceRampAt(x, y + 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y + 1, rampZ);
                         grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        SetWallMaterial(x, y + 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2031,7 +2045,9 @@ void GenerateHillsSoils(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
                         ShouldPlaceRampAt(x - 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x - 1, y, rampZ);
                         grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        SetWallMaterial(x - 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2374,7 +2390,9 @@ void GenerateHillsSoilsWater(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
                         ShouldPlaceRampAt(x, y - 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y - 1, rampZ);
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
+                        SetWallMaterial(x, y - 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2386,7 +2404,9 @@ void GenerateHillsSoilsWater(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x + 1]) &&
                         ShouldPlaceRampAt(x + 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x + 1, y, rampZ);
                         grid[rampZ][y][x + 1] = CELL_RAMP_E;
+                        SetWallMaterial(x + 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2398,7 +2418,9 @@ void GenerateHillsSoilsWater(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y + 1][x]) &&
                         ShouldPlaceRampAt(x, y + 1)) {
+                        MaterialType rampMat = GetWallMaterial(x, y + 1, rampZ);
                         grid[rampZ][y + 1][x] = CELL_RAMP_S;
+                        SetWallMaterial(x, y + 1, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
@@ -2410,7 +2432,9 @@ void GenerateHillsSoilsWater(void) {
                     rampCandidates++;
                     if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y][x - 1]) &&
                         ShouldPlaceRampAt(x - 1, y)) {
+                        MaterialType rampMat = GetWallMaterial(x - 1, y, rampZ);
                         grid[rampZ][y][x - 1] = CELL_RAMP_W;
+                        SetWallMaterial(x - 1, y, rampZ, rampMat);
                         rampPlaced++;
                     }
                 }
