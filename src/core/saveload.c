@@ -328,9 +328,10 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    if (version > CURRENT_SAVE_VERSION || version < 15) {
-        printf("ERROR: Save version mismatch (file: %d, supported: %d-%d)\n", version, 15, CURRENT_SAVE_VERSION);
-        AddMessage(TextFormat("Save version mismatch (file: %d, supported: %d-%d)", version, 15, CURRENT_SAVE_VERSION), RED);
+    // Only support current version (development mode - no backward compatibility)
+    if (version != CURRENT_SAVE_VERSION) {
+        printf("ERROR: Save version mismatch (file: v%d, supported: v%d only)\n", version, CURRENT_SAVE_VERSION);
+        AddMessage(TextFormat("Save version mismatch: v%d (expected v%d). Old saves not supported in development.", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
         return false;
     }
@@ -439,120 +440,31 @@ bool LoadWorld(const char* filename) {
         }
     }
 
-    if (version >= 16) {
-        // Wall natural grid
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                fread(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
-            }
-        }
-
-        // Floor natural grid
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                fread(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
-            }
-        }
-    } else {
-        // Migrate legacy materials (v15): MAT_RAW/MAT_STONE/MAT_WOOD -> new materials + natural flags
-        const uint8_t LEGACY_MAT_NONE = 0;
-        const uint8_t LEGACY_MAT_RAW = 1;
-        const uint8_t LEGACY_MAT_STONE = 2;
-        const uint8_t LEGACY_MAT_WOOD = 3;
-        const uint8_t LEGACY_MAT_DIRT = 4;
-        const uint8_t LEGACY_MAT_IRON = 5;
-        const uint8_t LEGACY_MAT_GLASS = 6;
-        (void)LEGACY_MAT_NONE;
-
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    uint8_t oldWall = wallMaterial[z][y][x];
-                    uint8_t oldFloor = floorMaterial[z][y][x];
-
-                    bool wallNat = false;
-                    bool floorNat = false;
-
-                    switch (oldWall) {
-                        case LEGACY_MAT_RAW:
-                            wallMaterial[z][y][x] = MAT_GRANITE;
-                            wallNat = true;
-                            break;
-                        case LEGACY_MAT_STONE:
-                            wallMaterial[z][y][x] = MAT_GRANITE;
-                            break;
-                        case LEGACY_MAT_WOOD:
-                            wallMaterial[z][y][x] = MAT_OAK;
-                            break;
-                        case LEGACY_MAT_DIRT:
-                            wallMaterial[z][y][x] = MAT_DIRT;
-                            break;
-                        case LEGACY_MAT_IRON:
-                            wallMaterial[z][y][x] = MAT_IRON;
-                            break;
-                        case LEGACY_MAT_GLASS:
-                            wallMaterial[z][y][x] = MAT_GLASS;
-                            break;
-                        default:
-                            wallMaterial[z][y][x] = MAT_NONE;
-                            break;
-                    }
-
-                    switch (oldFloor) {
-                        case LEGACY_MAT_RAW:
-                            floorMaterial[z][y][x] = MAT_GRANITE;
-                            floorNat = true;
-                            break;
-                        case LEGACY_MAT_STONE:
-                            floorMaterial[z][y][x] = MAT_GRANITE;
-                            break;
-                        case LEGACY_MAT_WOOD:
-                            floorMaterial[z][y][x] = MAT_OAK;
-                            break;
-                        case LEGACY_MAT_DIRT:
-                            floorMaterial[z][y][x] = MAT_DIRT;
-                            break;
-                        case LEGACY_MAT_IRON:
-                            floorMaterial[z][y][x] = MAT_IRON;
-                            break;
-                        case LEGACY_MAT_GLASS:
-                            floorMaterial[z][y][x] = MAT_GLASS;
-                            break;
-                        default:
-                            floorMaterial[z][y][x] = MAT_NONE;
-                            break;
-                    }
-
-                    wallNatural[z][y][x] = wallNat ? 1 : 0;
-                    floorNatural[z][y][x] = floorNat ? 1 : 0;
-                }
-            }
+    // Wall natural grid (V22 only)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(wallNatural[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
 
-    if (version >= 22) {
-        // Wall finish grid
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                fread(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
-            }
+    // Floor natural grid (V22 only)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(floorNatural[z][y], sizeof(uint8_t), gridWidth, f);
         }
+    }
 
-        // Floor finish grid
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                fread(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
-            }
+    // Wall finish grid (V22 only)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(wallFinish[z][y], sizeof(uint8_t), gridWidth, f);
         }
-    } else {
-        // Default finishes based on natural/constructed flags
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    wallFinish[z][y][x] = (uint8_t)DefaultFinishForNatural(IsWallNatural(x, y, z));
-                    floorFinish[z][y][x] = (uint8_t)DefaultFinishForNatural(IsFloorNatural(x, y, z));
-                }
-            }
+    }
+
+    // Floor finish grid (V22 only)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -588,58 +500,8 @@ bool LoadWorld(const char* filename) {
     
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
-    if (version >= 16) {
-        fread(items, sizeof(Item), itemHighWaterMark, f);
-    } else {
-        typedef struct {
-            float x, y, z;
-            ItemType type;
-            ItemState state;
-            uint8_t treeType;
-            bool active;
-            int reservedBy;
-            float unreachableCooldown;
-        } ItemV15;
-        ItemV15* legacyItems = malloc(sizeof(ItemV15) * itemHighWaterMark);
-        if (!legacyItems) {
-            fclose(f);
-            AddMessage("Failed to allocate memory for legacy items", RED);
-            return false;
-        }
-        fread(legacyItems, sizeof(ItemV15), itemHighWaterMark, f);
-        for (int i = 0; i < itemHighWaterMark; i++) {
-            items[i].x = legacyItems[i].x;
-            items[i].y = legacyItems[i].y;
-            items[i].z = legacyItems[i].z;
-            items[i].type = legacyItems[i].type;
-            items[i].state = legacyItems[i].state;
-            items[i].active = legacyItems[i].active;
-            items[i].reservedBy = legacyItems[i].reservedBy;
-            items[i].unreachableCooldown = legacyItems[i].unreachableCooldown;
-            items[i].natural = false;
-
-            MaterialType mat = MAT_NONE;
-            TreeType treeType = (TreeType)legacyItems[i].treeType;
-            if (items[i].type == ITEM_LOG) {
-                mat = MaterialFromTreeType(treeType);
-            } else if (IsSaplingItem(items[i].type)) {
-                mat = MaterialFromTreeType(TreeTypeFromSaplingItem(items[i].type));
-            } else if (IsLeafItem(items[i].type)) {
-                switch (items[i].type) {
-                    case ITEM_LEAVES_PINE: mat = MAT_PINE; break;
-                    case ITEM_LEAVES_BIRCH: mat = MAT_BIRCH; break;
-                    case ITEM_LEAVES_WILLOW: mat = MAT_WILLOW; break;
-                    case ITEM_LEAVES_OAK:
-                    default: mat = MAT_OAK; break;
-                }
-            } else {
-                mat = (MaterialType)DefaultMaterialForItemType(items[i].type);
-            }
-            items[i].material = (uint8_t)mat;
-        }
-        free(legacyItems);
-    }
-
+    // Items (V22 only)
+    fread(items, sizeof(Item), itemHighWaterMark, f);
     // Ensure default materials for any missing entries
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
@@ -648,266 +510,9 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Stockpiles
-    if (version >= 22) {
-        fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
-    } else if (version >= 20) {
+    // Stockpiles (V22 only - old versions rejected at version check)
+    fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
         // V21/V20: Stockpile struct before MAT_COUNT expansion
-        typedef struct {
-            int x, y, z;
-            int width, height;
-            bool active;
-            bool allowedTypes[ITEM_TYPE_COUNT];
-            bool allowedMaterials[V21_MAT_COUNT];
-            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int maxStackSize;
-            int priority;
-            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int freeSlotCount;
-        } StockpileV21;
-
-        StockpileV21 legacyStockpiles[MAX_STOCKPILES];
-        fread(legacyStockpiles, sizeof(StockpileV21), MAX_STOCKPILES, f);
-
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            memset(&stockpiles[i], 0, sizeof(Stockpile));
-            stockpiles[i].x = legacyStockpiles[i].x;
-            stockpiles[i].y = legacyStockpiles[i].y;
-            stockpiles[i].z = legacyStockpiles[i].z;
-            stockpiles[i].width = legacyStockpiles[i].width;
-            stockpiles[i].height = legacyStockpiles[i].height;
-            stockpiles[i].active = legacyStockpiles[i].active;
-            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
-
-            // Copy old materials, allow new materials by default
-            for (int m = 0; m < V21_MAT_COUNT; m++) {
-                stockpiles[i].allowedMaterials[m] = legacyStockpiles[i].allowedMaterials[m];
-            }
-            for (int m = V21_MAT_COUNT; m < MAT_COUNT; m++) {
-                stockpiles[i].allowedMaterials[m] = true;
-            }
-
-            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
-            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
-            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
-            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
-            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
-            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
-            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
-            stockpiles[i].priority = legacyStockpiles[i].priority;
-            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
-            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
-
-            // Clamp any invalid slot types/materials to avoid crashes
-            for (int s = 0; s < MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE; s++) {
-                if (stockpiles[i].slotTypes[s] < 0 || stockpiles[i].slotTypes[s] >= ITEM_TYPE_COUNT) {
-                    stockpiles[i].slotTypes[s] = ITEM_NONE;
-                }
-                if (stockpiles[i].slotMaterials[s] >= MAT_COUNT) {
-                    stockpiles[i].slotMaterials[s] = MAT_NONE;
-                }
-            }
-        }
-    } else if (version >= 19) {
-        // V19: had 23 item types (before ITEM_BRICKS/ITEM_CHARCOAL)
-        typedef struct {
-            int x, y, z;
-            int width, height;
-            bool active;
-            bool allowedTypes[V19_ITEM_TYPE_COUNT];
-            bool allowedMaterials[MAT_COUNT];
-            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int maxStackSize;
-            int priority;
-            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int freeSlotCount;
-        } StockpileV19;
-
-        StockpileV19 legacyStockpiles[MAX_STOCKPILES];
-        fread(legacyStockpiles, sizeof(StockpileV19), MAX_STOCKPILES, f);
-
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            memset(&stockpiles[i], 0, sizeof(Stockpile));
-            stockpiles[i].x = legacyStockpiles[i].x;
-            stockpiles[i].y = legacyStockpiles[i].y;
-            stockpiles[i].z = legacyStockpiles[i].z;
-            stockpiles[i].width = legacyStockpiles[i].width;
-            stockpiles[i].height = legacyStockpiles[i].height;
-            stockpiles[i].active = legacyStockpiles[i].active;
-            for (int t = 0; t < V19_ITEM_TYPE_COUNT; t++) {
-                stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
-            }
-            for (int t = V19_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
-                stockpiles[i].allowedTypes[t] = true;
-            }
-            memcpy(stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
-            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
-            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
-            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
-            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
-            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
-            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
-            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
-            stockpiles[i].priority = legacyStockpiles[i].priority;
-            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
-            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
-        }
-    } else if (version >= 18) {
-        // V18: had 21 item types (before ITEM_PLANKS/ITEM_STICKS)
-        typedef struct {
-            int x, y, z;
-            int width, height;
-            bool active;
-            bool allowedTypes[V18_ITEM_TYPE_COUNT];
-            bool allowedMaterials[MAT_COUNT];
-            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int maxStackSize;
-            int priority;
-            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int freeSlotCount;
-        } StockpileV18;
-
-        StockpileV18 legacyStockpiles[MAX_STOCKPILES];
-        fread(legacyStockpiles, sizeof(StockpileV18), MAX_STOCKPILES, f);
-
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            memset(&stockpiles[i], 0, sizeof(Stockpile));
-            stockpiles[i].x = legacyStockpiles[i].x;
-            stockpiles[i].y = legacyStockpiles[i].y;
-            stockpiles[i].z = legacyStockpiles[i].z;
-            stockpiles[i].width = legacyStockpiles[i].width;
-            stockpiles[i].height = legacyStockpiles[i].height;
-            stockpiles[i].active = legacyStockpiles[i].active;
-            // Copy old allowedTypes and default new ones to true
-            for (int t = 0; t < V18_ITEM_TYPE_COUNT; t++) {
-                stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
-            }
-            for (int t = V18_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
-                stockpiles[i].allowedTypes[t] = true;
-            }
-            memcpy(stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
-            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
-            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
-            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
-            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
-            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
-            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
-            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
-            stockpiles[i].priority = legacyStockpiles[i].priority;
-            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
-            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
-        }
-    } else if (version >= 17) {
-        typedef struct {
-            int x, y, z;
-            int width, height;
-            bool active;
-            bool allowedTypes[V17_ITEM_TYPE_COUNT];
-            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int maxStackSize;
-            int priority;
-            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int freeSlotCount;
-        } StockpileV17;
-
-        StockpileV17 legacyStockpiles[MAX_STOCKPILES];
-        fread(legacyStockpiles, sizeof(StockpileV17), MAX_STOCKPILES, f);
-
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            stockpiles[i].x = legacyStockpiles[i].x;
-            stockpiles[i].y = legacyStockpiles[i].y;
-            stockpiles[i].z = legacyStockpiles[i].z;
-            stockpiles[i].width = legacyStockpiles[i].width;
-            stockpiles[i].height = legacyStockpiles[i].height;
-            stockpiles[i].active = legacyStockpiles[i].active;
-            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
-            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
-            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
-            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
-            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
-            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
-            memcpy(stockpiles[i].slotMaterials, legacyStockpiles[i].slotMaterials, sizeof(legacyStockpiles[i].slotMaterials));
-            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
-            stockpiles[i].priority = legacyStockpiles[i].priority;
-            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
-            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
-
-            for (int m = 0; m < MAT_COUNT; m++) {
-                stockpiles[i].allowedMaterials[m] = true;
-            }
-        }
-    } else {
-        typedef struct {
-            int x, y, z;
-            int width, height;
-            bool active;
-            bool allowedTypes[V16_ITEM_TYPE_COUNT];
-            bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int maxStackSize;
-            int priority;
-            int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
-            int freeSlotCount;
-        } StockpileV16;
-
-        StockpileV16 legacyStockpiles[MAX_STOCKPILES];
-        fread(legacyStockpiles, sizeof(StockpileV16), MAX_STOCKPILES, f);
-
-        for (int i = 0; i < MAX_STOCKPILES; i++) {
-            stockpiles[i].x = legacyStockpiles[i].x;
-            stockpiles[i].y = legacyStockpiles[i].y;
-            stockpiles[i].z = legacyStockpiles[i].z;
-            stockpiles[i].width = legacyStockpiles[i].width;
-            stockpiles[i].height = legacyStockpiles[i].height;
-            stockpiles[i].active = legacyStockpiles[i].active;
-            memcpy(stockpiles[i].allowedTypes, legacyStockpiles[i].allowedTypes, sizeof(legacyStockpiles[i].allowedTypes));
-            memcpy(stockpiles[i].cells, legacyStockpiles[i].cells, sizeof(legacyStockpiles[i].cells));
-            memcpy(stockpiles[i].slots, legacyStockpiles[i].slots, sizeof(legacyStockpiles[i].slots));
-            memcpy(stockpiles[i].reservedBy, legacyStockpiles[i].reservedBy, sizeof(legacyStockpiles[i].reservedBy));
-            memcpy(stockpiles[i].slotCounts, legacyStockpiles[i].slotCounts, sizeof(legacyStockpiles[i].slotCounts));
-            memcpy(stockpiles[i].slotTypes, legacyStockpiles[i].slotTypes, sizeof(legacyStockpiles[i].slotTypes));
-            stockpiles[i].maxStackSize = legacyStockpiles[i].maxStackSize;
-            stockpiles[i].priority = legacyStockpiles[i].priority;
-            memcpy(stockpiles[i].groundItemIdx, legacyStockpiles[i].groundItemIdx, sizeof(legacyStockpiles[i].groundItemIdx));
-            stockpiles[i].freeSlotCount = legacyStockpiles[i].freeSlotCount;
-
-            int totalSlots = MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE;
-            for (int s = 0; s < totalSlots; s++) {
-                if (stockpiles[i].slotCounts[s] > 0 && stockpiles[i].slotTypes[s] >= 0) {
-                    stockpiles[i].slotMaterials[s] = DefaultMaterialForItemType(stockpiles[i].slotTypes[s]);
-                } else {
-                    stockpiles[i].slotMaterials[s] = MAT_NONE;
-                }
-            }
-
-            for (int m = 0; m < MAT_COUNT; m++) {
-                stockpiles[i].allowedMaterials[m] = true;
-            }
-        }
-    }
     
     // Clear transient reservation counts (not meaningful across save/load)
     for (int i = 0; i < MAX_STOCKPILES; i++) {
@@ -920,43 +525,7 @@ bool LoadWorld(const char* filename) {
     fread(gatherZones, sizeof(GatherZone), MAX_GATHER_ZONES, f);
     
     // Blueprints
-    if (version >= 21) {
-        fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
-    } else {
-        // V20 and earlier: Blueprint without requiredItemType field
-        typedef struct {
-            int x, y, z;
-            bool active;
-            BlueprintState state;
-            BlueprintType type;
-            int requiredMaterials;
-            int deliveredMaterialCount;
-            int reservedItem;
-            MaterialType deliveredMaterial;
-            int assignedBuilder;
-            float progress;
-        } BlueprintV20;
-
-        BlueprintV20 legacyBlueprints[MAX_BLUEPRINTS];
-        fread(legacyBlueprints, sizeof(BlueprintV20), MAX_BLUEPRINTS, f);
-
-        for (int i = 0; i < MAX_BLUEPRINTS; i++) {
-            memset(&blueprints[i], 0, sizeof(Blueprint));
-            blueprints[i].x = legacyBlueprints[i].x;
-            blueprints[i].y = legacyBlueprints[i].y;
-            blueprints[i].z = legacyBlueprints[i].z;
-            blueprints[i].active = legacyBlueprints[i].active;
-            blueprints[i].state = legacyBlueprints[i].state;
-            blueprints[i].type = legacyBlueprints[i].type;
-            blueprints[i].requiredMaterials = legacyBlueprints[i].requiredMaterials;
-            blueprints[i].deliveredMaterialCount = legacyBlueprints[i].deliveredMaterialCount;
-            blueprints[i].reservedItem = legacyBlueprints[i].reservedItem;
-            blueprints[i].deliveredMaterial = legacyBlueprints[i].deliveredMaterial;
-            blueprints[i].requiredItemType = ITEM_TYPE_COUNT;  // Default: any building mat
-            blueprints[i].assignedBuilder = legacyBlueprints[i].assignedBuilder;
-            blueprints[i].progress = legacyBlueprints[i].progress;
-        }
-    }
+    fread(blueprints, sizeof(Blueprint), MAX_BLUEPRINTS, f);
     
     // Workshops
     fread(workshops, sizeof(Workshop), MAX_WORKSHOPS, f);
@@ -1000,58 +569,11 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    // Simulation settings (generated from SETTINGS_TABLE macro)
-    // Tree settings added in version 13, handle backward compatibility
-    if (version >= 13) {
-        #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
-        SETTINGS_TABLE(READ_SETTING)
-        #undef READ_SETTING
-    } else {
+    // Simulation settings (generated from SETTINGS_TABLE macro, V22 only)
+    #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
+    SETTINGS_TABLE(READ_SETTING)
+    #undef READ_SETTING
         // Pre-v13: read all settings except trees (last 5 entries)
-        #define READ_SETTING_V12(type, name) fread(&name, sizeof(type), 1, f);
-        #define SETTINGS_TABLE_V12(X) \
-            X(bool, waterEnabled) \
-            X(bool, waterEvaporationEnabled) \
-            X(float, waterEvapInterval) \
-            X(float, waterSpeedShallow) \
-            X(float, waterSpeedMedium) \
-            X(float, waterSpeedDeep) \
-            X(bool, fireEnabled) \
-            X(float, fireSpreadInterval) \
-            X(float, fireFuelInterval) \
-            X(int, fireWaterReduction) \
-            X(float, fireSpreadBase) \
-            X(float, fireSpreadPerLevel) \
-            X(bool, smokeEnabled) \
-            X(float, smokeRiseInterval) \
-            X(float, smokeDissipationTime) \
-            X(float, smokeGenerationRate) \
-            X(bool, steamEnabled) \
-            X(float, steamRiseInterval) \
-            X(int, steamCondensationTemp) \
-            X(int, steamGenerationTemp) \
-            X(bool, temperatureEnabled) \
-            X(int, ambientSurfaceTemp) \
-            X(int, ambientDepthDecay) \
-            X(float, heatTransferInterval) \
-            X(float, tempDecayInterval) \
-            X(int, heatSourceTemp) \
-            X(int, coldSourceTemp) \
-            X(float, heatRiseBoost) \
-            X(float, heatSinkReduction) \
-            X(float, heatDecayPercent) \
-            X(float, diagonalTransferPercent) \
-            X(bool, groundWearEnabled) \
-            X(int, wearGrassToDirt) \
-            X(int, wearDirtToGrass) \
-            X(int, wearTrampleAmount) \
-            X(float, wearDecayRate) \
-            X(float, wearRecoveryInterval) \
-            X(int, wearMax)
-        SETTINGS_TABLE_V12(READ_SETTING_V12)
-        #undef READ_SETTING_V12
-        #undef SETTINGS_TABLE_V12
-    }
     
     // === END MARKER ===
     fread(&marker, sizeof(marker), 1, f);
