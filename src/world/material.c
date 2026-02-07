@@ -12,21 +12,21 @@ uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
-    //                 name       spriteOffset  flags         fuel  dropsItem
-    [MAT_NONE]    = {"none",     0,            0,            0,    ITEM_NONE},        // No material present
-    [MAT_OAK]     = {"Oak",      1,            MF_FLAMMABLE, 128,  ITEM_LOG},
-    [MAT_PINE]    = {"Pine",     1,            MF_FLAMMABLE, 128,  ITEM_LOG},
-    [MAT_BIRCH]   = {"Birch",    1,            MF_FLAMMABLE, 128,  ITEM_LOG},
-    [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 128,  ITEM_LOG},
-    [MAT_GRANITE] = {"Granite",  0,            0,            0,    ITEM_BLOCKS},
-    [MAT_DIRT]    = {"Dirt",     0,            0,            0,    ITEM_DIRT},
-    [MAT_BRICK]   = {"Brick",    0,            0,            0,    ITEM_BRICKS},
-    [MAT_IRON]    = {"Iron",     2,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_IRON_BAR when added
-    [MAT_GLASS]   = {"Glass",    3,            0,            0,    ITEM_BLOCKS}, // TODO: ITEM_GLASS when added
-    [MAT_CLAY]    = {"Clay",     0,            0,            0,    ITEM_CLAY},
-    [MAT_GRAVEL]  = {"Gravel",   0,            0,            0,    ITEM_GRAVEL},
-    [MAT_SAND]    = {"Sand",     0,            0,            0,    ITEM_SAND},
-    [MAT_PEAT]    = {"Peat",     0,            0,            6,    ITEM_PEAT},
+    //                 name       spriteOffset  flags         fuel  ignRes  dropsItem
+    [MAT_NONE]    = {"none",     0,            0,            0,    0,      ITEM_NONE},
+    [MAT_OAK]     = {"Oak",      1,            MF_FLAMMABLE, 128,  50,     ITEM_LOG},
+    [MAT_PINE]    = {"Pine",     1,            MF_FLAMMABLE, 96,   30,     ITEM_LOG},
+    [MAT_BIRCH]   = {"Birch",    1,            MF_FLAMMABLE, 112,  40,     ITEM_LOG},
+    [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 80,   25,     ITEM_LOG},
+    [MAT_GRANITE] = {"Granite",  0,            0,            0,    0,      ITEM_BLOCKS},
+    [MAT_DIRT]    = {"Dirt",     0,            0,            0,    0,      ITEM_DIRT},
+    [MAT_BRICK]   = {"Brick",    0,            0,            0,    0,      ITEM_BRICKS},
+    [MAT_IRON]    = {"Iron",     2,            0,            0,    0,      ITEM_BLOCKS},
+    [MAT_GLASS]   = {"Glass",    3,            0,            0,    0,      ITEM_BLOCKS},
+    [MAT_CLAY]    = {"Clay",     0,            0,            0,    0,      ITEM_CLAY},
+    [MAT_GRAVEL]  = {"Gravel",   0,            0,            0,    0,      ITEM_GRAVEL},
+    [MAT_SAND]    = {"Sand",     0,            0,            0,    0,      ITEM_SAND},
+    [MAT_PEAT]    = {"Peat",     0,            0,            6,    0,      ITEM_PEAT},
 };
 
 void InitMaterials(void) {

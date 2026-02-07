@@ -47,6 +47,7 @@ typedef struct {
     int spriteOffset;     // Offset to add to base cell sprite (0 = default)
     uint8_t flags;        // MF_* flags (flammable, etc.)
     uint8_t fuel;         // Fuel value for fire system (0 = won't burn)
+    uint8_t ignitionResistance; // Subtracted from spread chance (0 = catches easily)
     ItemType dropsItem;   // What item this material drops when deconstructed
 } MaterialDef;
 
@@ -92,6 +93,7 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define MaterialDropsItem(m)    (materialDefs[m].dropsItem)
 #define MaterialFuel(m)         (materialDefs[m].fuel)
 #define MaterialIsFlammable(m)  (materialDefs[m].flags & MF_FLAMMABLE)
+#define MaterialIgnitionResistance(m) (materialDefs[m].ignitionResistance)
 
 void InitMaterials(void);
 

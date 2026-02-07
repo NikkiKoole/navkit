@@ -66,4 +66,7 @@ void DestabilizeFire(int x, int y, int z);
 // Get fuel amount for a cell type
 int GetBaseFuelForCellType(CellType cell);
 
+// Get fuel at position considering materials, floors, and surfaces
+int GetFuelAt(int x, int y, int z);
+
 #endif // FIRE_H

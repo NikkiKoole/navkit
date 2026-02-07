@@ -1040,9 +1040,11 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // Fire burns on the floor (z-1), not in the air (z)
+            // If clicked cell has fuel (wall, trunk, ladder), ignite it directly.
+            // Otherwise fall to z-1 for air above solid (surface fire).
             int fireZ = z;
-            if (z > 0 && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
+            if (GetFuelAt(dx, dy, z) == 0 && z > 0 
+                && grid[z][dy][dx] == CELL_AIR && CellIsSolid(grid[z-1][dy][dx])) {
                 fireZ = z - 1;
             }
             
@@ -1050,7 +1052,7 @@ static void ExecutePlaceFire(int x1, int y1, int x2, int y2, int z, bool shift) 
                 SetFireSource(dx, dy, fireZ, true);
                 count++;
             } else {
-                if (GetBaseFuelForCellType(grid[fireZ][dy][dx]) > 0 && !HAS_CELL_FLAG(dx, dy, fireZ, CELL_FLAG_BURNED)) {
+                if (GetFuelAt(dx, dy, fireZ) > 0 && !HAS_CELL_FLAG(dx, dy, fireZ, CELL_FLAG_BURNED)) {
                     IgniteCell(dx, dy, fireZ);
                     count++;
                 }

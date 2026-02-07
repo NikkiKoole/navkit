@@ -64,15 +64,22 @@ int GetBaseFuelForCellType(CellType cell) {
 }
 
 // Get fuel at a specific position, considering material and grass surface overlay
-static int GetFuelAt(int x, int y, int z) {
+int GetFuelAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
     int baseFuel = CellFuel(cell);
     
     // Check wall material for constructed walls - material fuel overrides cell fuel
-    MaterialType mat = GetWallMaterial(x, y, z);
-    if (mat != MAT_NONE && !IsWallNatural(x, y, z)) {
-        // Constructed wall - use material's fuel value
-        baseFuel = MaterialFuel(mat);
+    MaterialType wallMat = GetWallMaterial(x, y, z);
+    if (wallMat != MAT_NONE && !IsWallNatural(x, y, z)) {
+        baseFuel = MaterialFuel(wallMat);
+    }
+    
+    // Check floor material for constructed floors
+    if (baseFuel == 0 && HAS_FLOOR(x, y, z)) {
+        MaterialType floorMat = GetFloorMaterial(x, y, z);
+        if (floorMat != MAT_NONE && !IsFloorNatural(x, y, z)) {
+            baseFuel = MaterialFuel(floorMat);
+        }
     }
     
     // Grass surface on dirt adds extra fuel
@@ -86,6 +93,26 @@ static int GetFuelAt(int x, int y, int z) {
     return baseFuel;
 }
 
+// Get ignition resistance at a specific position
+static int GetIgnitionResistanceAt(int x, int y, int z) {
+    // Check constructed wall material first
+    MaterialType wallMat = GetWallMaterial(x, y, z);
+    if (wallMat != MAT_NONE && !IsWallNatural(x, y, z)) {
+        return MaterialIgnitionResistance(wallMat);
+    }
+    
+    // Check constructed floor material
+    if (HAS_FLOOR(x, y, z)) {
+        MaterialType floorMat = GetFloorMaterial(x, y, z);
+        if (floorMat != MAT_NONE && !IsFloorNatural(x, y, z)) {
+            return MaterialIgnitionResistance(floorMat);
+        }
+    }
+    
+    // Natural cells (grass, trees, etc.) have no resistance
+    return 0;
+}
+
 // Check if cell can burn (has fuel and not already burned)
 static inline bool CanBurn(int x, int y, int z) {
     if (!FireInBounds(x, y, z)) return false;
@@ -94,7 +121,9 @@ static inline bool CanBurn(int x, int y, int z) {
     if (HAS_CELL_FLAG(x, y, z, CELL_FLAG_BURNED)) return false;
     
     // Check if there's a wall above that blocks fire spread
-    if (z + 1 < gridDepth) {
+    // Exception: tree trunks should burn even with trunk segments above
+    CellType cell = grid[z][y][x];
+    if (cell != CELL_TREE_TRUNK && z + 1 < gridDepth) {
         CellType cellAbove = grid[z + 1][y][x];
         if (CellBlocksFluids(cellAbove)) return false;
     }
@@ -258,8 +287,10 @@ static bool FireTrySpread(int x, int y, int z) {
         if (neighbor->level > 0) continue;  // Already burning
         
         // Base spread chance: higher fire level = more likely to spread
-        // Formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel)
+        // Formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel) - targetResistance
         int spreadPercent = fireSpreadBase + (cell->level * fireSpreadPerLevel);
+        spreadPercent -= GetIgnitionResistanceAt(nx, ny, z);
+        if (spreadPercent < 2) spreadPercent = 2;  // Always a tiny chance
         
         // Reduce chance if neighbor is near water
         if (HasAdjacentWater(nx, ny, z)) {
