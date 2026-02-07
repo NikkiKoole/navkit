@@ -853,6 +853,110 @@ describe(get_cell_name_at) {
 }
 
 // =============================================================================
+// Phase 1: CELL_TERRAIN coexists with old types
+// =============================================================================
+
+describe(cell_terrain_flags) {
+    it("should have CF_GROUND flags (walkable + solid)") {
+        expect(CellHasFlag(CELL_TERRAIN, CF_WALKABLE));
+        expect(CellIsSolid(CELL_TERRAIN));
+    }
+
+    it("should block fluids") {
+        expect(CellBlocksFluids(CELL_TERRAIN));
+    }
+
+    it("should not block movement") {
+        expect(!CellBlocksMovement(CELL_TERRAIN));
+    }
+
+    it("should be recognized by IsGroundCell") {
+        expect(IsGroundCell(CELL_TERRAIN));
+    }
+
+    it("should have same flags as CELL_DIRT") {
+        expect(CellHasFlag(CELL_TERRAIN, CF_GROUND));
+        expect(CellHasFlag(CELL_TERRAIN, CF_BLOCKS_FLUIDS));
+        expect(CellHasFlag(CELL_DIRT, CF_GROUND));
+        expect(CellHasFlag(CELL_DIRT, CF_BLOCKS_FLUIDS));
+    }
+}
+
+describe(cell_terrain_with_materials) {
+    it("should return material sprite from GetCellSpriteAt") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_DIRT);
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
+
+        grid[0][0][1] = CELL_TERRAIN;
+        SetWallMaterial(1, 0, 0, MAT_GRANITE);
+        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
+
+        grid[0][0][2] = CELL_TERRAIN;
+        SetWallMaterial(2, 0, 0, MAT_PEAT);
+        expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
+    }
+
+    it("should fall back to cellDef sprite when no material") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        // No SetWallMaterial — MAT_NONE
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);  // cellDef default
+    }
+
+    it("should return material name from GetCellNameAt") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_DIRT);
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
+
+        grid[0][0][1] = CELL_TERRAIN;
+        SetWallMaterial(1, 0, 0, MAT_GRANITE);
+        expect(strcmp(GetCellNameAt(1, 0, 0), "Granite") == 0);
+    }
+
+    it("should fall back to cellDef name when no material") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        expect(strcmp(GetCellNameAt(0, 0, 0), "terrain") == 0);
+    }
+
+    it("should return material insulation from GetInsulationAt") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_STONE);
+
+        grid[0][0][1] = CELL_TERRAIN;
+        SetWallMaterial(1, 0, 0, MAT_DIRT);
+        expect(GetInsulationAt(1, 0, 0) == INSULATION_TIER_AIR);
+    }
+
+    it("should work with MAT_BEDROCK for unmineable terrain") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_BEDROCK);
+        expect(MaterialIsUnmineable(GetWallMaterial(0, 0, 0)));
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_bedrock);
+        expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_STONE);
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Bedrock") == 0);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -902,6 +1006,10 @@ int main(int argc, char* argv[]) {
     test(get_cell_sprite_at);
     test(get_insulation_at);
     test(get_cell_name_at);
+    
+    // Phase 1: CELL_TERRAIN coexists with old types
+    test(cell_terrain_flags);
+    test(cell_terrain_with_materials);
     
     return summary();
 }

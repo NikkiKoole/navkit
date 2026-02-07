@@ -152,8 +152,13 @@ int GetCellSpriteAt(int x, int y, int z) {
         }
     }
 
-    // Ground/terrain cells: use cellDefs sprite (backward compat, these become
-    // CELL_TERRAIN + material in later phases)
+    // CELL_TERRAIN: use material-driven sprite
+    if (cell == CELL_TERRAIN && mat != MAT_NONE) {
+        int sprite = MaterialTerrainSprite(mat);
+        if (sprite) return sprite;
+    }
+
+    // Other cells (including old soil types): use cellDefs sprite
     return CellSprite(cell);
 }
 
@@ -178,6 +183,11 @@ const char* GetCellNameAt(int x, int y, int z) {
 
     // Walls: material name
     if (cell == CELL_WALL && mat != MAT_NONE) {
+        return MaterialName(mat);
+    }
+
+    // CELL_TERRAIN: material name (e.g. "Dirt", "Granite")
+    if (cell == CELL_TERRAIN && mat != MAT_NONE) {
         return MaterialName(mat);
     }
 
