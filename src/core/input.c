@@ -1280,9 +1280,9 @@ void HandleInput(void) {
     }
 
     // ========================================================================
-    // Pie menu (Tab to toggle, or right-click tap) — disabled for now
+    // Pie menu (Tab to toggle, or right-click tap)
     // ========================================================================
-#if 0
+#if 1
     if (IsKeyPressed(KEY_TAB)) {
         if (PieMenu_IsOpen()) {
             PieMenu_Close();
