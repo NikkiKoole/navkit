@@ -662,7 +662,6 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     Workshop* ws = &workshops[wsIdx];
     if (!ws->active) return;
 
-    const char* workshopTypeNames[] = {"Stonecutter", "Sawmill", "Kiln"};
     const char* billModeNames[] = {"Do X times", "Do until X", "Do forever"};
 
     char lines[30][80];
@@ -670,7 +669,7 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     int lineCount = 0;
 
     // Header
-    const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopTypeNames[ws->type] : "Unknown";
+    const char* typeName = (ws->type < WORKSHOP_TYPE_COUNT) ? workshopDefs[ws->type].displayName : "Unknown";
     snprintf(lines[lineCount], sizeof(lines[0]), "%s Workshop #%d", typeName, wsIdx);
     lineColors[lineCount] = YELLOW;
     lineCount++;

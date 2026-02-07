@@ -58,7 +58,9 @@ typedef struct {
 
 // Workshop definition (consolidates template, recipes, and metadata)
 typedef struct {
-    const char* name;
+    WorkshopType type;
+    const char* name;           // Uppercase for inspect (e.g., "STONECUTTER")
+    const char* displayName;    // Title case for UI (e.g., "Stonecutter")
     const char* template;
     const Recipe* recipes;
     int recipeCount;

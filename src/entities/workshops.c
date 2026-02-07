@@ -33,7 +33,9 @@ int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
     [WORKSHOP_STONECUTTER] = {
-        .name = "Stonecutter",
+        .type = WORKSHOP_STONECUTTER,
+        .name = "STONECUTTER",
+        .displayName = "Stonecutter",
         .template = "##O"
                     "#X."
                     "...",
@@ -41,7 +43,9 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0])
     },
     [WORKSHOP_SAWMILL] = {
-        .name = "Sawmill",
+        .type = WORKSHOP_SAWMILL,
+        .name = "SAWMILL",
+        .displayName = "Sawmill",
         .template = "##O"
                     "#X."
                     "...",
@@ -49,7 +53,9 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0])
     },
     [WORKSHOP_KILN] = {
-        .name = "Kiln",
+        .type = WORKSHOP_KILN,
+        .name = "KILN",
+        .displayName = "Kiln",
         .template = "#F#"
                     "#XO"
                     "...",

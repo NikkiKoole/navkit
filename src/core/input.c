@@ -931,8 +931,6 @@ static void ExecuteEraseStockpile(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
-static const char* workshopTypeNamesInput[] = { "Stonecutter", "Sawmill", "Kiln" };
-
 static void ExecutePlaceWorkshop(int x, int y, int z, WorkshopType type) {
     // Check if area is clear (3x3 walkable, no other workshops)
     for (int dy = 0; dy < 3; dy++) {
@@ -956,7 +954,7 @@ static void ExecutePlaceWorkshop(int x, int y, int z, WorkshopType type) {
     
     int idx = CreateWorkshop(x, y, z, type);
     if (idx >= 0) {
-        AddMessage(TextFormat("Built %s workshop #%d", workshopTypeNamesInput[type], idx), GREEN);
+        AddMessage(TextFormat("Built %s workshop #%d", workshopDefs[type].displayName, idx), GREEN);
     } else {
         AddMessage(TextFormat("Failed to create workshop (max %d)", MAX_WORKSHOPS), RED);
     }

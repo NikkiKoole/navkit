@@ -277,7 +277,6 @@ static void print_blueprint(int idx) {
     printf("Progress: %.1f%%\n", bp->progress * 100.0f);
 }
 
-static const char* workshopTypeNames[] = {"STONECUTTER", "SAWMILL", "KILN"};
 static const char* billModeNames[] = {"DO_X_TIMES", "DO_UNTIL_X", "DO_FOREVER"};
 
 static void print_workshop(int idx) {
@@ -290,7 +289,7 @@ static void print_workshop(int idx) {
     printf("Active: %s\n", ws->active ? "YES" : "no");
     if (!ws->active) return;
     
-    printf("Type: %s\n", ws->type < 3 ? workshopTypeNames[ws->type] : "UNKNOWN");
+    printf("Type: %s\n", ws->type < WORKSHOP_TYPE_COUNT ? workshopDefs[ws->type].name : "UNKNOWN");
     printf("Position: (%d, %d, z%d)\n", ws->x, ws->y, ws->z);
     printf("Size: %d x %d\n", ws->width, ws->height);
     printf("Work tile: (%d, %d)\n", ws->workTileX, ws->workTileY);
