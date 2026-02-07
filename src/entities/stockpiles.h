@@ -74,6 +74,11 @@ bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx);
 // Placement
 void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx);
 
+// Slot state helpers - update slot fields atomically (reduces partial update bugs)
+void IncrementStockpileSlot(Stockpile* sp, int slotIdx, int itemIdx, ItemType type, MaterialType mat);
+void DecrementStockpileSlot(Stockpile* sp, int slotIdx);
+void ClearStockpileSlot(Stockpile* sp, int slotIdx);
+
 // Slot cleanup - clear slot state when item leaves stockpile (delete, push, drop)
 void RemoveItemFromStockpileSlot(float x, float y, int z);
 

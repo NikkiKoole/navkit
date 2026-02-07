@@ -654,15 +654,40 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
         }
     }
     
-    sp->slots[idx] = itemIdx;
     if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
     
-    // Update stacking info
+    // Update stacking info using atomic helper
     if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active) {
-        sp->slotTypes[idx] = items[itemIdx].type;
-        sp->slotMaterials[idx] = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
-        sp->slotCounts[idx]++;
+        MaterialType mat = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
+        IncrementStockpileSlot(sp, idx, itemIdx, items[itemIdx].type, mat);
     }
+}
+
+// Slot state helpers - update slot fields atomically
+void IncrementStockpileSlot(Stockpile* sp, int slotIdx, int itemIdx, ItemType type, MaterialType mat) {
+    if (sp->slotCounts[slotIdx] == 0) {
+        // First item in slot - initialize type and material
+        sp->slots[slotIdx] = itemIdx;
+        sp->slotTypes[slotIdx] = type;
+        sp->slotMaterials[slotIdx] = mat;
+    }
+    sp->slotCounts[slotIdx]++;
+}
+
+void DecrementStockpileSlot(Stockpile* sp, int slotIdx) {
+    if (sp->slotCounts[slotIdx] > 0) {
+        sp->slotCounts[slotIdx]--;
+        if (sp->slotCounts[slotIdx] == 0) {
+            ClearStockpileSlot(sp, slotIdx);
+        }
+    }
+}
+
+void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
+    sp->slots[slotIdx] = -1;
+    sp->slotTypes[slotIdx] = -1;
+    sp->slotMaterials[slotIdx] = MAT_NONE;
+    sp->slotCounts[slotIdx] = 0;
 }
 
 // Remove one item from a stockpile slot at world position (x, y, z)
@@ -676,13 +701,7 @@ void RemoveItemFromStockpileSlot(float x, float y, int z) {
     if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
 
     int idx = ly * stockpiles[sourceSp].width + lx;
-    stockpiles[sourceSp].slotCounts[idx]--;
-    if (stockpiles[sourceSp].slotCounts[idx] <= 0) {
-        stockpiles[sourceSp].slots[idx] = -1;
-        stockpiles[sourceSp].slotTypes[idx] = -1;
-        stockpiles[sourceSp].slotCounts[idx] = 0;
-        stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
-    }
+    DecrementStockpileSlot(&stockpiles[sourceSp], idx);
 }
 
 // =============================================================================
