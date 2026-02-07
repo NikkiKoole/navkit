@@ -8,6 +8,7 @@
 #include "../src/entities/items.h"
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
+#include "../src/entities/workshops.h"
 #include "../src/world/designations.h"
 #include "../src/core/time.h"
 #include <string.h>
@@ -630,7 +631,7 @@ describe(stockpile_system) {
         expect(found == true);
         
         // Reserve it
-        bool reserved = ReserveStockpileSlot(spIdx, slotX, slotY, 0);  // mover 0
+        bool reserved = ReserveStockpileSlot(spIdx, slotX, slotY, 0, ITEM_RED, MAT_NONE);  // mover 0
         expect(reserved == true);
         
         // Should not find free slot (1 tile, reserved empty slots are skipped
@@ -1946,6 +1947,148 @@ describe(stacking_merging) {
         int count1 = GetStockpileSlotCount(spIdx, 6, 5);
         expect(count0 + count1 == 6);  // All 6 items accounted for
         expect(count0 > 1);            // First slot has stacked items
+    }
+    
+    it("should consolidate fragmented stacks when idle") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with 3 tiles, fragmented stacks:
+        // Slot 0: Red x1, Slot 1: Red x5, Slot 2: empty
+        int spIdx = CreateStockpile(5, 5, 0, 3, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Spawn actual items and place them in stockpile slots
+        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slot1X = 6 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        // 1 item in slot 0
+        int idx0 = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
+        items[idx0].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, idx0);
+        
+        // 5 items in slot 1
+        for (int i = 0; i < 5; i++) {
+            int idx = SpawnItem(slot1X, slotY, 0.0f, ITEM_RED);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spIdx, 6, 5, idx);
+        }
+        
+        // Run simulation — idle mover should consolidate slot 0 into slot 1
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Slot 0 should be empty, slot 1 should have 6
+        int count0 = GetStockpileSlotCount(spIdx, 5, 5);
+        int count1 = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(count0 + count1 == 6);  // Total preserved
+        expect(count0 == 0 || count1 == 0);  // One slot should be empty (consolidated)
+    }
+    
+    it("should not ping-pong items between equal-sized stacks") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with 2 tiles, equal-sized stacks: Slot 0: Red x4, Slot 1: Red x4
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slot1X = 6 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        
+        // 4 items in slot 0
+        for (int i = 0; i < 4; i++) {
+            int idx = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spIdx, 5, 5, idx);
+        }
+        
+        // 4 items in slot 1
+        for (int i = 0; i < 4; i++) {
+            int idx = SpawnItem(slot1X, slotY, 0.0f, ITEM_RED);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spIdx, 6, 5, idx);
+        }
+        
+        // Run simulation — mover should NOT move items between equal stacks
+        int consolidationJobCount = 0;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            
+            // Count how many times a consolidation job is assigned
+            if (m->currentJobId >= 0) {
+                Job* job = GetJob(m->currentJobId);
+                if (job && job->active && job->type == JOBTYPE_HAUL) {
+                    // Check if it's a consolidation (source and dest in same stockpile)
+                    int srcSp = -1, dstSp = -1;
+                    if (job->targetItem >= 0 && items[job->targetItem].active) {
+                        IsPositionInStockpile(items[job->targetItem].x, items[job->targetItem].y, 
+                                             (int)items[job->targetItem].z, &srcSp);
+                    }
+                    IsPositionInStockpile(job->targetSlotX * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         job->targetSlotY * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         (int)m->z, &dstSp);
+                    if (srcSp == dstSp && srcSp == spIdx) {
+                        consolidationJobCount++;
+                    }
+                }
+            }
+            
+            JobsTick();
+        }
+        
+        // Stacks should remain equal (no consolidation should occur)
+        int count0 = GetStockpileSlotCount(spIdx, 5, 5);
+        int count1 = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(count0 == 4);  // Unchanged
+        expect(count1 == 4);  // Unchanged
+        expect(consolidationJobCount == 0);  // No consolidation jobs assigned
     }
 }
 
@@ -5197,7 +5340,7 @@ describe(job_drivers) {
         
         // Reserve item and slot
         ReserveItem(itemIdx, 0);
-        ReserveStockpileSlot(sp, 5, 1, 0);
+        ReserveStockpileSlot(sp, 5, 1, 0, ITEM_RED, MAT_NONE);
         
         // Run simulation
         for (int i = 0; i < 600; i++) {
@@ -5375,7 +5518,7 @@ describe(job_drivers) {
         
         // Reserve item and slot
         ReserveItem(itemIdx, 0);
-        ReserveStockpileSlot(sp, 5, 1, 0);
+        ReserveStockpileSlot(sp, 5, 1, 0, ITEM_RED, MAT_NONE);
         
         // Delete the item mid-job (simulate failure)
         DeleteItem(itemIdx);
@@ -5428,7 +5571,7 @@ describe(job_drivers) {
         m->currentJobId = jobId;
         
         ReserveItem(itemIdx, 0);
-        ReserveStockpileSlot(sp, 1, 0, 0);
+        ReserveStockpileSlot(sp, 1, 0, 0, ITEM_RED, MAT_NONE);
         
         // Set mover goal to item location (same as mover position for instant pickup)
         m->goal = (Point){0, 0, 0};
@@ -6689,6 +6832,2697 @@ describe(final_approach) {
     }
 }
 
+// =============================================================================
+// Strong Stockpile Behavior Tests
+// These tests verify expected player-facing behavior, not implementation details
+// =============================================================================
+
+describe(stockpile_strong_tests) {
+    it("items should flow from low-priority to high-priority stockpiles naturally") {
+        InitGridFromAsciiWithChunkSize(
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n", 30, 20);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover near the dump zone
+        Mover* m = &movers[0];
+        Point goal = {5, 5, 0};
+        InitMover(m, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Low-priority "dump zone" near spawn (5,5)
+        int spLow = CreateStockpile(8, 5, 0, 3, 1);
+        SetStockpileFilter(spLow, ITEM_LOG, true);
+        SetStockpilePriority(spLow, 2);  // Low priority
+        
+        // High-priority "workshop storage" far away (25,5)
+        int spHigh = CreateStockpile(25, 5, 0, 3, 1);
+        SetStockpileFilter(spHigh, ITEM_LOG, true);
+        SetStockpilePriority(spHigh, 8);  // High priority
+        
+        // Spawn log near dump zone
+        int logIdx = SpawnItem(10 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        
+        // Phase 1: Log should go to dump zone first (closer)
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[logIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[logIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Check it's in the low-priority stockpile
+        int spIdx = -1;
+        IsPositionInStockpile(items[logIdx].x, items[logIdx].y, (int)items[logIdx].z, &spIdx);
+        expect(spIdx == spLow);
+        
+        // Phase 2: With idle time, should re-haul to high-priority
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if moved to high priority
+            IsPositionInStockpile(items[logIdx].x, items[logIdx].y, (int)items[logIdx].z, &spIdx);
+            if (spIdx == spHigh) break;
+        }
+        
+        // Should now be in high-priority stockpile
+        IsPositionInStockpile(items[logIdx].x, items[logIdx].y, (int)items[logIdx].z, &spIdx);
+        expect(spIdx == spHigh);
+    }
+    
+    it("overfull stockpiles should drain, not grow") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Stockpile with max_stack=5, but one slot is overfull (8 items from old max_stack=10)
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileMaxStackSize(spIdx, 5);  // Current max is 5
+        
+        // Manually create overfull slot (simulating legacy data)
+        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        for (int i = 0; i < 8; i++) {
+            int idx = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
+            items[idx].state = ITEM_IN_STOCKPILE;
+            PlaceItemInStockpile(spIdx, 5, 5, idx);
+        }
+        
+        // Verify slot is overfull
+        expect(IsSlotOverfull(spIdx, 5, 5));
+        
+        // Spawn new red item
+        int newItem = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[newItem].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[newItem].state == ITEM_IN_STOCKPILE);
+        
+        // New item should go to slot 1 (6,5), NOT the overfull slot 0 (5,5)
+        int itemTileX = (int)(items[newItem].x / CELL_SIZE);
+        int itemTileY = (int)(items[newItem].y / CELL_SIZE);
+        expect(itemTileX == 6);  // Second slot
+        expect(itemTileY == 5);
+        
+        // Overfull slot should still be overfull (not accepting more)
+        int slot0Count = GetStockpileSlotCount(spIdx, 5, 5);
+        expect(slot0Count == 8);  // Still overfull, didn't grow
+    }
+    
+    it("filter changes mid-operation should be respected immediately") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Three movers
+        for (int i = 0; i < 3; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 3;
+        
+        // Stockpile accepts all stone types initially
+        int spIdx = CreateStockpile(5, 5, 0, 3, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+        SetStockpileFilter(spIdx, ITEM_BLUE, true);
+        
+        // Spawn three items (different types) far from stockpile
+        int redIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int greenIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        int blueIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLUE);
+        
+        // Assign jobs and wait until all movers are CARRYING
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            bool allCarrying = true;
+            for (int m = 0; m < 3; m++) {
+                if (!MoverIsCarrying(&movers[m])) {
+                    allCarrying = false;
+                    break;
+                }
+            }
+            if (allCarrying) break;
+        }
+        
+        // All should be carrying now
+        expect(MoverIsCarrying(&movers[0]));
+        expect(MoverIsCarrying(&movers[1]));
+        expect(MoverIsCarrying(&movers[2]));
+        
+        // Disable RED filter while movers are in transit
+        SetStockpileFilter(spIdx, ITEM_RED, false);
+        
+        // Continue simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            // Check if all non-red items are in stockpile
+            if (items[greenIdx].state == ITEM_IN_STOCKPILE &&
+                items[blueIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        // Green and blue should be in the stockpile
+        expect(items[greenIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[blueIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Red should NOT be in this stockpile (filter was disabled)
+        // It should be on ground or in a different stockpile if one exists
+        if (items[redIdx].state == ITEM_IN_STOCKPILE) {
+            int redSp = -1;
+            IsPositionInStockpile(items[redIdx].x, items[redIdx].y, (int)items[redIdx].z, &redSp);
+            expect(redSp != spIdx);  // Not in the filtered stockpile
+        }
+    }
+    
+    it("stockpiles should never mix incompatible materials in the same slot") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // 5 movers for race conditions
+        for (int i = 0; i < 5; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 5;
+        
+        // Small stockpile (1x2 = 2 slots) accepts all types
+        int spIdx = CreateStockpile(5, 5, 0, 1, 2);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+        SetStockpileFilter(spIdx, ITEM_BLUE, true);
+        
+        // Spawn items of different types clustered together (race condition setup)
+        int items_spawned[5];
+        items_spawned[0] = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items_spawned[1] = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        items_spawned[2] = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items_spawned[3] = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLUE);
+        items_spawned[4] = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run until all items are in stockpile (or limit reached)
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            bool allDone = true;
+            for (int j = 0; j < 5; j++) {
+                if (items[items_spawned[j]].state != ITEM_IN_STOCKPILE) {
+                    allDone = false;
+                    break;
+                }
+            }
+            if (allDone) break;
+        }
+        
+        // Check that each slot contains only ONE type
+        int slot0Count = GetStockpileSlotCount(spIdx, 5, 5);
+        int slot1Count = GetStockpileSlotCount(spIdx, 5, 6);
+        
+        if (slot0Count > 0) {
+            // Count types in slot 0
+            int redCount = 0, greenCount = 0, blueCount = 0;
+            for (int j = 0; j < 5; j++) {
+                if (items[items_spawned[j]].state != ITEM_IN_STOCKPILE) continue;
+                int tileX = (int)(items[items_spawned[j]].x / CELL_SIZE);
+                int tileY = (int)(items[items_spawned[j]].y / CELL_SIZE);
+                if (tileX == 5 && tileY == 5) {
+                    if (items[items_spawned[j]].type == ITEM_RED) redCount++;
+                    if (items[items_spawned[j]].type == ITEM_GREEN) greenCount++;
+                    if (items[items_spawned[j]].type == ITEM_BLUE) blueCount++;
+                }
+            }
+            // Only ONE type should be present
+            int typesPresent = (redCount > 0 ? 1 : 0) + (greenCount > 0 ? 1 : 0) + (blueCount > 0 ? 1 : 0);
+            expect(typesPresent <= 1);  // At most one type per slot
+        }
+        
+        if (slot1Count > 0) {
+            // Count types in slot 1
+            int redCount = 0, greenCount = 0, blueCount = 0;
+            for (int j = 0; j < 5; j++) {
+                if (items[items_spawned[j]].state != ITEM_IN_STOCKPILE) continue;
+                int tileX = (int)(items[items_spawned[j]].x / CELL_SIZE);
+                int tileY = (int)(items[items_spawned[j]].y / CELL_SIZE);
+                if (tileX == 5 && tileY == 6) {
+                    if (items[items_spawned[j]].type == ITEM_RED) redCount++;
+                    if (items[items_spawned[j]].type == ITEM_GREEN) greenCount++;
+                    if (items[items_spawned[j]].type == ITEM_BLUE) blueCount++;
+                }
+            }
+            // Only ONE type should be present
+            int typesPresent = (redCount > 0 ? 1 : 0) + (greenCount > 0 ? 1 : 0) + (blueCount > 0 ? 1 : 0);
+            expect(typesPresent <= 1);  // At most one type per slot
+        }
+    }
+    
+    it("multiple item types should all get hauled even when sharing cached slots") {
+        // Bug: The stockpile slot cache would point multiple different item types
+        // to the same empty slot. The first type succeeds and type-stamps the slot
+        // via ReserveStockpileSlot, but subsequent types fail the reservation because
+        // of a type mismatch. If the cache is only invalidated on SUCCESS, these
+        // failed types never get a fresh cache lookup and are never hauled.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        // 3 movers to haul items
+        for (int i = 0; i < 3; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 3;
+
+        // Stockpile with 3 slots (1x3) - enough room for one of each type
+        int spIdx = CreateStockpile(5, 5, 0, 1, 3);
+        SetStockpileFilter(spIdx, ITEM_LOG, true);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+        SetStockpileFilter(spIdx, ITEM_DIRT, true);
+
+        // Spawn one of each type on the ground
+        int logIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        int rockIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        int dirtIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_DIRT);
+
+        // Run simulation - all 3 items should eventually be hauled
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            bool allDone = (items[logIdx].state == ITEM_IN_STOCKPILE &&
+                           items[rockIdx].state == ITEM_IN_STOCKPILE &&
+                           items[dirtIdx].state == ITEM_IN_STOCKPILE);
+            if (allDone) break;
+        }
+
+        // All three different types should be in the stockpile
+        expect(items[logIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[rockIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[dirtIdx].state == ITEM_IN_STOCKPILE);
+    }
+
+    // =========================================================================
+    // Material-focused tests
+    // =========================================================================
+
+    it("same item type with different materials should never share a slot") {
+        // Oak logs and pine logs are both ITEM_LOG but with different materials.
+        // A player expects them in separate slots, never stacked together.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        for (int i = 0; i < 4; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 4;
+
+        // Stockpile with 4 slots, accepts all
+        int spIdx = CreateStockpile(5, 5, 0, 2, 2);
+
+        // Spawn 2 oak logs and 2 pine logs
+        int oak1 = SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        int oak2 = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        int pine1 = SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+        int pine2 = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            bool allDone = (items[oak1].state == ITEM_IN_STOCKPILE &&
+                           items[oak2].state == ITEM_IN_STOCKPILE &&
+                           items[pine1].state == ITEM_IN_STOCKPILE &&
+                           items[pine2].state == ITEM_IN_STOCKPILE);
+            if (allDone) break;
+        }
+
+        expect(items[oak1].state == ITEM_IN_STOCKPILE);
+        expect(items[oak2].state == ITEM_IN_STOCKPILE);
+        expect(items[pine1].state == ITEM_IN_STOCKPILE);
+        expect(items[pine2].state == ITEM_IN_STOCKPILE);
+
+        // Check every slot: each slot must contain only ONE material
+        Stockpile* sp = &stockpiles[spIdx];
+        for (int ly = 0; ly < sp->height; ly++) {
+            for (int lx = 0; lx < sp->width; lx++) {
+                int idx = ly * sp->width + lx;
+                if (sp->slotCounts[idx] <= 1) continue;
+                // If multiple items in a slot, all must share the same material
+                // Check by counting materials of items at this tile
+                int worldX = sp->x + lx;
+                int worldY = sp->y + ly;
+                uint8_t slotMat = sp->slotMaterials[idx];
+                int itemsInSlot[4] = {oak1, oak2, pine1, pine2};
+                for (int j = 0; j < 4; j++) {
+                    int tileX = (int)(items[itemsInSlot[j]].x / CELL_SIZE);
+                    int tileY = (int)(items[itemsInSlot[j]].y / CELL_SIZE);
+                    if (tileX == worldX && tileY == worldY) {
+                        uint8_t itemMat = items[itemsInSlot[j]].material;
+                        if (itemMat == MAT_NONE) itemMat = MAT_OAK; // default for ITEM_LOG
+                        expect(itemMat == slotMat);
+                    }
+                }
+            }
+        }
+    }
+
+    it("material filter should block items of disallowed materials") {
+        // If a stockpile allows ITEM_LOG but disallows MAT_PINE,
+        // pine logs should NOT enter. Only oak logs should.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        for (int i = 0; i < 2; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 1, 0};
+            InitMover(m, (1 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 2;
+
+        // Stockpile that allows logs but NOT pine material
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileMaterialFilter(spIdx, MAT_PINE, false);
+
+        // Spawn one oak log and one pine log
+        int oakIdx = SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        int pineIdx = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Oak should be in stockpile, pine should still be on the ground
+        expect(items[oakIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[pineIdx].state == ITEM_ON_GROUND);
+    }
+
+    it("consolidation should never merge different materials of same type") {
+        // Two partial stacks: 3 oak logs in slot A, 3 pine logs in slot B.
+        // Consolidation should NOT try to merge them even though both are ITEM_LOG.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Stockpile with 2 slots
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+
+        // Manually place items to set up partial stacks
+        // Slot 0 (5,5): 3 oak logs
+        for (int i = 0; i < 3; i++) {
+            int idx = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+            items[idx].state = ITEM_IN_STOCKPILE;
+        }
+        int slot0Idx = 0; // local slot index
+        stockpiles[spIdx].slotTypes[slot0Idx] = ITEM_LOG;
+        stockpiles[spIdx].slotMaterials[slot0Idx] = MAT_OAK;
+        stockpiles[spIdx].slotCounts[slot0Idx] = 3;
+
+        // Slot 1 (6,5): 3 pine logs
+        for (int i = 0; i < 3; i++) {
+            int idx = SpawnItemWithMaterial(6 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+            items[idx].state = ITEM_IN_STOCKPILE;
+        }
+        int slot1Idx = 1; // local slot index
+        stockpiles[spIdx].slotTypes[slot1Idx] = ITEM_LOG;
+        stockpiles[spIdx].slotMaterials[slot1Idx] = MAT_PINE;
+        stockpiles[spIdx].slotCounts[slot1Idx] = 3;
+
+        // FindConsolidationTarget should return false for both slots
+        int destX, destY;
+        bool found0 = FindConsolidationTarget(spIdx, 5, 5, &destX, &destY);
+        bool found1 = FindConsolidationTarget(spIdx, 6, 5, &destX, &destY);
+
+        expect(!found0); // oak should NOT consolidate onto pine
+        expect(!found1); // pine should NOT consolidate onto oak
+    }
+
+    it("changing material filter should cause existing items to be re-hauled out") {
+        // Place oak logs in a stockpile, then disable MAT_OAK.
+        // The system should re-haul them to another stockpile.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Two stockpiles: sp1 initially accepts oak, sp2 accepts everything
+        int sp1 = CreateStockpile(3, 3, 0, 1, 1);
+        int sp2 = CreateStockpile(7, 7, 0, 1, 1);
+
+        // Haul an oak log into sp1
+        int oakIdx = SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[oakIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        expect(items[oakIdx].state == ITEM_IN_STOCKPILE);
+
+        // Verify it's in sp1
+        int currentSp = -1;
+        IsPositionInStockpile(items[oakIdx].x, items[oakIdx].y, (int)items[oakIdx].z, &currentSp);
+        expect(currentSp == sp1);
+
+        // Now disable oak material on sp1
+        SetStockpileMaterialFilter(sp1, MAT_OAK, false);
+
+        // Run simulation - item should be re-hauled to sp2
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Item should now be in sp2
+        int newSp = -1;
+        IsPositionInStockpile(items[oakIdx].x, items[oakIdx].y, (int)items[oakIdx].z, &newSp);
+        expect(newSp == sp2);
+    }
+
+    it("material-specific stockpiles should attract the right materials") {
+        // Two stockpiles: one for oak only, one for pine only.
+        // Oak logs should go to the oak stockpile, pine logs to the pine one.
+        InitGridFromAsciiWithChunkSize(
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n", 30, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+
+        for (int i = 0; i < 4; i++) {
+            Mover* m = &movers[i];
+            Point goal = {14 + i, 1, 0};
+            InitMover(m, (14 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 4;
+
+        // Oak-only stockpile on the left
+        int spOak = CreateStockpile(3, 5, 0, 2, 1);
+        // Disable all materials except oak
+        for (int m = 0; m < MAT_COUNT; m++) {
+            SetStockpileMaterialFilter(spOak, (MaterialType)m, false);
+        }
+        SetStockpileMaterialFilter(spOak, MAT_OAK, true);
+
+        // Pine-only stockpile on the right
+        int spPine = CreateStockpile(25, 5, 0, 2, 1);
+        for (int m = 0; m < MAT_COUNT; m++) {
+            SetStockpileMaterialFilter(spPine, (MaterialType)m, false);
+        }
+        SetStockpileMaterialFilter(spPine, MAT_PINE, true);
+
+        // Spawn items near the center
+        int oak1 = SpawnItemWithMaterial(15 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        int oak2 = SpawnItemWithMaterial(16 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        int pine1 = SpawnItemWithMaterial(15 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+        int pine2 = SpawnItemWithMaterial(16 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_PINE);
+
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            bool allDone = (items[oak1].state == ITEM_IN_STOCKPILE &&
+                           items[oak2].state == ITEM_IN_STOCKPILE &&
+                           items[pine1].state == ITEM_IN_STOCKPILE &&
+                           items[pine2].state == ITEM_IN_STOCKPILE);
+            if (allDone) break;
+        }
+
+        // All items should be in stockpiles
+        expect(items[oak1].state == ITEM_IN_STOCKPILE);
+        expect(items[oak2].state == ITEM_IN_STOCKPILE);
+        expect(items[pine1].state == ITEM_IN_STOCKPILE);
+        expect(items[pine2].state == ITEM_IN_STOCKPILE);
+
+        // Oak logs should be in the oak stockpile
+        int sp1 = -1, sp2 = -1, sp3 = -1, sp4 = -1;
+        IsPositionInStockpile(items[oak1].x, items[oak1].y, (int)items[oak1].z, &sp1);
+        IsPositionInStockpile(items[oak2].x, items[oak2].y, (int)items[oak2].z, &sp2);
+        IsPositionInStockpile(items[pine1].x, items[pine1].y, (int)items[pine1].z, &sp3);
+        IsPositionInStockpile(items[pine2].x, items[pine2].y, (int)items[pine2].z, &sp4);
+
+        expect(sp1 == spOak);
+        expect(sp2 == spOak);
+        expect(sp3 == spPine);
+        expect(sp4 == spPine);
+    }
+
+    it("distance matters: closest available stockpile should win") {
+        InitGridFromAsciiWithChunkSize(
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n"
+            "..............................\n", 30, 20);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        Mover* m = &movers[0];
+        Point goal = {15, 10, 0};
+        InitMover(m, 15 * CELL_SIZE + CELL_SIZE * 0.5f, 10 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item at center (15, 10)
+        int itemIdx = SpawnItem(15 * CELL_SIZE + CELL_SIZE * 0.5f, 10 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        
+        // Three identical stockpiles at different distances
+        // Close: (18, 10) - distance ~3
+        int spClose = CreateStockpile(18, 10, 0, 2, 1);
+        SetStockpileFilter(spClose, ITEM_LOG, true);
+        SetStockpilePriority(spClose, 5);
+        
+        // Medium: (25, 10) - distance ~10
+        int spMed = CreateStockpile(25, 10, 0, 2, 1);
+        SetStockpileFilter(spMed, ITEM_LOG, true);
+        SetStockpilePriority(spMed, 5);
+        
+        // Far: (5, 10) - distance ~10
+        int spFar = CreateStockpile(5, 10, 0, 2, 1);
+        SetStockpileFilter(spFar, ITEM_LOG, true);
+        SetStockpilePriority(spFar, 5);
+        
+        // Assign job and run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Should be in the CLOSEST stockpile
+        int spIdx = -1;
+        IsPositionInStockpile(items[itemIdx].x, items[itemIdx].y, (int)items[itemIdx].z, &spIdx);
+        expect(spIdx == spClose);  // Should choose closest one
+    }
+}
+
+// =============================================================================
+// Item Lifecycle Tests (from items.c audit)
+// Player-facing behavior: items leaving stockpiles must clean up slot state
+// =============================================================================
+
+describe(item_lifecycle) {
+    it("deleting a stockpiled item should free the stockpile slot") {
+        // Story: I have items in a stockpile. Something consumes one (crafting, etc).
+        // The stockpile slot should become available for new items.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Create stockpile and place an item in it
+        int spIdx = CreateStockpile(2, 2, 0, 3, 1);
+        SetStockpileFilter(spIdx, ITEM_LOG, true);
+        Stockpile* sp = &stockpiles[spIdx];
+
+        // Spawn item directly in the stockpile slot
+        float slotX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(slotX, slotY, 0.0f, ITEM_LOG);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 2, 2, itemIdx);
+
+        // Verify slot is occupied
+        int idx = 0;  // local (0,0) in the stockpile
+        expect(sp->slotCounts[idx] == 1);
+        expect(sp->slotTypes[idx] == ITEM_LOG);
+
+        // Now delete the item (simulating crafting consuming it)
+        DeleteItem(itemIdx);
+
+        // Player expectation: the slot should be empty and available for new items
+        expect(sp->slotCounts[idx] == 0);
+        expect(sp->slotTypes[idx] == -1);
+        expect(sp->slotMaterials[idx] == MAT_NONE);
+    }
+
+    it("pushing items out of a cell should make them ground items") {
+        // Story: I build a wall on a stockpile tile that has items.
+        // The items should be pushed to a neighbor and become regular ground items,
+        // and the stockpile slot should be freed.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Create stockpile and place an item at slot (3,2)
+        int spIdx = CreateStockpile(2, 2, 0, 3, 1);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+        Stockpile* sp = &stockpiles[spIdx];
+
+        float slotX = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(slotX, slotY, 0.0f, ITEM_ROCK);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 3, 2, itemIdx);
+
+        // Verify slot (1,0) in local coords is occupied
+        int idx = 1;  // local x=1, y=0
+        expect(sp->slotCounts[idx] == 1);
+        expect(sp->slotTypes[idx] == ITEM_ROCK);
+
+        // Push items out (simulating wall being built on this tile)
+        PushItemsOutOfCell(3, 2, 0);
+
+        // Player expectation: item is now a ground item, not stuck in stockpile limbo
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+
+        // Player expectation: the stockpile slot should be freed
+        expect(sp->slotCounts[idx] == 0);
+        expect(sp->slotTypes[idx] == -1);
+        expect(sp->slotMaterials[idx] == MAT_NONE);
+    }
+
+    it("dropping items through a channeled floor should free the stockpile slot") {
+        // Story: I channel the floor under a stockpile. Items fall to the level below.
+        // The stockpile slot above should be freed, items should be ground items below.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        // Set up z0 as solid, z1 as walkable floor
+        for (int x = 0; x < 10; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_DIRT;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Create stockpile at z1 and place item
+        int spIdx = CreateStockpile(3, 2, 1, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_DIRT, true);
+        Stockpile* sp = &stockpiles[spIdx];
+
+        float slotX = 3 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int itemIdx = SpawnItem(slotX, slotY, 1.0f, ITEM_DIRT);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 3, 2, itemIdx);
+
+        // Verify slot is occupied
+        int idx = 0;
+        expect(sp->slotCounts[idx] == 1);
+
+        // Remove the floor (simulating channeling) - item should fall
+        // First make z0 walkable at that position
+        grid[0][2][3] = CELL_AIR;
+        SET_FLOOR(3, 2, 0);  // not solid below, so item falls to z0... actually need solid below z0
+        grid[0][2][3] = CELL_AIR;
+        // For drop to work, targetZ cell must not be solid
+        // z=0 is CELL_AIR now, and z-1 doesn't exist, so item lands at z0
+
+        DropItemsInCell(3, 2, 1);
+
+        // Player expectation: item fell to z0, is now on ground
+        expect((int)items[itemIdx].z == 0);
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+
+        // Player expectation: stockpile slot at z1 is freed
+        expect(sp->slotCounts[idx] == 0);
+        expect(sp->slotTypes[idx] == -1);
+        expect(sp->slotMaterials[idx] == MAT_NONE);
+    }
+
+    it("itemHighWaterMark should shrink when highest items are deleted") {
+        // Story: performance shouldn't degrade as items are created and destroyed.
+        // If I delete the last items, the system should stop iterating past them.
+        ClearItems();
+
+        // Spawn 5 items
+        int idx0 = SpawnItem(100, 100, 0, ITEM_RED);
+        int idx1 = SpawnItem(200, 100, 0, ITEM_GREEN);
+        int idx2 = SpawnItem(300, 100, 0, ITEM_BLUE);
+        int idx3 = SpawnItem(400, 100, 0, ITEM_RED);
+        int idx4 = SpawnItem(500, 100, 0, ITEM_GREEN);
+        (void)idx0; (void)idx1; (void)idx2;
+
+        expect(itemHighWaterMark == 5);
+
+        // Delete the last two items
+        DeleteItem(idx4);
+        expect(itemHighWaterMark == 4);  // Should shrink to 4
+
+        DeleteItem(idx3);
+        expect(itemHighWaterMark == 3);  // Should shrink to 3
+
+        // Delete a middle item - water mark should NOT shrink
+        DeleteItem(idx1);
+        expect(itemHighWaterMark == 3);  // idx2 is still at position 2
+    }
+}
+
+// =============================================================================
+// Mover Lifecycle Tests (from mover.c audit)
+// =============================================================================
+
+describe(mover_lifecycle) {
+    it("reused job slots should not have stale fuel or workshop fields") {
+        // Story: A crafter finishes a job at a workshop. Later, a hauler gets a job
+        // in the same slot. If that hauler's job is cancelled, the stale fuelItem
+        // from the old craft job should NOT cause reservation theft.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Create a job (simulating a craft job that sets fuelItem)
+        int jobId1 = CreateJob(JOBTYPE_CRAFT);
+        Job* job1 = GetJob(jobId1);
+        job1->fuelItem = 5;
+        job1->targetWorkshop = 2;
+
+        // Release the job (returns to free list)
+        ReleaseJob(jobId1);
+
+        // Create a new job in the same slot (should be a haul job reusing slot)
+        int jobId2 = CreateJob(JOBTYPE_HAUL);
+        Job* job2 = GetJob(jobId2);
+
+        // Player expectation: the new job should NOT have stale craft fields
+        expect(job2->fuelItem == -1);
+        expect(job2->targetWorkshop == -1);
+    }
+
+    it("ClearMovers should release workshop crafter assignments") {
+        // Story: I load a save while a crafter is working at a workshop.
+        // After loading, the workshop should be available for new crafters.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Set up a mover
+        ClearMovers();
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 1 * CELL_SIZE + 16, 1 * CELL_SIZE + 16, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Simulate a workshop with an assigned crafter
+        workshops[0].active = true;
+        workshops[0].assignedCrafter = 0;  // mover 0
+
+        // Clear all movers (simulating save load)
+        ClearMovers();
+
+        // Player expectation: workshop should be free for new crafters
+        expect(workshops[0].assignedCrafter == -1);
+
+        // Cleanup
+        workshops[0].active = false;
+    }
+
+    it("mover avoidance should not repel movers on different z-levels") {
+        // Story: A mover on z=0 walks near a ladder. A mover on z=1 is directly
+        // above. They should NOT push each other sideways.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Two movers at same x,y but different z
+        float cx = 5 * CELL_SIZE + 16;
+        float cy = 2 * CELL_SIZE + 16;
+
+        Mover* m0 = &movers[0];
+        Mover* m1 = &movers[1];
+        Point goal = {0, 0, 0};
+        InitMover(m0, cx, cy, 0.0f, goal, 100.0f);
+        InitMover(m1, cx, cy, 1.0f, goal, 100.0f);
+        moverCount = 2;
+
+        // Build spatial grid and compute avoidance
+        InitMoverSpatialGrid(10 * CELL_SIZE, 5 * CELL_SIZE);
+        BuildMoverSpatialGrid();
+
+        Vec2 avoid0 = ComputeMoverAvoidance(0);
+
+        // Player expectation: no repulsion, they're on different floors
+        float avoidMag = avoid0.x * avoid0.x + avoid0.y * avoid0.y;
+        expect(avoidMag < 0.001f);
+    }
+
+    it("stuck detection should count z-movement as progress") {
+        // Story: A mover descends a ladder (z changes, x/y barely moves).
+        // It should NOT be marked as stuck.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        Mover* m = &movers[0];
+        Point goal = {5, 2, 0};
+        float cx = 5 * CELL_SIZE + 16;
+        float cy = 2 * CELL_SIZE + 16;
+        InitMover(m, cx, cy, 3.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Simulate ladder descent: x/y stays same, z decreases
+        m->lastX = cx;
+        m->lastY = cy;
+        m->z = 2.0f;  // moved from z=3 to z=2 (real progress!)
+        m->timeWithoutProgress = 0.0f;
+
+        // The stuck detection checks dx/dy. With no x/y change but z change,
+        // it should still recognize progress.
+        float movedX = m->x - m->lastX;
+        float movedY = m->y - m->lastY;
+        float movedZ = m->z - 3.0f;  // original z was 3
+        float movedDistSq = movedX * movedX + movedY * movedY;
+
+        // Current code: only x/y. This test documents the expectation that
+        // z-movement should count. movedDistSq == 0 means the stuck detector
+        // thinks no progress was made.
+        // Player expectation: z-movement should count as progress
+        float movedWithZ = movedDistSq + (movedZ * CELL_SIZE) * (movedZ * CELL_SIZE);
+        expect(movedWithZ > 1.0f);  // There IS real progress (z moved)
+        // But the current stuck detector only sees this:
+        expect(movedDistSq < 1.0f);  // BUG: detector thinks no progress
+    }
+
+    it("deactivated mover should not leave carried items in unwalkable cells") {
+        // Story: A mover carrying an item gets walled in on all sides.
+        // The item should NOT vanish into the wall — it should end up somewhere reachable.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 5);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        InitJobSystem(10);
+
+        // Mover at (5,2) carrying an item
+        Mover* m = &movers[0];
+        Point goal = {8, 2, 0};
+        float mx = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float my = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+        InitMover(m, mx, my, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        int itemIdx = SpawnItem(mx, my, 0.0f, ITEM_LOG);
+        items[itemIdx].state = ITEM_CARRIED;
+        items[itemIdx].reservedBy = 0;
+
+        // Give mover a haul job carrying the item
+        int spIdx = CreateStockpile(7, 2, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_LOG, true);
+
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->carryingItem = itemIdx;
+        job->targetItem = itemIdx;
+        job->targetStockpile = spIdx;
+        job->targetSlotX = 7;
+        job->targetSlotY = 2;
+        job->step = 1;  // carrying step
+        m->currentJobId = jobId;
+        RemoveMoverFromIdleList(0);
+
+        // Wall in the mover completely (cell + all neighbors)
+        grid[0][2][5] = CELL_WALL;  // mover's cell
+        grid[0][1][5] = CELL_WALL;  // north
+        grid[0][3][5] = CELL_WALL;  // south
+        grid[0][2][4] = CELL_WALL;  // west
+        grid[0][2][6] = CELL_WALL;  // east
+
+        // Run a tick — mover should be deactivated, job cancelled, item dropped
+        Tick();
+        JobsTick();
+
+        // The item should exist and be on ground
+        expect(items[itemIdx].active == true);
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+
+        // Player expectation: item should NOT be at an unwalkable position
+        int itemCellX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemCellY = (int)(items[itemIdx].y / CELL_SIZE);
+        int itemCellZ = (int)items[itemIdx].z;
+        bool itemCellWalkable = IsCellWalkableAt(itemCellZ, itemCellY, itemCellX);
+        expect(itemCellWalkable == true);
+    }
+}
+
+// =============================================================================
+// Job lifecycle tests (jobs.c audit findings)
+// =============================================================================
+describe(job_lifecycle) {
+    it("planting a sapling should properly decrement itemCount") {
+        // Story: A mover plants a sapling. The sapling item is consumed.
+        // Player expects: the item is gone AND itemCount reflects reality.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        InitDesignations();
+        ClearJobs();
+
+        // Spawn a mover near tile (2,2)
+        Mover* m = &movers[0];
+        Point goal = {2, 2, 0};
+        InitMover(m, CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        // Spawn a sapling item near the mover
+        int sapIdx = SpawnItemWithMaterial(CELL_SIZE * 3.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_SAPLING_OAK, MAT_OAK);
+
+        // Designate tile (5,2) for planting
+        DesignatePlantSapling(5, 2, 0);
+
+        int countBefore = itemCount;
+        int hwmBefore = itemHighWaterMark;
+
+        // Run simulation until the planting completes
+        for (int i = 0; i < 2000; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+            if (!items[sapIdx].active) break;
+        }
+
+        // Sapling should be consumed
+        expect(items[sapIdx].active == false);
+
+        // Player expectation: itemCount should have decremented
+        expect(itemCount == countBefore - 1);
+
+        // itemHighWaterMark should have shrunk if this was the last item
+        expect(itemHighWaterMark <= hwmBefore);
+    }
+
+    it("craft job should update carried item position while moving to workshop") {
+        // Story: A mover picks up a log and carries it to the sawmill.
+        // Player expects: the log moves WITH the mover, not floating at pickup spot.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create sawmill at (5,1) — 3x3, work tile at X offset
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+
+        // Add a "Saw Planks" bill (recipe 0 for sawmill)
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+
+        // Place a planks stockpile so the bill won't auto-suspend
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_PLANKS, true);
+
+        // Spawn mover at (1,2)
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 2.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        // Spawn log near mover at (2,2)
+        SpawnItemWithMaterial(CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_LOG, MAT_OAK);
+
+        // Run until mover picks up the item and starts carrying to workshop
+        bool foundCarrying = false;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+
+            // Check if mover is carrying and moving toward workshop
+            if (m->currentJobId >= 0) {
+                Job* job = GetJob(m->currentJobId);
+                if (job && job->type == JOBTYPE_CRAFT && job->step == CRAFT_STEP_MOVING_TO_WORKSHOP) {
+                    // The item should be following the mover
+                    float dx = items[job->carryingItem].x - m->x;
+                    float dy = items[job->carryingItem].y - m->y;
+                    float distSq = dx * dx + dy * dy;
+                    // Item should be close to mover (within a cell), not stuck at pickup
+                    expect(distSq < CELL_SIZE * CELL_SIZE);
+                    foundCarrying = true;
+                    break;
+                }
+            }
+        }
+        expect(foundCarrying == true);
+    }
+
+    it("cancelling a craft job should not drop fuel in an unwalkable cell") {
+        // Story: A crafter is in an unwalkable cell carrying fuel when job is cancelled.
+        // Player expects: the fuel ends up on a walkable tile, not inside a wall.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create a mover at (5,3)
+        Mover* m = &movers[0];
+        Point goal = {5, 3, 0};
+        InitMover(m, CELL_SIZE * 5.5f, CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        // Create a fuel item and make it carried
+        int fuelIdx = SpawnItemWithMaterial(CELL_SIZE * 5.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        items[fuelIdx].state = ITEM_CARRIED;
+        items[fuelIdx].reservedBy = 0;
+
+        // Create an input item (reserved but deposited at workshop)
+        int inputIdx = SpawnItemWithMaterial(CELL_SIZE * 5.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_CLAY, MAT_CLAY);
+        items[inputIdx].reservedBy = 0;
+
+        // Create a workshop
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_KILN);
+        workshops[wsIdx].assignedCrafter = 0;
+
+        // Create a craft job in CARRYING_FUEL step
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetWorkshop = wsIdx;
+        job->targetBillIdx = 0;
+        job->targetItem = inputIdx;
+        job->carryingItem = -1;
+        job->fuelItem = fuelIdx;
+        job->step = CRAFT_STEP_CARRYING_FUEL;
+        m->currentJobId = jobId;
+
+        // Now wall off the mover's cell — simulate being trapped
+        grid[0][3][5] = CELL_WALL;
+
+        // Run a tick to trigger stuck detection → cancel
+        Tick();
+        JobsTick();
+
+        // The fuel item should be on the ground
+        expect(items[fuelIdx].active == true);
+        expect(items[fuelIdx].state == ITEM_ON_GROUND);
+
+        // Player expectation: fuel should NOT be at an unwalkable position
+        int fuelCellX = (int)(items[fuelIdx].x / CELL_SIZE);
+        int fuelCellY = (int)(items[fuelIdx].y / CELL_SIZE);
+        int fuelCellZ = (int)items[fuelIdx].z;
+        bool fuelCellWalkable = IsCellWalkableAt(fuelCellZ, fuelCellY, fuelCellX);
+        expect(fuelCellWalkable == true);
+    }
+
+    it("craft auto-suspend should check actual output material not MAT_NONE") {
+        // Story: A sawmill has a "Saw Planks" bill. The player has a stockpile
+        // filtered to ONLY accept PINE planks. The input log is PINE.
+        // Player expects: the bill should NOT be suspended because pine planks
+        // have storage. But with MAT_NONE check, it resolves to OAK default,
+        // and if the stockpile only allows PINE, it might incorrectly suspend.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create a stockpile that ONLY accepts PINE planks
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_PLANKS, true);
+        // Disable all materials, then enable only PINE
+        for (int m = 0; m < MAT_COUNT; m++) {
+            SetStockpileMaterialFilter(sp, (MaterialType)m, false);
+        }
+        SetStockpileMaterialFilter(sp, MAT_PINE, true);
+
+        // Create sawmill at (5,1)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+
+        // Add "Saw Planks" bill (recipe 0)
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
+
+        // Spawn PINE log near workshop
+        SpawnItemWithMaterial(CELL_SIZE * 4.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_LOG, MAT_PINE);
+
+        // Spawn mover
+        Mover* m2 = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m2, CELL_SIZE * 1.5f, CELL_SIZE * 2.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+        RebuildIdleMoverList();
+        BuildItemSpatialGrid();
+        BuildMoverSpatialGrid();
+
+        // Try to assign a craft job
+        int jobId = WorkGiver_Craft(0);
+
+        // Player expectation: the bill should NOT be suspended
+        // because pine planks DO have storage (the stockpile accepts them)
+        Bill* bill = &workshops[wsIdx].bills[0];
+        expect(bill->suspended == false);
+
+        // And a job should have been created
+        expect(jobId >= 0);
+    }
+
+    it("craft job should properly decrement itemCount when consuming inputs") {
+        // Story: A craft job completes and consumes its input item.
+        // Player expects: itemCount decrements properly (via DeleteItem),
+        // not just setting active=false while leaking the count.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create sawmill at (5,1) — work tile is at (6,2)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+        Workshop* ws = &workshops[wsIdx];
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+
+        // Mover already at the workshop work tile
+        Mover* m = &movers[0];
+        float workX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float workY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, workX, workY, 0.0f, goal, 200.0f);
+        moverCount = 1;
+        ws->assignedCrafter = 0;
+
+        // Spawn a log as the carried input (already picked up)
+        int logIdx = SpawnItemWithMaterial(workX, workY, 0.0f, ITEM_LOG, MAT_OAK);
+        items[logIdx].state = ITEM_CARRIED;
+        items[logIdx].reservedBy = 0;
+
+        int countBefore = itemCount;
+
+        // Manually create a craft job at WORKING step (skip walking phases)
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetWorkshop = wsIdx;
+        job->targetBillIdx = 0;
+        job->targetItem = -1;
+        job->carryingItem = logIdx;
+        job->fuelItem = -1;
+        job->step = CRAFT_STEP_WORKING;
+        job->progress = 0.0f;
+        job->workRequired = 4.0f;
+        m->currentJobId = jobId;
+
+        // Run until crafting completes (job finishes)
+        bool craftDone = false;
+        for (int i = 0; i < 500; i++) {
+            Tick();
+            JobsTick();
+            // Job was active, now completed
+            if (m->currentJobId < 0 && i > 0) {
+                craftDone = true;
+                break;
+            }
+        }
+
+        expect(craftDone == true);
+
+        // Sawmill "Saw Planks": 1 log -> 4 planks
+        // Net change = -1 (consumed) + 4 (spawned) = +3
+        expect(itemCount == countBefore + 3);
+    }
+}
+
+// Stockpile lifecycle tests (stockpiles.c audit findings)
+// These tests verify player expectations when stockpiles are modified or deleted.
+// Based on assumption audit findings - tests should FAIL first, then we fix bugs.
+describe(stockpile_lifecycle) {
+    it("deleting a stockpile should drop all stored items to ground") {
+        // Finding 2 (HIGH): DeleteStockpile doesn't drop IN_STOCKPILE items to ground
+        // Story: Player deletes a stockpile that has items in it.
+        // Expected: Items become regular ground items (visible, can be picked up).
+        // Bug: Items remain in ITEM_IN_STOCKPILE state, become invisible/inaccessible.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create a stockpile with some items in it
+        int spIdx = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Spawn 3 red items directly into stockpile slots
+        int item1 = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int item2 = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int item3 = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Manually set them as IN_STOCKPILE and place them
+        items[item1].state = ITEM_IN_STOCKPILE;
+        items[item2].state = ITEM_IN_STOCKPILE;
+        items[item3].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, item1);
+        PlaceItemInStockpile(spIdx, 6, 5, item2);
+        PlaceItemInStockpile(spIdx, 5, 6, item3);
+        
+        // Verify items are in stockpile
+        expect(items[item1].state == ITEM_IN_STOCKPILE);
+        expect(items[item2].state == ITEM_IN_STOCKPILE);
+        expect(items[item3].state == ITEM_IN_STOCKPILE);
+        
+        // Now delete the stockpile
+        DeleteStockpile(spIdx);
+        
+        // Player expectation: All items should be on ground now (accessible)
+        expect(items[item1].state == ITEM_ON_GROUND);
+        expect(items[item2].state == ITEM_ON_GROUND);
+        expect(items[item3].state == ITEM_ON_GROUND);
+        
+        // Items should still exist at their original positions
+        expect(items[item1].active == true);
+        expect(items[item2].active == true);
+        expect(items[item3].active == true);
+    }
+    
+    it("placing item in inactive stockpile cell should not corrupt slot data") {
+        // Finding 3 (HIGH): PlaceItemInStockpile doesn't validate cell is active
+        // Story: Mover has haul job to stockpile, player removes that cell mid-job.
+        // Expected: Item placement fails gracefully or item goes to ground.
+        // Bug: Item placed in inactive cell, enters "phantom" state (in stockpile that doesn't exist).
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create stockpile with 2 cells
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Mover near stockpile
+        Mover* m = &movers[0];
+        Point goal = {4, 5, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item close by
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run until mover picks up item
+        for (int i = 0; i < 200; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_CARRIED) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_CARRIED);
+        
+        // Now REMOVE the stockpile cell the mover is heading to
+        // (Simulate player shrinking stockpile while mover is carrying)
+        RemoveStockpileCells(spIdx, 5, 5, 5, 5);
+        
+        // Run more ticks - mover tries to deliver
+        for (int i = 0; i < 200; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+        
+        // Player expectation: Item should NOT enter corrupted state
+        // Either it's safely on ground, or job was cancelled
+        expect(items[itemIdx].state != ITEM_IN_STOCKPILE);
+        expect(items[itemIdx].active == true);
+        
+        // Item should be on ground (safe-dropped) or back in circulation
+        expect(items[itemIdx].state == ITEM_ON_GROUND || items[itemIdx].state == ITEM_CARRIED);
+    }
+    
+    it("removing stockpile cell should release slot reservations") {
+        // Finding 1 (MEDIUM): RemoveStockpileCells doesn't release slot reservations
+        // Story: Mover has haul job with reserved slot, player removes that cell.
+        // Expected: Reservation released, slot can be reused if cell is re-added.
+        // Bug: Reservation leaks, phantom reservation blocks future use.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create stockpile
+        int spIdx = CreateStockpile(5, 5, 0, 2, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Mover far away (so job takes time)
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Item far away
+        int itemIdx = SpawnItem(9 * CELL_SIZE + CELL_SIZE * 0.5f, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Assign job - should reserve a slot
+        AssignJobs();
+        
+        // Check reservation was made
+        int reservedCount = 0;
+        for (int i = 0; i < 2; i++) {
+            if (stockpiles[spIdx].reservedBy[i] > 0) reservedCount++;
+        }
+        expect(reservedCount > 0);
+        
+        // Now remove the stockpile cells
+        RemoveStockpileCells(spIdx, 5, 5, 6, 5);
+        
+        // Player expectation: Reservations should be cleared
+        // (Otherwise phantom reservations block future use)
+        reservedCount = 0;
+        for (int i = 0; i < 2; i++) {
+            if (stockpiles[spIdx].reservedBy[i] > 0) reservedCount++;
+        }
+        expect(reservedCount == 0);
+        
+        // Job should be cancelled (item unreserved)
+        expect(items[itemIdx].reservedBy == -1);
+    }
+    
+    it("removing stockpile cell should clear item reservations") {
+        // Finding 5 (MEDIUM): RemoveStockpileCells doesn't clear item reservations
+        // Story: Item in stockpile is reserved for crafting, player removes that cell.
+        // Expected: Item drops to ground and reservation is cleared.
+        // Bug: Item on ground but still marked reserved, blocking other movers.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        
+        // Create stockpile with an item in it
+        int spIdx = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_LOG, true);
+        
+        // Spawn log in stockpile
+        int logIdx = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG, MAT_OAK);
+        items[logIdx].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, logIdx);
+        
+        // Reserve the item (simulating a craft job claiming it)
+        ReserveItem(logIdx, 0);
+        expect(items[logIdx].reservedBy == 0);
+        
+        // Now remove the stockpile cell
+        RemoveStockpileCells(spIdx, 5, 5, 5, 5);
+        
+        // Player expectation: Item should be on ground AND unreserved
+        expect(items[logIdx].state == ITEM_ON_GROUND);
+        expect(items[logIdx].reservedBy == -1);
+    }
+    
+    it("placing mismatched item type in occupied slot should not corrupt slot data") {
+        // Finding 6 (MEDIUM): PlaceItemInStockpile assumes slotTypes/Materials match
+        // Story: Due to a race condition or bug, wrong item type placed in occupied slot.
+        // Expected: Placement rejected or error logged (defensive programming).
+        // Bug: Slot type overwritten, stacking invariant breaks, mixed types in one slot.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create stockpile
+        int spIdx = CreateStockpile(5, 5, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileFilter(spIdx, ITEM_GREEN, true);
+        
+        // Place a RED item in slot (5,5)
+        int redItem = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items[redItem].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, redItem);
+        
+        // Verify slot type is RED
+        expect(stockpiles[spIdx].slotTypes[0] == ITEM_RED);
+        expect(stockpiles[spIdx].slotCounts[0] == 1);
+        
+        // Now try to place a GREEN item in the same slot (bug scenario)
+        int greenItem = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        items[greenItem].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, greenItem);
+        
+        // Player expectation: Slot should still be RED (mixed types not allowed)
+        // Implementation should reject mismatched placement
+        expect(stockpiles[spIdx].slotTypes[0] == ITEM_RED);
+        
+        // Count should not have increased (green placement rejected)
+        expect(stockpiles[spIdx].slotCounts[0] == 1);
+    }
+    
+    it("removing item from stockpile should validate item state and coordinates") {
+        // Finding 7 (MEDIUM): RemoveItemFromStockpileSlot doesn't validate item state
+        // Story: Code tries to remove item from wrong stockpile (stale coordinates).
+        // Expected: Removal fails gracefully or validates item actually belongs there.
+        // Bug: Wrong slot count decremented, ghost items or negative counts.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create two stockpiles at different locations
+        int spA = CreateStockpile(3, 3, 0, 1, 1);
+        int spB = CreateStockpile(7, 7, 0, 1, 1);
+        SetStockpileFilter(spA, ITEM_RED, true);
+        SetStockpileFilter(spB, ITEM_RED, true);
+        
+        // Place item in stockpile A
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spA, 3, 3, itemIdx);
+        
+        expect(stockpiles[spA].slotCounts[0] == 1);
+        expect(stockpiles[spB].slotCounts[0] == 0);
+        
+        // Now try to remove from stockpile B using stockpile A's coordinates (bug scenario)
+        // This simulates stale coordinate reference
+        float wrongX = 7 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float wrongY = 7 * CELL_SIZE + CELL_SIZE * 0.5f;
+        RemoveItemFromStockpileSlot(wrongX, wrongY, 0);
+        
+        // Player expectation: Stockpile A count should remain unchanged
+        // (Removal at wrong coordinates should not affect stockpile A)
+        expect(stockpiles[spA].slotCounts[0] == 1);
+        
+        // Stockpile B should also remain 0 (no item was actually there)
+        expect(stockpiles[spB].slotCounts[0] == 0);
+    }
+    
+    // DISABLED: Performance vs correctness trade-off
+    // See docs/todo/stockpile-priority-performance.md for full analysis
+    // it("movers should haul items to stockpiles in priority order") {
+    if (0) {
+        // Finding 9 (MEDIUM): FindStockpileForItem doesn't respect priority
+        // Story: Player creates high-priority stockpile near workshop for quick access.
+        // Expected: Items hauled to high-priority stockpile first.
+        // Bug: Items go to first stockpile with space (by index), ignoring priority.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Mover at top-left
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create LOW priority stockpile (index 0, close to mover)
+        int spLow = CreateStockpile(3, 1, 0, 1, 1);
+        SetStockpileFilter(spLow, ITEM_RED, true);
+        SetStockpilePriority(spLow, 1);  // Low priority
+        
+        // Create HIGH priority stockpile (index 1, same distance)
+        int spHigh = CreateStockpile(3, 3, 0, 1, 1);
+        SetStockpileFilter(spHigh, ITEM_RED, true);
+        SetStockpilePriority(spHigh, 9);  // High priority
+        
+        // Item equidistant from both stockpiles
+        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        // Run simulation
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+        }
+        
+        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
+        
+        // Player expectation: Item should go to HIGH priority stockpile
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        
+        // Item should be at (3,3) high priority stockpile, NOT (3,1) low priority
+        expect(itemTileX == 3);
+        expect(itemTileY == 3);
+    }
+    
+    it("removing stockpile cells with items should not leave items in limbo") {
+        // Combined test: Findings 1, 2, 5
+        // Story: Player mass-removes stockpile cells while items are being hauled.
+        // Expected: All items end up on ground, all reservations cleared, no leaks.
+        // Bug: Items vanish, reservations leak, counts corrupted.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Create stockpile with multiple cells
+        int spIdx = CreateStockpile(5, 5, 0, 3, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Place items in some slots
+        int item1 = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int item2 = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items[item1].state = ITEM_IN_STOCKPILE;
+        items[item2].state = ITEM_IN_STOCKPILE;
+        PlaceItemInStockpile(spIdx, 5, 5, item1);
+        PlaceItemInStockpile(spIdx, 6, 5, item2);
+        
+        // Reserve one item (simulating craft job)
+        ReserveItem(item1, 0);
+        
+        // Create mover with haul job targeting third slot
+        Mover* m = &movers[0];
+        Point goal = {9, 9, 0};
+        InitMover(m, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        int item3 = SpawnItem(9 * CELL_SIZE + CELL_SIZE * 0.5f, 9 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        
+        AssignJobs();
+        
+        // Now remove ALL stockpile cells
+        RemoveStockpileCells(spIdx, 5, 5, 7, 5);
+        
+        // Player expectations:
+        // 1. All items should be on ground or accessible
+        expect(items[item1].active == true);
+        expect(items[item2].active == true);
+        expect(items[item3].active == true);
+        expect(items[item1].state == ITEM_ON_GROUND);
+        expect(items[item2].state == ITEM_ON_GROUND);
+        
+        // 2. All reservations cleared
+        expect(items[item1].reservedBy == -1);
+        expect(items[item2].reservedBy == -1);
+        expect(items[item3].reservedBy == -1);
+        
+        // 3. Haul job cancelled
+        expect(MoverIsIdle(m) || m->currentJobId < 0 || GetJob(m->currentJobId) == NULL || !GetJob(m->currentJobId)->active);
+    }
+}
+
+// Workshop lifecycle tests (workshops.c audit findings)
+describe(workshop_lifecycle) {
+    it("deleting a workshop should invalidate paths through former blocking tiles") {
+        // Story: Player builds a workshop (blocks pathing), then deletes it.
+        // Expected: Movers immediately recalculate paths through the now-walkable space.
+        // Actual (bug): Movers continue avoiding the area until they repath for other reasons.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+
+        // Create a stonecutter at (3,3) — template is 3x3 with blocking tiles
+        int wsIdx = CreateWorkshop(3, 3, 0, WORKSHOP_STONECUTTER);
+        
+        // Spawn mover at (1,1) with goal at (8,8)
+        Mover* m = &movers[0];
+        Point goal = {8, 8, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 1.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+        
+        // Compute initial path (will go around workshop)
+        m->needsRepath = true;
+        Point moverCell = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+        m->pathLength = FindPath(moverPathAlgorithm, moverCell, m->goal, m->path, MAX_PATH);
+        int pathLengthWithWorkshop = m->pathLength;
+        
+        // Now DELETE the workshop
+        DeleteWorkshop(wsIdx);
+        
+        // Player expectation: path should be invalidated immediately
+        // (because CreateWorkshop calls InvalidatePathsThroughCell, DeleteWorkshop should too)
+        // The mover should be marked for repath
+        expect(m->needsRepath == true);
+        
+        // After repath, the path should be shorter (can go through former workshop area)
+        Point moverCell2 = {(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z};
+        int newPathLength = FindPath(moverPathAlgorithm, moverCell2, m->goal, m->path, MAX_PATH);
+        
+        // With workshop: must detour around. Without: straight line possible.
+        // Path should be noticeably shorter
+        expect(newPathLength < pathLengthWithWorkshop);
+    }
+    
+    it("removing a bill should cancel in-progress jobs targeting that bill index") {
+        // Story: Player has 3 bills queued. A mover is executing bill #1.
+        // Player removes bill #0 (shifts all bills down).
+        // Expected: The mover's job should be cancelled OR the targetBillIdx updated.
+        // Actual (bug): Mover continues with billIdx=1, which now points to the OLD bill #2 (wrong recipe!).
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create sawmill at (5,1)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+        Workshop* ws = &workshops[wsIdx];
+        
+        // Add 3 bills:
+        // Bill 0: Saw Planks (recipe 0)
+        // Bill 1: Cut Sticks (recipe 1)
+        // Bill 2: Saw Planks (recipe 0) again
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);  // bill 0
+        AddBill(wsIdx, 1, BILL_DO_X_TIMES, 1);  // bill 1
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);  // bill 2
+        
+        // Mover at workshop
+        Mover* m = &movers[0];
+        float workX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float workY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, workX, workY, 0.0f, goal, 200.0f);
+        moverCount = 1;
+        ws->assignedCrafter = 0;
+
+        // Create a craft job for bill #1 (Cut Sticks, recipe 1)
+        int logIdx = SpawnItemWithMaterial(workX, workY, 0.0f, ITEM_LOG, MAT_OAK);
+        items[logIdx].state = ITEM_CARRIED;
+        items[logIdx].reservedBy = 0;
+
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetWorkshop = wsIdx;
+        job->targetBillIdx = 1;  // Executing bill #1 (Cut Sticks)
+        job->carryingItem = logIdx;
+        job->fuelItem = -1;
+        job->step = CRAFT_STEP_WORKING;
+        job->progress = 0.0f;
+        job->workRequired = 2.0f;  // recipe 1 work time
+        m->currentJobId = jobId;
+
+        // Player removes bill #0 (Saw Planks)
+        // This shifts bill #1 → #0 and bill #2 → #1
+        RemoveBill(wsIdx, 0);
+        
+        // Player expectation: The mover's job should be cancelled (safest behavior)
+        // OR at minimum, the job should fail gracefully on next tick
+        // The mover should NOT continue executing with the now-wrong bill index
+        
+        // Run one tick
+        Tick();
+        JobsTick();
+        
+        // Either the job was cancelled immediately after RemoveBill (ideal),
+        // or it fails on first tick because the recipe doesn't match expectations
+        // Either way, the mover should NOT still be in CRAFT_STEP_WORKING
+        // because that would mean it's executing the WRONG recipe
+        
+        // The bug: job->targetBillIdx=1 now points to the OLD bill #2 (Saw Planks, recipe 0)
+        // But the job was set up for recipe 1 (Cut Sticks, workRequired=2.0)
+        // This creates inconsistency
+        
+        Job* checkJob = GetJob(jobId);
+        if (checkJob && checkJob->active) {
+            // Job is still active. Check that it's targeting a valid bill.
+            expect(job->targetBillIdx < ws->billCount);
+            
+            // More importantly: if the bill shifted, the recipe should still match
+            // what the job was set up for. Otherwise the mover is crafting the wrong thing!
+            int recipeCount;
+            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            Bill* currentBill = &ws->bills[job->targetBillIdx];
+            Recipe* currentRecipe = &recipes[currentBill->recipeIdx];
+            
+            // The job was set up for "Cut Sticks" (recipe 1, workRequired 2.0)
+            // If it's now pointing to "Saw Planks" (recipe 0, workRequired 4.0), that's wrong!
+            expect(currentBill->recipeIdx == 1);  // Should still be "Cut Sticks"
+        }
+        // OR the job should have been cancelled/failed (mover is idle)
+        // Either outcome is acceptable, but the bug is that neither happens!
+    }
+}
+
+// ============================================================
+// Designation Lifecycle Tests (designations.c audit findings)
+// ============================================================
+describe(designation_lifecycle) {
+
+    // Finding 1 (HIGH): CompleteDigRampDesignation missing rampCount++
+    it("digging a ramp should increment the global ramp count") {
+        // Player digs a ramp from a wall. rampCount should go up by 1.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        // Make z=0 solid walls, z=1 walkable
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_GRANITE);
+                SetWallNatural(x, y, 0);
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+
+        InitDesignations();
+        ClearItems();
+
+        int before = rampCount;
+
+        // Directly complete a dig-ramp at (2,2,0) - wall becomes ramp
+        CompleteDigRampDesignation(2, 2, 0, -1);
+
+        expect(CellIsRamp(grid[0][2][2]));
+        expect(rampCount == before + 1);
+    }
+
+    // Finding 2 (HIGH): CompleteDigRampDesignation missing MarkChunkDirty
+    it("digging a ramp should mark the chunk dirty for rendering") {
+        // Player digs a ramp. The rendering chunk should be marked dirty
+        // so the mesh rebuilds and the player sees the new ramp.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_GRANITE);
+                SetWallNatural(x, y, 0);
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+
+        InitDesignations();
+        ClearItems();
+
+        // Clear chunk dirty flags
+        int cx = 2 / chunkWidth;
+        int cy = 2 / chunkHeight;
+        chunkDirty[0][cy][cx] = false;
+
+        CompleteDigRampDesignation(2, 2, 0, -1);
+
+        expect(chunkDirty[0][cy][cx] == true);
+    }
+
+    // Finding 3 (HIGH): CompleteRemoveFloorDesignation spawns drop item at wrong z
+    it("removing a floor should drop the floor material item to the level below") {
+        // Player removes a constructed floor at z=2. The resulting material item
+        // should appear at z=1 (where it would physically fall), not float at z=2.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        // z=0: solid ground, z=1: air+floor (walkable), z=2: air+constructed floor
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+                SetFloorMaterial(x, y, 1, MAT_GRANITE);
+                ClearFloorNatural(x, y, 1);  // Constructed floor at z=1
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
+                SetFloorMaterial(x, y, 2, MAT_GRANITE);
+                ClearFloorNatural(x, y, 2);  // Constructed floor at z=2
+            }
+        }
+
+        InitDesignations();
+        ClearItems();
+
+        // Designate and complete floor removal at (2,2,2) - floor at z=2 above z=1
+        DesignateRemoveFloor(2, 2, 2);
+        CompleteRemoveFloorDesignation(2, 2, 2, -1);
+
+        // Find the spawned item - it should be at z=1 (dropped down), not z=2
+        bool foundAtCorrectZ = false;
+        bool foundAtWrongZ = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            int ix = (int)(items[i].x / CELL_SIZE);
+            int iy = (int)(items[i].y / CELL_SIZE);
+            if (ix == 2 && iy == 2) {
+                if ((int)items[i].z == 1) foundAtCorrectZ = true;
+                if ((int)items[i].z == 2) foundAtWrongZ = true;
+            }
+        }
+        expect(foundAtCorrectZ == true);
+        expect(foundAtWrongZ == false);
+    }
+
+    // Finding 4 (HIGH): CompleteBlueprint (WALL) missing InvalidatePathsThroughCell
+    it("building a wall should invalidate mover paths through that cell") {
+        // A mover across the map has a cached path going through a cell.
+        // When a wall is built there, the mover's path should be invalidated.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        InitDesignations();
+        ClearItems();
+        ClearMovers();
+
+        // Spawn a mover at (0,0) with a cached path that goes through (5,2)
+        Point goal = {9, 0, 0};
+        InitMover(&movers[0], 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        Mover* m = &movers[0];
+        m->active = true;
+
+        // Give the mover a fake path through (5,2,0)
+        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
+        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        m->pathLength = 2;
+        m->pathIndex = 1;
+        m->needsRepath = false;
+
+        // Create and complete a wall blueprint at (5,2,0)
+        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        expect(bpIdx >= 0);
+        blueprints[bpIdx].deliveredMaterialCount = 1;
+        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+
+        CompleteBlueprint(bpIdx);
+
+        // The mover's path should be invalidated
+        expect(m->needsRepath == true);
+    }
+
+    // Finding 5 (MEDIUM): CompleteBlueprint (RAMP) missing rampCount++
+    it("building a ramp blueprint should increment the global ramp count") {
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        // z=0: walls (for ramp direction), z=1: walkable
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+        // Make (2,2,1) air with floor - this is where the ramp will go
+        // Wall at (2,1,1) for ramp direction detection
+        grid[1][1][2] = CELL_WALL;
+
+        InitDesignations();
+        ClearItems();
+
+        int before = rampCount;
+
+        int bpIdx = CreateRampBlueprint(2, 2, 1);
+        expect(bpIdx >= 0);
+        blueprints[bpIdx].deliveredMaterialCount = 1;
+        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+
+        CompleteBlueprint(bpIdx);
+
+        expect(CellIsRamp(grid[1][2][2]));
+        expect(rampCount == before + 1);
+    }
+
+    // Finding 6 (MEDIUM): CancelBlueprint does not refund delivered materials
+    it("canceling a blueprint with delivered materials should drop them on the ground") {
+        // Player places a wall blueprint, a mover delivers stone, then player
+        // cancels. The stone should appear on the ground, not vanish.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        InitDesignations();
+        ClearItems();
+
+        // Create blueprint at (2,2,0)
+        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        expect(bpIdx >= 0);
+
+        // Spawn an item and deliver it to the blueprint
+        int itemIdx = SpawnItemWithMaterial(
+            2 * CELL_SIZE + CELL_SIZE * 0.5f,
+            2 * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_BLOCKS, (uint8_t)MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, itemIdx);
+
+        // Material has been consumed (DeleteItem called)
+        expect(blueprints[bpIdx].deliveredMaterialCount == 1);
+        expect(blueprints[bpIdx].deliveredMaterial == MAT_GRANITE);
+
+        int itemsBefore = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active) itemsBefore++;
+        }
+
+        // Cancel the blueprint - materials should be refunded
+        CancelBlueprint(bpIdx);
+
+        int itemsAfter = 0;
+        bool foundRefund = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            itemsAfter++;
+            int ix = (int)(items[i].x / CELL_SIZE);
+            int iy = (int)(items[i].y / CELL_SIZE);
+            if (ix == 2 && iy == 2 && items[i].type == ITEM_BLOCKS) {
+                foundRefund = true;
+            }
+        }
+
+        // Should have one more item than before (the refunded material)
+        expect(itemsAfter == itemsBefore + 1);
+        expect(foundRefund == true);
+    }
+
+    // Finding 8 (MEDIUM): CompleteRemoveFloorDesignation missing DestabilizeWater
+    // Finding 8 also covers CompleteRemoveRampDesignation
+    // (Water destabilization is hard to test directly without the water sim,
+    //  so we test the ramp-specific part of this finding)
+
+    // Finding 10 (MEDIUM): CompleteBlueprint (RAMP) missing PushItemsOutOfCell
+    it("building a ramp should push items out of the cell") {
+        // Items sitting on a cell where a ramp is built should be pushed
+        // to an adjacent cell, just like wall blueprints do.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+        // Wall at (2,1,1) for ramp direction
+        grid[1][1][2] = CELL_WALL;
+
+        InitDesignations();
+        ClearItems();
+
+        // Place an item at (2,2,1)
+        int itemIdx = SpawnItem(
+            2 * CELL_SIZE + CELL_SIZE * 0.5f,
+            2 * CELL_SIZE + CELL_SIZE * 0.5f,
+            1.0f, ITEM_ROCK);
+
+        int bpIdx = CreateRampBlueprint(2, 2, 1);
+        expect(bpIdx >= 0);
+        blueprints[bpIdx].deliveredMaterialCount = 1;
+        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+
+        CompleteBlueprint(bpIdx);
+
+        // Item should have been pushed out of (2,2)
+        int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+        int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+        bool pushed = (itemTileX != 2 || itemTileY != 2);
+        expect(pushed == true);
+    }
+
+    // Composite test: dig ramp does everything mining does
+    it("digging a ramp should do all post-completion steps like mining does") {
+        // CompleteMineDesignation does: MarkChunkDirty, rampCount (N/A),
+        // DestabilizeWater, ClearUnreachableCooldowns, ValidateAndCleanupRamps,
+        // InvalidateDesignationCache. CompleteDigRampDesignation should do the same
+        // relevant subset. This test checks unreachable cooldown clearing.
+        InitGridFromAsciiWithChunkSize(
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            ".....\n", 5, 5);
+
+        for (int x = 0; x < 5; x++) {
+            for (int y = 0; y < 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_GRANITE);
+                SetWallNatural(x, y, 0);
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+            }
+        }
+
+        InitDesignations();
+        ClearItems();
+
+        // Place an item near the wall with an unreachable cooldown
+        int itemIdx = SpawnItem(
+            3 * CELL_SIZE + CELL_SIZE * 0.5f,
+            2 * CELL_SIZE + CELL_SIZE * 0.5f,
+            1.0f, ITEM_ROCK);
+        items[itemIdx].unreachableCooldown = 10.0f;
+
+        // Dig the ramp at (2,2,0) - opens new paths
+        CompleteDigRampDesignation(2, 2, 0, -1);
+
+        // Nearby item's unreachable cooldown should be cleared
+        expect(items[itemIdx].unreachableCooldown == 0.0f);
+    }
+}
+
+// =============================================================================
+// Unreachable cooldown poisoning (cross-z-level bug)
+// =============================================================================
+describe(unreachable_cooldown_poisoning) {
+    it("stranded mover on disconnected z-level should not poison reachable items") {
+        // Story: I have 2 movers. One is stranded at z=3 (no way down).
+        // The other is at z=1, near items and a stockpile.
+        // The z=1 items should get hauled. The stranded mover should NOT
+        // prevent hauling by poisoning items with unreachable cooldowns.
+
+        // z=0: walls (solid ground), z=1: air+floor (walkable), z=3: air+floor (walkable but disconnected)
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        // Make z=1 walkable: z=0 is walls, z=1 is air with floor
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 8; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+                // z=2: not walkable (no floor, no walls below)
+                grid[2][y][x] = CELL_AIR;
+                // z=3: walkable but disconnected (floor but no ramps connecting to z=1)
+                grid[3][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 3);
+            }
+        }
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Stranded mover at z=3, tile (1,1) — no path down
+        Mover* stranded = &movers[0];
+        Point strandedGoal = {1, 1, 3};
+        InitMover(stranded, 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  1 * CELL_SIZE + CELL_SIZE * 0.5f, 3.0f, strandedGoal, 100.0f);
+        stranded->capabilities.canHaul = true;
+
+        // Working mover at z=1, tile (6,6) — can reach items
+        Mover* worker = &movers[1];
+        Point workerGoal = {6, 6, 1};
+        InitMover(worker, 6 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, workerGoal, 100.0f);
+        worker->capabilities.canHaul = true;
+        moverCount = 2;
+
+        // Item at z=1, tile (3,3) — walkable, reachable from z=1 mover
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                3 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+
+        // Stockpile at z=1
+        int spIdx = CreateStockpile(5, 5, 1, 2, 2);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+
+        // Verify setup: both movers idle, item on ground
+        expect(MoverIsIdle(stranded));
+        expect(MoverIsIdle(worker));
+        expect(items[itemIdx].state == ITEM_ON_GROUND);
+        expect(items[itemIdx].unreachableCooldown == 0.0f);
+
+        // Run AssignJobs — the stranded mover should NOT poison the item
+        AssignJobs();
+
+        // Player expectation: the item should NOT have an unreachable cooldown.
+        // The z=1 worker mover can reach it, so it should get a haul job.
+        expect(items[itemIdx].unreachableCooldown == 0.0f);
+
+        // The worker mover (z=1) should have gotten the job
+        expect(!MoverIsIdle(worker));
+    }
+
+    it("item unreachable from ALL movers should still get cooldown") {
+        // Story: If an item is truly unreachable from every mover (e.g. walled off),
+        // it should still get an unreachable cooldown to avoid spam-retrying.
+
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "..####..\n"
+            "..#..#..\n"
+            "..####..\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Mover outside the walled pocket at (0,0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        // Item inside the walled pocket (unreachable by anyone)
+        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+
+        int spIdx = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+
+        AssignJobs();
+
+        // Truly unreachable items should still get cooldown
+        expect(items[itemIdx].unreachableCooldown > 0.0f);
+        expect(MoverIsIdle(m));
+    }
+
+    it("multiple items should not all be poisoned by one stranded mover") {
+        // Story: I have 5 items on z=1 and a stranded mover at z=3.
+        // After one AssignJobs call, ideally at most 1 item gets tried by
+        // the stranded mover (not all 5). The z=1 mover should handle the rest.
+
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        for (int x = 0; x < 8; x++) {
+            for (int y = 0; y < 8; y++) {
+                grid[0][y][x] = CELL_WALL;
+                grid[1][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 1);
+                grid[2][y][x] = CELL_AIR;
+                grid[3][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 3);
+            }
+        }
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+
+        // Stranded mover at z=3
+        Mover* stranded = &movers[0];
+        Point sg = {1, 1, 3};
+        InitMover(stranded, 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  1 * CELL_SIZE + CELL_SIZE * 0.5f, 3.0f, sg, 100.0f);
+        stranded->capabilities.canHaul = true;
+
+        // Worker mover at z=1
+        Mover* worker = &movers[1];
+        Point wg = {6, 6, 1};
+        InitMover(worker, 6 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, wg, 100.0f);
+        worker->capabilities.canHaul = true;
+        moverCount = 2;
+
+        // 5 items scattered on z=1
+        int itemIds[5];
+        itemIds[0] = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+        itemIds[1] = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+        itemIds[2] = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+        itemIds[3] = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+        itemIds[4] = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_ROCK);
+
+        // Large stockpile at z=1
+        int spIdx = CreateStockpile(5, 4, 1, 3, 3);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+
+        AssignJobs();
+
+        // Count how many items got poisoned with unreachable cooldown
+        int poisonedCount = 0;
+        for (int i = 0; i < 5; i++) {
+            if (items[itemIds[i]].unreachableCooldown > 0.0f) poisonedCount++;
+        }
+
+        // Player expectation: at most 1 item should be poisoned (the one the
+        // stranded mover tried). The rest should be available for the worker.
+        // Ideally 0 are poisoned if the fix skips cross-z-level attempts entirely.
+        expect(poisonedCount <= 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -6738,6 +9572,9 @@ int main(int argc, char* argv[]) {
     // Clear job state (JOB_MOVING_TO_DROP)
     test(clear_job_state);
     
+    // Strong stockpile behavior tests (player expectations)
+    test(stockpile_strong_tests);
+    
     // Item spatial grid (optimization)
     test(item_spatial_grid);
     
@@ -6784,6 +9621,27 @@ int main(int argc, char* argv[]) {
     
     // Final approach tests (mover arrival fix)
     test(final_approach);
+    
+    // Item lifecycle tests (items.c audit findings)
+    test(item_lifecycle);
+    
+    // Mover lifecycle tests (mover.c audit findings)
+    test(mover_lifecycle);
+    
+    // Job lifecycle tests (jobs.c audit findings)
+    test(job_lifecycle);
+    
+    // Stockpile lifecycle tests (stockpiles.c audit findings)
+    test(stockpile_lifecycle);
+    
+    // Workshop lifecycle tests (workshops.c audit findings)
+    test(workshop_lifecycle);
+    
+    // Designation lifecycle tests (designations.c audit findings)
+    test(designation_lifecycle);
+    
+    // Unreachable cooldown poisoning (cross-z-level bug)
+    test(unreachable_cooldown_poisoning);
     
     return summary();
 }

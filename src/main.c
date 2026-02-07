@@ -9,6 +9,7 @@
 #include "world/material.h"
 #include "core/input_mode.h"
 #include "core/pie_menu.h"
+#include "entities/jobs.h"
 #include "entities/workshops.h"
 #include "assets/fonts/comic_embedded.h"
 #include "sound/sound_phrase.h"
@@ -1236,6 +1237,8 @@ int main(int argc, char** argv) {
         // Z level display with clickable < > buttons
         {
             int zY = GetScreenHeight() - 28 - 6 + 4;
+            int idleY = zY - 18;
+            DrawTextShadow(TextFormat("Idle: %d", idleMoverCount), 5, idleY, 16, LIGHTGRAY);
             const char* zText = TextFormat("Z: %d/%d", currentViewZ, gridDepth - 1);
             int zTextW = MeasureTextUI(zText, 18);
             DrawTextShadow(zText, 5, zY, 18, SKYBLUE);

@@ -63,7 +63,7 @@ bool StockpileAcceptsItem(int stockpileIdx, ItemType type, uint8_t material);
 
 // Slot management
 bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, int* outX, int* outY);
-bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx);
+bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx, ItemType type, uint8_t material);
 void ReleaseStockpileSlot(int stockpileIdx, int slotX, int slotY);
 void ReleaseAllSlotsForMover(int moverIdx);
 
@@ -73,6 +73,9 @@ bool IsPositionInStockpile(float x, float y, int z, int* outStockpileIdx);
 
 // Placement
 void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx);
+
+// Slot cleanup - clear slot state when item leaves stockpile (delete, push, drop)
+void RemoveItemFromStockpileSlot(float x, float y, int z);
 
 // Gather zones
 void ClearGatherZones(void);
@@ -92,6 +95,9 @@ int FindStockpileForOverfullItem(int itemIdx, int currentStockpileIdx, int* outS
 void SetStockpilePriority(int stockpileIdx, int priority);
 int GetStockpilePriority(int stockpileIdx);
 int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSlotX, int* outSlotY);
+
+// Stack consolidation
+bool FindConsolidationTarget(int stockpileIdx, int srcSlotX, int srcSlotY, int* outDestSlotX, int* outDestSlotY);
 
 // Ground item clearing from stockpile tiles
 // Find a ground item on any stockpile tile that needs absorbing (matches filter) or clearing (doesn't match)

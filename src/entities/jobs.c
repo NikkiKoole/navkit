@@ -413,8 +413,14 @@ int CreateJob(JobType type) {
     job->targetMineY = -1;
     job->targetMineZ = -1;
     job->targetBlueprint = -1;
+    job->targetAdjX = -1;
+    job->targetAdjY = -1;
+    job->targetWorkshop = -1;
+    job->targetBillIdx = -1;
+    job->workRequired = 0.0f;
     job->progress = 0.0f;
     job->carryingItem = -1;
+    job->fuelItem = -1;
 
     // Add to active list
     activeJobList[activeJobCount++] = jobId;
@@ -1375,8 +1381,7 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
 
             // Consume the sapling item
             if (itemIdx >= 0 && items[itemIdx].active) {
-                items[itemIdx].active = false;
-                items[itemIdx].reservedBy = -1;
+                DeleteItem(itemIdx);
             }
             job->carryingItem = -1;
 
@@ -1795,6 +1800,13 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 mover->needsRepath = true;
             }
 
+            // Update carried item position to follow mover
+            if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                items[job->carryingItem].x = mover->x;
+                items[job->carryingItem].y = mover->y;
+                items[job->carryingItem].z = mover->z;
+            }
+
             float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
             float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
             float dx = mover->x - targetX;
@@ -1830,6 +1842,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                     job->step = CRAFT_STEP_WORKING;
                     job->progress = 0.0f;
                     job->workRequired = recipe->workRequired;
+                    mover->timeWithoutProgress = 0.0f;
                 }
             }
             break;
@@ -1914,6 +1927,13 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 mover->needsRepath = true;
             }
 
+            // Update carried fuel item position to follow mover
+            if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+                items[job->fuelItem].x = mover->x;
+                items[job->fuelItem].y = mover->y;
+                items[job->fuelItem].z = mover->z;
+            }
+
             float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
             float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
             float dx = mover->x - targetX;
@@ -1930,13 +1950,15 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 job->step = CRAFT_STEP_WORKING;
                 job->progress = 0.0f;
                 job->workRequired = recipe->workRequired;
+                mover->timeWithoutProgress = 0.0f;
             }
             break;
         }
 
         case CRAFT_STEP_WORKING: {
-            // Progress crafting
+            // Progress crafting — mover is stationary but making progress
             job->progress += dt / job->workRequired;
+            mover->timeWithoutProgress = 0.0f;
             ws->lastWorkTime = (float)gameTime;
 
             // Kiln emits smoke while working
@@ -1961,16 +1983,14 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
                 // Consume input item
                 if (inputItemIdx >= 0 && items[inputItemIdx].active) {
-                    items[inputItemIdx].active = false;
-                    itemCount--;
+                    DeleteItem(inputItemIdx);
                 }
                 job->carryingItem = -1;
                 job->targetItem = -1;
 
                 // Consume fuel item (if any - don't preserve its material)
                 if (job->fuelItem >= 0 && items[job->fuelItem].active) {
-                    items[job->fuelItem].active = false;
-                    itemCount--;
+                    DeleteItem(job->fuelItem);
                 }
                 job->fuelItem = -1;
 
@@ -2055,6 +2075,8 @@ void JobsTick(void) {
             // Job completed successfully - release job and return mover to idle
             ReleaseJob(m->currentJobId);
             m->currentJobId = -1;
+            m->needsRepath = false;
+            m->timeWithoutProgress = 0.0f;
             AddMoverToIdleList(i);
         }
         else if (result == JOBRUN_FAIL) {
@@ -2145,6 +2167,7 @@ void RebuildIdleMoverList(void) {
 
 typedef struct {
     float itemX, itemY;
+    int itemZ;              // Z-level of item — skip movers on different z-levels
     int bestMoverIdx;
     float bestDistSq;
     bool requireCanHaul;
@@ -2158,8 +2181,11 @@ static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) 
     // Skip if not in idle list (already has a job or not active)
     if (!moverIsInIdleList || !moverIsInIdleList[moverIdx]) return;
 
-    // Check capabilities
+    // Skip movers on different z-level (prevents cross-z-level cooldown poisoning)
     Mover* m = &movers[moverIdx];
+    if (ctx->itemZ >= 0 && (int)m->z != ctx->itemZ) return;
+
+    // Check capabilities
     if (ctx->requireCanHaul && !m->capabilities.canHaul) return;
     if (ctx->requireCanMine && !m->capabilities.canMine) return;
     if (ctx->requireCanBuild && !m->capabilities.canBuild) return;
@@ -2205,14 +2231,43 @@ static void CancelJob(Mover* m, int moverIdx) {
             ReleaseStockpileSlot(job->targetStockpile, job->targetSlotX, job->targetSlotY);
         }
 
-        // If carrying, safe-drop the item
+        // If carrying, safe-drop the item at a walkable cell
         if (job->carryingItem >= 0 && items[job->carryingItem].active) {
             Item* item = &items[job->carryingItem];
             item->state = ITEM_ON_GROUND;
-            item->x = m->x;
-            item->y = m->y;
-            item->z = m->z;
             item->reservedBy = -1;
+
+            int cellX = (int)(m->x / CELL_SIZE);
+            int cellY = (int)(m->y / CELL_SIZE);
+            int cellZ = (int)m->z;
+
+            if (IsCellWalkableAt(cellZ, cellY, cellX)) {
+                item->x = m->x;
+                item->y = m->y;
+                item->z = m->z;
+            } else {
+                // Find nearest walkable neighbor (cardinal + diagonal)
+                int dx[] = {0, 0, -1, 1, -1, 1, -1, 1};
+                int dy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+                bool found = false;
+                for (int d = 0; d < 8; d++) {
+                    int nx = cellX + dx[d];
+                    int ny = cellY + dy[d];
+                    if (IsCellWalkableAt(cellZ, ny, nx)) {
+                        item->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
+                        item->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
+                        item->z = cellZ;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    // Last resort: drop at mover position anyway
+                    item->x = m->x;
+                    item->y = m->y;
+                    item->z = m->z;
+                }
+            }
         }
 
         // Release mine designation reservation
@@ -2221,6 +2276,7 @@ static void CancelJob(Mover* m, int moverIdx) {
             if (d && d->assignedMover == moverIdx) {
                 d->assignedMover = -1;
                 d->progress = 0.0f;  // Reset progress when cancelled
+                InvalidateDesignationCache(d->type);
             }
         }
 
@@ -2245,11 +2301,38 @@ static void CancelJob(Mover* m, int moverIdx) {
         if (job->fuelItem >= 0 && items[job->fuelItem].active) {
             Item* fuelItem = &items[job->fuelItem];
             if (fuelItem->state == ITEM_CARRIED) {
-                // Drop fuel item at mover position
+                // Drop fuel item at a walkable cell
                 fuelItem->state = ITEM_ON_GROUND;
-                fuelItem->x = m->x;
-                fuelItem->y = m->y;
-                fuelItem->z = m->z;
+
+                int fCellX = (int)(m->x / CELL_SIZE);
+                int fCellY = (int)(m->y / CELL_SIZE);
+                int fCellZ = (int)m->z;
+
+                if (IsCellWalkableAt(fCellZ, fCellY, fCellX)) {
+                    fuelItem->x = m->x;
+                    fuelItem->y = m->y;
+                    fuelItem->z = m->z;
+                } else {
+                    int fdx[] = {0, 0, -1, 1, -1, 1, -1, 1};
+                    int fdy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+                    bool fFound = false;
+                    for (int d = 0; d < 8; d++) {
+                        int nx = fCellX + fdx[d];
+                        int ny = fCellY + fdy[d];
+                        if (IsCellWalkableAt(fCellZ, ny, nx)) {
+                            fuelItem->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
+                            fuelItem->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
+                            fuelItem->z = fCellZ;
+                            fFound = true;
+                            break;
+                        }
+                    }
+                    if (!fFound) {
+                        fuelItem->x = m->x;
+                        fuelItem->y = m->y;
+                        fuelItem->z = m->z;
+                    }
+                }
             }
             fuelItem->reservedBy = -1;
         }
@@ -2269,6 +2352,8 @@ static void CancelJob(Mover* m, int moverIdx) {
     // Reset mover state (only currentJobId remains - legacy fields removed)
     m->currentJobId = -1;
     ClearMoverPath(moverIdx);
+    m->needsRepath = false;
+    m->timeWithoutProgress = 0.0f;
 
     // Add back to idle list
     AddMoverToIdleList(moverIdx);
@@ -2286,6 +2371,7 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
         IdleMoverSearchContext ctx = {
             .itemX = item->x,
             .itemY = item->y,
+            .itemZ = (int)item->z,
             .bestMoverIdx = -1,
             .bestDistSq = 1e30f,
             .requireCanHaul = true,
@@ -2298,8 +2384,11 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
     } else {
         // Fallback: find first idle mover (for tests without spatial grid)
         float bestDistSq = 1e30f;
+        int itemZ = (int)item->z;
         for (int i = 0; i < idleMoverCount; i++) {
             int idx = idleMoverList[i];
+            // Skip movers on different z-level
+            if ((int)movers[idx].z != itemZ) continue;
             // Check capability
             if (!movers[idx].capabilities.canHaul) continue;
             float dx = movers[idx].x - item->x;
@@ -2320,7 +2409,7 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
 
     // Reserve stockpile slot (unless safeDrop)
     if (!safeDrop) {
-        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx)) {
+        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx, item->type, item->material)) {
             ReleaseItemReservation(itemIdx);
             return false;
         }
@@ -2580,9 +2669,9 @@ void AssignJobs(void) {
                 int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
-                if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
-                    InvalidateStockpileSlotCache(item->type, item->material);
-                }
+                // Always invalidate: on success the slot is taken, on failure it may be type-blocked
+                TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
+                InvalidateStockpileSlotCache(item->type, item->material);
             }
         } else {
             // Fallback: linear scan
@@ -2606,9 +2695,9 @@ void AssignJobs(void) {
                 int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
-                if (TryAssignItemToMover(j, spIdx, slotX, slotY, false)) {
-                    InvalidateStockpileSlotCache(item->type, item->material);
-                }
+                // Always invalidate: on success the slot is taken, on failure it may be type-blocked
+                TryAssignItemToMover(j, spIdx, slotX, slotY, false);
+                InvalidateStockpileSlotCache(item->type, item->material);
             }
         }
     }
@@ -2647,6 +2736,38 @@ void AssignJobs(void) {
             if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
                 if (noLongerAllowed) {
                     InvalidateStockpileSlotCache(items[j].type, items[j].material);
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // PRIORITY 3c: Consolidate fragmented stacks - ITEM-CENTRIC
+    // Move items from small partial stacks into larger ones of same type.
+    // Limited to one consolidation per stockpile to avoid congestion.
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+            if (!stockpiles[spIdx].active) continue;
+            
+            // Find one item to consolidate in this stockpile
+            for (int j = 0; j < itemHighWaterMark; j++) {
+                if (!items[j].active) continue;
+                if (items[j].reservedBy != -1) continue;
+                if (items[j].state != ITEM_IN_STOCKPILE) continue;
+                
+                int itemSp = -1;
+                if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &itemSp)) continue;
+                if (itemSp != spIdx) continue;
+                
+                int itemSlotX = (int)(items[j].x / CELL_SIZE);
+                int itemSlotY = (int)(items[j].y / CELL_SIZE);
+                
+                int destSlotX, destSlotY;
+                if (FindConsolidationTarget(spIdx, itemSlotX, itemSlotY, &destSlotX, &destSlotY)) {
+                    if (TryAssignItemToMover(j, spIdx, destSlotX, destSlotY, false)) {
+                        break;  // One consolidation per stockpile
+                    }
                 }
             }
         }
@@ -2775,6 +2896,7 @@ void AssignJobs(void) {
 // Filter context for WorkGiver_Haul spatial search
 typedef struct {
     bool (*typeMatHasStockpile)[MAT_COUNT];  // Pointer to 2D array
+    int moverZ;                               // Z-level of mover — skip items on different z-levels
 } HaulFilterContext;
 
 static bool HaulItemFilter(int itemIdx, void* userData) {
@@ -2785,6 +2907,8 @@ static bool HaulItemFilter(int itemIdx, void* userData) {
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;
     if (item->unreachableCooldown > 0.0f) return false;
+    // Skip items on different z-level (prevents cross-z-level cooldown poisoning)
+    if ((int)item->z != ctx->moverZ) return false;
     if (!ItemTypeIsValidForJobs(item->type)) return false;
     uint8_t mat = ResolveItemMaterialForJobs(item);
     if (!ctx->typeMatHasStockpile[item->type][mat]) return false;
@@ -2845,7 +2969,7 @@ int WorkGiver_Haul(int moverIdx) {
 
     // Use spatial grid with expanding radius if available
     if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile };
+        HaulFilterContext ctx = { .typeMatHasStockpile = typeMatHasStockpile, .moverZ = moverZ };
 
         // Expanding radius search - find closest items first
         int radii[] = {10, 25, 50, 100};
@@ -2864,6 +2988,8 @@ int WorkGiver_Haul(int moverIdx) {
             if (item->reservedBy != -1) continue;
             if (item->state != ITEM_ON_GROUND) continue;
             if (item->unreachableCooldown > 0.0f) continue;
+            // Skip items on different z-level
+            if ((int)item->z != moverZ) continue;
             if (!ItemTypeIsValidForJobs(item->type)) continue;
             uint8_t mat = ResolveItemMaterialForJobs(item);
             if (!typeMatHasStockpile[item->type][mat]) continue;
@@ -2907,7 +3033,7 @@ int WorkGiver_Haul(int moverIdx) {
 
     // Reserve item and stockpile slot
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
-    if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx)) {
+    if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx, item->type, item->material)) {
         ReleaseItemReservation(bestItemIdx);
         return -1;
     }
@@ -3180,14 +3306,24 @@ int WorkGiver_Craft(int moverIdx) {
 
             // Auto-resume bills that were suspended due to no storage
             if (bill->suspended && bill->suspendedNoStorage) {
-                // Check if storage is now available
-                int recipeCount;
-                Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
-                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
-                    int outSlotX, outSlotY;
-                    if (FindStockpileForItem(recipes[bill->recipeIdx].outputType, MAT_NONE, &outSlotX, &outSlotY) >= 0) {
-                        bill->suspended = false;
-                        bill->suspendedNoStorage = false;
+                // Check if storage is now available for any available input material
+                int resumeRecipeCount;
+                Recipe* resumeRecipes = GetRecipesForWorkshop(ws->type, &resumeRecipeCount);
+                if (bill->recipeIdx >= 0 && bill->recipeIdx < resumeRecipeCount) {
+                    Recipe* resumeRecipe = &resumeRecipes[bill->recipeIdx];
+                    for (int i = 0; i < itemHighWaterMark; i++) {
+                        if (!items[i].active) continue;
+                        if (!RecipeInputMatches(resumeRecipe, &items[i])) continue;
+                        if (items[i].reservedBy != -1) continue;
+                        if ((int)items[i].z != ws->z) continue;
+                        uint8_t mat = items[i].material;
+                        if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
+                        int outSlotX, outSlotY;
+                        if (FindStockpileForItem(resumeRecipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
+                            bill->suspended = false;
+                            bill->suspendedNoStorage = false;
+                            break;
+                        }
                     }
                 }
             }
@@ -3201,16 +3337,7 @@ int WorkGiver_Craft(int moverIdx) {
             if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
             Recipe* recipe = &recipes[bill->recipeIdx];
 
-            // Check if there's stockpile space for the output
-            // If not, auto-suspend the bill to prevent items piling up
-            int outSlotX, outSlotY;
-            if (FindStockpileForItem(recipe->outputType, MAT_NONE, &outSlotX, &outSlotY) < 0) {
-                bill->suspended = true;
-                bill->suspendedNoStorage = true;  // Mark why it was suspended
-                continue;
-            }
-
-            // Find an input item (search nearby or all if radius = 0)
+            // Find an input item first (search nearby or all if radius = 0)
             int searchRadius = bill->ingredientSearchRadius;
             if (searchRadius == 0) searchRadius = 100;  // Large default
 
@@ -3241,6 +3368,18 @@ int WorkGiver_Craft(int moverIdx) {
             if (itemIdx < 0) continue;  // No materials available
 
             Item* item = &items[itemIdx];
+
+            // Check if there's stockpile space for the output (using input's material)
+            uint8_t outputMat = item->material;
+            if (outputMat == MAT_NONE) {
+                outputMat = DefaultMaterialForItemType(item->type);
+            }
+            int outSlotX, outSlotY;
+            if (FindStockpileForItem(recipe->outputType, outputMat, &outSlotX, &outSlotY) < 0) {
+                bill->suspended = true;
+                bill->suspendedNoStorage = true;
+                continue;
+            }
 
             // Check if mover can reach the item
             Point itemCell = { (int)(item->x / CELL_SIZE), (int)(item->y / CELL_SIZE), (int)item->z };
@@ -3349,7 +3488,7 @@ int WorkGiver_StockpileMaintenance(int moverIdx) {
 
     // Reserve stockpile slot (unless safeDrop)
     if (!safeDrop) {
-        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx)) {
+        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx, item->type, item->material)) {
             ReleaseItemReservation(itemIdx);
             return -1;
         }
@@ -3469,7 +3608,7 @@ int WorkGiver_Rehaul(int moverIdx) {
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
 
     // Reserve destination stockpile slot
-    if (!ReserveStockpileSlot(bestDestSp, bestDestSlotX, bestDestSlotY, moverIdx)) {
+    if (!ReserveStockpileSlot(bestDestSp, bestDestSlotX, bestDestSlotY, moverIdx, item->type, item->material)) {
         ReleaseItemReservation(bestItemIdx);
         return -1;
     }

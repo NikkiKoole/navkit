@@ -503,6 +503,9 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     DestabilizeWater(x, y, z);
     DestabilizeWater(x, y, lowerZ);
     
+    ClearUnreachableCooldownsNearCell(x, y, z, 5);
+    ClearUnreachableCooldownsNearCell(x, y, lowerZ, 5);
+    
     // === STEP 3: Handle channeler descent ===
     if (channelerMoverIdx >= 0 && channelerMoverIdx < moverCount) {
         Mover* channeler = &movers[channelerMoverIdx];
@@ -529,6 +532,8 @@ void CompleteChannelDesignation(int x, int y, int z, int channelerMoverIdx) {
     // Channeling may have removed the solid support for adjacent ramps
     // Check a small region around the channeled cell
     ValidateAndCleanupRamps(x - 2, y - 2, lowerZ, x + 2, y + 2, z);
+    
+    InvalidateDesignationCache(DESIGNATION_CHANNEL);
 }
 
 int CountChannelDesignations(void) {
@@ -654,6 +659,13 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
         SetFloorFinish(x, y, z + 1, DefaultFinishForNatural(isWallNatural));
     }
     
+    rampCount++;
+    
+    MarkChunkDirty(x, y, z);
+    if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
+    
+    ClearUnreachableCooldownsNearCell(x, y, z, 5);
+    
     // Spawn dropped item nearby
     if (dropItem != ITEM_NONE) {
         float itemX = x * CELL_SIZE + CELL_SIZE / 2.0f;
@@ -667,6 +679,8 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_DIG_RAMP);
+    ValidateAndCleanupRamps(x - 2, y - 2, z - 1, x + 2, y + 2, z + 1);
 }
 
 int CountDigRampDesignations(void) {
@@ -745,13 +759,15 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     // Cell type stays as-is (AIR) - we're just removing the floor flag
     
     MarkChunkDirty(x, y, z);
+    DestabilizeWater(x, y, z);
     
-    // Spawn an item from the removed floor
+    // Spawn an item from the removed floor (drops to z-1 since floor is gone)
     if (dropItem != ITEM_NONE) {
+        int dropZ = (z > 0) ? z - 1 : 0;
         uint8_t dropMat = (floorMat != MAT_NONE) ? (uint8_t)floorMat : DefaultMaterialForItemType(dropItem);
         SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
                               y * CELL_SIZE + CELL_SIZE * 0.5f,
-                              (float)z, dropItem, dropMat);
+                              (float)dropZ, dropItem, dropMat);
     }
     
     // Clear designation
@@ -763,6 +779,7 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     designations[z][y][x].progress = 0.0f;
     
     // Note: mover will fall if there's nothing solid below - handled by mover update tick
+    InvalidateDesignationCache(DESIGNATION_REMOVE_FLOOR);
     (void)moverIdx;  // Could be used for special handling later
 }
 
@@ -850,6 +867,7 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     }
     
     MarkChunkDirty(x, y, z);
+    DestabilizeWater(x, y, z);
     
     // Spawn drops from the removed ramp
     if (dropItem != ITEM_NONE && dropCount > 0) {
@@ -869,6 +887,7 @@ void CompleteRemoveRampDesignation(int x, int y, int z, int moverIdx) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     
+    InvalidateDesignationCache(DESIGNATION_REMOVE_RAMP);
     (void)moverIdx;  // Could be used for special handling later
 }
 
@@ -1379,6 +1398,7 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_GATHER_SAPLING);
 }
 
 int CountGatherSaplingDesignations(void) {
@@ -1455,6 +1475,7 @@ void CompletePlantSaplingDesignation(int x, int y, int z, TreeType type, int mov
     designations[z][y][x].assignedMover = -1;
     designations[z][y][x].progress = 0.0f;
     activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_PLANT_SAPLING);
 }
 
 int CountPlantSaplingDesignations(void) {
@@ -1688,6 +1709,17 @@ void CancelBlueprint(int blueprintIdx) {
         items[bp->reservedItem].reservedBy = -1;
     }
     
+    // Refund delivered materials by spawning items at the blueprint location
+    if (bp->deliveredMaterialCount > 0) {
+        float spawnX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float spawnY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        ItemType refundType = (bp->requiredItemType < ITEM_TYPE_COUNT) ? bp->requiredItemType : ITEM_BLOCKS;
+        for (int i = 0; i < bp->deliveredMaterialCount; i++) {
+            SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z, refundType,
+                                 (uint8_t)bp->deliveredMaterial);
+        }
+    }
+    
     bp->active = false;
     bp->reservedItem = -1;
     bp->assignedBuilder = -1;
@@ -1796,6 +1828,7 @@ void CompleteBlueprint(int blueprintIdx) {
                 // Floor material preserved - wall is built on top of floor
             }
             MarkChunkDirty(x, y, z);
+            InvalidatePathsThroughCell(x, y, z);
         }
     } else if (bp->type == BLUEPRINT_TYPE_LADDER) {
         // Place ladder using existing ladder placement logic
@@ -1815,6 +1848,9 @@ void CompleteBlueprint(int blueprintIdx) {
         SetFloorFinish(x, y, z, FINISH_SMOOTH);
         MarkChunkDirty(x, y, z);
     } else if (bp->type == BLUEPRINT_TYPE_RAMP) {
+        // Push items out before placing ramp
+        PushItemsOutOfCell(x, y, z);
+        
         // Place ramp - auto-detect direction based on adjacent cells
         DisplaceWater(x, y, z);
         
@@ -1834,6 +1870,7 @@ void CompleteBlueprint(int blueprintIdx) {
         }
         
         grid[z][y][x] = rampType;
+        rampCount++;
         CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
         ClearWallNatural(x, y, z);

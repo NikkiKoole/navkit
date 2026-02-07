@@ -1,6 +1,7 @@
 #include "stockpiles.h"
 #include "mover.h"
 #include "items.h"
+#include "jobs.h"
 #include "../world/cell_defs.h"
 #include <string.h>
 
@@ -243,7 +244,26 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
 
 void DeleteStockpile(int index) {
     if (index >= 0 && index < MAX_STOCKPILES && stockpiles[index].active) {
-        stockpiles[index].active = false;
+        Stockpile* sp = &stockpiles[index];
+        
+        // Drop all ITEM_IN_STOCKPILE items to ground before deleting
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if (items[i].state != ITEM_IN_STOCKPILE) continue;
+            
+            // Check if item is within this stockpile's bounds
+            int itemTileX = (int)(items[i].x / CELL_SIZE);
+            int itemTileY = (int)(items[i].y / CELL_SIZE);
+            int itemZ = (int)items[i].z;
+            
+            if (itemZ == sp->z &&
+                itemTileX >= sp->x && itemTileX < sp->x + sp->width &&
+                itemTileY >= sp->y && itemTileY < sp->y + sp->height) {
+                items[i].state = ITEM_ON_GROUND;
+            }
+        }
+        
+        sp->active = false;
         stockpileCount--;
         InvalidateStockpileSlotCacheAll();  // Stockpile deleted
     }
@@ -279,7 +299,7 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             int idx = ly * sp->width + lx;
             if (!sp->cells[idx]) continue;  // already inactive
             
-            // Drop any items in this slot to the ground
+            // Drop any items in this slot to the ground and clear reservations
             if (sp->slotCounts[idx] > 0) {
                 // Find items at this tile and set them to ground state
                 for (int i = 0; i < itemHighWaterMark; i++) {
@@ -290,12 +310,14 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
                     int itemZ = (int)items[i].z;
                     if (itemTileX == wx && itemTileY == wy && itemZ == sp->z) {
                         items[i].state = ITEM_ON_GROUND;
+                        // Clear item reservations when dropping to ground
+                        items[i].reservedBy = -1;
                     }
                 }
             }
             
             sp->cells[idx] = false;
-            // Clear slot data
+            // Clear slot data including reservations
             sp->slots[idx] = -1;
             sp->reservedBy[idx] = 0;
             sp->slotCounts[idx] = 0;
@@ -303,6 +325,37 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             sp->slotMaterials[idx] = MAT_NONE;
         }
     }
+    
+    // Cancel any haul/clear jobs targeting the removed cells
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobId = activeJobList[i];
+        Job* job = &jobs[jobId];
+        if (!job->active) continue;
+        if (job->type != JOBTYPE_HAUL && job->type != JOBTYPE_CLEAR) continue;
+        if (job->targetStockpile != stockpileIdx) continue;
+        
+        // Check if job targets a removed cell
+        if (job->targetSlotX >= x1 && job->targetSlotX <= x2 &&
+            job->targetSlotY >= y1 && job->targetSlotY <= y2) {
+            // Release item reservation
+            if (job->targetItem >= 0 && items[job->targetItem].active) {
+                items[job->targetItem].reservedBy = -1;
+            }
+            // Release job
+            ReleaseJob(jobId);
+            // Reset mover
+            int moverIdx = job->assignedMover;
+            if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
+                Mover* m = &movers[moverIdx];
+                m->currentJobId = -1;
+                ClearMoverPath(moverIdx);
+                m->needsRepath = false;
+                m->timeWithoutProgress = 0.0f;
+                AddMoverToIdleList(moverIdx);
+            }
+        }
+    }
+    
     InvalidateStockpileSlotCacheAll();  // Stockpile geometry changed
     
     // Check if stockpile is now empty - if so, delete it
@@ -440,7 +493,7 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
     return false;  // stockpile full or all reserved
 }
 
-bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx) {
+bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx, ItemType type, uint8_t material) {
     (void)moverIdx;  // Reservations are tracked by count, not mover ID
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
     Stockpile* sp = &stockpiles[stockpileIdx];
@@ -454,6 +507,19 @@ bool ReserveStockpileSlot(int stockpileIdx, int slotX, int slotY, int moverIdx) 
     
     // Can reserve if slot has room for another item (counting existing + pending)
     if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) return false;
+    
+    MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
+    
+    // If slot already has a type (from items or prior reservations), reject mismatches
+    if (sp->slotTypes[idx] >= 0 && (sp->slotTypes[idx] != type || sp->slotMaterials[idx] != mat)) {
+        return false;
+    }
+    
+    // Stamp type on first reservation of an empty slot
+    if (sp->slotCounts[idx] == 0 && sp->reservedBy[idx] == 0) {
+        sp->slotTypes[idx] = type;
+        sp->slotMaterials[idx] = mat;
+    }
     
     sp->reservedBy[idx]++;
     return true;
@@ -470,6 +536,12 @@ void ReleaseStockpileSlot(int stockpileIdx, int slotX, int slotY) {
     
     int idx = SlotIndex(sp, lx, ly);
     if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;
+    
+    // Clear type stamp if slot is now empty and unreserved
+    if (sp->reservedBy[idx] == 0 && sp->slotCounts[idx] == 0) {
+        sp->slotTypes[idx] = -1;
+        sp->slotMaterials[idx] = MAT_NONE;
+    }
 }
 
 void ReleaseAllSlotsForMover(int moverIdx) {
@@ -504,7 +576,12 @@ void ReleaseAllSlotsForMover(int moverIdx) {
 //   - Pre-sort active stockpiles by priority for better slot selection
 
 int FindStockpileForItem(ItemType type, uint8_t material, int* outSlotX, int* outSlotY) {
-    // Find any stockpile that accepts this type and has a free slot
+    // Find stockpile that accepts this type and has a free slot, respecting priority
+    // Iterate from highest priority (9) to lowest (1)
+    int bestIdx = -1;
+    int bestSlotX = 0, bestSlotY = 0;
+    int bestPriority = 0;
+    
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         if (!StockpileAcceptsItem(i, type, material)) continue;
@@ -512,10 +589,20 @@ int FindStockpileForItem(ItemType type, uint8_t material, int* outSlotX, int* ou
         
         int slotX, slotY;
         if (FindFreeStockpileSlot(i, type, material, &slotX, &slotY)) {
-            *outSlotX = slotX;
-            *outSlotY = slotY;
-            return i;
+            // Take this stockpile if it's higher priority than what we've found so far
+            if (stockpiles[i].priority > bestPriority) {
+                bestPriority = stockpiles[i].priority;
+                bestIdx = i;
+                bestSlotX = slotX;
+                bestSlotY = slotY;
+            }
         }
+    }
+    
+    if (bestIdx >= 0) {
+        *outSlotX = bestSlotX;
+        *outSlotY = bestSlotY;
+        return bestIdx;
     }
     return -1;  // no stockpile available
 }
@@ -555,6 +642,18 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     if (lx < 0 || lx >= sp->width || ly < 0 || ly >= sp->height) return;
     
     int idx = SlotIndex(sp, lx, ly);
+    
+    // Validate cell is active before placing item
+    if (!sp->cells[idx]) return;
+    
+    // Validate slot types match if slot already has items
+    if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active) {
+        if (sp->slotTypes[idx] >= 0 && sp->slotTypes[idx] != items[itemIdx].type) {
+            // Type mismatch - don't place item
+            return;
+        }
+    }
+    
     sp->slots[idx] = itemIdx;
     if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
     
@@ -563,6 +662,26 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
         sp->slotTypes[idx] = items[itemIdx].type;
         sp->slotMaterials[idx] = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
         sp->slotCounts[idx]++;
+    }
+}
+
+// Remove one item from a stockpile slot at world position (x, y, z)
+// Called when an item leaves a stockpile (DeleteItem, PushItemsOutOfCell, DropItemsInCell)
+void RemoveItemFromStockpileSlot(float x, float y, int z) {
+    int sourceSp = -1;
+    if (!IsPositionInStockpile(x, y, z, &sourceSp) || sourceSp < 0) return;
+
+    int lx = (int)(x / CELL_SIZE) - stockpiles[sourceSp].x;
+    int ly = (int)(y / CELL_SIZE) - stockpiles[sourceSp].y;
+    if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
+
+    int idx = ly * stockpiles[sourceSp].width + lx;
+    stockpiles[sourceSp].slotCounts[idx]--;
+    if (stockpiles[sourceSp].slotCounts[idx] <= 0) {
+        stockpiles[sourceSp].slots[idx] = -1;
+        stockpiles[sourceSp].slotTypes[idx] = -1;
+        stockpiles[sourceSp].slotCounts[idx] = 0;
+        stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
     }
 }
 
@@ -716,6 +835,7 @@ void SetStockpilePriority(int stockpileIdx, int priority) {
     if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
     if (!stockpiles[stockpileIdx].active) return;
     stockpiles[stockpileIdx].priority = priority;
+    InvalidateStockpileSlotCacheAll();  // Priority change affects which stockpile is chosen
 }
 
 int GetStockpilePriority(int stockpileIdx) {
@@ -799,6 +919,44 @@ int FindHigherPriorityStockpile(int itemIdx, int currentStockpileIdx, int* outSl
         *outSlotY = bestSlotY;
     }
     return bestIdx;
+}
+
+bool FindConsolidationTarget(int stockpileIdx, int srcSlotX, int srcSlotY, int* outDestSlotX, int* outDestSlotY) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return false;
+    
+    int srcLx = srcSlotX - sp->x;
+    int srcLy = srcSlotY - sp->y;
+    if (srcLx < 0 || srcLx >= sp->width || srcLy < 0 || srcLy >= sp->height) return false;
+    
+    int srcIdx = SlotIndex(sp, srcLx, srcLy);
+    if (sp->slotCounts[srcIdx] <= 0) return false;
+    if (sp->slotCounts[srcIdx] >= sp->maxStackSize) return false;  // source is full, nothing to consolidate
+    
+    ItemType type = sp->slotTypes[srcIdx];
+    uint8_t mat = sp->slotMaterials[srcIdx];
+    
+    // Find another partial stack of same type/material with room
+    // ONLY consolidate from smaller stacks onto LARGER ones to avoid ping-pong
+    int srcCount = sp->slotCounts[srcIdx];
+    for (int ly = 0; ly < sp->height; ly++) {
+        for (int lx = 0; lx < sp->width; lx++) {
+            if (lx == srcLx && ly == srcLy) continue;  // skip source slot
+            int idx = SlotIndex(sp, lx, ly);
+            if (!sp->cells[idx]) continue;
+            
+            if (sp->slotTypes[idx] == type &&
+                sp->slotMaterials[idx] == mat &&
+                sp->slotCounts[idx] > srcCount &&  // dest must be LARGER than source
+                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                *outDestSlotX = sp->x + lx;
+                *outDestSlotY = sp->y + ly;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // =============================================================================

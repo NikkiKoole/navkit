@@ -74,17 +74,17 @@ static int MaterialWallSprite(MaterialType mat) {
         case MAT_WILLOW:
             return SPRITE_wood_wall;
         case MAT_GRANITE:
-            return SPRITE_stone_wall;
+            return SPRITE_rock;
         case MAT_DIRT:
-            return SPRITE_dirt_block;
+            return SPRITE_dirt;
         case MAT_CLAY:
-            return SPRITE_clay_block;
+            return SPRITE_clay;
         case MAT_GRAVEL:
-            return SPRITE_gravel_block;
+            return SPRITE_gravel;
         case MAT_SAND:
-            return SPRITE_sand_block;
+            return SPRITE_sand;
         case MAT_PEAT:
-            return SPRITE_peat_block;
+            return SPRITE_peat;
         default:
             return SPRITE_wall;
     }
@@ -125,9 +125,60 @@ static int FinishSprite(SurfaceFinish finish) {
     }
 }
 
-static Color FinishOverlayTint(Color base) {
-    base.a = (unsigned char)((base.a * 50) / 100);  // 50% opacity
-    return base;
+static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
+    Color tint = base;
+    int alphaPercent = 50;
+    if (finish == FINISH_ROUGH) {
+        tint = (Color){30, 30, 30, base.a};  // "kinda black"
+        alphaPercent = 20;
+    }
+    tint.a = (unsigned char)((tint.a * alphaPercent) / 100);
+    return tint;
+}
+
+static bool ItemUsesBorder(ItemType type) {
+    return type == ITEM_DIRT || type == ITEM_CLAY || type == ITEM_GRAVEL ||
+           type == ITEM_SAND || type == ITEM_PEAT || type == ITEM_ROCK ||
+           type == ITEM_BRICKS || type == ITEM_LOG;
+}
+
+static Color ItemBorderTint(ItemType type) {
+    switch (type) {
+        case ITEM_BRICKS:
+            return (Color){220, 220, 220, 255};  // processed
+        case ITEM_LOG:
+            return (Color){70, 55, 40, 255};     // raw wood
+        default:
+            return (Color){30, 30, 30, 255};     // raw materials
+    }
+}
+
+static void DrawItemWithBorder(int sprite, Rectangle frameDest, Color tint, Color borderTint) {
+    Rectangle borderSrc = SpriteGetRect(SPRITE_tile_border);
+    DrawTexturePro(atlas, borderSrc, frameDest, (Vector2){0,0}, 0, borderTint);
+
+    float inset = frameDest.width * (1.0f / (float)TILE_SIZE);
+    Rectangle itemDest = {
+        frameDest.x + inset,
+        frameDest.y + inset,
+        frameDest.width - inset * 2.0f,
+        frameDest.height - inset * 2.0f
+    };
+    Rectangle src = SpriteGetRect(sprite);
+    DrawTexturePro(atlas, src, itemDest, (Vector2){0,0}, 0, tint);
+}
+
+static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
+    if (type == ITEM_LOG) {
+        switch ((MaterialType)material) {
+            case MAT_PINE: return SPRITE_tree_trunk_pine;
+            case MAT_BIRCH: return SPRITE_tree_trunk_birch;
+            case MAT_WILLOW: return SPRITE_tree_trunk_willow;
+            case MAT_OAK:
+            default: return SPRITE_tree_trunk_oak;
+        }
+    }
+    return ItemSprite(type);
 }
 
 static float FinishInsetPixels(void) {
@@ -248,9 +299,10 @@ void DrawCellGrid(void) {
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
                     if (cellAtDepth == CELL_WALL) {
-                        int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, zDepth));
+                        SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
+                        int finishSprite = FinishSprite(finish);
                         Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(tint));
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
                     }
                 }
             }
@@ -304,9 +356,10 @@ void DrawCellGrid(void) {
 
                     // Finish overlay
                     {
-                        int finishSprite = FinishSprite((SurfaceFinish)GetFloorFinish(x, y, z));
+                        SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, z);
+                        int finishSprite = FinishSprite(finish);
                         Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(WHITE));
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, WHITE));
                     }
                 }
             }
@@ -330,9 +383,10 @@ void DrawCellGrid(void) {
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
                 if (cell == CELL_WALL) {
-                    int finishSprite = FinishSprite((SurfaceFinish)GetWallFinish(x, y, z));
+                    SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, z);
+                    int finishSprite = FinishSprite(finish);
                     Rectangle finishSrc = SpriteGetRect(finishSprite);
-                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(tint));
+                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
                 }
             }
         }
@@ -898,12 +952,14 @@ void DrawMovers(void) {
             } else {
                 moverColor = RED;
             }
-        } else if (m->repathCooldown > 0 && m->pathLength == 0) {
+        } else if (m->currentJobId >= 0 && m->repathCooldown > 0 && m->pathLength == 0) {
             moverColor = ORANGE;
-        } else if (m->pathLength == 0) {
+        } else if (m->currentJobId >= 0 && m->pathLength == 0) {
             moverColor = RED;
         } else if (m->needsRepath) {
             moverColor = YELLOW;
+        } else if (m->currentJobId < 0 && m->pathLength == 0 && m->repathCooldown > 0) {
+            moverColor = (Color){ 255, 200, 200, 255 };  // Faint pink: recently disrupted, now idle
         } else {
             moverColor = WHITE;
         }
@@ -919,17 +975,24 @@ void DrawMovers(void) {
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
 
-        // Draw carried item above mover's head
+        // Draw carried item above mover's head (includes fuel being carried to workshop)
         Job* moverJob = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
         int carryingItem = moverJob ? moverJob->carryingItem : -1;
+        if (carryingItem < 0 && moverJob && moverJob->step == CRAFT_STEP_CARRYING_FUEL) {
+            carryingItem = moverJob->fuelItem;
+        }
         if (carryingItem >= 0 && items[carryingItem].active) {
             Item* item = &items[carryingItem];
-            int sprite = ItemSprite(item->type);
+            int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
             float itemSize = size * ITEM_SIZE_CARRIED;
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
-            Rectangle itemSrc = SpriteGetRect(sprite);
             Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
-            DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
+            if (ItemUsesBorder(item->type)) {
+                DrawItemWithBorder(sprite, itemDest, WHITE, ItemBorderTint(item->type));
+            } else {
+                Rectangle itemSrc = SpriteGetRect(sprite);
+                DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
+            }
         }
     }
 
@@ -1064,6 +1127,13 @@ void DrawJobLines(void) {
                         int itemY = (int)(item->y / CELL_SIZE);
                         DrawLineToTile(msx, msy, itemX, itemY, (int)item->z, color);
                     }
+                } else if (job->step == CRAFT_STEP_MOVING_TO_FUEL || job->step == CRAFT_STEP_PICKING_UP_FUEL) {
+                    if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+                        Item* fuelItem = &items[job->fuelItem];
+                        int fuelX = (int)(fuelItem->x / CELL_SIZE);
+                        int fuelY = (int)(fuelItem->y / CELL_SIZE);
+                        DrawLineToTile(msx, msy, fuelX, fuelY, (int)fuelItem->z, color);
+                    }
                 } else if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
                     Workshop* ws = &workshops[job->targetWorkshop];
                     if (ws->active) {
@@ -1082,7 +1152,7 @@ void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
-    for (int i = 0; i < MAX_ITEMS; i++) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
         if (item->state == ITEM_CARRIED) continue;
@@ -1093,7 +1163,7 @@ void DrawItems(void) {
         float sx = offset.x + item->x * zoom;
         float sy = offset.y + item->y * zoom;
 
-        int sprite = ItemSprite(item->type);
+        int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
         float itemSize = size * ITEM_SIZE_GROUND;
         Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
@@ -1102,7 +1172,11 @@ void DrawItems(void) {
         if (item->reservedBy >= 0) {
             tint = MultiplyColor(tint, (Color){200, 200, 200, 255});
         }
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+        if (ItemUsesBorder(item->type)) {
+            DrawItemWithBorder(sprite, dest, tint, ItemBorderTint(item->type));
+        } else {
+            DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+        }
     }
 }
 
@@ -1191,7 +1265,7 @@ void DrawStockpileItems(void) {
                 float sy = offset.y + gy * size;
 
                 ItemType type = sp->slotTypes[slotIdx];
-                int sprite = ItemSprite(type);
+                int sprite = ItemSpriteForTypeMaterial(type, sp->slotMaterials[slotIdx]);
                 int visibleCount = count > 5 ? 5 : count;
                 float itemSize = size * ITEM_SIZE_STOCKPILE;
                 float stackOffset = size * 0.08f;
@@ -1200,9 +1274,13 @@ void DrawStockpileItems(void) {
                 for (int s = 0; s < visibleCount; s++) {
                     float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
                     float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
-                    Rectangle srcItem = SpriteGetRect(sprite);
                     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
-                    DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                    if (ItemUsesBorder(type)) {
+                        DrawItemWithBorder(sprite, destItem, tint, ItemBorderTint(type));
+                    } else {
+                        Rectangle srcItem = SpriteGetRect(sprite);
+                        DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                    }
                 }
             }
         }
@@ -1413,6 +1491,24 @@ void DrawMiningDesignations(void) {
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){50, 200, 200, 255});
                 }
             }
+            // Dig ramp designation: purple/violet
+            else if (d->type == DESIGNATION_DIG_RAMP) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 120, 220, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){160, 100, 200, 255});
+                }
+            }
             // Chop tree designation: brown/orange
             else if (d->type == DESIGNATION_CHOP) {
                 float sx = offset.x + x * size;
@@ -1546,6 +1642,21 @@ void DrawMiningDesignations(void) {
         Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 200, 180});
+    }
+    
+    // Draw active dig ramp jobs (purple overlay for assigned)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobIdx = activeJobList[i];
+        Job* job = &jobs[jobIdx];
+        if (job->type != JOBTYPE_DIG_RAMP) continue;
+        if (job->targetMineZ != viewZ) continue;
+
+        float sx = offset.x + job->targetMineX * size;
+        float sy = offset.y + job->targetMineY * size;
+
+        Rectangle src = SpriteGetRect(SPRITE_stockpile);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){200, 150, 240, 180});
     }
     
     // Draw active chop jobs (brown/orange overlay for assigned)

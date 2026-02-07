@@ -5,6 +5,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include <string.h>
+#include <stdio.h>
 
 Workshop workshops[MAX_WORKSHOPS];
 int workshopCount = 0;
@@ -298,6 +299,62 @@ void RemoveBill(int workshopIdx, int billIdx) {
     if (!ws->active) return;
     if (billIdx < 0 || billIdx >= ws->billCount) return;
     
+    // Cancel any craft jobs targeting this bill or bills after it
+    // (bills after it will shift down, invalidating their indices)
+    for (int i = 0; i < activeJobCount; i++) {
+        int jobId = activeJobList[i];
+        Job* job = &jobs[jobId];
+        if (!job->active) continue;
+        if (job->type != JOBTYPE_CRAFT) continue;
+        if (job->targetWorkshop != workshopIdx) continue;
+        if (job->targetBillIdx >= billIdx) {
+            // This job targets the removed bill or a bill that will shift
+            // Cancel it to avoid recipe mismatch
+            int moverIdx = job->assignedMover;
+            if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
+                // Need to call CancelJob, but it's static in jobs.c
+                // Workaround: simulate what CancelJob does for craft jobs
+                // Release the workshop
+                if (ws->assignedCrafter == moverIdx) {
+                    ws->assignedCrafter = -1;
+                }
+                // Release item reservations
+                if (job->targetItem >= 0) {
+                    ReleaseItemReservation(job->targetItem);
+                }
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    Item* item = &items[job->carryingItem];
+                    item->state = ITEM_ON_GROUND;
+                    item->reservedBy = -1;
+                    // Drop at mover's position
+                    Mover* m = &movers[moverIdx];
+                    item->x = m->x;
+                    item->y = m->y;
+                    item->z = m->z;
+                }
+                if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+                    items[job->fuelItem].reservedBy = -1;
+                    if (items[job->fuelItem].state == ITEM_CARRIED) {
+                        items[job->fuelItem].state = ITEM_ON_GROUND;
+                        Mover* m = &movers[moverIdx];
+                        items[job->fuelItem].x = m->x;
+                        items[job->fuelItem].y = m->y;
+                        items[job->fuelItem].z = m->z;
+                    }
+                }
+                // Release job
+                ReleaseJob(jobId);
+                // Reset mover
+                Mover* m = &movers[moverIdx];
+                m->currentJobId = -1;
+                ClearMoverPath(moverIdx);
+                m->needsRepath = false;
+                m->timeWithoutProgress = 0.0f;
+                AddMoverToIdleList(moverIdx);
+            }
+        }
+    }
+    
     // Shift remaining bills down
     for (int i = billIdx; i < ws->billCount - 1; i++) {
         ws->bills[i] = ws->bills[i + 1];
@@ -431,8 +488,22 @@ void UpdateWorkshopDiagnostics(float dt) {
 
             anyRunnable = true;
 
-            int outSlotX, outSlotY;
-            if (FindStockpileForItem(recipe->outputType, MAT_NONE, &outSlotX, &outSlotY) < 0) {
+            // Check output storage using actual available input material
+            bool hasStorage = false;
+            for (int i = 0; i < itemHighWaterMark; i++) {
+                if (!items[i].active) continue;
+                if (!RecipeInputMatches(recipe, &items[i])) continue;
+                if (items[i].reservedBy != -1) continue;
+                if ((int)items[i].z != ws->z) continue;
+                uint8_t mat = items[i].material;
+                if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
+                int outSlotX, outSlotY;
+                if (FindStockpileForItem(recipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
+                    hasStorage = true;
+                    break;
+                }
+            }
+            if (!hasStorage) {
                 continue;
             }
             anyOutputSpace = true;

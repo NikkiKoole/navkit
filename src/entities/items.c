@@ -105,9 +105,18 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
 
 void DeleteItem(int index) {
     if (index >= 0 && index < MAX_ITEMS && items[index].active) {
+        if (items[index].state == ITEM_IN_STOCKPILE) {
+            RemoveItemFromStockpileSlot(items[index].x, items[index].y, (int)items[index].z);
+        }
         items[index].active = false;
         items[index].reservedBy = -1;
         itemCount--;
+        // Shrink high water mark if we deleted the last item
+        if (index == itemHighWaterMark - 1) {
+            while (itemHighWaterMark > 0 && !items[itemHighWaterMark - 1].active) {
+                itemHighWaterMark--;
+            }
+        }
     }
 }
 
@@ -330,6 +339,10 @@ void PushItemsOutOfCell(int x, int y, int z) {
         int itemTileY = (int)(items[i].y / CELL_SIZE);
         
         if (itemTileX == x && itemTileY == y) {
+            if (items[i].state == ITEM_IN_STOCKPILE) {
+                RemoveItemFromStockpileSlot(items[i].x, items[i].y, (int)items[i].z);
+                items[i].state = ITEM_ON_GROUND;
+            }
             if (targetX >= 0) {
                 // Move to walkable neighbor
                 items[i].x = targetX * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -362,12 +375,12 @@ void DropItemsInCell(int x, int y, int z) {
         int itemTileY = (int)(items[i].y / CELL_SIZE);
         
         if (itemTileX == x && itemTileY == y) {
-            items[i].z = (float)targetZ;
-            
-            // If item was in stockpile, it's now on ground
+            // Clear stockpile slot before changing position
             if (items[i].state == ITEM_IN_STOCKPILE) {
+                RemoveItemFromStockpileSlot(items[i].x, items[i].y, (int)items[i].z);
                 items[i].state = ITEM_ON_GROUND;
             }
+            items[i].z = (float)targetZ;
         }
     }
 }

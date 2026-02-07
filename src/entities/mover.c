@@ -6,6 +6,7 @@
 #include "items.h"
 #include "jobs.h"
 #include "stockpiles.h"
+#include "workshops.h"
 #include "../world/designations.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -655,6 +656,13 @@ void ClearMovers(void) {
             if (blueprints[i].state == BLUEPRINT_BUILDING) {
                 blueprints[i].state = BLUEPRINT_READY_TO_BUILD;
             }
+        }
+    }
+    
+    // Reset all workshop crafter assignments
+    for (int i = 0; i < MAX_WORKSHOPS; i++) {
+        if (workshops[i].active) {
+            workshops[i].assignedCrafter = -1;
         }
     }
     
