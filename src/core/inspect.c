@@ -62,16 +62,17 @@ static const char* cellTypeNames[] = {
     "GRAVEL",        // 7
     "SAND",          // 8
     "PEAT",          // 9
-    "BEDROCK",       // 10 (was WOOD_WALL, now removed)
-    "RAMP_N",        // 11
-    "RAMP_E",        // 12
-    "RAMP_S",        // 13
-    "RAMP_W",        // 14
-    "SAPLING",       // 15
-    "TREE_TRUNK",    // 16
-    "TREE_LEAVES"    // 17
+    "ROCK",          // 10
+    "BEDROCK",       // 11 (was WOOD_WALL, now removed)
+    "RAMP_N",        // 12
+    "RAMP_E",        // 13
+    "RAMP_S",        // 14
+    "RAMP_W",        // 15
+    "SAPLING",       // 16
+    "TREE_TRUNK",    // 17
+    "TREE_LEAVES"    // 18
 };
-#define CELL_TYPE_COUNT 18
+#define CELL_TYPE_COUNT 20
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"};
