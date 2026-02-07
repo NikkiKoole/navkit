@@ -12,6 +12,9 @@
 #include "../src/entities/mover.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/simulation/fire.h"
+#include "../src/simulation/temperature.h"
+#include "../src/simulation/trees.h"
+#include "../assets/atlas.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -608,6 +611,248 @@ describe(build_mine_cycle) {
 }
 
 // =============================================================================
+// Phase 0: Material Property Helpers
+// =============================================================================
+
+describe(material_terrain_sprites) {
+    it("should return correct terrain sprites for soil materials") {
+        expect(MaterialTerrainSprite(MAT_DIRT) == SPRITE_dirt);
+        expect(MaterialTerrainSprite(MAT_CLAY) == SPRITE_clay);
+        expect(MaterialTerrainSprite(MAT_GRAVEL) == SPRITE_gravel);
+        expect(MaterialTerrainSprite(MAT_SAND) == SPRITE_sand);
+        expect(MaterialTerrainSprite(MAT_PEAT) == SPRITE_peat);
+        expect(MaterialTerrainSprite(MAT_GRANITE) == SPRITE_rock);
+        expect(MaterialTerrainSprite(MAT_BEDROCK) == SPRITE_bedrock);
+    }
+
+    it("should return 0 for materials without terrain form") {
+        expect(MaterialTerrainSprite(MAT_NONE) == 0);
+        expect(MaterialTerrainSprite(MAT_OAK) == 0);
+        expect(MaterialTerrainSprite(MAT_BRICK) == 0);
+        expect(MaterialTerrainSprite(MAT_IRON) == 0);
+    }
+
+    it("should return correct tree sprites for wood materials") {
+        expect(MaterialTreeTrunkSprite(MAT_OAK) == SPRITE_tree_trunk_oak);
+        expect(MaterialTreeTrunkSprite(MAT_PINE) == SPRITE_tree_trunk_pine);
+        expect(MaterialTreeTrunkSprite(MAT_BIRCH) == SPRITE_tree_trunk_birch);
+        expect(MaterialTreeTrunkSprite(MAT_WILLOW) == SPRITE_tree_trunk_willow);
+
+        expect(MaterialTreeLeavesSprite(MAT_OAK) == SPRITE_tree_leaves_oak);
+        expect(MaterialTreeLeavesSprite(MAT_PINE) == SPRITE_tree_leaves_pine);
+        expect(MaterialTreeLeavesSprite(MAT_BIRCH) == SPRITE_tree_leaves_birch);
+        expect(MaterialTreeLeavesSprite(MAT_WILLOW) == SPRITE_tree_leaves_willow);
+
+        expect(MaterialTreeSaplingSprite(MAT_OAK) == SPRITE_tree_sapling_oak);
+        expect(MaterialTreeSaplingSprite(MAT_PINE) == SPRITE_tree_sapling_pine);
+        expect(MaterialTreeSaplingSprite(MAT_BIRCH) == SPRITE_tree_sapling_birch);
+        expect(MaterialTreeSaplingSprite(MAT_WILLOW) == SPRITE_tree_sapling_willow);
+    }
+
+    it("should return 0 tree sprites for non-wood materials") {
+        expect(MaterialTreeTrunkSprite(MAT_GRANITE) == 0);
+        expect(MaterialTreeLeavesSprite(MAT_DIRT) == 0);
+        expect(MaterialTreeSaplingSprite(MAT_NONE) == 0);
+    }
+}
+
+describe(material_insulation_tiers) {
+    it("should return AIR tier for soil materials") {
+        expect(MaterialInsulationTier(MAT_DIRT) == INSULATION_TIER_AIR);
+        expect(MaterialInsulationTier(MAT_CLAY) == INSULATION_TIER_AIR);
+        expect(MaterialInsulationTier(MAT_GRAVEL) == INSULATION_TIER_AIR);
+        expect(MaterialInsulationTier(MAT_SAND) == INSULATION_TIER_AIR);
+        expect(MaterialInsulationTier(MAT_PEAT) == INSULATION_TIER_AIR);
+    }
+
+    it("should return STONE tier for stone/metal/bedrock") {
+        expect(MaterialInsulationTier(MAT_GRANITE) == INSULATION_TIER_STONE);
+        expect(MaterialInsulationTier(MAT_BEDROCK) == INSULATION_TIER_STONE);
+        expect(MaterialInsulationTier(MAT_IRON) == INSULATION_TIER_STONE);
+        expect(MaterialInsulationTier(MAT_BRICK) == INSULATION_TIER_STONE);
+    }
+
+    it("should return WOOD tier for wood materials") {
+        expect(MaterialInsulationTier(MAT_OAK) == INSULATION_TIER_WOOD);
+        expect(MaterialInsulationTier(MAT_PINE) == INSULATION_TIER_WOOD);
+        expect(MaterialInsulationTier(MAT_BIRCH) == INSULATION_TIER_WOOD);
+        expect(MaterialInsulationTier(MAT_WILLOW) == INSULATION_TIER_WOOD);
+    }
+}
+
+describe(material_burns_into) {
+    it("should return MAT_DIRT for peat") {
+        expect(MaterialBurnsIntoMat(MAT_PEAT) == MAT_DIRT);
+    }
+
+    it("should return self for non-combustible terrain materials") {
+        expect(MaterialBurnsIntoMat(MAT_GRANITE) == MAT_GRANITE);
+        expect(MaterialBurnsIntoMat(MAT_DIRT) == MAT_DIRT);
+        expect(MaterialBurnsIntoMat(MAT_CLAY) == MAT_CLAY);
+        expect(MaterialBurnsIntoMat(MAT_SAND) == MAT_SAND);
+    }
+
+    it("should return MAT_NONE for wood (burns to nothing)") {
+        expect(MaterialBurnsIntoMat(MAT_OAK) == MAT_NONE);
+        expect(MaterialBurnsIntoMat(MAT_PINE) == MAT_NONE);
+    }
+}
+
+describe(material_bedrock) {
+    it("should have MF_UNMINEABLE flag") {
+        expect(MaterialIsUnmineable(MAT_BEDROCK));
+    }
+
+    it("should not have MF_UNMINEABLE on regular materials") {
+        expect(!MaterialIsUnmineable(MAT_GRANITE));
+        expect(!MaterialIsUnmineable(MAT_OAK));
+        expect(!MaterialIsUnmineable(MAT_NONE));
+    }
+
+    it("should have correct terrain sprite") {
+        expect(MaterialTerrainSprite(MAT_BEDROCK) == SPRITE_bedrock);
+    }
+
+    it("should have STONE insulation tier") {
+        expect(MaterialInsulationTier(MAT_BEDROCK) == INSULATION_TIER_STONE);
+    }
+
+    it("should drop nothing") {
+        expect(MaterialDropsItem(MAT_BEDROCK) == ITEM_NONE);
+    }
+}
+
+describe(material_dirt_fuel_fix) {
+    it("should have fuel=1 matching CELL_DIRT cellDef") {
+        expect(MaterialFuel(MAT_DIRT) == 1);
+        expect(MaterialFuel(MAT_DIRT) == CellFuel(CELL_DIRT));
+    }
+
+    it("should have fuel=6 for peat matching CELL_PEAT cellDef") {
+        expect(MaterialFuel(MAT_PEAT) == 6);
+        expect(MaterialFuel(MAT_PEAT) == CellFuel(CELL_PEAT));
+    }
+}
+
+describe(get_cell_sprite_at) {
+    it("should return cellDefs sprite for ground cells (backward compat)") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_DIRT;
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
+
+        grid[0][0][1] = CELL_ROCK;
+        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
+
+        grid[0][0][2] = CELL_PEAT;
+        expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
+    }
+
+    it("should return rock sprite for natural walls") {
+        InitGridFromAsciiWithChunkSize(
+            "#...\n", 4, 1);
+
+        // SyncMaterialsToTerrain sets MAT_GRANITE + natural
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_rock);
+    }
+
+    it("should return tree sprites via treeTypeGrid (backward compat)") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TREE_TRUNK;
+        treeTypeGrid[0][0][0] = TREE_TYPE_PINE;
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_pine);
+
+        grid[0][0][1] = CELL_TREE_LEAVES;
+        treeTypeGrid[0][0][1] = TREE_TYPE_BIRCH;
+        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_tree_leaves_birch);
+
+        grid[0][0][2] = CELL_SAPLING;
+        treeTypeGrid[0][0][2] = TREE_TYPE_WILLOW;
+        expect(GetCellSpriteAt(2, 0, 0) == SPRITE_tree_sapling_willow);
+    }
+
+    it("should prefer wallMaterial over treeTypeGrid for tree cells") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TREE_TRUNK;
+        treeTypeGrid[0][0][0] = TREE_TYPE_PINE;
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        // wallMaterial (oak) should override treeTypeGrid (pine)
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_oak);
+    }
+}
+
+describe(get_insulation_at) {
+    it("should return material insulation when material is set") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_WALL;
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_WOOD);
+
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_STONE);
+    }
+
+    it("should fall back to cell insulation when no material") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        // Air cell with no material
+        expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_AIR);
+    }
+
+    it("should return STONE for out-of-bounds") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        expect(GetInsulationAt(-1, 0, 0) == INSULATION_TIER_STONE);
+        expect(GetInsulationAt(100, 0, 0) == INSULATION_TIER_STONE);
+    }
+}
+
+describe(get_cell_name_at) {
+    it("should return material name for walls") {
+        InitGridFromAsciiWithChunkSize(
+            "#...\n", 4, 1);
+
+        SetWallMaterial(0, 0, 0, MAT_OAK);
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Oak") == 0);
+
+        SetWallMaterial(0, 0, 0, MAT_GRANITE);
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Granite") == 0);
+    }
+
+    it("should return combined name for tree cells") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_TREE_TRUNK;
+        treeTypeGrid[0][0][0] = TREE_TYPE_OAK;
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Oak tree trunk") == 0);
+
+        grid[0][0][1] = CELL_TREE_LEAVES;
+        treeTypeGrid[0][0][1] = TREE_TYPE_PINE;
+        expect(strcmp(GetCellNameAt(1, 0, 0), "Pine tree leaves") == 0);
+    }
+
+    it("should return cellDef name for other cells") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+
+        grid[0][0][0] = CELL_DIRT;
+        expect(strcmp(GetCellNameAt(0, 0, 0), "dirt") == 0);
+
+        expect(strcmp(GetCellNameAt(1, 0, 0), "air") == 0);
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -647,6 +892,16 @@ int main(int argc, char* argv[]) {
     
     // Integration tests
     test(build_mine_cycle);
+    
+    // Phase 0: Material property helpers
+    test(material_terrain_sprites);
+    test(material_insulation_tiers);
+    test(material_burns_into);
+    test(material_bedrock);
+    test(material_dirt_fuel_fix);
+    test(get_cell_sprite_at);
+    test(get_insulation_at);
+    test(get_cell_name_at);
     
     return summary();
 }

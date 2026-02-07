@@ -26,6 +26,8 @@ typedef enum {
     MAT_GRAVEL,        // Gravel soil
     MAT_SAND,          // Sand soil
     MAT_PEAT,          // Peat soil
+    // Special materials
+    MAT_BEDROCK,       // Unmineable bedrock
     MAT_COUNT
 } MaterialType;
 
@@ -40,6 +42,7 @@ typedef enum {
 
 // Material flags
 #define MF_FLAMMABLE  (1 << 0)  // Can catch fire
+#define MF_UNMINEABLE (1 << 1)  // Cannot be mined/deconstructed
 
 // Material definitions
 typedef struct {
@@ -49,6 +52,13 @@ typedef struct {
     uint8_t fuel;         // Fuel value for fire system (0 = won't burn)
     uint8_t ignitionResistance; // Subtracted from spread chance (0 = catches easily)
     ItemType dropsItem;   // What item this material drops when deconstructed
+    // Phase 0: material-driven properties (for shape/material separation)
+    int terrainSprite;    // Sprite when used as CELL_TERRAIN (0 = no terrain form)
+    int treeTrunkSprite;  // Sprite for CELL_TREE_TRUNK (0 = not a tree material)
+    int treeLeavesSprite; // Sprite for CELL_TREE_LEAVES
+    int treeSaplingSprite;// Sprite for CELL_SAPLING
+    uint8_t insulationTier; // Insulation when used as terrain (INSULATION_TIER_*)
+    MaterialType burnsIntoMat; // What material this becomes when burned
 } MaterialDef;
 
 extern MaterialDef materialDefs[];
@@ -93,7 +103,14 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define MaterialDropsItem(m)    (materialDefs[m].dropsItem)
 #define MaterialFuel(m)         (materialDefs[m].fuel)
 #define MaterialIsFlammable(m)  (materialDefs[m].flags & MF_FLAMMABLE)
+#define MaterialIsUnmineable(m) (materialDefs[m].flags & MF_UNMINEABLE)
 #define MaterialIgnitionResistance(m) (materialDefs[m].ignitionResistance)
+#define MaterialTerrainSprite(m)    (materialDefs[m].terrainSprite)
+#define MaterialTreeTrunkSprite(m)  (materialDefs[m].treeTrunkSprite)
+#define MaterialTreeLeavesSprite(m) (materialDefs[m].treeLeavesSprite)
+#define MaterialTreeSaplingSprite(m) (materialDefs[m].treeSaplingSprite)
+#define MaterialInsulationTier(m)   (materialDefs[m].insulationTier)
+#define MaterialBurnsIntoMat(m)     (materialDefs[m].burnsIntoMat)
 
 void InitMaterials(void);
 
@@ -127,6 +144,11 @@ MaterialType MaterialForGroundCell(CellType cell);
 
 // Sync wall materials/finishes for natural ground cells after terrain generation
 void SyncMaterialsToTerrain(void);
+
+// Position-aware helpers (consider cell type + material for lookups)
+int GetCellSpriteAt(int x, int y, int z);
+int GetInsulationAt(int x, int y, int z);
+const char* GetCellNameAt(int x, int y, int z);
 
 // ============================================================================
 // Cell Placement Helper (reduces parallel update pattern across input.c)

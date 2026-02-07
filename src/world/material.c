@@ -1,7 +1,11 @@
 #include "material.h"
 #include "cell_defs.h"
+#include "../../assets/atlas.h"
+#include "../simulation/temperature.h"
+#include "../simulation/trees.h"
 #include <string.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 // Separate grids for wall and floor materials
 uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -12,21 +16,22 @@ uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
-    //                 name       spriteOffset  flags         fuel  ignRes  dropsItem
-    [MAT_NONE]    = {"none",     0,            0,            0,    0,      ITEM_NONE},
-    [MAT_OAK]     = {"Oak",      1,            MF_FLAMMABLE, 128,  50,     ITEM_LOG},
-    [MAT_PINE]    = {"Pine",     1,            MF_FLAMMABLE, 96,   30,     ITEM_LOG},
-    [MAT_BIRCH]   = {"Birch",    1,            MF_FLAMMABLE, 112,  40,     ITEM_LOG},
-    [MAT_WILLOW]  = {"Willow",   1,            MF_FLAMMABLE, 80,   25,     ITEM_LOG},
-    [MAT_GRANITE] = {"Granite",  0,            0,            0,    0,      ITEM_BLOCKS},
-    [MAT_DIRT]    = {"Dirt",     0,            0,            0,    0,      ITEM_DIRT},
-    [MAT_BRICK]   = {"Brick",    0,            0,            0,    0,      ITEM_BRICKS},
-    [MAT_IRON]    = {"Iron",     2,            0,            0,    0,      ITEM_BLOCKS},
-    [MAT_GLASS]   = {"Glass",    3,            0,            0,    0,      ITEM_BLOCKS},
-    [MAT_CLAY]    = {"Clay",     0,            0,            0,    0,      ITEM_CLAY},
-    [MAT_GRAVEL]  = {"Gravel",   0,            0,            0,    0,      ITEM_GRAVEL},
-    [MAT_SAND]    = {"Sand",     0,            0,            0,    0,      ITEM_SAND},
-    [MAT_PEAT]    = {"Peat",     0,            0,            6,    0,      ITEM_PEAT},
+    //                 name       sprOff  flags         fuel  ignRes  dropsItem       terrSprite              trunkSprite                 leavesSprite                saplingSprite                insul                  burnsInto
+    [MAT_NONE]    = {"none",     0,      0,            0,    0,      ITEM_NONE,      0,                      0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_NONE},
+    [MAT_OAK]     = {"Oak",      1,      MF_FLAMMABLE, 128,  50,     ITEM_LOG,       0,                      SPRITE_tree_trunk_oak,      SPRITE_tree_leaves_oak,     SPRITE_tree_sapling_oak,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_PINE]    = {"Pine",     1,      MF_FLAMMABLE, 96,   30,     ITEM_LOG,       0,                      SPRITE_tree_trunk_pine,     SPRITE_tree_leaves_pine,    SPRITE_tree_sapling_pine,    INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_BIRCH]   = {"Birch",    1,      MF_FLAMMABLE, 112,  40,     ITEM_LOG,       0,                      SPRITE_tree_trunk_birch,    SPRITE_tree_leaves_birch,   SPRITE_tree_sapling_birch,   INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_WILLOW]  = {"Willow",   1,      MF_FLAMMABLE, 80,   25,     ITEM_LOG,       0,                      SPRITE_tree_trunk_willow,   SPRITE_tree_leaves_willow,  SPRITE_tree_sapling_willow,  INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_GRANITE] = {"Granite",  0,      0,            0,    0,      ITEM_BLOCKS,    SPRITE_rock,            0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_GRANITE},
+    [MAT_DIRT]    = {"Dirt",     0,      0,            1,    0,      ITEM_DIRT,      SPRITE_dirt,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BRICK]   = {"Brick",    0,      0,            0,    0,      ITEM_BRICKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_BRICK},
+    [MAT_IRON]    = {"Iron",     2,      0,            0,    0,      ITEM_BLOCKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_IRON},
+    [MAT_GLASS]   = {"Glass",    3,      0,            0,    0,      ITEM_BLOCKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_GLASS},
+    [MAT_CLAY]    = {"Clay",     0,      0,            0,    0,      ITEM_CLAY,      SPRITE_clay,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_CLAY},
+    [MAT_GRAVEL]  = {"Gravel",   0,      0,            0,    0,      ITEM_GRAVEL,    SPRITE_gravel,          0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_GRAVEL},
+    [MAT_SAND]    = {"Sand",     0,      0,            0,    0,      ITEM_SAND,      SPRITE_sand,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_SAND},
+    [MAT_PEAT]    = {"Peat",     0,      0,            6,    0,      ITEM_PEAT,      SPRITE_peat,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BEDROCK] = {"Bedrock",  0,      MF_UNMINEABLE,0,    0,      ITEM_NONE,      SPRITE_bedrock,         0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_BEDROCK},
 };
 
 void InitMaterials(void) {
@@ -107,4 +112,92 @@ ItemType GetFloorDropItem(int x, int y, int z) {
     
     // Constructed floor - drop based on material
     return MaterialDropsItem(mat);
+}
+
+// =============================================================================
+// Position-aware helpers
+// =============================================================================
+
+int GetCellSpriteAt(int x, int y, int z) {
+    CellType cell = grid[z][y][x];
+    MaterialType mat = GetWallMaterial(x, y, z);
+
+    // Constructed walls: use material-driven sprite
+    if (cell == CELL_WALL && mat != MAT_NONE) {
+        if (IsWallNatural(x, y, z)) {
+            return SPRITE_rock;
+        }
+        int sprite = MaterialTerrainSprite(mat);
+        return sprite ? sprite : CellSprite(cell);
+    }
+
+    // Tree cells: check wallMaterial first, fall back to treeTypeGrid
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+        if (mat != MAT_NONE) {
+            int sprite = 0;
+            if (cell == CELL_TREE_TRUNK) sprite = MaterialTreeTrunkSprite(mat);
+            else if (cell == CELL_TREE_LEAVES) sprite = MaterialTreeLeavesSprite(mat);
+            else if (cell == CELL_SAPLING) sprite = MaterialTreeSaplingSprite(mat);
+            if (sprite) return sprite;
+        }
+        // Fall back to treeTypeGrid (backward compat until treeTypeGrid is removed)
+        TreeType type = (TreeType)treeTypeGrid[z][y][x];
+        if (type > TREE_TYPE_NONE && type < TREE_TYPE_COUNT) {
+            MaterialType treeMat = MaterialFromTreeType(type);
+            int sprite = 0;
+            if (cell == CELL_TREE_TRUNK) sprite = MaterialTreeTrunkSprite(treeMat);
+            else if (cell == CELL_TREE_LEAVES) sprite = MaterialTreeLeavesSprite(treeMat);
+            else if (cell == CELL_SAPLING) sprite = MaterialTreeSaplingSprite(treeMat);
+            if (sprite) return sprite;
+        }
+    }
+
+    // Ground/terrain cells: use cellDefs sprite (backward compat, these become
+    // CELL_TERRAIN + material in later phases)
+    return CellSprite(cell);
+}
+
+int GetInsulationAt(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return INSULATION_TIER_STONE;  // Out of bounds = solid stone
+    }
+
+    MaterialType mat = GetWallMaterial(x, y, z);
+    if (mat != MAT_NONE) {
+        return MaterialInsulationTier(mat);
+    }
+
+    // Fall back to cell-based insulation
+    return CellInsulationTier(grid[z][y][x]);
+}
+
+const char* GetCellNameAt(int x, int y, int z) {
+    static char nameBuf[64];
+    CellType cell = grid[z][y][x];
+    MaterialType mat = GetWallMaterial(x, y, z);
+
+    // Walls: material name
+    if (cell == CELL_WALL && mat != MAT_NONE) {
+        return MaterialName(mat);
+    }
+
+    // Tree cells: "Oak tree trunk", "Pine tree leaves", etc.
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+        MaterialType treeMat = MAT_NONE;
+        if (mat != MAT_NONE) {
+            treeMat = mat;
+        } else {
+            TreeType type = (TreeType)treeTypeGrid[z][y][x];
+            if (type > TREE_TYPE_NONE && type < TREE_TYPE_COUNT) {
+                treeMat = MaterialFromTreeType(type);
+            }
+        }
+        if (treeMat != MAT_NONE) {
+            snprintf(nameBuf, sizeof(nameBuf), "%s %s",
+                     MaterialName(treeMat), CellName(cell));
+            return nameBuf;
+        }
+    }
+
+    return CellName(cell);
 }
