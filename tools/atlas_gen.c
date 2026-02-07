@@ -31,7 +31,7 @@ static void sanitize_name(const char *filename, char *out) {
 // Generate atlas from a texture directory
 // Returns number of sprites on success, -1 on error
 // If outNames is not NULL, fills it with sprite names (caller must provide array of MAX_SPRITES char[64])
-static int generate_atlas(const char *textureDir, const char *outputPng, 
+static int generate_atlas(const char *textureDir, const char *outputPng,
                           const char *outputHeader, const char *atlasPathMacro,
                           const char *headerGuard, const char *spritePrefix,
                           char outNames[][64]) {
@@ -51,7 +51,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
     while ((entry = readdir(dir)) != NULL && spriteCount < MAX_SPRITES) {
         const char *name = entry->d_name;
         size_t len = strlen(name);
-        
+
         // Skip non-PNG files and any atlas files
         if (len < 5) continue;
         if (strcmp(name + len - 4, ".png") != 0) continue;
@@ -60,7 +60,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
         // Load image
         char path[256];
         snprintf(path, sizeof(path), "%s/%s", textureDir, name);
-        
+
         Image img = LoadImage(path);
         if (!IsImageValid(img)) {
             fprintf(stderr, "Warning: Failed to load %s\n", path);
@@ -70,7 +70,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
         SpriteEntry *sprite = &sprites[spriteCount++];
         sprite->image = img;
         sanitize_name(name, sprite->name);
-        
+
         printf("Loaded: %s (%dx%d)\n", name, img.width, img.height);
     }
     closedir(dir);
@@ -89,7 +89,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
 
     for (int i = 0; i < spriteCount; i++) {
         Image *img = &sprites[i].image;
-        
+
         // Check if we need to wrap to next row
         if (currentX + img->width > maxRowWidth && currentX > 0) {
             atlasHeight += rowHeight + ATLAS_PADDING;
@@ -146,14 +146,14 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
         fseek(pngFile, 0, SEEK_END);
         long pngSize = ftell(pngFile);
         fseek(pngFile, 0, SEEK_SET);
-        
+
         unsigned char *pngData = malloc(pngSize);
         if (pngData) {
             fread(pngData, 1, pngSize, pngFile);
-            
+
             // Write size constant
             fprintf(header, "#define %s_DATA_SIZE %ld\n\n", atlasPathMacro, pngSize);
-            
+
             // Write byte array
             fprintf(header, "static const unsigned char %s_DATA[%ld] = {\n", atlasPathMacro, pngSize);
             for (long i = 0; i < pngSize; i++) {
@@ -164,7 +164,7 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
                 else fprintf(header, " ");
             }
             fprintf(header, "};\n\n");
-            
+
             // Write helper function to load texture from embedded data
             fprintf(header, "// Load texture from embedded PNG data\n");
             fprintf(header, "static inline Texture2D %sLoadEmbedded(void) {\n", spritePrefix);
@@ -173,13 +173,13 @@ static int generate_atlas(const char *textureDir, const char *outputPng,
             fprintf(header, "    UnloadImage(img);\n");
             fprintf(header, "    return tex;\n");
             fprintf(header, "}\n\n");
-            
+
             free(pngData);
             printf("Embedded %ld bytes of PNG data\n", pngSize);
         }
         fclose(pngFile);
     }
-    
+
     fprintf(header, "typedef struct {\n");
     fprintf(header, "    const char *name;\n");
     fprintf(header, "    Rectangle rect;  // x, y, width, height in atlas\n");
@@ -252,7 +252,7 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
     fprintf(f, "#ifndef TILE_SIZE\n");
     fprintf(f, "#define TILE_SIZE 8\n");
     fprintf(f, "#endif\n\n");
-    
+
     fprintf(f, "#if TILE_SIZE == 8\n");
     fprintf(f, "    #include \"atlas8x8.h\"\n");
     fprintf(f, "    #define ATLAS_PATH ATLAS8X8_PATH\n");
@@ -263,7 +263,7 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
         fprintf(f, "    #define SPRITE_%s SPRITE8X8_%s\n", names[i], names[i]);
     }
     fprintf(f, "    #define SpriteGetRect SPRITE8X8GetRect\n");
-    
+
     fprintf(f, "#elif TILE_SIZE == 16\n");
     fprintf(f, "    #include \"atlas16x16.h\"\n");
     fprintf(f, "    #define ATLAS_PATH ATLAS16X16_PATH\n");
@@ -274,12 +274,12 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
         fprintf(f, "    #define SPRITE_%s SPRITE16X16_%s\n", names[i], names[i]);
     }
     fprintf(f, "    #define SpriteGetRect SPRITE16X16GetRect\n");
-    
+
     fprintf(f, "#else\n");
     fprintf(f, "    #error \"TILE_SIZE must be 8 or 16\"\n");
     fprintf(f, "#endif\n\n");
     fprintf(f, "#endif // ATLAS_H\n");
-    
+
     fclose(f);
     printf("\nExported: %s\n", outputPath);
     return 0;
@@ -292,7 +292,7 @@ static int generate_selector_header(const char *outputPath, char names[][64], in
 
 int main(void) {
     int result = 0;
-    
+
     static char spriteNames[MAX_SPRITES][64];
     int spriteCount = 0;
 
