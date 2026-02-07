@@ -111,35 +111,33 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
             if (isDirt) {
                 // Dirt creates natural CELL_DIRT terrain
                 if (grid[z][dy][dx] != CELL_DIRT) {
-                    grid[z][dy][dx] = CELL_DIRT;
-                    SetWallMaterial(dx, dy, z, MAT_DIRT);
-                    SetWallNatural(dx, dy, z);
-                    SetWallFinish(dx, dy, z, FINISH_ROUGH);
-                    CLEAR_FLOOR(dx, dy, z);
-                    SetFloorMaterial(dx, dy, z, MAT_NONE);
-                    ClearFloorNatural(dx, dy, z);
-                    SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);  // No grass yet, will grow over time
-                    MarkChunkDirty(dx, dy, z);
-                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                    SetWaterLevel(dx, dy, z, 0);
-                    SetWaterSource(dx, dy, z, false);
-                    SetWaterDrain(dx, dy, z, false);
-                    DestabilizeWater(dx, dy, z);
+                    CellPlacementSpec spec = {
+                        .cellType = CELL_DIRT,
+                        .wallMat = MAT_DIRT,
+                        .wallNatural = true,
+                        .wallFinish = FINISH_ROUGH,
+                        .clearFloor = true,
+                        .floorMat = MAT_NONE,
+                        .floorNatural = false,
+                        .clearWater = true,
+                        .surfaceType = SURFACE_BARE  // No grass yet, will grow over time
+                    };
+                    PlaceCellFull(dx, dy, z, spec);
                     count++;
                 }
             } else {
                 // Normal wall with material
                 if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != mat) {
-                    grid[z][dy][dx] = CELL_WALL;
-                    SetWallMaterial(dx, dy, z, mat);
-                    ClearWallNatural(dx, dy, z);
-                    SetWallFinish(dx, dy, z, FINISH_SMOOTH);
-                    MarkChunkDirty(dx, dy, z);
-                    CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                    SetWaterLevel(dx, dy, z, 0);
-                    SetWaterSource(dx, dy, z, false);
-                    SetWaterDrain(dx, dy, z, false);
-                    DestabilizeWater(dx, dy, z);
+                    CellPlacementSpec spec = {
+                        .cellType = CELL_WALL,
+                        .wallMat = mat,
+                        .wallNatural = false,
+                        .wallFinish = FINISH_SMOOTH,
+                        .clearFloor = false,
+                        .clearWater = true,
+                        .surfaceType = SURFACE_BARE
+                    };
+                    PlaceCellFull(dx, dy, z, spec);
                     count++;
                 }
             }
@@ -267,14 +265,16 @@ static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
             CellType cell = grid[z][dy][dx];
             // Can place dirt on air
             if (cell == CELL_AIR) {
-                grid[z][dy][dx] = CELL_DIRT;
-                SetWallMaterial(dx, dy, z, MAT_DIRT);
-                SetWallNatural(dx, dy, z);
-                SetWallFinish(dx, dy, z, FINISH_ROUGH);
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                // Set tall grass overlay and reset wear
-                SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
+                CellPlacementSpec spec = {
+                    .cellType = CELL_DIRT,
+                    .wallMat = MAT_DIRT,
+                    .wallNatural = true,
+                    .wallFinish = FINISH_ROUGH,
+                    .clearFloor = false,
+                    .clearWater = false,
+                    .surfaceType = SURFACE_TALL_GRASS
+                };
+                PlaceCellFull(dx, dy, z, spec);
                 count++;
             }
         }
@@ -295,20 +295,18 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
             }
 
             if (grid[z][dy][dx] != CELL_ROCK || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
-                grid[z][dy][dx] = CELL_ROCK;
-                SetWallMaterial(dx, dy, z, MAT_GRANITE);
-                SetWallNatural(dx, dy, z);
-                SetWallFinish(dx, dy, z, FINISH_ROUGH);
-                CLEAR_FLOOR(dx, dy, z);
-                SetFloorMaterial(dx, dy, z, MAT_NONE);
-                ClearFloorNatural(dx, dy, z);
-                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                SetWaterLevel(dx, dy, z, 0);
-                SetWaterSource(dx, dy, z, false);
-                SetWaterDrain(dx, dy, z, false);
-                DestabilizeWater(dx, dy, z);
+                CellPlacementSpec spec = {
+                    .cellType = CELL_ROCK,
+                    .wallMat = MAT_GRANITE,
+                    .wallNatural = true,
+                    .wallFinish = FINISH_ROUGH,
+                    .clearFloor = true,
+                    .floorMat = MAT_NONE,
+                    .floorNatural = false,
+                    .clearWater = true,
+                    .surfaceType = SURFACE_BARE
+                };
+                PlaceCellFull(dx, dy, z, spec);
                 count++;
             }
 
@@ -342,23 +340,18 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
             CellType cell = grid[z][dy][dx];
             // Can place soil on air
             if (cell == CELL_AIR) {
-                grid[z][dy][dx] = soilType;
-                SetWallMaterial(dx, dy, z, material);
-                SetWallNatural(dx, dy, z);
-                SetWallFinish(dx, dy, z, FINISH_ROUGH);
-                CLEAR_FLOOR(dx, dy, z);
-                SetFloorMaterial(dx, dy, z, MAT_NONE);
-                ClearFloorNatural(dx, dy, z);
-                MarkChunkDirty(dx, dy, z);
-                CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
-                
-                // Set surface based on soil type
-                if (soilType == CELL_DIRT) {
-                    SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
-                } else {
-                    SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                }
-                
+                CellPlacementSpec spec = {
+                    .cellType = soilType,
+                    .wallMat = material,
+                    .wallNatural = true,
+                    .wallFinish = FINISH_ROUGH,
+                    .clearFloor = true,
+                    .floorMat = MAT_NONE,
+                    .floorNatural = false,
+                    .clearWater = false,
+                    .surfaceType = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE
+                };
+                PlaceCellFull(dx, dy, z, spec);
                 count++;
             }
         }
@@ -393,21 +386,18 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
             // If it was a ramp, we're filling it up - decrease ramp count
             rampCount--;
         }
-        grid[placeZ][y][x] = soilType;
-        SetWallMaterial(x, y, placeZ, material);
-        SetWallNatural(x, y, placeZ);
-        SetWallFinish(x, y, placeZ, FINISH_ROUGH);
-        CLEAR_FLOOR(x, y, placeZ);
-        SetFloorMaterial(x, y, placeZ, MAT_NONE);
-        ClearFloorNatural(x, y, placeZ);
-        MarkChunkDirty(x, y, placeZ);
-        CLEAR_CELL_FLAG(x, y, placeZ, CELL_FLAG_BURNED);
-        
-        if (soilType == CELL_DIRT) {
-            SET_CELL_SURFACE(x, y, placeZ, SURFACE_TALL_GRASS);
-        } else {
-            SET_CELL_SURFACE(x, y, placeZ, SURFACE_BARE);
-        }
+        CellPlacementSpec spec = {
+            .cellType = soilType,
+            .wallMat = material,
+            .wallNatural = true,
+            .wallFinish = FINISH_ROUGH,
+            .clearFloor = true,
+            .floorMat = MAT_NONE,
+            .floorNatural = false,
+            .clearWater = false,
+            .surfaceType = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE
+        };
+        PlaceCellFull(x, y, placeZ, spec);
         
         // Try to create ramps at adjacent edges for organic look
         int dirOffsets[4][2] = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}};  // N, E, S, W
@@ -465,21 +455,18 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                         // Filling up a ramp - decrease count
                         rampCount--;
                     }
-                    grid[nz][ny][nx] = soilType;
-                    SetWallMaterial(nx, ny, nz, material);
-                    SetWallNatural(nx, ny, nz);
-                    SetWallFinish(nx, ny, nz, FINISH_ROUGH);
-                    CLEAR_FLOOR(nx, ny, nz);
-                    SetFloorMaterial(nx, ny, nz, MAT_NONE);
-                    ClearFloorNatural(nx, ny, nz);
-                    MarkChunkDirty(nx, ny, nz);
-                    CLEAR_CELL_FLAG(nx, ny, nz, CELL_FLAG_BURNED);
-                    
-                    if (soilType == CELL_DIRT) {
-                        SET_CELL_SURFACE(nx, ny, nz, SURFACE_TALL_GRASS);
-                    } else {
-                        SET_CELL_SURFACE(nx, ny, nz, SURFACE_BARE);
-                    }
+                    CellPlacementSpec spec = {
+                        .cellType = soilType,
+                        .wallMat = material,
+                        .wallNatural = true,
+                        .wallFinish = FINISH_ROUGH,
+                        .clearFloor = true,
+                        .floorMat = MAT_NONE,
+                        .floorNatural = false,
+                        .clearWater = false,
+                        .surfaceType = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE
+                    };
+                    PlaceCellFull(nx, ny, nz, spec);
                     
                     // Try to create organic-looking ramps at adjacent edges
                     // Check all 4 cardinal directions for potential ramp placement

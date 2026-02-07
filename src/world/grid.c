@@ -485,6 +485,50 @@ int ValidateAllRamps(void) {
     return ValidateAndCleanupRamps(0, 0, 0, gridWidth - 1, gridHeight - 1, gridDepth - 1);
 }
 
+// ============================================================================
+// Cell Placement Helper
+// ============================================================================
+
+void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec) {
+    // Set cell type
+    grid[z][y][x] = spec.cellType;
+    
+    // Set wall properties
+    SetWallMaterial(x, y, z, spec.wallMat);
+    if (spec.wallNatural) {
+        SetWallNatural(x, y, z);
+    } else {
+        ClearWallNatural(x, y, z);
+    }
+    SetWallFinish(x, y, z, spec.wallFinish);
+    
+    // Set floor properties
+    if (spec.clearFloor) {
+        CLEAR_FLOOR(x, y, z);
+        SetFloorMaterial(x, y, z, spec.floorMat);
+        if (spec.floorNatural) {
+            SetFloorNatural(x, y, z);
+        } else {
+            ClearFloorNatural(x, y, z);
+        }
+    }
+    
+    // Clear water if requested
+    if (spec.clearWater) {
+        SetWaterLevel(x, y, z, 0);
+        SetWaterSource(x, y, z, false);
+        SetWaterDrain(x, y, z, false);
+        DestabilizeWater(x, y, z);
+    }
+    
+    // Set surface type
+    SET_CELL_SURFACE(x, y, z, spec.surfaceType);
+    
+    // Clear flags and mark dirty
+    CLEAR_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);
+    MarkChunkDirty(x, y, z);
+}
+
 int InitGridFromAscii(const char* ascii) {
     return InitGridFromAsciiWithChunkSize(ascii, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_SIZE);
 }

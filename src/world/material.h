@@ -128,4 +128,24 @@ MaterialType MaterialForGroundCell(CellType cell);
 // Sync wall materials/finishes for natural ground cells after terrain generation
 void SyncMaterialsToTerrain(void);
 
+// ============================================================================
+// Cell Placement Helper (reduces parallel update pattern across input.c)
+// ============================================================================
+
+typedef struct {
+    CellType cellType;
+    MaterialType wallMat;
+    bool wallNatural;
+    SurfaceFinish wallFinish;
+    bool clearFloor;
+    MaterialType floorMat;
+    bool floorNatural;
+    bool clearWater;
+    uint8_t surfaceType;  // Use SURFACE_* defines from grid.h
+} CellPlacementSpec;
+
+// Place a cell with all properties in one atomic operation
+// Defined in grid.c
+void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec);
+
 #endif

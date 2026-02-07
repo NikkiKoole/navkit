@@ -4,6 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+// Note: CellPlacementSpec uses MaterialType and SurfaceFinish from material.h
+// Users of PlaceCellFull() should include "material.h" for full type definitions
+
 // Maximum grid dimensions (for static array allocation)
 #define MAX_GRID_WIDTH  512
 #define MAX_GRID_HEIGHT 512
