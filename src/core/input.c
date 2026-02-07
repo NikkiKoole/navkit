@@ -1155,10 +1155,12 @@ static void ExecutePlaceTree(int x, int y, int z) {
 }
 
 static void CycleSandboxTreeType(void) {
-    currentTreeType = (TreeType)(currentTreeType + 1);
-    if (currentTreeType <= TREE_TYPE_NONE || currentTreeType >= TREE_TYPE_COUNT) {
-        currentTreeType = TREE_TYPE_OAK;
-    }
+    // Cycle through wood materials
+    if (currentTreeType == MAT_OAK) currentTreeType = MAT_PINE;
+    else if (currentTreeType == MAT_PINE) currentTreeType = MAT_BIRCH;
+    else if (currentTreeType == MAT_BIRCH) currentTreeType = MAT_WILLOW;
+    else currentTreeType = MAT_OAK;
+    
     AddMessage(TextFormat("Tree type: %s", TreeTypeName(currentTreeType)), GREEN);
 }
 

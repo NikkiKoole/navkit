@@ -33,13 +33,6 @@ typedef enum {
     CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
     CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
-    CELL_DIRT,         // Natural ground - grass/bare controlled by surface overlay
-    CELL_CLAY,         // Clay soil (subsoil blobs)
-    CELL_GRAVEL,       // Gravel patches
-    CELL_SAND,         // Sandy soil
-    CELL_PEAT,         // Peat soil (wetlands)
-    CELL_ROCK,         // Natural rock (terrain, mineable)
-    CELL_BEDROCK,      // Unmineable bottom layer (was CELL_WOOD_WALL=6, now removed - use CELL_WALL + wood material)
     CELL_TERRAIN,      // Generic natural terrain - material determines type (dirt, rock, etc.)
     CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
     CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1
@@ -54,28 +47,6 @@ typedef enum {
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-
-// Tree type and part grids (only meaningful for saplings/trunks/leaves)
-typedef enum {
-    TREE_TYPE_NONE = 0,
-    TREE_TYPE_OAK,
-    TREE_TYPE_PINE,
-    TREE_TYPE_BIRCH,
-    TREE_TYPE_WILLOW,
-    TREE_TYPE_COUNT
-} TreeType;
-
-typedef enum {
-    TREE_PART_NONE = 0,
-    TREE_PART_TRUNK,
-    TREE_PART_BRANCH,
-    TREE_PART_ROOT,
-    TREE_PART_FELLED,
-    TREE_PART_COUNT
-} TreePart;
-
-extern uint8_t treeTypeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-extern uint8_t treePartGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)
 extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

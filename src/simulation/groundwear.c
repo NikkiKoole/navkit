@@ -70,14 +70,14 @@ static bool HasNearbyTree(int x, int y, int z, int dist) {
     return false;
 }
 
-static TreeType PickTreeTypeForSoil(MaterialType soilMat) {
+static MaterialType PickTreeTypeForSoil(MaterialType soilMat) {
     switch (soilMat) {
-        case MAT_PEAT: return TREE_TYPE_WILLOW;
-        case MAT_SAND: return TREE_TYPE_BIRCH;
-        case MAT_GRAVEL: return TREE_TYPE_PINE;
-        case MAT_CLAY: return TREE_TYPE_OAK;
+        case MAT_PEAT: return MAT_WILLOW;
+        case MAT_SAND: return MAT_BIRCH;
+        case MAT_GRAVEL: return MAT_PINE;
+        case MAT_CLAY: return MAT_OAK;
         case MAT_DIRT:
-        default: return TREE_TYPE_OAK;
+        default: return MAT_OAK;
     }
 }
 
@@ -195,8 +195,8 @@ void UpdateGroundWear(void) {
                             if ((rand() % 10000) < saplingRegrowthChance) {
                                 if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
                                     MaterialType soilMat = GetWallMaterial(x, y, z);
-                                    TreeType type = PickTreeTypeForSoil(soilMat);
-                                    PlaceSapling(x, y, z + 1, type);
+                                    MaterialType treeMat = PickTreeTypeForSoil(soilMat);
+                                    PlaceSapling(x, y, z + 1, treeMat);
                                 }
                             }
                         }

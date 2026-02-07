@@ -107,20 +107,6 @@ bool SaveWorld(const char* filename) {
             fwrite(grid[z][y], sizeof(CellType), gridWidth, f);
         }
     }
-
-    // Tree type grid
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            fwrite(treeTypeGrid[z][y], sizeof(uint8_t), gridWidth, f);
-        }
-    }
-
-    // Tree part grid
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            fwrite(treePartGrid[z][y], sizeof(uint8_t), gridWidth, f);
-        }
-    }
     
     // Water grid
     for (int z = 0; z < gridDepth; z++) {
@@ -374,20 +360,6 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(grid[z][y], sizeof(CellType), gridWidth, f);
-        }
-    }
-
-    // Tree type grid
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            fread(treeTypeGrid[z][y], sizeof(uint8_t), gridWidth, f);
-        }
-    }
-
-    // Tree part grid
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            fread(treePartGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     

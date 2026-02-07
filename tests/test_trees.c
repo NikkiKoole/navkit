@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
 #include "../src/world/designations.h"
 #include "../src/simulation/trees.h"
@@ -37,7 +38,8 @@ static void SetupBasicGrid(void) {
     // Set z=0 as dirt floor
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
         }
     }
     
@@ -127,7 +129,7 @@ describe(tree_basic_growth) {
         ClearItems();
         
         // Place sapling at z=1 (above dirt)
-        PlaceSapling(5, 5, 1, TREE_TYPE_OAK);
+        PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // Run growth ticks until sapling becomes trunk
@@ -149,7 +151,7 @@ describe(tree_basic_growth) {
         InitTrees();
         
         // Grow a full tree instantly
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         
         // Should have trunk
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
@@ -180,7 +182,7 @@ describe(tree_sapling_drops) {
         InitDesignations();
         
         // Grow a full tree
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         
         // Count leaves before felling
         int leavesBefore = CountCellType(CELL_TREE_LEAVES);
@@ -217,7 +219,7 @@ describe(tree_sapling_drops) {
         InitDesignations();
         
         // Grow a full tree
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         
         int leavesBefore = CountCellType(CELL_TREE_LEAVES);
         
@@ -245,7 +247,7 @@ describe(sapling_gather_job) {
         InitDesignations();
         
         // Place a sapling
-        PlaceSapling(5, 5, 1, TREE_TYPE_OAK);
+        PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // Designate sapling for gathering
@@ -273,7 +275,8 @@ describe(sapling_gather_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
         }
@@ -300,7 +303,7 @@ describe(sapling_gather_job) {
         
         // Place a sapling at (5,1)
         int saplingX = 5, saplingY = 1, saplingZ = workZ;
-        PlaceSapling(saplingX, saplingY, saplingZ, TREE_TYPE_OAK);
+        PlaceSapling(saplingX, saplingY, saplingZ, MAT_OAK);
         expect(grid[saplingZ][saplingY][saplingX] == CELL_SAPLING);
         
         // Disable tree growth for this test (prevent sapling from growing into trunk)
@@ -367,7 +370,7 @@ describe(sapling_plant_job) {
         DeleteItem(itemIdx);
         
         // Directly complete the plant designation (simulating job completion)
-        CompletePlantSaplingDesignation(plantX, plantY, plantZ, TREE_TYPE_OAK, -1);
+        CompletePlantSaplingDesignation(plantX, plantY, plantZ, MAT_OAK, -1);
         
         // Sapling should be planted
         expect(grid[plantZ][plantY][plantX] == CELL_SAPLING);
@@ -386,7 +389,8 @@ describe(sapling_plant_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
         }
@@ -464,7 +468,7 @@ describe(tree_organic_shapes) {
         // Grow trees at different positions (well separated)
         for (int i = 0; i < 5; i++) {
             int x = 1 + i * 2;
-            TreeGrowFull(x, 4, 1, TREE_TYPE_OAK);
+            TreeGrowFull(x, 4, 1, MAT_OAK);
             
             // Measure trunk height
             int h = 0;
@@ -489,7 +493,7 @@ describe(tree_organic_shapes) {
         SetupBasicGrid();
         InitTrees();
         
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         
         // Find trunk top
         int topZ = 1;
@@ -570,7 +574,7 @@ describe(sapling_regrowth) {
         saplingRegrowthEnabled = true;
         
         // Grow a tree in the center
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         
         // Set large minimum distance
         int originalDist = saplingMinTreeDistance;
@@ -610,7 +614,7 @@ describe(sapling_growth_blocking) {
         InitTrees();
         
         // Place sapling
-        PlaceSapling(5, 5, 1, TREE_TYPE_OAK);
+        PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // Place item on same tile and rebuild spatial grid
@@ -637,7 +641,7 @@ describe(sapling_growth_blocking) {
         InitTrees();
         
         // Place sapling
-        PlaceSapling(5, 5, 1, TREE_TYPE_OAK);
+        PlaceSapling(5, 5, 1, MAT_OAK);
         
         // Place item on same tile and rebuild spatial grid
         int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_RED);
@@ -718,7 +722,7 @@ describe(sapling_trampling) {
         groundWearEnabled = true;
         
         // Place sapling
-        PlaceSapling(5, 5, 1, TREE_TYPE_OAK);
+        PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // Trample it - saplings require wearMax/2 tramples to be destroyed
@@ -739,7 +743,7 @@ describe(sapling_trampling) {
         groundWearEnabled = true;
         
         // Grow a tree
-        TreeGrowFull(5, 5, 1, TREE_TYPE_OAK);
+        TreeGrowFull(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
         
         // Trample trunk
@@ -828,7 +832,7 @@ describe(tree_full_lifecycle) {
         
         // 1. Plant a sapling directly (simulating completed plant job)
         DesignatePlantSapling(5, 5, 1);
-        CompletePlantSaplingDesignation(5, 5, 1, TREE_TYPE_OAK, -1);
+        CompletePlantSaplingDesignation(5, 5, 1, MAT_OAK, -1);
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // 2. Fast-forward tree growth

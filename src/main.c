@@ -73,7 +73,7 @@ int currentTerrain = 0;
 // NOTE: When adding new terrains, also update the count in ui_panels.c CycleOption() for "Terrain"
 const char* terrainNames[] = {"Clear", "Sparse", "City", "Mixed", "Perlin", "Maze", "Dungeon", "Caves", "Drunkard", "Tunneler", "MixMax", "Towers3D", "GalleryFlat", "Castle", "Labyrinth3D", "Spiral3D", "Council", "Hills", "HillsSoils", "HillsSoilsWater", "CraftTest"};
 
-TreeType currentTreeType = TREE_TYPE_OAK;
+MaterialType currentTreeType = MAT_OAK;
 const char* treeTypeNames[] = {"None", "Oak", "Pine", "Birch", "Willow"};
 
 // Ramp placement controls (used by hills generators)
@@ -587,7 +587,8 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
         }
     for (int z = 1; z < gridDepth; z++)
         for (int y = 0; y < gridHeight; y++)
@@ -888,7 +889,8 @@ int main(int argc, char** argv) {
     // z=0: dirt (solid ground) with grass overlay, z=1+: air (DF-style)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
         }
     for (int z = 1; z < gridDepth; z++)

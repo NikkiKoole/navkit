@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
 #include "../src/entities/mover.h"
 #include "../src/world/terrain.h"
@@ -4213,7 +4214,8 @@ describe(channel_ramp_detection) {
         // z=0: solid ground, z=1: floor above + walls blocking exits
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
                 grid[1][y][x] = CELL_WALL;  // Walls at z=1 block exits
             }
@@ -4433,7 +4435,8 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
                 grid[2][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 2);         // Floor at z=2 to channel
@@ -4657,7 +4660,8 @@ describe(channel_rectangle_ramps) {
         // Set up z0 as solid dirt, z1 as walkable air
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 10; y++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);  // Floor flag makes z1 walkable
             }
@@ -5374,7 +5378,8 @@ describe(job_drivers) {
         // Need solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_DIRT;  // Solid ground
+                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
         }
@@ -5623,7 +5628,8 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
             }
         }
@@ -5728,7 +5734,8 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
             }
         }
@@ -7738,7 +7745,8 @@ describe(item_lifecycle) {
         // Set up z0 as solid, z1 as walkable floor
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);
             }
@@ -10118,8 +10126,7 @@ describe(grid_audit_tree_chopping_integration) {
         
         // Place tree trunk at (5,1,0) - this provides solid support for ramp exit
         grid[0][1][5] = CELL_TREE_TRUNK;
-        treePartGrid[0][1][5] = TREE_PART_TRUNK;
-        treeTypeGrid[0][1][5] = TREE_TYPE_OAK;
+        SetWallMaterial(5, 1, 0, MAT_OAK);
         
         // Place a ramp at (5,2,0) pointing north - exit at (5,1,1)
         // The exit's solid support is the trunk at (5,1,0)
@@ -10136,7 +10143,7 @@ describe(grid_audit_tree_chopping_integration) {
         
         // Trunk should be gone (felled or air)
         bool trunkGone = (grid[0][1][5] != CELL_TREE_TRUNK) ||
-                         (treePartGrid[0][1][5] == TREE_PART_FELLED);
+                         (grid[0][1][5] == CELL_TREE_FELLED);
         expect(trunkGone == true);
         
         // Player expectation: ramp should be removed (no solid support for exit)
@@ -10167,8 +10174,7 @@ describe(grid_audit_tree_chopping_integration) {
         
         // Place tree trunk at (8,1,0) - far from ramp
         grid[0][1][8] = CELL_TREE_TRUNK;
-        treePartGrid[0][1][8] = TREE_PART_TRUNK;
-        treeTypeGrid[0][1][8] = TREE_TYPE_OAK;
+        SetWallMaterial(8, 1, 0, MAT_OAK);
         
         // Place solid support for ramp at (5,1,0) - wall provides support
         grid[0][1][5] = CELL_WALL;
@@ -10234,9 +10240,9 @@ describe(input_audit_material_consistency) {
         ClearStockpiles();
         
         // Simulate what ExecutePileSoil does with the FIXED material
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_CLAY, MAT_CLAY, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_CLAY, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_CLAY);
+        expect(grid[0][3][5] == CELL_TERRAIN);
         expect(GetWallMaterial(5, 3, 0) == MAT_CLAY);
     }
     
@@ -10253,9 +10259,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_GRAVEL, MAT_GRAVEL, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_GRAVEL, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_GRAVEL);
+        expect(grid[0][3][5] == CELL_TERRAIN);
         expect(GetWallMaterial(5, 3, 0) == MAT_GRAVEL);
     }
     
@@ -10272,9 +10278,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_SAND, MAT_SAND, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_SAND, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_SAND);
+        expect(grid[0][3][5] == CELL_TERRAIN);
         expect(GetWallMaterial(5, 3, 0) == MAT_SAND);
     }
     
@@ -10291,9 +10297,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_PEAT, MAT_PEAT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_PEAT, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_PEAT);
+        expect(grid[0][3][5] == CELL_TERRAIN);
         expect(GetWallMaterial(5, 3, 0) == MAT_PEAT);
     }
 }
@@ -10367,7 +10373,7 @@ describe(input_audit_soil_repath) {
         
         // Simulate what ExecuteBuildSoil does: place solid soil
         // (ExecuteBuildSoil does NOT set needsRepath - that's the bug)
-        CellPlacementSpec spec = NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
+        CellPlacementSpec spec = NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
         PlaceCellFull(5, 2, 0, spec);
         InvalidatePathsThroughCell(5, 2, 0);
         
@@ -10399,11 +10405,11 @@ describe(input_audit_grass_placement) {
         expect(grid[0][3][5] == CELL_AIR);
         
         // Simulate what the FIXED ExecutePlaceGrass does: PlaceCellFull + surface
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, false));
         SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
         
         // Player expectation: dirt cell should have MAT_DIRT material
-        expect(grid[0][3][5] == CELL_DIRT);
+        expect(grid[0][3][5] == CELL_TERRAIN);
         expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
     }
     
@@ -10438,7 +10444,7 @@ describe(input_audit_grass_placement) {
         m->needsRepath = false;
         
         // Simulate FIXED grass placement on air -> solid dirt
-        PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, false));
         InvalidatePathsThroughCell(5, 2, 0);
         SET_CELL_SURFACE(5, 2, 0, SURFACE_TALL_GRASS);
         
@@ -10538,8 +10544,7 @@ describe(input_audit_erase_designations) {
         
         // Place a tree trunk
         grid[0][3][5] = CELL_TREE_TRUNK;
-        treePartGrid[0][3][5] = TREE_PART_TRUNK;
-        treeTypeGrid[0][3][5] = TREE_TYPE_OAK;
+        SetWallMaterial(5, 3, 0, MAT_OAK);
         
         // Designate it for chopping
         bool designated = DesignateChop(5, 3, 0);
@@ -10549,8 +10554,7 @@ describe(input_audit_erase_designations) {
         // Simulate what the FIXED ExecuteRemoveTree does: cancel designation + clear
         CancelDesignation(5, 3, 0);
         grid[0][3][5] = CELL_AIR;
-        treeTypeGrid[0][3][5] = TREE_TYPE_NONE;
-        treePartGrid[0][3][5] = TREE_PART_NONE;
+        SetWallMaterial(5, 3, 0, MAT_NONE);
         MarkChunkDirty(5, 3, 0);
         
         // Player expectation: designation should be gone
@@ -10578,7 +10582,7 @@ describe(input_audit_quick_erase_metadata) {
         ClearStockpiles();
         
         // Set up a dirt cell with grass and material
-        grid[0][3][5] = CELL_DIRT;
+        grid[0][3][5] = CELL_TERRAIN;
         SetWallMaterial(5, 3, 0, MAT_DIRT);
         SetWallNatural(5, 3, 0);
         SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);

@@ -1226,7 +1226,7 @@ JobRunResult RunJob_ChopFelled(Job* job, void* moverPtr, float dt) {
         return JOBRUN_FAIL;
     }
 
-    if (grid[tz][ty][tx] != CELL_TREE_TRUNK || treePartGrid[tz][ty][tx] != TREE_PART_FELLED) {
+    if (grid[tz][ty][tx] != CELL_TREE_FELLED) {
         CancelDesignation(tx, ty, tz);
         return JOBRUN_FAIL;
     }
@@ -1396,8 +1396,8 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
         if (job->progress >= 1.0f) {
             // Planting complete - place sapling cell
             if (itemIdx >= 0 && items[itemIdx].active) {
-                TreeType type = TreeTypeFromSaplingItem(items[itemIdx].type);
-                PlaceSapling(tx, ty, tz, type);
+                MaterialType treeMat = TreeTypeFromSaplingItem(items[itemIdx].type);
+                PlaceSapling(tx, ty, tz, treeMat);
             } else {
                 return JOBRUN_FAIL;
             }
@@ -4077,8 +4077,7 @@ int WorkGiver_ChopFelled(int moverIdx) {
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Verify felled trunk still exists
-        if (grid[entry->z][entry->y][entry->x] != CELL_TREE_TRUNK) continue;
-        if (treePartGrid[entry->z][entry->y][entry->x] != TREE_PART_FELLED) continue;
+        if (grid[entry->z][entry->y][entry->x] != CELL_TREE_FELLED) continue;
 
         // Distance to adjacent tile (already cached)
         float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;

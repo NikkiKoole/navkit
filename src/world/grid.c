@@ -6,8 +6,6 @@
 #include <stdio.h>
 
 CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t treeTypeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
-uint8_t treePartGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
@@ -48,8 +46,6 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
 
     // Clear the grid (all z-levels), cell flags, and materials
     memset(cellFlags, 0, sizeof(cellFlags));
-    memset(treeTypeGrid, 0, sizeof(treeTypeGrid));
-    memset(treePartGrid, 0, sizeof(treePartGrid));
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
@@ -72,7 +68,8 @@ void InitGridWithSize(int width, int height) {
 void FillGroundLevel(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN;
+            SetWallMaterial(x, y, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
         }
     }

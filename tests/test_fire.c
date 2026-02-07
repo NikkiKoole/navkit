@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/water.h"
@@ -523,11 +524,17 @@ describe(fire_non_flammable) {
         
         InitFire();
         
-        // Wall should have 0 fuel
+        // Wall should have 0 fuel (base cell type)
         expect(GetBaseFuelForCellType(CELL_WALL) == 0);
         
-        // Dirt (base for grass) should have fuel
-        expect(GetBaseFuelForCellType(CELL_DIRT) > 0);
+        // Terrain (base cell type) should have 0 fuel (fuel comes from material/grass)
+        expect(GetBaseFuelForCellType(CELL_TERRAIN) == 0);
+        
+        // But terrain with grass surface should have fuel
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_DIRT);
+        SET_CELL_SURFACE(0, 0, 0, SURFACE_TALL_GRASS);
+        expect(GetFuelAt(0, 0, 0) > 0);
     }
     
     it("should not spread fire through walls at same z-level") {
@@ -544,7 +551,8 @@ describe(fire_non_flammable) {
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
                 if (grid[0][y][x] != CELL_WALL) {
-                    grid[0][y][x] = CELL_DIRT;
+                    grid[0][y][x] = CELL_TERRAIN;
+                    SetWallMaterial(x, y, 0, MAT_DIRT);
                     SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
                 }
             }
@@ -590,7 +598,8 @@ describe(fire_non_flammable) {
         // z=0: all dirt with grass surface
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
             }
         }

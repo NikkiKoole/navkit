@@ -198,9 +198,8 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
 static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
     // Get tree type from wall material
     MaterialType mat = GetWallMaterial(x, y, z);
-    TreeType type = TreeTypeFromMaterial(mat);
     
-    if (type <= TREE_TYPE_NONE || type >= TREE_TYPE_COUNT) {
+    if (!IsWoodMaterial(mat)) {
         return CellSprite(cell);
     }
     
@@ -209,36 +208,36 @@ static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
         case CELL_TREE_TRUNK:
         case CELL_TREE_BRANCH:
         case CELL_TREE_FELLED:
-            switch (type) {
-                case TREE_TYPE_PINE: return SPRITE_tree_trunk_pine;
-                case TREE_TYPE_BIRCH: return SPRITE_tree_trunk_birch;
-                case TREE_TYPE_WILLOW: return SPRITE_tree_trunk_willow;
-                case TREE_TYPE_OAK:
+            switch (mat) {
+                case MAT_PINE: return SPRITE_tree_trunk_pine;
+                case MAT_BIRCH: return SPRITE_tree_trunk_birch;
+                case MAT_WILLOW: return SPRITE_tree_trunk_willow;
+                case MAT_OAK:
                 default: return SPRITE_tree_trunk_oak;
             }
         case CELL_TREE_ROOT:
             // Roots use slightly darker sprites (could add dedicated root sprites later)
-            switch (type) {
-                case TREE_TYPE_PINE: return SPRITE_tree_trunk_pine;
-                case TREE_TYPE_BIRCH: return SPRITE_tree_trunk_birch;
-                case TREE_TYPE_WILLOW: return SPRITE_tree_trunk_willow;
-                case TREE_TYPE_OAK:
+            switch (mat) {
+                case MAT_PINE: return SPRITE_tree_trunk_pine;
+                case MAT_BIRCH: return SPRITE_tree_trunk_birch;
+                case MAT_WILLOW: return SPRITE_tree_trunk_willow;
+                case MAT_OAK:
                 default: return SPRITE_tree_trunk_oak;
             }
         case CELL_TREE_LEAVES:
-            switch (type) {
-                case TREE_TYPE_PINE: return SPRITE_tree_leaves_pine;
-                case TREE_TYPE_BIRCH: return SPRITE_tree_leaves_birch;
-                case TREE_TYPE_WILLOW: return SPRITE_tree_leaves_willow;
-                case TREE_TYPE_OAK:
+            switch (mat) {
+                case MAT_PINE: return SPRITE_tree_leaves_pine;
+                case MAT_BIRCH: return SPRITE_tree_leaves_birch;
+                case MAT_WILLOW: return SPRITE_tree_leaves_willow;
+                case MAT_OAK:
                 default: return SPRITE_tree_leaves_oak;
             }
         case CELL_SAPLING:
-            switch (type) {
-                case TREE_TYPE_PINE: return SPRITE_tree_sapling_pine;
-                case TREE_TYPE_BIRCH: return SPRITE_tree_sapling_birch;
-                case TREE_TYPE_WILLOW: return SPRITE_tree_sapling_willow;
-                case TREE_TYPE_OAK:
+            switch (mat) {
+                case MAT_PINE: return SPRITE_tree_sapling_pine;
+                case MAT_BIRCH: return SPRITE_tree_sapling_birch;
+                case MAT_WILLOW: return SPRITE_tree_sapling_willow;
+                case MAT_OAK:
                 default: return SPRITE_tree_sapling_oak;
             }
         default:
@@ -470,7 +469,7 @@ void DrawGrassOverlay(void) {
             Color tint = depthTints[d];
             for (int y = minY; y < maxY; y++) {
                 for (int x = minX; x < maxX; x++) {
-                    if (grid[zDepth][y][x] != CELL_DIRT) continue;
+                    if (grid[zDepth][y][x] != CELL_TERRAIN || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
                     
                     // Check if visible from above (air all the way through, no floors blocking)
                     bool visible = true;
@@ -507,7 +506,7 @@ void DrawGrassOverlay(void) {
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
-                if (grid[zBelow][y][x] != CELL_DIRT) continue;
+                if (grid[zBelow][y][x] != CELL_TERRAIN || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
                 CellType cellHere = grid[z][y][x];
                 // Allow grass under air and ramps, skip walls/ladders/etc.
                 if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;

@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/world/terrain.h"
 #include "../src/world/pathfinding.h"
 
@@ -2010,7 +2011,8 @@ describe(hpa_ladder_pathfinding) {
         expect(pathLength > 0);
 
         // Remove the ladder from floor 0 (break the connection)
-        grid[0][6][7] = CELL_DIRT;
+        grid[0][6][7] = CELL_TERRAIN;
+        SetWallMaterial(7, 6, 0, MAT_DIRT);
         MarkChunkDirty(7, 6, 0);
 
         // Run incremental update
@@ -2241,7 +2243,8 @@ describe(hpa_ladder_pathfinding) {
             UpdateDirtyChunks();
             
             // Remove the wall
-            grid[0][8][8] = CELL_DIRT;
+            grid[0][8][8] = CELL_TERRAIN;
+            SetWallMaterial(8, 8, 0, MAT_DIRT);
             MarkChunkDirty(8, 8, 0);
             UpdateDirtyChunks();
         }
@@ -2307,7 +2310,8 @@ describe(hpa_ladder_pathfinding) {
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
             
-            grid[0][5][5] = CELL_DIRT;
+            grid[0][5][5] = CELL_TERRAIN;
+            SetWallMaterial(5, 5, 0, MAT_DIRT);
             MarkChunkDirty(5, 5, 0);
             UpdateDirtyChunks();
         }
@@ -2380,7 +2384,8 @@ describe(hpa_ladder_pathfinding) {
         
         // Solid dirt at z0 makes z1 walkable for bypass
         for (int x = 10; x <= 14; x++) {
-            grid[0][17][x] = CELL_DIRT;
+            grid[0][17][x] = CELL_TERRAIN;
+            SetWallMaterial(x, 17, 0, MAT_DIRT);
         }
         grid[0][17][12] = CELL_WALL;  // Keep wall
         
@@ -3093,8 +3098,14 @@ describe(ladder_placement) {
         gridDepth = 4;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
-                for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
+                for (int x = 0; x < gridWidth; x++) {
+                    if (z == 0) {
+                        grid[z][y][x] = CELL_TERRAIN;
+                        SetWallMaterial(x, y, z, MAT_DIRT);
+                    } else {
+                        grid[z][y][x] = CELL_AIR;
+                    }
+                }
         
         // Place ladder at z=0 (creates UP at z=0, DOWN at z=1)
         PlaceLadder(2, 2, 0);
@@ -3131,8 +3142,14 @@ describe(ladder_placement) {
         gridDepth = 4;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
-                for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
+                for (int x = 0; x < gridWidth; x++) {
+                    if (z == 0) {
+                        grid[z][y][x] = CELL_TERRAIN;
+                        SetWallMaterial(x, y, z, MAT_DIRT);
+                    } else {
+                        grid[z][y][x] = CELL_AIR;
+                    }
+                }
         
         // Place ladder at z=1 (creates UP at z=1, DOWN at z=2)
         PlaceLadder(2, 2, 1);
@@ -3162,8 +3179,14 @@ describe(ladder_erase) {
         gridDepth = 5;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
-                for (int x = 0; x < gridWidth; x++)
-                    grid[z][y][x] = (z == 0) ? CELL_DIRT : CELL_AIR;
+                for (int x = 0; x < gridWidth; x++) {
+                    if (z == 0) {
+                        grid[z][y][x] = CELL_TERRAIN;
+                        SetWallMaterial(x, y, z, MAT_DIRT);
+                    } else {
+                        grid[z][y][x] = CELL_AIR;
+                    }
+                }
         
         // Build a 5-level ladder shaft
         grid[0][2][2] = CELL_LADDER_UP;
@@ -3380,7 +3403,8 @@ describe(df_walkability) {
         // Set up terrain: solid at z=0, air at z=1
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_FLAG(x, y, 0, CF_SOLID);
                 grid[1][y][x] = CELL_AIR;
             }
@@ -3394,7 +3418,8 @@ describe(df_walkability) {
         expect(IsCellWalkableAt(0, 5, 5) == true);
         
         // z=0 with solid (dirt) is NOT walkable (can't walk inside solid blocks)
-        grid[0][5][5] = CELL_DIRT;
+        grid[0][5][5] = CELL_TERRAIN;
+        SetWallMaterial(5, 5, 0, MAT_DIRT);
         expect(IsCellWalkableAt(0, 5, 5) == false);
     }
     
@@ -3403,7 +3428,8 @@ describe(df_walkability) {
         // Air at z=1 and z=2, no solid below z=2
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_FLAG(x, y, 0, CF_SOLID);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;
@@ -3419,7 +3445,8 @@ describe(df_walkability) {
     it("should make ladder cells walkable regardless of below") {
         InitGridWithSize(TEST_GRID_SIZE, TEST_GRID_SIZE);
         // Solid at z=0, ladder at z=1 and z=2
-        grid[0][5][5] = CELL_DIRT;
+        grid[0][5][5] = CELL_TERRAIN;
+        SetWallMaterial(5, 5, 0, MAT_DIRT);
         SET_CELL_FLAG(5, 5, 0, CF_SOLID);
         grid[1][5][5] = CELL_LADDER_BOTH;
         grid[2][5][5] = CELL_LADDER_BOTH;
@@ -3443,7 +3470,8 @@ describe(df_ladder_pathfinding) {
         // z=3: air, walkable at (5,6) because z=2 platform is solid
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;
                 grid[3][y][x] = CELL_AIR;
@@ -3454,7 +3482,8 @@ describe(df_ladder_pathfinding) {
         grid[2][5][5] = CELL_LADDER_BOTH;
         grid[3][5][5] = CELL_LADDER_BOTH;
         // Solid platform at z=2 adjacent to ladder, for walking at z=3
-        grid[2][6][5] = CELL_DIRT;
+        grid[2][6][5] = CELL_TERRAIN;
+        SetWallMaterial(5, 6, 2, MAT_DIRT);
         
 
         BuildEntrances();
@@ -3495,14 +3524,16 @@ describe(df_ladder_pathfinding) {
         // Same terrain structure but no ladder - should not be able to reach z=3
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;
                 grid[3][y][x] = CELL_AIR;
             }
         }
         // Platform at z=2 but NO ladder to reach it
-        grid[2][6][5] = CELL_DIRT;
+        grid[2][6][5] = CELL_TERRAIN;
+        SetWallMaterial(5, 6, 2, MAT_DIRT);
         
 
         BuildEntrances();

@@ -152,12 +152,12 @@ describe(cell_def_drops) {
         expect(CellDropsItem(CELL_AIR) == ITEM_NONE);
     }
     
-    it("should have ITEM_DIRT for dirt") {
-        expect(CellDropsItem(CELL_DIRT) == ITEM_DIRT);
+    it("should have ITEM_NONE for terrain (material determines drops)") {
+        expect(CellDropsItem(CELL_TERRAIN) == ITEM_NONE);
     }
     
-    it("should have ITEM_NONE for bedrock") {
-        expect(CellDropsItem(CELL_BEDROCK) == ITEM_NONE);
+    it("should have ITEM_NONE for air") {
+        expect(CellDropsItem(CELL_AIR) == ITEM_NONE);
     }
     
     it("should have dropCount of 1 for wall") {
@@ -166,11 +166,11 @@ describe(cell_def_drops) {
     
     it("should have dropCount of 0 for non-mineable cells") {
         expect(CellDropCount(CELL_AIR) == 0);
-        expect(CellDropCount(CELL_BEDROCK) == 0);
+        expect(CellDropCount(CELL_TERRAIN) == 0);
     }
 
-    it("should have dropCount of 1 for dirt") {
-        expect(CellDropCount(CELL_DIRT) == 1);
+    it("should have dropCount of 0 for terrain (material determines drops)") {
+        expect(CellDropCount(CELL_TERRAIN) == 0);
     }
 }
 
@@ -723,29 +723,30 @@ describe(material_bedrock) {
 }
 
 describe(material_dirt_fuel_fix) {
-    it("should have fuel=1 matching CELL_DIRT cellDef") {
+    it("should have fuel=1 for dirt") {
         expect(MaterialFuel(MAT_DIRT) == 1);
-        expect(MaterialFuel(MAT_DIRT) == CellFuel(CELL_DIRT));
     }
 
-    it("should have fuel=6 for peat matching CELL_PEAT cellDef") {
+    it("should have fuel=6 for peat") {
         expect(MaterialFuel(MAT_PEAT) == 6);
-        expect(MaterialFuel(MAT_PEAT) == CellFuel(CELL_PEAT));
     }
 }
 
 describe(get_cell_sprite_at) {
-    it("should return cellDefs sprite for ground cells (backward compat)") {
+    it("should return material sprite for terrain cells") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_DIRT;
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
 
-        grid[0][0][1] = CELL_ROCK;
+        grid[0][0][1] = CELL_TERRAIN;
+        SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
 
-        grid[0][0][2] = CELL_PEAT;
+        grid[0][0][2] = CELL_TERRAIN;
+        SetWallMaterial(2, 0, 0, MAT_PEAT);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
     }
 
@@ -757,31 +758,29 @@ describe(get_cell_sprite_at) {
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_rock);
     }
 
-    it("should return tree sprites via treeTypeGrid (backward compat)") {
+    it("should return tree sprites via wallMaterial") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
         grid[0][0][0] = CELL_TREE_TRUNK;
-        treeTypeGrid[0][0][0] = TREE_TYPE_PINE;
+        SetWallMaterial(0, 0, 0, MAT_PINE);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_pine);
 
         grid[0][0][1] = CELL_TREE_LEAVES;
-        treeTypeGrid[0][0][1] = TREE_TYPE_BIRCH;
+        SetWallMaterial(1, 0, 0, MAT_BIRCH);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_tree_leaves_birch);
 
         grid[0][0][2] = CELL_SAPLING;
-        treeTypeGrid[0][0][2] = TREE_TYPE_WILLOW;
+        SetWallMaterial(2, 0, 0, MAT_WILLOW);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_tree_sapling_willow);
     }
 
-    it("should prefer wallMaterial over treeTypeGrid for tree cells") {
+    it("should use wallMaterial for tree cell sprites") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
         grid[0][0][0] = CELL_TREE_TRUNK;
-        treeTypeGrid[0][0][0] = TREE_TYPE_PINE;
         SetWallMaterial(0, 0, 0, MAT_OAK);
-        // wallMaterial (oak) should override treeTypeGrid (pine)
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_tree_trunk_oak);
     }
 }
@@ -833,20 +832,21 @@ describe(get_cell_name_at) {
             "....\n", 4, 1);
 
         grid[0][0][0] = CELL_TREE_TRUNK;
-        treeTypeGrid[0][0][0] = TREE_TYPE_OAK;
+        SetWallMaterial(0, 0, 0, MAT_OAK);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Oak tree trunk") == 0);
 
         grid[0][0][1] = CELL_TREE_LEAVES;
-        treeTypeGrid[0][0][1] = TREE_TYPE_PINE;
+        SetWallMaterial(1, 0, 0, MAT_PINE);
         expect(strcmp(GetCellNameAt(1, 0, 0), "Pine tree leaves") == 0);
     }
 
-    it("should return cellDef name for other cells") {
+    it("should return material name for terrain cells") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_DIRT;
-        expect(strcmp(GetCellNameAt(0, 0, 0), "dirt") == 0);
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_DIRT);
+        expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
 
         expect(strcmp(GetCellNameAt(1, 0, 0), "air") == 0);
     }
@@ -874,11 +874,9 @@ describe(cell_terrain_flags) {
         expect(IsGroundCell(CELL_TERRAIN));
     }
 
-    it("should have same flags as CELL_DIRT") {
+    it("should have ground and blocks fluids flags") {
         expect(CellHasFlag(CELL_TERRAIN, CF_GROUND));
         expect(CellHasFlag(CELL_TERRAIN, CF_BLOCKS_FLUIDS));
-        expect(CellHasFlag(CELL_DIRT, CF_GROUND));
-        expect(CellHasFlag(CELL_DIRT, CF_BLOCKS_FLUIDS));
     }
 }
 

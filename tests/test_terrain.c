@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/world/terrain.h"
 #include "../src/game_state.h"
 #include "../src/simulation/water.h"
@@ -82,8 +83,10 @@ describe(terrain_regen_clears_entities) {
             "..........\n"
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_DIRT;
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+            }
 
         ClearMovers();
         InitJobPool();
@@ -108,8 +111,10 @@ describe(terrain_regen_clears_entities) {
             "..........\n"
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_DIRT;
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+            }
 
         ClearItems();
         SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 3.5f, 1.0f, ITEM_LOG);
@@ -129,8 +134,10 @@ describe(terrain_regen_clears_entities) {
             "..........\n"
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_DIRT;
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+            }
 
         ClearWorkshops();
         CreateWorkshop(3, 3, 1, WORKSHOP_STONECUTTER);
@@ -149,8 +156,10 @@ describe(terrain_regen_clears_entities) {
             "..........\n"
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
-            for (int x = 0; x < gridWidth; x++)
-                grid[0][y][x] = CELL_DIRT;
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_TERRAIN;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+            }
 
         ClearStockpiles();
         CreateStockpile(2, 2, 1, 3, 3);

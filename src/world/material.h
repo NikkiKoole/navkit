@@ -139,9 +139,6 @@ ItemType GetWallDropItem(int x, int y, int z);
 // Get what item a floor drops based on its material
 ItemType GetFloorDropItem(int x, int y, int z);
 
-// Map ground cell types to their material (returns MAT_NONE if not ground)
-MaterialType MaterialForGroundCell(CellType cell);
-
 // Sync wall materials/finishes for natural ground cells after terrain generation
 void SyncMaterialsToTerrain(void);
 

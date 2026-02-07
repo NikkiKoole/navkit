@@ -592,11 +592,10 @@ static void print_map(int cx, int cy, int cz, int radius) {
                     c = '.';
                 } else switch (cell) {
                     case CELL_WALL:
-                    case CELL_BEDROCK:
                         c = '#'; break;
                     case CELL_AIR:
                         c = ' '; break;
-                    case CELL_DIRT:
+                    case CELL_TERRAIN:
                         c = ':'; break;
                     case CELL_LADDER_UP:
                     case CELL_LADDER_DOWN:

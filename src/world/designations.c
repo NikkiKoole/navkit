@@ -20,9 +20,10 @@ int activeDesignationCount = 0;
 Blueprint blueprints[MAX_BLUEPRINTS];
 int blueprintCount = 0;
 
-static TreeType NormalizeTreeTypeLocal(TreeType type) {
-    if (type <= TREE_TYPE_NONE || type >= TREE_TYPE_COUNT) return TREE_TYPE_OAK;
-    return type;
+static MaterialType NormalizeTreeTypeLocal(MaterialType mat) {
+    // Validate tree material type
+    if (!IsWoodMaterial(mat)) return MAT_OAK;
+    return mat;
 }
 
 static unsigned int PositionHashLocal(int x, int y, int z) {
@@ -182,13 +183,8 @@ void CompleteMineDesignation(int x, int y, int z) {
     else if (IsGroundCell(ct)) {
         ItemType dropItem = CellDropsItem(ct);
         int dropCount = CellDropCount(ct);
-        MaterialType floorMat = MaterialForGroundCell(ct);
-        bool floorIsNatural = true;
-        
-        if (ct == CELL_TERRAIN) {
-            floorMat = GetWallMaterial(x, y, z);
-            floorIsNatural = IsWallNatural(x, y, z);
-        }
+        MaterialType floorMat = GetWallMaterial(x, y, z);
+        bool floorIsNatural = IsWallNatural(x, y, z);
         
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
@@ -971,8 +967,8 @@ bool HasChopFelledDesignation(int x, int y, int z) {
 }
 
 // Helper: Check if a leaf cell is connected to a trunk of same type within distance
-static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, TreeType type) {
-    MaterialType mat = MaterialFromTreeType(type);
+static bool LeafConnectedToTrunk(int x, int y, int z, int maxDist, MaterialType treeMat) {
+    MaterialType mat = treeMat;
     for (int checkZ = z; checkZ >= 0 && checkZ >= z - maxDist; checkZ--) {
         if (grid[checkZ][y][x] == CELL_TREE_TRUNK &&
             GetWallMaterial(x, y, checkZ) == mat) {
@@ -1037,7 +1033,7 @@ static int GetTrunkHeightAt(int x, int y, int baseZ) {
 // chopperX/Y is where the mover stood - tree falls away from them
 static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
     MaterialType treeMat = GetWallMaterial(x, y, z);
-    TreeType type = NormalizeTreeTypeLocal(TreeTypeFromMaterial(treeMat));
+    MaterialType type = NormalizeTreeTypeLocal(treeMat);
     int leafCount = 0;
 
     int baseZ = FindTrunkBaseZAt(x, y, z);
@@ -1378,7 +1374,7 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     
     // Remove the sapling cell
     MaterialType saplingMat = GetWallMaterial(x, y, z);
-    TreeType type = NormalizeTreeTypeLocal(TreeTypeFromMaterial(saplingMat));
+    MaterialType treeMat = NormalizeTreeTypeLocal(saplingMat);
     grid[z][y][x] = CELL_AIR;
     SetWallMaterial(x, y, z, MAT_NONE);
     MarkChunkDirty(x, y, z);
@@ -1387,7 +1383,7 @@ void CompleteGatherSaplingDesignation(int x, int y, int z, int moverIdx) {
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
     SpawnItemWithMaterial(spawnX, spawnY, (float)z,
-                          SaplingItemFromTreeType(type),
+                          SaplingItemFromTreeType(treeMat),
                           (uint8_t)saplingMat);
     
     // Clear designation
@@ -1462,10 +1458,10 @@ bool HasPlantSaplingDesignation(int x, int y, int z) {
     return designations[z][y][x].type == DESIGNATION_PLANT_SAPLING;
 }
 
-void CompletePlantSaplingDesignation(int x, int y, int z, TreeType type, int moverIdx) {
+void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, int moverIdx) {
     (void)moverIdx;  // Not needed for now
 
-    PlaceSapling(x, y, z, type);
+    PlaceSapling(x, y, z, treeMat);
     
     // Clear designation
     designations[z][y][x].type = DESIGNATION_NONE;

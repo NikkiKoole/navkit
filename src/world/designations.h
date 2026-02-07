@@ -253,7 +253,7 @@ bool HasPlantSaplingDesignation(int x, int y, int z);
 
 // Complete a plant sapling designation (called when work finishes)
 // Places a sapling cell at location
-void CompletePlantSaplingDesignation(int x, int y, int z, TreeType type, int moverIdx);
+void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, int moverIdx);
 
 // Count active plant sapling designations
 int CountPlantSaplingDesignations(void);

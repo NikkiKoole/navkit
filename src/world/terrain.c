@@ -38,48 +38,48 @@ static bool CanPlaceWorldGenTreeAt(int x, int y, int baseZ) {
     return true;
 }
 
-static TreeType PickTreeTypeForSoilSimple(MaterialType mat) {
+static MaterialType PickTreeTypeForSoilSimple(MaterialType mat) {
     switch (mat) {
-        case MAT_PEAT: return TREE_TYPE_WILLOW;
-        case MAT_SAND: return TREE_TYPE_BIRCH;
-        case MAT_GRAVEL: return TREE_TYPE_PINE;
-        case MAT_CLAY: return TREE_TYPE_OAK;
+        case MAT_PEAT: return MAT_WILLOW;
+        case MAT_SAND: return MAT_BIRCH;
+        case MAT_GRAVEL: return MAT_PINE;
+        case MAT_CLAY: return MAT_OAK;
         case MAT_DIRT:
-        default: return TREE_TYPE_OAK;
+        default: return MAT_OAK;
     }
 }
 
-static TreeType PickTreeTypeForWorldGen(MaterialType mat, float wetness, int slope, bool nearWater, float noise) {
+static MaterialType PickTreeTypeForWorldGen(MaterialType mat, float wetness, int slope, bool nearWater, float noise) {
     if (nearWater || wetness > 0.7f) {
-        if (mat == MAT_PEAT || mat == MAT_DIRT) return TREE_TYPE_WILLOW;
+        if (mat == MAT_PEAT || mat == MAT_DIRT) return MAT_WILLOW;
     }
 
     if ((mat == MAT_GRAVEL || slope >= 1) && wetness < 0.45f) {
-        return TREE_TYPE_PINE;
+        return MAT_PINE;
     }
 
     if (mat == MAT_SAND || mat == MAT_GRAVEL) {
-        return TREE_TYPE_BIRCH;
+        return MAT_BIRCH;
     }
 
     if (mat == MAT_CLAY || mat == MAT_DIRT) {
-        return TREE_TYPE_OAK;
+        return MAT_OAK;
     }
 
     if (mat == MAT_PEAT) {
-        return TREE_TYPE_WILLOW;
+        return MAT_WILLOW;
     }
 
-    return (noise < 0.5f) ? TREE_TYPE_OAK : TREE_TYPE_BIRCH;
+    return (noise < 0.5f) ? MAT_OAK : MAT_BIRCH;
 }
 
-static void PlaceWorldGenTree(int x, int y, int baseZ, TreeType type, bool growFull) {
+static void PlaceWorldGenTree(int x, int y, int baseZ, MaterialType treeMat, bool growFull) {
     if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) return;
     int z = baseZ + 1;
     if (growFull) {
-        TreeGrowFull(x, y, z, type);
+        TreeGrowFull(x, y, z, treeMat);
     } else {
-        PlaceSapling(x, y, z, type);
+        PlaceSapling(x, y, z, treeMat);
     }
 }
 
@@ -1088,8 +1088,8 @@ void GenerateSpiral3D(void) {
         grid[z0][decoy1_y][decoy1_x] = CELL_LADDER_BOTH;
         grid[z1][decoy1_y][decoy1_x] = CELL_LADDER_BOTH;
         // Make sure there's floor around it
-        if (grid[z0][decoy1_y][decoy1_x - 1] == CELL_ROCK) PlaceFloor(decoy1_x - 1, decoy1_y, z0);
-        if (grid[z1][decoy1_y][decoy1_x - 1] == CELL_ROCK) PlaceFloor(decoy1_x - 1, decoy1_y, z1);
+        if (grid[z0][decoy1_y][decoy1_x - 1] == CELL_TERRAIN && GetWallMaterial(decoy1_x - 1, decoy1_y, z0) == MAT_GRANITE) PlaceFloor(decoy1_x - 1, decoy1_y, z0);
+        if (grid[z1][decoy1_y][decoy1_x - 1] == CELL_TERRAIN && GetWallMaterial(decoy1_x - 1, decoy1_y, z1) == MAT_GRANITE) PlaceFloor(decoy1_x - 1, decoy1_y, z1);
     }
     
     // Decoy 2: Center area ladder that skips a level but puts you in a bad spot
@@ -2524,8 +2524,8 @@ void GenerateHillsSoilsWater(void) {
                 if (slope >= 2) density *= 0.6f;
                 if (n > density) continue;
 
-                TreeType type = PickTreeTypeForWorldGen(GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
-                PlaceWorldGenTree(x, y, baseZ, type, true);
+                MaterialType treeMat = PickTreeTypeForWorldGen(GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
+                PlaceWorldGenTree(x, y, baseZ, treeMat, true);
                 treePlaced++;
             }
         }
@@ -2562,8 +2562,8 @@ void GeneratePerlin(void) {
                 density = 0.02f;  // light debris in city
             }
             if ((float)GetRandomValue(0, 100) / 100.0f < density) {
-                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
-                PlaceWorldGenTree(x, y, 0, type, true);
+                MaterialType treeMat = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
+                PlaceWorldGenTree(x, y, 0, treeMat, true);
             }
         }
     }
@@ -2645,8 +2645,8 @@ void GenerateCity(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT && GetRandomValue(0, 100) < 5) {
-                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
-                PlaceWorldGenTree(x, y, 0, type, true);
+                MaterialType treeMat = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
+                PlaceWorldGenTree(x, y, 0, treeMat, true);
             }
         }
     }
@@ -3932,13 +3932,13 @@ void GenerateCouncilEstate(void) {
         }
     }
     
-    // Scatter trees/debris in open areas (CELL_DIRT only, not inside buildings)
+    // Scatter trees/debris in open areas (CELL_TERRAIN with MAT_DIRT only, not inside buildings)
     // This adds visual interest to the green spaces around the estate
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT && GetRandomValue(0, 100) < 3) {
-                TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
-                PlaceWorldGenTree(x, y, 0, type, true);
+                MaterialType treeMat = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
+                PlaceWorldGenTree(x, y, 0, treeMat, true);
             }
         }
     }
@@ -3993,13 +3993,13 @@ void GenerateMixed(void) {
     }
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][y][x] == CELL_DIRT) {
+            if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT) {
                 int zx = x / zoneSize, zy = y / zoneSize;
                 bool isCity = (zx < 16 && zy < 16 && zones[zy][zx] == 1);
                 int chance = isCity ? 3 : 15;
                 if (GetRandomValue(0, 100) < chance) {
-                    TreeType type = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
-                    PlaceWorldGenTree(x, y, 0, type, true);
+                    MaterialType treeMat = PickTreeTypeForSoilSimple(GetWallMaterial(x, y, 0));
+                    PlaceWorldGenTree(x, y, 0, treeMat, true);
                 }
             }
         }

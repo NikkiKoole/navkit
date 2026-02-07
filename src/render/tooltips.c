@@ -404,24 +404,23 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     // Cell type
     CellType ct = grid[cellZ][cellY][cellX];
     const char* cellTypeName = CellName(ct);
-    TreeType treeType = TREE_TYPE_NONE;
+    MaterialType treeMat = MAT_NONE;
     
     // Check if this is a tree cell - get type from wall material
     if (ct == CELL_TREE_TRUNK || ct == CELL_TREE_BRANCH || ct == CELL_TREE_ROOT || 
         ct == CELL_TREE_FELLED || ct == CELL_TREE_LEAVES || ct == CELL_SAPLING) {
-        MaterialType mat = GetWallMaterial(cellX, cellY, cellZ);
-        treeType = TreeTypeFromMaterial(mat);
+        treeMat = GetWallMaterial(cellX, cellY, cellZ);
     }
     
     bool isBurned = HAS_CELL_FLAG(cellX, cellY, cellZ, CELL_FLAG_BURNED);
-    if (treeType != TREE_TYPE_NONE) {
+    if (IsWoodMaterial(treeMat)) {
         // Cell type name already includes part info (trunk, branch, root, felled)
         if (isBurned) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s) [BURNED]",
-                cellTypeName, TreeTypeName(treeType));
+                cellTypeName, TreeTypeName(treeMat));
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s)",
-                cellTypeName, TreeTypeName(treeType));
+                cellTypeName, TreeTypeName(treeMat));
         }
     } else {
         if (isBurned) {
@@ -441,7 +440,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         }
     }
     // Rock material (natural terrain)
-    if (wallMat != MAT_NONE && ct == CELL_ROCK) {
+    if (wallMat != MAT_NONE && ct == CELL_TERRAIN && wallMat == MAT_GRANITE) {
         if (IsWallNatural(cellX, cellY, cellZ)) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Rock: %s (natural)", MaterialName(wallMat));
         } else {

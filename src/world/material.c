@@ -45,33 +45,24 @@ void InitMaterials(void) {
     memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
 }
 
-MaterialType MaterialForGroundCell(CellType cell) {
-    switch (cell) {
-        case CELL_DIRT: return MAT_DIRT;
-        case CELL_CLAY: return MAT_CLAY;
-        case CELL_GRAVEL: return MAT_GRAVEL;
-        case CELL_SAND: return MAT_SAND;
-        case CELL_PEAT: return MAT_PEAT;
-        case CELL_ROCK: return MAT_GRANITE;
-        default: return MAT_NONE;
-    }
-}
+
 
 void SyncMaterialsToTerrain(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
-                MaterialType mat = MaterialForGroundCell(cell);
-                // Ground cells get their specific material
+                MaterialType mat = GetWallMaterial(x, y, z);
+                
+                // If material is already set, keep it (from terrain generation)
+                if (mat != MAT_NONE) continue;
+                
                 // Other solid cells (CELL_WALL etc.) default to granite
-                if (mat == MAT_NONE && CellIsSolid(cell)) {
-                    mat = MAT_GRANITE;
+                if (CellIsSolid(cell)) {
+                    SetWallMaterial(x, y, z, MAT_GRANITE);
+                    SetWallNatural(x, y, z);
+                    SetWallFinish(x, y, z, FINISH_ROUGH);
                 }
-                if (mat == MAT_NONE) continue;
-                SetWallMaterial(x, y, z, mat);
-                SetWallNatural(x, y, z);
-                SetWallFinish(x, y, z, FINISH_ROUGH);
             }
         }
     }
@@ -131,23 +122,18 @@ int GetCellSpriteAt(int x, int y, int z) {
         return sprite ? sprite : CellSprite(cell);
     }
 
-    // Tree cells: check wallMaterial first, fall back to treeTypeGrid
-    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
+    // Tree cells: use wallMaterial for species
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || 
+        cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
         if (mat != MAT_NONE) {
             int sprite = 0;
-            if (cell == CELL_TREE_TRUNK) sprite = MaterialTreeTrunkSprite(mat);
-            else if (cell == CELL_TREE_LEAVES) sprite = MaterialTreeLeavesSprite(mat);
-            else if (cell == CELL_SAPLING) sprite = MaterialTreeSaplingSprite(mat);
-            if (sprite) return sprite;
-        }
-        // Fall back to treeTypeGrid (backward compat until treeTypeGrid is removed)
-        TreeType type = (TreeType)treeTypeGrid[z][y][x];
-        if (type > TREE_TYPE_NONE && type < TREE_TYPE_COUNT) {
-            MaterialType treeMat = MaterialFromTreeType(type);
-            int sprite = 0;
-            if (cell == CELL_TREE_TRUNK) sprite = MaterialTreeTrunkSprite(treeMat);
-            else if (cell == CELL_TREE_LEAVES) sprite = MaterialTreeLeavesSprite(treeMat);
-            else if (cell == CELL_SAPLING) sprite = MaterialTreeSaplingSprite(treeMat);
+            if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || cell == CELL_TREE_FELLED) {
+                sprite = MaterialTreeTrunkSprite(mat);
+            } else if (cell == CELL_TREE_LEAVES) {
+                sprite = MaterialTreeLeavesSprite(mat);
+            } else if (cell == CELL_SAPLING) {
+                sprite = MaterialTreeSaplingSprite(mat);
+            }
             if (sprite) return sprite;
         }
     }
@@ -192,19 +178,11 @@ const char* GetCellNameAt(int x, int y, int z) {
     }
 
     // Tree cells: "Oak tree trunk", "Pine tree leaves", etc.
-    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
-        MaterialType treeMat = MAT_NONE;
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT ||
+        cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
         if (mat != MAT_NONE) {
-            treeMat = mat;
-        } else {
-            TreeType type = (TreeType)treeTypeGrid[z][y][x];
-            if (type > TREE_TYPE_NONE && type < TREE_TYPE_COUNT) {
-                treeMat = MaterialFromTreeType(type);
-            }
-        }
-        if (treeMat != MAT_NONE) {
             snprintf(nameBuf, sizeof(nameBuf), "%s %s",
-                     MaterialName(treeMat), CellName(cell));
+                     MaterialName(mat), CellName(cell));
             return nameBuf;
         }
     }
