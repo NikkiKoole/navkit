@@ -105,4 +105,8 @@ Sort by severity. Skip anything with fewer than 2 locations — single-site patt
 
 Do NOT suggest refactors or rewrites. Just report what you see. The developer will decide what (if anything) to change.
 
+## Output destination
+
+Write your full report to `docs/todo/audits/structure-<name>.md` where `<name>` is derived from the argument (e.g., `src/entities/` → `structure-entities.md`, `the job system` → `structure-jobs.md`, `src/core/` → `structure-core.md`).
+
 Now analyze: $ARGUMENTS
