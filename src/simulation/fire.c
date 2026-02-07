@@ -261,13 +261,14 @@ static bool FireTrySpread(int x, int y, int z) {
     FireCell* cell = &fireGrid[z][y][x];
     if (cell->level < FIRE_MIN_SPREAD_LEVEL) return false;
     
-    // Orthogonal neighbors - randomize order
-    int dx[] = {-1, 1, 0, 0};
-    int dy[] = {0, 0, -1, 1};
+    // Orthogonal neighbors + upward (fire rises)
+    int dx[] = {-1, 1, 0, 0, 0};
+    int dy[] = {0, 0, -1, 1, 0};
+    int dz[] = {0, 0, 0, 0, 1};
     
     // Fisher-Yates shuffle
-    int order[] = {0, 1, 2, 3};
-    for (int i = 3; i > 0; i--) {
+    int order[] = {0, 1, 2, 3, 4};
+    for (int i = 4; i > 0; i--) {
         int j = rand() % (i + 1);
         int tmp = order[i];
         order[i] = order[j];
@@ -276,32 +277,33 @@ static bool FireTrySpread(int x, int y, int z) {
     
     bool spread = false;
     
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int dir = order[i];
         int nx = x + dx[dir];
         int ny = y + dy[dir];
+        int nz = z + dz[dir];
         
-        if (!CanBurn(nx, ny, z)) continue;
+        if (!CanBurn(nx, ny, nz)) continue;
         
-        FireCell* neighbor = &fireGrid[z][ny][nx];
+        FireCell* neighbor = &fireGrid[nz][ny][nx];
         if (neighbor->level > 0) continue;  // Already burning
         
         // Base spread chance: higher fire level = more likely to spread
         // Formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel) - targetResistance
         int spreadPercent = fireSpreadBase + (cell->level * fireSpreadPerLevel);
-        spreadPercent -= GetIgnitionResistanceAt(nx, ny, z);
+        spreadPercent -= GetIgnitionResistanceAt(nx, ny, nz);
         if (spreadPercent < 2) spreadPercent = 2;  // Always a tiny chance
         
         // Reduce chance if neighbor is near water
-        if (HasAdjacentWater(nx, ny, z)) {
+        if (HasAdjacentWater(nx, ny, nz)) {
             spreadPercent = spreadPercent * fireWaterReduction / 100;
             if (spreadPercent < 5) spreadPercent = 5;
         }
         
         if ((rand() % 100) < spreadPercent) {
             // Ignite neighbor
-            neighbor->fuel = GetFuelAt(nx, ny, z);
-            SetFireLevel(nx, ny, z, FIRE_MIN_SPREAD_LEVEL);  // Start at low intensity
+            neighbor->fuel = GetFuelAt(nx, ny, nz);
+            SetFireLevel(nx, ny, nz, FIRE_MIN_SPREAD_LEVEL);  // Start at low intensity
             spread = true;
         }
     }
