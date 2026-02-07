@@ -1,4 +1,5 @@
 #include "items.h"
+#include "item_defs.h"  // for ItemName
 #include "mover.h"  // for CELL_SIZE
 #include "../world/grid.h"   // for gridWidth, gridHeight, gridDepth
 #include "../world/material.h"  // for MaterialType
@@ -262,6 +263,9 @@ void ItemsTick(float dt) {
 
 void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
     if (itemIndex >= 0 && itemIndex < MAX_ITEMS && items[itemIndex].active) {
+        printf("DEBUG SetUnreachable: item %d (%s) cooldown=%.1f at cell (%d,%d,z%d)\n",
+               itemIndex, ItemName(items[itemIndex].type), cooldown,
+               (int)(items[itemIndex].x / CELL_SIZE), (int)(items[itemIndex].y / CELL_SIZE), (int)items[itemIndex].z);
         items[itemIndex].unreachableCooldown = cooldown;
     }
 }

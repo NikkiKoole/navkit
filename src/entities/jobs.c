@@ -2816,7 +2816,7 @@ static bool HaulItemFilter(int itemIdx, void* userData) {
     if (!item->active) return false;
     if (item->reservedBy != -1) return false;
     if (item->state != ITEM_ON_GROUND) return false;
-    if (item->unreachableCooldown > 0.0f) return false;
+    if (item->unreachableCooldown > 0.0f) { printf("DEBUG HaulFilter: item %d (%s) rejected: unreachable cooldown %.1f\n", itemIdx, ItemName(item->type), item->unreachableCooldown); return false; }
     // Skip items on different z-level (prevents cross-z-level cooldown poisoning)
     if ((int)item->z != ctx->moverZ) return false;
     if (!ItemTypeIsValidForJobs(item->type)) return false;
