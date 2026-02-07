@@ -574,6 +574,7 @@ void HandleInput(void);
 // From core/saveload.c
 bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
+void RebuildPostLoadState(void);
 
 // ============================================================================
 // Headless Mode - Run simulation without GUI

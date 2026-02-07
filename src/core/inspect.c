@@ -143,7 +143,7 @@ static void print_mover(int idx) {
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
         Job* job = &insp_jobs[m->currentJobId];
         printf("\n  --- Job %d ---\n", m->currentJobId);
-        printf("  Type: %s\n", job->type < 13 ? jobTypeNames[job->type] : "?");
+        printf("  Type: %s\n", job->type < 15 ? jobTypeNames[job->type] : "?");
         printf("  Step: %d\n", job->step);
         printf("  Progress: %.2f\n", job->progress);
         if (job->targetItem >= 0) printf("  Target item: %d\n", job->targetItem);
@@ -196,7 +196,7 @@ static void print_job(int idx) {
     }
     Job* job = &insp_jobs[idx];
     printf("\n=== JOB %d ===\n", idx);
-    printf("Type: %s (%d)\n", job->type < 13 ? jobTypeNames[job->type] : "?", job->type);
+    printf("Type: %s (%d)\n", job->type < 15 ? jobTypeNames[job->type] : "?", job->type);
     printf("Assigned mover: %d\n", job->assignedMover);
     printf("Step: %d\n", job->step);
     printf("Progress: %.2f\n", job->progress);
@@ -278,7 +278,7 @@ static void print_blueprint(int idx) {
     printf("Progress: %.1f%%\n", bp->progress * 100.0f);
 }
 
-static const char* workshopTypeNames[] = {"STONECUTTER"};
+static const char* workshopTypeNames[] = {"STONECUTTER", "SAWMILL", "KILN"};
 static const char* billModeNames[] = {"DO_X_TIMES", "DO_UNTIL_X", "DO_FOREVER"};
 
 static void print_workshop(int idx) {
@@ -291,7 +291,7 @@ static void print_workshop(int idx) {
     printf("Active: %s\n", ws->active ? "YES" : "no");
     if (!ws->active) return;
     
-    printf("Type: %s\n", ws->type < 1 ? workshopTypeNames[ws->type] : "UNKNOWN");
+    printf("Type: %s\n", ws->type < 3 ? workshopTypeNames[ws->type] : "UNKNOWN");
     printf("Position: (%d, %d, z%d)\n", ws->x, ws->y, ws->z);
     printf("Size: %d x %d\n", ws->width, ws->height);
     printf("Work tile: (%d, %d)\n", ws->workTileX, ws->workTileY);
@@ -379,7 +379,7 @@ static void print_cell(int x, int y, int z) {
         else {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
             CellType cellBelow = insp_gridCells[idxBelow];
-            printf(" (solid below: %s)", cell < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
+            printf(" (solid below: %s)", cellBelow < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
         }
     } else {
         if (CellBlocksMovement(cell)) printf(" (blocks movement)");
@@ -431,7 +431,7 @@ static void print_cell(int x, int y, int z) {
     printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {
-        const char* desigName = desig.type < 8 ? designationTypeNames[desig.type] : "?";
+        const char* desigName = desig.type < 10 ? designationTypeNames[desig.type] : "?";
         printf("Designation: %s (type=%d), assigned to mover %d, progress %.0f%%\n",
                desigName, desig.type, desig.assignedMover, desig.progress * 100);
     }
@@ -643,7 +643,7 @@ static void print_designations(void) {
                 
                 CellType cell = insp_gridCells[idx];
                 const char* cellName = cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "?";
-                const char* desigName = d->type < 8 ? designationTypeNames[d->type] : "?";
+                const char* desigName = d->type < 10 ? designationTypeNames[d->type] : "?";
                 
                 printf("(%d,%d,z%d) %s %s", x, y, z, desigName, cellName);
                 if (d->assignedMover >= 0) {
@@ -723,7 +723,7 @@ static void print_stuck_movers(void) {
                    insp_movers[i].pathLength, insp_movers[i].needsRepath ? "yes" : "no");
             if (insp_movers[i].currentJobId >= 0) {
                 Job* j = &insp_jobs[insp_movers[i].currentJobId];
-                printf("  Job: %s step=%d\n", j->type < 13 ? jobTypeNames[j->type] : "?", j->step);
+                printf("  Job: %s step=%d\n", j->type < 15 ? jobTypeNames[j->type] : "?", j->step);
             }
             found++;
         }
@@ -756,7 +756,7 @@ static void print_active_jobs(void) {
         int jid = insp_activeJobList[i];
         Job* j = &insp_jobs[jid];
         printf("Job %d: %s mover=%d step=%d", 
-               jid, j->type < 13 ? jobTypeNames[j->type] : "?", j->assignedMover, j->step);
+               jid, j->type < 15 ? jobTypeNames[j->type] : "?", j->assignedMover, j->step);
         if (j->targetItem >= 0) printf(" item=%d", j->targetItem);
         if (j->carryingItem >= 0) printf(" carrying=%d", j->carryingItem);
         printf("\n");

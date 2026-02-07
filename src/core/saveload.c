@@ -272,6 +272,44 @@ bool SaveWorld(const char* filename) {
     return true;
 }
 
+// Rebuild transient state that isn't saved: entity counts, job free list,
+// and clear stale item reservations. Called after LoadWorld and usable from tests.
+void RebuildPostLoadState(void) {
+    // Rebuild entity count globals
+    itemCount = 0;
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (items[i].active) itemCount++;
+    }
+    stockpileCount = 0;
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        if (stockpiles[i].active) stockpileCount++;
+    }
+    workshopCount = 0;
+    for (int i = 0; i < MAX_WORKSHOPS; i++) {
+        if (workshops[i].active) workshopCount++;
+    }
+    blueprintCount = 0;
+    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
+        if (blueprints[i].active) blueprintCount++;
+    }
+    
+    // Rebuild job free list (not saved, must be reconstructed from gaps)
+    jobFreeCount = 0;
+    for (int i = 0; i < jobHighWaterMark; i++) {
+        if (!jobs[i].active && !jobIsActive[i]) {
+            jobFreeList[jobFreeCount++] = i;
+        }
+    }
+    
+    // Clear transient item reservations (not meaningful across save/load)
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (items[i].active) {
+            items[i].reservedBy = -1;
+            items[i].unreachableCooldown = 0.0f;
+        }
+    }
+}
+
 bool LoadWorld(const char* filename) {
     FILE* f = fopen(filename, "rb");
     if (!f) {
@@ -1034,6 +1072,8 @@ bool LoadWorld(const char* filename) {
     }
     
     fclose(f);
+    
+    RebuildPostLoadState();
     
     // Reset simulation accumulators (they weren't saved, grid data was)
     ResetSmokeAccumulators();

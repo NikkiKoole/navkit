@@ -14,6 +14,8 @@
 #include <string.h>
 #include <math.h>
 
+// From core/saveload.c
+void RebuildPostLoadState(void);
 
 // Global flag for verbose output in tests
 static bool test_verbose = false;
@@ -8966,11 +8968,7 @@ describe(workshop_lifecycle) {
             
             // More importantly: if the bill shifted, the recipe should still match
             // what the job was set up for. Otherwise the mover is crafting the wrong thing!
-            int recipeCount;
-            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
             Bill* currentBill = &ws->bills[job->targetBillIdx];
-            Recipe* currentRecipe = &recipes[currentBill->recipeIdx];
-            
             // The job was set up for "Cut Sticks" (recipe 1, workRequired 2.0)
             // If it's now pointing to "Saw Planks" (recipe 0, workRequired 4.0), that's wrong!
             expect(currentBill->recipeIdx == 1);  // Should still be "Cut Sticks"
@@ -9523,6 +9521,394 @@ describe(unreachable_cooldown_poisoning) {
     }
 }
 
+// =============================================================================
+// Save/Load State Restoration Tests
+// 
+// These tests verify that after a save/load cycle, the game world is in a
+// consistent state. We simulate what LoadWorld does (raw array copies) and
+// check that derived state (counts, free lists, reservations) is correct.
+//
+// Philosophy: A player saves their game with 5 items, 2 stockpiles, and a
+// workshop. After loading, they expect the game to behave identically.
+// These tests catch cases where it wouldn't.
+// =============================================================================
+
+describe(saveload_state_restoration) {
+    // =========================================================================
+    // Finding 3: Entity count globals not restored on load
+    // =========================================================================
+    // Story: After I save and load my game, the item count, stockpile count,
+    // workshop count, and blueprint count should reflect reality -- not zero.
+    
+    it("should have correct itemCount after simulated load") {
+        // Setup: Create items normally, verify count, then simulate post-load
+        // state where itemHighWaterMark is set but itemCount is zero.
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create 3 items using normal API
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLUE);
+        
+        // Verify normal state
+        expect(itemCount == 3);
+        expect(itemHighWaterMark == 3);
+        
+        // Simulate what LoadWorld does: it reads itemHighWaterMark and the items
+        // array, but does NOT set itemCount. After fread, itemCount is whatever
+        // it was before (ClearItems sets it to 0, and LoadWorld doesn't update it).
+        // 
+        // We simulate this by zeroing itemCount (as if LoadWorld just finished
+        // reading the array without updating the count).
+        itemCount = 0;
+        
+        // Call RebuildPostLoadState to fix up the counts (the fix)
+        RebuildPostLoadState();
+        
+        // Player expectation: itemCount should reflect the actual number of active
+        // items. With itemCount = 0, systems that check itemCount (like "is the
+        // world empty?") will give wrong answers.
+        
+        // Count how many items are actually active
+        int actualCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active) actualCount++;
+        }
+        
+        expect(itemCount == actualCount);
+    }
+    
+    it("should have correct stockpileCount after simulated load") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create 2 stockpiles
+        CreateStockpile(1, 1, 0, 2, 2);
+        CreateStockpile(5, 1, 0, 2, 2);
+        
+        expect(stockpileCount == 2);
+        
+        // Simulate post-load: LoadWorld reads the stockpiles array but never
+        // sets stockpileCount. It remains at whatever value ClearStockpiles
+        // left it (0 from the clear at start of LoadWorld).
+        stockpileCount = 0;
+        
+        // Call RebuildPostLoadState to fix up the counts (the fix)
+        RebuildPostLoadState();
+        
+        // Count actual active stockpiles
+        int actualCount = 0;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            if (stockpiles[i].active) actualCount++;
+        }
+        
+        expect(stockpileCount == actualCount);
+    }
+    
+    it("should have correct workshopCount after simulated load") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+        
+        // Create a workshop
+        int wsIdx = CreateWorkshop(2, 2, 0, WORKSHOP_STONECUTTER);
+        expect(wsIdx >= 0);
+        expect(workshopCount == 1);
+        
+        // Simulate post-load: LoadWorld reads workshops array but never
+        // sets workshopCount.
+        workshopCount = 0;
+        
+        // Call RebuildPostLoadState to fix up the counts (the fix)
+        RebuildPostLoadState();
+        
+        // Count actual active workshops
+        int actualCount = 0;
+        for (int i = 0; i < MAX_WORKSHOPS; i++) {
+            if (workshops[i].active) actualCount++;
+        }
+        
+        expect(workshopCount == actualCount);
+    }
+    
+    it("should have correct itemCount with holes in the array after simulated load") {
+        // Scenario: Player creates 5 items, deletes items 1 and 3 (leaving holes),
+        // saves and loads. itemCount should be 3, not 0 or 5.
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create 5 items
+        int idx0 = SpawnItem(1 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_RED);
+        int idx1 = SpawnItem(2 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_GREEN);
+        int idx2 = SpawnItem(3 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_BLUE);
+        int idx3 = SpawnItem(4 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_RED);
+        int idx4 = SpawnItem(5 * CELL_SIZE, 1 * CELL_SIZE, 0.0f, ITEM_GREEN);
+        (void)idx0; (void)idx2; (void)idx4;
+        
+        expect(itemCount == 5);
+        
+        // Delete items 1 and 3 (creating holes)
+        DeleteItem(idx1);
+        DeleteItem(idx3);
+        
+        expect(itemCount == 3);
+        
+        // Simulate post-load: array has holes, itemCount gets zeroed
+        itemCount = 0;
+        
+        // Call RebuildPostLoadState to fix up the counts (the fix)
+        RebuildPostLoadState();
+        
+        // Count actual active items
+        int actualCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active) actualCount++;
+        }
+        
+        expect(itemCount == actualCount);
+    }
+    
+    // =========================================================================
+    // Finding 4: jobFreeList not rebuilt after load
+    // =========================================================================
+    // Story: After many save/load cycles, I shouldn't run out of job slots
+    // even if most are unused.
+    
+    it("should reuse freed job slots after simulated load") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create 5 jobs, then release 3 of them (simulating completed jobs)
+        int job0 = CreateJob(JOBTYPE_HAUL);
+        int job1 = CreateJob(JOBTYPE_HAUL);
+        int job2 = CreateJob(JOBTYPE_HAUL);
+        int job3 = CreateJob(JOBTYPE_HAUL);
+        int job4 = CreateJob(JOBTYPE_HAUL);
+        (void)job0; (void)job2; (void)job4;
+        
+        expect(jobHighWaterMark == 5);
+        expect(activeJobCount == 5);
+        
+        // Release 3 jobs (creating holes in the array)
+        ReleaseJob(job1);
+        ReleaseJob(job3);
+        ReleaseJob(job0);
+        
+        expect(activeJobCount == 2);
+        expect(jobFreeCount == 3);  // 3 slots available for reuse
+        
+        // Simulate post-load: LoadWorld reads jobHighWaterMark, activeJobCount,
+        // jobs array, jobIsActive, and activeJobList. But it does NOT rebuild
+        // the jobFreeList. After load, jobFreeCount is 0.
+        jobFreeCount = 0;
+        
+        // Call RebuildPostLoadState to rebuild the free list (the fix)
+        RebuildPostLoadState();
+        
+        // Now try to create new jobs. With the free list rebuilt, CreateJob
+        // should reuse freed slots instead of growing jobHighWaterMark.
+        int hwmBefore = jobHighWaterMark;
+        
+        int newJob = CreateJob(JOBTYPE_HAUL);
+        expect(newJob >= 0);  // Should succeed
+        
+        expect(newJob < hwmBefore);  // Should reuse a freed slot, not grow watermark
+    }
+    
+    it("should be able to create jobs up to capacity after simulated load with many holes") {
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 4);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create 10 jobs, release 8 (lots of holes)
+        int jobIds[10];
+        for (int i = 0; i < 10; i++) {
+            jobIds[i] = CreateJob(JOBTYPE_HAUL);
+        }
+        expect(jobHighWaterMark == 10);
+        
+        // Release jobs 0-7 (keep only 8 and 9)
+        for (int i = 0; i < 8; i++) {
+            ReleaseJob(jobIds[i]);
+        }
+        expect(activeJobCount == 2);
+        expect(jobFreeCount == 8);
+        
+        // Simulate post-load: free list lost
+        jobFreeCount = 0;
+        
+        // Call RebuildPostLoadState to rebuild the free list (the fix)
+        RebuildPostLoadState();
+        
+        // Try to create 8 new jobs (should reuse the freed slots)
+        int newJobCount = 0;
+        int hwmBefore = jobHighWaterMark;
+        for (int i = 0; i < 8; i++) {
+            int j = CreateJob(JOBTYPE_HAUL);
+            if (j >= 0) newJobCount++;
+        }
+        
+        expect(newJobCount == 8);
+        expect(jobHighWaterMark == hwmBefore);  // Should not have grown
+    }
+    
+    // =========================================================================
+    // Finding 5: Item reservations not cleared on load
+    // =========================================================================
+    // Story: After loading a save, items on the ground should be available
+    // for hauling -- not stuck with stale reservations from the previous session.
+    
+    it("should not have stale item reservations after simulated load") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create items, some reserved (simulating mid-haul state when saved)
+        int item0 = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        int item1 = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GREEN);
+        int item2 = SpawnItem(7 * CELL_SIZE + CELL_SIZE * 0.5f, 3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLUE);
+        
+        // Reserve items 0 and 2 (simulating active haul jobs at save time)
+        ReserveItem(item0, 0);
+        ReserveItem(item2, 1);
+        
+        expect(GetItemReservedBy(item0) == 0);
+        expect(GetItemReservedBy(item1) == -1);
+        expect(GetItemReservedBy(item2) == 1);
+        
+        // Simulate post-load: LoadWorld reads item array as-is, keeping
+        // reservedBy fields. The jobs that held these reservations no longer
+        // exist (LoadWorld clears jobs and reassigns). But the item reservations
+        // persist, so these items appear "taken" and can never be hauled.
+        //
+        // LoadWorld DOES clear stockpile reservedBy (explicit memset), but
+        // does NOT clear item reservedBy.
+        
+        // Call RebuildPostLoadState to clear stale reservations (the fix)
+        RebuildPostLoadState();
+        
+        // After a load, items on the ground should be unreserved
+        expect(GetItemReservedBy(item0) == -1);  // Should be cleared after load
+        expect(GetItemReservedBy(item1) == -1);  // Was already clear
+        expect(GetItemReservedBy(item2) == -1);  // Should be cleared after load
+    }
+    
+    it("should allow hauling items that had stale reservations after simulated load") {
+        // Full integration test: items with stale reservations should be
+        // haulable after a simulated load
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearJobs();
+        
+        // Create a mover
+        Mover* m = &movers[0];
+        Point goal = {1, 1, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Create an item and give it a stale reservation
+        int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items[itemIdx].reservedBy = 42;  // Stale reservation from pre-load mover
+        
+        // Create a stockpile
+        int spIdx = CreateStockpile(8, 8, 0, 1, 1);
+        SetStockpileFilter(spIdx, ITEM_RED, true);
+        
+        // Call RebuildPostLoadState to clear stale reservations (the fix)
+        RebuildPostLoadState();
+        
+        // Try to assign jobs -- reservation should be cleared now
+        AssignJobs();
+        
+        expect(!MoverIsIdle(m));  // Should have been assigned a haul job
+        expect(MoverGetTargetItem(m) == itemIdx);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -9642,6 +10028,9 @@ int main(int argc, char* argv[]) {
     
     // Unreachable cooldown poisoning (cross-z-level bug)
     test(unreachable_cooldown_poisoning);
+    
+    // Save/load state restoration (audit findings)
+    test(saveload_state_restoration);
     
     return summary();
 }

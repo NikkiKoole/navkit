@@ -72,7 +72,7 @@ static int MaterialWallSprite(MaterialType mat) {
         case MAT_PINE:
         case MAT_BIRCH:
         case MAT_WILLOW:
-            return SPRITE_wood_wall;
+            return SPRITE_wall_wood;
         case MAT_GRANITE:
             return SPRITE_rock;
         case MAT_DIRT:
@@ -97,7 +97,7 @@ static int MaterialFloorSprite(MaterialType mat) {
         case MAT_PINE:
         case MAT_BIRCH:
         case MAT_WILLOW:
-            return SPRITE_wood_floor;
+            return SPRITE_floor_wood;
         case MAT_GRANITE:
             return SPRITE_rock;
         case MAT_DIRT:
@@ -139,11 +139,12 @@ static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
 static bool ItemUsesBorder(ItemType type) {
     return type == ITEM_DIRT || type == ITEM_CLAY || type == ITEM_GRAVEL ||
            type == ITEM_SAND || type == ITEM_PEAT || type == ITEM_ROCK ||
-           type == ITEM_BRICKS || type == ITEM_LOG;
+           type == ITEM_BRICKS || type == ITEM_BLOCKS || type == ITEM_LOG;
 }
 
 static Color ItemBorderTint(ItemType type) {
     switch (type) {
+        case ITEM_BLOCKS:
         case ITEM_BRICKS:
             return (Color){220, 220, 220, 255};  // processed
         case ITEM_LOG:
@@ -177,6 +178,9 @@ static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
             case MAT_OAK:
             default: return SPRITE_tree_trunk_oak;
         }
+    }
+    if (type == ITEM_BLOCKS) {
+        return MaterialFloorSprite((MaterialType)material);
     }
     return ItemSprite(type);
 }

@@ -16,6 +16,11 @@ void ProfileReset(void) {}
 // Stub UI functions - tests don't need real UI
 void AddMessage(const char* text, Color color) { (void)text; (void)color; }
 
+// View state stubs (needed by saveload.c)
+float zoom = 1.0f;
+Vector2 offset = {0};
+int currentViewZ = 0;
+
 // Global variables needed by terrain generators
 #include <stdint.h>
 uint64_t worldSeed = 12345;
@@ -60,3 +65,4 @@ int hillsWaterConnectivitySmallThreshold = 50;
 #include "../src/entities/mover.c"
 #include "../src/entities/workshops.c"
 #include "../src/entities/jobs.c"
+#include "../src/core/saveload.c"
