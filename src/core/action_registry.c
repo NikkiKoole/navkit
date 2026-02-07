@@ -3,17 +3,6 @@
 // Centralized registry for all InputAction metadata
 // This eliminates parallel update patterns across GetActionName(), InputMode_GetBarText(),
 // keybinding handlers, and mode transition logic.
-//
-// UI INCONSISTENCIES NOTED:
-// - Dirt can be drawn via: ACTION_DRAW_DIRT OR ACTION_DRAW_SOIL_DIRT (duplicate functionality)
-// - Rock placement is under ACTION_DRAW_ROCK (top-level) not in a category
-// - Soil category (ACTION_DRAW_SOIL) contains DIRT again, plus CLAY/GRAVEL/SAND/PEAT
-// - Workshop has both category (ACTION_DRAW_WORKSHOP) and specific types (STONECUTTER/SAWMILL/KILN)
-//
-// RECOMMENDATIONS:
-// 1. Remove ACTION_DRAW_DIRT (keep only ACTION_DRAW_SOIL_DIRT for consistency)
-// 2. Move ACTION_DRAW_ROCK into soil category as ACTION_DRAW_SOIL_ROCK?
-// 3. Or keep current structure but clarify: DRAW_DIRT/ROCK are "quick" soil placement?
 
 const ActionDef ACTION_REGISTRY[] = {
     // ACTION_NONE - no action selected
@@ -98,32 +87,6 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     
-    // DRAW > DIRT - d[I]rt (UI ISSUE: duplicate with ACTION_DRAW_SOIL_DIRT)
-    {
-        .action = ACTION_DRAW_DIRT,
-        .name = "DIRT",
-        .barText = "L-drag place  R-drag erase  [ESC]Back",
-        .barKey = 'i',
-        .barUnderlinePos = 2,  // d[I]rt
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = true
-    },
-    
-    // DRAW > ROCK - roc[k] (UI ISSUE: not in soil category but soils are?)
-    {
-        .action = ACTION_DRAW_ROCK,
-        .name = "ROCK",
-        .barText = "L-drag place  R-drag erase  [ESC]Back",
-        .barKey = 'k',
-        .barUnderlinePos = 3,  // roc[k]
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = true
-    },
-    
     // DRAW > WORKSHOP (category) - workshop([T])
     {
         .action = ACTION_DRAW_WORKSHOP,
@@ -180,7 +143,7 @@ const ActionDef ACTION_REGISTRY[] = {
     {
         .action = ACTION_DRAW_SOIL,
         .name = "SOIL",
-        .barText = "[D]irt  [C]lay  [G]ravel  [S]and  [P]eat    [ESC]Back",
+        .barText = "[D]irt  [C]lay  [G]ravel  [S]and  [P]eat  roc[K]    [ESC]Back",
         .barKey = 'o',
         .barUnderlinePos = 1,  // s[O]il
         .requiredMode = MODE_DRAW,
@@ -248,6 +211,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 'p',
         .barUnderlinePos = 0,  // [P]eat
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = true,
+        .canErase = false
+    },
+    
+    // DRAW > SOIL > ROCK - roc[K]
+    {
+        .action = ACTION_DRAW_SOIL_ROCK,
+        .name = "ROCK",
+        .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
+        .barKey = 'k',
+        .barUnderlinePos = 3,  // roc[K]
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
         .canDrag = true,

@@ -258,31 +258,6 @@ static void ExecuteEraseRamp(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
-static void ExecuteBuildDirt(int x1, int y1, int x2, int y2, int z) {
-    int count = 0;
-    for (int dy = y1; dy <= y2; dy++) {
-        for (int dx = x1; dx <= x2; dx++) {
-            CellType cell = grid[z][dy][dx];
-            // Can place dirt on air
-            if (cell == CELL_AIR) {
-                CellPlacementSpec spec = {
-                    .cellType = CELL_DIRT,
-                    .wallMat = MAT_DIRT,
-                    .wallNatural = true,
-                    .wallFinish = FINISH_ROUGH,
-                    .clearFloor = false,
-                    .clearWater = false,
-                    .surfaceType = SURFACE_TALL_GRASS
-                };
-                PlaceCellFull(dx, dy, z, spec);
-                count++;
-            }
-        }
-    }
-    if (count > 0) {
-        AddMessage(TextFormat("Placed %d dirt%s", count, count > 1 ? " tiles" : ""), GREEN);
-    }
-}
 
 static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
@@ -495,26 +470,6 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
     // Could not find anywhere to place within radius
 }
 
-static void ExecuteEraseDirt(int x1, int y1, int x2, int y2, int z) {
-    int count = 0;
-    for (int dy = y1; dy <= y2; dy++) {
-        for (int dx = x1; dx <= x2; dx++) {
-            if (grid[z][dy][dx] == CELL_DIRT) {
-                CellType eraseType = (z == 0) ? CELL_BEDROCK : CELL_AIR;
-                grid[z][dy][dx] = eraseType;
-                MarkChunkDirty(dx, dy, z);
-                SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
-                SetWallMaterial(dx, dy, z, MAT_NONE);
-                ClearWallNatural(dx, dy, z);
-                SetWallFinish(dx, dy, z, FINISH_ROUGH);
-                count++;
-            }
-        }
-    }
-    if (count > 0) {
-        AddMessage(TextFormat("Erased %d dirt%s", count, count > 1 ? " tiles" : ""), ORANGE);
-    }
-}
 
 static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
@@ -1689,8 +1644,6 @@ void HandleInput(void) {
                 if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_RAMP; }
                 if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
                 if (CheckKey(KEY_O)) { inputAction = ACTION_DRAW_SOIL; }
-                if (CheckKey(KEY_I)) { inputAction = ACTION_DRAW_DIRT; }
-                if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_ROCK; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
                 break;
             case MODE_WORK:
@@ -1760,6 +1713,7 @@ void HandleInput(void) {
         if (CheckKey(KEY_G)) { inputAction = ACTION_DRAW_SOIL_GRAVEL; }
         if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_SOIL_SAND; }
         if (CheckKey(KEY_P)) { inputAction = ACTION_DRAW_SOIL_PEAT; }
+        if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_SOIL_ROCK; }
         return;
     }
 
@@ -1775,8 +1729,6 @@ void HandleInput(void) {
         case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
         case ACTION_DRAW_RAMP:      backOneLevel = CheckKey(KEY_R); break;
         case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
-        case ACTION_DRAW_DIRT:      backOneLevel = CheckKey(KEY_I); break;
-        case ACTION_DRAW_ROCK:      backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
         case ACTION_DRAW_WORKSHOP_STONECUTTER: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_WORKSHOP_SAWMILL:     backOneLevel = CheckKey(KEY_A); break;
@@ -1787,6 +1739,7 @@ void HandleInput(void) {
         case ACTION_DRAW_SOIL_GRAVEL: backOneLevel = CheckKey(KEY_G); break;
         case ACTION_DRAW_SOIL_SAND:  backOneLevel = CheckKey(KEY_S); break;
         case ACTION_DRAW_SOIL_PEAT:  backOneLevel = CheckKey(KEY_P); break;
+        case ACTION_DRAW_SOIL_ROCK:  backOneLevel = CheckKey(KEY_K); break;
         // Dig actions
         case ACTION_WORK_MINE:         backOneLevel = CheckKey(KEY_M); break;
         case ACTION_WORK_CHANNEL:      backOneLevel = CheckKey(KEY_H); break;
@@ -1919,9 +1872,6 @@ void HandleInput(void) {
         
         // Execute pile placement at current mouse position
         switch (inputAction) {
-            case ACTION_DRAW_ROCK:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_ROCK, MAT_GRANITE, "rock");
-                break;
             case ACTION_DRAW_SOIL_DIRT:
                 ExecutePileSoil(mouseX, mouseY, z, CELL_DIRT, MAT_DIRT, "dirt");
                 break;
@@ -1936,6 +1886,9 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_SOIL_PEAT:
                 ExecutePileSoil(mouseX, mouseY, z, CELL_PEAT, MAT_DIRT, "peat");
+                break;
+            case ACTION_DRAW_SOIL_ROCK:
+                ExecutePileSoil(mouseX, mouseY, z, CELL_ROCK, MAT_GRANITE, "rock");
                 break;
             default:
                 break;
@@ -1971,20 +1924,6 @@ void HandleInput(void) {
             case ACTION_DRAW_STOCKPILE:
                 if (leftClick) ExecuteCreateStockpile(x1, y1, x2, y2, z);
                 else ExecuteEraseStockpile(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_DIRT:
-                if (leftClick) ExecuteBuildDirt(x1, y1, x2, y2, z);
-                else ExecuteEraseDirt(x1, y1, x2, y2, z);
-                break;
-            case ACTION_DRAW_ROCK:
-                if (leftClick) {
-                    if (shift) {
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_ROCK, MAT_GRANITE, "rock");
-                    } else {
-                        ExecuteBuildRock(x1, y1, x2, y2, z);
-                    }
-                }
-                else ExecuteErase(x1, y1, x2, y2, z);
                 break;
             case ACTION_DRAW_WORKSHOP_STONECUTTER:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_STONECUTTER);
@@ -2038,6 +1977,15 @@ void HandleInput(void) {
                     ExecutePileSoil(dragStartX, dragStartY, z, CELL_PEAT, MAT_PEAT, "peat");
                 } else {
                     ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_PEAT, "peat");
+                }
+                }
+                break;
+            case ACTION_DRAW_SOIL_ROCK:
+                if (leftClick) {
+                if (shift) {
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_ROCK, MAT_GRANITE, "rock");
+                } else {
+                    ExecuteBuildRock(x1, y1, x2, y2, z);
                 }
                 }
                 break;

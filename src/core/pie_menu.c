@@ -68,10 +68,9 @@ static PieMenuDef menus[MENU_COUNT] = {
         { "Ladder",    ACTION_DRAW_LADDER,     -1,              BROWN },
         { "Ramp",      ACTION_DRAW_RAMP,       -1,              GRAY },
         { "Stockpile", ACTION_DRAW_STOCKPILE,  -1,              GREEN },
-        { "Dirt",      ACTION_DRAW_DIRT,       -1,              BROWN },
-        { "Rock",      ACTION_DRAW_ROCK,       -1,              DARKGRAY },
         { "Workshop",  ACTION_NONE,            MENU_DRAW_WORKSHOP, ORANGE },
-    }, 8 },
+        { "Soil",      ACTION_NONE,            MENU_DRAW_SOIL,    BROWN },
+    }, 6 },
 
     // MENU_SANDBOX
     { "Sandbox", {
@@ -99,7 +98,8 @@ static PieMenuDef menus[MENU_COUNT] = {
         { "Gravel", ACTION_DRAW_SOIL_GRAVEL, -1, GRAY },
         { "Sand",   ACTION_DRAW_SOIL_SAND,   -1, YELLOW },
         { "Peat",   ACTION_DRAW_SOIL_PEAT,   -1, DARKBROWN },
-    }, 5 },
+        { "Rock",   ACTION_DRAW_SOIL_ROCK,   -1, DARKGRAY },
+    }, 6 },
 };
 
 // ============================================================================
@@ -198,13 +198,12 @@ static void PieMenu_ApplyAction(InputAction action) {
             inputMode = MODE_WORK; workSubMode = SUBMODE_NONE; break;
         case ACTION_DRAW_WALL: case ACTION_DRAW_FLOOR:
         case ACTION_DRAW_LADDER: case ACTION_DRAW_RAMP:
-        case ACTION_DRAW_STOCKPILE: case ACTION_DRAW_DIRT:
-        case ACTION_DRAW_ROCK:
+        case ACTION_DRAW_STOCKPILE:
         case ACTION_DRAW_WORKSHOP_STONECUTTER: case ACTION_DRAW_WORKSHOP_SAWMILL:
         case ACTION_DRAW_WORKSHOP_KILN:
         case ACTION_DRAW_SOIL_DIRT: case ACTION_DRAW_SOIL_CLAY:
         case ACTION_DRAW_SOIL_GRAVEL: case ACTION_DRAW_SOIL_SAND:
-        case ACTION_DRAW_SOIL_PEAT:
+        case ACTION_DRAW_SOIL_PEAT: case ACTION_DRAW_SOIL_ROCK:
             inputMode = MODE_DRAW; workSubMode = SUBMODE_NONE; break;
         case ACTION_SANDBOX_WATER: case ACTION_SANDBOX_FIRE:
         case ACTION_SANDBOX_HEAT: case ACTION_SANDBOX_COLD:

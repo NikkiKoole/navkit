@@ -84,7 +84,7 @@ const char* InputMode_GetBarText(void) {
         // In a mode, no action selected - show available actions/submodes
         switch (inputMode) {
             case MODE_DRAW:
-                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  s[O]il  roc[k]  d[I]rt  workshop([T])    [ESC]Back";
+                return "DRAW: [W]all  [F]loor  [L]adder  [R]amp  [S]tockpile  s[O]il  workshop([T])    [ESC]Back";
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
                     return "WORK: [D]ig  [B]uild  [H]arvest  [G]ather    [ESC]Back";
@@ -295,8 +295,6 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_LADDER:    actionKey = KEY_L; break;
         case ACTION_DRAW_RAMP:      actionKey = KEY_R; break;
         case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
-        case ACTION_DRAW_DIRT:      actionKey = KEY_I; actionUnderline = 1; break;
-        case ACTION_DRAW_ROCK:      actionKey = KEY_K; actionUnderline = 3; break;
         case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
         case ACTION_DRAW_WORKSHOP_STONECUTTER: actionKey = KEY_S; break;
         case ACTION_DRAW_WORKSHOP_SAWMILL:     actionKey = KEY_A; actionUnderline = 1; break;
@@ -307,6 +305,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_SOIL_GRAVEL: actionKey = KEY_G; break;
         case ACTION_DRAW_SOIL_SAND:  actionKey = KEY_S; break;
         case ACTION_DRAW_SOIL_PEAT:  actionKey = KEY_P; break;
+        case ACTION_DRAW_SOIL_ROCK:  actionKey = KEY_K; actionUnderline = 3; break;
         // Dig actions
         case ACTION_WORK_MINE:         actionKey = KEY_M; break;
         case ACTION_WORK_CHANNEL:      actionKey = KEY_H; actionUnderline = 1; break;
@@ -363,14 +362,6 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
             break;
-        case ACTION_DRAW_DIRT:
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_ROCK:
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-            break;
         case ACTION_DRAW_STOCKPILE:
             n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
@@ -397,6 +388,10 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_SOIL_GRAVEL:
         case ACTION_DRAW_SOIL_SAND:
         case ACTION_DRAW_SOIL_PEAT:
+            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+            n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
+            break;
+        case ACTION_DRAW_SOIL_ROCK:
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
             break;
