@@ -30,22 +30,37 @@ Recipe kilnRecipes[] = {
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
-// Workshop templates (ASCII art, row-major, top-to-bottom)
-// . = floor (walkable), # = machinery (blocked), X = work tile, O = output
-static const char* workshopTemplates[] = {
-    [WORKSHOP_STONECUTTER] = 
-        "##O"
-        "#X."
-        "...",
-    [WORKSHOP_SAWMILL] =
-        "##O"
-        "#X."
-        "...",
-    [WORKSHOP_KILN] =
-        "#F#"
-        "#XO"
-        "...",
+// Workshop definitions table (consolidates templates, recipes, and metadata)
+const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
+    [WORKSHOP_STONECUTTER] = {
+        .name = "Stonecutter",
+        .template = "##O"
+                    "#X."
+                    "...",
+        .recipes = stonecutterRecipes,
+        .recipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0])
+    },
+    [WORKSHOP_SAWMILL] = {
+        .name = "Sawmill",
+        .template = "##O"
+                    "#X."
+                    "...",
+        .recipes = sawmillRecipes,
+        .recipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0])
+    },
+    [WORKSHOP_KILN] = {
+        .name = "Kiln",
+        .template = "#F#"
+                    "#XO"
+                    "...",
+        .recipes = kilnRecipes,
+        .recipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0])
+    },
 };
+
+// Compile-time check: ensure workshopDefs[] has an entry for every WorkshopType
+_Static_assert(sizeof(workshopDefs) / sizeof(workshopDefs[0]) == WORKSHOP_TYPE_COUNT,
+               "workshopDefs[] must have an entry for every WorkshopType");
 
 static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRadius) {
     if (searchRadius == 0) searchRadius = 100;  // Large default
@@ -186,7 +201,7 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->height = 3;
             
             // Copy template and find special tiles
-            const char* tmpl = workshopTemplates[type];
+            const char* tmpl = workshopDefs[type].template;
             ws->workTileX = x;
             ws->workTileY = y;
             ws->outputTileX = x;
@@ -258,20 +273,13 @@ void DeleteWorkshop(int index) {
 }
 
 Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount) {
-    switch (type) {
-        case WORKSHOP_STONECUTTER:
-            *outCount = stonecutterRecipeCount;
-            return stonecutterRecipes;
-        case WORKSHOP_SAWMILL:
-            *outCount = sawmillRecipeCount;
-            return sawmillRecipes;
-        case WORKSHOP_KILN:
-            *outCount = kilnRecipeCount;
-            return kilnRecipes;
-        default:
-            *outCount = 0;
-            return NULL;
+    if (type < 0 || type >= WORKSHOP_TYPE_COUNT) {
+        *outCount = 0;
+        return NULL;
     }
+    
+    *outCount = workshopDefs[type].recipeCount;
+    return (Recipe*)workshopDefs[type].recipes;
 }
 
 int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount) {

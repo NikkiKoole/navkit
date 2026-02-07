@@ -56,6 +56,14 @@ typedef struct {
     int fuelRequired;            // number of fuel items consumed (0 = no fuel needed)
 } Recipe;
 
+// Workshop definition (consolidates template, recipes, and metadata)
+typedef struct {
+    const char* name;
+    const char* template;
+    const Recipe* recipes;
+    int recipeCount;
+} WorkshopDef;
+
 // Bill modes
 typedef enum {
     BILL_DO_X_TIMES,
@@ -110,7 +118,10 @@ typedef struct {
 extern Workshop workshops[MAX_WORKSHOPS];
 extern int workshopCount;
 
-// Recipe data
+// Workshop definitions (templates + recipes per type)
+extern const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT];
+
+// Recipe data (referenced by workshopDefs)
 extern Recipe stonecutterRecipes[];
 extern int stonecutterRecipeCount;
 extern Recipe sawmillRecipes[];
