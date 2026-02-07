@@ -614,45 +614,49 @@ describe(build_mine_cycle) {
 // Phase 0: Material Property Helpers
 // =============================================================================
 
-describe(material_terrain_sprites) {
-    it("should return correct terrain sprites for soil materials") {
-        expect(MaterialTerrainSprite(MAT_DIRT) == SPRITE_dirt);
-        expect(MaterialTerrainSprite(MAT_CLAY) == SPRITE_clay);
-        expect(MaterialTerrainSprite(MAT_GRAVEL) == SPRITE_gravel);
-        expect(MaterialTerrainSprite(MAT_SAND) == SPRITE_sand);
-        expect(MaterialTerrainSprite(MAT_PEAT) == SPRITE_peat);
-        expect(MaterialTerrainSprite(MAT_GRANITE) == SPRITE_rock);
-        expect(MaterialTerrainSprite(MAT_BEDROCK) == SPRITE_bedrock);
+describe(material_sprites) {
+    it("should return correct sprites for soil/stone materials") {
+        expect(MaterialSprite(MAT_DIRT) == SPRITE_dirt);
+        expect(MaterialSprite(MAT_CLAY) == SPRITE_clay);
+        expect(MaterialSprite(MAT_GRAVEL) == SPRITE_gravel);
+        expect(MaterialSprite(MAT_SAND) == SPRITE_sand);
+        expect(MaterialSprite(MAT_PEAT) == SPRITE_peat);
+        expect(MaterialSprite(MAT_GRANITE) == SPRITE_rock);
+        expect(MaterialSprite(MAT_BEDROCK) == SPRITE_bedrock);
     }
 
-    it("should return 0 for materials without terrain form") {
-        expect(MaterialTerrainSprite(MAT_NONE) == 0);
-        expect(MaterialTerrainSprite(MAT_OAK) == 0);
-        expect(MaterialTerrainSprite(MAT_BRICK) == 0);
-        expect(MaterialTerrainSprite(MAT_IRON) == 0);
+    it("should return correct sprites for wood materials") {
+        expect(MaterialSprite(MAT_OAK) == SPRITE_tree_trunk_oak);
+        expect(MaterialSprite(MAT_PINE) == SPRITE_tree_trunk_pine);
+        expect(MaterialSprite(MAT_BIRCH) == SPRITE_tree_trunk_birch);
+        expect(MaterialSprite(MAT_WILLOW) == SPRITE_tree_trunk_willow);
     }
 
-    it("should return correct tree sprites for wood materials") {
-        expect(MaterialTreeTrunkSprite(MAT_OAK) == SPRITE_tree_trunk_oak);
-        expect(MaterialTreeTrunkSprite(MAT_PINE) == SPRITE_tree_trunk_pine);
-        expect(MaterialTreeTrunkSprite(MAT_BIRCH) == SPRITE_tree_trunk_birch);
-        expect(MaterialTreeTrunkSprite(MAT_WILLOW) == SPRITE_tree_trunk_willow);
-
-        expect(MaterialTreeLeavesSprite(MAT_OAK) == SPRITE_tree_leaves_oak);
-        expect(MaterialTreeLeavesSprite(MAT_PINE) == SPRITE_tree_leaves_pine);
-        expect(MaterialTreeLeavesSprite(MAT_BIRCH) == SPRITE_tree_leaves_birch);
-        expect(MaterialTreeLeavesSprite(MAT_WILLOW) == SPRITE_tree_leaves_willow);
-
-        expect(MaterialTreeSaplingSprite(MAT_OAK) == SPRITE_tree_sapling_oak);
-        expect(MaterialTreeSaplingSprite(MAT_PINE) == SPRITE_tree_sapling_pine);
-        expect(MaterialTreeSaplingSprite(MAT_BIRCH) == SPRITE_tree_sapling_birch);
-        expect(MaterialTreeSaplingSprite(MAT_WILLOW) == SPRITE_tree_sapling_willow);
+    it("should return 0 for materials without natural form") {
+        expect(MaterialSprite(MAT_NONE) == 0);
+        expect(MaterialSprite(MAT_BRICK) == 0);
+        expect(MaterialSprite(MAT_IRON) == 0);
+        expect(MaterialSprite(MAT_GLASS) == 0);
     }
 
-    it("should return 0 tree sprites for non-wood materials") {
-        expect(MaterialTreeTrunkSprite(MAT_GRANITE) == 0);
-        expect(MaterialTreeLeavesSprite(MAT_DIRT) == 0);
-        expect(MaterialTreeSaplingSprite(MAT_NONE) == 0);
+    it("should return correct leaves sprites for wood materials") {
+        expect(MaterialLeavesSprite(MAT_OAK) == SPRITE_tree_leaves_oak);
+        expect(MaterialLeavesSprite(MAT_PINE) == SPRITE_tree_leaves_pine);
+        expect(MaterialLeavesSprite(MAT_BIRCH) == SPRITE_tree_leaves_birch);
+        expect(MaterialLeavesSprite(MAT_WILLOW) == SPRITE_tree_leaves_willow);
+    }
+
+    it("should return correct sapling sprites for wood materials") {
+        expect(MaterialSaplingSprite(MAT_OAK) == SPRITE_tree_sapling_oak);
+        expect(MaterialSaplingSprite(MAT_PINE) == SPRITE_tree_sapling_pine);
+        expect(MaterialSaplingSprite(MAT_BIRCH) == SPRITE_tree_sapling_birch);
+        expect(MaterialSaplingSprite(MAT_WILLOW) == SPRITE_tree_sapling_willow);
+    }
+
+    it("should return 0 leaves/sapling sprites for non-wood materials") {
+        expect(MaterialLeavesSprite(MAT_GRANITE) == 0);
+        expect(MaterialLeavesSprite(MAT_DIRT) == 0);
+        expect(MaterialSaplingSprite(MAT_NONE) == 0);
     }
 }
 
@@ -710,7 +714,7 @@ describe(material_bedrock) {
     }
 
     it("should have correct terrain sprite") {
-        expect(MaterialTerrainSprite(MAT_BEDROCK) == SPRITE_bedrock);
+        expect(MaterialSprite(MAT_BEDROCK) == SPRITE_bedrock);
     }
 
     it("should have STONE insulation tier") {
@@ -996,7 +1000,7 @@ int main(int argc, char* argv[]) {
     test(build_mine_cycle);
     
     // Phase 0: Material property helpers
-    test(material_terrain_sprites);
+    test(material_sprites);
     test(material_insulation_tiers);
     test(material_burns_into);
     test(material_bedrock);

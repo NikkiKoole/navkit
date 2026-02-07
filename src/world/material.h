@@ -47,16 +47,13 @@ typedef enum {
 // Material definitions
 typedef struct {
     const char* name;
-    int spriteOffset;     // Offset to add to base cell sprite (0 = default)
+    int sprite;           // Canonical sprite (terrain/trunk look, 0 = no natural form)
+    int leavesSprite;     // CELL_TREE_LEAVES variant (only wood materials, 0 for rest)
+    int saplingSprite;    // CELL_SAPLING variant (only wood materials, 0 for rest)
     uint8_t flags;        // MF_* flags (flammable, etc.)
     uint8_t fuel;         // Fuel value for fire system (0 = won't burn)
     uint8_t ignitionResistance; // Subtracted from spread chance (0 = catches easily)
     ItemType dropsItem;   // What item this material drops when deconstructed
-    // Phase 0: material-driven properties (for shape/material separation)
-    int terrainSprite;    // Sprite when used as CELL_TERRAIN (0 = no terrain form)
-    int treeTrunkSprite;  // Sprite for CELL_TREE_TRUNK (0 = not a tree material)
-    int treeLeavesSprite; // Sprite for CELL_TREE_LEAVES
-    int treeSaplingSprite;// Sprite for CELL_SAPLING
     uint8_t insulationTier; // Insulation when used as terrain (INSULATION_TIER_*)
     MaterialType burnsIntoMat; // What material this becomes when burned
 } MaterialDef;
@@ -99,16 +96,14 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)
-#define MaterialSpriteOffset(m) (materialDefs[m].spriteOffset)
+#define MaterialSprite(m)       (materialDefs[m].sprite)
+#define MaterialLeavesSprite(m) (materialDefs[m].leavesSprite)
+#define MaterialSaplingSprite(m) (materialDefs[m].saplingSprite)
 #define MaterialDropsItem(m)    (materialDefs[m].dropsItem)
 #define MaterialFuel(m)         (materialDefs[m].fuel)
 #define MaterialIsFlammable(m)  (materialDefs[m].flags & MF_FLAMMABLE)
 #define MaterialIsUnmineable(m) (materialDefs[m].flags & MF_UNMINEABLE)
 #define MaterialIgnitionResistance(m) (materialDefs[m].ignitionResistance)
-#define MaterialTerrainSprite(m)    (materialDefs[m].terrainSprite)
-#define MaterialTreeTrunkSprite(m)  (materialDefs[m].treeTrunkSprite)
-#define MaterialTreeLeavesSprite(m) (materialDefs[m].treeLeavesSprite)
-#define MaterialTreeSaplingSprite(m) (materialDefs[m].treeSaplingSprite)
 #define MaterialInsulationTier(m)   (materialDefs[m].insulationTier)
 #define MaterialBurnsIntoMat(m)     (materialDefs[m].burnsIntoMat)
 

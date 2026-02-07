@@ -16,22 +16,22 @@ uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
-    //                 name       sprOff  flags         fuel  ignRes  dropsItem       terrSprite              trunkSprite                 leavesSprite                saplingSprite                insul                  burnsInto
-    [MAT_NONE]    = {"none",     0,      0,            0,    0,      ITEM_NONE,      0,                      0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_NONE},
-    [MAT_OAK]     = {"Oak",      1,      MF_FLAMMABLE, 128,  50,     ITEM_LOG,       0,                      SPRITE_tree_trunk_oak,      SPRITE_tree_leaves_oak,     SPRITE_tree_sapling_oak,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_PINE]    = {"Pine",     1,      MF_FLAMMABLE, 96,   30,     ITEM_LOG,       0,                      SPRITE_tree_trunk_pine,     SPRITE_tree_leaves_pine,    SPRITE_tree_sapling_pine,    INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_BIRCH]   = {"Birch",    1,      MF_FLAMMABLE, 112,  40,     ITEM_LOG,       0,                      SPRITE_tree_trunk_birch,    SPRITE_tree_leaves_birch,   SPRITE_tree_sapling_birch,   INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_WILLOW]  = {"Willow",   1,      MF_FLAMMABLE, 80,   25,     ITEM_LOG,       0,                      SPRITE_tree_trunk_willow,   SPRITE_tree_leaves_willow,  SPRITE_tree_sapling_willow,  INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_GRANITE] = {"Granite",  0,      0,            0,    0,      ITEM_BLOCKS,    SPRITE_rock,            0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_GRANITE},
-    [MAT_DIRT]    = {"Dirt",     0,      0,            1,    0,      ITEM_DIRT,      SPRITE_dirt,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_DIRT},
-    [MAT_BRICK]   = {"Brick",    0,      0,            0,    0,      ITEM_BRICKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_BRICK},
-    [MAT_IRON]    = {"Iron",     2,      0,            0,    0,      ITEM_BLOCKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_IRON},
-    [MAT_GLASS]   = {"Glass",    3,      0,            0,    0,      ITEM_BLOCKS,    0,                      0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_GLASS},
-    [MAT_CLAY]    = {"Clay",     0,      0,            0,    0,      ITEM_CLAY,      SPRITE_clay,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_CLAY},
-    [MAT_GRAVEL]  = {"Gravel",   0,      0,            0,    0,      ITEM_GRAVEL,    SPRITE_gravel,          0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_GRAVEL},
-    [MAT_SAND]    = {"Sand",     0,      0,            0,    0,      ITEM_SAND,      SPRITE_sand,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_SAND},
-    [MAT_PEAT]    = {"Peat",     0,      0,            6,    0,      ITEM_PEAT,      SPRITE_peat,            0,                          0,                          0,                           INSULATION_TIER_AIR,   MAT_DIRT},
-    [MAT_BEDROCK] = {"Bedrock",  0,      MF_UNMINEABLE,0,    0,      ITEM_NONE,      SPRITE_bedrock,         0,                          0,                          0,                           INSULATION_TIER_STONE, MAT_BEDROCK},
+    //                 name       sprite                    leavesSprite              saplingSprite              flags         fuel  ignRes  dropsItem     insul                  burnsInto
+    [MAT_NONE]    = {"none",     0,                        0,                        0,                         0,            0,    0,      ITEM_NONE,    INSULATION_TIER_AIR,   MAT_NONE},
+    [MAT_OAK]     = {"Oak",      SPRITE_tree_trunk_oak,    SPRITE_tree_leaves_oak,   SPRITE_tree_sapling_oak,   MF_FLAMMABLE, 128,  50,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_PINE]    = {"Pine",     SPRITE_tree_trunk_pine,   SPRITE_tree_leaves_pine,  SPRITE_tree_sapling_pine,  MF_FLAMMABLE, 96,   30,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_BIRCH]   = {"Birch",    SPRITE_tree_trunk_birch,  SPRITE_tree_leaves_birch, SPRITE_tree_sapling_birch, MF_FLAMMABLE, 112,  40,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_WILLOW]  = {"Willow",   SPRITE_tree_trunk_willow, SPRITE_tree_leaves_willow,SPRITE_tree_sapling_willow,MF_FLAMMABLE, 80,   25,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_GRANITE] = {"Granite",  SPRITE_rock,              0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GRANITE},
+    [MAT_DIRT]    = {"Dirt",     SPRITE_dirt,              0,                        0,                         0,            1,    0,      ITEM_DIRT,    INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BRICK]   = {"Brick",    0,                        0,                        0,                         0,            0,    0,      ITEM_BRICKS,  INSULATION_TIER_STONE, MAT_BRICK},
+    [MAT_IRON]    = {"Iron",     0,                        0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_IRON},
+    [MAT_GLASS]   = {"Glass",    0,                        0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GLASS},
+    [MAT_CLAY]    = {"Clay",     SPRITE_clay,              0,                        0,                         0,            0,    0,      ITEM_CLAY,    INSULATION_TIER_AIR,   MAT_CLAY},
+    [MAT_GRAVEL]  = {"Gravel",   SPRITE_gravel,            0,                        0,                         0,            0,    0,      ITEM_GRAVEL,  INSULATION_TIER_AIR,   MAT_GRAVEL},
+    [MAT_SAND]    = {"Sand",     SPRITE_sand,              0,                        0,                         0,            0,    0,      ITEM_SAND,    INSULATION_TIER_AIR,   MAT_SAND},
+    [MAT_PEAT]    = {"Peat",     SPRITE_peat,              0,                        0,                         0,            6,    0,      ITEM_PEAT,    INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BEDROCK] = {"Bedrock",  SPRITE_bedrock,           0,                        0,                         MF_UNMINEABLE,0,    0,      ITEM_NONE,    INSULATION_TIER_STONE, MAT_BEDROCK},
 };
 
 void InitMaterials(void) {
@@ -118,7 +118,7 @@ int GetCellSpriteAt(int x, int y, int z) {
         if (IsWallNatural(x, y, z)) {
             return SPRITE_rock;
         }
-        int sprite = MaterialTerrainSprite(mat);
+        int sprite = MaterialSprite(mat);
         return sprite ? sprite : CellSprite(cell);
     }
 
@@ -128,11 +128,11 @@ int GetCellSpriteAt(int x, int y, int z) {
         if (mat != MAT_NONE) {
             int sprite = 0;
             if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || cell == CELL_TREE_FELLED) {
-                sprite = MaterialTreeTrunkSprite(mat);
+                sprite = MaterialSprite(mat);
             } else if (cell == CELL_TREE_LEAVES) {
-                sprite = MaterialTreeLeavesSprite(mat);
+                sprite = MaterialLeavesSprite(mat);
             } else if (cell == CELL_SAPLING) {
-                sprite = MaterialTreeSaplingSprite(mat);
+                sprite = MaterialSaplingSprite(mat);
             }
             if (sprite) return sprite;
         }
@@ -140,7 +140,7 @@ int GetCellSpriteAt(int x, int y, int z) {
 
     // CELL_TERRAIN: use material-driven sprite
     if (cell == CELL_TERRAIN && mat != MAT_NONE) {
-        int sprite = MaterialTerrainSprite(mat);
+        int sprite = MaterialSprite(mat);
         if (sprite) return sprite;
     }
 

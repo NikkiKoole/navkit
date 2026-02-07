@@ -66,53 +66,15 @@ static Color MaterialTint(MaterialType mat) {
 }
 
 static int MaterialWallSprite(MaterialType mat) {
-    // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
-    switch (mat) {
-        case MAT_OAK:
-        case MAT_PINE:
-        case MAT_BIRCH:
-        case MAT_WILLOW:
-            return SPRITE_wall_wood;
-        case MAT_GRANITE:
-            return SPRITE_rock;
-        case MAT_DIRT:
-            return SPRITE_dirt;
-        case MAT_CLAY:
-            return SPRITE_clay;
-        case MAT_GRAVEL:
-            return SPRITE_gravel;
-        case MAT_SAND:
-            return SPRITE_sand;
-        case MAT_PEAT:
-            return SPRITE_peat;
-        default:
-            return SPRITE_wall;
-    }
+    if (IsWoodMaterial(mat)) return SPRITE_wall_wood;
+    int sprite = MaterialSprite(mat);
+    return sprite ? sprite : SPRITE_wall;
 }
 
 static int MaterialFloorSprite(MaterialType mat) {
-    // TODO: Switch to MaterialSpriteOffset/material-driven atlas indices when atlas supports variants.
-    switch (mat) {
-        case MAT_OAK:
-        case MAT_PINE:
-        case MAT_BIRCH:
-        case MAT_WILLOW:
-            return SPRITE_floor_wood;
-        case MAT_GRANITE:
-            return SPRITE_rock;
-        case MAT_DIRT:
-            return SPRITE_dirt;
-        case MAT_CLAY:
-            return SPRITE_clay;
-        case MAT_GRAVEL:
-            return SPRITE_gravel;
-        case MAT_SAND:
-            return SPRITE_sand;
-        case MAT_PEAT:
-            return SPRITE_peat;
-        default:
-            return SPRITE_floor;
-    }
+    if (IsWoodMaterial(mat)) return SPRITE_floor_wood;
+    int sprite = MaterialSprite(mat);
+    return sprite ? sprite : SPRITE_floor;
 }
 
 static int FinishSprite(SurfaceFinish finish) {
@@ -196,50 +158,19 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
 }
 
 static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
-    // Get tree type from wall material
     MaterialType mat = GetWallMaterial(x, y, z);
-    
-    if (!IsWoodMaterial(mat)) {
-        return CellSprite(cell);
-    }
-    
-    // Handle all tree cell types (trunk, branch, root, felled, leaves, sapling)
+    if (!IsWoodMaterial(mat)) return CellSprite(cell);
+
     switch (cell) {
         case CELL_TREE_TRUNK:
         case CELL_TREE_BRANCH:
         case CELL_TREE_FELLED:
-            switch (mat) {
-                case MAT_PINE: return SPRITE_tree_trunk_pine;
-                case MAT_BIRCH: return SPRITE_tree_trunk_birch;
-                case MAT_WILLOW: return SPRITE_tree_trunk_willow;
-                case MAT_OAK:
-                default: return SPRITE_tree_trunk_oak;
-            }
         case CELL_TREE_ROOT:
-            // Roots use slightly darker sprites (could add dedicated root sprites later)
-            switch (mat) {
-                case MAT_PINE: return SPRITE_tree_trunk_pine;
-                case MAT_BIRCH: return SPRITE_tree_trunk_birch;
-                case MAT_WILLOW: return SPRITE_tree_trunk_willow;
-                case MAT_OAK:
-                default: return SPRITE_tree_trunk_oak;
-            }
+            return MaterialSprite(mat);
         case CELL_TREE_LEAVES:
-            switch (mat) {
-                case MAT_PINE: return SPRITE_tree_leaves_pine;
-                case MAT_BIRCH: return SPRITE_tree_leaves_birch;
-                case MAT_WILLOW: return SPRITE_tree_leaves_willow;
-                case MAT_OAK:
-                default: return SPRITE_tree_leaves_oak;
-            }
+            return MaterialLeavesSprite(mat);
         case CELL_SAPLING:
-            switch (mat) {
-                case MAT_PINE: return SPRITE_tree_sapling_pine;
-                case MAT_BIRCH: return SPRITE_tree_sapling_birch;
-                case MAT_WILLOW: return SPRITE_tree_sapling_willow;
-                case MAT_OAK:
-                default: return SPRITE_tree_sapling_oak;
-            }
+            return MaterialSaplingSprite(mat);
         default:
             return CellSprite(cell);
     }
