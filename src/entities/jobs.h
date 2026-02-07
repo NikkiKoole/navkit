@@ -182,4 +182,7 @@ int WorkGiver_Craft(int moverIdx);
 int WorkGiver_GatherSapling(int moverIdx);
 int WorkGiver_PlantSapling(int moverIdx);
 
+// Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
+void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h
+
 #endif

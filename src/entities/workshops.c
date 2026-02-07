@@ -312,45 +312,7 @@ void RemoveBill(int workshopIdx, int billIdx) {
             // Cancel it to avoid recipe mismatch
             int moverIdx = job->assignedMover;
             if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
-                // Need to call CancelJob, but it's static in jobs.c
-                // Workaround: simulate what CancelJob does for craft jobs
-                // Release the workshop
-                if (ws->assignedCrafter == moverIdx) {
-                    ws->assignedCrafter = -1;
-                }
-                // Release item reservations
-                if (job->targetItem >= 0) {
-                    ReleaseItemReservation(job->targetItem);
-                }
-                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-                    Item* item = &items[job->carryingItem];
-                    item->state = ITEM_ON_GROUND;
-                    item->reservedBy = -1;
-                    // Drop at mover's position
-                    Mover* m = &movers[moverIdx];
-                    item->x = m->x;
-                    item->y = m->y;
-                    item->z = m->z;
-                }
-                if (job->fuelItem >= 0 && items[job->fuelItem].active) {
-                    items[job->fuelItem].reservedBy = -1;
-                    if (items[job->fuelItem].state == ITEM_CARRIED) {
-                        items[job->fuelItem].state = ITEM_ON_GROUND;
-                        Mover* m = &movers[moverIdx];
-                        items[job->fuelItem].x = m->x;
-                        items[job->fuelItem].y = m->y;
-                        items[job->fuelItem].z = m->z;
-                    }
-                }
-                // Release job
-                ReleaseJob(jobId);
-                // Reset mover
-                Mover* m = &movers[moverIdx];
-                m->currentJobId = -1;
-                ClearMoverPath(moverIdx);
-                m->needsRepath = false;
-                m->timeWithoutProgress = 0.0f;
-                AddMoverToIdleList(moverIdx);
+                CancelJob(&movers[moverIdx], moverIdx);
             }
         }
     }

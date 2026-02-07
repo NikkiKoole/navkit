@@ -99,6 +99,9 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_CHARCOAL:
             return MAT_NONE;
         default:
+            #ifdef DEBUG
+            TraceLog(LOG_WARNING, "DefaultMaterialForItemType: unhandled ItemType %d, returning MAT_NONE", type);
+            #endif
             return MAT_NONE;
     }
 }

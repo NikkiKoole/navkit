@@ -517,21 +517,7 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             // Pick up the item
             if (item->state == ITEM_IN_STOCKPILE) {
                 // Clear source stockpile slot when re-hauling
-                int sourceSp = -1;
-                if (IsPositionInStockpile(item->x, item->y, (int)item->z, &sourceSp) && sourceSp >= 0) {
-                    int lx = (int)(item->x / CELL_SIZE) - stockpiles[sourceSp].x;
-                    int ly = (int)(item->y / CELL_SIZE) - stockpiles[sourceSp].y;
-                    if (lx >= 0 && lx < stockpiles[sourceSp].width && ly >= 0 && ly < stockpiles[sourceSp].height) {
-                        int idx = ly * stockpiles[sourceSp].width + lx;
-                        stockpiles[sourceSp].slotCounts[idx]--;
-                        if (stockpiles[sourceSp].slotCounts[idx] <= 0) {
-                            stockpiles[sourceSp].slots[idx] = -1;
-                            stockpiles[sourceSp].slotTypes[idx] = -1;
-                            stockpiles[sourceSp].slotCounts[idx] = 0;
-                            stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
-                        }
-                    }
-                }
+                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
             }
 
             item->state = ITEM_CARRIED;
@@ -1763,27 +1749,8 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
             // Pick up the item
             if (item->state == ITEM_IN_STOCKPILE) {
-                // Find which stockpile it's in and clear the slot
-                for (int s = 0; s < MAX_STOCKPILES; s++) {
-                    Stockpile* sp = &stockpiles[s];
-                    if (!sp->active) continue;
-
-                    int localX = (int)(item->x / CELL_SIZE) - sp->x;
-                    int localY = (int)(item->y / CELL_SIZE) - sp->y;
-                    if (localX >= 0 && localX < sp->width &&
-                        localY >= 0 && localY < sp->height) {
-                        int slotIdx = localY * sp->width + localX;
-                        if (sp->slotCounts[slotIdx] > 0) {
-                            sp->slotCounts[slotIdx]--;
-                            if (sp->slotCounts[slotIdx] == 0) {
-                                sp->slotTypes[slotIdx] = -1;
-                                sp->slots[slotIdx] = -1;
-                                sp->slotMaterials[slotIdx] = MAT_NONE;
-                            }
-                        }
-                        break;
-                    }
-                }
+                // Clear source stockpile slot when picking up
+                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
             }
 
             item->state = ITEM_CARRIED;
@@ -1892,27 +1859,9 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* fuelItem = &items[fuelIdx];
 
-            // Pick up from stockpile if needed (same pattern as CRAFT_STEP_PICKING_UP)
+            // Pick up from stockpile if needed
             if (fuelItem->state == ITEM_IN_STOCKPILE) {
-                for (int s = 0; s < MAX_STOCKPILES; s++) {
-                    Stockpile* sp = &stockpiles[s];
-                    if (!sp->active) continue;
-                    int localX = (int)(fuelItem->x / CELL_SIZE) - sp->x;
-                    int localY = (int)(fuelItem->y / CELL_SIZE) - sp->y;
-                    if (localX >= 0 && localX < sp->width &&
-                        localY >= 0 && localY < sp->height) {
-                        int slotIdx = localY * sp->width + localX;
-                        if (sp->slotCounts[slotIdx] > 0) {
-                            sp->slotCounts[slotIdx]--;
-                            if (sp->slotCounts[slotIdx] == 0) {
-                                sp->slotTypes[slotIdx] = -1;
-                                sp->slots[slotIdx] = -1;
-                                sp->slotMaterials[slotIdx] = MAT_NONE;
-                            }
-                        }
-                        break;
-                    }
-                }
+                RemoveItemFromStockpileSlot(fuelItem->x, fuelItem->y, (int)fuelItem->z);
             }
 
             fuelItem->state = ITEM_CARRIED;
@@ -2039,8 +1988,9 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_CHOP_FELLED] = RunJob_ChopFelled,
 };
 
-// Forward declaration for CancelJob (defined later in file)
-static void CancelJob(Mover* m, int moverIdx);
+// Compile-time check: ensure jobDrivers[] covers all job types (JOBTYPE_CHOP_FELLED is the last)
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_CHOP_FELLED,
+               "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
 void JobsTick(void) {
@@ -2198,25 +2148,55 @@ static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) 
 
 // Helper: clear item from source stockpile slot when re-hauling
 static void ClearSourceStockpileSlot(Item* item) {
-    int sourceSp = -1;
-    if (!IsPositionInStockpile(item->x, item->y, (int)item->z, &sourceSp) || sourceSp < 0) return;
+    RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
+}
 
-    int lx = (int)(item->x / CELL_SIZE) - stockpiles[sourceSp].x;
-    int ly = (int)(item->y / CELL_SIZE) - stockpiles[sourceSp].y;
-    if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
+// Helper: safe-drop an item near a mover at a walkable cell
+// Searches 8 neighbors (cardinal + diagonal) if mover position is not walkable
+static void SafeDropItem(int itemIdx, Mover* m) {
+    if (itemIdx < 0 || !items[itemIdx].active) return;
+    
+    Item* item = &items[itemIdx];
+    item->state = ITEM_ON_GROUND;
+    item->reservedBy = -1;
 
-    int idx = ly * stockpiles[sourceSp].width + lx;
-    stockpiles[sourceSp].slotCounts[idx]--;
-    if (stockpiles[sourceSp].slotCounts[idx] <= 0) {
-        stockpiles[sourceSp].slots[idx] = -1;
-        stockpiles[sourceSp].slotTypes[idx] = -1;
-        stockpiles[sourceSp].slotCounts[idx] = 0;
-        stockpiles[sourceSp].slotMaterials[idx] = MAT_NONE;
+    int cellX = (int)(m->x / CELL_SIZE);
+    int cellY = (int)(m->y / CELL_SIZE);
+    int cellZ = (int)m->z;
+
+    if (IsCellWalkableAt(cellZ, cellY, cellX)) {
+        // Drop at mover position
+        item->x = m->x;
+        item->y = m->y;
+        item->z = m->z;
+    } else {
+        // Find nearest walkable neighbor (cardinal + diagonal)
+        int dx[] = {0, 0, -1, 1, -1, 1, -1, 1};
+        int dy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+        bool found = false;
+        for (int d = 0; d < 8; d++) {
+            int nx = cellX + dx[d];
+            int ny = cellY + dy[d];
+            if (IsCellWalkableAt(cellZ, ny, nx)) {
+                item->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
+                item->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
+                item->z = cellZ;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // Last resort: drop at mover position anyway
+            item->x = m->x;
+            item->y = m->y;
+            item->z = m->z;
+        }
     }
 }
 
-// Helper: cancel job and release all reservations
-static void CancelJob(Mover* m, int moverIdx) {
+// Cancel job and release all reservations (public, called from workshops.c and internally)
+void CancelJob(void* moverPtr, int moverIdx) {
+    Mover* m = (Mover*)moverPtr;
     // Get job data (all job-specific data now comes from Job struct)
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
@@ -2232,43 +2212,7 @@ static void CancelJob(Mover* m, int moverIdx) {
         }
 
         // If carrying, safe-drop the item at a walkable cell
-        if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-            Item* item = &items[job->carryingItem];
-            item->state = ITEM_ON_GROUND;
-            item->reservedBy = -1;
-
-            int cellX = (int)(m->x / CELL_SIZE);
-            int cellY = (int)(m->y / CELL_SIZE);
-            int cellZ = (int)m->z;
-
-            if (IsCellWalkableAt(cellZ, cellY, cellX)) {
-                item->x = m->x;
-                item->y = m->y;
-                item->z = m->z;
-            } else {
-                // Find nearest walkable neighbor (cardinal + diagonal)
-                int dx[] = {0, 0, -1, 1, -1, 1, -1, 1};
-                int dy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-                bool found = false;
-                for (int d = 0; d < 8; d++) {
-                    int nx = cellX + dx[d];
-                    int ny = cellY + dy[d];
-                    if (IsCellWalkableAt(cellZ, ny, nx)) {
-                        item->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
-                        item->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
-                        item->z = cellZ;
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    // Last resort: drop at mover position anyway
-                    item->x = m->x;
-                    item->y = m->y;
-                    item->z = m->z;
-                }
-            }
-        }
+        SafeDropItem(job->carryingItem, m);
 
         // Release mine designation reservation
         if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
@@ -2299,42 +2243,12 @@ static void CancelJob(Mover* m, int moverIdx) {
 
         // Release fuel item reservation (for craft jobs with fuel)
         if (job->fuelItem >= 0 && items[job->fuelItem].active) {
-            Item* fuelItem = &items[job->fuelItem];
-            if (fuelItem->state == ITEM_CARRIED) {
-                // Drop fuel item at a walkable cell
-                fuelItem->state = ITEM_ON_GROUND;
-
-                int fCellX = (int)(m->x / CELL_SIZE);
-                int fCellY = (int)(m->y / CELL_SIZE);
-                int fCellZ = (int)m->z;
-
-                if (IsCellWalkableAt(fCellZ, fCellY, fCellX)) {
-                    fuelItem->x = m->x;
-                    fuelItem->y = m->y;
-                    fuelItem->z = m->z;
-                } else {
-                    int fdx[] = {0, 0, -1, 1, -1, 1, -1, 1};
-                    int fdy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-                    bool fFound = false;
-                    for (int d = 0; d < 8; d++) {
-                        int nx = fCellX + fdx[d];
-                        int ny = fCellY + fdy[d];
-                        if (IsCellWalkableAt(fCellZ, ny, nx)) {
-                            fuelItem->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
-                            fuelItem->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
-                            fuelItem->z = fCellZ;
-                            fFound = true;
-                            break;
-                        }
-                    }
-                    if (!fFound) {
-                        fuelItem->x = m->x;
-                        fuelItem->y = m->y;
-                        fuelItem->z = m->z;
-                    }
-                }
+            // Only safe-drop if carried; otherwise just release reservation
+            if (items[job->fuelItem].state == ITEM_CARRIED) {
+                SafeDropItem(job->fuelItem, m);
+            } else {
+                items[job->fuelItem].reservedBy = -1;
             }
-            fuelItem->reservedBy = -1;
         }
 
         // Release workshop reservation (for craft jobs)
