@@ -58,23 +58,20 @@ static UNUSED void RunFireTicks(int n) {
 // =============================================================================
 
 describe(material_grid_initialization) {
-    it("should initialize wall materials to MAT_GRANITE (natural) and floor materials to MAT_NONE") {
+    it("should initialize air cells with MAT_NONE and wall cells with MAT_GRANITE") {
         InitGridFromAsciiWithChunkSize(
-            "....\n"
+            ".#..\n"
             "....\n", 4, 2);
         
-        // InitMaterials is called by InitGridFromAsciiWithChunkSize via InitGridWithSizeAndChunkSize
+        // Air cells should have MAT_NONE (no wall material for empty space)
+        expect(GetWallMaterial(0, 0, 0) == MAT_NONE);
+        expect(!IsWallNatural(0, 0, 0));
+        expect(GetFloorMaterial(0, 0, 0) == MAT_NONE);
+        expect(!IsFloorNatural(0, 0, 0));
         
-        for (int z = 0; z < gridDepth; z++) {
-            for (int y = 0; y < gridHeight; y++) {
-                for (int x = 0; x < gridWidth; x++) {
-                    expect(GetWallMaterial(x, y, z) == MAT_GRANITE);
-                    expect(IsWallNatural(x, y, z));
-                    expect(GetFloorMaterial(x, y, z) == MAT_NONE);
-                    expect(!IsFloorNatural(x, y, z));
-                }
-            }
-        }
+        // Wall cells should have MAT_GRANITE (natural) from SyncMaterialsToTerrain
+        expect(GetWallMaterial(1, 0, 0) == MAT_GRANITE);
+        expect(IsWallNatural(1, 0, 0));
     }
     
     it("should allow setting and getting wall material") {
@@ -87,11 +84,9 @@ describe(material_grid_initialization) {
         SetWallMaterial(2, 0, 0, MAT_GRANITE);
         expect(GetWallMaterial(2, 0, 0) == MAT_GRANITE);
         
-        // Other cells still natural granite
-        expect(GetWallMaterial(0, 0, 0) == MAT_GRANITE);
-        expect(IsWallNatural(0, 0, 0));
-        expect(GetWallMaterial(3, 0, 0) == MAT_GRANITE);
-        expect(IsWallNatural(3, 0, 0));
+        // Other air cells still MAT_NONE
+        expect(GetWallMaterial(0, 0, 0) == MAT_NONE);
+        expect(GetWallMaterial(3, 0, 0) == MAT_NONE);
     }
     
     it("should allow setting and getting floor material") {

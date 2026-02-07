@@ -99,7 +99,7 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define SURFACE_TALL_GRASS  3
 
 // Cell flag helpers
-#define HAS_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] & (f))
+#define HAS_CELL_FLAG(x,y,z,f)     (!!(cellFlags[z][y][x] & (f)))
 #define SET_CELL_FLAG(x,y,z,f)     (cellFlags[z][y][x] |= (f))
 #define CLEAR_CELL_FLAG(x,y,z,f)   (cellFlags[z][y][x] &= ~(f))
 #define GET_CELL_WETNESS(x,y,z)    ((cellFlags[z][y][x] & CELL_WETNESS_MASK) >> CELL_WETNESS_SHIFT)
@@ -107,7 +107,7 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define GET_CELL_SURFACE(x,y,z)    ((cellFlags[z][y][x] & CELL_SURFACE_MASK) >> CELL_SURFACE_SHIFT)
 #define SET_CELL_SURFACE(x,y,z,s)  (cellFlags[z][y][x] = (cellFlags[z][y][x] & ~CELL_SURFACE_MASK) | ((s) << CELL_SURFACE_SHIFT))
 // Floor flag helpers (for constructed floors over empty space)
-#define HAS_FLOOR(x,y,z)           (cellFlags[z][y][x] & CELL_FLAG_HAS_FLOOR)
+#define HAS_FLOOR(x,y,z)           (!!(cellFlags[z][y][x] & CELL_FLAG_HAS_FLOOR))
 #define SET_FLOOR(x,y,z)           (cellFlags[z][y][x] |= CELL_FLAG_HAS_FLOOR)
 #define CLEAR_FLOOR(x,y,z)         (cellFlags[z][y][x] &= ~CELL_FLAG_HAS_FLOOR)
 
@@ -167,6 +167,9 @@ CellType AutoDetectRampDirection(int x, int y, int z);
 
 // Ramp placement - places ramp if valid, pushes movers/items out
 void PlaceRamp(int x, int y, int z, CellType rampType);
+
+// Clean up special cell types (ramps/ladders) before overwriting a cell
+void ClearCellCleanup(int x, int y, int z);
 
 // Ramp erasure - removes ramp, replaces with walkable/air
 void EraseRamp(int x, int y, int z);

@@ -126,6 +126,7 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
         }
     }
 
+    SyncMaterialsToTerrain();
     return 1;
 }
 
@@ -169,6 +170,12 @@ void PlaceLadder(int x, int y, int z) {
     
     CellType current = grid[z][y][x];
     if (IsWallCell(current)) return;
+    
+    // If there's a ramp here, erase it first
+    if (CellIsDirectionalRamp(current)) {
+        EraseRamp(x, y, z);
+        current = grid[z][y][x];  // Update after erase
+    }
     
     // If already a ladder, only extend if clicking on the TOP piece (DOWN)
     if (IsLadderCell(current)) {
@@ -489,7 +496,32 @@ int ValidateAllRamps(void) {
 // Cell Placement Helper
 // ============================================================================
 
+// Clean up special cell types (ramps/ladders) before overwriting
+// This ensures rampCount stays in sync and ladder cascades are triggered
+void ClearCellCleanup(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
+    
+    CellType current = grid[z][y][x];
+    
+    // Check for ramps
+    if (CellIsDirectionalRamp(current)) {
+        EraseRamp(x, y, z);
+        return;  // EraseRamp already marks dirty
+    }
+    
+    // Check for ladders
+    if (IsLadderCell(current)) {
+        EraseLadder(x, y, z);
+        return;  // EraseLadder already marks dirty
+    }
+    
+    // No special cleanup needed for other cell types
+}
+
 void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec) {
+    // Clean up existing cell before overwriting
+    ClearCellCleanup(x, y, z);
+    
     // Set cell type
     grid[z][y][x] = spec.cellType;
     
@@ -660,5 +692,6 @@ int InitMultiFloorGridFromAscii(const char* ascii, int chunkW, int chunkH) {
         p++;
     }
     
+    SyncMaterialsToTerrain();
     return 1;
 }

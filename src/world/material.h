@@ -144,6 +144,16 @@ typedef struct {
     uint8_t surfaceType;  // Use SURFACE_* defines from grid.h
 } CellPlacementSpec;
 
+// Convenience: natural terrain spec (soil, rock, dirt)
+// Common defaults: wallNatural=true, wallFinish=FINISH_ROUGH, floorMat=MAT_NONE
+static inline CellPlacementSpec NaturalTerrainSpec(CellType type, MaterialType mat, uint8_t surface, bool clearFloor, bool clearWater) {
+    return (CellPlacementSpec){
+        .cellType = type, .wallMat = mat, .wallNatural = true,
+        .wallFinish = FINISH_ROUGH, .clearFloor = clearFloor, .floorMat = MAT_NONE,
+        .floorNatural = false, .clearWater = clearWater, .surfaceType = surface
+    };
+}
+
 // Place a cell with all properties in one atomic operation
 // Defined in grid.c
 void PlaceCellFull(int x, int y, int z, CellPlacementSpec spec);

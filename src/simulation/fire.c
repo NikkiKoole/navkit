@@ -357,11 +357,22 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                 CellType currentCell = grid[z][y][x];
                 CellType burnResult = CellBurnsInto(currentCell);
                 if (burnResult != currentCell) {
+                    // Check if this was a solid cell before burning
+                    bool wasSolid = CellIsSolid(currentCell);
+                    
                     grid[z][y][x] = burnResult;
                     // Set high wear on burned ground so it takes time to regrow
                     if (burnResult == CELL_DIRT) {
                         wearGrid[z][y][x] = wearMax;
                         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                    }
+                    
+                    // If a solid cell burned into a non-solid cell, validate nearby ramps
+                    // (e.g., tree trunk supporting a ramp exit burns to air)
+                    bool isNowSolid = CellIsSolid(burnResult);
+                    if (wasSolid && !isNowSolid) {
+                        // Check 3x3x3 area around burned cell for ramps that may have lost support
+                        ValidateAndCleanupRamps(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1);
                     }
                 } else if (currentCell == CELL_DIRT) {
                     // DF mode: dirt with grass surface burns away the grass

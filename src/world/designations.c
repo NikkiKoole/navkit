@@ -1134,6 +1134,9 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         }
     }
 
+    // Validate ramps that may have lost solid support from removed trunks
+    ValidateAndCleanupRamps(minX - 1, minY - 1, minZ - 1, maxX + 1, maxY + 1, maxZ + 1);
+
     // Calculate fall direction (away from chopper), quantized to 22.5° steps
     float treeCenterX = (float)x + 0.5f;
     float treeCenterY = (float)y + 0.5f;
@@ -1304,6 +1307,9 @@ void CompleteChopFelledDesignation(int x, int y, int z, int moverIdx) {
     treeTypeGrid[z][y][x] = TREE_TYPE_NONE;
     treePartGrid[z][y][x] = TREE_PART_NONE;
     MarkChunkDirty(x, y, z);
+
+    // Validate ramps that may have lost solid support from removed trunk
+    ValidateAndCleanupRamps(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1);
 
     float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -1808,6 +1814,8 @@ void CompleteBlueprint(int blueprintIdx) {
         
         // Convert floor to wall (or dirt for landscaping)
         if (IsCellWalkableAt(z, y, x)) {
+            // Clean up ramps/ladders before overwriting
+            ClearCellCleanup(x, y, z);
             DisplaceWater(x, y, z);
             if (bp->deliveredMaterial == MAT_DIRT) {
                 // Dirt creates natural terrain, not a constructed wall
@@ -1838,6 +1846,9 @@ void CompleteBlueprint(int blueprintIdx) {
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_SMOOTH);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
+        // Clean up ramps/ladders before overwriting
+        ClearCellCleanup(x, y, z);
+        
         // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
         grid[z][y][x] = CELL_AIR;

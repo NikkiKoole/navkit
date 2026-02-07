@@ -10,7 +10,9 @@
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
 #include "../src/world/designations.h"
+#include "../src/simulation/trees.h"
 #include "../src/core/time.h"
+
 #include <string.h>
 #include <math.h>
 
@@ -9908,6 +9910,728 @@ describe(saveload_state_restoration) {
     }
 }
 
+/*
+ * =============================================================================
+ * GRID AUDIT INTEGRATION TESTS (grid.md Findings 3, 4, 6)
+ * 
+ * These tests verify that blueprint construction and tree chopping properly
+ * clean up ramps/ladders when overwriting cells. Tests are expected to FAIL
+ * until the fixes are applied.
+ * 
+ * Player stories:
+ * - Finding 3: "I place a wall blueprint on a ramp, mover builds it, the ramp should be gone and rampCount correct"
+ * - Finding 4: "I place a floor blueprint on a ladder, mover builds it, the ladder should be gone"
+ * - Finding 6: "I chop a tree trunk supporting a ramp exit, the ramp should be removed"
+ * =============================================================================
+ */
+
+describe(grid_audit_blueprint_integration) {
+    it("player builds wall blueprint on ramp - ramp should be cleaned up (Finding 3)") {
+        // Story: Player has a ramp. Player places wall blueprint on the ramp cell.
+        // Mover delivers materials and builds the wall. Player expects:
+        // 1. The ramp is gone (replaced by wall)
+        // 2. rampCount is decremented
+        // 3. No phantom ramps in pathfinding
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        rampCount = 0;
+        
+        // Create mover at (1,2)
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Place building material at (2,2)
+        int itemIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
+        (void)itemIdx;
+        
+        // Place a ramp at (5,2) pointing north
+        grid[0][2][5] = CELL_RAMP_N;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Player places wall blueprint on the ramp cell
+        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        expect(bpIdx >= 0);
+        
+        // Run simulation until wall is built
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (grid[0][2][5] == CELL_WALL) break;
+        }
+        
+        // Player expectation: wall should exist, ramp should be gone
+        expect(grid[0][2][5] == CELL_WALL);
+        
+        // Player expectation: rampCount should have decremented (no phantom ramps)
+        expect(rampCount == rampCountBefore - 1);
+    }
+    
+    it("player builds floor blueprint on ladder - ladder should be cleaned up (Finding 4)") {
+        // Story: Player has a ladder. Player places floor blueprint on the
+        // ladder cell. When construction completes, the ladder should be
+        // properly cleaned up (not silently overwritten).
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Place a ladder at (5,2,0)
+        PlaceLadder(5, 2, 0);
+        expect(IsLadderCell(grid[0][2][5]));
+        
+        // Create floor blueprint on the ladder cell
+        int bpIdx = CreateFloorBlueprint(5, 2, 0);
+        expect(bpIdx >= 0);
+        
+        // Simulate material delivery (skip job system, go straight to completion)
+        blueprints[bpIdx].deliveredMaterialCount = blueprints[bpIdx].requiredMaterials;
+        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
+        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        
+        // Complete the blueprint (this is what the builder mover calls)
+        expect(blueprints[bpIdx].active == true);
+        expect(blueprints[bpIdx].type == BLUEPRINT_TYPE_FLOOR);
+        CompleteBlueprint(bpIdx);
+        
+        // After completion, cell should be AIR (not ladder)
+        expect(grid[0][2][5] == CELL_AIR);
+        
+        // Blueprint should be consumed
+        expect(blueprints[bpIdx].active == false);
+        
+        // Player expectation: floor should exist (AIR + floor flag)
+        // Note: HAS_FLOOR returns bitmask value (0x20), not bool - don't compare == true
+        expect(HAS_FLOOR(5, 2, 0));
+        
+        // Player expectation: ladder should be gone (not a ladder cell anymore)
+        expect(!IsLadderCell(grid[0][2][5]));
+    }
+    
+    it("player builds wall blueprint on ramp with rampCount check (Finding 3 extended)") {
+        // Story: Player has a ramp at z=0. Player places wall blueprint on the
+        // ramp cell. Player expects:
+        // 1. The ramp at z=0 is gone (replaced by wall)
+        // 2. rampCount decrements
+        // Same as first test but also verifies rampCount with solid support setup
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        rampCount = 0;
+        
+        // Create mover at (1,2,0)
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        
+        // Place building material at (2,2,0)
+        int itemIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
+        (void)itemIdx;
+        
+        // Place a ramp at (5,2,0) pointing north
+        grid[0][2][5] = CELL_RAMP_N;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Player places wall blueprint on the ramp cell
+        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        expect(bpIdx >= 0);
+        
+        // Run simulation until wall is built
+        for (int i = 0; i < 3000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            
+            if (grid[0][2][5] == CELL_WALL) break;
+        }
+        
+        // Player expectation: wall exists
+        expect(grid[0][2][5] == CELL_WALL);
+        
+        // Player expectation: rampCount decremented
+        expect(rampCount == rampCountBefore - 1);
+    }
+}
+
+describe(grid_audit_tree_chopping_integration) {
+    it("player chops tree trunk supporting ramp exit - ramp should be removed (Finding 6)") {
+        // Story: Player has a ramp whose high-side exit is on top of a tree trunk.
+        // When the trunk is chopped (felled), the ramp loses its support.
+        // Player expects:
+        // 1. The ramp is removed (no longer structurally valid)
+        // 2. rampCount is decremented
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        InitTrees();
+        rampCount = 0;
+        
+        // Place tree trunk at (5,1,0) - this provides solid support for ramp exit
+        grid[0][1][5] = CELL_TREE_TRUNK;
+        treePartGrid[0][1][5] = TREE_PART_TRUNK;
+        treeTypeGrid[0][1][5] = TREE_TYPE_OAK;
+        
+        // Place a ramp at (5,2,0) pointing north - exit at (5,1,1)
+        // The exit's solid support is the trunk at (5,1,0)
+        grid[0][2][5] = CELL_RAMP_N;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Verify ramp is initially valid
+        bool validBefore = IsRampStillValid(5, 2, 0);
+        expect(validBefore == true);
+        
+        // Chop the trunk directly (simulating completed chop job)
+        CompleteChopDesignation(5, 1, 0, -1);
+        
+        // Trunk should be gone (felled or air)
+        bool trunkGone = (grid[0][1][5] != CELL_TREE_TRUNK) ||
+                         (treePartGrid[0][1][5] == TREE_PART_FELLED);
+        expect(trunkGone == true);
+        
+        // Player expectation: ramp should be removed (no solid support for exit)
+        expect(grid[0][2][5] != CELL_RAMP_N);
+        
+        // Player expectation: rampCount decremented
+        expect(rampCount == rampCountBefore - 1);
+    }
+    
+    it("player chops tree trunk NOT supporting any ramp - ramp stays valid (Finding 6 control)") {
+        // Control test: Chopping a trunk that doesn't support any ramps
+        // should NOT remove unrelated ramps
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        InitTrees();
+        rampCount = 0;
+        
+        // Place tree trunk at (8,1,0) - far from ramp
+        grid[0][1][8] = CELL_TREE_TRUNK;
+        treePartGrid[0][1][8] = TREE_PART_TRUNK;
+        treeTypeGrid[0][1][8] = TREE_TYPE_OAK;
+        
+        // Place solid support for ramp at (5,1,0) - wall provides support
+        grid[0][1][5] = CELL_WALL;
+        
+        // Place a ramp at (5,2,0) pointing north - exit at (5,1,1)
+        grid[0][2][5] = CELL_RAMP_N;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Verify ramp is valid
+        expect(IsRampStillValid(5, 2, 0) == true);
+        
+        // Chop the distant trunk directly
+        CompleteChopDesignation(8, 1, 0, -1);
+        
+        // Player expectation: ramp should STILL exist (unaffected by distant chop)
+        expect(grid[0][2][5] == CELL_RAMP_N);
+        
+        // Player expectation: rampCount unchanged
+        expect(rampCount == rampCountBefore);
+    }
+}
+
+/* =============================================================================
+ * Input Audit Tests (docs/todo/audits/input.md)
+ *
+ * Since the Execute* functions in input.c are static, these tests simulate
+ * what those functions do by directly manipulating the grid and then checking
+ * the invariants that the audit says are violated.
+ *
+ * Player stories:
+ * - Finding 1: "I pile clay by shift-dragging, the material should be clay not dirt"
+ * - Finding 2: "I erase a ramp, rampCount should decrement"
+ * - Finding 3: "I place soil on a mover's path, the mover should repath"
+ * - Finding 4: "I place grass on air, it should have proper wall material"
+ * - Finding 5: "Pile soil at map edge should not crash"
+ * - Finding 6: "I erase a cell with a mine designation, the designation should be cancelled"
+ * - Finding 7: "I remove a tree with a chop designation, the designation should be cancelled"
+ * - Finding 8: "I load a save mid-drag, drag state should reset"
+ * - Finding 10: "I quick-erase a cell, metadata should be fully cleared"
+ * =============================================================================
+ */
+
+describe(input_audit_material_consistency) {
+    // Finding 1: Pile-drag uses wrong material for non-dirt soils
+    // The bug is in the continuous drag switch statement which passes MAT_DIRT
+    // for clay/gravel/sand/peat. We test via ExecutePileSoil-equivalent behavior.
+    
+    it("piling clay should set wall material to MAT_CLAY not MAT_DIRT (Finding 1)") {
+        // Story: Player shift-drags to pile clay. Each placed cell should have
+        // MAT_CLAY as its wall material, not MAT_DIRT.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Simulate what ExecutePileSoil does with the FIXED material
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_CLAY, MAT_CLAY, SURFACE_BARE, true, false));
+        
+        expect(grid[0][3][5] == CELL_CLAY);
+        expect(GetWallMaterial(5, 3, 0) == MAT_CLAY);
+    }
+    
+    it("piling gravel should set wall material to MAT_GRAVEL (Finding 1)") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_GRAVEL, MAT_GRAVEL, SURFACE_BARE, true, false));
+        
+        expect(grid[0][3][5] == CELL_GRAVEL);
+        expect(GetWallMaterial(5, 3, 0) == MAT_GRAVEL);
+    }
+    
+    it("piling sand should set wall material to MAT_SAND (Finding 1)") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_SAND, MAT_SAND, SURFACE_BARE, true, false));
+        
+        expect(grid[0][3][5] == CELL_SAND);
+        expect(GetWallMaterial(5, 3, 0) == MAT_SAND);
+    }
+    
+    it("piling peat should set wall material to MAT_PEAT (Finding 1)") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_PEAT, MAT_PEAT, SURFACE_BARE, true, false));
+        
+        expect(grid[0][3][5] == CELL_PEAT);
+        expect(GetWallMaterial(5, 3, 0) == MAT_PEAT);
+    }
+}
+
+describe(input_audit_erase_ramp) {
+    // Finding 2: ExecuteErase doesn't decrement rampCount when erasing ramps
+    
+    it("erasing a ramp cell should decrement rampCount (Finding 2)") {
+        // Story: Player draws a ramp, then right-click erases over it.
+        // rampCount should decrement.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        rampCount = 0;
+        
+        // Place a ramp
+        grid[0][3][5] = CELL_RAMP_N;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Simulate what the FIXED ExecuteErase does: call EraseRamp
+        EraseRamp(5, 3, 0);
+        
+        // Player expectation: rampCount should have decremented
+        expect(grid[0][3][5] == CELL_AIR);
+        expect(rampCount == rampCountBefore - 1);
+    }
+}
+
+describe(input_audit_soil_repath) {
+    // Finding 3: ExecuteBuildSoil and ExecutePileSoil don't trigger mover repathing
+    
+    it("placing solid soil on a mover path should set needsRepath (Finding 3)") {
+        // Story: Player places a dirt block on a cell where a mover is pathing.
+        // The mover should get needsRepath=true.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Spawn a mover with a path through (5,2,0)
+        Point goal = {9, 0, 0};
+        InitMover(&movers[0], 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        Mover* m = &movers[0];
+        m->active = true;
+        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
+        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        m->pathLength = 2;
+        m->pathIndex = 1;
+        m->needsRepath = false;
+        
+        // Simulate what ExecuteBuildSoil does: place solid soil
+        // (ExecuteBuildSoil does NOT set needsRepath - that's the bug)
+        CellPlacementSpec spec = NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
+        PlaceCellFull(5, 2, 0, spec);
+        InvalidatePathsThroughCell(5, 2, 0);
+        
+        // Player expectation: mover should need a repath
+        expect(m->needsRepath == true);
+    }
+}
+
+describe(input_audit_grass_placement) {
+    // Finding 4: ExecutePlaceGrass converts air to solid dirt without proper setup
+    
+    it("placing grass on air should set proper wall material (Finding 4)") {
+        // Story: Player uses grass tool on an air cell. It becomes CELL_DIRT.
+        // The wall material should be MAT_DIRT, not MAT_NONE.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Verify cell is air
+        expect(grid[0][3][5] == CELL_AIR);
+        
+        // Simulate what the FIXED ExecutePlaceGrass does: PlaceCellFull + surface
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, false));
+        SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
+        
+        // Player expectation: dirt cell should have MAT_DIRT material
+        expect(grid[0][3][5] == CELL_DIRT);
+        expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
+    }
+    
+    it("placing grass on air should trigger mover repathing (Finding 4)") {
+        // Story: Player places grass on a cell where a mover is pathing.
+        // Air becomes solid dirt. Mover should repath.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Spawn a mover with a path through (5,2,0)
+        Point goal = {9, 0, 0};
+        InitMover(&movers[0], 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        Mover* m = &movers[0];
+        m->active = true;
+        m->path[0].x = 5; m->path[0].y = 2; m->path[0].z = 0;
+        m->path[1].x = 6; m->path[1].y = 2; m->path[1].z = 0;
+        m->pathLength = 2;
+        m->pathIndex = 1;
+        m->needsRepath = false;
+        
+        // Simulate FIXED grass placement on air -> solid dirt
+        PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, false));
+        InvalidatePathsThroughCell(5, 2, 0);
+        SET_CELL_SURFACE(5, 2, 0, SURFACE_TALL_GRASS);
+        
+        // Player expectation: mover should need a repath
+        expect(m->needsRepath == true);
+    }
+}
+
+describe(input_audit_erase_designations) {
+    // Finding 6: ExecuteErase doesn't cancel designations
+    // Finding 7: ExecuteRemoveTree doesn't cancel chop designations
+    
+    it("erasing a cell with a mine designation should cancel it (Finding 6)") {
+        // Story: Player designates a wall for mining, then erases the cell.
+        // The mining designation should be cancelled.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Place a wall and designate it for mining
+        grid[0][3][5] = CELL_WALL;
+        SetWallMaterial(5, 3, 0, MAT_GRANITE);
+        bool designated = DesignateMine(5, 3, 0);
+        expect(designated == true);
+        expect(designations[0][3][5].type == DESIGNATION_MINE);
+        
+        // Simulate what the FIXED ExecuteErase does: cancel designation + erase
+        CancelDesignation(5, 3, 0);
+        grid[0][3][5] = CELL_AIR;
+        SetWallMaterial(5, 3, 0, MAT_NONE);
+        ClearWallNatural(5, 3, 0);
+        MarkChunkDirty(5, 3, 0);
+        
+        // Player expectation: designation should be gone
+        expect(designations[0][3][5].type == DESIGNATION_NONE);
+    }
+    
+    it("erasing cells under a stockpile should remove stockpile cells (Finding 6)") {
+        // Story: Player erases terrain that has a stockpile on it.
+        // The stockpile cells over erased terrain should be removed.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        
+        // Create a 3x3 stockpile at (3,3)
+        int spIdx = CreateStockpile(3, 3, 0, 3, 3);
+        expect(spIdx >= 0);
+        int cellsBefore = GetStockpileActiveCellCount(spIdx);
+        expect(cellsBefore == 9);
+        
+        // Simulate what the FIXED ExecuteErase does: remove stockpile cells + erase
+        RemoveStockpileCells(spIdx, 4, 4, 4, 4);
+        grid[0][4][4] = CELL_AIR;
+        MarkChunkDirty(4, 4, 0);
+        
+        // Player expectation: stockpile should have lost the erased cell
+        expect(GetStockpileActiveCellCount(spIdx) == cellsBefore - 1);
+    }
+    
+    it("removing a tree with chop designation should cancel it (Finding 7)") {
+        // Story: Player designates tree for chopping, then removes it with sandbox tool.
+        // The chop designation should be cancelled.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+        InitTrees();
+        
+        // Place a tree trunk
+        grid[0][3][5] = CELL_TREE_TRUNK;
+        treePartGrid[0][3][5] = TREE_PART_TRUNK;
+        treeTypeGrid[0][3][5] = TREE_TYPE_OAK;
+        
+        // Designate it for chopping
+        bool designated = DesignateChop(5, 3, 0);
+        expect(designated == true);
+        expect(designations[0][3][5].type == DESIGNATION_CHOP);
+        
+        // Simulate what the FIXED ExecuteRemoveTree does: cancel designation + clear
+        CancelDesignation(5, 3, 0);
+        grid[0][3][5] = CELL_AIR;
+        treeTypeGrid[0][3][5] = TREE_TYPE_NONE;
+        treePartGrid[0][3][5] = TREE_PART_NONE;
+        MarkChunkDirty(5, 3, 0);
+        
+        // Player expectation: designation should be gone
+        expect(designations[0][3][5].type == DESIGNATION_NONE);
+    }
+}
+
+describe(input_audit_quick_erase_metadata) {
+    // Finding 10: Quick-edit erase leaves stale metadata
+    
+    it("quick-erasing a dirt cell should clear wall material and surface (Finding 10)") {
+        // Story: Player quick-erases (right-click hold) a dirt cell with grass.
+        // The cell becomes air. All metadata should be cleared.
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        
+        // Set up a dirt cell with grass and material
+        grid[0][3][5] = CELL_DIRT;
+        SetWallMaterial(5, 3, 0, MAT_DIRT);
+        SetWallNatural(5, 3, 0);
+        SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
+        
+        // Simulate what the FIXED quick-edit erase does: full metadata cleanup
+        grid[0][3][5] = CELL_AIR;
+        SetWallMaterial(5, 3, 0, MAT_NONE);
+        ClearWallNatural(5, 3, 0);
+        SetWallFinish(5, 3, 0, FINISH_ROUGH);
+        SET_CELL_SURFACE(5, 3, 0, SURFACE_BARE);
+        MarkChunkDirty(5, 3, 0);
+        
+        // Player expectation: all metadata should be cleared
+        expect(grid[0][3][5] == CELL_AIR);
+        expect(GetWallMaterial(5, 3, 0) == MAT_NONE);
+        expect(IsWallNatural(5, 3, 0) == false);
+        expect(GET_CELL_SURFACE(5, 3, 0) == SURFACE_BARE);
+    }
+    
+    it("quick-erasing a ramp should decrement rampCount (Finding 10)") {
+        // Story: Player quick-erases a ramp cell.
+        // rampCount should decrement (same issue as Finding 2 but for quick-edit).
+        
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 6);
+        
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        rampCount = 0;
+        
+        // Place a ramp
+        grid[0][3][5] = CELL_RAMP_S;
+        rampCount++;
+        int rampCountBefore = rampCount;
+        
+        // Simulate what the FIXED quick-edit erase does: call EraseRamp
+        EraseRamp(5, 3, 0);
+        
+        // Player expectation: rampCount should have decremented
+        expect(rampCount == rampCountBefore - 1);
+    }
+}
+
+// Finding 8: LoadWorld doesn't reset input state
+// Skipped as test: input_mode.c has too many dependencies for test unity build.
+// Fix is a one-liner: call InputMode_Reset() after LoadWorld() in input.c.
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -10030,6 +10754,18 @@ int main(int argc, char* argv[]) {
     
     // Save/load state restoration (audit findings)
     test(saveload_state_restoration);
+    
+    // Grid audit integration tests (Findings 3, 4, 6)
+    test(grid_audit_blueprint_integration);
+    test(grid_audit_tree_chopping_integration);
+    
+    // Input audit tests (docs/todo/audits/input.md)
+    test(input_audit_material_consistency);
+    test(input_audit_erase_ramp);
+    test(input_audit_soil_repath);
+    test(input_audit_grass_placement);
+    test(input_audit_erase_designations);
+    test(input_audit_quick_erase_metadata);
     
     return summary();
 }

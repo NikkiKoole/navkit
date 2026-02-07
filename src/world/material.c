@@ -30,10 +30,11 @@ MaterialDef materialDefs[MAT_COUNT] = {
 };
 
 void InitMaterials(void) {
-    // Natural terrain: walls default to granite and are marked natural
-    memset(wallMaterial, MAT_GRANITE, sizeof(wallMaterial));
+    // All cells start with no material — SyncMaterialsToTerrain sets correct
+    // materials after terrain generation. This avoids air cells having MAT_GRANITE.
+    memset(wallMaterial, MAT_NONE, sizeof(wallMaterial));
     memset(floorMaterial, MAT_NONE, sizeof(floorMaterial));
-    memset(wallNatural, 1, sizeof(wallNatural));
+    memset(wallNatural, 0, sizeof(wallNatural));
     memset(floorNatural, 0, sizeof(floorNatural));
     memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
     memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
@@ -57,6 +58,11 @@ void SyncMaterialsToTerrain(void) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
                 MaterialType mat = MaterialForGroundCell(cell);
+                // Ground cells get their specific material
+                // Other solid cells (CELL_WALL etc.) default to granite
+                if (mat == MAT_NONE && CellIsSolid(cell)) {
+                    mat = MAT_GRANITE;
+                }
                 if (mat == MAT_NONE) continue;
                 SetWallMaterial(x, y, z, mat);
                 SetWallNatural(x, y, z);
