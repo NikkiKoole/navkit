@@ -82,8 +82,8 @@ int GetFuelAt(int x, int y, int z) {
         }
     }
     
-    // Grass surface on dirt adds extra fuel
-    if (cell == CELL_DIRT || cell == CELL_AIR) {
+    // Grass surface on dirt terrain adds extra fuel
+    if (cell == CELL_TERRAIN || cell == CELL_AIR) {
         int surface = GET_CELL_SURFACE(x, y, z);
         if (surface == SURFACE_GRASS || surface == SURFACE_TALL_GRASS) {
             baseFuel = 16;  // Grass is flammable
@@ -361,8 +361,8 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                     bool wasSolid = CellIsSolid(currentCell);
                     
                     grid[z][y][x] = burnResult;
-                    // Set high wear on burned ground so it takes time to regrow
-                    if (burnResult == CELL_DIRT) {
+                    // Set high wear on burned terrain so it takes time to regrow
+                    if (burnResult == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT) {
                         wearGrid[z][y][x] = wearMax;
                         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                     }
@@ -374,8 +374,8 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                         // Check 3x3x3 area around burned cell for ramps that may have lost support
                         ValidateAndCleanupRamps(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1);
                     }
-                } else if (currentCell == CELL_DIRT) {
-                    // DF mode: dirt with grass surface burns away the grass
+                } else if (currentCell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT) {
+                    // DF mode: dirt terrain with grass surface burns away the grass
                     wearGrid[z][y][x] = wearMax;
                     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
                 }

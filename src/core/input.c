@@ -109,9 +109,9 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
             }
             
             if (isDirt) {
-                // Dirt creates natural CELL_DIRT terrain
-                if (grid[z][dy][dx] != CELL_DIRT) {
-                    PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, true));
+                // Dirt creates natural terrain
+                if (grid[z][dy][dx] != CELL_TERRAIN || GetWallMaterial(dx, dy, z) != MAT_DIRT) {
+                    PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, true));
                     InvalidatePathsThroughCell(dx, dy, z);
                     count++;
                 }
@@ -246,8 +246,8 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
                 continue;
             }
 
-            if (grid[z][dy][dx] != CELL_ROCK || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
-                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_ROCK, MAT_GRANITE, SURFACE_BARE, true, true));
+            if (grid[z][dy][dx] != CELL_TERRAIN || GetWallMaterial(dx, dy, z) != MAT_GRANITE || !IsWallNatural(dx, dy, z)) {
+                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_TERRAIN, MAT_GRANITE, SURFACE_BARE, true, true));
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -263,14 +263,15 @@ static void ExecuteBuildRock(int x1, int y1, int x2, int y2, int z) {
 
 // Helper to build soil (all soil types follow same pattern)
 static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soilType, MaterialType material, const char* name) {
+    (void)soilType;  // No longer used - soil is always CELL_TERRAIN
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
             // Can place soil on air
             if (cell == CELL_AIR) {
-                uint8_t surface = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(soilType, material, surface, true, false));
+                uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
+                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_TERRAIN, material, surface, true, false));
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -284,6 +285,7 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
 // Pile mode: place soil with gravity and spreading
 static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType material, const char* name) {
     (void)name;
+    (void)soilType;  // No longer used - soil is always CELL_TERRAIN
     // Bounds check
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
@@ -309,8 +311,8 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
             // If it was a ramp, we're filling it up - decrease ramp count
             rampCount--;
         }
-        uint8_t surface = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-        PlaceCellFull(x, y, placeZ, NaturalTerrainSpec(soilType, material, surface, true, false));
+        uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
+        PlaceCellFull(x, y, placeZ, NaturalTerrainSpec(CELL_TERRAIN, material, surface, true, false));
         InvalidatePathsThroughCell(x, y, placeZ);
         
         // Try to create ramps at adjacent edges for organic look
@@ -369,8 +371,8 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                         // Filling up a ramp - decrease count
                         rampCount--;
                     }
-                    uint8_t surface = (soilType == CELL_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-                    PlaceCellFull(nx, ny, nz, NaturalTerrainSpec(soilType, material, surface, true, false));
+                    uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
+                    PlaceCellFull(nx, ny, nz, NaturalTerrainSpec(CELL_TERRAIN, material, surface, true, false));
                     InvalidatePathsThroughCell(nx, ny, nz);
                     
                     // Try to create organic-looking ramps at adjacent edges
@@ -422,14 +424,19 @@ static void ExecuteErase(int x1, int y1, int x2, int y2, int z) {
                 EraseRamp(dx, dy, z);
                 count++;
             } else {
-                CellType eraseType = (z == 0) ? CELL_BEDROCK : CELL_AIR;
+                CellType eraseType = CELL_AIR;
+                MaterialType eraseMat = MAT_NONE;
+                if (z == 0) {
+                    eraseType = CELL_TERRAIN;
+                    eraseMat = MAT_BEDROCK;
+                }
                 bool changed = false;
-                if (grid[z][dy][dx] != eraseType) {
+                if (grid[z][dy][dx] != eraseType || (eraseType == CELL_TERRAIN && GetWallMaterial(dx, dy, z) != eraseMat)) {
                     grid[z][dy][dx] = eraseType;
                     changed = true;
                 }
                 if (changed) {
-                    SetWallMaterial(dx, dy, z, MAT_NONE);
+                    SetWallMaterial(dx, dy, z, eraseMat);
                     ClearWallNatural(dx, dy, z);
                     SetWallFinish(dx, dy, z, FINISH_ROUGH);
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
@@ -1088,13 +1095,13 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can grow grass on dirt or air
+            // Can grow grass on dirt terrain or air
             if (cell == CELL_AIR) {
-                // Convert to dirt with proper material setup
-                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_DIRT, MAT_DIRT, SURFACE_BARE, true, false));
+                // Convert to dirt terrain with proper material setup
+                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, false));
                 InvalidatePathsThroughCell(dx, dy, z);
             }
-            if (grid[z][dy][dx] == CELL_DIRT) {
+            if (grid[z][dy][dx] == CELL_TERRAIN && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 // Set tall grass overlay and reset wear
                 SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
                 wearGrid[z][dy][dx] = 0;
@@ -1112,8 +1119,8 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            // Remove grass overlay from dirt tiles
-            if (grid[z][dy][dx] == CELL_DIRT) {
+            // Remove grass overlay from dirt terrain tiles
+            if (grid[z][dy][dx] == CELL_TERRAIN && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 int surface = GET_CELL_SURFACE(dx, dy, z);
                 if (surface != SURFACE_BARE) {
                     SET_CELL_SURFACE(dx, dy, z, SURFACE_BARE);
@@ -1833,22 +1840,22 @@ void HandleInput(void) {
         // Execute pile placement at current mouse position
         switch (inputAction) {
             case ACTION_DRAW_SOIL_DIRT:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_DIRT, MAT_DIRT, "dirt");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_DIRT, "dirt");
                 break;
             case ACTION_DRAW_SOIL_CLAY:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_CLAY, MAT_CLAY, "clay");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_CLAY, "clay");
                 break;
             case ACTION_DRAW_SOIL_GRAVEL:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_GRAVEL, MAT_GRAVEL, "gravel");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_GRAVEL, "gravel");
                 break;
             case ACTION_DRAW_SOIL_SAND:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_SAND, MAT_SAND, "sand");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_SAND, "sand");
                 break;
             case ACTION_DRAW_SOIL_PEAT:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_PEAT, MAT_PEAT, "peat");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_PEAT, "peat");
                 break;
             case ACTION_DRAW_SOIL_ROCK:
-                ExecutePileSoil(mouseX, mouseY, z, CELL_ROCK, MAT_GRANITE, "rock");
+                ExecutePileSoil(mouseX, mouseY, z, CELL_TERRAIN, MAT_GRANITE, "rock");
                 break;
             default:
                 break;
@@ -1898,52 +1905,52 @@ void HandleInput(void) {
                 if (leftClick) {
                     if (shift) {
                         // Pile mode - place single block at drag start with gravity/spreading
-                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_DIRT, MAT_DIRT, "dirt");
+                        ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_DIRT, "dirt");
                     } else {
-                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_DIRT, MAT_DIRT, "dirt");
+                        ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_TERRAIN, MAT_DIRT, "dirt");
                     }
                 }
                 break;
             case ACTION_DRAW_SOIL_CLAY:
                 if (leftClick) {
                 if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_CLAY, MAT_CLAY, "clay");
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_CLAY, "clay");
                 } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_CLAY, MAT_CLAY, "clay");
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_TERRAIN, MAT_CLAY, "clay");
                 }
                 }
                 break;
             case ACTION_DRAW_SOIL_GRAVEL:
                 if (leftClick) {
                 if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_GRAVEL, MAT_GRAVEL, "gravel");
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_GRAVEL, "gravel");
                 } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_GRAVEL, MAT_GRAVEL, "gravel");
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_TERRAIN, MAT_GRAVEL, "gravel");
                 }
                 }
                 break;
             case ACTION_DRAW_SOIL_SAND:
                 if (leftClick) {
                 if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_SAND, MAT_SAND, "sand");
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_SAND, "sand");
                 } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_SAND, MAT_SAND, "sand");
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_TERRAIN, MAT_SAND, "sand");
                 }
                 }
                 break;
             case ACTION_DRAW_SOIL_PEAT:
                 if (leftClick) {
                 if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_PEAT, MAT_PEAT, "peat");
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_PEAT, "peat");
                 } else {
-                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_PEAT, MAT_PEAT, "peat");
+                    ExecuteBuildSoil(x1, y1, x2, y2, z, CELL_TERRAIN, MAT_PEAT, "peat");
                 }
                 }
                 break;
             case ACTION_DRAW_SOIL_ROCK:
                 if (leftClick) {
                 if (shift) {
-                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_ROCK, MAT_GRANITE, "rock");
+                    ExecutePileSoil(dragStartX, dragStartY, z, CELL_TERRAIN, MAT_GRANITE, "rock");
                 } else {
                     ExecuteBuildRock(x1, y1, x2, y2, z);
                 }

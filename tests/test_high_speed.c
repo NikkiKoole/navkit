@@ -15,6 +15,7 @@
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/smoke.h"
@@ -42,7 +43,7 @@ static void SetupCorridorGrid(void) {
     // Fill z=0 with dirt (ground)
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
             grid[1][y][x] = CELL_AIR;
         }
     }
@@ -115,7 +116,7 @@ static void SetupWalledGrid(void) {
     // Fill z=0 with dirt, z=1 with air
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_DIRT;
+            grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
             grid[1][y][x] = CELL_AIR;
         }
     }
@@ -296,7 +297,7 @@ describe(high_speed_simulation_stability) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }

@@ -70,13 +70,13 @@ static bool HasNearbyTree(int x, int y, int z, int dist) {
     return false;
 }
 
-static TreeType PickTreeTypeForSoil(CellType soil) {
-    switch (soil) {
-        case CELL_PEAT: return TREE_TYPE_WILLOW;
-        case CELL_SAND: return TREE_TYPE_BIRCH;
-        case CELL_GRAVEL: return TREE_TYPE_PINE;
-        case CELL_CLAY: return TREE_TYPE_OAK;
-        case CELL_DIRT:
+static TreeType PickTreeTypeForSoil(MaterialType soilMat) {
+    switch (soilMat) {
+        case MAT_PEAT: return TREE_TYPE_WILLOW;
+        case MAT_SAND: return TREE_TYPE_BIRCH;
+        case MAT_GRAVEL: return TREE_TYPE_PINE;
+        case MAT_CLAY: return TREE_TYPE_OAK;
+        case MAT_DIRT:
         default: return TREE_TYPE_OAK;
     }
 }
@@ -113,19 +113,19 @@ void TrampleGround(int x, int y, int z) {
         return;  // Don't also trample ground below sapling
     }
     
-    // Check current cell for dirt
+    // Check current cell for dirt terrain
     int targetZ = z;
     
-    // In DF mode, movers walk at z=1 on floors above z=0 dirt
-    // If current cell isn't dirt, check if we're standing on dirt below
-    if (cell != CELL_DIRT && z > 0) {
+    // In DF mode, movers walk at z=1 on floors above z=0 dirt terrain
+    // If current cell isn't dirt terrain, check if we're standing on dirt below
+    if (!(cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT) && z > 0) {
         CellType cellBelow = grid[z - 1][y][x];
-        if (cellBelow == CELL_DIRT) {
+        if (cellBelow == CELL_TERRAIN && GetWallMaterial(x, y, z - 1) == MAT_DIRT) {
             targetZ = z - 1;
         } else {
             return;  // No dirt to trample
         }
-    } else if (cell != CELL_DIRT) {
+    } else if (!(cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT)) {
         return;  // No dirt to trample
     }
     
@@ -167,7 +167,7 @@ void UpdateGroundWear(void) {
                 
                 // Only process soil tiles
                 if (!IsGroundCell(cell)) continue;
-                bool isDirt = (cell == CELL_DIRT);
+                bool isDirt = (cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT);
                 
                 // Skip if on fire - don't regrow grass while burning
                 if (HasFire(x, y, z)) continue;
@@ -194,7 +194,8 @@ void UpdateGroundWear(void) {
                             if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
                             if ((rand() % 10000) < saplingRegrowthChance) {
                                 if (!HasNearbyTree(x, y, z, saplingMinTreeDistance)) {
-                                    TreeType type = PickTreeTypeForSoil(grid[z][y][x]);
+                                    MaterialType soilMat = GetWallMaterial(x, y, z);
+                                    TreeType type = PickTreeTypeForSoil(soilMat);
                                     PlaceSapling(x, y, z + 1, type);
                                 }
                             }

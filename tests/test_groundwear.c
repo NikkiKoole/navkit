@@ -2,6 +2,7 @@
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/simulation/groundwear.h"
 #include <stdlib.h>
 #include <string.h>
@@ -56,7 +57,7 @@ describe(groundwear_initialization) {
 }
 
 // =============================================================================
-// Trampling (now operates on CELL_DIRT only)
+// Trampling (now operates on CELL_TERRAIN with MAT_DIRT only)
 // =============================================================================
 
 describe(groundwear_trampling) {
@@ -68,7 +69,7 @@ describe(groundwear_trampling) {
         // Set up dirt tiles
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         }
         
@@ -87,7 +88,7 @@ describe(groundwear_trampling) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -106,7 +107,7 @@ describe(groundwear_trampling) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -135,10 +136,10 @@ describe(groundwear_trampling) {
         InitGridFromAsciiWithChunkSize(
             "d#dd\n", 4, 1);
         
-        grid[0][0][0] = CELL_DIRT;
+        grid[0][0][0] = CELL_TERRAIN; SetWallMaterial(0, 0, 0, MAT_DIRT);
         grid[0][0][1] = CELL_WALL;
-        grid[0][0][2] = CELL_DIRT;
-        grid[0][0][3] = CELL_DIRT;
+        grid[0][0][2] = CELL_TERRAIN; SetWallMaterial(2, 0, 0, MAT_DIRT);
+        grid[0][0][3] = CELL_TERRAIN; SetWallMaterial(3, 0, 0, MAT_DIRT);
         
         InitGroundWear();
         groundWearEnabled = true;
@@ -153,7 +154,7 @@ describe(groundwear_trampling) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -172,8 +173,8 @@ describe(groundwear_trampling) {
         
         // Set up dirt at z=0 and z=1
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-            grid[1][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
+            grid[1][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 1, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -200,7 +201,7 @@ describe(surface_overlay_updates) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
@@ -246,7 +247,7 @@ describe(surface_overlay_updates) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -297,7 +298,7 @@ describe(wear_decay) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -325,7 +326,7 @@ describe(wear_decay) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -360,7 +361,7 @@ describe(wear_decay) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -386,9 +387,9 @@ describe(wear_decay) {
         
         // Set up dirt at multiple z-levels
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
-            grid[1][0][x] = CELL_DIRT;
-            grid[2][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
+            grid[1][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 1, MAT_DIRT);
+            grid[2][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 2, MAT_DIRT);
         }
         
         InitGroundWear();
@@ -424,7 +425,7 @@ describe(groundwear_full_cycle) {
             "dddd\n", 4, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
@@ -475,7 +476,7 @@ describe(groundwear_full_cycle) {
             "dddddddddd\n", 10, 1);
         
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][0][x] = CELL_DIRT;
+            grid[0][0][x] = CELL_TERRAIN; SetWallMaterial(x, 0, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
         }
         
@@ -553,7 +554,7 @@ describe(groundwear_edge_cases) {
         InitGridFromAsciiWithChunkSize(
             "dfgw\n", 4, 1);
         
-        grid[0][0][0] = CELL_DIRT;
+        grid[0][0][0] = CELL_TERRAIN; SetWallMaterial(0, 0, 0, MAT_DIRT);
         grid[0][0][1] = CELL_AIR;
         SET_FLOOR(1, 0, 0);  // Floor uses flag system
         grid[0][0][2] = CELL_AIR;  // Air cell - not trampled
@@ -581,7 +582,7 @@ describe(groundwear_edge_cases) {
         // Set up z=0 as dirt ground with tall grass
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
                 grid[1][y][x] = CELL_AIR;  // Walking level is air above dirt
             }

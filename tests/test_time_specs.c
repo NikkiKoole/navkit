@@ -9,6 +9,7 @@
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
 #include "../src/world/cell_defs.h"
+#include "../src/world/material.h"
 #include "../src/simulation/fire.h"
 #include "../src/simulation/smoke.h"
 #include "../src/simulation/steam.h"
@@ -82,7 +83,7 @@ describe(spec_fire_spread) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
@@ -110,7 +111,7 @@ describe(spec_fire_spread) {
         // Set all cells to dirt with grass surface (flammable)
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
@@ -137,7 +138,7 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
@@ -156,7 +157,7 @@ describe(spec_fire_spread) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }
@@ -426,7 +427,7 @@ describe(spec_ground_wear) {
         ResetTestState(12345);
         
         // Set up dirt with tall grass overlay (new system)
-        grid[0][4][8] = CELL_DIRT;
+        grid[0][4][8] = CELL_TERRAIN; SetWallMaterial(8, 4, 0, MAT_DIRT);
         SET_CELL_SURFACE(8, 4, 0, SURFACE_TALL_GRASS);
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
@@ -448,7 +449,7 @@ describe(spec_ground_wear) {
         ResetTestState(12345);
         
         // Set up bare worn dirt
-        grid[0][4][8] = CELL_DIRT;
+        grid[0][4][8] = CELL_TERRAIN; SetWallMaterial(8, 4, 0, MAT_DIRT);
         SET_CELL_SURFACE(8, 4, 0, SURFACE_BARE);
         wearGrid[0][4][8] = 150;  // Above threshold (3D array now)
         
@@ -503,7 +504,7 @@ describe(spec_game_speed) {
         SetupTestGrid();
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_DIRT;
+                grid[0][y][x] = CELL_TERRAIN; SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
             }
         }

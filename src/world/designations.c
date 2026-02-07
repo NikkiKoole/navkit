@@ -185,7 +185,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         MaterialType floorMat = MaterialForGroundCell(ct);
         bool floorIsNatural = true;
         
-        if (ct == CELL_ROCK) {
+        if (ct == CELL_TERRAIN) {
             floorMat = GetWallMaterial(x, y, z);
             floorIsNatural = IsWallNatural(x, y, z);
         }
@@ -212,7 +212,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         // Spawn drops
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
-                uint8_t dropMat = (ct == CELL_ROCK && floorMat != MAT_NONE)
+                uint8_t dropMat = (ct == CELL_TERRAIN && floorMat != MAT_NONE)
                     ? (uint8_t)floorMat
                     : DefaultMaterialForItemType(dropItem);
                 SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
@@ -1810,11 +1810,11 @@ void CompleteBlueprint(int blueprintIdx) {
             DisplaceWater(x, y, z);
             if (bp->deliveredMaterial == MAT_DIRT) {
                 // Dirt creates natural terrain, not a constructed wall
-                grid[z][y][x] = CELL_DIRT;
+                grid[z][y][x] = CELL_TERRAIN;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_ROUGH);
-                CLEAR_FLOOR(x, y, z);  // Dirt is solid, no floor on top
+                CLEAR_FLOOR(x, y, z);  // Terrain is solid, no floor on top
                 SetFloorMaterial(x, y, z, MAT_NONE);
                 ClearFloorNatural(x, y, z);
                 SetFloorFinish(x, y, z, FINISH_ROUGH);
