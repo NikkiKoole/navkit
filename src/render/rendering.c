@@ -189,6 +189,14 @@ static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
         cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
         return GetTreeSpriteAt(x, y, z, cell);
     }
+    // CELL_TERRAIN: use material-driven sprite
+    if (cell == CELL_TERRAIN) {
+        MaterialType mat = GetWallMaterial(x, y, z);
+        if (mat != MAT_NONE) {
+            int sprite = MaterialSprite(mat);
+            if (sprite) return sprite;
+        }
+    }
     return CellSprite(cell);
 }
 

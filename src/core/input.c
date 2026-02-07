@@ -268,8 +268,8 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
             CellType cell = grid[z][dy][dx];
-            // Can place soil on air
-            if (cell == CELL_AIR) {
+            // Can place soil on air or overwrite existing terrain
+            if (cell == CELL_AIR || (cell == CELL_TERRAIN && GetWallMaterial(dx, dy, z) != material)) {
                 uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
                 PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_TERRAIN, material, surface, true, false));
                 InvalidatePathsThroughCell(dx, dy, z);

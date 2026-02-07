@@ -181,7 +181,7 @@ void CompleteMineDesignation(int x, int y, int z) {
     }
     // Convert ground to air with floor
     else if (IsGroundCell(ct)) {
-        ItemType dropItem = CellDropsItem(ct);
+        ItemType dropItem = GetWallDropItem(x, y, z);
         int dropCount = CellDropCount(ct);
         MaterialType floorMat = GetWallMaterial(x, y, z);
         bool floorIsNatural = IsWallNatural(x, y, z);

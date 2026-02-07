@@ -166,11 +166,10 @@ describe(cell_def_drops) {
     
     it("should have dropCount of 0 for non-mineable cells") {
         expect(CellDropCount(CELL_AIR) == 0);
-        expect(CellDropCount(CELL_TERRAIN) == 0);
     }
 
-    it("should have dropCount of 0 for terrain (material determines drops)") {
-        expect(CellDropCount(CELL_TERRAIN) == 0);
+    it("should have dropCount of 1 for terrain (material determines drop type)") {
+        expect(CellDropCount(CELL_TERRAIN) == 1);
     }
 }
 
@@ -422,6 +421,27 @@ describe(mining_material_drops) {
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         ClearWallNatural(0, 0, 0);
         expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
+    }
+
+    it("should use GetWallDropItem for CELL_TERRAIN material-based drops") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        
+        grid[0][0][0] = CELL_TERRAIN;
+        SetWallMaterial(0, 0, 0, MAT_CLAY);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_CLAY);
+        
+        grid[0][0][1] = CELL_TERRAIN;
+        SetWallMaterial(1, 0, 0, MAT_PEAT);
+        expect(GetWallDropItem(1, 0, 0) == ITEM_PEAT);
+        
+        grid[0][0][2] = CELL_TERRAIN;
+        SetWallMaterial(2, 0, 0, MAT_SAND);
+        expect(GetWallDropItem(2, 0, 0) == ITEM_SAND);
+        
+        grid[0][0][3] = CELL_TERRAIN;
+        SetWallMaterial(3, 0, 0, MAT_DIRT);
+        expect(GetWallDropItem(3, 0, 0) == ITEM_DIRT);
     }
 }
 

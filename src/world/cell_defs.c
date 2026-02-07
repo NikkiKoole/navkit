@@ -19,7 +19,7 @@ CellDef cellDefs[] = {
     
     // === SPECIAL ===
     [CELL_AIR]         = {"air",         SPRITE_air,         0,                    INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},
-    [CELL_TERRAIN]     = {"terrain",     SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_TERRAIN, ITEM_NONE, 0},  // Generic natural terrain - material determines properties
+    [CELL_TERRAIN]     = {"terrain",     SPRITE_dirt,        CF_GROUND | CF_BLOCKS_FLUIDS, INSULATION_TIER_AIR,    0, CELL_TERRAIN, ITEM_NONE, 1},  // Generic natural terrain - material determines drops
     
     // === VEGETATION ===
     [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling_oak, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},  // Walkable, grows into trunk (rendering uses tree type)

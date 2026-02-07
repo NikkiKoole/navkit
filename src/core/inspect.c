@@ -83,8 +83,6 @@ static const char* finishNames[] = {"ROUGH", "SMOOTH", "POLISHED", "ENGRAVED"};
 static uint64_t insp_worldSeed = 0;
 static int insp_gridW, insp_gridH, insp_gridD, insp_chunkW, insp_chunkH;
 static CellType* insp_gridCells = NULL;
-static uint8_t* insp_treeTypes = NULL;
-static uint8_t* insp_treeParts = NULL;
 static WaterCell* insp_waterCells = NULL;
 static FireCell* insp_fireCells = NULL;
 static SmokeCell* insp_smokeCells = NULL;
@@ -868,8 +866,6 @@ static void print_temp(int filterZ) {
 
 static void cleanup(void) {
     free(insp_gridCells);
-    free(insp_treeTypes);
-    free(insp_treeParts);
     free(insp_waterCells);
     free(insp_fireCells);
     free(insp_smokeCells);
@@ -1037,8 +1033,6 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Allocate and read grid data
     insp_gridCells = malloc(totalCells * sizeof(CellType));
-    insp_treeTypes = malloc(totalCells * sizeof(uint8_t));
-    insp_treeParts = malloc(totalCells * sizeof(uint8_t));
     insp_waterCells = malloc(totalCells * sizeof(WaterCell));
     insp_fireCells = malloc(totalCells * sizeof(FireCell));
     insp_smokeCells = malloc(totalCells * sizeof(SmokeCell));
@@ -1054,8 +1048,10 @@ int InspectSaveFile(int argc, char** argv) {
     insp_designations = malloc(totalCells * sizeof(Designation));
     
     fread(insp_gridCells, sizeof(CellType), totalCells, f);
-    fread(insp_treeTypes, sizeof(uint8_t), totalCells, f);
-    fread(insp_treeParts, sizeof(uint8_t), totalCells, f);
+    if (version < 24) {
+        // V23 and earlier had treeType and treePart grids - skip them
+        fseek(f, totalCells * sizeof(uint8_t) * 2, SEEK_CUR);
+    }
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
     fread(insp_fireCells, sizeof(FireCell), totalCells, f);
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
