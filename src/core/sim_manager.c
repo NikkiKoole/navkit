@@ -8,7 +8,7 @@
 #include "../simulation/groundwear.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
-#include "raylib.h"
+#include "vendor/raylib.h"
 
 // Active cell counts for early exit
 int waterActiveCells = 0;
