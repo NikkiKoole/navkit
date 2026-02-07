@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "items.h"
 #include "../world/material.h"
-#include "raylib.h"
+#include "vendor/raylib.h"
 
 #define MAX_STOCKPILES 64
 #define MAX_STOCKPILE_SIZE 32  // max width/height
