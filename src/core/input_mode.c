@@ -1,5 +1,6 @@
 // core/input_mode.c - Hierarchical input mode system
 #include "input_mode.h"
+#include "action_registry.h"
 #include "../game_state.h"  // Includes raylib.h
 #include <stdio.h>
 
@@ -58,48 +59,8 @@ const char* InputMode_GetModeName(void) {
 }
 
 static const char* GetActionName(void) {
-    switch (inputAction) {
-        case ACTION_DRAW_WALL:       return "WALL";
-        case ACTION_DRAW_FLOOR:      return "FLOOR";
-        case ACTION_DRAW_LADDER:     return "LADDER";
-        case ACTION_DRAW_RAMP:       return "RAMP";
-        case ACTION_DRAW_STOCKPILE:  return "STOCKPILE";
-        case ACTION_DRAW_DIRT:       return "DIRT";
-        case ACTION_DRAW_ROCK:       return "ROCK";
-        case ACTION_DRAW_WORKSHOP:   return "WORKSHOP";
-        case ACTION_DRAW_WORKSHOP_STONECUTTER: return "STONECUTTER";
-        case ACTION_DRAW_WORKSHOP_SAWMILL:     return "SAWMILL";
-        case ACTION_DRAW_WORKSHOP_KILN:        return "KILN";
-        case ACTION_DRAW_SOIL:       return "SOIL";
-        case ACTION_DRAW_SOIL_DIRT:  return "DIRT";
-        case ACTION_DRAW_SOIL_CLAY:  return "CLAY";
-        case ACTION_DRAW_SOIL_GRAVEL: return "GRAVEL";
-        case ACTION_DRAW_SOIL_SAND:  return "SAND";
-        case ACTION_DRAW_SOIL_PEAT:  return "PEAT";
-        case ACTION_WORK_MINE:         return "MINE";
-        case ACTION_WORK_CHANNEL:      return "CHANNEL";
-        case ACTION_WORK_DIG_RAMP:     return "DIG RAMP";
-        case ACTION_WORK_REMOVE_FLOOR: return "REMOVE FLOOR";
-        case ACTION_WORK_REMOVE_RAMP:  return "REMOVE RAMP";
-        case ACTION_WORK_CONSTRUCT:    return "WALL";
-        case ACTION_WORK_FLOOR:        return "FLOOR";
-        case ACTION_WORK_LADDER:       return "LADDER";
-        case ACTION_WORK_RAMP:         return "RAMP";
-        case ACTION_WORK_CHOP:         return "CHOP TREE";
-        case ACTION_WORK_CHOP_FELLED:  return "CHOP FELLED";
-        case ACTION_WORK_GATHER_SAPLING: return "GATHER SAPLING";
-        case ACTION_WORK_PLANT_SAPLING:  return "PLANT SAPLING";
-        case ACTION_WORK_GATHER:       return "GATHER";
-        case ACTION_SANDBOX_WATER:   return "WATER";
-        case ACTION_SANDBOX_FIRE:    return "FIRE";
-        case ACTION_SANDBOX_HEAT:    return "HEAT";
-        case ACTION_SANDBOX_COLD:    return "COLD";
-        case ACTION_SANDBOX_SMOKE:   return "SMOKE";
-        case ACTION_SANDBOX_STEAM:   return "STEAM";
-        case ACTION_SANDBOX_GRASS:   return "GRASS";
-        case ACTION_SANDBOX_TREE:    return "TREE";
-        default:                     return NULL;
-    }
+    const ActionDef* def = GetActionDef(inputAction);
+    return def->name;
 }
 
 static const char* GetSubModeName(void) {
@@ -145,8 +106,9 @@ const char* InputMode_GetBarText(void) {
         }
     }
     
-    // Action selected - show material options or instructions
-    const char* actionName = GetActionName();
+    // Action selected - use registry for bar text
+    const ActionDef* def = GetActionDef(inputAction);
+    const char* actionName = def->name;
     const char* modeName = InputMode_GetModeName();
     const char* subModeName = GetSubModeName();
     
@@ -158,96 +120,18 @@ const char* InputMode_GetBarText(void) {
         snprintf(prefix, sizeof(prefix), "%s > %s", modeName, actionName);
     }
     
-    switch (inputAction) {
-        case ACTION_DRAW_WALL:
-            snprintf(barTextBuffer, sizeof(barTextBuffer), 
-                "%s: [1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  R-drag erase  [ESC]Back",
-                prefix,
-                selectedMaterial == 1 ? "<" : "",
-                selectedMaterial == 2 ? "<" : "",
-                selectedMaterial == 3 ? "<" : "");
-            break;
-        case ACTION_DRAW_FLOOR:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: [1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  [ESC]Back",
-                prefix,
-                selectedMaterial == 1 ? "<" : "",
-                selectedMaterial == 2 ? "<" : "",
-                selectedMaterial == 3 ? "<" : "");
-            break;
-        case ACTION_DRAW_LADDER:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag place  [ESC]Back", prefix);
-            break;
-        case ACTION_DRAW_DIRT:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
-            break;
-        case ACTION_DRAW_ROCK:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag place  R-drag erase  [ESC]Back", prefix);
-            break;
-        case ACTION_DRAW_SOIL:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: [D]irt  [C]lay  [G]ravel  [S]and  [P]eat    [ESC]Back", prefix);
-            break;
-        case ACTION_DRAW_SOIL_DIRT:
-        case ACTION_DRAW_SOIL_CLAY:
-        case ACTION_DRAW_SOIL_GRAVEL:
-        case ACTION_DRAW_SOIL_SAND:
-        case ACTION_DRAW_SOIL_PEAT:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag place  +Shift=pile mode  [ESC]Back", prefix);
-            break;
-        case ACTION_DRAW_STOCKPILE:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag create  R-drag erase  [ESC]Back", prefix);
-            break;
-        case ACTION_WORK_MINE:
-        case ACTION_WORK_CHANNEL:
-        case ACTION_WORK_DIG_RAMP:
-        case ACTION_WORK_REMOVE_FLOOR:
-        case ACTION_WORK_REMOVE_RAMP:
-        case ACTION_WORK_CONSTRUCT:
-        case ACTION_WORK_FLOOR:
-        case ACTION_WORK_LADDER:
-        case ACTION_WORK_RAMP:
-        case ACTION_WORK_CHOP:
-        case ACTION_WORK_CHOP_FELLED:
-        case ACTION_WORK_GATHER_SAPLING:
-        case ACTION_WORK_PLANT_SAPLING:
-        case ACTION_WORK_GATHER:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag designate  R-drag cancel  [ESC]Back", prefix);
-            break;
-        case ACTION_SANDBOX_WATER:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag add  R-drag remove  +Shift=source/drain  [ESC]Back", prefix);
-            break;
-        case ACTION_SANDBOX_FIRE:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag ignite  R-drag extinguish  +Shift=source  [ESC]Back", prefix);
-            break;
-        case ACTION_SANDBOX_HEAT:
-        case ACTION_SANDBOX_COLD:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag add  R-drag remove  [ESC]Back", prefix);
-            break;
-        case ACTION_SANDBOX_SMOKE:
-        case ACTION_SANDBOX_STEAM:
-        case ACTION_SANDBOX_GRASS:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag add  R-drag remove  [ESC]Back", prefix);
-            break;
-        case ACTION_SANDBOX_TREE:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-click place  R-drag remove  T:cycle (%s)  [ESC]Back", prefix,
-                treeTypeNames[currentTreeType]);
-            break;
-        default:
-            snprintf(barTextBuffer, sizeof(barTextBuffer),
-                "%s: L-drag  [ESC]Back", prefix);
-            break;
+    // Special handling for actions with dynamic content
+    if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR) {
+        // Material selection with markers
+        snprintf(barTextBuffer, sizeof(barTextBuffer), "%s: ", prefix);
+        snprintf(barTextBuffer + strlen(barTextBuffer), sizeof(barTextBuffer) - strlen(barTextBuffer),
+            def->barText,
+            selectedMaterial == 1 ? "<" : "",
+            selectedMaterial == 2 ? "<" : "",
+            selectedMaterial == 3 ? "<" : "");
+    } else {
+        // Standard action - just prepend prefix
+        snprintf(barTextBuffer, sizeof(barTextBuffer), "%s: %s", prefix, def->barText);
     }
     
     return barTextBuffer;
