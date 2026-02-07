@@ -434,7 +434,7 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;
         case ACTION_SANDBOX_TREE:
-            n = AddItem(items, n, TextFormat("Cycle tree (%s)", treeTypeNames[currentTreeType]), KEY_T, 0, false, false, false);
+            n = AddItem(items, n, TextFormat("Cycle tree (%s)", TreeTypeName(currentTreeType)), KEY_T, 0, false, false, false);
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
             break;
