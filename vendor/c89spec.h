@@ -37,6 +37,7 @@ DEALINGS IN THE SOFTWARE.
 /* -----------------------------                                              */
 /* describe({module_name})                                                    */
 /* it({module responsibility})                                                */
+/* xit({module responsibility})                                               */
 /* expect({scalar})                                                           */
 /* test({module_name})                                                        */
 /* summary()                                                                  */
@@ -60,6 +61,10 @@ DEALINGS IN THE SOFTWARE.
 #define it(REQUIREMENT) \
    _c89spec_begin_it(#REQUIREMENT);
 
+/* "xit" marks a test as disabled (skipped) without executing expectations.   */
+#define xit(REQUIREMENT) \
+   _c89spec_skip(#REQUIREMENT); if(0)
+
 /* "test" invokes a "describe" clause.                                        */
 #define test(MODULE) \
    _c89spec_test_module(#MODULE,MODULE);
@@ -77,6 +82,7 @@ void _c89spec_begin_it(const char * requirement);
 void _c89spec_end_it(void);
 void _c89spec_expect_passed(void);
 void _c89spec_expect_failed(const char * scalar);
+void _c89spec_skip(const char * requirement);
 
 #endif /* end of include guard: C89SPEC_H_SC604JRD */
 
@@ -110,6 +116,7 @@ DEALINGS IN THE SOFTWARE.
 static int _c89spec_tests_execs   = 0;
 static int _c89spec_tests_passed  = 0;
 static int _c89spec_tests_failed  = 0;
+static int _c89spec_tests_skipped = 0;
 
 /* quiet mode - only show failures                                            */
 static int _c89spec_quiet_mode = 0;
@@ -205,6 +212,14 @@ void _c89spec_expect_failed(const char * scalar) {
    _c89spec_tests_failed++;
 }
 
+void _c89spec_skip(const char * requirement) {
+   _c89spec_tests_skipped++;
+   if (!_c89spec_quiet_mode) {
+      printf("\n%s\t[%s%s%s] %s", _C89SPEC_NO_COLOR,
+             _C89SPEC_BLUE_COLOR, "s", _C89SPEC_NO_COLOR, requirement);
+   }
+}
+
 void set_quiet_mode(int enabled) {
    _c89spec_quiet_mode = enabled;
 }
@@ -214,7 +229,7 @@ int summary(void) {
       printf("\n");  // Add newline after dots
    }
    printf ("Total: %s%d%s\n",_C89SPEC_BLUE_COLOR
-                            ,_c89spec_tests_execs
+                            ,_c89spec_tests_execs + _c89spec_tests_skipped
                             ,_C89SPEC_NO_COLOR);
 
    printf ("\tPassed: %s%d%s\n",_C89SPEC_GREEN_COLOR
@@ -226,6 +241,11 @@ int summary(void) {
                                   : _C89SPEC_GREEN_COLOR
                                ,_c89spec_tests_failed
                                ,_C89SPEC_NO_COLOR);
+   if (_c89spec_tests_skipped > 0) {
+      printf ("\tDisabled: %s%d%s\n",_C89SPEC_BLUE_COLOR
+                                    ,_c89spec_tests_skipped
+                                    ,_C89SPEC_NO_COLOR);
+   }
    printf ("\n");
    return _c89spec_tests_failed;
 }

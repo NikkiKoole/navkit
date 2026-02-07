@@ -3616,6 +3616,628 @@ describe(df_basics) {
     }
 }
 
+// ============== MULTI-Z CORRECTNESS TESTS ==============
+// Tests for audit findings: chunkHeapZ state leak and duplicate entrance positions
+
+describe(pathfinding_multi_z_correctness) {
+
+    // ---- Finding 1: chunkHeapZ not set for multi-z A* chunk searches ----
+    //
+    // The chunk-level heap reads f-values from nodeData[chunkHeapZ][y][x].
+    // Only JpsPlusChunk2D sets chunkHeapZ. AStarChunk and AStarChunkMultiTarget
+    // write to nodeData[sz] but the heap still reads from nodeData[0] (the default).
+    // On z>0 the heap ordering becomes random, producing wrong edge costs.
+    //
+    // Test strategy: Create a map where z=0 has walls making a long detour,
+    // but z=1 is fully open. Build the graph. The edge cost between two
+    // entrances on z=1 should reflect the OPEN z=1 terrain (short path),
+    // not the walled z=0 terrain (long path or unreachable).
+
+    it("graph edge cost on z=1 should reflect z=1 terrain, not z=0") {
+        // 2x2 chunks, 4 cells each = 8x8, 2 z-levels
+        //
+        // z=0 (walled inside top-left chunk):
+        //   01234567
+        // 0 ........
+        // 1 .##.....
+        // 2 .##.....    <- walls force detour within chunk (0,0)
+        // 3 ........
+        // 4 ........
+        // 5 ........
+        // 6 ........
+        // 7 ........
+        //
+        // z=1 (fully open):
+        //   01234567
+        // 0-7 all dots
+        //
+        // Chunk borders at x=4 and y=4.
+        // Top-left chunk (0,0) has entrances on both borders.
+        // On z=0, intra-chunk edge cost in chunk (0,0) is higher (wall detour).
+        // On z=1, intra-chunk edge cost is optimal (no walls).
+        //
+        // If chunkHeapZ bug is present, z=1 edges will have wrong costs.
+
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            ".##.....\n"
+            ".##.....\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n";
+
+        InitMultiFloorGridFromAscii(map, 4, 4);
+        BuildEntrances();
+        BuildGraph();
+
+        // Find entrances on the chunk border (x=4) for each z-level
+        // There should be entrances on the border at x=4 for z=0 and z=1
+        int z0_border_entrances[16];
+        int z0_border_count = 0;
+        int z1_border_entrances[16];
+        int z1_border_count = 0;
+
+        for (int i = 0; i < entranceCount; i++) {
+            if (GetEntranceX(i) == 4) {
+                if (GetEntranceZ(i) == 0) {
+                    z0_border_entrances[z0_border_count++] = i;
+                } else if (GetEntranceZ(i) == 1) {
+                    z1_border_entrances[z1_border_count++] = i;
+                }
+            }
+        }
+
+        // We need at least 2 entrances on z=1 border to check edge cost between them
+        // (If only 1 entrance on the border, the test can't check intra-chunk cost)
+        // Actually, we need entrances that share a chunk. Let's look for any pair of
+        // z=1 entrances that share a chunk and check their edge cost.
+
+        // Find a pair of z=1 entrances sharing a chunk
+        int z1_pair_e1 = -1, z1_pair_e2 = -1;
+        int z1_edge_cost = -1;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            if (GetEntranceZ(e1) == 1 && GetEntranceZ(e2) == 1) {
+                z1_pair_e1 = e1;
+                z1_pair_e2 = e2;
+                z1_edge_cost = GetGraphEdgeCost(i);
+                break;
+            }
+        }
+
+        // Also find the equivalent pair on z=0 (same relative positions)
+        int z0_edge_cost = -1;
+        if (z1_pair_e1 >= 0) {
+            int x1 = GetEntranceX(z1_pair_e1);
+            int y1 = GetEntranceY(z1_pair_e1);
+            int x2 = GetEntranceX(z1_pair_e2);
+            int y2 = GetEntranceY(z1_pair_e2);
+
+            for (int i = 0; i < graphEdgeCount; i++) {
+                int e1 = GetGraphEdgeFrom(i);
+                int e2 = GetGraphEdgeTo(i);
+                if (GetEntranceZ(e1) == 0 && GetEntranceZ(e2) == 0) {
+                    if (GetEntranceX(e1) == x1 && GetEntranceY(e1) == y1 &&
+                        GetEntranceX(e2) == x2 && GetEntranceY(e2) == y2) {
+                        z0_edge_cost = GetGraphEdgeCost(i);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // The z=1 edge must exist (open terrain)
+        expect(z1_edge_cost >= 0);
+
+        // On z=1 (fully open) the cost should be the direct Manhattan/diagonal distance.
+        // On z=0 (walls blocking) the cost should be higher (detour) or -1 (unreachable).
+        // If chunkHeapZ bug is present, z=1 cost may equal z=0 cost (reading stale data).
+        //
+        // Key assertion: z=1 cost should be LESS than or equal to z=0 cost
+        // (since z=1 has no walls). If z=0 has no edge at all (unreachable), that's fine too.
+        if (z0_edge_cost >= 0) {
+            expect(z1_edge_cost <= z0_edge_cost);
+        }
+        // Either way, z=1 cost should be optimal (straight-line distance)
+        if (z1_pair_e1 >= 0) {
+            int dx = abs(GetEntranceX(z1_pair_e1) - GetEntranceX(z1_pair_e2));
+            int dy = abs(GetEntranceY(z1_pair_e1) - GetEntranceY(z1_pair_e2));
+            int expectedOptimal;
+            if (use8Dir) {
+                int minD = dx < dy ? dx : dy;
+                int maxD = dx > dy ? dx : dy;
+                expectedOptimal = maxD * 10 + minD * 4;
+            } else {
+                expectedOptimal = (dx + dy) * 10;
+            }
+            // z=1 is fully open, so cost should be exactly the optimal distance
+            expect(z1_edge_cost == expectedOptimal);
+        }
+    }
+
+    it("AStarChunk on z=1 should return same cost as AStarChunk on z=0 for identical terrain") {
+        // Both z=0 and z=1 are fully open. AStarChunk should return the same
+        // cost for the same start/goal on both levels. If chunkHeapZ is broken,
+        // z=1 may return a different (wrong) cost.
+
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+
+        // Both levels are fully open, identical terrain.
+        // AStarChunk from (0,0) to (7,7) should give the same cost on both.
+        int costZ0 = AStarChunk(0, 0, 0, 7, 7, 0, 0, 8, 8);
+        int costZ1 = AStarChunk(0, 0, 1, 7, 7, 0, 0, 8, 8);
+
+        expect(costZ0 > 0);
+        expect(costZ1 > 0);
+        expect(costZ0 == costZ1);
+    }
+
+    it("AStarChunkMultiTarget on z=1 should find all targets correctly") {
+        // z=0 has a wall blocking one target. z=1 is fully open.
+        // AStarChunkMultiTarget on z=1 should find all targets.
+        // If chunkHeapZ bug is present, it may read stale z=0 data and
+        // report wrong costs or miss targets.
+
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "####....\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+
+        // First run on z=0: target at (2,5) is reachable from (2,0),
+        // but we run AStarChunk on z=0 first to populate stale data
+        int staleResult = AStarChunk(2, 0, 0, 2, 5, 0, 0, 8, 8);
+        (void)staleResult;
+
+        // Now run AStarChunkMultiTarget on z=1 where everything is open
+        int targetX[] = {2, 6};
+        int targetY[] = {5, 7};
+        int costs[2];
+        int found = AStarChunkMultiTarget(2, 0, 1, targetX, targetY, costs, 2, 0, 0, 8, 8);
+
+        // Both targets should be found on z=1 (open terrain)
+        expect(found == 2);
+        expect(costs[0] > 0);
+        expect(costs[1] > 0);
+
+        // Costs should be optimal (direct path, no walls on z=1)
+        int dx0 = abs(2 - targetX[0]);
+        int dy0 = abs(0 - targetY[0]);
+        int dx1 = abs(2 - targetX[1]);
+        int dy1 = abs(0 - targetY[1]);
+
+        int expected0, expected1;
+        if (use8Dir) {
+            int minD0 = dx0 < dy0 ? dx0 : dy0;
+            int maxD0 = dx0 > dy0 ? dx0 : dy0;
+            expected0 = maxD0 * 10 + minD0 * 4;
+            int minD1 = dx1 < dy1 ? dx1 : dy1;
+            int maxD1 = dx1 > dy1 ? dx1 : dy1;
+            expected1 = maxD1 * 10 + minD1 * 4;
+        } else {
+            expected0 = (dx0 + dy0) * 10;
+            expected1 = (dx1 + dy1) * 10;
+        }
+
+        expect(costs[0] == expected0);
+        expect(costs[1] == expected1);
+    }
+
+    it("HPA* path on z=1 should match A* path on z=1 open terrain") {
+        // If chunkHeapZ is wrong, HPA* graph edges on z=1 will have wrong costs.
+        // This makes HPA* choose suboptimal or nonsensical abstract paths.
+        // A* (which doesn't use the chunk heap for its main search) finds the correct path.
+        // Compare the two.
+
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "........########\n"
+            "........########\n"
+            "........########\n"
+            "........########\n"
+            "........########\n"
+            "........########\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+
+        InitMultiFloorGridFromAscii(map, 8, 8);
+
+        // Add a ladder so we can set up paths on z=1 via HPA*
+        // Actually, for this test we just need a path entirely on z=1.
+        // HPA* should handle same-z paths fine if graph edges are correct.
+        BuildEntrances();
+        BuildGraph();
+
+        // Path entirely on z=1 across multiple chunks
+        startPos = (Point){1, 1, 1};
+        goalPos = (Point){14, 6, 1};
+
+        // A* (ground truth)
+        RunAStar();
+        int astarLen = pathLength;
+
+        // HPA*
+        RunHPAStar();
+        int hpaLen = pathLength;
+
+        // Both should find a path on the open z=1 terrain
+        expect(astarLen > 0);
+        expect(hpaLen > 0);
+
+        // HPA* path length should be close to A* (may differ slightly due to
+        // refinement, but should not be wildly different)
+        // If chunkHeapZ is wrong, HPA* might fail entirely or give a much longer path
+        int diff = hpaLen - astarLen;
+        if (diff < 0) diff = -diff;
+        // Allow small difference due to HPA* refinement granularity
+        expect(diff <= 2);
+    }
+
+    // ---- Finding 3/6/7: Duplicate entrances at same (x,y,z) ----
+    //
+    // When a ladder sits exactly on a chunk border, BuildEntrances creates
+    // two entrances at the same (x,y,z): a border entrance (chunk1 != chunk2)
+    // and a ladder entrance (chunk1 == chunk2). The hash lookup returns the
+    // first match, which may be the wrong type. After an incremental update,
+    // edges can get connected to the wrong entrance.
+
+    it("ladder on chunk border creates both border and ladder entrances") {
+        // Place ladder exactly on a horizontal chunk border.
+        // Chunk boundary at y=4 with 4x4 chunks.
+        //
+        // z=0:
+        //   01234567
+        // 0 ........
+        // 1 ........
+        // 2 ........
+        // 3 ........    <- chunk row 0
+        // 4 ..L.....    <- chunk border (y=4), ladder at (2,4)
+        // 5 ........
+        // 6 ........
+        // 7 ........    <- chunk row 1
+        //
+        // z=1:
+        //   01234567
+        // 0 ........
+        // 1 ........
+        // 2 ........
+        // 3 ........
+        // 4 ..L.....
+        // 5 ........
+        // 6 ........
+        // 7 ........
+
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "..L.....\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "..L.....\n"
+            "........\n"
+            "........\n"
+            "........\n";
+
+        InitMultiFloorGridFromAscii(map, 4, 4);
+        BuildEntrances();
+
+        // Count entrances at (2, 4, 0) - the ladder position on the chunk border
+        int entrancesAtPos = 0;
+        int hasBorderEntrance = 0;  // chunk1 != chunk2
+        int hasLadderEntrance = 0;  // chunk1 == chunk2
+        for (int i = 0; i < entranceCount; i++) {
+            if (GetEntranceX(i) == 2 && GetEntranceY(i) == 4 && GetEntranceZ(i) == 0) {
+                entrancesAtPos++;
+                if (GetEntranceChunk1(i) != GetEntranceChunk2(i)) {
+                    hasBorderEntrance = 1;
+                }
+                if (GetEntranceChunk1(i) == GetEntranceChunk2(i)) {
+                    hasLadderEntrance = 1;
+                }
+            }
+        }
+
+        // There should be at least one border entrance and one ladder entrance
+        // at the same position (this is the problematic setup)
+        expect(hasBorderEntrance == 1);
+        expect(hasLadderEntrance == 1);
+        // There should be exactly 2 entrances at this position
+        // (one border, one ladder)
+        expect(entrancesAtPos == 2);
+    }
+
+    it("cross-z path through ladder on chunk border works after full build") {
+        // Even with duplicate entrances, the full build should connect
+        // the ladder correctly and allow cross-z pathfinding.
+
+        const char* map =
+            "floor:0\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "..L.....\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "floor:1\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "..L.....\n"
+            "........\n"
+            "........\n"
+            "........\n";
+
+        InitMultiFloorGridFromAscii(map, 4, 4);
+        BuildEntrances();
+        BuildGraph();
+
+        // Should have a ladder link
+        expect(ladderLinkCount == 1);
+
+        // Should have cross-z edges in the graph
+        int crossZEdges = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            if (GetEntranceZ(e1) != GetEntranceZ(e2)) {
+                crossZEdges++;
+            }
+        }
+        expect(crossZEdges == 2);  // Bidirectional ladder edge
+
+        // Path from z=0 to z=1 should work
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){7, 7, 1};
+        RunHPAStar();
+        expect(pathLength > 0);
+
+        // A* should also work for cross-reference
+        RunAStar();
+        int astarLen = pathLength;
+        expect(astarLen > 0);
+    }
+
+    it("cross-z path through ladder on chunk border survives incremental update") {
+        // This is the critical test for Finding 3/6/7.
+        //
+        // RebuildAffectedEdges uses HashLookupEntrance to remap ALL old entrance
+        // indices to new ones. When two entrances share (x,y,z) -- a border
+        // entrance and a ladder entrance -- the hash returns whichever was
+        // inserted first. The old ladder entrance gets remapped to the border
+        // entrance (or vice versa), corrupting the cross-z edge.
+        //
+        // Additionally, Finding 6: when the ladder is in an UNAFFECTED chunk,
+        // the linear scan (entrances[i].x == x && entrances[i].y == y) may
+        // match the border entrance instead of the ladder entrance.
+        //
+        // Key: the dirty chunk must be FAR from the ladder so the ladder's
+        // chunk is unaffected, triggering the unaffected-ladder code path
+        // (linear scan) while the hash still remaps edges globally.
+
+        const char* map =
+            "floor:0\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "..L.........\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "floor:1\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "..L.........\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n";
+
+        // 4x4 chunks on a 12x12 grid = 3x3 chunks per z-level
+        // Ladder at (2,4) on the border between chunk(cy=0) and chunk(cy=1)
+        InitMultiFloorGridFromAscii(map, 4, 4);
+        BuildEntrances();
+        BuildGraph();
+
+        // Verify initial state: cross-z path works
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){11, 11, 1};
+        RunHPAStar();
+        int initialPathLen = pathLength;
+        expect(initialPathLen > 0);
+
+        // Place wall FAR from the ladder, in chunk(cx=2, cy=2) at z=0.
+        // The ladder at (2,4) is in chunk(cx=0, cy=1). Its chunk is UNAFFECTED.
+        // The incremental update will rebuild chunk(cx=2, cy=2) but the ladder
+        // takes the "unaffected" code path -- using the linear scan (Finding 6)
+        // and the global hash remap (Finding 3).
+        grid[0][10][10] = CELL_WALL;
+        MarkChunkDirty(10, 10, 0);
+        UpdateDirtyChunks();
+
+        // Verify ladder link still exists
+        expect(ladderLinkCount == 1);
+
+        // Verify cross-z edges still exist and connect ladder entrances
+        int crossZEdges = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            if (GetEntranceZ(e1) != GetEntranceZ(e2)) {
+                crossZEdges++;
+                // Both endpoints of a cross-z edge should be ladder entrances
+                // (chunk1 == chunk2), not border entrances (chunk1 != chunk2).
+                int e1IsLadder = (GetEntranceChunk1(e1) == GetEntranceChunk2(e1));
+                int e2IsLadder = (GetEntranceChunk1(e2) == GetEntranceChunk2(e2));
+                expect(e1IsLadder == 1);
+                expect(e2IsLadder == 1);
+            }
+        }
+        expect(crossZEdges == 2);
+
+        // The path should still work
+        startPos = (Point){0, 0, 0};
+        goalPos = (Point){11, 11, 1};
+        RunHPAStar();
+        expect(pathLength > 0);
+    }
+
+    it("incremental update near ladder on chunk border matches full rebuild") {
+        // After modifying terrain far from a ladder-on-border and doing an
+        // incremental update, the result should match what a full rebuild produces.
+        // The ladder's chunk is unaffected, exercising the hash remap + linear scan.
+
+        const char* map =
+            "floor:0\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "..L.........\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "floor:1\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "..L.........\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n"
+            "............\n";
+
+        InitMultiFloorGridFromAscii(map, 4, 4);
+        BuildEntrances();
+        BuildGraph();
+
+        // Add a wall far from the ladder so ladder's chunk is unaffected
+        grid[0][10][10] = CELL_WALL;
+        MarkChunkDirty(10, 10, 0);
+
+        // Incremental update
+        UpdateDirtyChunks();
+        int incEntranceCount = entranceCount;
+        int incLadderCount = ladderLinkCount;
+        int incEdgeCount = graphEdgeCount;
+
+        // Count cross-z edges from incremental
+        int incCrossZ = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            if (GetEntranceZ(e1) != GetEntranceZ(e2)) incCrossZ++;
+        }
+
+        // Full rebuild for comparison
+        BuildEntrances();
+        BuildGraph();
+        int fullEntranceCount = entranceCount;
+        int fullLadderCount = ladderLinkCount;
+        int fullEdgeCount = graphEdgeCount;
+
+        int fullCrossZ = 0;
+        for (int i = 0; i < graphEdgeCount; i++) {
+            int e1 = GetGraphEdgeFrom(i);
+            int e2 = GetGraphEdgeTo(i);
+            if (GetEntranceZ(e1) != GetEntranceZ(e2)) fullCrossZ++;
+        }
+
+        // Should match
+        expect(incEntranceCount == fullEntranceCount);
+        expect(incLadderCount == fullLadderCount);
+        expect(incEdgeCount == fullEdgeCount);
+        expect(incCrossZ == fullCrossZ);
+    }
+}
+
 static void run_all_tests(void) {
     test(grid_initialization);
     test(entrance_building);
@@ -3638,6 +4260,7 @@ static void run_all_tests(void) {
     test(df_walkability);
     test(df_ladder_pathfinding);
     test(df_basics);
+    test(pathfinding_multi_z_correctness);
 }
 
 int main(int argc, char* argv[]) {

@@ -125,6 +125,7 @@ int abstractPathLength = 0;
 typedef struct {
     int x, y, z;    // Position (key)
     int index;      // Entrance index (value), -1 if empty
+    bool isLadder;  // true if chunk1 == chunk2 (ladder/ramp entrance)
 } EntranceHashEntry;
 
 static EntranceHashEntry entranceHash[ENTRANCE_HASH_SIZE];
@@ -158,16 +159,18 @@ static void BuildEntranceHash(void) {
         entranceHash[h].y = entrances[i].y;
         entranceHash[h].z = entrances[i].z;
         entranceHash[h].index = i;
+        entranceHash[h].isLadder = (entrances[i].chunk1 == entrances[i].chunk2);
     }
     entranceHashBuilt = true;
 }
 
-// Look up entrance index by position, returns -1 if not found
-static int HashLookupEntrance(int x, int y, int z) {
+// Look up entrance index by position and type, returns -1 if not found
+static int HashLookupEntrance(int x, int y, int z, bool isLadder) {
     int h = HashPosition(x, y, z);
     int start = h;
     while (entranceHash[h].index >= 0) {
-        if (entranceHash[h].x == x && entranceHash[h].y == y && entranceHash[h].z == z) {
+        if (entranceHash[h].x == x && entranceHash[h].y == y && entranceHash[h].z == z
+            && entranceHash[h].isLadder == isLadder) {
             return entranceHash[h].index;
         }
         h = (h + 1) & (ENTRANCE_HASH_SIZE - 1);
@@ -645,6 +648,7 @@ void BuildEntrances(void) {
 }
 
 int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int maxX, int maxY) {
+    chunkHeapZ = sz;
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
@@ -722,6 +726,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
 int AStarChunkMultiTarget(int sx, int sy, int sz,
                           int* targetX, int* targetY, int* outCosts, int numTargets,
                           int minX, int minY, int maxX, int maxY) {
+    chunkHeapZ = sz;
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {
@@ -1180,7 +1185,8 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                         // They were kept during the filter pass, we just need to find their indices
                         int entLow = -1, entHigh = -1;
                         for (int i = 0; i < newCount; i++) {
-                            if (entrances[i].x == x && entrances[i].y == y) {
+                            if (entrances[i].x == x && entrances[i].y == y
+                                && entrances[i].chunk1 == entrances[i].chunk2) {
                                 if (entrances[i].z == z) entLow = i;
                                 else if (entrances[i].z == z + 1) entHigh = i;
                             }
@@ -1254,10 +1260,12 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                         // Ramp is in unaffected chunk - find existing entrances
                         int entRamp = -1, entExit = -1;
                         for (int i = 0; i < newCount; i++) {
-                            if (entrances[i].x == x && entrances[i].y == y && entrances[i].z == z) {
+                            if (entrances[i].x == x && entrances[i].y == y && entrances[i].z == z
+                                && entrances[i].chunk1 == entrances[i].chunk2) {
                                 entRamp = i;
                             }
-                            if (entrances[i].x == exitX && entrances[i].y == exitY && entrances[i].z == z + 1) {
+                            if (entrances[i].x == exitX && entrances[i].y == exitY && entrances[i].z == z + 1
+                                && entrances[i].chunk1 == entrances[i].chunk2) {
                                 entExit = i;
                             }
                         }
@@ -1318,7 +1326,8 @@ static void RebuildAffectedEdges(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHUNKS_
     BuildChunkEntranceIndex();
 
     for (int i = 0; i < oldEntranceCount; i++) {
-        oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y, oldEntrances[i].z);
+        bool isLadder = (oldEntrances[i].chunk1 == oldEntrances[i].chunk2);
+        oldToNewEntranceIndex[i] = HashLookupEntrance(oldEntrances[i].x, oldEntrances[i].y, oldEntrances[i].z, isLadder);
     }
 
     // Step 1: Keep edges where both entrances don't touch any affected chunk
@@ -1832,6 +1841,7 @@ static void GetChunkBounds(int chunk, int* minX, int* minY, int* maxX, int* maxY
 static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy, 
                                           int minX, int minY, int maxX, int maxY,
                                           Point* outPath, int maxLen) {
+    chunkHeapZ = sz;
     // Initialize node data and heap positions
     for (int y = minY; y < maxY; y++)
         for (int x = minX; x < maxX; x++) {

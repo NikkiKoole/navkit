@@ -8694,8 +8694,7 @@ describe(stockpile_lifecycle) {
     
     // DISABLED: Performance vs correctness trade-off
     // See docs/todo/stockpile-priority-performance.md for full analysis
-    // it("movers should haul items to stockpiles in priority order") {
-    if (0) {
+    xit("movers should haul items to stockpiles in priority order") {
         // Finding 9 (MEDIUM): FindStockpileForItem doesn't respect priority
         // Story: Player creates high-priority stockpile near workshop for quick access.
         // Expected: Items hauled to high-priority stockpile first.
