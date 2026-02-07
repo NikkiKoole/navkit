@@ -19,6 +19,61 @@
 #define MARKER_SETTINGS 0x53455454  // "SETT"
 #define MARKER_END      0x454E4421  // "END!"
 
+// Settings save/load macro table
+// X-macro for all tweakable simulation settings
+// Adding a new setting: add one line here, it will be saved/loaded automatically
+#define SETTINGS_TABLE(X) \
+    /* Water */ \
+    X(bool, waterEnabled) \
+    X(bool, waterEvaporationEnabled) \
+    X(float, waterEvapInterval) \
+    X(float, waterSpeedShallow) \
+    X(float, waterSpeedMedium) \
+    X(float, waterSpeedDeep) \
+    /* Fire */ \
+    X(bool, fireEnabled) \
+    X(float, fireSpreadInterval) \
+    X(float, fireFuelInterval) \
+    X(int, fireWaterReduction) \
+    X(float, fireSpreadBase) \
+    X(float, fireSpreadPerLevel) \
+    /* Smoke */ \
+    X(bool, smokeEnabled) \
+    X(float, smokeRiseInterval) \
+    X(float, smokeDissipationTime) \
+    X(float, smokeGenerationRate) \
+    /* Steam */ \
+    X(bool, steamEnabled) \
+    X(float, steamRiseInterval) \
+    X(int, steamCondensationTemp) \
+    X(int, steamGenerationTemp) \
+    /* Temperature */ \
+    X(bool, temperatureEnabled) \
+    X(int, ambientSurfaceTemp) \
+    X(int, ambientDepthDecay) \
+    X(float, heatTransferInterval) \
+    X(float, tempDecayInterval) \
+    X(int, heatSourceTemp) \
+    X(int, coldSourceTemp) \
+    X(float, heatRiseBoost) \
+    X(float, heatSinkReduction) \
+    X(float, heatDecayPercent) \
+    X(float, diagonalTransferPercent) \
+    /* Ground wear */ \
+    X(bool, groundWearEnabled) \
+    X(int, wearGrassToDirt) \
+    X(int, wearDirtToGrass) \
+    X(int, wearTrampleAmount) \
+    X(float, wearDecayRate) \
+    X(float, wearRecoveryInterval) \
+    X(int, wearMax) \
+    /* Trees */ \
+    X(int, saplingGrowTicks) \
+    X(int, trunkGrowTicks) \
+    X(bool, saplingRegrowthEnabled) \
+    X(float, saplingRegrowthChance) \
+    X(int, saplingMinTreeDistance)
+
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
     if (!f) {
@@ -203,64 +258,10 @@ bool SaveWorld(const char* filename) {
     marker = MARKER_SETTINGS;
     fwrite(&marker, sizeof(marker), 1, f);
     
-    // Simulation settings
-    // NOTE: When adding new tweakable settings, add them here AND in LoadWorld below!
-    // Water
-    fwrite(&waterEnabled, sizeof(waterEnabled), 1, f);
-    fwrite(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
-    fwrite(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
-    fwrite(&waterSpeedShallow, sizeof(waterSpeedShallow), 1, f);
-    fwrite(&waterSpeedMedium, sizeof(waterSpeedMedium), 1, f);
-    fwrite(&waterSpeedDeep, sizeof(waterSpeedDeep), 1, f);
-    
-    // Fire
-    fwrite(&fireEnabled, sizeof(fireEnabled), 1, f);
-    fwrite(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
-    fwrite(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
-    fwrite(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
-    fwrite(&fireSpreadBase, sizeof(fireSpreadBase), 1, f);
-    fwrite(&fireSpreadPerLevel, sizeof(fireSpreadPerLevel), 1, f);
-    
-    // Smoke
-    fwrite(&smokeEnabled, sizeof(smokeEnabled), 1, f);
-    fwrite(&smokeRiseInterval, sizeof(smokeRiseInterval), 1, f);
-    fwrite(&smokeDissipationTime, sizeof(smokeDissipationTime), 1, f);
-    fwrite(&smokeGenerationRate, sizeof(smokeGenerationRate), 1, f);
-    
-    // Steam
-    fwrite(&steamEnabled, sizeof(steamEnabled), 1, f);
-    fwrite(&steamRiseInterval, sizeof(steamRiseInterval), 1, f);
-    fwrite(&steamCondensationTemp, sizeof(steamCondensationTemp), 1, f);
-    fwrite(&steamGenerationTemp, sizeof(steamGenerationTemp), 1, f);
-    
-    // Temperature
-    fwrite(&temperatureEnabled, sizeof(temperatureEnabled), 1, f);
-    fwrite(&ambientSurfaceTemp, sizeof(ambientSurfaceTemp), 1, f);
-    fwrite(&ambientDepthDecay, sizeof(ambientDepthDecay), 1, f);
-    fwrite(&heatTransferInterval, sizeof(heatTransferInterval), 1, f);
-    fwrite(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
-    fwrite(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
-    fwrite(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
-    fwrite(&heatRiseBoost, sizeof(heatRiseBoost), 1, f);
-    fwrite(&heatSinkReduction, sizeof(heatSinkReduction), 1, f);
-    fwrite(&heatDecayPercent, sizeof(heatDecayPercent), 1, f);
-    fwrite(&diagonalTransferPercent, sizeof(diagonalTransferPercent), 1, f);
-    
-    // Ground wear
-    fwrite(&groundWearEnabled, sizeof(groundWearEnabled), 1, f);
-    fwrite(&wearGrassToDirt, sizeof(wearGrassToDirt), 1, f);
-    fwrite(&wearDirtToGrass, sizeof(wearDirtToGrass), 1, f);
-    fwrite(&wearTrampleAmount, sizeof(wearTrampleAmount), 1, f);
-    fwrite(&wearDecayRate, sizeof(wearDecayRate), 1, f);
-    fwrite(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
-    fwrite(&wearMax, sizeof(wearMax), 1, f);
-    
-    // Trees
-    fwrite(&saplingGrowTicks, sizeof(saplingGrowTicks), 1, f);
-    fwrite(&trunkGrowTicks, sizeof(trunkGrowTicks), 1, f);
-    fwrite(&saplingRegrowthEnabled, sizeof(saplingRegrowthEnabled), 1, f);
-    fwrite(&saplingRegrowthChance, sizeof(saplingRegrowthChance), 1, f);
-    fwrite(&saplingMinTreeDistance, sizeof(saplingMinTreeDistance), 1, f);
+    // Simulation settings (generated from SETTINGS_TABLE macro)
+    #define WRITE_SETTING(type, name) fwrite(&name, sizeof(type), 1, f);
+    SETTINGS_TABLE(WRITE_SETTING)
+    #undef WRITE_SETTING
     
     // === END MARKER ===
     marker = MARKER_END;
@@ -999,65 +1000,57 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    // Simulation settings
-    // NOTE: When adding new tweakable settings, add them here AND in SaveWorld above!
-    // Water
-    fread(&waterEnabled, sizeof(waterEnabled), 1, f);
-    fread(&waterEvaporationEnabled, sizeof(waterEvaporationEnabled), 1, f);
-    fread(&waterEvapInterval, sizeof(waterEvapInterval), 1, f);
-    fread(&waterSpeedShallow, sizeof(waterSpeedShallow), 1, f);
-    fread(&waterSpeedMedium, sizeof(waterSpeedMedium), 1, f);
-    fread(&waterSpeedDeep, sizeof(waterSpeedDeep), 1, f);
-    
-    // Fire
-    fread(&fireEnabled, sizeof(fireEnabled), 1, f);
-    fread(&fireSpreadInterval, sizeof(fireSpreadInterval), 1, f);
-    fread(&fireFuelInterval, sizeof(fireFuelInterval), 1, f);
-    fread(&fireWaterReduction, sizeof(fireWaterReduction), 1, f);
-    fread(&fireSpreadBase, sizeof(fireSpreadBase), 1, f);
-    fread(&fireSpreadPerLevel, sizeof(fireSpreadPerLevel), 1, f);
-    
-    // Smoke
-    fread(&smokeEnabled, sizeof(smokeEnabled), 1, f);
-    fread(&smokeRiseInterval, sizeof(smokeRiseInterval), 1, f);
-    fread(&smokeDissipationTime, sizeof(smokeDissipationTime), 1, f);
-    fread(&smokeGenerationRate, sizeof(smokeGenerationRate), 1, f);
-    
-    // Steam
-    fread(&steamEnabled, sizeof(steamEnabled), 1, f);
-    fread(&steamRiseInterval, sizeof(steamRiseInterval), 1, f);
-    fread(&steamCondensationTemp, sizeof(steamCondensationTemp), 1, f);
-    fread(&steamGenerationTemp, sizeof(steamGenerationTemp), 1, f);
-    
-    // Temperature
-    fread(&temperatureEnabled, sizeof(temperatureEnabled), 1, f);
-    fread(&ambientSurfaceTemp, sizeof(ambientSurfaceTemp), 1, f);
-    fread(&ambientDepthDecay, sizeof(ambientDepthDecay), 1, f);
-    fread(&heatTransferInterval, sizeof(heatTransferInterval), 1, f);
-    fread(&tempDecayInterval, sizeof(tempDecayInterval), 1, f);
-    fread(&heatSourceTemp, sizeof(heatSourceTemp), 1, f);
-    fread(&coldSourceTemp, sizeof(coldSourceTemp), 1, f);
-    fread(&heatRiseBoost, sizeof(heatRiseBoost), 1, f);
-    fread(&heatSinkReduction, sizeof(heatSinkReduction), 1, f);
-    fread(&heatDecayPercent, sizeof(heatDecayPercent), 1, f);
-    fread(&diagonalTransferPercent, sizeof(diagonalTransferPercent), 1, f);
-    
-    // Ground wear
-    fread(&groundWearEnabled, sizeof(groundWearEnabled), 1, f);
-    fread(&wearGrassToDirt, sizeof(wearGrassToDirt), 1, f);
-    fread(&wearDirtToGrass, sizeof(wearDirtToGrass), 1, f);
-    fread(&wearTrampleAmount, sizeof(wearTrampleAmount), 1, f);
-    fread(&wearDecayRate, sizeof(wearDecayRate), 1, f);
-    fread(&wearRecoveryInterval, sizeof(wearRecoveryInterval), 1, f);
-    fread(&wearMax, sizeof(wearMax), 1, f);
-    
-    // Trees (added in version 13)
+    // Simulation settings (generated from SETTINGS_TABLE macro)
+    // Tree settings added in version 13, handle backward compatibility
     if (version >= 13) {
-        fread(&saplingGrowTicks, sizeof(saplingGrowTicks), 1, f);
-        fread(&trunkGrowTicks, sizeof(trunkGrowTicks), 1, f);
-        fread(&saplingRegrowthEnabled, sizeof(saplingRegrowthEnabled), 1, f);
-        fread(&saplingRegrowthChance, sizeof(saplingRegrowthChance), 1, f);
-        fread(&saplingMinTreeDistance, sizeof(saplingMinTreeDistance), 1, f);
+        #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
+        SETTINGS_TABLE(READ_SETTING)
+        #undef READ_SETTING
+    } else {
+        // Pre-v13: read all settings except trees (last 5 entries)
+        #define READ_SETTING_V12(type, name) fread(&name, sizeof(type), 1, f);
+        #define SETTINGS_TABLE_V12(X) \
+            X(bool, waterEnabled) \
+            X(bool, waterEvaporationEnabled) \
+            X(float, waterEvapInterval) \
+            X(float, waterSpeedShallow) \
+            X(float, waterSpeedMedium) \
+            X(float, waterSpeedDeep) \
+            X(bool, fireEnabled) \
+            X(float, fireSpreadInterval) \
+            X(float, fireFuelInterval) \
+            X(int, fireWaterReduction) \
+            X(float, fireSpreadBase) \
+            X(float, fireSpreadPerLevel) \
+            X(bool, smokeEnabled) \
+            X(float, smokeRiseInterval) \
+            X(float, smokeDissipationTime) \
+            X(float, smokeGenerationRate) \
+            X(bool, steamEnabled) \
+            X(float, steamRiseInterval) \
+            X(int, steamCondensationTemp) \
+            X(int, steamGenerationTemp) \
+            X(bool, temperatureEnabled) \
+            X(int, ambientSurfaceTemp) \
+            X(int, ambientDepthDecay) \
+            X(float, heatTransferInterval) \
+            X(float, tempDecayInterval) \
+            X(int, heatSourceTemp) \
+            X(int, coldSourceTemp) \
+            X(float, heatRiseBoost) \
+            X(float, heatSinkReduction) \
+            X(float, heatDecayPercent) \
+            X(float, diagonalTransferPercent) \
+            X(bool, groundWearEnabled) \
+            X(int, wearGrassToDirt) \
+            X(int, wearDirtToGrass) \
+            X(int, wearTrampleAmount) \
+            X(float, wearDecayRate) \
+            X(float, wearRecoveryInterval) \
+            X(int, wearMax)
+        SETTINGS_TABLE_V12(READ_SETTING_V12)
+        #undef READ_SETTING_V12
+        #undef SETTINGS_TABLE_V12
     }
     
     // === END MARKER ===
