@@ -161,43 +161,20 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int fx = tx + padding;
     DrawTextShadow("Filters: ", fx, y, 14, WHITE);
     fx += MeasureText("Filters: ", 14);
-    DrawTextShadow(sp->allowedTypes[ITEM_RED] ? "R" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_RED] ? RED : DARKGRAY);
-    fx += MeasureText("R", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_GREEN] ? "G" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_GREEN] ? GREEN : DARKGRAY);
-    fx += MeasureText("G", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_BLUE] ? "B" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_BLUE] ? BLUE : DARKGRAY);
-    fx += MeasureText("B", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_ROCK] ? "O" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_ROCK] ? ORANGE : DARKGRAY);
-    fx += MeasureText("O", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_BLOCKS] ? "S" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_BLOCKS] ? GRAY : DARKGRAY);
-    fx += MeasureText("S", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_LOG] ? "W" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_LOG] ? BROWN : DARKGRAY);
-    fx += MeasureText("W", 14) + 4;
+    // Display filter status using STOCKPILE_FILTERS table
+    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+        const StockpileFilterDef* filter = &STOCKPILE_FILTERS[i];
+        bool allowed = sp->allowedTypes[filter->itemType];
+        DrawTextShadow(allowed ? filter->shortName : "-", fx, y, 14,
+            allowed ? filter->color : DARKGRAY);
+        fx += MeasureText(filter->shortName, 14) + 4;
+    }
+    
+    // Special case: Saplings (T key toggles multiple types)
     bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
                           sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
     DrawTextShadow(saplingAllowed ? "T" : "-", fx, y, 14,
         saplingAllowed ? GREEN : DARKGRAY);
-    fx += MeasureText("T", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_DIRT] ? "D" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_DIRT] ? BROWN : DARKGRAY);
-    fx += MeasureText("D", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_PLANKS] ? "P" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_PLANKS] ? BROWN : DARKGRAY);
-    fx += MeasureText("P", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_STICKS] ? "K" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_STICKS] ? BROWN : DARKGRAY);
-    fx += MeasureText("K", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_BRICKS] ? "I" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_BRICKS] ? ORANGE : DARKGRAY);
-    fx += MeasureText("I", 14) + 4;
-    DrawTextShadow(sp->allowedTypes[ITEM_CHARCOAL] ? "C" : "-", fx, y, 14,
-        sp->allowedTypes[ITEM_CHARCOAL] ? GRAY : DARKGRAY);
     y += 18;
 
     int mx = tx + padding;

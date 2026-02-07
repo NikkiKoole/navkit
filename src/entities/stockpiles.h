@@ -4,10 +4,23 @@
 #include <stdbool.h>
 #include "items.h"
 #include "../world/material.h"
+#include "raylib.h"
 
 #define MAX_STOCKPILES 64
 #define MAX_STOCKPILE_SIZE 32  // max width/height
 #define MAX_STACK_SIZE 10      // max items per slot
+
+// Stockpile filter definition (shared between input keybindings and tooltip display)
+typedef struct {
+    ItemType itemType;
+    char key;                // Keyboard key for toggling (e.g., 'r' for Red)
+    const char* displayName; // Display name (e.g., "Red")
+    const char* shortName;   // Short abbreviation for tooltip (e.g., "R")
+    Color color;             // Display color
+} StockpileFilterDef;
+
+extern const StockpileFilterDef STOCKPILE_FILTERS[];
+extern const int STOCKPILE_FILTER_COUNT;
 
 typedef struct {
     int x, y, z;           // top-left corner

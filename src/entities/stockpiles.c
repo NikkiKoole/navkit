@@ -11,6 +11,22 @@ int stockpileCount = 0;
 GatherZone gatherZones[MAX_GATHER_ZONES];
 int gatherZoneCount = 0;
 
+// Stockpile filter definitions (shared between input.c keybindings and tooltips.c display)
+const StockpileFilterDef STOCKPILE_FILTERS[] = {
+    {ITEM_RED,       'r', "Red",      "R", RED},
+    {ITEM_GREEN,     'g', "Green",    "G", GREEN},
+    {ITEM_BLUE,      'b', "Blue",     "B", BLUE},
+    {ITEM_ROCK,      'o', "Rock",     "O", ORANGE},
+    {ITEM_BLOCKS,    's', "Blocks",   "S", GRAY},
+    {ITEM_LOG,       'w', "Wood",     "W", BROWN},
+    {ITEM_DIRT,      'd', "Dirt",     "D", BROWN},
+    {ITEM_PLANKS,    'p', "Planks",   "P", BROWN},
+    {ITEM_STICKS,    'k', "Sticks",   "K", BROWN},
+    {ITEM_BRICKS,    'i', "Bricks",   "I", ORANGE},
+    {ITEM_CHARCOAL,  'c', "Charcoal", "C", GRAY},
+};
+const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
+
 static inline uint8_t ResolveItemMaterial(ItemType type, uint8_t material) {
     uint8_t mat = (material == MAT_NONE) ? DefaultMaterialForItemType(type) : material;
     return (mat < MAT_COUNT) ? mat : MAT_NONE;
