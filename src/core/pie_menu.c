@@ -1,14 +1,19 @@
 // core/pie_menu.c - Radial pie menu system (concentric rings, label-only)
+// Dynamically generated from ACTION_REGISTRY
 #include "pie_menu.h"
+#include "action_registry.h"
 #include "../game_state.h"
+#include "shared/ui.h"
 #include <math.h>
+#include <string.h>
 
 // ============================================================================
-// Menu definitions
+// Dynamic menu generation from ACTION_REGISTRY
 // ============================================================================
 
+// Menu indices (dynamically built)
 enum {
-    MENU_ROOT,
+    MENU_ROOT = 0,
     MENU_WORK,
     MENU_DIG,
     MENU_BUILD,
@@ -17,90 +22,144 @@ enum {
     MENU_SANDBOX,
     MENU_DRAW_WORKSHOP,
     MENU_DRAW_SOIL,
-    MENU_COUNT
+    MENU_MAX_COUNT = 32  // Upper bound for dynamic menus
 };
 
-static PieMenuDef menus[MENU_COUNT] = {
+static PieMenuDef menus[MENU_MAX_COUNT];
+static int menuCount = 0;
+
+// Helper: Check if action is a workshop subcategory
+static bool IsWorkshopSubAction(InputAction action) {
+    return (action == ACTION_DRAW_WORKSHOP_STONECUTTER ||
+            action == ACTION_DRAW_WORKSHOP_SAWMILL ||
+            action == ACTION_DRAW_WORKSHOP_KILN);
+}
+
+// Helper: Check if action is a soil subcategory
+static bool IsSoilSubAction(InputAction action) {
+    return (action == ACTION_DRAW_SOIL_DIRT ||
+            action == ACTION_DRAW_SOIL_CLAY ||
+            action == ACTION_DRAW_SOIL_GRAVEL ||
+            action == ACTION_DRAW_SOIL_SAND ||
+            action == ACTION_DRAW_SOIL_PEAT ||
+            action == ACTION_DRAW_SOIL_ROCK);
+}
+
+// Helper: Add slice to menu
+static void AddSlice(int menuIdx, const char* label, InputAction action, int childMenuIdx) {
+    if (menuIdx >= MENU_MAX_COUNT) return;
+    PieMenuDef* menu = &menus[menuIdx];
+    if (menu->sliceCount >= PIE_MAX_ITEMS) return;
+    
+    menu->slices[menu->sliceCount].label = label;
+    menu->slices[menu->sliceCount].action = action;
+    menu->slices[menu->sliceCount].childMenuIdx = childMenuIdx;
+    menu->slices[menu->sliceCount].color = GRAY;  // Not rendered, doesn't matter
+    menu->sliceCount++;
+}
+
+// Build all menus dynamically from ACTION_REGISTRY
+static void BuildDynamicMenus(void) {
+    menuCount = 0;
+    memset(menus, 0, sizeof(menus));
+    
     // MENU_ROOT
-    { "Menu", {
-        { "Work",    ACTION_NONE, MENU_WORK,    SKYBLUE },
-        { "Draw",    ACTION_NONE, MENU_DRAW,    GREEN },
-        { "Sandbox", ACTION_NONE, MENU_SANDBOX, ORANGE },
-    }, 3 },
-
-    // MENU_WORK
-    { "Work", {
-        { "Dig",     ACTION_NONE,        MENU_DIG,     YELLOW },
-        { "Build",   ACTION_NONE,        MENU_BUILD,   BLUE },
-        { "Harvest", ACTION_NONE,        MENU_HARVEST, GREEN },
-        { "Gather",  ACTION_WORK_GATHER, -1,           LIME },
-    }, 4 },
-
-    // MENU_DIG
-    { "Dig", {
-        { "Mine",      ACTION_WORK_MINE,         -1, YELLOW },
-        { "Channel",   ACTION_WORK_CHANNEL,      -1, ORANGE },
-        { "Dig Ramp",  ACTION_WORK_DIG_RAMP,     -1, BROWN },
-        { "Rem Floor", ACTION_WORK_REMOVE_FLOOR,  -1, RED },
-        { "Rem Ramp",  ACTION_WORK_REMOVE_RAMP,   -1, MAROON },
-    }, 5 },
-
-    // MENU_BUILD
-    { "Build", {
-        { "Wall",    ACTION_WORK_CONSTRUCT, -1, BLUE },
-        { "Floor",   ACTION_WORK_FLOOR,     -1, SKYBLUE },
-        { "Ladder",  ACTION_WORK_LADDER,    -1, BROWN },
-        { "Ramp",    ACTION_WORK_RAMP,      -1, GRAY },
-    }, 4 },
-
-    // MENU_HARVEST
-    { "Harvest", {
-        { "Chop Tree",     ACTION_WORK_CHOP,           -1, GREEN },
-        { "Chop Felled",   ACTION_WORK_CHOP_FELLED,    -1, DARKGREEN },
-        { "Gather Sapl.",  ACTION_WORK_GATHER_SAPLING,  -1, LIME },
-        { "Plant Sapl.",   ACTION_WORK_PLANT_SAPLING,   -1, DARKGREEN },
-    }, 4 },
-
-    // MENU_DRAW
-    { "Draw", {
-        { "Wall",      ACTION_DRAW_WALL,      -1,              BLUE },
-        { "Floor",     ACTION_DRAW_FLOOR,      -1,              SKYBLUE },
-        { "Ladder",    ACTION_DRAW_LADDER,     -1,              BROWN },
-        { "Ramp",      ACTION_DRAW_RAMP,       -1,              GRAY },
-        { "Stockpile", ACTION_DRAW_STOCKPILE,  -1,              GREEN },
-        { "Workshop",  ACTION_NONE,            MENU_DRAW_WORKSHOP, ORANGE },
-        { "Soil",      ACTION_NONE,            MENU_DRAW_SOIL,    BROWN },
-    }, 7 },
-
-    // MENU_SANDBOX
-    { "Sandbox", {
-        { "Water",  ACTION_SANDBOX_WATER,  -1, BLUE },
-        { "Fire",   ACTION_SANDBOX_FIRE,   -1, RED },
-        { "Heat",   ACTION_SANDBOX_HEAT,   -1, ORANGE },
-        { "Cold",   ACTION_SANDBOX_COLD,   -1, SKYBLUE },
-        { "Smoke",  ACTION_SANDBOX_SMOKE,  -1, GRAY },
-        { "Steam",  ACTION_SANDBOX_STEAM,  -1, WHITE },
-        { "Grass",  ACTION_SANDBOX_GRASS,  -1, GREEN },
-        { "Tree",   ACTION_SANDBOX_TREE,   -1, DARKGREEN },
-    }, 8 },
-
-    // MENU_DRAW_WORKSHOP
-    { "Workshop", {
-        { "Stonecutter", ACTION_DRAW_WORKSHOP_STONECUTTER, -1, GRAY },
-        { "Sawmill",     ACTION_DRAW_WORKSHOP_SAWMILL,     -1, BROWN },
-        { "Kiln",        ACTION_DRAW_WORKSHOP_KILN,        -1, ORANGE },
-    }, 3 },
-
-    // MENU_DRAW_SOIL
-    { "Soil", {
-        { "Dirt",   ACTION_DRAW_SOIL_DIRT,   -1, BROWN },
-        { "Clay",   ACTION_DRAW_SOIL_CLAY,   -1, ORANGE },
-        { "Gravel", ACTION_DRAW_SOIL_GRAVEL, -1, GRAY },
-        { "Sand",   ACTION_DRAW_SOIL_SAND,   -1, YELLOW },
-        { "Peat",   ACTION_DRAW_SOIL_PEAT,   -1, DARKBROWN },
-        { "Rock",   ACTION_DRAW_SOIL_ROCK,   -1, DARKGRAY },
-    }, 6 },
-};
+    menus[MENU_ROOT].title = "Menu";
+    AddSlice(MENU_ROOT, "Work", ACTION_NONE, MENU_WORK);
+    AddSlice(MENU_ROOT, "Draw", ACTION_NONE, MENU_DRAW);
+    AddSlice(MENU_ROOT, "Sandbox", ACTION_NONE, MENU_SANDBOX);
+    
+    // MENU_WORK (submodes + Gather)
+    menus[MENU_WORK].title = "Work";
+    AddSlice(MENU_WORK, "Dig", ACTION_NONE, MENU_DIG);
+    AddSlice(MENU_WORK, "Build", ACTION_NONE, MENU_BUILD);
+    AddSlice(MENU_WORK, "Harvest", ACTION_NONE, MENU_HARVEST);
+    
+    // Scan for ACTION_WORK_GATHER (action-level, not in a submode)
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_WORK && 
+            def->requiredSubMode == SUBMODE_NONE &&
+            def->action != ACTION_NONE &&
+            def->canDrag) {  // Exclude category actions
+            AddSlice(MENU_WORK, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_DIG (all SUBMODE_DIG actions)
+    menus[MENU_DIG].title = "Dig";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_WORK && def->requiredSubMode == SUBMODE_DIG) {
+            AddSlice(MENU_DIG, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_BUILD (all SUBMODE_BUILD actions)
+    menus[MENU_BUILD].title = "Build";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_WORK && def->requiredSubMode == SUBMODE_BUILD) {
+            AddSlice(MENU_BUILD, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_HARVEST (all SUBMODE_HARVEST actions)
+    menus[MENU_HARVEST].title = "Harvest";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_WORK && def->requiredSubMode == SUBMODE_HARVEST) {
+            AddSlice(MENU_HARVEST, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_DRAW (all MODE_DRAW actions, including categories)
+    menus[MENU_DRAW].title = "Draw";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_DRAW && def->requiredSubMode == SUBMODE_NONE) {
+            // Skip subcategory items (WORKSHOP_STONECUTTER, SOIL_DIRT, etc.)
+            if (IsWorkshopSubAction(def->action)) continue;
+            if (IsSoilSubAction(def->action)) continue;
+            
+            // Determine if this is a category (opens submenu)
+            int childMenu = -1;
+            if (def->action == ACTION_DRAW_WORKSHOP) childMenu = MENU_DRAW_WORKSHOP;
+            else if (def->action == ACTION_DRAW_SOIL) childMenu = MENU_DRAW_SOIL;
+            
+            AddSlice(MENU_DRAW, def->name, def->action, childMenu);
+        }
+    }
+    
+    // MENU_DRAW_WORKSHOP (all ACTION_DRAW_WORKSHOP_* actions)
+    menus[MENU_DRAW_WORKSHOP].title = "Workshop";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (IsWorkshopSubAction(def->action)) {
+            AddSlice(MENU_DRAW_WORKSHOP, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_DRAW_SOIL (all ACTION_DRAW_SOIL_* actions)
+    menus[MENU_DRAW_SOIL].title = "Soil";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (IsSoilSubAction(def->action)) {
+            AddSlice(MENU_DRAW_SOIL, def->name, def->action, -1);
+        }
+    }
+    
+    // MENU_SANDBOX (all MODE_SANDBOX actions)
+    menus[MENU_SANDBOX].title = "Sandbox";
+    for (int i = 0; i < ACTION_REGISTRY_COUNT; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == MODE_SANDBOX) {
+            AddSlice(MENU_SANDBOX, def->name, def->action, -1);
+        }
+    }
+    
+    menuCount = MENU_SANDBOX + 1;
+}
 
 // ============================================================================
 // State
@@ -179,65 +238,49 @@ static float SliceAngle(int sliceIdx, float arcStart, float arcEnd, int sliceCou
 }
 
 // ============================================================================
-// Action application
+// Action application - uses ACTION_REGISTRY for mode/submode lookup
 // ============================================================================
 
 static void PieMenu_ApplyAction(InputAction action) {
-    switch (action) {
-        case ACTION_WORK_MINE: case ACTION_WORK_CHANNEL:
-        case ACTION_WORK_DIG_RAMP: case ACTION_WORK_REMOVE_FLOOR:
-        case ACTION_WORK_REMOVE_RAMP:
-            inputMode = MODE_WORK; workSubMode = SUBMODE_DIG; break;
-        case ACTION_WORK_CONSTRUCT: case ACTION_WORK_FLOOR:
-        case ACTION_WORK_LADDER: case ACTION_WORK_RAMP:
-            inputMode = MODE_WORK; workSubMode = SUBMODE_BUILD; break;
-        case ACTION_WORK_CHOP: case ACTION_WORK_CHOP_FELLED:
-        case ACTION_WORK_GATHER_SAPLING: case ACTION_WORK_PLANT_SAPLING:
-            inputMode = MODE_WORK; workSubMode = SUBMODE_HARVEST; break;
-        case ACTION_WORK_GATHER:
-            inputMode = MODE_WORK; workSubMode = SUBMODE_NONE; break;
-        case ACTION_DRAW_WALL: case ACTION_DRAW_FLOOR:
-        case ACTION_DRAW_LADDER: case ACTION_DRAW_RAMP:
-        case ACTION_DRAW_STOCKPILE:
-        case ACTION_DRAW_WORKSHOP_STONECUTTER: case ACTION_DRAW_WORKSHOP_SAWMILL:
-        case ACTION_DRAW_WORKSHOP_KILN:
-        case ACTION_DRAW_SOIL_DIRT: case ACTION_DRAW_SOIL_CLAY:
-        case ACTION_DRAW_SOIL_GRAVEL: case ACTION_DRAW_SOIL_SAND:
-        case ACTION_DRAW_SOIL_PEAT: case ACTION_DRAW_SOIL_ROCK:
-            inputMode = MODE_DRAW; workSubMode = SUBMODE_NONE; break;
-        case ACTION_SANDBOX_WATER: case ACTION_SANDBOX_FIRE:
-        case ACTION_SANDBOX_HEAT: case ACTION_SANDBOX_COLD:
-        case ACTION_SANDBOX_SMOKE: case ACTION_SANDBOX_STEAM:
-        case ACTION_SANDBOX_GRASS: case ACTION_SANDBOX_TREE:
-            inputMode = MODE_SANDBOX; workSubMode = SUBMODE_NONE; break;
-        default: break;
-    }
+    if (action == ACTION_NONE) return;
+    
+    const ActionDef* def = GetActionDef(action);
+    if (!def) return;
+    
+    // Set mode and action from registry
+    inputMode = def->requiredMode;
     inputAction = action;
+    
+    // Set submode for WORK actions
+    if (inputMode == MODE_WORK) {
+        workSubMode = def->requiredSubMode;
+    } else {
+        workSubMode = SUBMODE_NONE;
+    }
 }
 
-// ============================================================================
-// API
-// ============================================================================
-
 void PieMenu_Open(float x, float y) {
-    InputMode_Reset();
+    // Build menus on first open (lazy init)
+    static bool initialized = false;
+    if (!initialized) {
+        BuildDynamicMenus();
+        initialized = true;
+    }
+    
     pieState.isOpen = true;
     pieState.centerX = x;
     pieState.centerY = y;
     pieState.hoveredRing = -1;
     pieState.hoveredSlice = -1;
     pieState.ringMenu[0] = MENU_ROOT;
+    pieState.ringSelection[0] = -1;
+    for (int i = 1; i < PIE_MAX_DEPTH; i++) {
+        pieState.ringMenu[i] = -1;
+        pieState.ringSelection[i] = -1;
+    }
     pieState.ringArcStart[0] = 0.0f;
     pieState.ringArcEnd[0] = PI * 2.0f;
     pieState.visibleRings = 1;
-    for (int i = 0; i < PIE_MAX_DEPTH; i++) {
-        pieState.ringSelection[i] = -1;
-        if (i > 0) {
-            pieState.ringMenu[i] = -1;
-            pieState.ringArcStart[i] = 0.0f;
-            pieState.ringArcEnd[i] = 0.0f;
-        }
-    }
     pieHoldMode = false;
     pieDeepestRing = 0;
 }
@@ -255,9 +298,8 @@ void PieMenu_Close(void) {
 void PieMenu_Back(void) {
     if (pieState.visibleRings > 1) {
         pieState.visibleRings--;
-        pieState.ringSelection[pieState.visibleRings] = -1;
         pieState.ringMenu[pieState.visibleRings] = -1;
-        pieState.ringSelection[pieState.visibleRings - 1] = -1;
+        pieState.ringSelection[pieState.visibleRings] = -1;
     } else {
         PieMenu_Close();
     }
@@ -268,228 +310,163 @@ bool PieMenu_IsOpen(void) {
 }
 
 bool PieMenu_JustClosed(void) {
-    return pieClosedTime > 0.0 && (GetTime() - pieClosedTime) < 0.05;
+    if (pieClosedTime < 0) return false;
+    return (GetTime() - pieClosedTime) < 0.016;  // One frame at 60 FPS
 }
 
-// ============================================================================
-// Update
-// ============================================================================
-
-// Expand a child ring from a parent slice
-static void OpenChildRing(int parentRing, int parentSlice) {
+// Expand ring: add child menu at next ring
+static void ExpandRing(int parentRing, int parentSlice) {
+    if (parentRing < 0 || parentRing >= pieState.visibleRings) return;
+    int childRing = parentRing + 1;
+    if (childRing >= PIE_MAX_DEPTH) return;
+    
     int parentMenu = pieState.ringMenu[parentRing];
     PieSlice* s = &menus[parentMenu].slices[parentSlice];
-    if (s->childMenuIdx < 0 || parentRing + 1 >= PIE_MAX_DEPTH) return;
-
-    int childRing = parentRing + 1;
+    if (s->childMenuIdx < 0) return;  // No child menu
+    
     pieState.ringMenu[childRing] = s->childMenuIdx;
     pieState.ringSelection[childRing] = -1;
-
-    // Child arc = angular span of the parent slice
-    float parentArcStart = pieState.ringArcStart[parentRing];
-    float parentArcEnd = pieState.ringArcEnd[parentRing];
-    float parentArcSize = parentArcEnd - parentArcStart;
-    if (parentArcSize < 0) parentArcSize += PI * 2.0f;
-    int parentCount = menus[parentMenu].sliceCount;
-    float sliceSize = parentArcSize / (float)parentCount;
-
-    // Center child arc on the parent slice's midpoint
-    float parentSliceMid = parentArcStart + (parentSlice + 0.5f) * sliceSize;
-
-    // Ensure minimum arc so labels don't overlap
-    // Each child item needs at least ~30 degrees (PI/6 radians)
-    int childCount = menus[s->childMenuIdx].sliceCount;
-    float minArc = childCount * (PI / 6.0f);
-    float childArc = sliceSize;
-    if (childArc < minArc) childArc = minArc;
-    // Cap at full circle
-    if (childArc > PI * 2.0f) childArc = PI * 2.0f;
-
-    float childStart = parentSliceMid - childArc * 0.5f;
-    float childEnd = parentSliceMid + childArc * 0.5f;
-
-    pieState.ringArcStart[childRing] = childStart;
-    pieState.ringArcEnd[childRing] = childEnd;
-    pieState.visibleRings = childRing + 1;
-
-    // Clear deeper rings
+    
+    // Calculate arc for this child ring
+    int parentSliceCount = menus[parentMenu].sliceCount;
+    float parentArcSize = pieState.ringArcEnd[parentRing] - pieState.ringArcStart[parentRing];
+    if (parentArcSize <= 0) parentArcSize += PI * 2.0f;
+    float sliceSize = parentArcSize / parentSliceCount;
+    pieState.ringArcStart[childRing] = pieState.ringArcStart[parentRing] + sliceSize * parentSlice;
+    pieState.ringArcEnd[childRing] = pieState.ringArcStart[childRing] + sliceSize;
+    
+    if (childRing + 1 > pieState.visibleRings) {
+        pieState.visibleRings = childRing + 1;
+    }
+    
+    // Collapse any deeper rings
     for (int r = childRing + 1; r < PIE_MAX_DEPTH; r++) {
-        pieState.ringSelection[r] = -1;
         pieState.ringMenu[r] = -1;
+        pieState.ringSelection[r] = -1;
     }
 }
 
 void PieMenu_Update(void) {
     if (!pieState.isOpen) return;
-
+    
     Vector2 mouse = GetMousePosition();
     float dx = mouse.x - pieState.centerX;
     float dy = mouse.y - pieState.centerY;
     float dist = sqrtf(dx * dx + dy * dy);
-    float angle = NormalizeAngle(dx, dy);
-
-    // Determine which ring and slice the cursor is in
-    pieState.hoveredRing = -1;
-    pieState.hoveredSlice = -1;
-
-    if (dist >= PIE_DEAD_ZONE) {
+    
+    // Determine ring
+    int ring = -1;
+    if (dist < RingInner(0)) {
+        ring = -1;  // Dead zone
+    } else {
         for (int r = 0; r < pieState.visibleRings; r++) {
-            int menuIdx = pieState.ringMenu[r];
-            if (menuIdx < 0) continue;
-
-            if (dist >= RingInner(r) && dist < RingOuter(r) &&
-                AngleInArc(angle, pieState.ringArcStart[r], pieState.ringArcEnd[r])) {
-                pieState.hoveredRing = r;
-                pieState.hoveredSlice = AngleToSliceInArc(angle,
-                    pieState.ringArcStart[r], pieState.ringArcEnd[r],
-                    menus[menuIdx].sliceCount);
+            if (dist >= RingInner(r) && dist < RingOuter(r)) {
+                ring = r;
                 break;
             }
         }
-        // Past outermost ring but within its arc — clamp to outermost
-        if (pieState.hoveredRing == -1) {
-            int lastRing = pieState.visibleRings - 1;
-            int menuIdx = pieState.ringMenu[lastRing];
-            if (menuIdx >= 0 && dist >= RingOuter(lastRing) &&
-                AngleInArc(angle, pieState.ringArcStart[lastRing], pieState.ringArcEnd[lastRing])) {
-                pieState.hoveredRing = lastRing;
-                pieState.hoveredSlice = AngleToSliceInArc(angle,
-                    pieState.ringArcStart[lastRing], pieState.ringArcEnd[lastRing],
-                    menus[menuIdx].sliceCount);
+    }
+    
+    // Update deepest ring reached (for hold mode)
+    if (ring > pieDeepestRing) {
+        pieDeepestRing = ring;
+    }
+    
+    pieState.hoveredRing = ring;
+    pieState.hoveredSlice = -1;
+    
+    if (ring >= 0 && ring < pieState.visibleRings) {
+        int menuIdx = pieState.ringMenu[ring];
+        if (menuIdx >= 0 && menuIdx < menuCount) {
+            float angle = NormalizeAngle(dx, dy);
+            if (AngleInArc(angle, pieState.ringArcStart[ring], pieState.ringArcEnd[ring])) {
+                int sliceCount = menus[menuIdx].sliceCount;
+                int slice = AngleToSliceInArc(angle, pieState.ringArcStart[ring], pieState.ringArcEnd[ring], sliceCount);
+                pieState.hoveredSlice = slice;
+                
+                // Auto-expand when hovering a slice with children
+                PieSlice* s = &menus[menuIdx].slices[slice];
+                if (s->childMenuIdx >= 0) {
+                    ExpandRing(ring, slice);
+                }
             }
         }
     }
-
-    // Track deepest ring visited
-    if (pieState.hoveredRing > pieDeepestRing) {
-        pieDeepestRing = pieState.hoveredRing;
-    }
-
-    // Update ring selections based on hover
-    if (pieState.hoveredRing >= 0 && pieState.hoveredSlice >= 0) {
-        int ring = pieState.hoveredRing;
-        int slice = pieState.hoveredSlice;
-
-        if (pieState.ringSelection[ring] != slice) {
-            pieState.ringSelection[ring] = slice;
-
-            // New selection on this ring = new path, reset deepest
-            pieDeepestRing = ring;
-
-            // Clear deeper rings
-            for (int r = ring + 1; r < PIE_MAX_DEPTH; r++) {
-                pieState.ringSelection[r] = -1;
-                pieState.ringMenu[r] = -1;
-            }
-
-            // Open child ring if this slice has children
+    
+    // Click to select (toggle mode)
+    if (!pieHoldMode && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (pieState.hoveredRing >= 0 && pieState.hoveredSlice >= 0) {
+            int ring = pieState.hoveredRing;
+            int slice = pieState.hoveredSlice;
             int menuIdx = pieState.ringMenu[ring];
             PieSlice* s = &menus[menuIdx].slices[slice];
-            if (s->childMenuIdx >= 0 && ring + 1 < PIE_MAX_DEPTH) {
-                OpenChildRing(ring, slice);
-            } else {
-                pieState.visibleRings = ring + 1;
-            }
-        }
-    }
-
-    // When hovering an inner ring, collapse outer rings
-    if (pieState.hoveredRing >= 0 && pieState.hoveredRing < pieState.visibleRings - 1) {
-        int ring = pieState.hoveredRing;
-        int menuIdx = pieState.ringMenu[ring];
-        int slice = pieState.hoveredSlice;
-        PieSlice* s = &menus[menuIdx].slices[slice];
-
-        int newVisible = ring + 1;
-        if (s->childMenuIdx >= 0 && ring + 1 < PIE_MAX_DEPTH) {
-            OpenChildRing(ring, slice);
-            newVisible = ring + 2;
-        }
-
-        for (int r = newVisible; r < PIE_MAX_DEPTH; r++) {
-            pieState.ringSelection[r] = -1;
-            pieState.ringMenu[r] = -1;
-        }
-        pieState.visibleRings = newVisible;
-    }
-
-    // Left-click to select
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (pieState.hoveredRing >= 0 && pieState.hoveredSlice >= 0) {
-            int menuIdx = pieState.ringMenu[pieState.hoveredRing];
-            PieSlice* slice = &menus[menuIdx].slices[pieState.hoveredSlice];
-            if (slice->childMenuIdx < 0) {
-                PieMenu_ApplyAction(slice->action);
+            
+            if (s->action != ACTION_NONE) {
+                PieMenu_ApplyAction(s->action);
                 PieMenu_Close();
             }
-        } else if (pieState.hoveredRing == -1) {
-            PieMenu_Close();
-        }
-    }
-
-    // Hold-drag mode: release on leaf selects
-    if (pieHoldMode && IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
-        if (pieState.hoveredRing >= 0 && pieState.hoveredSlice >= 0) {
-            int menuIdx = pieState.ringMenu[pieState.hoveredRing];
-            PieSlice* slice = &menus[menuIdx].slices[pieState.hoveredSlice];
-            if (slice->childMenuIdx < 0) {
-                PieMenu_ApplyAction(slice->action);
-                PieMenu_Close();
-            }
-            pieHoldMode = false;
         } else {
             PieMenu_Close();
         }
-        return;
     }
-
-    // Right-click to go back (toggle mode only)
-    if (!pieHoldMode && IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+    
+    // Release to select (hold mode)
+    if (pieHoldMode && IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+        // Only select if we've reached at least ring 0 (not just dead zone)
+        if (pieDeepestRing >= 0 && pieState.hoveredRing >= 0 && pieState.hoveredSlice >= 0) {
+            int menuIdx = pieState.ringMenu[pieState.hoveredRing];
+            PieSlice* slice = &menus[menuIdx].slices[pieState.hoveredSlice];
+            if (slice->action != ACTION_NONE) {
+                PieMenu_ApplyAction(slice->action);
+            }
+        }
+        PieMenu_Close();
+    }
+    
+    // Back with Escape or Backspace
+    if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
         PieMenu_Back();
     }
-    if (IsKeyPressed(KEY_ESCAPE)) {
+    if (IsKeyPressed(KEY_DELETE)) {
         PieMenu_Back();
     }
 }
 
-// ============================================================================
-// Draw — labels only, minimal chrome
-// ============================================================================
-
 void PieMenu_Draw(void) {
     if (!pieState.isOpen) return;
-
+    
     Vector2 center = { pieState.centerX, pieState.centerY };
-
+    
     // Center close circle
     Vector2 mouse = GetMousePosition();
     float cdx = mouse.x - center.x;
     float cdy = mouse.y - center.y;
     float cdist = sqrtf(cdx * cdx + cdy * cdy);
     bool centerHovered = (cdist < PIE_DEAD_ZONE);
-
+    
     Color centerCol = centerHovered ? (Color){ 200, 100, 100, 220 } : (Color){ 60, 60, 80, 200 };
     DrawCircle((int)center.x, (int)center.y, 8, centerCol);
-
+    
     // Draw each ring's labels
     for (int r = 0; r < pieState.visibleRings; r++) {
         int menuIdx = pieState.ringMenu[r];
         if (menuIdx < 0) continue;
-
+        
         PieMenuDef* menu = &menus[menuIdx];
         int n = menu->sliceCount;
         float labelDist = RingRadius(r);
-
+        
         for (int i = 0; i < n; i++) {
             float a = SliceAngle(i, pieState.ringArcStart[r], pieState.ringArcEnd[r], n);
             float trigAngle = a - PI * 0.5f;
-
+            
             int lx = (int)(center.x + cosf(trigAngle) * labelDist);
             int ly = (int)(center.y + sinf(trigAngle) * labelDist);
-
+            
             bool hovered = (r == pieState.hoveredRing && i == pieState.hoveredSlice);
             bool selected = (pieState.ringSelection[r] == i);
             bool isSubmenu = (menu->slices[i].childMenuIdx >= 0);
+            
             // Muted when:
             // - Ring is beyond cursor AND cursor has previously been deeper (coming back)
             // - OR siblings on an inner ring when cursor is deeper
@@ -503,12 +480,12 @@ void PieMenu_Draw(void) {
             } else if (ringHasSelection && cursorIsDeeper && !selected && !hovered) {
                 muted = true;  // Siblings of selection fade when cursor is deeper
             }
-
+            
             const char* label = menu->slices[i].label;
             int fontSize = 18;
-            int tw = MeasureText(label, fontSize);
+            int tw = MeasureTextUI(label, fontSize);
             int padding = 6;
-
+            
             // Background rect (always drawn for readability)
             Color bgCol;
             if (hovered) {
@@ -522,7 +499,7 @@ void PieMenu_Draw(void) {
             }
             DrawRectangle(lx - tw / 2 - padding, ly - fontSize / 2 - padding,
                 tw + padding * 2, fontSize + padding * 2, bgCol);
-
+            
             // Text color
             Color textCol;
             if (hovered) {
@@ -534,9 +511,9 @@ void PieMenu_Draw(void) {
             } else {
                 textCol = LIGHTGRAY;
             }
-
+            
             DrawTextShadow(label, lx - tw / 2, ly - fontSize / 2, fontSize, textCol);
-
+            
             // Submenu indicator
             if (isSubmenu && !selected) {
                 Color arrowCol = hovered ? YELLOW : (muted ? (Color){ 128, 128, 128, 100 } : GRAY);
