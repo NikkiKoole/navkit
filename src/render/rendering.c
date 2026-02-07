@@ -185,14 +185,6 @@ static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
     return ItemSprite(type);
 }
 
-static float FinishInsetPixels(void) {
-#if TILE_SIZE == 8
-    return 1.0f;
-#else
-    return 2.0f;
-#endif
-}
-
 static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint) {
     if (sprite < 0) return;
     float insetW = dest.width - inset * 2.0f;
