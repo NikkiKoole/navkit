@@ -70,7 +70,7 @@ static PieMenuDef menus[MENU_COUNT] = {
         { "Stockpile", ACTION_DRAW_STOCKPILE,  -1,              GREEN },
         { "Workshop",  ACTION_NONE,            MENU_DRAW_WORKSHOP, ORANGE },
         { "Soil",      ACTION_NONE,            MENU_DRAW_SOIL,    BROWN },
-    }, 6 },
+    }, 7 },
 
     // MENU_SANDBOX
     { "Sandbox", {
