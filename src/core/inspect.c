@@ -21,11 +21,9 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../simulation/trees.h"
+#include "save_migrations.h"
 
-#define INSPECT_SAVE_VERSION 22
 #define INSPECT_V21_MAT_COUNT 10
-#define INSPECT_V19_ITEM_TYPE_COUNT 23
-#define INSPECT_V18_ITEM_TYPE_COUNT 21
 #define INSPECT_SAVE_MAGIC 0x4E41564B
 
 // Section markers (must match saveload.c)
@@ -1011,8 +1009,8 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version > INSPECT_SAVE_VERSION || version < 15) {
-        printf("Version mismatch: file=%d, supported=15-%d\n", version, INSPECT_SAVE_VERSION);
+    if (version > CURRENT_SAVE_VERSION || version < 15) {
+        printf("Version mismatch: file=%d, supported=15-%d\n", version, CURRENT_SAVE_VERSION);
         fclose(f);
         return 1;
     }
@@ -1275,7 +1273,7 @@ int InspectSaveFile(int argc, char** argv) {
             int x, y, z;
             int width, height;
             bool active;
-            bool allowedTypes[INSPECT_V19_ITEM_TYPE_COUNT];
+            bool allowedTypes[V19_ITEM_TYPE_COUNT];
             bool allowedMaterials[MAT_COUNT];
             bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -1300,10 +1298,10 @@ int InspectSaveFile(int argc, char** argv) {
             insp_stockpiles[i].width = legacyStockpiles[i].width;
             insp_stockpiles[i].height = legacyStockpiles[i].height;
             insp_stockpiles[i].active = legacyStockpiles[i].active;
-            for (int t = 0; t < INSPECT_V19_ITEM_TYPE_COUNT; t++) {
+            for (int t = 0; t < V19_ITEM_TYPE_COUNT; t++) {
                 insp_stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
             }
-            for (int t = INSPECT_V19_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+            for (int t = V19_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
                 insp_stockpiles[i].allowedTypes[t] = true;
             }
             memcpy(insp_stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));
@@ -1325,7 +1323,7 @@ int InspectSaveFile(int argc, char** argv) {
             int x, y, z;
             int width, height;
             bool active;
-            bool allowedTypes[INSPECT_V18_ITEM_TYPE_COUNT];
+            bool allowedTypes[V18_ITEM_TYPE_COUNT];
             bool allowedMaterials[MAT_COUNT];
             bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
             int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
@@ -1350,10 +1348,10 @@ int InspectSaveFile(int argc, char** argv) {
             insp_stockpiles[i].width = legacyStockpiles[i].width;
             insp_stockpiles[i].height = legacyStockpiles[i].height;
             insp_stockpiles[i].active = legacyStockpiles[i].active;
-            for (int t = 0; t < INSPECT_V18_ITEM_TYPE_COUNT; t++) {
+            for (int t = 0; t < V18_ITEM_TYPE_COUNT; t++) {
                 insp_stockpiles[i].allowedTypes[t] = legacyStockpiles[i].allowedTypes[t];
             }
-            for (int t = INSPECT_V18_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+            for (int t = V18_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
                 insp_stockpiles[i].allowedTypes[t] = true;
             }
             memcpy(insp_stockpiles[i].allowedMaterials, legacyStockpiles[i].allowedMaterials, sizeof(legacyStockpiles[i].allowedMaterials));

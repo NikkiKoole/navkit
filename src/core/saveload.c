@@ -7,11 +7,9 @@
 #include "../simulation/groundwear.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
+#include "save_migrations.h"
 
-#define SAVE_VERSION 22  // Add wall/floor finish grids
 #define V21_MAT_COUNT 10  // MAT_COUNT before clay/gravel/sand/peat materials
-#define V19_ITEM_TYPE_COUNT 23  // ITEM_TYPE_COUNT before ITEM_BRICKS/ITEM_CHARCOAL were added
-#define V18_ITEM_TYPE_COUNT 21  // ITEM_TYPE_COUNT before ITEM_PLANKS/ITEM_STICKS were added
 #define SAVE_MAGIC 0x4E41564B  // "NAVK"
 
 // Section markers (readable in hex dump)
@@ -30,7 +28,7 @@ bool SaveWorld(const char* filename) {
     
     // Header
     uint32_t magic = SAVE_MAGIC;
-    uint32_t version = SAVE_VERSION;
+    uint32_t version = CURRENT_SAVE_VERSION;
     fwrite(&magic, sizeof(magic), 1, f);
     fwrite(&version, sizeof(version), 1, f);
     
@@ -329,9 +327,9 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    if (version > SAVE_VERSION || version < 15) {
-        printf("ERROR: Save version mismatch (file: %d, supported: %d-%d)\n", version, 15, SAVE_VERSION);
-        AddMessage(TextFormat("Save version mismatch (file: %d, supported: %d-%d)", version, 15, SAVE_VERSION), RED);
+    if (version > CURRENT_SAVE_VERSION || version < 15) {
+        printf("ERROR: Save version mismatch (file: %d, supported: %d-%d)\n", version, 15, CURRENT_SAVE_VERSION);
+        AddMessage(TextFormat("Save version mismatch (file: %d, supported: %d-%d)", version, 15, CURRENT_SAVE_VERSION), RED);
         fclose(f);
         return false;
     }
