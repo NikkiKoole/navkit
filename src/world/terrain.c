@@ -4,6 +4,7 @@
 #include "../entities/workshops.h"
 #include "../entities/stockpiles.h"
 #include "../entities/items.h"
+#include "../entities/mover.h"
 #include "designations.h"
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
@@ -109,6 +110,13 @@ typedef struct {
 void InitGrid(void) {
     // Re-initialize grid with current dimensions (clears cells and flags)
     InitGridWithSizeAndChunkSize(gridWidth, gridHeight, chunkWidth, chunkHeight);
+
+    // Clear all entity and simulation state so nothing leaks across terrain regeneration
+    ClearMovers();
+    ClearItems();
+    ClearWorkshops();
+    ClearStockpiles();
+    ClearWater();
 }
 
 void GenerateSparse(float density) {
@@ -1236,7 +1244,7 @@ void GenerateCaves(void) {
         for (int x = 0; x < gridWidth; x++) {
             // Border is always rock
             if (x == 0 || y == 0 || x == gridWidth - 1 || y == gridHeight - 1) {
-                grid[1][y][x] = CELL_ROCK;
+                grid[0][y][x] = CELL_ROCK;
             } else {
                 grid[0][y][x] = (GetRandomValue(0, 100) < 45) ? CELL_ROCK : CELL_DIRT;
             }
@@ -1752,7 +1760,8 @@ void GenerateHills(void) {
                 if (northHeight == myHeight + 1) {
                     int rampZ = northHeight;  // Carve into their top dirt level
                     rampCandidates++;
-                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
+                        ShouldPlaceRampAt(x, y - 1)) {
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
                         rampPlaced++;
                     }
@@ -1944,7 +1953,8 @@ void GenerateHillsSoils(void) {
                 if (northHeight == myHeight + 1) {
                     int rampZ = northHeight;
                     rampCandidates++;
-                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
+                        ShouldPlaceRampAt(x, y - 1)) {
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
                         rampPlaced++;
                     }
@@ -2319,7 +2329,8 @@ void GenerateHillsSoilsWater(void) {
                 if (northHeight == myHeight + 1) {
                     int rampZ = northHeight;
                     rampCandidates++;
-                    if (rampZ < gridDepth && ShouldPlaceRampAt(x, y - 1)) {
+                    if (rampZ < gridDepth && !CellIsRamp(grid[rampZ][y - 1][x]) &&
+                        ShouldPlaceRampAt(x, y - 1)) {
                         grid[rampZ][y - 1][x] = CELL_RAMP_N;
                         rampPlaced++;
                     }
