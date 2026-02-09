@@ -209,37 +209,30 @@ Floors are a flag (`HAS_FLOOR`), not a cell type. Only 2 overrides (wood, stone)
 ### Natural walls: caller responsibility
 Natural walls are always `SPRITE_rock`. "Natural" is a position property, not
 a (cell, material) property. The caller checks `IsWallNatural()` before the
-table lookup. Could eliminate this with `CELL_NATURAL_WALL` someday.
+table lookup.
 
 ### Items: separate concern
 `ItemSpriteForTypeMaterial()` maps items, not cells. Leave it. Could do an
 item sprite table later if item types * materials grows.
 
-## The Bigger Picture: CellDef vs MaterialDef
+## CellDef vs MaterialDef: Where Fields Belong
 
-The sprite system is part of a larger separation of concerns:
+| Field            | CellDef          | MaterialDef        | Why both? |
+|------------------|------------------|--------------------|-----------|
+| name             | shape name       | substance name     | Different things ("wall" vs "Oak") |
+| sprite           | fallback default | canonical look     | Sprite table replaces both for rendering |
+| flags            | physics (CF_*)   | properties (MF_*)  | Different concerns |
+| fuel             | yes              | yes                | CellDef = shape default (0 for rock), MaterialDef = substance (128 for oak) |
+| insulationTier   | yes              | yes                | Same pattern as fuel |
+| dropsItem        | yes              | yes                | Natural wall drops by shape (ITEM_ROCK), constructed drops by material (ITEM_LOG) |
+| dropCount        | yes              | no                 | Shape determines quantity (trunk > branch) |
+| burnsInto        | CellType         | MaterialType       | Shape -> shape, substance -> substance |
+| ignitionRes      | no               | yes                | Pure substance property |
 
-| Field            | CellDef          | MaterialDef        |
-|------------------|------------------|--------------------|
-| name             | shape name       | substance name     |
-| sprite           | fallback default | canonical look     |
-| flags            | physics (CF_*)   | properties (MF_*)  |
-| fuel             | yes (legacy)     | yes (authoritative)|
-| insulationTier   | yes (legacy)     | yes (authoritative)|
-| dropsItem        | yes (legacy)     | yes (authoritative)|
-| dropCount        | yes              | no (move here?)    |
-| burnsInto        | CellType         | MaterialType       |
-| ignitionRes      | no               | yes                |
-
-`fuel`, `insulationTier`, and `dropsItem` on CellDef are legacy -- they
-predate the material system and now serve as fallbacks. The material is always
-checked first. The end goal:
-
-**CellDef = pure physics shape** (name, flags, burnsInto)
-**MaterialDef = pure substance** (name, sprite, properties, fuel, drops...)
-**Sprite overrides = visual exceptions** (cell + material -> override sprite)
-
-But that's Phase 3 and may not be worth the risk.
+The "check material first, fall back to cell" pattern in the gameplay code
+(fire, drops, insulation) correctly models reality. Natural rock uses CellDef
+defaults (0 fuel, ITEM_ROCK drops). Constructed oak walls use MaterialDef
+values (128 fuel, ITEM_LOG drops). Both are needed.
 
 ## Refactor Phases
 
@@ -268,16 +261,6 @@ Safest to do first because:
 2b. Remove MaterialLeavesSprite(), MaterialSaplingSprite() macros
 2c. Update materialDefs table (drop two columns)
 2d. Update tests
-```
-
-### Phase 3: (someday, optional) Clean CellDef legacy fields
-
-```
-3a. Remove CellDef.fuel (all fuel checks go through MaterialDef)
-3b. Remove CellDef.insulationTier (all insulation through MaterialDef)
-3c. Remove CellDef.dropsItem (all drops through material-aware functions)
-3d. Audit all callers -- fire.c, temperature.c, mining, crafting
-3e. HIGH RISK: touches gameplay systems. Only do when there's a concrete reason.
 ```
 
 Each phase is independently shippable and testable.
