@@ -66,6 +66,29 @@ There is **no explicit input tile**; inputs are fetched by the job system from n
 - Add optional “input tile” support if you want visible log/clay staging.
 - Make fuel tile functional (deposit fuel there, consume from `F`).
 
+## Extra Recipe Choices (Multiple Useful Options Per Workshop)
+These are intended to add meaningful player choice while keeping loops autarkic. Each list includes\n+low‑risk options that work today and optional upgrades that require a new item.
+
+### Stonecutter
+- **Crush Stone → Gravel**: `ITEM_ROCK → ITEM_GRAVEL`\n
+  *Why*: steady gravel supply for roads/paths; utilitarian output without new systems.\n
+- **Stone Slabs (new item)**: `ITEM_ROCK → ITEM_STONE_SLAB`\n
+  *Why*: distinct floor/paving material vs blocks; simple sink for stone.\n
+
+### Sawmill
+- **Log → Blocks (wood blocks)**: `ITEM_LOG → ITEM_BLOCKS` (material preserved as wood)\n
+  *Why*: wood‑block alternative to planks; strengthens wood→structure loop.\n
+- **Beams (new item)**: `ITEM_LOG → ITEM_BEAMS`\n
+  *Why*: enables “heavy wood” constructions later (bridges, larger workshops, supports).\n
+
+### Kiln
+- **Peat → Charcoal (high yield)**: `ITEM_PEAT → ITEM_CHARCOAL`\n
+  *Why*: makes peat biomes valuable and adds a second fuel‑processing path.\n
+- **Clay → Pottery (new item)**: `ITEM_CLAY → ITEM_POTTERY`\n
+  *Why*: containers/trade goods later; natural extension of clay loop.\n
+- **Sand + Fuel → Glass (new item)**: `ITEM_SAND + fuel → ITEM_GLASS`\n
+  *Why*: unlocks windows/greenhouses; pairs with existing sand terrain.\n
+
 ## Layout Options (If You Want More Variety)
 
 ### A) Distinct 3×3 layouts (no code changes)

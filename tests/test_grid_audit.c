@@ -91,7 +91,7 @@ describe(grid_audit_finding_2_erase_ramp_cleanup) {
         // Set up solid ground for ramp support
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -137,7 +137,7 @@ describe(grid_audit_finding_5_fire_burns_ramp_support) {
         // Set up ground
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -183,7 +183,7 @@ describe(grid_audit_finding_7_placeladder_on_ramp) {
         
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -231,7 +231,7 @@ describe(grid_audit_finding_8_eraseramp_chunk_dirty) {
         // Set up solid ground
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -257,7 +257,7 @@ describe(grid_audit_finding_9_ramp_map_edge) {
         
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -271,7 +271,7 @@ describe(grid_audit_finding_9_ramp_map_edge) {
         
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -292,7 +292,7 @@ describe(grid_audit_finding_10_ramp_lowside_validity) {
         // Set up solid ground at z=0
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
         
@@ -300,7 +300,7 @@ describe(grid_audit_finding_10_ramp_lowside_validity) {
         // High side exit: (5,4,2) - needs solid support at (5,4,1)
         // Low side (entry): (5,6,1)
         // For validity, exit base (5,4,1) must be solid
-        grid[1][4][5] = CELL_TERRAIN;  // Solid support for high-side exit
+        grid[1][4][5] = CELL_WALL;  // Solid support for high-side exit
         SetWallMaterial(5, 4, 1, MAT_DIRT);
         grid[1][5][5] = CELL_RAMP_N;
         rampCount++;

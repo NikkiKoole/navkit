@@ -3899,7 +3899,7 @@ describe(mining_job_execution) {
         // Find the spawned item and verify it's orange at the mine location
         bool foundOrange = false;
         for (int i = 0; i < MAX_ITEMS; i++) {
-            if (IsItemActive(i) && GetItemType(i) == ITEM_ROCK) {
+            if (IsItemActive(i) && GetItemType(i) == ITEM_BLOCKS) {
                 foundOrange = true;
                 // Item should be at the dug location (1,1)
                 int itemX = (int)(GetItemX(i) / CELL_SIZE);
@@ -4214,7 +4214,7 @@ describe(channel_ramp_detection) {
         // z=0: solid ground, z=1: floor above + walls blocking exits
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                grid[0][y][x] = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_FLOOR(x, y, 1);         // Floor at z=1 makes it walkable
                 grid[1][y][x] = CELL_WALL;  // Walls at z=1 block exits
@@ -4435,7 +4435,7 @@ describe(channel_job_execution) {
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                grid[0][y][x] = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Open air (walkable above dirt)
                 grid[2][y][x] = CELL_AIR;
@@ -4660,7 +4660,7 @@ describe(channel_rectangle_ramps) {
         // Set up z0 as solid dirt, z1 as walkable air
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 10; y++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);  // Floor flag makes z1 walkable
@@ -5378,7 +5378,7 @@ describe(job_drivers) {
         // Need solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                grid[0][y][x] = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
@@ -5628,7 +5628,7 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
             }
@@ -5734,7 +5734,7 @@ describe(job_game_speed) {
         // Solid ground at z=0, walkable at z=1
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
             }
@@ -7745,7 +7745,7 @@ describe(item_lifecycle) {
         // Set up z0 as solid, z1 as walkable floor
         for (int x = 0; x < 10; x++) {
             for (int y = 0; y < 5; y++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 SET_FLOOR(x, y, 1);
@@ -10240,9 +10240,9 @@ describe(input_audit_material_consistency) {
         ClearStockpiles();
         
         // Simulate what ExecutePileSoil does with the FIXED material
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_CLAY, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_CLAY, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_TERRAIN);
+        expect(grid[0][3][5] == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_CLAY);
     }
     
@@ -10259,9 +10259,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_GRAVEL, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_GRAVEL, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_TERRAIN);
+        expect(grid[0][3][5] == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_GRAVEL);
     }
     
@@ -10278,9 +10278,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_SAND, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_SAND, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_TERRAIN);
+        expect(grid[0][3][5] == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_SAND);
     }
     
@@ -10297,9 +10297,9 @@ describe(input_audit_material_consistency) {
         ClearItems();
         ClearStockpiles();
         
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_PEAT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_PEAT, SURFACE_BARE, true, false));
         
-        expect(grid[0][3][5] == CELL_TERRAIN);
+        expect(grid[0][3][5] == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_PEAT);
     }
 }
@@ -10373,7 +10373,7 @@ describe(input_audit_soil_repath) {
         
         // Simulate what ExecuteBuildSoil does: place solid soil
         // (ExecuteBuildSoil does NOT set needsRepath - that's the bug)
-        CellPlacementSpec spec = NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
+        CellPlacementSpec spec = NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
         PlaceCellFull(5, 2, 0, spec);
         InvalidatePathsThroughCell(5, 2, 0);
         
@@ -10405,11 +10405,11 @@ describe(input_audit_grass_placement) {
         expect(grid[0][3][5] == CELL_AIR);
         
         // Simulate what the FIXED ExecutePlaceGrass does: PlaceCellFull + surface
-        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
         SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
         
         // Player expectation: dirt cell should have MAT_DIRT material
-        expect(grid[0][3][5] == CELL_TERRAIN);
+        expect(grid[0][3][5] == CELL_WALL);
         expect(GetWallMaterial(5, 3, 0) == MAT_DIRT);
     }
     
@@ -10444,7 +10444,7 @@ describe(input_audit_grass_placement) {
         m->needsRepath = false;
         
         // Simulate FIXED grass placement on air -> solid dirt
-        PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_TERRAIN, MAT_DIRT, SURFACE_BARE, true, false));
+        PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
         InvalidatePathsThroughCell(5, 2, 0);
         SET_CELL_SURFACE(5, 2, 0, SURFACE_TALL_GRASS);
         
@@ -10582,7 +10582,7 @@ describe(input_audit_quick_erase_metadata) {
         ClearStockpiles();
         
         // Set up a dirt cell with grass and material
-        grid[0][3][5] = CELL_TERRAIN;
+        grid[0][3][5] = CELL_WALL;
         SetWallMaterial(5, 3, 0, MAT_DIRT);
         SetWallNatural(5, 3, 0);
         SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);

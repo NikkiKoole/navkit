@@ -24,15 +24,15 @@ describe(caves_border_zlevel) {
     it("should place border walls at z=0, same level as cave interior") {
         GenerateCaves();
 
-        // Border cells should be rock terrain (CELL_TERRAIN with MAT_GRANITE) at z=0
+        // Border cells should be rock terrain (CELL_WALL with MAT_GRANITE) at z=0
         bool allBorderRock = true;
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[0][0][x] != CELL_TERRAIN || GetWallMaterial(x, 0, 0) != MAT_GRANITE) allBorderRock = false;
-            if (grid[0][gridHeight - 1][x] != CELL_TERRAIN || GetWallMaterial(x, gridHeight - 1, 0) != MAT_GRANITE) allBorderRock = false;
+            if (grid[0][0][x] != CELL_WALL || GetWallMaterial(x, 0, 0) != MAT_GRANITE) allBorderRock = false;
+            if (grid[0][gridHeight - 1][x] != CELL_WALL || GetWallMaterial(x, gridHeight - 1, 0) != MAT_GRANITE) allBorderRock = false;
         }
         for (int y = 1; y < gridHeight - 1; y++) {
-            if (grid[0][y][0] != CELL_TERRAIN || GetWallMaterial(0, y, 0) != MAT_GRANITE) allBorderRock = false;
-            if (grid[0][y][gridWidth - 1] != CELL_TERRAIN || GetWallMaterial(gridWidth - 1, y, 0) != MAT_GRANITE) allBorderRock = false;
+            if (grid[0][y][0] != CELL_WALL || GetWallMaterial(0, y, 0) != MAT_GRANITE) allBorderRock = false;
+            if (grid[0][y][gridWidth - 1] != CELL_WALL || GetWallMaterial(gridWidth - 1, y, 0) != MAT_GRANITE) allBorderRock = false;
         }
 
         expect(allBorderRock);
@@ -44,12 +44,12 @@ describe(caves_border_zlevel) {
         // Count how many border cells at z=1 are rock terrain
         int z1BorderRock = 0;
         for (int x = 0; x < gridWidth; x++) {
-            if (grid[1][0][x] == CELL_TERRAIN && GetWallMaterial(x, 0, 1) == MAT_GRANITE) z1BorderRock++;
-            if (grid[1][gridHeight - 1][x] == CELL_TERRAIN && GetWallMaterial(x, gridHeight - 1, 1) == MAT_GRANITE) z1BorderRock++;
+            if (grid[1][0][x] == CELL_WALL && GetWallMaterial(x, 0, 1) == MAT_GRANITE) z1BorderRock++;
+            if (grid[1][gridHeight - 1][x] == CELL_WALL && GetWallMaterial(x, gridHeight - 1, 1) == MAT_GRANITE) z1BorderRock++;
         }
         for (int y = 1; y < gridHeight - 1; y++) {
-            if (grid[1][y][0] == CELL_TERRAIN && GetWallMaterial(0, y, 1) == MAT_GRANITE) z1BorderRock++;
-            if (grid[1][y][gridWidth - 1] == CELL_TERRAIN && GetWallMaterial(gridWidth - 1, y, 1) == MAT_GRANITE) z1BorderRock++;
+            if (grid[1][y][0] == CELL_WALL && GetWallMaterial(0, y, 1) == MAT_GRANITE) z1BorderRock++;
+            if (grid[1][y][gridWidth - 1] == CELL_WALL && GetWallMaterial(gridWidth - 1, y, 1) == MAT_GRANITE) z1BorderRock++;
         }
 
         // The full border perimeter should NOT be rock at z=1
@@ -63,7 +63,7 @@ describe(caves_border_zlevel) {
         int dirtCount = 0;
         for (int y = 1; y < gridHeight - 1; y++)
             for (int x = 1; x < gridWidth - 1; x++)
-                if (grid[0][y][x] == CELL_TERRAIN && GetWallMaterial(x, y, 0) == MAT_DIRT) dirtCount++;
+                if (grid[0][y][x] == CELL_WALL && GetWallMaterial(x, y, 0) == MAT_DIRT) dirtCount++;
 
         // Cellular automata creates ~50% open, expect at least 25%
         int interiorCells = (gridWidth - 2) * (gridHeight - 2);
@@ -84,7 +84,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -112,7 +112,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -135,7 +135,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 
@@ -157,7 +157,7 @@ describe(terrain_regen_clears_entities) {
             "..........\n", 10, 10);
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
             }
 

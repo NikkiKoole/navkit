@@ -528,10 +528,10 @@ describe(fire_non_flammable) {
         expect(GetBaseFuelForCellType(CELL_WALL) == 0);
         
         // Terrain (base cell type) should have 0 fuel (fuel comes from material/grass)
-        expect(GetBaseFuelForCellType(CELL_TERRAIN) == 0);
+        expect(GetBaseFuelForCellType(CELL_WALL) == 0);
         
         // But terrain with grass surface should have fuel
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         SET_CELL_SURFACE(0, 0, 0, SURFACE_TALL_GRASS);
         expect(GetFuelAt(0, 0, 0) > 0);
@@ -551,7 +551,7 @@ describe(fire_non_flammable) {
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
                 if (grid[0][y][x] != CELL_WALL) {
-                    grid[0][y][x] = CELL_TERRAIN;
+                    grid[0][y][x] = CELL_WALL;
                     SetWallMaterial(x, y, 0, MAT_DIRT);
                     SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
                 }
@@ -598,7 +598,7 @@ describe(fire_non_flammable) {
         // z=0: all dirt with grass surface
         for (int y = 0; y < 3; y++) {
             for (int x = 0; x < 7; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
             }

@@ -60,9 +60,9 @@ bool DesignateMine(int x, int y, int z) {
         return false;
     }
     
-    // Can mine walls and dirt (DF-style: any solid)
+    // Can mine walls and terrain (DF-style: any solid)
     CellType ct = grid[z][y][x];
-    if (ct != CELL_WALL && !IsGroundCell(ct)) {
+    if (!CellIsSolid(ct)) {
         return false;
     }
     
@@ -137,13 +137,12 @@ void CompleteMineDesignation(int x, int y, int z) {
     
     CellType ct = grid[z][y][x];
     
-    // Convert wall to air with floor
-    if (ct == CELL_WALL) {
-        // Get drop item based on wall material (before changing the cell)
+    // Convert solid cell to air with floor
+    if (CellIsSolid(ct)) {
         ItemType dropItem = GetWallDropItem(x, y, z);
         int dropCount = CellDropCount(ct);
         MaterialType wallMat = GetWallMaterial(x, y, z);
-        bool isWallNatural = IsWallNatural(x, y, z);
+        bool wasNatural = IsWallNatural(x, y, z);
         
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
@@ -152,65 +151,24 @@ void CompleteMineDesignation(int x, int y, int z) {
         if (wallMat != MAT_NONE) {
             SetFloorMaterial(x, y, z, wallMat);
         }
-        if (isWallNatural) {
+        if (wasNatural) {
             SetFloorNatural(x, y, z);
         } else {
             ClearFloorNatural(x, y, z);
         }
-        SetFloorFinish(x, y, z, DefaultFinishForNatural(isWallNatural));
-        SetWallMaterial(x, y, z, MAT_NONE);  // Wall removed
-        ClearWallNatural(x, y, z);
-        SetWallFinish(x, y, z, FINISH_ROUGH);
-        MarkChunkDirty(x, y, z);
-        
-        // Destabilize water at this cell and neighbors so it can flow into the new space
-        DestabilizeWater(x, y, z);
-        
-        // Clear unreachable cooldowns for nearby items - they may now be reachable
-        ClearUnreachableCooldownsNearCell(x, y, z, 5);
-        
-        // Spawn drops based on material
-        if (dropItem != ITEM_NONE && dropCount > 0) {
-            for (int i = 0; i < dropCount; i++) {
-                uint8_t dropMat = (wallMat != MAT_NONE) ? (uint8_t)wallMat : DefaultMaterialForItemType(dropItem);
-                SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
-                                      y * CELL_SIZE + CELL_SIZE * 0.5f,
-                                      (float)z, dropItem, dropMat);
-            }
-        }
-    }
-    // Convert ground to air with floor
-    else if (IsGroundCell(ct)) {
-        ItemType dropItem = GetWallDropItem(x, y, z);
-        int dropCount = CellDropCount(ct);
-        MaterialType floorMat = GetWallMaterial(x, y, z);
-        bool floorIsNatural = IsWallNatural(x, y, z);
-        
-        grid[z][y][x] = CELL_AIR;
-        SET_FLOOR(x, y, z);
-        SetFloorMaterial(x, y, z, floorMat);
-        if (floorIsNatural) {
-            SetFloorNatural(x, y, z);
-        } else {
-            ClearFloorNatural(x, y, z);
-        }
-        SetFloorFinish(x, y, z, DefaultFinishForNatural(floorIsNatural));
+        SetFloorFinish(x, y, z, DefaultFinishForNatural(wasNatural));
         SetWallMaterial(x, y, z, MAT_NONE);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_ROUGH);
         MarkChunkDirty(x, y, z);
         
         DestabilizeWater(x, y, z);
-        
-        // Clear unreachable cooldowns for nearby items - they may now be reachable
         ClearUnreachableCooldownsNearCell(x, y, z, 5);
         
-        // Spawn drops
+        // Spawn drops based on material
         if (dropItem != ITEM_NONE && dropCount > 0) {
             for (int i = 0; i < dropCount; i++) {
-                uint8_t dropMat = (ct == CELL_TERRAIN && floorMat != MAT_NONE)
-                    ? (uint8_t)floorMat
-                    : DefaultMaterialForItemType(dropItem);
+                uint8_t dropMat = (wallMat != MAT_NONE) ? (uint8_t)wallMat : DefaultMaterialForItemType(dropItem);
                 SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
                                       y * CELL_SIZE + CELL_SIZE * 0.5f,
                                       (float)z, dropItem, dropMat);
@@ -580,9 +538,9 @@ bool DesignateDigRamp(int x, int y, int z) {
         return false;
     }
     
-    // Can only dig ramps from walls or dirt
+    // Can only dig ramps from solid cells
     CellType ct = grid[z][y][x];
-    if (ct != CELL_WALL && !IsGroundCell(ct)) {
+    if (!CellIsSolid(ct)) {
         return false;
     }
     
@@ -1434,10 +1392,10 @@ bool DesignatePlantSapling(int x, int y, int z) {
         return false;
     }
     
-    // Check if ground below is soil
+    // Check if ground below is solid (soil/rock)
     if (z > 0) {
         CellType below = grid[z-1][y][x];
-        if (!IsGroundCell(below)) {
+        if (!CellIsSolid(below)) {
             return false;
         }
     }
@@ -1598,9 +1556,9 @@ int CreateFloorBlueprint(int x, int y, int z) {
         return -1;
     }
     
-    // Already has a floor? (check flag or ground type)
+    // Already has a floor? (check flag or solid ground)
     CellType ct = grid[z][y][x];
-    if (HAS_FLOOR(x, y, z) || IsGroundCell(ct)) {
+    if (HAS_FLOOR(x, y, z) || CellIsSolid(ct)) {
         return -1;
     }
     
@@ -1805,8 +1763,8 @@ void CompleteBlueprint(int blueprintIdx) {
             ClearCellCleanup(x, y, z);
             DisplaceWater(x, y, z);
             if (bp->deliveredMaterial == MAT_DIRT) {
-                // Dirt creates natural terrain, not a constructed wall
-                grid[z][y][x] = CELL_TERRAIN;
+                // Dirt creates natural wall, not a constructed wall
+                grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_ROUGH);

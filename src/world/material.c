@@ -115,26 +115,15 @@ bool IsConstructedWall(int x, int y, int z) {
 }
 
 // Get what item a wall drops based on its material
-// For natural walls, use CellDropsItem. For constructed, use MaterialDropsItem.
 ItemType GetWallDropItem(int x, int y, int z) {
     MaterialType mat = GetWallMaterial(x, y, z);
     CellType cell = grid[z][y][x];
     
-    if (mat == MAT_NONE || (!CellBlocksMovement(cell) && !IsGroundCell(cell))) {
+    if (mat == MAT_NONE || !CellIsSolid(cell)) {
         return ITEM_NONE;
     }
 
-    // Natural terrain: use material-based drops (clay drops clay, peat drops peat, etc.)
-    if (IsGroundCell(cell)) {
-        return MaterialDropsItem(mat);
-    }
-
-    // Natural walls (mined rock): use cell's default drop (ITEM_ROCK)
-    if (IsWallNatural(x, y, z)) {
-        return CellDropsItem(cell);
-    }
-    
-    // Constructed walls: drop based on material
+    // All walls (natural and constructed) drop based on material
     return MaterialDropsItem(mat);
 }
 
@@ -185,11 +174,6 @@ const char* GetCellNameAt(int x, int y, int z) {
 
     // Walls: material name
     if (cell == CELL_WALL && mat != MAT_NONE) {
-        return MaterialName(mat);
-    }
-
-    // CELL_TERRAIN: material name (e.g. "Dirt", "Granite")
-    if (cell == CELL_TERRAIN && mat != MAT_NONE) {
         return MaterialName(mat);
     }
 

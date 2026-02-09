@@ -586,7 +586,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     gridDepth = 16;
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_TERRAIN;
+            grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
         }
     for (int z = 1; z < gridDepth; z++)
@@ -888,7 +888,7 @@ int main(int argc, char** argv) {
     // z=0: dirt (solid ground) with grass overlay, z=1+: air (DF-style)
     for (int y = 0; y < gridHeight; y++)
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_TERRAIN;
+            grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
         }

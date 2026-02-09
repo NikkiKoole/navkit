@@ -118,14 +118,14 @@ void TrampleGround(int x, int y, int z) {
     
     // In DF mode, movers walk at z=1 on floors above z=0 dirt terrain
     // If current cell isn't dirt terrain, check if we're standing on dirt below
-    if (!(cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT) && z > 0) {
+    if (!(CellIsSolid(cell) && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) && z > 0) {
         CellType cellBelow = grid[z - 1][y][x];
-        if (cellBelow == CELL_TERRAIN && GetWallMaterial(x, y, z - 1) == MAT_DIRT) {
+        if (CellIsSolid(cellBelow) && IsWallNatural(x, y, z - 1) && GetWallMaterial(x, y, z - 1) == MAT_DIRT) {
             targetZ = z - 1;
         } else {
             return;  // No dirt to trample
         }
-    } else if (!(cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT)) {
+    } else if (!(CellIsSolid(cell) && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT)) {
         return;  // No dirt to trample
     }
     
@@ -165,9 +165,9 @@ void UpdateGroundWear(void) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
                 
-                // Only process soil tiles
-                if (!IsGroundCell(cell)) continue;
-                bool isDirt = (cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT);
+                // Only process natural dirt tiles
+                if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) continue;
+                bool isDirt = (GetWallMaterial(x, y, z) == MAT_DIRT);
                 
                 // Skip if on fire - don't regrow grass while burning
                 if (HasFire(x, y, z)) continue;

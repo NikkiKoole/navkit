@@ -157,7 +157,7 @@ static void PlaceBranchCell(int x, int y, int z, MaterialType treeMat) {
 
 static void PlaceRootCell(int x, int y, int z, MaterialType treeMat) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
-    if (!IsGroundCell(grid[z][y][x])) return;
+    if (!CellIsSolid(grid[z][y][x])) return;
     grid[z][y][x] = CELL_TREE_ROOT;
     SetWallMaterial(x, y, z, treeMat);
     MarkChunkDirty(x, y, z);
@@ -484,7 +484,7 @@ void TreeGrowFull(int x, int y, int z, MaterialType treeMat) {
 
 // Place a sapling that will grow over time
 void PlaceSapling(int x, int y, int z, MaterialType treeMat) {
-    if (grid[z][y][x] != CELL_AIR && !IsGroundCell(grid[z][y][x])) return;
+    if (grid[z][y][x] != CELL_AIR && !CellIsSolid(grid[z][y][x])) return;
 
     // Need solid ground below in DF mode
     if (z > 0 && !CellIsSolid(grid[z - 1][y][x])) return;

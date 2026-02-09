@@ -79,7 +79,7 @@ void RebuildSimActivityCounts(void) {
                     treeActiveCells++;
                 }
                 // Groundwear: worn dirt terrain tiles
-                if (cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) {
+                if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) {
                     wearActiveCells++;
                 }
             }
@@ -109,7 +109,7 @@ bool ValidateSimActivityCounts(void) {
                 if (!tc->stable || tc->current != ambient) actualTempUnstable++;
                 CellType cell = grid[z][y][x];
                 if (cell == CELL_SAPLING) actualTree++;
-                if (cell == CELL_TERRAIN && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
+                if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
             }
         }
     }

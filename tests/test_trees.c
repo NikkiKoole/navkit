@@ -38,8 +38,9 @@ static void SetupBasicGrid(void) {
     // Set z=0 as dirt floor
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_TERRAIN;
+            grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetWallNatural(x, y, 0);
         }
     }
     
@@ -275,7 +276,7 @@ describe(sapling_gather_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                grid[0][y][x] = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }
@@ -389,7 +390,7 @@ describe(sapling_plant_job) {
         
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 4; y++) {
-                grid[0][y][x] = CELL_TERRAIN;  // Solid ground
+                grid[0][y][x] = CELL_WALL;  // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;   // Air above (walkable)
             }

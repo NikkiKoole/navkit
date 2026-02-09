@@ -68,7 +68,7 @@ void InitGridWithSize(int width, int height) {
 void FillGroundLevel(void) {
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
-            grid[0][y][x] = CELL_TERRAIN;
+            grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
         }
@@ -142,7 +142,7 @@ static bool CanReceiveFromAbove(CellType c) {
 }
 
 static bool IsEmptyCell(CellType c) {
-    return c == CELL_AIR || IsGroundCell(c);
+    return c == CELL_AIR;
 }
 
 void RecalculateLadderColumn(int x, int y) {
@@ -166,7 +166,7 @@ void PlaceLadder(int x, int y, int z) {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return;
     
     CellType current = grid[z][y][x];
-    if (IsWallCell(current)) return;
+    if (IsWallCell(current) && !IsWallNatural(x, y, z)) return;
     
     // If there's a ramp here, erase it first
     if (CellIsDirectionalRamp(current)) {

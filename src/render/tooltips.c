@@ -439,15 +439,6 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Wall: %s", MaterialName(wallMat));
         }
     }
-    // Rock material (natural terrain)
-    if (wallMat != MAT_NONE && ct == CELL_TERRAIN && wallMat == MAT_GRANITE) {
-        if (IsWallNatural(cellX, cellY, cellZ)) {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Rock: %s (natural)", MaterialName(wallMat));
-        } else {
-            snprintf(lines[lineCount++], sizeof(lines[0]), "Rock: %s", MaterialName(wallMat));
-        }
-    }
-    
     // Floor material
     MaterialType floorMat = GetFloorMaterial(cellX, cellY, cellZ);
     if (floorMat != MAT_NONE) {

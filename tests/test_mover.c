@@ -977,7 +977,7 @@ describe(mover_falling) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 // z=0 solid, z=1 air above solid is walkable
-                grid[0][y][x] = CELL_TERRAIN;   // Solid ground
+                grid[0][y][x] = CELL_WALL;   // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;       // Walkable (solid below)
             }
@@ -1022,7 +1022,7 @@ describe(mover_falling) {
         grid[0][1][2] = CELL_WALL;
         
         // Starting platform at z=1 (1,1)
-        grid[0][1][1] = CELL_TERRAIN;  // Solid below makes z=1 walkable
+        grid[0][1][1] = CELL_WALL;  // Solid below makes z=1 walkable
         SetWallMaterial(1, 1, 0, MAT_DIRT);
         
         ClearMovers();
@@ -1138,7 +1138,7 @@ describe(mover_ladder_transitions) {
         int goalZ = 2;   // Walk on air above constructed floor
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;   // Solid ground
+                grid[0][y][x] = CELL_WALL;   // Solid ground
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;    // Walkable (above dirt)
                 grid[2][y][x] = CELL_AIR;    // Not walkable yet
@@ -1192,7 +1192,7 @@ describe(mover_ladder_transitions) {
         int goalZ = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                grid[0][y][x] = CELL_TERRAIN;
+                grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
                 grid[1][y][x] = CELL_AIR;
                 grid[2][y][x] = CELL_AIR;

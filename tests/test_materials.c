@@ -152,8 +152,8 @@ describe(cell_def_drops) {
         expect(CellDropsItem(CELL_AIR) == ITEM_NONE);
     }
     
-    it("should have ITEM_NONE for terrain (material determines drops)") {
-        expect(CellDropsItem(CELL_TERRAIN) == ITEM_NONE);
+    it("should have ITEM_ROCK for wall") {
+        expect(CellDropsItem(CELL_WALL) == ITEM_ROCK);
     }
     
     it("should have ITEM_NONE for air") {
@@ -168,8 +168,8 @@ describe(cell_def_drops) {
         expect(CellDropCount(CELL_AIR) == 0);
     }
 
-    it("should have dropCount of 1 for terrain (material determines drop type)") {
-        expect(CellDropCount(CELL_TERRAIN) == 1);
+    it("should have dropCount of 1 for wall (any solid)") {
+        expect(CellDropCount(CELL_WALL) == 1);
     }
 }
 
@@ -328,8 +328,8 @@ describe(mining_material_drops) {
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_ROCK with granite material
-        expect(CountItemsOfTypeWithMaterial(ITEM_ROCK, MAT_GRANITE) == 1);
+        // Should have spawned ITEM_BLOCKS with granite material (via MaterialDropsItem)
+        expect(CountItemsOfTypeWithMaterial(ITEM_BLOCKS, MAT_GRANITE) == 1);
     }
     
     it("should drop ITEM_LOG when mining constructed wood wall") {
@@ -407,10 +407,10 @@ describe(mining_material_drops) {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         
-        // Natural wall
+        // Natural granite wall - drops based on material
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         SetWallNatural(0, 0, 0);
-        expect(GetWallDropItem(0, 0, 0) == ITEM_ROCK);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
         
         // Wood wall
         SetWallMaterial(0, 0, 0, MAT_OAK);
@@ -423,23 +423,23 @@ describe(mining_material_drops) {
         expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
     }
 
-    it("should use GetWallDropItem for CELL_TERRAIN material-based drops") {
+    it("should use GetWallDropItem for CELL_WALL material-based drops") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_CLAY);
         expect(GetWallDropItem(0, 0, 0) == ITEM_CLAY);
         
-        grid[0][0][1] = CELL_TERRAIN;
+        grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_PEAT);
         expect(GetWallDropItem(1, 0, 0) == ITEM_PEAT);
         
-        grid[0][0][2] = CELL_TERRAIN;
+        grid[0][0][2] = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_SAND);
         expect(GetWallDropItem(2, 0, 0) == ITEM_SAND);
         
-        grid[0][0][3] = CELL_TERRAIN;
+        grid[0][0][3] = CELL_WALL;
         SetWallMaterial(3, 0, 0, MAT_DIRT);
         expect(GetWallDropItem(3, 0, 0) == ITEM_DIRT);
     }
@@ -763,15 +763,15 @@ describe(get_cell_sprite_at) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
 
-        grid[0][0][1] = CELL_TERRAIN;
+        grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
 
-        grid[0][0][2] = CELL_TERRAIN;
+        grid[0][0][2] = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
     }
@@ -870,7 +870,7 @@ describe(get_cell_name_at) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
 
@@ -879,7 +879,7 @@ describe(get_cell_name_at) {
 }
 
 // =============================================================================
-// Phase 1: CELL_TERRAIN coexists with old types
+// Phase 1: CELL_WALL coexists with old types
 // =============================================================================
 
 describe(sprite_overrides) {
@@ -905,9 +905,9 @@ describe(sprite_overrides) {
     }
 
     it("should use material canonical sprite when no override") {
-        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_DIRT) == SPRITE_dirt);
-        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_GRANITE) == SPRITE_rock);
-        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_CLAY) == SPRITE_clay);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_DIRT) == SPRITE_dirt);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_rock);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_CLAY) == SPRITE_clay);
         expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_rock);
         expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_OAK) == SPRITE_tree_trunk_oak);
         expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_PINE) == SPRITE_tree_trunk_pine);
@@ -916,7 +916,7 @@ describe(sprite_overrides) {
     it("should fall back to cell default when no material") {
         expect(GetSpriteForCellMat(CELL_AIR, MAT_NONE) == SPRITE_air);
         expect(GetSpriteForCellMat(CELL_LADDER_UP, MAT_NONE) == SPRITE_ladder_up);
-        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_NONE) == SPRITE_dirt);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_NONE) == SPRITE_wall);
     }
 
     it("should fall back to cell default when material has no sprite") {
@@ -925,27 +925,17 @@ describe(sprite_overrides) {
     }
 }
 
-describe(cell_terrain_flags) {
-    it("should have CF_GROUND flags (walkable + solid)") {
-        expect(CellHasFlag(CELL_TERRAIN, CF_WALKABLE));
-        expect(CellIsSolid(CELL_TERRAIN));
+describe(wall_flags) {
+    it("should be solid") {
+        expect(CellIsSolid(CELL_WALL));
     }
 
     it("should block fluids") {
-        expect(CellBlocksFluids(CELL_TERRAIN));
+        expect(CellBlocksFluids(CELL_WALL));
     }
 
-    it("should not block movement") {
-        expect(!CellBlocksMovement(CELL_TERRAIN));
-    }
-
-    it("should be recognized by IsGroundCell") {
-        expect(IsGroundCell(CELL_TERRAIN));
-    }
-
-    it("should have ground and blocks fluids flags") {
-        expect(CellHasFlag(CELL_TERRAIN, CF_GROUND));
-        expect(CellHasFlag(CELL_TERRAIN, CF_BLOCKS_FLUIDS));
+    it("should block movement") {
+        expect(CellBlocksMovement(CELL_WALL));
     }
 }
 
@@ -954,15 +944,15 @@ describe(cell_terrain_with_materials) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);
 
-        grid[0][0][1] = CELL_TERRAIN;
+        grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
 
-        grid[0][0][2] = CELL_TERRAIN;
+        grid[0][0][2] = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);
         expect(GetCellSpriteAt(2, 0, 0) == SPRITE_peat);
     }
@@ -971,20 +961,20 @@ describe(cell_terrain_with_materials) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         // No SetWallMaterial — MAT_NONE
-        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_dirt);  // cellDef default
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_wall);  // cellDef default
     }
 
     it("should return material name from GetCellNameAt") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Dirt") == 0);
 
-        grid[0][0][1] = CELL_TERRAIN;
+        grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
         expect(strcmp(GetCellNameAt(1, 0, 0), "Granite") == 0);
     }
@@ -993,19 +983,19 @@ describe(cell_terrain_with_materials) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
-        expect(strcmp(GetCellNameAt(0, 0, 0), "terrain") == 0);
+        grid[0][0][0] = CELL_WALL;
+        expect(strcmp(GetCellNameAt(0, 0, 0), "wall") == 0);
     }
 
     it("should return material insulation from GetInsulationAt") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_STONE);
 
-        grid[0][0][1] = CELL_TERRAIN;
+        grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_DIRT);
         expect(GetInsulationAt(1, 0, 0) == INSULATION_TIER_AIR);
     }
@@ -1014,7 +1004,7 @@ describe(cell_terrain_with_materials) {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
 
-        grid[0][0][0] = CELL_TERRAIN;
+        grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_BEDROCK);
         expect(MaterialIsUnmineable(GetWallMaterial(0, 0, 0)));
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_bedrock);
@@ -1077,8 +1067,8 @@ int main(int argc, char* argv[]) {
     // Sprite overrides table
     test(sprite_overrides);
     
-    // Phase 1: CELL_TERRAIN coexists with old types
-    test(cell_terrain_flags);
+    // Phase 1: CELL_WALL coexists with old types
+    test(wall_flags);
     test(cell_terrain_with_materials);
     
     return summary();

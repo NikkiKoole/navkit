@@ -33,7 +33,6 @@ typedef enum {
     CELL_LADDER_UP,    // Bottom of ladder - can climb UP from here
     CELL_LADDER_DOWN,  // Top of ladder - can climb DOWN from here  
     CELL_LADDER_BOTH,  // Middle of ladder - can go both directions
-    CELL_TERRAIN,      // Generic natural terrain - material determines type (dirt, rock, etc.)
     CELL_RAMP_N,       // Ramp: high side north - enter from south at z, exit north at z+1
     CELL_RAMP_E,       // Ramp: high side east - enter from west at z, exit east at z+1
     CELL_RAMP_S,       // Ramp: high side south - enter from north at z, exit south at z+1

@@ -593,8 +593,7 @@ static void print_map(int cx, int cy, int cz, int radius) {
                         c = '#'; break;
                     case CELL_AIR:
                         c = ' '; break;
-                    case CELL_TERRAIN:
-                        c = ':'; break;
+
                     case CELL_LADDER_UP:
                     case CELL_LADDER_DOWN:
                     case CELL_LADDER_BOTH:

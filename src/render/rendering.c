@@ -367,7 +367,7 @@ void DrawGrassOverlay(void) {
             Color tint = depthTints[d];
             for (int y = minY; y < maxY; y++) {
                 for (int x = minX; x < maxX; x++) {
-                    if (grid[zDepth][y][x] != CELL_TERRAIN || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
+                    if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
                     
                     // Check if visible from above (air all the way through, no floors blocking)
                     bool visible = true;
@@ -404,7 +404,7 @@ void DrawGrassOverlay(void) {
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
-                if (grid[zBelow][y][x] != CELL_TERRAIN || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
+                if (!IsWallNatural(x, y, zBelow) || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
                 CellType cellHere = grid[z][y][x];
                 // Allow grass under air and ramps, skip walls/ladders/etc.
                 if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
