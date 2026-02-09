@@ -2,6 +2,7 @@
 #include "stockpiles.h"
 #include "mover.h"
 #include "jobs.h"
+#include "item_defs.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include <string.h>
@@ -11,7 +12,7 @@ Workshop workshops[MAX_WORKSHOPS];
 int workshopCount = 0;
 
 // Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
-// Recipe format: { name, input1, count1, input2, count2, output, outCount, time, matMatch, mat, fuel }
+// Recipe format: { name, input1, count1, input2, count2, output, outCount, time, matMatch, mat, fuel, itemMatch }
 Recipe stonecutterRecipes[] = {
     { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
     { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
@@ -41,6 +42,12 @@ Recipe charcoalPitRecipes[] = {
     { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
 };
 int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0]);
+
+// Hearth recipes: burn any fuel to produce ash (fuel sink)
+Recipe hearthRecipes[] = {
+    { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_ASH, 1, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL },
+};
+int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
@@ -90,6 +97,17 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
                     "O.",
         .recipes = charcoalPitRecipes,
         .recipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0])
+    },
+    [WORKSHOP_HEARTH] = {
+        .type = WORKSHOP_HEARTH,
+        .name = "HEARTH",
+        .displayName = "Hearth",
+        .width = 2,
+        .height = 2,
+        .template = "FX"
+                    "O.",
+        .recipes = hearthRecipes,
+        .recipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0])
     },
 };
 
@@ -176,7 +194,15 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
 
 bool RecipeInputMatches(const Recipe* recipe, const Item* item) {
     if (!recipe || !item) return false;
-    if (item->type != recipe->inputType) return false;
+
+    // Check item type matching
+    if (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL) {
+        // Match any item with IF_FUEL flag
+        if (!(ItemFlags(item->type) & IF_FUEL)) return false;
+    } else {
+        // Exact item type match (default)
+        if (item->type != recipe->inputType) return false;
+    }
 
     if (recipe->inputMaterialMatch == MAT_MATCH_ANY) return true;
 

@@ -718,7 +718,9 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
                     char needsStr[128] = "    Needs:";
                     if (!hasInput) {
                         strcat(needsStr, " ");
-                        strcat(needsStr, ItemName(recipe->inputType));
+                        const char* inputName = (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL)
+                            ? "Any Fuel" : ItemName(recipe->inputType);
+                        strcat(needsStr, inputName);
                     }
                     if (!hasInput2) {
                         strcat(needsStr, !hasInput ? " +" : " ");
@@ -741,13 +743,15 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
         lineColors[lineCount] = WHITE;
         lineCount++;
         for (int r = 0; r < recipeCount && r < 9 && lineCount < 28; r++) {
+            const char* inputName = (recipes[r].inputItemMatch == ITEM_MATCH_ANY_FUEL)
+                ? "Any Fuel" : ItemName(recipes[r].inputType);
             if (recipes[r].inputType2 != ITEM_NONE) {
                 snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s -> %s)",
-                    r + 1, recipes[r].name, ItemName(recipes[r].inputType),
+                    r + 1, recipes[r].name, inputName,
                     ItemName(recipes[r].inputType2), ItemName(recipes[r].outputType));
             } else {
                 snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s -> %s)",
-                    r + 1, recipes[r].name, ItemName(recipes[r].inputType), ItemName(recipes[r].outputType));
+                    r + 1, recipes[r].name, inputName, ItemName(recipes[r].outputType));
             }
             lineColors[lineCount] = (Color){140, 180, 200, 255};
             lineCount++;

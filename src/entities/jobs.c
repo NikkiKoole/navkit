@@ -2060,8 +2060,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             mover->timeWithoutProgress = 0.0f;
             ws->lastWorkTime = (float)gameTime;
 
-            // Kiln emits smoke while working
-            if (ws->type == WORKSHOP_KILN && ws->fuelTileX >= 0) {
+            // Fire-based workshops emit smoke while working
+            bool emitsSmoke = (ws->type == WORKSHOP_KILN ||
+                               ws->type == WORKSHOP_CHARCOAL_PIT ||
+                               ws->type == WORKSHOP_HEARTH);
+            if (emitsSmoke && ws->fuelTileX >= 0) {
                 if (GetRandomValue(0, 3) == 0) {
                     AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 5);
                 }

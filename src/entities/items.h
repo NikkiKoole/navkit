@@ -30,6 +30,7 @@ typedef enum {
     ITEM_STICKS,       // Small pieces from sawmill
     ITEM_BRICKS,       // Fired clay bricks from kiln
     ITEM_CHARCOAL,     // Charcoal from kiln (efficient fuel)
+    ITEM_ASH,          // Ash from burning fuel (hearth byproduct)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

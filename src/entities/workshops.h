@@ -25,6 +25,7 @@ typedef enum {
     WORKSHOP_SAWMILL,
     WORKSHOP_KILN,
     WORKSHOP_CHARCOAL_PIT,
+    WORKSHOP_HEARTH,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -45,6 +46,12 @@ typedef enum {
     MAT_MATCH_METAL,
 } MaterialMatchType;
 
+// Item matching for recipe inputs (e.g., "any fuel" recipes)
+typedef enum {
+    ITEM_MATCH_EXACT = 0,   // Match specific inputType
+    ITEM_MATCH_ANY_FUEL,    // Match any item with IF_FUEL flag
+} ItemMatchType;
+
 typedef struct {
     const char* name;
     ItemType inputType;
@@ -57,6 +64,7 @@ typedef struct {
     MaterialMatchType inputMaterialMatch;
     MaterialType inputMaterial;  // used when inputMaterialMatch == MAT_MATCH_EXACT
     int fuelRequired;            // number of fuel items consumed (0 = no fuel needed)
+    ItemMatchType inputItemMatch; // how to match input (ITEM_MATCH_EXACT or ITEM_MATCH_ANY_FUEL)
 } Recipe;
 
 // Workshop definition (consolidates template, recipes, and metadata)
@@ -137,6 +145,8 @@ extern Recipe kilnRecipes[];
 extern int kilnRecipeCount;
 extern Recipe charcoalPitRecipes[];
 extern int charcoalPitRecipeCount;
+extern Recipe hearthRecipes[];
+extern int hearthRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

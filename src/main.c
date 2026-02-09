@@ -1145,6 +1145,7 @@ int main(int argc, char** argv) {
         else if (inputAction == ACTION_DRAW_WORKSHOP_SAWMILL) previewWorkshopType = WORKSHOP_SAWMILL;
         else if (inputAction == ACTION_DRAW_WORKSHOP_KILN) previewWorkshopType = WORKSHOP_KILN;
         else if (inputAction == ACTION_DRAW_WORKSHOP_CHARCOAL_PIT) previewWorkshopType = WORKSHOP_CHARCOAL_PIT;
+        else if (inputAction == ACTION_DRAW_WORKSHOP_HEARTH) previewWorkshopType = WORKSHOP_HEARTH;
 
         if (previewWorkshopType != WORKSHOP_TYPE_COUNT && !isDragging) {
             int wsWidth = workshopDefs[previewWorkshopType].width;

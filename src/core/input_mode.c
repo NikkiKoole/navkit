@@ -372,11 +372,13 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "sAwmill", KEY_A, 1, false, false, false);
             n = AddItem(items, n, "Kiln", KEY_K, 0, false, false, false);
             n = AddItem(items, n, "Charcoal pit", KEY_C, 0, false, false, false);
+            n = AddItem(items, n, "Hearth", KEY_H, 0, false, false, false);
             break;
         case ACTION_DRAW_WORKSHOP_STONECUTTER:
         case ACTION_DRAW_WORKSHOP_SAWMILL:
         case ACTION_DRAW_WORKSHOP_KILN:
         case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
+        case ACTION_DRAW_WORKSHOP_HEARTH:
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             break;
         case ACTION_DRAW_SOIL:
