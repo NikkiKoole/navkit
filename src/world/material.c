@@ -7,6 +7,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+// Sprite overrides table: (CellType, MaterialType) -> sprite
+// Only populated for exceptions where the sprite is neither the material's
+// canonical sprite nor the cell's default sprite.
+static int spriteOverrides[CELL_TYPE_COUNT][MAT_COUNT];
+
 // Separate grids for wall and floor materials
 uint8_t wallMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorMaterial[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -16,23 +21,57 @@ uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
-    //                 name       sprite                    leavesSprite              saplingSprite              flags         fuel  ignRes  dropsItem     insul                  burnsInto
-    [MAT_NONE]    = {"none",     0,                        0,                        0,                         0,            0,    0,      ITEM_NONE,    INSULATION_TIER_AIR,   MAT_NONE},
-    [MAT_OAK]     = {"Oak",      SPRITE_tree_trunk_oak,    SPRITE_tree_leaves_oak,   SPRITE_tree_sapling_oak,   MF_FLAMMABLE, 128,  50,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_PINE]    = {"Pine",     SPRITE_tree_trunk_pine,   SPRITE_tree_leaves_pine,  SPRITE_tree_sapling_pine,  MF_FLAMMABLE, 96,   30,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_BIRCH]   = {"Birch",    SPRITE_tree_trunk_birch,  SPRITE_tree_leaves_birch, SPRITE_tree_sapling_birch, MF_FLAMMABLE, 112,  40,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_WILLOW]  = {"Willow",   SPRITE_tree_trunk_willow, SPRITE_tree_leaves_willow,SPRITE_tree_sapling_willow,MF_FLAMMABLE, 80,   25,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_GRANITE] = {"Granite",  SPRITE_rock,              0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GRANITE},
-    [MAT_DIRT]    = {"Dirt",     SPRITE_dirt,              0,                        0,                         0,            1,    0,      ITEM_DIRT,    INSULATION_TIER_AIR,   MAT_DIRT},
-    [MAT_BRICK]   = {"Brick",    0,                        0,                        0,                         0,            0,    0,      ITEM_BRICKS,  INSULATION_TIER_STONE, MAT_BRICK},
-    [MAT_IRON]    = {"Iron",     0,                        0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_IRON},
-    [MAT_GLASS]   = {"Glass",    0,                        0,                        0,                         0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GLASS},
-    [MAT_CLAY]    = {"Clay",     SPRITE_clay,              0,                        0,                         0,            0,    0,      ITEM_CLAY,    INSULATION_TIER_AIR,   MAT_CLAY},
-    [MAT_GRAVEL]  = {"Gravel",   SPRITE_gravel,            0,                        0,                         0,            0,    0,      ITEM_GRAVEL,  INSULATION_TIER_AIR,   MAT_GRAVEL},
-    [MAT_SAND]    = {"Sand",     SPRITE_sand,              0,                        0,                         0,            0,    0,      ITEM_SAND,    INSULATION_TIER_AIR,   MAT_SAND},
-    [MAT_PEAT]    = {"Peat",     SPRITE_peat,              0,                        0,                         0,            6,    0,      ITEM_PEAT,    INSULATION_TIER_AIR,   MAT_DIRT},
-    [MAT_BEDROCK] = {"Bedrock",  SPRITE_bedrock,           0,                        0,                         MF_UNMINEABLE,0,    0,      ITEM_NONE,    INSULATION_TIER_STONE, MAT_BEDROCK},
+    //                 name       sprite                    flags         fuel  ignRes  dropsItem     insul                  burnsInto
+    [MAT_NONE]    = {"none",     0,                        0,            0,    0,      ITEM_NONE,    INSULATION_TIER_AIR,   MAT_NONE},
+    [MAT_OAK]     = {"Oak",      SPRITE_tree_trunk_oak,    MF_FLAMMABLE, 128,  50,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_PINE]    = {"Pine",     SPRITE_tree_trunk_pine,   MF_FLAMMABLE, 96,   30,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_BIRCH]   = {"Birch",    SPRITE_tree_trunk_birch,  MF_FLAMMABLE, 112,  40,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_WILLOW]  = {"Willow",   SPRITE_tree_trunk_willow, MF_FLAMMABLE, 80,   25,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
+    [MAT_GRANITE] = {"Granite",  SPRITE_rock,              0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GRANITE},
+    [MAT_DIRT]    = {"Dirt",     SPRITE_dirt,              0,            1,    0,      ITEM_DIRT,    INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BRICK]   = {"Brick",    0,                        0,            0,    0,      ITEM_BRICKS,  INSULATION_TIER_STONE, MAT_BRICK},
+    [MAT_IRON]    = {"Iron",     0,                        0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_IRON},
+    [MAT_GLASS]   = {"Glass",    0,                        0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GLASS},
+    [MAT_CLAY]    = {"Clay",     SPRITE_clay,              0,            0,    0,      ITEM_CLAY,    INSULATION_TIER_AIR,   MAT_CLAY},
+    [MAT_GRAVEL]  = {"Gravel",   SPRITE_gravel,            0,            0,    0,      ITEM_GRAVEL,  INSULATION_TIER_AIR,   MAT_GRAVEL},
+    [MAT_SAND]    = {"Sand",     SPRITE_sand,              0,            0,    0,      ITEM_SAND,    INSULATION_TIER_AIR,   MAT_SAND},
+    [MAT_PEAT]    = {"Peat",     SPRITE_peat,              0,            6,    0,      ITEM_PEAT,    INSULATION_TIER_AIR,   MAT_DIRT},
+    [MAT_BEDROCK] = {"Bedrock",  SPRITE_bedrock,           MF_UNMINEABLE,0,    0,      ITEM_NONE,    INSULATION_TIER_STONE, MAT_BEDROCK},
 };
+
+void InitSpriteOverrides(void) {
+    memset(spriteOverrides, 0, sizeof(spriteOverrides));
+
+    // Wood walls look different from wood's canonical (trunk) sprite
+    spriteOverrides[CELL_WALL][MAT_OAK]    = SPRITE_wall_wood;
+    spriteOverrides[CELL_WALL][MAT_PINE]   = SPRITE_wall_wood;
+    spriteOverrides[CELL_WALL][MAT_BIRCH]  = SPRITE_wall_wood;
+    spriteOverrides[CELL_WALL][MAT_WILLOW] = SPRITE_wall_wood;
+
+    // Leaves look different from wood's canonical (trunk) sprite
+    spriteOverrides[CELL_TREE_LEAVES][MAT_OAK]    = SPRITE_tree_leaves_oak;
+    spriteOverrides[CELL_TREE_LEAVES][MAT_PINE]   = SPRITE_tree_leaves_pine;
+    spriteOverrides[CELL_TREE_LEAVES][MAT_BIRCH]  = SPRITE_tree_leaves_birch;
+    spriteOverrides[CELL_TREE_LEAVES][MAT_WILLOW] = SPRITE_tree_leaves_willow;
+
+    // Saplings look different from wood's canonical (trunk) sprite
+    spriteOverrides[CELL_SAPLING][MAT_OAK]    = SPRITE_tree_sapling_oak;
+    spriteOverrides[CELL_SAPLING][MAT_PINE]   = SPRITE_tree_sapling_pine;
+    spriteOverrides[CELL_SAPLING][MAT_BIRCH]  = SPRITE_tree_sapling_birch;
+    spriteOverrides[CELL_SAPLING][MAT_WILLOW] = SPRITE_tree_sapling_willow;
+}
+
+int GetSpriteForCellMat(CellType cell, MaterialType mat) {
+    int sprite = spriteOverrides[cell][mat];
+    if (sprite) return sprite;
+
+    if (mat != MAT_NONE) {
+        sprite = MaterialSprite(mat);
+        if (sprite) return sprite;
+    }
+
+    return CellSprite(cell);
+}
 
 void InitMaterials(void) {
     // All cells start with no material — SyncMaterialsToTerrain sets correct
@@ -43,6 +82,7 @@ void InitMaterials(void) {
     memset(floorNatural, 0, sizeof(floorNatural));
     memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
     memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
+    InitSpriteOverrides();
 }
 
 
@@ -117,41 +157,11 @@ ItemType GetFloorDropItem(int x, int y, int z) {
 
 int GetCellSpriteAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
+    if (cell == CELL_WALL && IsWallNatural(x, y, z)) {
+        return SPRITE_rock;
+    }
     MaterialType mat = GetWallMaterial(x, y, z);
-
-    // Constructed walls: use material-driven sprite
-    if (cell == CELL_WALL && mat != MAT_NONE) {
-        if (IsWallNatural(x, y, z)) {
-            return SPRITE_rock;
-        }
-        int sprite = MaterialSprite(mat);
-        return sprite ? sprite : CellSprite(cell);
-    }
-
-    // Tree cells: use wallMaterial for species
-    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || 
-        cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
-        if (mat != MAT_NONE) {
-            int sprite = 0;
-            if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || cell == CELL_TREE_FELLED) {
-                sprite = MaterialSprite(mat);
-            } else if (cell == CELL_TREE_LEAVES) {
-                sprite = MaterialLeavesSprite(mat);
-            } else if (cell == CELL_SAPLING) {
-                sprite = MaterialSaplingSprite(mat);
-            }
-            if (sprite) return sprite;
-        }
-    }
-
-    // CELL_TERRAIN: use material-driven sprite
-    if (cell == CELL_TERRAIN && mat != MAT_NONE) {
-        int sprite = MaterialSprite(mat);
-        if (sprite) return sprite;
-    }
-
-    // Other cells (including old soil types): use cellDefs sprite
-    return CellSprite(cell);
+    return GetSpriteForCellMat(cell, mat);
 }
 
 int GetInsulationAt(int x, int y, int z) {

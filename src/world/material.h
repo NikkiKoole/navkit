@@ -48,8 +48,6 @@ typedef enum {
 typedef struct {
     const char* name;
     int sprite;           // Canonical sprite (terrain/trunk look, 0 = no natural form)
-    int leavesSprite;     // CELL_TREE_LEAVES variant (only wood materials, 0 for rest)
-    int saplingSprite;    // CELL_SAPLING variant (only wood materials, 0 for rest)
     uint8_t flags;        // MF_* flags (flammable, etc.)
     uint8_t fuel;         // Fuel value for fire system (0 = won't burn)
     uint8_t ignitionResistance; // Subtracted from spread chance (0 = catches easily)
@@ -97,8 +95,6 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)
 #define MaterialSprite(m)       (materialDefs[m].sprite)
-#define MaterialLeavesSprite(m) (materialDefs[m].leavesSprite)
-#define MaterialSaplingSprite(m) (materialDefs[m].saplingSprite)
 #define MaterialDropsItem(m)    (materialDefs[m].dropsItem)
 #define MaterialFuel(m)         (materialDefs[m].fuel)
 #define MaterialIsFlammable(m)  (materialDefs[m].flags & MF_FLAMMABLE)
@@ -108,6 +104,8 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define MaterialBurnsIntoMat(m)     (materialDefs[m].burnsIntoMat)
 
 void InitMaterials(void);
+void InitSpriteOverrides(void);
+int GetSpriteForCellMat(CellType cell, MaterialType mat);
 
 // Material category helpers
 static inline bool IsWoodMaterial(MaterialType mat) {

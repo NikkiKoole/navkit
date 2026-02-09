@@ -43,7 +43,8 @@ typedef enum {
     CELL_TREE_BRANCH,  // Tree branch - solid wood, choppable (lateral growth)
     CELL_TREE_ROOT,    // Tree root - solid wood, underground/exposed (at base)
     CELL_TREE_FELLED,  // Felled log - walkable, can be designated for hauling
-    CELL_TREE_LEAVES   // Tree canopy - blocks movement, decays without trunk
+    CELL_TREE_LEAVES,  // Tree canopy - blocks movement, decays without trunk
+    CELL_TYPE_COUNT
 } CellType;
 
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

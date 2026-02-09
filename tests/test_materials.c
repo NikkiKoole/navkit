@@ -659,24 +659,26 @@ describe(material_sprites) {
         expect(MaterialSprite(MAT_GLASS) == 0);
     }
 
-    it("should return correct leaves sprites for wood materials") {
-        expect(MaterialLeavesSprite(MAT_OAK) == SPRITE_tree_leaves_oak);
-        expect(MaterialLeavesSprite(MAT_PINE) == SPRITE_tree_leaves_pine);
-        expect(MaterialLeavesSprite(MAT_BIRCH) == SPRITE_tree_leaves_birch);
-        expect(MaterialLeavesSprite(MAT_WILLOW) == SPRITE_tree_leaves_willow);
+    it("should resolve leaves sprites via sprite overrides") {
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_OAK) == SPRITE_tree_leaves_oak);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_PINE) == SPRITE_tree_leaves_pine);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_BIRCH) == SPRITE_tree_leaves_birch);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_WILLOW) == SPRITE_tree_leaves_willow);
     }
 
-    it("should return correct sapling sprites for wood materials") {
-        expect(MaterialSaplingSprite(MAT_OAK) == SPRITE_tree_sapling_oak);
-        expect(MaterialSaplingSprite(MAT_PINE) == SPRITE_tree_sapling_pine);
-        expect(MaterialSaplingSprite(MAT_BIRCH) == SPRITE_tree_sapling_birch);
-        expect(MaterialSaplingSprite(MAT_WILLOW) == SPRITE_tree_sapling_willow);
+    it("should resolve sapling sprites via sprite overrides") {
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_OAK) == SPRITE_tree_sapling_oak);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_PINE) == SPRITE_tree_sapling_pine);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_BIRCH) == SPRITE_tree_sapling_birch);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_WILLOW) == SPRITE_tree_sapling_willow);
     }
 
-    it("should return 0 leaves/sapling sprites for non-wood materials") {
-        expect(MaterialLeavesSprite(MAT_GRANITE) == 0);
-        expect(MaterialLeavesSprite(MAT_DIRT) == 0);
-        expect(MaterialSaplingSprite(MAT_NONE) == 0);
+    it("should use material canonical for non-wood leaves, cell default for MAT_NONE") {
+        // Granite has a canonical sprite, so leaves+granite = SPRITE_rock (step 2)
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_GRANITE) == SPRITE_rock);
+        // MAT_NONE has no sprite, falls to cell default (step 3)
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_NONE) == SPRITE_tree_leaves_oak);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_NONE) == SPRITE_tree_sapling_oak);
     }
 }
 
@@ -880,6 +882,49 @@ describe(get_cell_name_at) {
 // Phase 1: CELL_TERRAIN coexists with old types
 // =============================================================================
 
+describe(sprite_overrides) {
+    it("should return override for wood walls") {
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_OAK) == SPRITE_wall_wood);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_PINE) == SPRITE_wall_wood);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_BIRCH) == SPRITE_wall_wood);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_WILLOW) == SPRITE_wall_wood);
+    }
+
+    it("should return override for leaves") {
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_OAK) == SPRITE_tree_leaves_oak);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_PINE) == SPRITE_tree_leaves_pine);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_BIRCH) == SPRITE_tree_leaves_birch);
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_WILLOW) == SPRITE_tree_leaves_willow);
+    }
+
+    it("should return override for saplings") {
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_OAK) == SPRITE_tree_sapling_oak);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_PINE) == SPRITE_tree_sapling_pine);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_BIRCH) == SPRITE_tree_sapling_birch);
+        expect(GetSpriteForCellMat(CELL_SAPLING, MAT_WILLOW) == SPRITE_tree_sapling_willow);
+    }
+
+    it("should use material canonical sprite when no override") {
+        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_DIRT) == SPRITE_dirt);
+        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_GRANITE) == SPRITE_rock);
+        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_CLAY) == SPRITE_clay);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_rock);
+        expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_OAK) == SPRITE_tree_trunk_oak);
+        expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_PINE) == SPRITE_tree_trunk_pine);
+    }
+
+    it("should fall back to cell default when no material") {
+        expect(GetSpriteForCellMat(CELL_AIR, MAT_NONE) == SPRITE_air);
+        expect(GetSpriteForCellMat(CELL_LADDER_UP, MAT_NONE) == SPRITE_ladder_up);
+        expect(GetSpriteForCellMat(CELL_TERRAIN, MAT_NONE) == SPRITE_dirt);
+    }
+
+    it("should fall back to cell default when material has no sprite") {
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_BRICK) == SPRITE_wall);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_IRON) == SPRITE_wall);
+    }
+}
+
 describe(cell_terrain_flags) {
     it("should have CF_GROUND flags (walkable + solid)") {
         expect(CellHasFlag(CELL_TERRAIN, CF_WALKABLE));
@@ -1028,6 +1073,9 @@ int main(int argc, char* argv[]) {
     test(get_cell_sprite_at);
     test(get_insulation_at);
     test(get_cell_name_at);
+    
+    // Sprite overrides table
+    test(sprite_overrides);
     
     // Phase 1: CELL_TERRAIN coexists with old types
     test(cell_terrain_flags);

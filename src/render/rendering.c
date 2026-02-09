@@ -65,12 +65,6 @@ static Color MaterialTint(MaterialType mat) {
     }
 }
 
-static int MaterialWallSprite(MaterialType mat) {
-    if (IsWoodMaterial(mat)) return SPRITE_wall_wood;
-    int sprite = MaterialSprite(mat);
-    return sprite ? sprite : SPRITE_wall;
-}
-
 static int MaterialFloorSprite(MaterialType mat) {
     if (IsWoodMaterial(mat)) return SPRITE_floor_wood;
     int sprite = MaterialSprite(mat);
@@ -157,47 +151,12 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
     DrawTexturePro(atlas, src, insetDest, (Vector2){0,0}, 0, tint);
 }
 
-static int GetTreeSpriteAt(int x, int y, int z, CellType cell) {
-    MaterialType mat = GetWallMaterial(x, y, z);
-    if (!IsWoodMaterial(mat)) return CellSprite(cell);
-
-    switch (cell) {
-        case CELL_TREE_TRUNK:
-        case CELL_TREE_BRANCH:
-        case CELL_TREE_FELLED:
-        case CELL_TREE_ROOT:
-            return MaterialSprite(mat);
-        case CELL_TREE_LEAVES:
-            return MaterialLeavesSprite(mat);
-        case CELL_SAPLING:
-            return MaterialSaplingSprite(mat);
-        default:
-            return CellSprite(cell);
-    }
-}
-
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
-    if (cell == CELL_WALL) {
-        MaterialType mat = GetWallMaterial(x, y, z);
-        if (IsWallNatural(x, y, z)) {
-            return SPRITE_rock;
-        }
-        return MaterialWallSprite(mat);
+    if (cell == CELL_WALL && IsWallNatural(x, y, z)) {
+        return SPRITE_rock;
     }
-    // Handle all tree cell types
-    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_BRANCH || cell == CELL_TREE_ROOT || 
-        cell == CELL_TREE_FELLED || cell == CELL_TREE_LEAVES || cell == CELL_SAPLING) {
-        return GetTreeSpriteAt(x, y, z, cell);
-    }
-    // CELL_TERRAIN: use material-driven sprite
-    if (cell == CELL_TERRAIN) {
-        MaterialType mat = GetWallMaterial(x, y, z);
-        if (mat != MAT_NONE) {
-            int sprite = MaterialSprite(mat);
-            if (sprite) return sprite;
-        }
-    }
-    return CellSprite(cell);
+    MaterialType mat = GetWallMaterial(x, y, z);
+    return GetSpriteForCellMat(cell, mat);
 }
 
 static int GetFloorSpriteAt(int x, int y, int z) {

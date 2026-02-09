@@ -72,7 +72,7 @@ static const char* cellTypeNames[] = {
     "TREE_TRUNK",    // 17
     "TREE_LEAVES"    // 18
 };
-#define CELL_TYPE_COUNT 20
+// CELL_TYPE_COUNT comes from grid.h enum
 // Item names now come from ItemName() in item_defs.h
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
 static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"};
