@@ -100,4 +100,8 @@ float GetWaterSpeedMultiplier(int x, int y, int z);
 static inline bool IsWaterStable(int x, int y, int z) { return waterGrid[z][y][x].stable; }
 static inline bool HasWaterPressure(int x, int y, int z) { return waterGrid[z][y][x].hasPressure; }
 
+// Accumulator getters/setters (for save/load)
+float GetWaterEvapAccum(void);
+void SetWaterEvapAccum(float v);
+
 #endif // WATER_H

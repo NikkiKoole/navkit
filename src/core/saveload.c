@@ -23,6 +23,12 @@
 // X-macro for all tweakable simulation settings
 // Adding a new setting: add one line here, it will be saved/loaded automatically
 #define SETTINGS_TABLE(X) \
+    /* Game time */ \
+    X(double, gameTime) \
+    X(float, timeOfDay) \
+    X(int, dayNumber) \
+    X(float, gameSpeed) \
+    X(unsigned long, currentTick) \
     /* Water */ \
     X(bool, waterEnabled) \
     X(bool, waterEvaporationEnabled) \
@@ -199,6 +205,27 @@ bool SaveWorld(const char* filename) {
         }
     }
     
+    // Wear grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(wearGrid[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
+    // Tree growth timer grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(growthTimer[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
+    // Tree target height grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(targetHeight[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -248,6 +275,18 @@ bool SaveWorld(const char* filename) {
     #define WRITE_SETTING(type, name) fwrite(&name, sizeof(type), 1, f);
     SETTINGS_TABLE(WRITE_SETTING)
     #undef WRITE_SETTING
+
+    // Simulation accumulators (static locals, saved via getters)
+    float accum;
+    accum = GetFireSpreadAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetFireFuelAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetWaterEvapAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetSmokeRiseAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetSmokeDissipationAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetSteamRiseAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetHeatTransferAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetTempDecayAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetWearRecoveryAccum(); fwrite(&accum, sizeof(float), 1, f);
     
     // === END MARKER ===
     marker = MARKER_END;
@@ -290,7 +329,6 @@ void RebuildPostLoadState(void) {
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (items[i].active) {
             items[i].reservedBy = -1;
-            items[i].unreachableCooldown = 0.0f;
         }
     }
 }
@@ -461,6 +499,27 @@ bool LoadWorld(const char* filename) {
         }
     }
     
+    // Wear grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(wearGrid[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
+    // Tree growth timer grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(growthTimer[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
+    // Tree target height grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(targetHeight[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     fread(&marker, sizeof(marker), 1, f);
     if (marker != MARKER_ENTITIES) {
@@ -541,11 +600,22 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    // Simulation settings (generated from SETTINGS_TABLE macro, V22 only)
+    // Simulation settings (generated from SETTINGS_TABLE macro)
     #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
     SETTINGS_TABLE(READ_SETTING)
     #undef READ_SETTING
-        // Pre-v13: read all settings except trees (last 5 entries)
+
+    // Simulation accumulators (static locals, loaded via setters)
+    float accum;
+    fread(&accum, sizeof(float), 1, f); SetFireSpreadAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetFireFuelAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetWaterEvapAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetSmokeRiseAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetSmokeDissipationAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetSteamRiseAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetHeatTransferAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetTempDecayAccum(accum);
+    fread(&accum, sizeof(float), 1, f); SetWearRecoveryAccum(accum);
     
     // === END MARKER ===
     fread(&marker, sizeof(marker), 1, f);
@@ -559,10 +629,6 @@ bool LoadWorld(const char* filename) {
     fclose(f);
     
     RebuildPostLoadState();
-    
-    // Reset simulation accumulators (they weren't saved, grid data was)
-    ResetSmokeAccumulators();
-    ResetSteamAccumulators();
     
     // Rebuild active cell counters from loaded simulation grids
     RebuildSimActivityCounts();

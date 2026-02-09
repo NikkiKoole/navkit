@@ -18,10 +18,10 @@ int trunkGrowTicks = 50;          // Ticks between trunk growing upward
 #define LEAF_TRUNK_CHECK_DIST 4   // Max distance to check for trunk connection
 
 // Simple timer grid for growth (could be optimized with a list later)
-static int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Target height per tree (set when sapling becomes trunk, based on position)
-static int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Simple hash for position-based randomness (deterministic)
 static unsigned int PositionHash(int x, int y, int z) {

@@ -433,3 +433,6 @@ void UpdateSteam(void) {
         }
     }
 }
+
+float GetSteamRiseAccum(void) { return steamRiseAccum; }
+void SetSteamRiseAccum(float v) { steamRiseAccum = v; }

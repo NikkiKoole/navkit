@@ -69,4 +69,10 @@ int GetBaseFuelForCellType(CellType cell);
 // Get fuel at position considering materials, floors, and surfaces
 int GetFuelAt(int x, int y, int z);
 
+// Accumulator getters/setters (for save/load)
+float GetFireSpreadAccum(void);
+float GetFireFuelAccum(void);
+void SetFireSpreadAccum(float v);
+void SetFireFuelAccum(float v);
+
 #endif // FIRE_H

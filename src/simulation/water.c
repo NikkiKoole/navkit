@@ -725,3 +725,6 @@ void UpdateWaterFreezing(void) {
         }
     }
 }
+
+float GetWaterEvapAccum(void) { return waterEvapAccum; }
+void SetWaterEvapAccum(float v) { waterEvapAccum = v; }

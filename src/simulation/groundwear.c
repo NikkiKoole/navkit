@@ -212,3 +212,6 @@ int GetGroundWear(int x, int y, int z) {
     if (z < 0 || z >= gridDepth) return 0;
     return wearGrid[z][y][x];
 }
+
+float GetWearRecoveryAccum(void) { return wearRecoveryAccum; }
+void SetWearRecoveryAccum(float v) { wearRecoveryAccum = v; }

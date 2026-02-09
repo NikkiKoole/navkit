@@ -128,4 +128,10 @@ void ApplyFireHeat(int x, int y, int z, int fireLevel);
 // Temperature cell state getters (inline for zero overhead)
 static inline bool IsTemperatureStable(int x, int y, int z) { return temperatureGrid[z][y][x].stable; }
 
+// Accumulator getters/setters (for save/load)
+float GetHeatTransferAccum(void);
+float GetTempDecayAccum(void);
+void SetHeatTransferAccum(float v);
+void SetTempDecayAccum(float v);
+
 #endif // TEMPERATURE_H

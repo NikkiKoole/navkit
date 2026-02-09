@@ -52,4 +52,8 @@ void GenerateSteamFromBoilingWater(int x, int y, int z, int amount);
 // Stability
 void DestabilizeSteam(int x, int y, int z);
 
+// Accumulator getters/setters (for save/load)
+float GetSteamRiseAccum(void);
+void SetSteamRiseAccum(float v);
+
 #endif // STEAM_H

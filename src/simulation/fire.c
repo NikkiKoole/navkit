@@ -488,3 +488,8 @@ void UpdateFire(void) {
         }
     }
 }
+
+float GetFireSpreadAccum(void) { return fireSpreadAccum; }
+float GetFireFuelAccum(void) { return fireFuelAccum; }
+void SetFireSpreadAccum(float v) { fireSpreadAccum = v; }
+void SetFireFuelAccum(float v) { fireFuelAccum = v; }

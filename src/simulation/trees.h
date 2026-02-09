@@ -16,6 +16,10 @@ ItemType SaplingItemFromTreeType(MaterialType mat);
 ItemType LeafItemFromTreeType(MaterialType mat);
 MaterialType TreeTypeFromSaplingItem(ItemType type);
 
+// Growth grids (exposed for save/load)
+extern int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Initialize tree growth system
 void InitTrees(void);
 

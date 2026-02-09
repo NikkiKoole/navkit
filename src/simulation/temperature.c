@@ -525,3 +525,8 @@ void UpdateTemperature(void) {
         }
     }
 }
+
+float GetHeatTransferAccum(void) { return heatTransferAccum; }
+float GetTempDecayAccum(void) { return tempDecayAccum; }
+void SetHeatTransferAccum(float v) { heatTransferAccum = v; }
+void SetTempDecayAccum(float v) { tempDecayAccum = v; }

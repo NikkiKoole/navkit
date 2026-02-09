@@ -54,4 +54,8 @@ void UpdateGroundWear(void);
 // Get current wear value at position
 int GetGroundWear(int x, int y, int z);
 
+// Accumulator getters/setters (for save/load)
+float GetWearRecoveryAccum(void);
+void SetWearRecoveryAccum(float v);
+
 #endif // GROUNDWEAR_H

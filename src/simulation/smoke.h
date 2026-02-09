@@ -58,4 +58,10 @@ void DestabilizeSmoke(int x, int y, int z);
 // Generate smoke from fire (called by fire system)
 void GenerateSmokeFromFire(int x, int y, int z, int fireLevel);
 
+// Accumulator getters/setters (for save/load)
+float GetSmokeRiseAccum(void);
+float GetSmokeDissipationAccum(void);
+void SetSmokeRiseAccum(float v);
+void SetSmokeDissipationAccum(float v);
+
 #endif // SMOKE_H

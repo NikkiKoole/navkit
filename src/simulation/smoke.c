@@ -522,3 +522,8 @@ void UpdateSmoke(void) {
         }
     }
 }
+
+float GetSmokeRiseAccum(void) { return smokeRiseAccum; }
+float GetSmokeDissipationAccum(void) { return smokeDissipationAccum; }
+void SetSmokeRiseAccum(float v) { smokeRiseAccum = v; }
+void SetSmokeDissipationAccum(float v) { smokeDissipationAccum = v; }
