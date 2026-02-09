@@ -11,24 +11,36 @@ Workshop workshops[MAX_WORKSHOPS];
 int workshopCount = 0;
 
 // Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
+// Recipe format: { name, input1, count1, input2, count2, output, outCount, time, matMatch, mat, fuel }
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_BLOCKS, 1, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 
 // Sawmill recipes: logs -> planks or sticks (material-preserving)
 Recipe sawmillRecipes[] = {
-    { "Saw Planks", ITEM_LOG, 1, ITEM_PLANKS, 4, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Cut Sticks", ITEM_LOG, 1, ITEM_STICKS, 8, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
 };
 int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
 
 // Kiln recipes: fire processing with fuel
 Recipe kilnRecipes[] = {
-    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_BRICKS,   2, 5.0f, MAT_MATCH_ANY, MAT_NONE, 1 },
-    { "Make Charcoal", ITEM_LOG,  1, ITEM_CHARCOAL,  3, 6.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, 5.0f, MAT_MATCH_ANY, MAT_NONE, 1 },
+    { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 6.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
+
+// Charcoal Pit recipes: primitive charcoal production (slower, lower yield than kiln)
+Recipe charcoalPitRecipes[] = {
+    { "Char Logs",   ITEM_LOG,    1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 8.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Char Peat",   ITEM_PEAT,   1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 7.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+};
+int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0]);
 
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
@@ -36,9 +48,11 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .type = WORKSHOP_STONECUTTER,
         .name = "STONECUTTER",
         .displayName = "Stonecutter",
-        .template = "##O"
-                    "#X."
-                    "...",
+        .width = 3,
+        .height = 3,
+        .template = "###"    // dense/solid layout
+                    "#XO"
+                    "..#",
         .recipes = stonecutterRecipes,
         .recipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0])
     },
@@ -46,9 +60,11 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .type = WORKSHOP_SAWMILL,
         .name = "SAWMILL",
         .displayName = "Sawmill",
-        .template = "##O"
-                    "#X."
-                    "...",
+        .width = 3,
+        .height = 3,
+        .template = "#O#"    // open lane layout
+                    ".X."
+                    "#..",
         .recipes = sawmillRecipes,
         .recipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0])
     },
@@ -56,11 +72,24 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .type = WORKSHOP_KILN,
         .name = "KILN",
         .displayName = "Kiln",
-        .template = "#F#"
+        .width = 3,
+        .height = 3,
+        .template = "#F#"    // hot core layout (enclosed)
                     "#XO"
-                    "...",
+                    "###",
         .recipes = kilnRecipes,
         .recipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0])
+    },
+    [WORKSHOP_CHARCOAL_PIT] = {
+        .type = WORKSHOP_CHARCOAL_PIT,
+        .name = "CHARCOAL_PIT",
+        .displayName = "Charcoal Pit",
+        .width = 2,
+        .height = 2,
+        .template = "FX"
+                    "O.",
+        .recipes = charcoalPitRecipes,
+        .recipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0])
     },
 };
 
@@ -202,9 +231,9 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->outputBlockedTime = 0.0f;
             ws->lastWorkTime = 0.0f;
             
-            // Default 3x3 footprint
-            ws->width = 3;
-            ws->height = 3;
+            // Get footprint from workshop definition
+            ws->width = workshopDefs[type].width;
+            ws->height = workshopDefs[type].height;
             
             // Copy template and find special tiles
             const char* tmpl = workshopDefs[type].template;

@@ -24,6 +24,7 @@ typedef enum {
     WORKSHOP_STONECUTTER,
     WORKSHOP_SAWMILL,
     WORKSHOP_KILN,
+    WORKSHOP_CHARCOAL_PIT,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -48,6 +49,8 @@ typedef struct {
     const char* name;
     ItemType inputType;
     int inputCount;
+    ItemType inputType2;         // second input type (ITEM_NONE = no second input)
+    int inputCount2;             // count of second input
     ItemType outputType;
     int outputCount;
     float workRequired;  // seconds to complete
@@ -61,6 +64,8 @@ typedef struct {
     WorkshopType type;
     const char* name;           // Uppercase for inspect (e.g., "STONECUTTER")
     const char* displayName;    // Title case for UI (e.g., "Stonecutter")
+    int width;                  // Template width
+    int height;                 // Template height
     const char* template;
     const Recipe* recipes;
     int recipeCount;
@@ -130,6 +135,8 @@ extern Recipe sawmillRecipes[];
 extern int sawmillRecipeCount;
 extern Recipe kilnRecipes[];
 extern int kilnRecipeCount;
+extern Recipe charcoalPitRecipes[];
+extern int charcoalPitRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);

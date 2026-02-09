@@ -1139,22 +1139,29 @@ int main(int argc, char** argv) {
         }
         DrawJobLines();
 
-        // Draw workshop preview (3x3) when in workshop placement mode
-        if ((inputAction == ACTION_DRAW_WORKSHOP_STONECUTTER ||
-             inputAction == ACTION_DRAW_WORKSHOP_SAWMILL ||
-             inputAction == ACTION_DRAW_WORKSHOP_KILN) && !isDragging) {
+        // Draw workshop preview when in workshop placement mode
+        WorkshopType previewWorkshopType = WORKSHOP_TYPE_COUNT;  // invalid sentinel
+        if (inputAction == ACTION_DRAW_WORKSHOP_STONECUTTER) previewWorkshopType = WORKSHOP_STONECUTTER;
+        else if (inputAction == ACTION_DRAW_WORKSHOP_SAWMILL) previewWorkshopType = WORKSHOP_SAWMILL;
+        else if (inputAction == ACTION_DRAW_WORKSHOP_KILN) previewWorkshopType = WORKSHOP_KILN;
+        else if (inputAction == ACTION_DRAW_WORKSHOP_CHARCOAL_PIT) previewWorkshopType = WORKSHOP_CHARCOAL_PIT;
+
+        if (previewWorkshopType != WORKSHOP_TYPE_COUNT && !isDragging) {
+            int wsWidth = workshopDefs[previewWorkshopType].width;
+            int wsHeight = workshopDefs[previewWorkshopType].height;
+
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
             float size = CELL_SIZE * zoom;
             float px = offset.x + x * size;
             float py = offset.y + y * size;
-            float pw = 3 * size;
-            float ph = 3 * size;
-            
+            float pw = wsWidth * size;
+            float ph = wsHeight * size;
+
             // Check if placement is valid
             bool valid = true;
-            for (int dy = 0; dy < 3 && valid; dy++) {
-                for (int dx = 0; dx < 3 && valid; dx++) {
+            for (int dy = 0; dy < wsHeight && valid; dy++) {
+                for (int dx = 0; dx < wsWidth && valid; dx++) {
                     int cx = x + dx;
                     int cy = y + dy;
                     if (cx < 0 || cx >= gridWidth || cy < 0 || cy >= gridHeight) valid = false;

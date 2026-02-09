@@ -458,6 +458,7 @@ int CreateJob(JobType type) {
     job->progress = 0.0f;
     job->carryingItem = -1;
     job->fuelItem = -1;
+    job->targetItem2 = -1;
 
     // Add to active list
     activeJobList[activeJobCount++] = jobId;
@@ -1826,21 +1827,133 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
 
             if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-                // If recipe needs fuel and we haven't fetched it yet, go fetch fuel
+                // Deposit first input at workshop work tile
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    Item* carried = &items[job->carryingItem];
+                    carried->state = ITEM_ON_GROUND;
+                    carried->x = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->y = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->z = (float)ws->z;
+                    // Keep it reserved so nobody else grabs it
+                }
+                // Remember deposited input in targetItem so WORKING step can consume it
+                job->targetItem = job->carryingItem;
+                job->carryingItem = -1;
+
+                // Check if we need to fetch a second input
+                if (recipe->inputType2 != ITEM_NONE && job->targetItem2 >= 0) {
+                    job->step = CRAFT_STEP_MOVING_TO_INPUT2;
+                }
+                // Otherwise, check if recipe needs fuel
+                else if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
+                    job->step = CRAFT_STEP_MOVING_TO_FUEL;
+                } else {
+                    job->step = CRAFT_STEP_WORKING;
+                    job->progress = 0.0f;
+                    job->workRequired = recipe->workRequired;
+                    mover->timeWithoutProgress = 0.0f;
+                }
+            }
+            break;
+        }
+
+        case CRAFT_STEP_MOVING_TO_INPUT2: {
+            // Walk to second input item
+            int item2Idx = job->targetItem2;
+            if (item2Idx < 0 || !items[item2Idx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item2 = &items[item2Idx];
+            if (item2->reservedBy != moverIdx) {
+                return JOBRUN_FAIL;
+            }
+
+            int item2CellX = (int)(item2->x / CELL_SIZE);
+            int item2CellY = (int)(item2->y / CELL_SIZE);
+            int item2CellZ = (int)(item2->z);
+
+            if (mover->goal.x != item2CellX || mover->goal.y != item2CellY || mover->goal.z != item2CellZ) {
+                mover->goal = (Point){item2CellX, item2CellY, item2CellZ};
+                mover->needsRepath = true;
+            }
+
+            float dx = mover->x - item2->x;
+            float dy = mover->y - item2->y;
+            float distSq2 = dx*dx + dy*dy;
+
+            TryFinalApproach(mover, item2->x, item2->y, item2CellX, item2CellY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                SetItemUnreachableCooldown(item2Idx, UNREACHABLE_COOLDOWN);
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq2 < PICKUP_RADIUS * PICKUP_RADIUS) {
+                job->step = CRAFT_STEP_PICKING_UP_INPUT2;
+            }
+            break;
+        }
+
+        case CRAFT_STEP_PICKING_UP_INPUT2: {
+            int item2Idx = job->targetItem2;
+            if (item2Idx < 0 || !items[item2Idx].active) {
+                return JOBRUN_FAIL;
+            }
+            Item* item2 = &items[item2Idx];
+
+            // Pick up from stockpile if needed
+            if (item2->state == ITEM_IN_STOCKPILE) {
+                RemoveItemFromStockpileSlot(item2->x, item2->y, (int)item2->z);
+            }
+
+            item2->state = ITEM_CARRIED;
+            job->carryingItem = item2Idx;
+            job->targetItem2 = -1;  // Clear target now that we're carrying
+            job->step = CRAFT_STEP_CARRYING_INPUT2;
+            break;
+        }
+
+        case CRAFT_STEP_CARRYING_INPUT2: {
+            // Walk back to workshop work tile
+            if (mover->goal.x != ws->workTileX || mover->goal.y != ws->workTileY || mover->goal.z != ws->z) {
+                mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+                mover->needsRepath = true;
+            }
+
+            // Update carried item position
+            if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                items[job->carryingItem].x = mover->x;
+                items[job->carryingItem].y = mover->y;
+                items[job->carryingItem].z = mover->z;
+            }
+
+            float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+            float dx = mover->x - targetX;
+            float dy = mover->y - targetY;
+            float distSq2 = dx*dx + dy*dy;
+
+            TryFinalApproach(mover, targetX, targetY, ws->workTileX, ws->workTileY, PICKUP_RADIUS);
+
+            if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+                return JOBRUN_FAIL;
+            }
+
+            if (distSq2 < PICKUP_RADIUS * PICKUP_RADIUS) {
+                // Deposit second input at workshop
+                if (job->carryingItem >= 0 && items[job->carryingItem].active) {
+                    Item* carried = &items[job->carryingItem];
+                    carried->state = ITEM_ON_GROUND;
+                    carried->x = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->y = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+                    carried->z = (float)ws->z;
+                }
+                // Store second input in targetItem2 for consumption
+                job->targetItem2 = job->carryingItem;
+                job->carryingItem = -1;
+
+                // Check if we need fuel
                 if (recipe->fuelRequired > 0 && job->fuelItem >= 0) {
-                    // Deposit main input at workshop work tile
-                    if (job->carryingItem >= 0 && items[job->carryingItem].active) {
-                        Item* carried = &items[job->carryingItem];
-                        carried->state = ITEM_ON_GROUND;
-                        carried->x = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
-                        carried->y = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
-                        carried->z = (float)ws->z;
-                        // Keep it reserved so nobody else grabs it
-                    }
-                    // Remember deposited input in targetItem so WORKING step can consume it
-                    job->targetItem = job->carryingItem;
-                    job->carryingItem = -1;
-                    // Now go fetch the fuel
                     job->step = CRAFT_STEP_MOVING_TO_FUEL;
                 } else {
                     job->step = CRAFT_STEP_WORKING;
@@ -1967,12 +2080,18 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                     }
                 }
 
-                // Consume input item
+                // Consume first input item
                 if (inputItemIdx >= 0 && items[inputItemIdx].active) {
                     DeleteItem(inputItemIdx);
                 }
                 job->carryingItem = -1;
                 job->targetItem = -1;
+
+                // Consume second input item (if any)
+                if (job->targetItem2 >= 0 && items[job->targetItem2].active) {
+                    DeleteItem(job->targetItem2);
+                }
+                job->targetItem2 = -1;
 
                 // Consume fuel item (if any - don't preserve its material)
                 if (job->fuelItem >= 0 && items[job->fuelItem].active) {
@@ -2275,6 +2394,16 @@ void CancelJob(void* moverPtr, int moverIdx) {
                     bp->state = BLUEPRINT_READY_TO_BUILD;  // Revert to ready state
                     bp->progress = 0.0f;  // Reset progress
                 }
+            }
+        }
+
+        // Release second input item reservation (for multi-input craft jobs)
+        if (job->targetItem2 >= 0 && items[job->targetItem2].active) {
+            // Only safe-drop if carried; otherwise just release reservation
+            if (items[job->targetItem2].state == ITEM_CARRIED) {
+                SafeDropItem(job->targetItem2, m);
+            } else {
+                items[job->targetItem2].reservedBy = -1;
             }
         }
 
@@ -3307,6 +3436,40 @@ int WorkGiver_Craft(int moverIdx) {
             tempLen = FindPath(moverPathAlgorithm, itemCell, workCell, tempPath, MAX_PATH);
             if (tempLen == 0) continue;
 
+            // Find second input item if recipe requires it
+            int item2Idx = -1;
+            if (recipe->inputType2 != ITEM_NONE && recipe->inputCount2 > 0) {
+                int best2DistSq = searchRadius * searchRadius;
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    Item* item2 = &items[i];
+                    if (!item2->active) continue;
+                    if (item2->type != recipe->inputType2) continue;
+                    if (item2->reservedBy != -1) continue;
+                    if (item2->unreachableCooldown > 0.0f) continue;
+                    if ((int)item2->z != ws->z) continue;
+                    if (i == itemIdx) continue;  // Can't use same item as first input
+
+                    int item2TileX = (int)(item2->x / CELL_SIZE);
+                    int item2TileY = (int)(item2->y / CELL_SIZE);
+                    int dx2 = item2TileX - ws->x;
+                    int dy2 = item2TileY - ws->y;
+                    int dist2Sq = dx2 * dx2 + dy2 * dy2;
+                    if (dist2Sq > best2DistSq) continue;
+
+                    best2DistSq = dist2Sq;
+                    item2Idx = i;
+                }
+                if (item2Idx < 0) continue;  // Second input not available
+
+                // Verify second input is reachable from workshop
+                Point item2Cell = { (int)(items[item2Idx].x / CELL_SIZE), (int)(items[item2Idx].y / CELL_SIZE), (int)items[item2Idx].z };
+                int item2PathLen = FindPath(moverPathAlgorithm, workCell, item2Cell, tempPath, MAX_PATH);
+                if (item2PathLen == 0) {
+                    SetItemUnreachableCooldown(item2Idx, UNREACHABLE_COOLDOWN);
+                    continue;
+                }
+            }
+
             // Check fuel availability for fuel-requiring recipes
             int fuelIdx = -1;
             if (recipe->fuelRequired > 0) {
@@ -3320,9 +3483,10 @@ int WorkGiver_Craft(int moverIdx) {
                 if (fuelPathLen == 0) continue;
             }
 
-            // Reserve item and workshop
+            // Reserve items and workshop
             item->reservedBy = moverIdx;
             ws->assignedCrafter = moverIdx;
+            if (item2Idx >= 0) items[item2Idx].reservedBy = moverIdx;
             if (fuelIdx >= 0) items[fuelIdx].reservedBy = moverIdx;
 
             // Create job
@@ -3330,6 +3494,7 @@ int WorkGiver_Craft(int moverIdx) {
             if (jobId < 0) {
                 item->reservedBy = -1;
                 ws->assignedCrafter = -1;
+                if (item2Idx >= 0) items[item2Idx].reservedBy = -1;
                 if (fuelIdx >= 0) items[fuelIdx].reservedBy = -1;
                 return -1;
             }
@@ -3339,6 +3504,7 @@ int WorkGiver_Craft(int moverIdx) {
             job->targetWorkshop = w;
             job->targetBillIdx = b;
             job->targetItem = itemIdx;
+            job->targetItem2 = item2Idx;
             job->step = CRAFT_STEP_MOVING_TO_INPUT;
             job->progress = 0.0f;
             job->carryingItem = -1;
