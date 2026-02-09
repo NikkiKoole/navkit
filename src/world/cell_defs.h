@@ -2,6 +2,7 @@
 #define CELL_DEFS_H
 
 #include "grid.h"
+#include "material.h"             // For IsWallNatural
 #include "../simulation/temperature.h"
 #include "../simulation/water.h"      // For deep water walkability check
 #include "../entities/items.h"    // For ItemType
@@ -134,9 +135,10 @@ static inline bool IsValidDestination(int z, int y, int x) {
     if (!IsCellWalkableAt(z, y, x)) return false;
     
     if (z > 0 && rampCount == 0) {
-        // Without ramps, skip "wall tops" (air above wall) as destinations
+        // Without ramps, skip "wall tops" (air above constructed wall) as destinations
+        // Natural terrain below is fine (that's normal DF-style ground)
         // When ramps exist, these could be valid platforms reachable via ramps
-        if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL) {
+        if (grid[z][y][x] == CELL_AIR && grid[z-1][y][x] == CELL_WALL && !IsWallNatural(x, y, z-1)) {
             return false;
         }
     }

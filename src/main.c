@@ -890,6 +890,7 @@ int main(int argc, char** argv) {
         for (int x = 0; x < gridWidth; x++) {
             grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
+            SetWallNatural(x, y, 0);
             SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
         }
     for (int z = 1; z < gridDepth; z++)

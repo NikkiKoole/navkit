@@ -92,15 +92,14 @@ void SyncMaterialsToTerrain(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 CellType cell = grid[z][y][x];
-                MaterialType mat = GetWallMaterial(x, y, z);
+                if (!CellIsSolid(cell)) continue;
                 
-                // If material is already set, keep it (from terrain generation)
-                if (mat != MAT_NONE) continue;
+                // All solid cells from terrain generation are natural
+                SetWallNatural(x, y, z);
                 
-                // Other solid cells (CELL_WALL etc.) default to granite
-                if (CellIsSolid(cell)) {
+                // If material not yet set, default to granite
+                if (GetWallMaterial(x, y, z) == MAT_NONE) {
                     SetWallMaterial(x, y, z, MAT_GRANITE);
-                    SetWallNatural(x, y, z);
                     SetWallFinish(x, y, z, FINISH_ROUGH);
                 }
             }
@@ -146,9 +145,6 @@ ItemType GetFloorDropItem(int x, int y, int z) {
 
 int GetCellSpriteAt(int x, int y, int z) {
     CellType cell = grid[z][y][x];
-    if (cell == CELL_WALL && IsWallNatural(x, y, z)) {
-        return SPRITE_rock;
-    }
     MaterialType mat = GetWallMaterial(x, y, z);
     return GetSpriteForCellMat(cell, mat);
 }

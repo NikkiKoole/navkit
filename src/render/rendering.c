@@ -152,9 +152,6 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
 }
 
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
-    if (cell == CELL_WALL && IsWallNatural(x, y, z)) {
-        return SPRITE_rock;
-    }
     MaterialType mat = GetWallMaterial(x, y, z);
     return GetSpriteForCellMat(cell, mat);
 }
