@@ -19,7 +19,18 @@ typedef enum {
     DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
     DESIGNATION_GATHER_GRASS,   // Gather tall grass into an item
+    DESIGNATION_TYPE_COUNT
 } DesignationType;
+
+static inline const char* DesignationTypeName(int type) {
+    static const char* names[] = {
+        "NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP",
+        "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING", "GATHER_GRASS"
+    };
+    _Static_assert(sizeof(names)/sizeof(names[0]) == DESIGNATION_TYPE_COUNT,
+                   "DesignationTypeName out of sync with DesignationType enum");
+    return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
+}
 
 // Per-cell designation data
 typedef struct {

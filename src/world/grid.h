@@ -46,6 +46,17 @@ typedef enum {
     CELL_TYPE_COUNT
 } CellType;
 
+static inline const char* CellTypeName(int type) {
+    static const char* names[] = {
+        "WALL", "AIR", "LADDER_UP", "LADDER_DOWN", "LADDER_BOTH",
+        "RAMP_N", "RAMP_E", "RAMP_S", "RAMP_W",
+        "SAPLING", "TREE_TRUNK", "TREE_BRANCH", "TREE_ROOT", "TREE_FELLED", "TREE_LEAVES"
+    };
+    _Static_assert(sizeof(names)/sizeof(names[0]) == CELL_TYPE_COUNT,
+                   "CellTypeName out of sync with CellType enum");
+    return (type >= 0 && type < CELL_TYPE_COUNT) ? names[type] : "?";
+}
+
 extern CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Cell flags - per-cell terrain properties (burned, wetness, etc.)

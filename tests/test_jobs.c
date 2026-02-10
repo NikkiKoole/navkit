@@ -11461,6 +11461,318 @@ describe(semi_passive_workshop) {
         expect(stonecutterRecipes[0].workRequired > 0.0f);
     }
 
+    it("passive workshop completes with multiple movers and items") {
+        // Regression: with multiple idle movers and multiple matching items,
+        // movers would endlessly deliver items to the work tile without the
+        // passive timer ever completing — items bounced in and out
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create drying rack with DO_X_TIMES=1 (pure passive, 10s timer)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Spawn 4 grass items (more than needed)
+        for (int i = 0; i < 4; i++) {
+            SpawnItem(CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, ITEM_GRASS);
+        }
+
+        // Spawn 4 haulers
+        for (int i = 0; i < 4; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 3, 0};
+            InitMover(m, CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+            m->capabilities.canHaul = true;
+        }
+        moverCount = 4;
+
+        // Run sim — passive timer is 10s = 600 ticks, plus delivery time
+        // Should complete well within 3000 ticks
+        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        int maxTicks = (int)(passiveTime / TICK_DT) + 3000;
+
+        bool completed = false;
+        for (int i = 0; i < maxTicks; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();  // includes PassiveWorkshopsTick
+
+            if (ws->bills[0].completedCount >= 1) {
+                completed = true;
+                break;
+            }
+        }
+        expect(completed == true);
+    }
+
+    it("charcoal pit completes burn with multiple movers and logs") {
+        // Regression: charcoal pit (semi-passive) with multiple movers and logs.
+        // Movers would endlessly deliver logs, pick them back up, and re-deliver
+        // without the 60s passive timer ever completing.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create charcoal pit with DO_X_TIMES=1 (semi-passive, needs ignition)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+        // Pre-ignite so we only test the passive delivery/burn cycle
+        ws->passiveReady = true;
+
+        // Spawn 4 logs (recipe needs 1, but extras shouldn't cause bouncing)
+        for (int i = 0; i < 4; i++) {
+            SpawnItem(CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, ITEM_LOG);
+        }
+
+        // Stockpile for output charcoal
+        int sp = CreateStockpile(0, 0, 0, 3, 3);
+        SetStockpileFilter(sp, ITEM_CHARCOAL, true);
+
+        // Spawn 4 haulers
+        for (int i = 0; i < 4; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 3, 0};
+            InitMover(m, CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+            m->capabilities.canHaul = true;
+        }
+        moverCount = 4;
+
+        // 60s burn + delivery time, should complete well within 6000 ticks (100s)
+        float passiveTime = charcoalPitRecipes[0].passiveWorkRequired;
+        int maxTicks = (int)(passiveTime / TICK_DT) + 3000;
+
+        bool completed = false;
+        for (int i = 0; i < maxTicks; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();  // includes PassiveWorkshopsTick
+
+            if (ws->bills[0].completedCount >= 1) {
+                completed = true;
+                break;
+            }
+        }
+        expect(completed == true);
+
+        // Charcoal should exist
+        bool foundCharcoal = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_CHARCOAL) {
+                foundCharcoal = true;
+                break;
+            }
+        }
+        expect(foundCharcoal == true);
+    }
+
+    it("deliver-to-workshop does not re-deliver items already on work tile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create drying rack (pure passive, no ignition needed)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass directly on work tile (as if already delivered)
+        int grassIdx = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        // Spawn idle hauler near the work tile
+        Mover* m = &movers[0];
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 200.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        RebuildStockpileFreeSlotCounts();
+        BuildItemSpatialGrid();
+        BuildMoverSpatialGrid();
+
+        // WorkGiver should NOT create a delivery job — input is already on tile
+        int jobId = WorkGiver_DeliverToPassiveWorkshop(0);
+        expect(jobId == -1);
+
+        // Item should still be on ground, unreserved
+        expect(items[grassIdx].state == ITEM_ON_GROUND);
+        expect(items[grassIdx].reservedBy == -1);
+    }
+
+    it("delivered item stays on work tile and passive timer completes") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create drying rack with DO_X_TIMES=1
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Spawn grass away from workshop
+        int grassIdx = SpawnItem(CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_GRASS);
+
+        // Spawn hauler
+        Mover* m = &movers[0];
+        Point goal = {1, 3, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        // Run sim — hauler delivers grass, then passive timer should complete
+        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        int maxTicks = (int)(passiveTime / TICK_DT) + 2000;  // delivery time + full passive timer
+
+        bool completed = false;
+        for (int i = 0; i < maxTicks; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();  // includes PassiveWorkshopsTick
+
+            if (ws->bills[0].completedCount >= 1) {
+                completed = true;
+                break;
+            }
+        }
+        expect(completed == true);
+
+        // Output item should exist
+        bool foundOutput = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_DRIED_GRASS) {
+                foundOutput = true;
+                break;
+            }
+        }
+        expect(foundOutput == true);
+    }
+
+    it("charcoal pit end-to-end: deliver, ignite, burn, output, repeat") {
+        // Full cycle matching real game: stockpile accepts all items,
+        // multiple movers with haul+craft, no pre-ignition.
+        // Should produce charcoal without items bouncing.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Charcoal pit at (5,1) — work tile (6,1), output tile (5,2)
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 2);  // burn twice
+        Workshop* ws = &workshops[wsIdx];
+
+        // Spawn 4 logs on the ground
+        for (int i = 0; i < 4; i++) {
+            SpawnItem(CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, ITEM_LOG);
+        }
+
+        // Stockpile that accepts ALL item types (like the real game default)
+        CreateStockpile(0, 0, 0, 3, 3);
+
+        // 3 movers with haul + craft capability
+        for (int i = 0; i < 3; i++) {
+            Mover* m = &movers[i];
+            Point goal = {1 + i, 3, 0};
+            InitMover(m, CELL_SIZE * (1.5f + i), CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+            m->capabilities.canHaul = true;
+        }
+        moverCount = 3;
+
+        // 2 burns * 60s + ignition + delivery overhead
+        int maxTicks = (int)(2 * 60.0f / TICK_DT) + 6000;
+
+        int charcoalCount = 0;
+        bool completed = false;
+        for (int i = 0; i < maxTicks; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+
+            if (ws->bills[0].completedCount >= 2) {
+                completed = true;
+                break;
+            }
+        }
+        expect(completed == true);
+
+        // Count charcoal (2 burns * 2 output each = 4 charcoal)
+        charcoalCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_CHARCOAL) {
+                charcoalCount++;
+            }
+        }
+        expect(charcoalCount == 4);
+    }
+
     it("hauler does not pick up items from passive workshop work tile") {
         InitGridFromAsciiWithChunkSize(
             "..........\n"

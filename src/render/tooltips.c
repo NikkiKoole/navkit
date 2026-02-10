@@ -204,12 +204,7 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
-    const char* jobTypeNames[] = {
-        "NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP",
-        "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"
-    };
-    int jobTypeCount = (int)(sizeof(jobTypeNames) / sizeof(jobTypeNames[0]));
-    const char* jobTypeName = job ? (((int)job->type < jobTypeCount) ? jobTypeNames[job->type] : "?") : "IDLE";
+    const char* jobTypeName = job ? JobTypeName(job->type) : "IDLE";
 
     int carryingItem = job ? job->carryingItem : -1;
     int targetStockpile = job ? job->targetStockpile : -1;

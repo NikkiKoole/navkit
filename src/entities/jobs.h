@@ -29,7 +29,19 @@ typedef enum {
     JOBTYPE_GATHER_GRASS,      // Gather tall grass (creates grass item)
     JOBTYPE_DELIVER_TO_WORKSHOP, // Haul item to passive workshop work tile
     JOBTYPE_IGNITE_WORKSHOP,     // Walk to semi-passive workshop, do short active work, set passiveReady
+    JOBTYPE_COUNT
 } JobType;
+
+static inline const char* JobTypeName(int type) {
+    static const char* names[] = {
+        "NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR",
+        "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING",
+        "PLANT_SAPLING", "CHOP_FELLED", "GATHER_GRASS", "DELIVER_TO_WS", "IGNITE_WS"
+    };
+    _Static_assert(sizeof(names)/sizeof(names[0]) == JOBTYPE_COUNT,
+                   "JobTypeName out of sync with JobType enum");
+    return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
+}
 
 // Job step constants (used in job->step field)
 #define STEP_MOVING_TO_PICKUP  0  // Haul/Clear/HaulToBlueprint: moving to item

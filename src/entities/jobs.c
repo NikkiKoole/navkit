@@ -2787,6 +2787,24 @@ static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, b
 //
 // This achieves similar performance to Legacy while using WorkGiver functions.
 
+// Core haulability check — single source of truth for all haul paths.
+// Call sites add their own context-specific checks (z-level, type/material matching) after.
+static bool IsItemHaulable(Item* item, int itemIdx) {
+    (void)itemIdx;
+    if (!item->active) return false;
+    if (item->reservedBy != -1) return false;
+    if (item->state != ITEM_ON_GROUND) return false;
+    if (item->unreachableCooldown > 0.0f) return false;
+    if (!ItemTypeIsValidForJobs(item->type)) return false;
+    if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
+    int cellX = (int)(item->x / CELL_SIZE);
+    int cellY = (int)(item->y / CELL_SIZE);
+    int cellZ = (int)(item->z);
+    if (!IsCellWalkableAt(cellZ, cellY, cellX)) return false;
+    if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) return false;
+    return true;
+}
+
 void AssignJobs(void) {
     // Initialize job system if needed
     if (!moverIsInIdleList) {
@@ -3005,13 +3023,9 @@ void AssignJobs(void) {
                                     int itemIdx = itemGrid.itemIndices[i];
                                     Item* item = &items[itemIdx];
 
-                                    if (!item->active) continue;
-                                    if (item->reservedBy != -1) continue;
-                                    if (item->state != ITEM_ON_GROUND) continue;
+                                    if (!IsItemHaulable(item, itemIdx)) continue;
                                     if (item->type != (ItemType)t) continue;
                                     if (ResolveItemMaterialForJobs(item) != (uint8_t)m) continue;
-                                    if (item->unreachableCooldown > 0.0f) continue;
-                                    if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
 
                                     if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
                                         foundItem = true;
@@ -3039,25 +3053,14 @@ void AssignJobs(void) {
                 int itemIdx = itemGrid.itemIndices[t];
                 Item* item = &items[itemIdx];
 
-                if (!item->active) continue;
-                if (item->reservedBy != -1) continue;
-                if (item->state != ITEM_ON_GROUND) continue;
-                if (item->unreachableCooldown > 0.0f) continue;
-                if (!ItemTypeIsValidForJobs(item->type)) continue;
+                if (!IsItemHaulable(item, itemIdx)) continue;
                 uint8_t mat = ResolveItemMaterialForJobs(item);
                 if (!typeMatHasStockpile[item->type][mat]) continue;
-                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
-
-                int cellX = (int)(item->x / CELL_SIZE);
-                int cellY = (int)(item->y / CELL_SIZE);
-                int cellZ = (int)(item->z);
-                if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
 
                 int slotX, slotY;
                 int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
-                // Always invalidate: on success the slot is taken, on failure it may be type-blocked
                 TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
                 InvalidateStockpileSlotCache(item->type, item->material);
             }
@@ -3065,25 +3068,15 @@ void AssignJobs(void) {
             // Fallback: linear scan
             for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
                 Item* item = &items[j];
-                if (!item->active) continue;
-                if (item->reservedBy != -1) continue;
-                if (item->state != ITEM_ON_GROUND) continue;
-                if (item->unreachableCooldown > 0.0f) continue;
-                if (!ItemTypeIsValidForJobs(item->type)) continue;
+
+                if (!IsItemHaulable(item, j)) continue;
                 uint8_t mat = ResolveItemMaterialForJobs(item);
                 if (!typeMatHasStockpile[item->type][mat]) continue;
-                if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
-
-                int cellX = (int)(item->x / CELL_SIZE);
-                int cellY = (int)(item->y / CELL_SIZE);
-                int cellZ = (int)(item->z);
-                if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
 
                 int slotX, slotY;
                 int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
                 if (spIdx < 0) continue;
 
-                // Always invalidate: on success the slot is taken, on failure it may be type-blocked
                 TryAssignItemToMover(j, spIdx, slotX, slotY, false);
                 InvalidateStockpileSlotCache(item->type, item->material);
             }
@@ -3240,6 +3233,7 @@ void AssignJobs(void) {
 
 // WorkGiver_Haul: Find a ground item to haul to a stockpile
 // Returns job ID if successful, -1 if no job available
+// NOTE: Only used by tests. AssignJobs uses inline haul loops that call IsItemHaulable.
 // Filter context for WorkGiver_Haul spatial search
 typedef struct {
     bool (*typeMatHasStockpile)[MAT_COUNT];  // Pointer to 2D array
@@ -3249,27 +3243,10 @@ typedef struct {
 static bool HaulItemFilter(int itemIdx, void* userData) {
     HaulFilterContext* ctx = (HaulFilterContext*)userData;
     Item* item = &items[itemIdx];
-
-    if (!item->active) return false;
-    if (item->reservedBy != -1) return false;
-    if (item->state != ITEM_ON_GROUND) return false;
-    if (item->unreachableCooldown > 0.0f) { printf("DEBUG HaulFilter: item %d (%s) rejected: unreachable cooldown %.1f\n", itemIdx, ItemName(item->type), item->unreachableCooldown); return false; }
-    // Skip items on different z-level (prevents cross-z-level cooldown poisoning)
+    if (!IsItemHaulable(item, itemIdx)) return false;
     if ((int)item->z != ctx->moverZ) return false;
-    if (!ItemTypeIsValidForJobs(item->type)) return false;
     uint8_t mat = ResolveItemMaterialForJobs(item);
     if (!ctx->typeMatHasStockpile[item->type][mat]) return false;
-    if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) return false;
-
-    // Skip items on walls
-    int cellX = (int)(item->x / CELL_SIZE);
-    int cellY = (int)(item->y / CELL_SIZE);
-    int cellZ = (int)(item->z);
-    if (!IsCellWalkableAt(cellZ, cellY, cellX)) return false;
-
-    // Skip items on passive workshop work tiles (they're inputs being processed)
-    if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) return false;
-
     return true;
 }
 
@@ -3334,25 +3311,10 @@ int WorkGiver_Haul(int moverIdx) {
         float bestDistSq = 1e30f;
         for (int j = 0; j < itemHighWaterMark; j++) {
             Item* item = &items[j];
-            if (!item->active) continue;
-            if (item->reservedBy != -1) continue;
-            if (item->state != ITEM_ON_GROUND) continue;
-            if (item->unreachableCooldown > 0.0f) continue;
-            // Skip items on different z-level
+            if (!IsItemHaulable(item, j)) continue;
             if ((int)item->z != moverZ) continue;
-            if (!ItemTypeIsValidForJobs(item->type)) continue;
             uint8_t mat = ResolveItemMaterialForJobs(item);
             if (!typeMatHasStockpile[item->type][mat]) continue;
-            if (!IsItemInGatherZone(item->x, item->y, (int)item->z)) continue;
-
-            // Skip items on walls
-            int cellX = (int)(item->x / CELL_SIZE);
-            int cellY = (int)(item->y / CELL_SIZE);
-            int cellZ = (int)(item->z);
-            if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
-
-            // Skip items on passive workshop work tiles
-            if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) continue;
 
             float dx = item->x - m->x;
             float dy = item->y - m->y;
@@ -3461,9 +3423,8 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
                 inputOnTile++;
             }
 
-            // Item being carried to this workshop (reserved for delivery)
-            if (item->state == ITEM_CARRIED && item->reservedBy >= 0) {
-                // Check if the mover carrying it has a delivery job for this workshop
+            // Item reserved for delivery to this workshop (being fetched or carried)
+            if (item->reservedBy >= 0 && item->reservedBy < moverCount) {
                 Mover* carrier = &movers[item->reservedBy];
                 if (carrier->currentJobId >= 0) {
                     Job* cjob = GetJob(carrier->currentJobId);
@@ -3476,6 +3437,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
         }
 
         if (inputOnTile >= recipe->inputCount) continue;  // Already have enough
+
 
         // Find nearest matching unreserved item
         int bestItemIdx = -1;
@@ -3493,6 +3455,9 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             int cellX = (int)(item->x / CELL_SIZE);
             int cellY = (int)(item->y / CELL_SIZE);
             if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+
+            // Skip items already on the work tile — they're already delivered
+            if (cellX == ws->workTileX && cellY == ws->workTileY && (int)item->z == ws->z) continue;
 
             float dx = item->x - m->x;
             float dy = item->y - m->y;

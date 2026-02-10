@@ -51,32 +51,8 @@ static const char* InspectItemName(const Item* item, char* buffer, size_t buffer
     return base;
 }
 
-static const char* cellTypeNames[] = {
-    "WALL",          // 0
-    "AIR",           // 1
-    "LADDER_UP",     // 2
-    "LADDER_DOWN",   // 3
-    "LADDER_BOTH",   // 4
-    "DIRT",          // 5
-    "CLAY",          // 6
-    "GRAVEL",        // 7
-    "SAND",          // 8
-    "PEAT",          // 9
-    "ROCK",          // 10
-    "BEDROCK",       // 11 (was WOOD_WALL, now removed)
-    "RAMP_N",        // 12
-    "RAMP_E",        // 13
-    "RAMP_S",        // 14
-    "RAMP_W",        // 15
-    "SAPLING",       // 16
-    "TREE_TRUNK",    // 17
-    "TREE_LEAVES"    // 18
-};
-// CELL_TYPE_COUNT comes from grid.h enum
-// Item names now come from ItemName() in item_defs.h
+// Names come from header functions: CellTypeName(), JobTypeName(), DesignationTypeName()
 static const char* itemStateNames[] = {"ON_GROUND", "CARRIED", "IN_STOCKPILE"};
-static const char* jobTypeNames[] = {"NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING", "PLANT_SAPLING", "CHOP_FELLED"};
-static const char* designationTypeNames[] = {"NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP", "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING"};
 static const char* finishNames[] = {"ROUGH", "SMOOTH", "POLISHED", "ENGRAVED"};
 
 // Loaded data (separate from game globals so we don't corrupt game state)
@@ -140,7 +116,7 @@ static void print_mover(int idx) {
     if (m->currentJobId >= 0 && m->currentJobId < insp_jobHWM) {
         Job* job = &insp_jobs[m->currentJobId];
         printf("\n  --- Job %d ---\n", m->currentJobId);
-        printf("  Type: %s\n", job->type < 15 ? jobTypeNames[job->type] : "?");
+        printf("  Type: %s\n", JobTypeName(job->type));
         printf("  Step: %d\n", job->step);
         printf("  Progress: %.2f\n", job->progress);
         if (job->targetItem >= 0) printf("  Target item: %d\n", job->targetItem);
@@ -193,7 +169,7 @@ static void print_job(int idx) {
     }
     Job* job = &insp_jobs[idx];
     printf("\n=== JOB %d ===\n", idx);
-    printf("Type: %s (%d)\n", job->type < 15 ? jobTypeNames[job->type] : "?", job->type);
+    printf("Type: %s (%d)\n", JobTypeName(job->type), job->type);
     printf("Assigned mover: %d\n", job->assignedMover);
     printf("Step: %d\n", job->step);
     printf("Progress: %.2f\n", job->progress);
@@ -339,7 +315,7 @@ static void print_cell(int x, int y, int z) {
     Designation desig = insp_designations[idx];
     
     printf("\n=== CELL (%d, %d, z%d) ===\n", x, y, z);
-    printf("Type: %s (raw=%d)\n", cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "UNKNOWN", (int)cell);
+    printf("Type: %s (raw=%d)\n", CellTypeName(cell), (int)cell);
     
     // Wall material
     uint8_t wallMat = insp_wallMaterials[idx];
@@ -382,7 +358,7 @@ static void print_cell(int x, int y, int z) {
         else {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
             CellType cellBelow = insp_gridCells[idxBelow];
-            printf(" (solid below: %s)", cellBelow < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
+            printf(" (solid below: %s)", CellTypeName(cellBelow));
         }
     } else {
         if (CellBlocksMovement(cell)) printf(" (blocks movement)");
@@ -390,7 +366,7 @@ static void print_cell(int x, int y, int z) {
         else if (z > 0) {
             int idxBelow = (z-1) * insp_gridH * insp_gridW + y * insp_gridW + x;
             CellType cellBelow = insp_gridCells[idxBelow];
-            if (!CellIsSolid(cellBelow)) printf(" (no solid below: %s)", cellBelow < CELL_TYPE_COUNT ? cellTypeNames[cellBelow] : "?");
+            if (!CellIsSolid(cellBelow)) printf(" (no solid below: %s)", CellTypeName(cellBelow));
         }
     }
     // Show floor flag status
@@ -434,7 +410,7 @@ static void print_cell(int x, int y, int z) {
     printf("\n");
     
     if (desig.type != DESIGNATION_NONE) {
-        const char* desigName = desig.type < 10 ? designationTypeNames[desig.type] : "?";
+        const char* desigName = DesignationTypeName(desig.type);
         printf("Designation: %s (type=%d), assigned to mover %d, progress %.0f%%\n",
                desigName, desig.type, desig.assignedMover, desig.progress * 100);
     }
@@ -643,8 +619,8 @@ static void print_designations(void) {
                 if (d->type == DESIGNATION_NONE) continue;
                 
                 CellType cell = insp_gridCells[idx];
-                const char* cellName = cell < CELL_TYPE_COUNT ? cellTypeNames[cell] : "?";
-                const char* desigName = d->type < 10 ? designationTypeNames[d->type] : "?";
+                const char* cellName = CellTypeName(cell);
+                const char* desigName = DesignationTypeName(d->type);
                 
                 printf("(%d,%d,z%d) %s %s", x, y, z, desigName, cellName);
                 if (d->assignedMover >= 0) {
@@ -724,7 +700,7 @@ static void print_stuck_movers(void) {
                    insp_movers[i].pathLength, insp_movers[i].needsRepath ? "yes" : "no");
             if (insp_movers[i].currentJobId >= 0) {
                 Job* j = &insp_jobs[insp_movers[i].currentJobId];
-                printf("  Job: %s step=%d\n", j->type < 15 ? jobTypeNames[j->type] : "?", j->step);
+                printf("  Job: %s step=%d\n", JobTypeName(j->type), j->step);
             }
             found++;
         }
@@ -757,12 +733,75 @@ static void print_active_jobs(void) {
         int jid = insp_activeJobList[i];
         Job* j = &insp_jobs[jid];
         printf("Job %d: %s mover=%d step=%d", 
-               jid, j->type < 15 ? jobTypeNames[j->type] : "?", j->assignedMover, j->step);
+               jid, JobTypeName(j->type), j->assignedMover, j->step);
         if (j->targetItem >= 0) printf(" item=%d", j->targetItem);
         if (j->carryingItem >= 0) printf(" carrying=%d", j->carryingItem);
         printf("\n");
     }
     if (insp_activeJobCnt == 0) printf("No active jobs.\n");
+}
+
+static void print_orphaned(void) {
+    printf("\n=== ORPHANED STATE CHECK ===\n");
+    int found = 0;
+
+    // 1. Designations with assignedMover that has no matching job
+    for (int z = 0; z < insp_gridD; z++) {
+        for (int y = 0; y < insp_gridH; y++) {
+            for (int x = 0; x < insp_gridW; x++) {
+                int idx = z * insp_gridH * insp_gridW + y * insp_gridW + x;
+                Designation* d = &insp_designations[idx];
+                if (d->type == DESIGNATION_NONE) continue;
+                if (d->assignedMover < 0) continue;
+                bool valid = false;
+                if (d->assignedMover < insp_moverCount && insp_movers[d->assignedMover].active) {
+                    int jobId = insp_movers[d->assignedMover].currentJobId;
+                    if (jobId >= 0 && jobId < insp_jobHWM && insp_jobs[jobId].active &&
+                        insp_jobs[jobId].targetMineX == x && insp_jobs[jobId].targetMineY == y &&
+                        insp_jobs[jobId].targetMineZ == z) {
+                        valid = true;
+                    }
+                }
+                if (!valid) {
+                    const char* dname = DesignationTypeName(d->type);
+                    printf("STALE DESIGNATION: %s at (%d,%d,z%d) assignedMover=%d (mover has jobId=%d)\n",
+                           dname, x, y, z, d->assignedMover,
+                           (d->assignedMover < insp_moverCount && insp_movers[d->assignedMover].active)
+                               ? insp_movers[d->assignedMover].currentJobId : -1);
+                    found++;
+                }
+            }
+        }
+    }
+
+    // 2. Movers with currentJobId pointing to inactive job
+    for (int i = 0; i < insp_moverCount; i++) {
+        if (!insp_movers[i].active) continue;
+        int jobId = insp_movers[i].currentJobId;
+        if (jobId < 0) continue;
+        if (jobId >= insp_jobHWM || !insp_jobs[jobId].active) {
+            printf("STALE MOVER JOB: mover %d has currentJobId=%d (job inactive)\n", i, jobId);
+            found++;
+        }
+    }
+
+    // 3. Items with reservedBy pointing to mover with no matching job
+    for (int i = 0; i < insp_itemHWM; i++) {
+        if (!insp_items[i].active) continue;
+        int moverIdx = insp_items[i].reservedBy;
+        if (moverIdx < 0) continue;
+        if (moverIdx >= insp_moverCount || !insp_movers[moverIdx].active ||
+            insp_movers[moverIdx].currentJobId < 0) {
+            printf("STALE ITEM RESERVATION: item %d reserved by mover %d (mover has jobId=%d)\n",
+                   i, moverIdx,
+                   (moverIdx < insp_moverCount && insp_movers[moverIdx].active)
+                       ? insp_movers[moverIdx].currentJobId : -1);
+            found++;
+        }
+    }
+
+    if (found == 0) printf("No orphaned state found.\n");
+    else printf("\nTotal: %d orphaned references\n", found);
 }
 
 static void print_items(const char* filterType) {
@@ -923,7 +962,7 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false, opt_items = false, opt_temp = false;
+    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false;
     int opt_entrances_z = -1, opt_temp_z = -1;
     const char* opt_items_filter = NULL;
     
@@ -957,6 +996,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--stuck") == 0) opt_stuck = true;
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
         else if (strcmp(argv[i], "--jobs-active") == 0) opt_jobs_active = true;
+        else if (strcmp(argv[i], "--orphaned") == 0) opt_orphaned = true;
         else if (strcmp(argv[i], "--entrances") == 0) {
             opt_entrances = true;
             if (i+1 < argc && argv[i+1][0] != '-') opt_entrances_z = atoi(argv[++i]);
@@ -1148,7 +1188,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances || opt_items || opt_temp);
+                     opt_entrances || opt_items || opt_temp || opt_orphaned);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -1196,7 +1236,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
-        printf("         --entrances [Z], --items [TYPE], --temp [Z]\n");
+        printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned\n");
     }
     
     // Handle queries
@@ -1221,6 +1261,7 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_entrances) print_entrances(opt_entrances_z);
     if (opt_items) print_items(opt_items_filter);
     if (opt_temp) print_temp(opt_temp_z);
+    if (opt_orphaned) print_orphaned();
     
     cleanup();
     return 0;
