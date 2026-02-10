@@ -153,6 +153,88 @@ Trees → LOG → Sawmill (strip) → STRIPPED_LOG → PLANKS (x5)
                 ↘ Hearth → ASH
 ```
 
+### Implementation Requirements (2026-02-10)
+
+**Current Code State:**
+- ✅ ITEM_GRASS, ITEM_DRIED_GRASS, ITEM_POLES already exist
+- ✅ Sawmill workshop exists with 2 recipes (Saw Planks, Cut Sticks)
+- ✅ Drying Rack workshop exists (pure passive, dries grass)
+- ✅ Recipe struct supports two inputs via `inputType2`, `inputCount2`
+- ❌ ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE **do not exist yet**
+- ❌ WORKSHOP_ROPE_MAKER **does not exist yet**
+- ⚠️ Recipe struct does **not support multiple outputs** (one output type only)
+
+**Implementation Checklist:**
+
+1. **Add new item types** to `src/entities/items.h` enum:
+   ```c
+   ITEM_BARK,          // Stripped from logs at sawmill
+   ITEM_STRIPPED_LOG,  // Log after bark removal
+   ITEM_CORDAGE,       // Rope/fiber for lashing, construction
+   ```
+
+2. **Add item definitions** to `src/entities/item_defs.c` table:
+   ```c
+   [ITEM_BARK]         = { "Bark",         SPRITE_bark,  IF_STACKABLE, 99 },
+   [ITEM_STRIPPED_LOG] = { "Stripped Log", SPRITE_log,   IF_STACKABLE|IF_BUILDING_MAT|IF_FUEL, 99 },
+   [ITEM_CORDAGE]      = { "Cordage",      SPRITE_rope,  IF_STACKABLE, 99 },
+   ```
+
+3. **Handle multi-output recipe** (Strip Bark produces 2 items):
+   - **Option A**: Extend Recipe struct to support `outputType2`, `outputCount2`
+   - **Option B**: Spawn second output manually in craft job completion code (CRAFT_STEP_FINISH)
+   - **Recommended**: Option B for now (minimal change, avoids struct bloat)
+
+4. **Add Sawmill recipes** to `src/entities/workshops.c`:
+   ```c
+   { "Strip Bark",   ITEM_LOG,         1, ITEM_NONE, 0, ITEM_STRIPPED_LOG, 1, 4.0f, 0, ... },
+   // (BARK x2 spawned manually in job code)
+   { "Saw Stripped", ITEM_STRIPPED_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS,      5, 4.0f, 0, ... },
+   ```
+
+5. **Add WORKSHOP_ROPE_MAKER** enum to `src/entities/workshops.h`
+
+6. **Define Rope Maker workshop** in `src/entities/workshops.c`:
+   ```c
+   Recipe ropeMakerRecipes[] = {
+       { "Twist Cordage", ITEM_BARK,        2, ITEM_NONE, 0, ITEM_CORDAGE, 1, 3.0f, 0, ... },
+       { "Leaf Cordage",  ITEM_LEAVES_OAK,  4, ITEM_NONE, 0, ITEM_CORDAGE, 1, 4.0f, 0, ... },
+       // Note: may need ITEM_MATCH_ANY_LEAVES to accept all leaf types
+   };
+
+   [WORKSHOP_ROPE_MAKER] = {
+       .type = WORKSHOP_ROPE_MAKER,
+       .name = "ROPE_MAKER",
+       .displayName = "Rope Maker",
+       .width = 2,
+       .height = 2,
+       .template = "#X"
+                   "O.",
+       .recipes = ropeMakerRecipes,
+       .recipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0])
+   }
+   ```
+
+7. **Modify craft job code** (`src/entities/jobs.c`) to spawn bonus BARK when Strip Bark recipe completes
+
+8. **Add input actions** for placing Rope Maker workshop (follow existing workshop placement pattern)
+
+9. **Bump SAVE_VERSION** and add migration for new items (if save/load implemented)
+
+10. **Add stockpile filter support** for new items (BARK, STRIPPED_LOG, CORDAGE)
+
+**Technical Challenges:**
+- **Multi-output recipes**: Current Recipe struct only has `outputType` + `outputCount` (single output). Strip Bark needs to produce BOTH stripped_log AND bark. Two approaches:
+  1. Special-case in job completion (check recipe name, spawn extra items)
+  2. Extend Recipe struct with optional second output (cleaner but touches more code)
+
+- **Leaf type matching**: "Leaf Cordage" should accept ANY leaf type (oak/pine/birch/willow). May need new `ITEM_MATCH_ANY_LEAVES` flag, or 4 separate recipes.
+
+**Uses for CORDAGE (future):**
+- Construction staging: frames require cordage as lashing material
+- Multi-stage builds: shelter = poles + cordage + thatch
+- Tool crafting: stone axe = rock + sticks + cordage [future:tools]
+
 ---
 
 ## 5. Proposed: Hearth (Fuel Consumer)
@@ -280,3 +362,4 @@ After chopping a tree, stump remains:
 - 2026-02-09: Proposed bark/cordage chain, Hearth workshop
 - 2026-02-09: Added design principles, limitations, future markers from workshops-and-jobs
 - 2026-02-09: Added withies, tree stumps/coppicing, additional workshops, open questions
+- 2026-02-10: Added implementation requirements for bark/cordage chain (code audit findings)

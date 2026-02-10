@@ -220,6 +220,17 @@ void DesignationsTick(float dt) {
                     d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
                 }
 
+                // Validate: if assignedMover is set, that mover must have an active job.
+                // A mismatch means a bug left a stale assignedMover (e.g. stale cache,
+                // failed job without proper cleanup). Auto-clear to prevent stuck designations.
+                if (d->assignedMover >= 0 && d->assignedMover < moverCount) {
+                    if (movers[d->assignedMover].currentJobId < 0) {
+                        TraceLog(LOG_WARNING,
+                            "STALE DESIGNATION: %s at (%d,%d,z%d) assignedMover=%d but mover is idle - clearing",
+                            DesignationTypeName(d->type), x, y, z, d->assignedMover);
+                        d->assignedMover = -1;
+                    }
+                }
             }
         }
     }
