@@ -1720,6 +1720,7 @@ void HandleInput(void) {
         if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_WORKSHOP_KILN; }
         if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT; }
         if (CheckKey(KEY_H)) { inputAction = ACTION_DRAW_WORKSHOP_HEARTH; }
+        if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_WORKSHOP_DRYING_RACK; }
         return;
     }
 
@@ -1751,6 +1752,7 @@ void HandleInput(void) {
         case ACTION_DRAW_WORKSHOP_KILN:        backOneLevel = CheckKey(KEY_K); break;
         case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: backOneLevel = CheckKey(KEY_C); break;
         case ACTION_DRAW_WORKSHOP_HEARTH: backOneLevel = CheckKey(KEY_H); break;
+        case ACTION_DRAW_WORKSHOP_DRYING_RACK: backOneLevel = CheckKey(KEY_D); break;
         case ACTION_DRAW_SOIL:      backOneLevel = CheckKey(KEY_O); break;
         case ACTION_DRAW_SOIL_DIRT:  backOneLevel = CheckKey(KEY_D); break;
         case ACTION_DRAW_SOIL_CLAY:  backOneLevel = CheckKey(KEY_C); break;
@@ -1964,6 +1966,9 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_WORKSHOP_HEARTH:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_HEARTH);
+                break;
+            case ACTION_DRAW_WORKSHOP_DRYING_RACK:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_DRYING_RACK);
                 break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {

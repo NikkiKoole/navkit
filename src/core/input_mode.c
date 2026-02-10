@@ -300,6 +300,7 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_WORKSHOP_SAWMILL:     actionKey = KEY_A; actionUnderline = 1; break;
         case ACTION_DRAW_WORKSHOP_KILN:        actionKey = KEY_K; break;
         case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: actionKey = KEY_C; break;
+        case ACTION_DRAW_WORKSHOP_DRYING_RACK: actionKey = KEY_D; break;
         case ACTION_DRAW_SOIL:      actionKey = KEY_O; actionUnderline = 1; break;
         case ACTION_DRAW_SOIL_DIRT:  actionKey = KEY_D; break;
         case ACTION_DRAW_SOIL_CLAY:  actionKey = KEY_C; break;
@@ -380,12 +381,14 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, "Kiln", KEY_K, 0, false, false, false);
             n = AddItem(items, n, "Charcoal pit", KEY_C, 0, false, false, false);
             n = AddItem(items, n, "Hearth", KEY_H, 0, false, false, false);
+            n = AddItem(items, n, "Drying rack", KEY_D, 0, false, false, false);
             break;
         case ACTION_DRAW_WORKSHOP_STONECUTTER:
         case ACTION_DRAW_WORKSHOP_SAWMILL:
         case ACTION_DRAW_WORKSHOP_KILN:
         case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
         case ACTION_DRAW_WORKSHOP_HEARTH:
+        case ACTION_DRAW_WORKSHOP_DRYING_RACK:
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             break;
         case ACTION_DRAW_SOIL:

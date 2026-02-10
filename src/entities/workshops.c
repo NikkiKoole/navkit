@@ -49,6 +49,12 @@ Recipe hearthRecipes[] = {
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
+// Drying Rack recipes: passive conversion (no crafter needed)
+Recipe dryingRackRecipes[] = {
+    { "Dry Grass", ITEM_GRASS, 1, ITEM_NONE, 0, ITEM_DRIED_GRASS, 1, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+};
+int dryingRackRecipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]);
+
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
     [WORKSHOP_STONECUTTER] = {
@@ -107,7 +113,20 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .template = "FX"
                     "O.",
         .recipes = hearthRecipes,
-        .recipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0])
+        .recipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_DRYING_RACK] = {
+        .type = WORKSHOP_DRYING_RACK,
+        .name = "DRYING_RACK",
+        .displayName = "Drying Rack",
+        .width = 2,
+        .height = 2,
+        .template = "#X"
+                    "O.",
+        .recipes = dryingRackRecipes,
+        .recipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]),
+        .passive = true
     },
 };
 
@@ -236,6 +255,8 @@ void ClearWorkshops(void) {
         workshops[i].inputStarvationTime = 0.0f;
         workshops[i].outputBlockedTime = 0.0f;
         workshops[i].lastWorkTime = 0.0f;
+        workshops[i].passiveProgress = 0.0f;
+        workshops[i].passiveBillIdx = -1;
     }
     workshopCount = 0;
 }
@@ -256,6 +277,8 @@ int CreateWorkshop(int x, int y, int z, WorkshopType type) {
             ws->inputStarvationTime = 0.0f;
             ws->outputBlockedTime = 0.0f;
             ws->lastWorkTime = 0.0f;
+            ws->passiveProgress = 0.0f;
+            ws->passiveBillIdx = -1;
             
             // Get footprint from workshop definition
             ws->width = workshopDefs[type].width;
@@ -479,6 +502,104 @@ bool IsWorkshopBlocking(int tileX, int tileY, int z) {
     if (tileX < 0 || tileX >= gridWidth || tileY < 0 || tileY >= gridHeight || z < 0 || z >= gridDepth) 
         return false;
     return HAS_CELL_FLAG(tileX, tileY, z, CELL_FLAG_WORKSHOP_BLOCK);
+}
+
+void PassiveWorkshopsTick(float dt) {
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+
+        // Find first runnable bill
+        int activeBillIdx = -1;
+        for (int b = 0; b < ws->billCount; b++) {
+            Bill* bill = &ws->bills[b];
+            if (bill->suspended) continue;
+            if (!ShouldBillRun(ws, bill)) continue;
+            activeBillIdx = b;
+            break;
+        }
+
+        if (activeBillIdx < 0) {
+            ws->passiveProgress = 0.0f;
+            ws->passiveBillIdx = -1;
+            continue;
+        }
+
+        // If bill changed, reset progress
+        if (ws->passiveBillIdx != activeBillIdx) {
+            ws->passiveProgress = 0.0f;
+            ws->passiveBillIdx = activeBillIdx;
+        }
+
+        Bill* bill = &ws->bills[activeBillIdx];
+        int recipeCount;
+        Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+        if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
+        Recipe* recipe = &recipes[bill->recipeIdx];
+
+        // Check: are required inputs present on the work tile?
+        int inputCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            Item* item = &items[i];
+            if (!item->active) continue;
+            if (item->state != ITEM_ON_GROUND) continue;
+            int tileX = (int)(item->x / CELL_SIZE);
+            int tileY = (int)(item->y / CELL_SIZE);
+            if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
+            if ((int)item->z != ws->z) continue;
+            if (!RecipeInputMatches(recipe, item)) continue;
+            inputCount++;
+            if (inputCount >= recipe->inputCount) break;
+        }
+
+        if (inputCount < recipe->inputCount) {
+            continue;  // Not enough input — stall (don't reset progress)
+        }
+
+        // Advance timer
+        ws->passiveProgress += dt / recipe->workRequired;
+
+        if (ws->passiveProgress >= 1.0f) {
+            // Consume input(s)
+            int consumed = 0;
+            MaterialType inputMat = MAT_NONE;
+            for (int i = 0; i < itemHighWaterMark && consumed < recipe->inputCount; i++) {
+                Item* item = &items[i];
+                if (!item->active) continue;
+                if (item->state != ITEM_ON_GROUND) continue;
+                int tileX = (int)(item->x / CELL_SIZE);
+                int tileY = (int)(item->y / CELL_SIZE);
+                if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
+                if ((int)item->z != ws->z) continue;
+                if (!RecipeInputMatches(recipe, item)) continue;
+                if (consumed == 0) {
+                    inputMat = (MaterialType)item->material;
+                    if (inputMat == MAT_NONE) inputMat = (MaterialType)DefaultMaterialForItemType(item->type);
+                }
+                DeleteItem(i);
+                consumed++;
+            }
+
+            // Spawn output(s) at output tile
+            float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+            for (int i = 0; i < recipe->outputCount; i++) {
+                uint8_t outMat;
+                if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
+                    outMat = (uint8_t)inputMat;
+                } else {
+                    outMat = DefaultMaterialForItemType(recipe->outputType);
+                }
+                SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+            }
+
+            // Update bill
+            bill->completedCount++;
+            ws->passiveProgress = 0.0f;
+            ws->passiveBillIdx = -1;  // Re-evaluate next tick
+        }
+    }
 }
 
 void UpdateWorkshopDiagnostics(float dt) {

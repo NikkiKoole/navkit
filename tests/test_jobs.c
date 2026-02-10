@@ -7,6 +7,7 @@
 #include "../src/entities/mover.h"
 #include "../src/world/terrain.h"
 #include "../src/entities/items.h"
+#include "../src/entities/item_defs.h"
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
 #include "../src/entities/workshops.h"
@@ -10636,6 +10637,450 @@ describe(input_audit_quick_erase_metadata) {
 // Skipped as test: input_mode.c has too many dependencies for test unity build.
 // Fix is a one-liner: call InputMode_Reset() after LoadWorld() in input.c.
 
+// =============================================================================
+// Passive Workshop Tests (TDD - Drying Rack / ITEM_DRIED_GRASS)
+// =============================================================================
+
+describe(passive_workshop) {
+    it("ITEM_DRIED_GRASS should exist and be stackable") {
+        ClearItems();
+
+        int idx = SpawnItem(100.0f, 100.0f, 0.0f, ITEM_DRIED_GRASS);
+        expect(idx >= 0);
+        expect(items[idx].active == true);
+        expect(items[idx].type == ITEM_DRIED_GRASS);
+        expect(ItemIsStackable(ITEM_DRIED_GRASS));
+        expect(DefaultMaterialForItemType(ITEM_DRIED_GRASS) == MAT_NONE);
+    }
+
+    it("Drying Rack workshop can be created") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearWorkshops();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        expect(wsIdx >= 0);
+
+        Workshop* ws = &workshops[wsIdx];
+        expect(ws->active == true);
+        expect(ws->type == WORKSHOP_DRYING_RACK);
+        expect(ws->width == 2);
+        expect(ws->height == 2);
+        expect(ws->workTileX >= 0);
+        expect(ws->workTileY >= 0);
+        expect(ws->outputTileX >= 0);
+        expect(ws->outputTileY >= 0);
+    }
+
+    it("Drying Rack definition is passive") {
+        expect(workshopDefs[WORKSHOP_DRYING_RACK].passive == true);
+        // Existing workshops should not be passive
+        expect(workshopDefs[WORKSHOP_STONECUTTER].passive == false);
+        expect(workshopDefs[WORKSHOP_SAWMILL].passive == false);
+        expect(workshopDefs[WORKSHOP_KILN].passive == false);
+        expect(workshopDefs[WORKSHOP_CHARCOAL_PIT].passive == false);
+        expect(workshopDefs[WORKSHOP_HEARTH].passive == false);
+    }
+
+    it("passive workshop does not accept crafter assignment") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(4, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
+
+        // Spawn grass item near workshop
+        SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_GRASS);
+
+        // Create stockpile for output so bill doesn't auto-suspend
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_DRIED_GRASS, true);
+
+        // Spawn a mover
+        Mover* m = &movers[0];
+        Point goal = {1, 2, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 2.5f, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        BuildItemSpatialGrid();
+        BuildMoverSpatialGrid();
+        AssignJobs();
+
+        Workshop* ws = &workshops[wsIdx];
+        expect(ws->assignedCrafter == -1);
+    }
+
+    it("hauler delivers item to passive workshop work tile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Stockpile for output
+        int sp = CreateStockpile(0, 0, 0, 3, 3);
+        SetStockpileFilter(sp, ITEM_DRIED_GRASS, true);
+
+        // Spawn grass away from workshop
+        int grassIdx = SpawnItem(CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_GRASS);
+
+        // Spawn hauler
+        Mover* m = &movers[0];
+        Point goal = {1, 3, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        // Run sim until grass arrives at work tile
+        bool delivered = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+
+            // Check if grass item is on the work tile
+            if (items[grassIdx].active && items[grassIdx].state == ITEM_ON_GROUND) {
+                int itemTileX = (int)(items[grassIdx].x / CELL_SIZE);
+                int itemTileY = (int)(items[grassIdx].y / CELL_SIZE);
+                if (itemTileX == ws->workTileX && itemTileY == ws->workTileY) {
+                    delivered = true;
+                    break;
+                }
+            }
+        }
+        expect(delivered == true);
+    }
+
+    it("passive workshop timer advances when input present on work tile") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass directly on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_GRASS);
+
+        expect(ws->passiveProgress == 0.0f);
+
+        // Tick the passive system a few times
+        for (int i = 0; i < 10; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        expect(ws->passiveProgress > 0.0f);
+    }
+
+    it("passive workshop timer does NOT advance without input") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // No items placed — tick
+        for (int i = 0; i < 10; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        expect(ws->passiveProgress == 0.0f);
+    }
+
+    it("passive workshop produces output when timer completes") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+        Bill* bill = &ws->bills[0];
+
+        // Place grass on work tile
+        int grassIdx = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        // Tick until completion (recipe is 10.0s, TICK_DT ~0.0167s, need ~600 ticks)
+        for (int i = 0; i < 800; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        // Grass should be consumed (slot may be reused by output item)
+        bool grassConsumed = !items[grassIdx].active || items[grassIdx].type != ITEM_GRASS;
+        expect(grassConsumed == true);
+
+        // Dried grass should exist at output tile
+        bool foundDriedGrass = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_DRIED_GRASS) {
+                int tileX = (int)(items[i].x / CELL_SIZE);
+                int tileY = (int)(items[i].y / CELL_SIZE);
+                if (tileX == ws->outputTileX && tileY == ws->outputTileY) {
+                    foundDriedGrass = true;
+                    break;
+                }
+            }
+        }
+        expect(foundDriedGrass == true);
+
+        // Bill should record completion
+        expect(bill->completedCount == 1);
+
+        // Progress should be reset
+        expect(ws->passiveProgress == 0.0f);
+    }
+
+    it("passive workshop DO_X_TIMES stops after target") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass and complete one cycle
+        int grass1 = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        for (int i = 0; i < 800; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+        bool grass1Consumed = !items[grass1].active || items[grass1].type != ITEM_GRASS;
+        expect(grass1Consumed == true);
+        expect(ws->bills[0].completedCount == 1);
+
+        // Place more grass — should NOT process (target met)
+        int grass2 = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        for (int i = 0; i < 800; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        // Second grass should still be there (not consumed)
+        expect(items[grass2].active == true);
+    }
+
+    it("passive workshop DO_FOREVER continues") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
+        Workshop* ws = &workshops[wsIdx];
+
+        // First cycle
+        SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        for (int i = 0; i < 800; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+        expect(ws->bills[0].completedCount == 1);
+
+        // Second cycle — place new grass
+        SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        for (int i = 0; i < 800; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+        expect(ws->bills[0].completedCount == 2);
+    }
+
+    it("passive workshop timer respects game speed") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass on work tile
+        SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        // Tick at 10x speed — should complete in ~60 ticks (10s / 10x / 0.0167)
+        int ticksNeeded = 0;
+        for (int i = 0; i < 200; i++) {
+            PassiveWorkshopsTick(TICK_DT * 10.0f);
+            ticksNeeded++;
+            if (ws->bills[0].completedCount >= 1) break;
+        }
+
+        expect(ws->bills[0].completedCount == 1);
+        // At 10x speed, ~60 ticks needed. At 1x it would be ~600.
+        expect(ticksNeeded < 100);
+    }
+
+    it("suspended bill prevents passive processing") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        SuspendBill(wsIdx, 0, true);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass on work tile
+        SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        for (int i = 0; i < 100; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        expect(ws->passiveProgress == 0.0f);
+    }
+
+    it("deleting passive workshop does not consume items") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass on work tile
+        int grassIdx = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_GRASS);
+
+        // Advance timer partway
+        for (int i = 0; i < 100; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+        expect(ws->passiveProgress > 0.0f);
+
+        // Delete workshop
+        DeleteWorkshop(wsIdx);
+
+        // Grass item should still exist
+        expect(items[grassIdx].active == true);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -10770,6 +11215,9 @@ int main(int argc, char* argv[]) {
     test(input_audit_grass_placement);
     test(input_audit_erase_designations);
     test(input_audit_quick_erase_metadata);
+    
+    // Passive workshop tests (TDD - drying rack / ITEM_DRIED_GRASS)
+    test(passive_workshop);
     
     return summary();
 }

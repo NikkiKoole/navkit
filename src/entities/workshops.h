@@ -26,6 +26,7 @@ typedef enum {
     WORKSHOP_KILN,
     WORKSHOP_CHARCOAL_PIT,
     WORKSHOP_HEARTH,
+    WORKSHOP_DRYING_RACK,
     WORKSHOP_TYPE_COUNT,
 } WorkshopType;
 
@@ -77,6 +78,7 @@ typedef struct {
     const char* template;
     const Recipe* recipes;
     int recipeCount;
+    bool passive;           // Auto-converts items without crafter (timer-based)
 } WorkshopDef;
 
 // Bill modes
@@ -113,6 +115,10 @@ typedef struct {
     
     // Work state
     int assignedCrafter;  // mover index, -1 = none
+    
+    // Passive workshop state
+    float passiveProgress;  // 0.0..1.0 fraction of work done
+    int passiveBillIdx;     // which bill is being processed (-1 = none)
 
     // Diagnostics
     WorkshopVisualState visualState;
@@ -147,12 +153,15 @@ extern Recipe charcoalPitRecipes[];
 extern int charcoalPitRecipeCount;
 extern Recipe hearthRecipes[];
 extern int hearthRecipeCount;
+extern Recipe dryingRackRecipes[];
+extern int dryingRackRecipeCount;
 
 // Core functions
 void ClearWorkshops(void);
 int CreateWorkshop(int x, int y, int z, WorkshopType type);
 void DeleteWorkshop(int index);
 void UpdateWorkshopDiagnostics(float dt);
+void PassiveWorkshopsTick(float dt);
 
 // Recipe lookup
 Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);

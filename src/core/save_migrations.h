@@ -2,7 +2,7 @@
 #define SAVE_MIGRATIONS_H
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 29
+#define CURRENT_SAVE_VERSION 30
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)

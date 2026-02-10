@@ -295,6 +295,12 @@ static void print_workshop(int idx) {
     printf("Assigned crafter: %d%s\n", ws->assignedCrafter,
            ws->assignedCrafter < 0 ? " (none)" : "");
     
+    if (workshopDefs[ws->type].passive) {
+        printf("Passive: YES\n");
+        printf("Passive progress: %.1f%%\n", ws->passiveProgress * 100.0f);
+        printf("Passive bill idx: %d\n", ws->passiveBillIdx);
+    }
+    
     printf("\nBills: %d\n", ws->billCount);
     for (int b = 0; b < ws->billCount; b++) {
         Bill* bill = &ws->bills[b];

@@ -2205,6 +2205,106 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
     return JOBRUN_RUNNING;
 }
 
+// Deliver-to-workshop job driver: pick up item -> carry to workshop work tile -> drop
+JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    (void)dt;
+
+    // Validate workshop still exists
+    if (job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS ||
+        !workshops[job->targetWorkshop].active) {
+        return JOBRUN_FAIL;
+    }
+    Workshop* ws = &workshops[job->targetWorkshop];
+
+    if (job->step == STEP_MOVING_TO_PICKUP) {
+        int itemIdx = job->targetItem;
+
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+
+        Item* item = &items[itemIdx];
+        int itemCellX = (int)(item->x / CELL_SIZE);
+        int itemCellY = (int)(item->y / CELL_SIZE);
+        int itemCellZ = (int)item->z;
+        if (!IsCellWalkableAt(itemCellZ, itemCellY, itemCellX)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        float dx = mover->x - item->x;
+        float dy = mover->y - item->y;
+        float distSq = dx*dx + dy*dy;
+
+        if (IsPathExhausted(mover) && distSq >= PICKUP_RADIUS * PICKUP_RADIUS) {
+            mover->goal = (Point){itemCellX, itemCellY, itemCellZ};
+            mover->needsRepath = true;
+        }
+
+        TryFinalApproach(mover, item->x, item->y, itemCellX, itemCellY, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+            return JOBRUN_FAIL;
+        }
+
+        if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            if (item->state == ITEM_IN_STOCKPILE) {
+                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
+            }
+            item->state = ITEM_CARRIED;
+            job->carryingItem = itemIdx;
+            job->targetItem = -1;
+            job->step = STEP_CARRYING;
+
+            mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+            mover->needsRepath = true;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_CARRYING) {
+        int itemIdx = job->carryingItem;
+        if (itemIdx < 0 || !items[itemIdx].active) return JOBRUN_FAIL;
+
+        float targetX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float targetY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - targetX;
+        float dy = mover->y - targetY;
+        float distSq = dx*dx + dy*dy;
+
+        if (IsPathExhausted(mover) && distSq >= DROP_RADIUS * DROP_RADIUS) {
+            mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+            mover->needsRepath = true;
+        }
+
+        TryFinalApproach(mover, targetX, targetY, ws->workTileX, ws->workTileY, DROP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+
+        // Update carried item position
+        items[itemIdx].x = mover->x;
+        items[itemIdx].y = mover->y;
+        items[itemIdx].z = mover->z;
+
+        if (distSq < DROP_RADIUS * DROP_RADIUS) {
+            Item* item = &items[itemIdx];
+            item->state = ITEM_ON_GROUND;
+            item->x = targetX;
+            item->y = targetY;
+            item->z = ws->z;
+            item->reservedBy = -1;
+            job->carryingItem = -1;
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2223,10 +2323,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_PLANT_SAPLING] = RunJob_PlantSapling,
     [JOBTYPE_CHOP_FELLED] = RunJob_ChopFelled,
     [JOBTYPE_GATHER_GRASS] = RunJob_GatherGrass,
+    [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
 };
 
-// Compile-time check: ensure jobDrivers[] covers all job types (JOBTYPE_GATHER_GRASS is the last)
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_GATHER_GRASS,
+// Compile-time check: ensure jobDrivers[] covers all job types
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_DELIVER_TO_WORKSHOP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -2273,6 +2374,7 @@ void JobsTick(void) {
         // JOBRUN_RUNNING - continue next tick
     }
 
+    PassiveWorkshopsTick(gameDeltaTime);
     UpdateWorkshopDiagnostics(gameDeltaTime);
 }
 
@@ -2740,6 +2842,35 @@ void AssignJobs(void) {
     }
 
     // =========================================================================
+    // PRIORITY 2b: Passive workshop delivery - haulers deliver input items
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        // Check if any passive workshops need inputs
+        bool anyPassiveNeedsInput = false;
+        for (int w = 0; w < MAX_WORKSHOPS; w++) {
+            Workshop* ws = &workshops[w];
+            if (!ws->active) continue;
+            if (!workshopDefs[ws->type].passive) continue;
+            if (ws->billCount > 0) { anyPassiveNeedsInput = true; break; }
+        }
+
+        if (anyPassiveNeedsInput) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_DeliverToPassiveWorkshop(moverIdx);
+                }
+                free(idleCopy);
+            }
+        }
+    }
+
+    // =========================================================================
     // PRIORITY 3a: Stockpile-centric hauling - search items near each stockpile
     // This is more efficient because items are assigned to nearby stockpiles
     // =========================================================================
@@ -3197,6 +3328,134 @@ int WorkGiver_Haul(int moverIdx) {
     return jobId;
 }
 
+// WorkGiver_DeliverToPassiveWorkshop: Find passive workshop needing input items
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canHaul) return -1;
+
+    int moverZ = (int)m->z;
+
+    // Scan passive workshops for one with a runnable bill that needs input
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (ws->z != moverZ) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+        if (ws->billCount == 0) continue;
+
+        // Find first runnable bill
+        int billIdx = -1;
+        for (int b = 0; b < ws->billCount; b++) {
+            if (ShouldBillRun(ws, &ws->bills[b])) {
+                billIdx = b;
+                break;
+            }
+        }
+        if (billIdx < 0) continue;
+
+        const Recipe* recipe = &workshopDefs[ws->type].recipes[ws->bills[billIdx].recipeIdx];
+
+        // Count items already on work tile + reserved for delivery to this workshop
+        int inputOnTile = 0;
+        for (int j = 0; j < itemHighWaterMark; j++) {
+            Item* item = &items[j];
+            if (!item->active) continue;
+            if (!RecipeInputMatches(recipe, item)) continue;
+
+            // Item already on work tile
+            int ix = (int)(item->x / CELL_SIZE);
+            int iy = (int)(item->y / CELL_SIZE);
+            if (ix == ws->workTileX && iy == ws->workTileY && (int)item->z == ws->z &&
+                item->state == ITEM_ON_GROUND) {
+                inputOnTile++;
+            }
+
+            // Item being carried to this workshop (reserved for delivery)
+            if (item->state == ITEM_CARRIED && item->reservedBy >= 0) {
+                // Check if the mover carrying it has a delivery job for this workshop
+                Mover* carrier = &movers[item->reservedBy];
+                if (carrier->currentJobId >= 0) {
+                    Job* cjob = GetJob(carrier->currentJobId);
+                    if (cjob && cjob->type == JOBTYPE_DELIVER_TO_WORKSHOP &&
+                        cjob->targetWorkshop == w) {
+                        inputOnTile++;
+                    }
+                }
+            }
+        }
+
+        if (inputOnTile >= recipe->inputCount) continue;  // Already have enough
+
+        // Find nearest matching unreserved item
+        int bestItemIdx = -1;
+        float bestDistSq = 1e30f;
+
+        for (int j = 0; j < itemHighWaterMark; j++) {
+            Item* item = &items[j];
+            if (!item->active) continue;
+            if (item->reservedBy != -1) continue;
+            if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
+            if (item->unreachableCooldown > 0.0f) continue;
+            if ((int)item->z != moverZ) continue;
+            if (!RecipeInputMatches(recipe, item)) continue;
+
+            int cellX = (int)(item->x / CELL_SIZE);
+            int cellY = (int)(item->y / CELL_SIZE);
+            if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+
+            float dx = item->x - m->x;
+            float dy = item->y - m->y;
+            float distSq = dx * dx + dy * dy;
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                bestItemIdx = j;
+            }
+        }
+
+        if (bestItemIdx < 0) continue;
+
+        // Check reachability
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), moverZ };
+        Point itemCell = { (int)(items[bestItemIdx].x / CELL_SIZE),
+                           (int)(items[bestItemIdx].y / CELL_SIZE), moverZ };
+        Point tempPath[MAX_PATH];
+        int tempLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+        if (tempLen == 0) {
+            SetItemUnreachableCooldown(bestItemIdx, UNREACHABLE_COOLDOWN);
+            continue;
+        }
+
+        // Reserve item
+        if (!ReserveItem(bestItemIdx, moverIdx)) continue;
+
+        // Create job
+        int jobId = CreateJob(JOBTYPE_DELIVER_TO_WORKSHOP);
+        if (jobId < 0) {
+            ReleaseItemReservation(bestItemIdx);
+            return -1;
+        }
+
+        Job* job = GetJob(jobId);
+        job->assignedMover = moverIdx;
+        job->targetItem = bestItemIdx;
+        job->targetWorkshop = w;
+        job->targetBillIdx = billIdx;
+        job->step = STEP_MOVING_TO_PICKUP;
+
+        m->currentJobId = jobId;
+        m->goal = itemCell;
+        m->needsRepath = true;
+
+        RemoveMoverFromIdleList(moverIdx);
+
+        return jobId;
+    }
+
+    return -1;
+}
+
 // WorkGiver_GatherSapling: Find a gather sapling designation to work on
 // Returns job ID if successful, -1 if no job available
 int WorkGiver_GatherSapling(int moverIdx) {
@@ -3493,6 +3752,7 @@ int WorkGiver_Craft(int moverIdx) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
         if (ws->z != moverZ) continue;
+        if (workshopDefs[ws->type].passive) continue;
         if (ws->assignedCrafter >= 0) continue;
         if (ws->billCount > 0) {
             anyAvailable = true;
@@ -3505,6 +3765,7 @@ int WorkGiver_Craft(int moverIdx) {
         Workshop* ws = &workshops[w];
         if (!ws->active) continue;
         if (ws->z != moverZ) continue;  // Same z-level
+        if (workshopDefs[ws->type].passive) continue;  // Passive workshops don't use crafters
         if (ws->assignedCrafter >= 0) continue;  // Already has crafter
 
         // Find first non-suspended bill that can run

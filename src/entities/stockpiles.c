@@ -24,6 +24,7 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_STICKS,    'k', "Sticks",   "K", BROWN},
     {ITEM_POLES,     'l', "Poles",    "L", BROWN},
     {ITEM_GRASS,     'g', "Grass",   "G", GREEN},
+    {ITEM_DRIED_GRASS, 'h', "Dried Grass", "H", YELLOW},
     {ITEM_BRICKS,    'i', "Bricks",   "I", ORANGE},
     {ITEM_CHARCOAL,  'c', "Charcoal", "C", GRAY},
 };
