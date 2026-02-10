@@ -2413,6 +2413,13 @@ void JobsTick(void) {
         JobRunResult result = driver(job, m, gameDeltaTime);
 
         if (result == JOBRUN_DONE) {
+            // Record diagnostics before releasing
+            m->lastJobType = job->type;
+            m->lastJobResult = 0;  // DONE
+            m->lastJobTargetX = job->targetMineX;
+            m->lastJobTargetY = job->targetMineY;
+            m->lastJobTargetZ = job->targetMineZ;
+            m->lastJobEndTick = currentTick;
             // Job completed successfully - release job and return mover to idle
             ReleaseJob(m->currentJobId);
             m->currentJobId = -1;
@@ -2421,6 +2428,13 @@ void JobsTick(void) {
             AddMoverToIdleList(i);
         }
         else if (result == JOBRUN_FAIL) {
+            // Record diagnostics before cancelling
+            m->lastJobType = job->type;
+            m->lastJobResult = 1;  // FAIL
+            m->lastJobTargetX = job->targetMineX;
+            m->lastJobTargetY = job->targetMineY;
+            m->lastJobTargetZ = job->targetMineZ;
+            m->lastJobEndTick = currentTick;
             // Job failed - cancel releases all reservations
             CancelJob(m, i);
         }

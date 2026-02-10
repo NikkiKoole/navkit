@@ -219,27 +219,7 @@ void DesignationsTick(float dt) {
                 if (d->unreachableCooldown > 0.0f) {
                     d->unreachableCooldown = fmaxf(0.0f, d->unreachableCooldown - dt);
                 }
-                // Fix stale assignments: mover assigned but has no matching job
-                if (d->assignedMover >= 0) {
-                    bool valid = false;
-                    if (d->assignedMover < moverCount && movers[d->assignedMover].active) {
-                        int jobId = movers[d->assignedMover].currentJobId;
-                        if (jobId >= 0) {
-                            Job* job = GetJob(jobId);
-                            if (job && job->active &&
-                                job->targetMineX == x && job->targetMineY == y && job->targetMineZ == z) {
-                                valid = true;
-                            }
-                        }
-                    }
-                    if (!valid) {
-                        TraceLog(LOG_WARNING, "Clearing stale designation assignedMover=%d at (%d,%d,z%d) type=%d",
-                               d->assignedMover, x, y, z, d->type);
-                        d->assignedMover = -1;
-                        d->progress = 0.0f;
-                        InvalidateDesignationCache(d->type);
-                    }
-                }
+
             }
         }
     }

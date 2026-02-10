@@ -53,6 +53,11 @@ typedef struct Mover {
     float avoidX, avoidY;
     // Job system
     int currentJobId;    // Job pool index, -1 = no job (idle)
+    // Diagnostics: what the last job was and how it ended
+    int lastJobType;     // JobType enum value
+    int lastJobResult;   // 0=DONE, 1=FAIL
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;  // designation target (-1 if N/A)
+    unsigned long lastJobEndTick;
     // Capabilities
     MoverCapabilities capabilities;
 } Mover;

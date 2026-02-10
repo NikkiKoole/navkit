@@ -764,10 +764,19 @@ static void print_orphaned(void) {
                 }
                 if (!valid) {
                     const char* dname = DesignationTypeName(d->type);
+                    int mi = d->assignedMover;
                     printf("STALE DESIGNATION: %s at (%d,%d,z%d) assignedMover=%d (mover has jobId=%d)\n",
-                           dname, x, y, z, d->assignedMover,
-                           (d->assignedMover < insp_moverCount && insp_movers[d->assignedMover].active)
-                               ? insp_movers[d->assignedMover].currentJobId : -1);
+                           dname, x, y, z, mi,
+                           (mi < insp_moverCount && insp_movers[mi].active)
+                               ? insp_movers[mi].currentJobId : -1);
+                    if (mi >= 0 && mi < insp_moverCount && insp_movers[mi].active) {
+                        Mover* m = &insp_movers[mi];
+                        printf("  mover %d lastJob: type=%s result=%s target=(%d,%d,z%d) endTick=%lu\n",
+                               mi, JobTypeName(m->lastJobType),
+                               m->lastJobResult == 0 ? "DONE" : "FAIL",
+                               m->lastJobTargetX, m->lastJobTargetY, m->lastJobTargetZ,
+                               m->lastJobEndTick);
+                    }
                     found++;
                 }
             }
@@ -781,6 +790,11 @@ static void print_orphaned(void) {
         if (jobId < 0) continue;
         if (jobId >= insp_jobHWM || !insp_jobs[jobId].active) {
             printf("STALE MOVER JOB: mover %d has currentJobId=%d (job inactive)\n", i, jobId);
+            printf("  mover %d lastJob: type=%s result=%s target=(%d,%d,z%d) endTick=%lu\n",
+                   i, JobTypeName(insp_movers[i].lastJobType),
+                   insp_movers[i].lastJobResult == 0 ? "DONE" : "FAIL",
+                   insp_movers[i].lastJobTargetX, insp_movers[i].lastJobTargetY, insp_movers[i].lastJobTargetZ,
+                   insp_movers[i].lastJobEndTick);
             found++;
         }
     }

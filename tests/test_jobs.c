@@ -11663,7 +11663,7 @@ describe(semi_passive_workshop) {
         Workshop* ws = &workshops[wsIdx];
 
         // Spawn grass away from workshop
-        int grassIdx = SpawnItem(CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_GRASS);
+        SpawnItem(CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_GRASS);
 
         // Spawn hauler
         Mover* m = &movers[0];
