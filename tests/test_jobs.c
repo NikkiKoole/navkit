@@ -11460,6 +11460,56 @@ describe(semi_passive_workshop) {
         expect(stonecutterRecipes[0].passiveWorkRequired == 0.0f);
         expect(stonecutterRecipes[0].workRequired > 0.0f);
     }
+
+    it("hauler does not pick up items from passive workshop work tile") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create charcoal pit with a bill
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile (as if delivered by hauler)
+        int logIdx = SpawnItem(
+            ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+            ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+            0.0f, ITEM_LOG);
+
+        // Create stockpile that accepts logs
+        int sp = CreateStockpile(0, 0, 0, 3, 3);
+        SetStockpileFilter(sp, ITEM_LOG, true);
+
+        // Spawn idle hauler
+        Mover* m = &movers[0];
+        Point goal = {1, 3, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        RebuildStockpileFreeSlotCounts();
+        BuildItemSpatialGrid();
+
+        // WorkGiver_Haul should NOT pick up the log from the work tile
+        int jobId = WorkGiver_Haul(0);
+        expect(jobId == -1);
+
+        // The log should still be on the work tile, unreserved
+        expect(items[logIdx].active == true);
+        expect(items[logIdx].reservedBy == -1);
+    }
 }
 
 int main(int argc, char* argv[]) {

@@ -184,5 +184,6 @@ int FindWorkshopAt(int tileX, int tileY, int z);
 bool IsWorkshopTile(int tileX, int tileY, int z);
 char GetWorkshopTileAt(int wsIdx, int tileX, int tileY);  // returns template char at world pos
 bool IsWorkshopBlocking(int tileX, int tileY, int z);     // true if any workshop blocks this tile
+bool IsPassiveWorkshopWorkTile(int tileX, int tileY, int z); // true if tile is work tile of an active passive workshop with a runnable bill
 
 #endif

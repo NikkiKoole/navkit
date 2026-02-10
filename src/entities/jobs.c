@@ -3267,6 +3267,9 @@ static bool HaulItemFilter(int itemIdx, void* userData) {
     int cellZ = (int)(item->z);
     if (!IsCellWalkableAt(cellZ, cellY, cellX)) return false;
 
+    // Skip items on passive workshop work tiles (they're inputs being processed)
+    if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) return false;
+
     return true;
 }
 
@@ -3347,6 +3350,9 @@ int WorkGiver_Haul(int moverIdx) {
             int cellY = (int)(item->y / CELL_SIZE);
             int cellZ = (int)(item->z);
             if (!IsCellWalkableAt(cellZ, cellY, cellX)) continue;
+
+            // Skip items on passive workshop work tiles
+            if (IsPassiveWorkshopWorkTile(cellX, cellY, cellZ)) continue;
 
             float dx = item->x - m->x;
             float dy = item->y - m->y;

@@ -507,6 +507,21 @@ bool IsWorkshopBlocking(int tileX, int tileY, int z) {
     return HAS_CELL_FLAG(tileX, tileY, z, CELL_FLAG_WORKSHOP_BLOCK);
 }
 
+bool IsPassiveWorkshopWorkTile(int tileX, int tileY, int z) {
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+        if (ws->z != z) continue;
+        if (ws->workTileX != tileX || ws->workTileY != tileY) continue;
+        // Check if workshop has a runnable bill
+        for (int b = 0; b < ws->billCount; b++) {
+            if (ShouldBillRun(ws, &ws->bills[b])) return true;
+        }
+    }
+    return false;
+}
+
 void PassiveWorkshopsTick(float dt) {
     for (int w = 0; w < MAX_WORKSHOPS; w++) {
         Workshop* ws = &workshops[w];
