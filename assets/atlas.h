@@ -28,8 +28,11 @@
     #define SPRITE_air SPRITE8X8_air
     #define SPRITE_grass_trampled SPRITE8X8_grass_trampled
     #define SPRITE_tile_border SPRITE8X8_tile_border
+    #define SPRITE_tree_branch_pine SPRITE8X8_tree_branch_pine
     #define SPRITE_tree_planks_pine SPRITE8X8_tree_planks_pine
     #define SPRITE_dirt SPRITE8X8_dirt
+    #define SPRITE_tree_branch_birch SPRITE8X8_tree_branch_birch
+    #define SPRITE_tree_branch_willow SPRITE8X8_tree_branch_willow
     #define SPRITE_tree_sapling_birch SPRITE8X8_tree_sapling_birch
     #define SPRITE_tree_leaves_birch SPRITE8X8_tree_leaves_birch
     #define SPRITE_finish_messy SPRITE8X8_finish_messy
@@ -47,6 +50,7 @@
     #define SPRITE_finish_rough SPRITE8X8_finish_rough
     #define SPRITE_ladder SPRITE8X8_ladder
     #define SPRITE_ramp_n SPRITE8X8_ramp_n
+    #define SPRITE_tree_branch_oak SPRITE8X8_tree_branch_oak
     #define SPRITE_peat SPRITE8X8_peat
     #define SPRITE_block_stone SPRITE8X8_block_stone
     #define SPRITE_grass SPRITE8X8_grass
@@ -90,8 +94,11 @@
     #define SPRITE_air SPRITE16X16_air
     #define SPRITE_grass_trampled SPRITE16X16_grass_trampled
     #define SPRITE_tile_border SPRITE16X16_tile_border
+    #define SPRITE_tree_branch_pine SPRITE16X16_tree_branch_pine
     #define SPRITE_tree_planks_pine SPRITE16X16_tree_planks_pine
     #define SPRITE_dirt SPRITE16X16_dirt
+    #define SPRITE_tree_branch_birch SPRITE16X16_tree_branch_birch
+    #define SPRITE_tree_branch_willow SPRITE16X16_tree_branch_willow
     #define SPRITE_tree_sapling_birch SPRITE16X16_tree_sapling_birch
     #define SPRITE_tree_leaves_birch SPRITE16X16_tree_leaves_birch
     #define SPRITE_finish_messy SPRITE16X16_finish_messy
@@ -109,6 +116,7 @@
     #define SPRITE_finish_rough SPRITE16X16_finish_rough
     #define SPRITE_ladder SPRITE16X16_ladder
     #define SPRITE_ramp_n SPRITE16X16_ramp_n
+    #define SPRITE_tree_branch_oak SPRITE16X16_tree_branch_oak
     #define SPRITE_peat SPRITE16X16_peat
     #define SPRITE_block_stone SPRITE16X16_block_stone
     #define SPRITE_grass SPRITE16X16_grass

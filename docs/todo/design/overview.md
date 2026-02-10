@@ -79,10 +79,13 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Multi-input recipes (e.g., Bind Gravel: gravel + clay).
 - Fuel system with matching (any IF_FUEL item satisfies fuel requirements).
 - ASH item produced by the Hearth.
-- Stone loop fully closed (rock to blocks to construction).
+- Stone loop fully closed (rock to blocks to construction). Three stone types: granite, sandstone, slate.
 - Clay loop closed (clay to bricks; clay + gravel to blocks).
 - Wood loop mostly closed (logs to planks/sticks to construction/charcoal).
 - Material floors exist in the cell/rendering system (HAS_FLOOR + floorMaterial).
+- wallSourceItem/floorSourceItem grids track which item type built each wall/floor.
+- Plank walls/floors render with per-species sprites (oak/pine/birch/willow).
+- Mining drops the correct source item (planks from plank walls, logs from log walls, etc.).
 - Water, fire/smoke/steam, and temperature systems are in place.
 - 10-step craft job state machine with item reservation.
 
@@ -95,12 +98,15 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - No young-tree growth stage or tree stumps/coppicing.
 - No containers, tools, durability, or quality systems.
 - Sand and dirt have no recipe sinks.
+- Block walls/floors don't have distinct sprites yet (blocks use the material's default sprite).
+- Brick walls/floors don't have distinct sprites yet either.
+- Terrain generation only uses MAT_GRANITE — sandstone/slate don't appear naturally yet.
 
 ---
 
 ## Suggested Next Moves
 
-1. **Material floor/wall sinks.** Planks, bricks, and blocks can already be produced but construction options are limited. Adding explicit wood/brick/block floor and wall types using the existing HAS_FLOOR and material systems would close the most loops with the least new code.
+1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
 2. **Three gateway items: dried grass, cordage, poles.** These appear in every design doc and are the minimum additions that unlock thatch roofing, lashing/frames, and the rope-maker workshop. They require no new major systems.
 
