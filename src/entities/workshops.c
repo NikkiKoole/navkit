@@ -5,6 +5,7 @@
 #include "item_defs.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../simulation/smoke.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -582,6 +583,11 @@ void PassiveWorkshopsTick(float dt) {
 
         // Advance timer using passive work duration
         ws->passiveProgress += dt / recipe->passiveWorkRequired;
+
+        // Emit smoke while passively burning
+        if (ws->fuelTileX >= 0 && GetRandomValue(0, 3) == 0) {
+            AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 3);
+        }
 
         if (ws->passiveProgress >= 1.0f) {
             // Consume input(s)
