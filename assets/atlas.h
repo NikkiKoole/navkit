@@ -53,6 +53,7 @@
     #define SPRITE_tree_branch_oak SPRITE8X8_tree_branch_oak
     #define SPRITE_peat SPRITE8X8_peat
     #define SPRITE_block_stone SPRITE8X8_block_stone
+    #define SPRITE_grass_taller SPRITE8X8_grass_taller
     #define SPRITE_grass SPRITE8X8_grass
     #define SPRITE_slate SPRITE8X8_slate
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
@@ -119,6 +120,7 @@
     #define SPRITE_tree_branch_oak SPRITE16X16_tree_branch_oak
     #define SPRITE_peat SPRITE16X16_peat
     #define SPRITE_block_stone SPRITE16X16_block_stone
+    #define SPRITE_grass_taller SPRITE16X16_grass_taller
     #define SPRITE_grass SPRITE16X16_grass
     #define SPRITE_slate SPRITE16X16_slate
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak

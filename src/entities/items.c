@@ -72,6 +72,7 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_LOG:
         case ITEM_PLANKS:
         case ITEM_STICKS:
+        case ITEM_POLES:
             return MAT_OAK;
         case ITEM_SAPLING_OAK:
         case ITEM_LEAVES_OAK:

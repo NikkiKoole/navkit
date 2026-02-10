@@ -22,7 +22,7 @@ CellDef cellDefs[] = {
     // === VEGETATION ===
     [CELL_SAPLING]     = {"sapling",     SPRITE_tree_sapling_oak, 0,                   INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},  // Walkable, grows into trunk (rendering uses tree type)
     [CELL_TREE_TRUNK]  = {"tree trunk",  SPRITE_tree_trunk_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_LOG, 1},     // Main trunk column - solid, choppable, burns (rendering uses tree type)
-    [CELL_TREE_BRANCH] = {"tree branch", SPRITE_tree_trunk_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_LOG, 1},     // Branch - solid, choppable, burns (rendering uses tree type)
+    [CELL_TREE_BRANCH] = {"tree branch", SPRITE_tree_branch_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 64, CELL_AIR,  ITEM_POLES, 1},     // Branch - solid, choppable, burns (rendering uses tree type)
     [CELL_TREE_ROOT]   = {"tree root",   SPRITE_tree_trunk_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 32, CELL_AIR,  ITEM_NONE, 0},    // Root - solid, darker sprite (rendering uses tree type)
     [CELL_TREE_FELLED] = {"felled log",  SPRITE_tree_trunk_oak,  0,                    INSULATION_TIER_WOOD,   64, CELL_AIR,         ITEM_LOG, 1},     // Felled - walkable, can be hauled (rendering uses tree type)
     [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves_oak, 0,                    INSULATION_TIER_AIR,   32, CELL_AIR,         ITEM_NONE, 0},     // Canopy - doesn't block ground movement (rendering uses tree type)

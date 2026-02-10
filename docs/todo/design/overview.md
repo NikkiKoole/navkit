@@ -86,16 +86,18 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - wallSourceItem/floorSourceItem grids track which item type built each wall/floor.
 - Plank walls/floors render with per-species sprites (oak/pine/birch/willow).
 - Mining drops the correct source item (planks from plank walls, logs from log walls, etc.).
+- ITEM_POLES from tree branches. Branch cells use thin per-species sprites.
+- Tree trunk taper: top 1-2 trunk cells become CELL_TREE_BRANCH (thin sprite at canopy, thick at base).
 - Water, fire/smoke/steam, and temperature systems are in place.
 - 10-step craft job state machine with item reservation.
 
 **Not yet implemented:**
-- No bark, cordage, dried grass, poles, or reeds items.
+- No bark, cordage, dried grass, or reeds items.
 - No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
 - No stockpile environment tags.
-- No young-tree growth stage or tree stumps/coppicing.
+- No tree stumps/coppicing.
 - No containers, tools, durability, or quality systems.
 - Sand and dirt have no recipe sinks.
 - Block walls/floors don't have distinct sprites yet (blocks use the material's default sprite).
@@ -108,7 +110,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-2. **Three gateway items: dried grass, cordage, poles.** These appear in every design doc and are the minimum additions that unlock thatch roofing, lashing/frames, and the rope-maker workshop. They require no new major systems.
+2. **Two remaining gateway items: dried grass, cordage.** Poles are done (from tree branches). Dried grass and cordage appear in every design doc and are the minimum additions that unlock thatch roofing, lashing/frames, and the rope-maker workshop. They require no new major systems.
 
 3. **Rope Maker workshop (2x2).** Once bark and cordage items exist, this small workshop closes the leaf and bark loops and feeds into future construction staging.
 

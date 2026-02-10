@@ -105,9 +105,9 @@ static bool IsConnectedToTrunk(int x, int y, int z, int maxDist, MaterialType tr
                 int nx = x + dx;
                 int ny = y + dy;
                 if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-                if (grid[checkZ][ny][nx] == CELL_TREE_TRUNK &&
-                    GetWallMaterial(nx, ny, checkZ) == mat &&
-                    grid[checkZ][ny][nx] != CELL_TREE_FELLED) {
+                CellType c = grid[checkZ][ny][nx];
+                if ((c == CELL_TREE_TRUNK || c == CELL_TREE_BRANCH) &&
+                    GetWallMaterial(nx, ny, checkZ) == mat) {
                     return true;
                 }
             }
@@ -137,6 +137,20 @@ static int GetTrunkHeightFromBase(int x, int y, int baseZ) {
         }
     }
     return height;
+}
+
+// Convert topmost trunk cells to branches for visual taper
+// height >= 4: top 2 become branches; height >= 2: top 1; height < 2: none
+static void TaperTrunkTop(int x, int y, int baseZ, int height, MaterialType treeMat) {
+    int taperCount = (height >= 4) ? 2 : (height >= 2) ? 1 : 0;
+    int topZ = baseZ + height - 1;
+    for (int i = 0; i < taperCount; i++) {
+        int z = topZ - i;
+        if (grid[z][y][x] == CELL_TREE_TRUNK) {
+            grid[z][y][x] = CELL_TREE_BRANCH;
+            MarkChunkDirty(x, y, z);
+        }
+    }
 }
 
 static __attribute__((unused)) void PlaceLeafCell(int x, int y, int z, MaterialType treeMat) {
@@ -374,7 +388,8 @@ static void GrowCell(int x, int y, int z) {
                 growthTimer[z + 1][y][x] = 0;
             }
         } else {
-            // Reached target height or blocked - spawn branches and leaves
+            // Reached target height or blocked - taper top, spawn branches and leaves
+            TaperTrunkTop(x, y, baseZ, height, treeMat);
             int topZ = baseZ + height - 1;
             SpawnBranchesForType(treeMat, x, y, baseZ, topZ);
             SpawnLeavesForType(treeMat, x, y, topZ);
@@ -474,6 +489,8 @@ void TreeGrowFull(int x, int y, int z, MaterialType treeMat) {
         currentZ++;
     }
 
+    int fullHeight = currentZ - baseZ + 1;
+    TaperTrunkTop(x, y, baseZ, fullHeight, treeMat);
     SpawnBranchesForType(treeMat, x, y, baseZ, currentZ);
     SpawnLeavesForType(treeMat, x, y, currentZ);
 

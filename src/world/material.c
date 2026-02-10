@@ -63,6 +63,12 @@ void InitSpriteOverrides(void) {
     spriteOverrides[CELL_SAPLING][MAT_PINE]   = SPRITE_tree_sapling_pine;
     spriteOverrides[CELL_SAPLING][MAT_BIRCH]  = SPRITE_tree_sapling_birch;
     spriteOverrides[CELL_SAPLING][MAT_WILLOW] = SPRITE_tree_sapling_willow;
+
+    // Branches use thin trunk sprites
+    spriteOverrides[CELL_TREE_BRANCH][MAT_OAK]    = SPRITE_tree_branch_oak;
+    spriteOverrides[CELL_TREE_BRANCH][MAT_PINE]   = SPRITE_tree_branch_pine;
+    spriteOverrides[CELL_TREE_BRANCH][MAT_BIRCH]  = SPRITE_tree_branch_birch;
+    spriteOverrides[CELL_TREE_BRANCH][MAT_WILLOW] = SPRITE_tree_branch_willow;
 }
 
 int GetSpriteForCellMat(CellType cell, MaterialType mat) {

@@ -28,6 +28,7 @@ typedef enum {
     ITEM_PEAT,         // Peat blocks from peat soil
     ITEM_PLANKS,       // Sawn lumber from sawmill
     ITEM_STICKS,       // Small pieces from sawmill
+    ITEM_POLES,        // Thin trunks from tree branches
     ITEM_BRICKS,       // Fired clay bricks from kiln
     ITEM_CHARCOAL,     // Charcoal from kiln (efficient fuel)
     ITEM_ASH,          // Ash from burning fuel (hearth byproduct)
