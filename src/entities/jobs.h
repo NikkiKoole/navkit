@@ -28,6 +28,7 @@ typedef enum {
     JOBTYPE_CHOP_FELLED,       // Chop up fallen trunks
     JOBTYPE_GATHER_GRASS,      // Gather tall grass (creates grass item)
     JOBTYPE_DELIVER_TO_WORKSHOP, // Haul item to passive workshop work tile
+    JOBTYPE_IGNITE_WORKSHOP,     // Walk to semi-passive workshop, do short active work, set passiveReady
 } JobType;
 
 // Job step constants (used in job->step field)
@@ -140,6 +141,7 @@ JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
 JobRunResult RunJob_GatherSapling(Job* job, void* mover, float dt);
 JobRunResult RunJob_PlantSapling(Job* job, void* mover, float dt);
 JobRunResult RunJob_DeliverToWorkshop(Job* job, void* mover, float dt);
+JobRunResult RunJob_IgniteWorkshop(Job* job, void* mover, float dt);
 
 
 
@@ -194,6 +196,7 @@ int WorkGiver_GatherSapling(int moverIdx);
 int WorkGiver_PlantSapling(int moverIdx);
 int WorkGiver_GatherGrass(int moverIdx);
 int WorkGiver_DeliverToPassiveWorkshop(int moverIdx);
+int WorkGiver_IgniteWorkshop(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

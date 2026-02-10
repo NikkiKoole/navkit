@@ -2305,6 +2305,58 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Ignite workshop job driver: walk to workshop work tile, do short active work, set passiveReady
+JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    if (job->targetWorkshop < 0 || job->targetWorkshop >= MAX_WORKSHOPS ||
+        !workshops[job->targetWorkshop].active) {
+        return JOBRUN_FAIL;
+    }
+    Workshop* ws = &workshops[job->targetWorkshop];
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        if (mover->goal.x != ws->workTileX || mover->goal.y != ws->workTileY || mover->goal.z != ws->z) {
+            mover->goal = (Point){ws->workTileX, ws->workTileY, ws->z};
+            mover->needsRepath = true;
+        }
+
+        float goalX = ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == ws->z;
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, ws->workTileX, ws->workTileY, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+            job->progress = 0.0f;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        job->progress += dt / job->workRequired;
+        mover->timeWithoutProgress = 0.0f;
+
+        if (job->progress >= 1.0f) {
+            ws->passiveReady = true;
+            ws->assignedCrafter = -1;
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2324,10 +2376,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_CHOP_FELLED] = RunJob_ChopFelled,
     [JOBTYPE_GATHER_GRASS] = RunJob_GatherGrass,
     [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
+    [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_DELIVER_TO_WORKSHOP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_IGNITE_WORKSHOP,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -2864,6 +2917,36 @@ void AssignJobs(void) {
                     int moverIdx = idleCopy[i];
                     if (!moverIsInIdleList[moverIdx]) continue;
                     WorkGiver_DeliverToPassiveWorkshop(moverIdx);
+                }
+                free(idleCopy);
+            }
+        }
+    }
+
+    // =========================================================================
+    // PRIORITY 2c: Semi-passive ignition - crafter activates workshops with inputs
+    // =========================================================================
+    if (idleMoverCount > 0) {
+        bool anyNeedsIgnition = false;
+        for (int w = 0; w < MAX_WORKSHOPS; w++) {
+            Workshop* ws = &workshops[w];
+            if (!ws->active) continue;
+            if (!workshopDefs[ws->type].passive) continue;
+            if (ws->passiveReady) continue;
+            if (ws->assignedCrafter >= 0) continue;
+            if (ws->billCount > 0) { anyNeedsIgnition = true; break; }
+        }
+
+        if (anyNeedsIgnition) {
+            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+            if (idleCopy) {
+                int idleCopyCount = idleMoverCount;
+                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+
+                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                    int moverIdx = idleCopy[i];
+                    if (!moverIsInIdleList[moverIdx]) continue;
+                    WorkGiver_IgniteWorkshop(moverIdx);
                 }
                 free(idleCopy);
             }
@@ -3446,6 +3529,85 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
 
         m->currentJobId = jobId;
         m->goal = itemCell;
+        m->needsRepath = true;
+
+        RemoveMoverFromIdleList(moverIdx);
+
+        return jobId;
+    }
+
+    return -1;
+}
+
+// WorkGiver_IgniteWorkshop: Find semi-passive workshop needing ignition
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_IgniteWorkshop(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    int moverZ = (int)m->z;
+
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (ws->z != moverZ) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+        if (ws->passiveReady) continue;           // Already ignited
+        if (ws->assignedCrafter >= 0) continue;   // Someone already assigned
+        if (ws->billCount == 0) continue;
+
+        // Find first runnable bill
+        int billIdx = -1;
+        for (int b = 0; b < ws->billCount; b++) {
+            if (ShouldBillRun(ws, &ws->bills[b])) {
+                billIdx = b;
+                break;
+            }
+        }
+        if (billIdx < 0) continue;
+
+        const Recipe* recipe = &workshopDefs[ws->type].recipes[ws->bills[billIdx].recipeIdx];
+
+        // Only semi-passive recipes (with active work phase)
+        if (recipe->workRequired <= 0) continue;
+
+        // Check: are required inputs present on work tile?
+        int inputCount = 0;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            Item* item = &items[i];
+            if (!item->active) continue;
+            if (item->state != ITEM_ON_GROUND) continue;
+            int tileX = (int)(item->x / CELL_SIZE);
+            int tileY = (int)(item->y / CELL_SIZE);
+            if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
+            if ((int)item->z != ws->z) continue;
+            if (!RecipeInputMatches(recipe, item)) continue;
+            inputCount++;
+            if (inputCount >= recipe->inputCount) break;
+        }
+        if (inputCount < recipe->inputCount) continue;
+
+        // Check reachability
+        Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), moverZ };
+        Point workCell = { ws->workTileX, ws->workTileY, ws->z };
+        Point tempPath[MAX_PATH];
+        int tempLen = FindPath(moverPathAlgorithm, moverCell, workCell, tempPath, MAX_PATH);
+        if (tempLen == 0) continue;
+
+        // Create job
+        int jobId = CreateJob(JOBTYPE_IGNITE_WORKSHOP);
+        if (jobId < 0) return -1;
+
+        Job* job = GetJob(jobId);
+        job->assignedMover = moverIdx;
+        job->targetWorkshop = w;
+        job->targetBillIdx = billIdx;
+        job->step = STEP_MOVING_TO_WORK;
+        job->progress = 0.0f;
+        job->workRequired = recipe->workRequired;
+
+        ws->assignedCrafter = moverIdx;
+
+        m->currentJobId = jobId;
+        m->goal = workCell;
         m->needsRepath = true;
 
         RemoveMoverFromIdleList(moverIdx);

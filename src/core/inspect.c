@@ -299,6 +299,7 @@ static void print_workshop(int idx) {
         printf("Passive: YES\n");
         printf("Passive progress: %.1f%%\n", ws->passiveProgress * 100.0f);
         printf("Passive bill idx: %d\n", ws->passiveBillIdx);
+        printf("Passive ready: %s\n", ws->passiveReady ? "YES" : "no");
     }
     
     printf("\nBills: %d\n", ws->billCount);

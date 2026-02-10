@@ -61,7 +61,8 @@ typedef struct {
     int inputCount2;             // count of second input
     ItemType outputType;
     int outputCount;
-    float workRequired;  // seconds to complete
+    float workRequired;           // seconds of active crafter work (0 = no crafter needed)
+    float passiveWorkRequired;    // seconds of passive timer work (0 = no passive phase)
     MaterialMatchType inputMaterialMatch;
     MaterialType inputMaterial;  // used when inputMaterialMatch == MAT_MATCH_EXACT
     int fuelRequired;            // number of fuel items consumed (0 = no fuel needed)
@@ -119,6 +120,7 @@ typedef struct {
     // Passive workshop state
     float passiveProgress;  // 0.0..1.0 fraction of work done
     int passiveBillIdx;     // which bill is being processed (-1 = none)
+    bool passiveReady;      // true = active phase done, passive timer may proceed
 
     // Diagnostics
     WorkshopVisualState visualState;

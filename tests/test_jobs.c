@@ -10682,7 +10682,7 @@ describe(passive_workshop) {
         expect(workshopDefs[WORKSHOP_STONECUTTER].passive == false);
         expect(workshopDefs[WORKSHOP_SAWMILL].passive == false);
         expect(workshopDefs[WORKSHOP_KILN].passive == false);
-        expect(workshopDefs[WORKSHOP_CHARCOAL_PIT].passive == false);
+        expect(workshopDefs[WORKSHOP_CHARCOAL_PIT].passive == true);  // semi-passive
         expect(workshopDefs[WORKSHOP_HEARTH].passive == false);
     }
 
@@ -11081,6 +11081,387 @@ describe(passive_workshop) {
     }
 }
 
+describe(semi_passive_workshop) {
+    it("Charcoal Pit definition is passive with active and passive work phases") {
+        expect(workshopDefs[WORKSHOP_CHARCOAL_PIT].passive == true);
+        // Recipe should have both active and passive work times
+        expect(charcoalPitRecipes[0].workRequired > 0.0f);
+        expect(charcoalPitRecipes[0].passiveWorkRequired > 0.0f);
+        // Drying Rack: no active work, only passive
+        expect(dryingRackRecipes[0].workRequired == 0.0f);
+        expect(dryingRackRecipes[0].passiveWorkRequired > 0.0f);
+        // Active workshops: no passive work
+        expect(stonecutterRecipes[0].passiveWorkRequired == 0.0f);
+    }
+
+    it("hauler delivers input to semi-passive workshop") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Stockpile for output
+        int sp = CreateStockpile(0, 0, 0, 3, 3);
+        SetStockpileFilter(sp, ITEM_CHARCOAL, true);
+
+        // Spawn log away from workshop
+        int logIdx = SpawnItem(CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, ITEM_LOG);
+
+        // Spawn hauler
+        Mover* m = &movers[0];
+        Point goal = {1, 3, 0};
+        InitMover(m, CELL_SIZE * 1.5f, CELL_SIZE * 3.5f, 0.0f, goal, 200.0f);
+        m->capabilities.canHaul = true;
+        moverCount = 1;
+
+        // Run sim until log arrives at work tile
+        bool delivered = false;
+        for (int i = 0; i < 1000; i++) {
+            Tick();
+            RebuildIdleMoverList();
+            BuildItemSpatialGrid();
+            BuildMoverSpatialGrid();
+            AssignJobs();
+            JobsTick();
+
+            if (items[logIdx].active && items[logIdx].state == ITEM_ON_GROUND) {
+                int itemTileX = (int)(items[logIdx].x / CELL_SIZE);
+                int itemTileY = (int)(items[logIdx].y / CELL_SIZE);
+                if (itemTileX == ws->workTileX && itemTileY == ws->workTileY) {
+                    delivered = true;
+                    break;
+                }
+            }
+        }
+        expect(delivered == true);
+    }
+
+    it("semi-passive workshop does NOT advance timer before ignition") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log directly on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_LOG);
+
+        expect(ws->passiveReady == false);
+        expect(ws->passiveProgress == 0.0f);
+
+        // Tick passive system — should NOT advance because passiveReady is false
+        for (int i = 0; i < 200; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        expect(ws->passiveProgress == 0.0f);
+    }
+
+    it("WorkGiver_IgniteWorkshop assigns crafter when inputs present") {
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_LOG);
+
+        // Spawn a mover near the workshop
+        Mover* m = &movers[0];
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        int jobId = WorkGiver_IgniteWorkshop(0);
+        expect(jobId >= 0);
+
+        Job* job = GetJob(jobId);
+        expect(job->type == JOBTYPE_IGNITE_WORKSHOP);
+        expect(job->targetWorkshop == wsIdx);
+        expect(ws->assignedCrafter == 0);
+    }
+
+    it("crafter completes ignition and is released") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_LOG);
+
+        // Spawn mover on work tile (already there)
+        Mover* m = &movers[0];
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        WorkGiver_IgniteWorkshop(0);
+
+        // Tick until ignition completes
+        float activeTime = charcoalPitRecipes[0].workRequired;
+        int ticks = (int)(activeTime / TICK_DT) + 100;  // extra margin
+        for (int i = 0; i < ticks; i++) {
+            JobsTick();
+        }
+
+        expect(ws->passiveReady == true);
+        expect(ws->assignedCrafter == -1);
+        expect(m->currentJobId == -1);
+    }
+
+    it("passive timer advances after ignition") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_LOG);
+
+        // Manually set passiveReady (simulating crafter completed ignition)
+        ws->passiveReady = true;
+
+        expect(ws->passiveProgress == 0.0f);
+
+        // Tick passive system
+        for (int i = 0; i < 100; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        expect(ws->passiveProgress > 0.0f);
+    }
+
+    it("semi-passive produces output when passive timer completes") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile
+        int logIdx = SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                               ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                               0.0f, ITEM_LOG);
+
+        // Simulate completed ignition
+        ws->passiveReady = true;
+
+        // Tick until passive timer completes
+        float passiveTime = charcoalPitRecipes[0].passiveWorkRequired;
+        int ticks = (int)(passiveTime / TICK_DT) + 100;
+        for (int i = 0; i < ticks; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        // Log should be consumed
+        expect(!items[logIdx].active || items[logIdx].type != ITEM_LOG);
+
+        // Charcoal should exist at output tile
+        bool foundCharcoal = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_CHARCOAL) {
+                int tx = (int)(items[i].x / CELL_SIZE);
+                int ty = (int)(items[i].y / CELL_SIZE);
+                if (tx == ws->outputTileX && ty == ws->outputTileY) {
+                    foundCharcoal = true;
+                    break;
+                }
+            }
+        }
+        expect(foundCharcoal == true);
+
+        // Bill should be completed
+        expect(ws->bills[0].completedCount == 1);
+
+        // passiveReady should be reset
+        expect(ws->passiveReady == false);
+    }
+
+    it("crafter is free during passive burn phase") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_CHARCOAL_PIT);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place log on work tile
+        SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, ITEM_LOG);
+
+        // Spawn mover on work tile
+        Mover* m = &movers[0];
+        Point goal = {ws->workTileX, ws->workTileY, 0};
+        InitMover(m, ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                  ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        RebuildIdleMoverList();
+        WorkGiver_IgniteWorkshop(0);
+
+        // Tick until ignition completes
+        float activeTime = charcoalPitRecipes[0].workRequired;
+        int ticks = (int)(activeTime / TICK_DT) + 100;
+        for (int i = 0; i < ticks; i++) {
+            JobsTick();
+        }
+
+        // After ignition, mover should be idle (free to do other work)
+        expect(m->currentJobId == -1);
+        expect(moverIsInIdleList[0] == true);
+    }
+
+    it("pure passive workshops still work unchanged") {
+        // Regression test: Drying Rack should still work with workRequired=0
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
+        AddBill(wsIdx, 0, BILL_DO_X_TIMES, 1);
+        Workshop* ws = &workshops[wsIdx];
+
+        // Place grass on work tile — should work without needing passiveReady
+        int grassIdx = SpawnItem(ws->workTileX * CELL_SIZE + CELL_SIZE * 0.5f,
+                                 ws->workTileY * CELL_SIZE + CELL_SIZE * 0.5f,
+                                 0.0f, ITEM_GRASS);
+
+        // passiveReady should be false but shouldn't matter for pure passive
+        expect(ws->passiveReady == false);
+
+        // Tick until completion
+        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        int ticks = (int)(passiveTime / TICK_DT) + 100;
+        for (int i = 0; i < ticks; i++) {
+            PassiveWorkshopsTick(TICK_DT);
+        }
+
+        // Grass should be consumed, dried grass should exist
+        expect(!items[grassIdx].active || items[grassIdx].type != ITEM_GRASS);
+
+        bool foundDriedGrass = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (items[i].active && items[i].type == ITEM_DRIED_GRASS) {
+                foundDriedGrass = true;
+                break;
+            }
+        }
+        expect(foundDriedGrass == true);
+    }
+
+    it("pure active workshops still work unchanged") {
+        // Regression test: Stonecutter should have passiveWorkRequired=0
+        // and NOT be treated as passive
+        expect(workshopDefs[WORKSHOP_STONECUTTER].passive == false);
+        expect(stonecutterRecipes[0].passiveWorkRequired == 0.0f);
+        expect(stonecutterRecipes[0].workRequired > 0.0f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -11218,6 +11599,9 @@ int main(int argc, char* argv[]) {
     
     // Passive workshop tests (TDD - drying rack / ITEM_DRIED_GRASS)
     test(passive_workshop);
+    
+    // Semi-passive workshop tests (TDD - charcoal pit ignition)
+    test(semi_passive_workshop);
     
     return summary();
 }
