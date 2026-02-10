@@ -496,10 +496,10 @@ describe(tree_organic_shapes) {
         
         TreeGrowFull(5, 5, 1, MAT_OAK);
         
-        // Find trunk top
+        // Find trunk top (includes tapered branch cells at top)
         int topZ = 1;
         for (int z = 1; z < gridDepth; z++) {
-            if (grid[z][5][5] == CELL_TREE_TRUNK) topZ = z;
+            if (grid[z][5][5] == CELL_TREE_TRUNK || grid[z][5][5] == CELL_TREE_BRANCH) topZ = z;
             else break;
         }
         

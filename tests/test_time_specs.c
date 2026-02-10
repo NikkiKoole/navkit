@@ -84,7 +84,7 @@ describe(spec_fire_spread) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
         
@@ -112,7 +112,7 @@ describe(spec_fire_spread) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
         
@@ -139,7 +139,7 @@ describe(spec_fire_spread) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
         
@@ -158,7 +158,7 @@ describe(spec_fire_spread) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
         
@@ -428,7 +428,7 @@ describe(spec_ground_wear) {
         
         // Set up dirt with tall grass overlay (new system)
         grid[0][4][8] = CELL_WALL; SetWallMaterial(8, 4, 0, MAT_DIRT); SetWallNatural(8, 4, 0);
-        SET_CELL_SURFACE(8, 4, 0, SURFACE_TALL_GRASS);
+        SetVegetation(8, 4, 0, VEG_GRASS_TALL);
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
         wearGrassToDirt = 100;
@@ -466,8 +466,8 @@ describe(spec_ground_wear) {
         // Need 150 / 10 = 15 decay ticks = 7.5 seconds to reach 0
         RunGameSeconds(8.0f);
         
-        // Should now have tall grass overlay (wear < 20)
-        expect(GET_CELL_SURFACE(8, 4, 0) == SURFACE_TALL_GRASS);
+        // Should now have tall grass vegetation (wear < 20)
+        expect(GetVegetation(8, 4, 0) >= VEG_GRASS_TALL);
     }
 }
 
@@ -505,7 +505,7 @@ describe(spec_game_speed) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS);
             }
         }
         ResetTestState(99999);

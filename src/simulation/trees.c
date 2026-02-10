@@ -142,6 +142,7 @@ static int GetTrunkHeightFromBase(int x, int y, int baseZ) {
 // Convert topmost trunk cells to branches for visual taper
 // height >= 4: top 2 become branches; height >= 2: top 1; height < 2: none
 static void TaperTrunkTop(int x, int y, int baseZ, int height, MaterialType treeMat) {
+    (void)treeMat;  // Material already set on trunk cells
     int taperCount = (height >= 4) ? 2 : (height >= 2) ? 1 : 0;
     int topZ = baseZ + height - 1;
     for (int i = 0; i < taperCount; i++) {

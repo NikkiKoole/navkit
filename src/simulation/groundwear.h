@@ -8,6 +8,7 @@
 // Grass becomes dirt when trampled, dirt becomes grass when left alone
 
 // Wear thresholds - scaled 10x to allow fractional trample amounts
+#define WEAR_TALLER_TO_TALL_DEFAULT 50   // Above this, taller grass becomes tall grass
 #define WEAR_TALL_TO_NORMAL_DEFAULT 200  // Above this, tall grass becomes normal grass
 #define WEAR_NORMAL_TO_TRAMPLED_DEFAULT 600  // Above this, normal grass becomes trampled
 #define WEAR_GRASS_TO_DIRT_DEFAULT 1000  // Above this, grass becomes bare dirt
@@ -19,6 +20,7 @@
 #define WEAR_DECAY_RATE_DEFAULT 10       // Subtracted per decay interval (natural recovery)
 
 // Runtime configurable values
+extern int wearTallerToTall;     // Threshold for taller grass -> tall grass
 extern int wearTallToNormal;     // Threshold for tall grass -> normal grass
 extern int wearNormalToTrampled; // Threshold for normal grass -> trampled
 extern int wearGrassToDirt;      // Threshold to turn grass into bare dirt

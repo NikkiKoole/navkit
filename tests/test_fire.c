@@ -533,7 +533,7 @@ describe(fire_non_flammable) {
         // But terrain with grass surface should have fuel
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
-        SET_CELL_SURFACE(0, 0, 0, SURFACE_TALL_GRASS);
+        SetVegetation(0, 0, 0, VEG_GRASS_TALL);
         expect(GetFuelAt(0, 0, 0) > 0);
     }
     
@@ -553,7 +553,7 @@ describe(fire_non_flammable) {
                 if (grid[0][y][x] != CELL_WALL) {
                     grid[0][y][x] = CELL_WALL;
                     SetWallMaterial(x, y, 0, MAT_DIRT);
-                    SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+                    SetVegetation(x, y, 0, VEG_GRASS_TALL);
                 }
             }
         }
@@ -600,7 +600,7 @@ describe(fire_non_flammable) {
             for (int x = 0; x < 7; x++) {
                 grid[0][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, 0, MAT_DIRT);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS_TALL);
             }
         }
         

@@ -10373,7 +10373,7 @@ describe(input_audit_soil_repath) {
         
         // Simulate what ExecuteBuildSoil does: place solid soil
         // (ExecuteBuildSoil does NOT set needsRepath - that's the bug)
-        CellPlacementSpec spec = NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_TALL_GRASS, true, false);
+        CellPlacementSpec spec = NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false);
         PlaceCellFull(5, 2, 0, spec);
         InvalidatePathsThroughCell(5, 2, 0);
         
@@ -10406,7 +10406,7 @@ describe(input_audit_grass_placement) {
         
         // Simulate what the FIXED ExecutePlaceGrass does: PlaceCellFull + surface
         PlaceCellFull(5, 3, 0, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
-        SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
+        SetVegetation(5, 3, 0, VEG_GRASS_TALL);
         
         // Player expectation: dirt cell should have MAT_DIRT material
         expect(grid[0][3][5] == CELL_WALL);
@@ -10446,7 +10446,7 @@ describe(input_audit_grass_placement) {
         // Simulate FIXED grass placement on air -> solid dirt
         PlaceCellFull(5, 2, 0, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, false));
         InvalidatePathsThroughCell(5, 2, 0);
-        SET_CELL_SURFACE(5, 2, 0, SURFACE_TALL_GRASS);
+        SetVegetation(5, 2, 0, VEG_GRASS_TALL);
         
         // Player expectation: mover should need a repath
         expect(m->needsRepath == true);
@@ -10585,14 +10585,14 @@ describe(input_audit_quick_erase_metadata) {
         grid[0][3][5] = CELL_WALL;
         SetWallMaterial(5, 3, 0, MAT_DIRT);
         SetWallNatural(5, 3, 0);
-        SET_CELL_SURFACE(5, 3, 0, SURFACE_TALL_GRASS);
+        SetVegetation(5, 3, 0, VEG_GRASS_TALL);
         
         // Simulate what the FIXED quick-edit erase does: full metadata cleanup
         grid[0][3][5] = CELL_AIR;
         SetWallMaterial(5, 3, 0, MAT_NONE);
         ClearWallNatural(5, 3, 0);
         SetWallFinish(5, 3, 0, FINISH_ROUGH);
-        SET_CELL_SURFACE(5, 3, 0, SURFACE_BARE);
+        SetVegetation(5, 3, 0, VEG_NONE);
         MarkChunkDirty(5, 3, 0);
         
         // Player expectation: all metadata should be cleared

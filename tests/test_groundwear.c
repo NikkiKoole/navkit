@@ -202,40 +202,44 @@ describe(surface_overlay_updates) {
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
-            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
+            SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Start with tall grass (wear = 0)
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
         
         // Trample until surface changes
-        // Set test thresholds: TALL_GRASS < 20, GRASS 20-59, TRAMPLED 60-99, BARE >= 100
+        // Set test thresholds: TALLER < 5, TALL 5-19, SHORT 20-59, TRAMPLED 60-99, BARE >= 100
+        wearTallerToTall = 5;
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
         wearGrassToDirt = 100;
         wearTrampleAmount = 10;
         
-        // 2 tramplings = 20 wear -> SURFACE_GRASS
+        // 2 tramplings = 20 wear -> VEG_GRASS_SHORT
         TrampleGround(2, 0, 0);
         TrampleGround(2, 0, 0);
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_SHORT);
         
-        // More trampling to get to TRAMPLED (60)
+        // More trampling to get to TRAMPLED (60) -> no vegetation
         for (int i = 0; i < 4; i++) {
             TrampleGround(2, 0, 0);
         }
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TRAMPLED);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
-        // More to get to BARE (100)
+        // More to get to BARE (100) -> no vegetation
         for (int i = 0; i < 4; i++) {
             TrampleGround(2, 0, 0);
         }
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
         // Restore
+        wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
         wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
         wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
@@ -260,25 +264,25 @@ describe(surface_overlay_updates) {
         
         // Set high wear (bare dirt)
         wearGrid[0][0][2] = 150;
-        SET_CELL_SURFACE(2, 0, 0, SURFACE_BARE);
+        SetVegetation(2, 0, 0, VEG_NONE);
         
         // Use fast decay for testing
         wearDecayRate = 50;
         wearRecoveryInterval = 0.01f;
         
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
         // Decay: 150 -> 100 (still bare)
         UpdateGroundWear();
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
-        // Decay: 100 -> 50 (trampled: 60-99) - actually 50 is GRASS
+        // Decay: 100 -> 50 (short grass: 20-59)
         UpdateGroundWear();
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_SHORT);
         
-        // Decay: 50 -> 0 (tall grass: < 20)
+        // Decay: 50 -> 0 (taller grass: wear == 0)
         UpdateGroundWear();
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALLER);
         
         // Restore
         wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
@@ -426,13 +430,14 @@ describe(groundwear_full_cycle) {
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
-            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
+            SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
         InitGroundWear();
         groundWearEnabled = true;
         
         // Use test-friendly values
+        wearTallerToTall = 5;
         wearTallToNormal = 20;
         wearNormalToTrampled = 60;
         wearGrassToDirt = 100;  // This is the threshold for BARE surface
@@ -441,29 +446,32 @@ describe(groundwear_full_cycle) {
         wearRecoveryInterval = 0.01f;
         
         // Start with tall grass
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
         expect(GetGroundWear(2, 0, 0) == 0);
         
         // Trample twice to reach bare (2*50=100 >= 100)
         TrampleGround(2, 0, 0);
         TrampleGround(2, 0, 0);
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_BARE);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         expect(GetGroundWear(2, 0, 0) == 100);
         
         // Let it decay back
         // 100 -> 70 (trampled)
         UpdateGroundWear();
         expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TRAMPLED);
+        expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
-        // 70 -> 40 (grass)
+        // 70 -> 40 (short grass)
         UpdateGroundWear();
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_SHORT);
         
         // 40 -> 10 (tall grass)
         UpdateGroundWear();
-        expect(GET_CELL_SURFACE(2, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);
         
         // Restore default values
+        wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
         wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
         wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
         wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
@@ -477,7 +485,7 @@ describe(groundwear_full_cycle) {
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
-            SET_CELL_SURFACE(x, 0, 0, SURFACE_TALL_GRASS);
+            SetVegetation(x, 0, 0, VEG_GRASS_TALL);
         }
         
         InitGroundWear();
@@ -498,12 +506,13 @@ describe(groundwear_full_cycle) {
         expect(GET_CELL_SURFACE(3, 0, 0) == SURFACE_BARE);
         expect(GET_CELL_SURFACE(4, 0, 0) == SURFACE_BARE);
         expect(GET_CELL_SURFACE(5, 0, 0) == SURFACE_BARE);
+        expect(GetVegetation(3, 0, 0) == VEG_NONE);
         
         // Edge cells should still have tall grass
-        expect(GET_CELL_SURFACE(0, 0, 0) == SURFACE_TALL_GRASS);
-        expect(GET_CELL_SURFACE(1, 0, 0) == SURFACE_TALL_GRASS);
-        expect(GET_CELL_SURFACE(8, 0, 0) == SURFACE_TALL_GRASS);
-        expect(GET_CELL_SURFACE(9, 0, 0) == SURFACE_TALL_GRASS);
+        expect(GetVegetation(0, 0, 0) == VEG_GRASS_TALL);
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_TALL);
+        expect(GetVegetation(8, 0, 0) == VEG_GRASS_TALL);
+        expect(GetVegetation(9, 0, 0) == VEG_GRASS_TALL);
         
         // Restore default values
         wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
@@ -583,7 +592,7 @@ describe(groundwear_edge_cases) {
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 8; x++) {
                 grid[0][y][x] = CELL_WALL; SetWallMaterial(x, y, 0, MAT_DIRT); SetWallNatural(x, y, 0);
-                SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+                SetVegetation(x, y, 0, VEG_GRASS_TALL);
                 grid[1][y][x] = CELL_AIR;  // Walking level is air above dirt
             }
         }

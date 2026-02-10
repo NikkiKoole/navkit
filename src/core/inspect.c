@@ -1066,6 +1066,9 @@ int InspectSaveFile(int argc, char** argv) {
     // Floor source item grid (skip - not inspected)
     fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
 
+    // Vegetation grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     

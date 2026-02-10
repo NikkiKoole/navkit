@@ -933,6 +933,12 @@ void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             borderColor = (Color){50, 180, 80, 255};
             workerName = "Planter";
             break;
+        case DESIGNATION_GATHER_GRASS:
+            desName = "Gather Grass";
+            bgColor = (Color){45, 50, 25, 230};
+            borderColor = (Color){200, 230, 100, 255};
+            workerName = "Gatherer";
+            break;
         default:
             break;
     }

@@ -398,6 +398,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = true
     },
     
+    // WORK > HARVEST > GATHER GRASS - gather [G]rass
+    {
+        .action = ACTION_WORK_GATHER_GRASS,
+        .name = "GATHER GRASS",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 'g',
+        .barUnderlinePos = 7,  // gather [G]rass
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .canDrag = true,
+        .canErase = true
+    },
+    
     // WORK > HARVEST > PLANT SAPLING - [P]lant sapling
     {
         .action = ACTION_WORK_PLANT_SAPLING,

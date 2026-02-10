@@ -90,9 +90,11 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Tree trunk taper: top 1-2 trunk cells become CELL_TREE_BRANCH (thin sprite at canopy, thick at base).
 - Water, fire/smoke/steam, and temperature systems are in place.
 - 10-step craft job state machine with item reservation.
+- Vegetation grid (`vegetationGrid[]`) — dedicated uint8_t 3D grid for ground cover, separate from cellFlags surface bits. Five stages: VEG_NONE, VEG_GRASS_SHORT, VEG_GRASS, VEG_GRASS_TALL, VEG_GRASS_TALLER. Surface bits simplified to ground condition only (BARE/TRAMPLED).
+- ITEM_GRASS — harvestable from VEG_GRASS_TALLER cells via Work > Harvest > Gather Grass. Full designation/job/action pipeline (DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS). Groundwear system migrated to write vegetation grid; trampling thresholds control grass stage transitions.
 
 **Not yet implemented:**
-- No bark, cordage, dried grass, or reeds items.
+- No bark, cordage, reeds items. Raw grass exists (ITEM_GRASS) but no dried grass (cured form) yet.
 - No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
@@ -110,7 +112,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-2. **Two remaining gateway items: dried grass, cordage.** Poles are done (from tree branches). Dried grass and cordage appear in every design doc and are the minimum additions that unlock thatch roofing, lashing/frames, and the rope-maker workshop. They require no new major systems.
+2. **Two remaining gateway items: dried grass, cordage.** Poles are done (from tree branches). Raw grass is harvestable (ITEM_GRASS from tall vegetation). Dried grass (the cured form, for thatch roofing and bedding) and cordage (for lashing/frames) are the minimum additions that unlock early shelter and the rope-maker workshop. Dried grass could be a simple timed conversion (grass left in a dry stockpile) or a workshop recipe.
 
 3. **Rope Maker workshop (2x2).** Once bark and cordage items exist, this small workshop closes the leaf and bark loops and feeds into future construction staging.
 

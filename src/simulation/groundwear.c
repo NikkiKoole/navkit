@@ -15,6 +15,7 @@ int wearGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool groundWearEnabled = true;
 
 // Runtime configurable values
+int wearTallerToTall = WEAR_TALLER_TO_TALL_DEFAULT;
 int wearTallToNormal = WEAR_TALL_TO_NORMAL_DEFAULT;
 int wearNormalToTrampled = WEAR_NORMAL_TO_TRAMPLED_DEFAULT;
 int wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
@@ -32,20 +33,25 @@ int wearMax = WEAR_MAX_DEFAULT;
 // Internal accumulator for game-time
 static float wearRecoveryAccum = 0.0f;
 
-// Update surface overlay based on current wear value
+// Update vegetation and surface based on current wear value
 static void UpdateSurfaceFromWear(int x, int y, int z) {
     int wear = wearGrid[z][y][x];
-    int surface;
     if (wear >= wearGrassToDirt) {
-        surface = SURFACE_BARE;
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        SetVegetation(x, y, z, VEG_NONE);
     } else if (wear >= wearNormalToTrampled) {
-        surface = SURFACE_TRAMPLED;
+        SET_CELL_SURFACE(x, y, z, SURFACE_TRAMPLED);
+        SetVegetation(x, y, z, VEG_NONE);
     } else if (wear >= wearTallToNormal) {
-        surface = SURFACE_GRASS;
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        SetVegetation(x, y, z, VEG_GRASS_SHORT);
+    } else if (wear >= wearTallerToTall) {
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        SetVegetation(x, y, z, VEG_GRASS_TALL);
     } else {
-        surface = SURFACE_TALL_GRASS;
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        SetVegetation(x, y, z, VEG_GRASS_TALLER);
     }
-    SET_CELL_SURFACE(x, y, z, surface);
 }
 
 // Check if there's a tree or sapling within distance
@@ -189,7 +195,7 @@ void UpdateGroundWear(void) {
                 // Sapling regrowth: spawn sapling on tall grass with some chance
                 if (saplingRegrowthEnabled && wearGrid[z][y][x] == 0) {
                     // For dirt, require fully recovered grass; for other soils, just require no wear
-                    if (!isDirt || GET_CELL_SURFACE(x, y, z) == SURFACE_TALL_GRASS) {
+                    if (!isDirt || GetVegetation(x, y, z) >= VEG_GRASS_TALL) {
                         if (z + 1 < gridDepth && grid[z + 1][y][x] == CELL_AIR) {
                             if (QueryItemAtTile(x, y, z + 1) >= 0) continue;
                             if ((rand() % 10000) < saplingRegrowthChance) {

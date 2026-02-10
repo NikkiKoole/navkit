@@ -1749,8 +1749,8 @@ void GenerateHills(void) {
                 SetWallMaterial(x, y, z, MAT_DIRT);
             }
             
-            // Add grass surface on top
-            SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
+            // Add grass vegetation on top
+            SetVegetation(x, y, height, VEG_GRASS_TALLER);
         }
     }
 
@@ -1968,9 +1968,7 @@ void GenerateHillsSoils(void) {
             grid[height][y][x] = CELL_WALL;
             SetWallMaterial(x, y, height, surfaceMat);
             if (surfaceMat == MAT_DIRT) {
-                SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
-            } else {
-                SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
+                SetVegetation(x, y, height, VEG_GRASS_TALLER);
             }
 
             // Clay blobs in subsoil band
@@ -2352,11 +2350,9 @@ void GenerateHillsSoilsWater(void) {
             grid[height][y][x] = CELL_WALL;
             SetWallMaterial(x, y, height, surfaceMat);
             if (surfaceMat == MAT_DIRT && !nearWater) {
-                SET_CELL_SURFACE(x, y, height, SURFACE_TALL_GRASS);
+                SetVegetation(x, y, height, VEG_GRASS_TALLER);
             } else if (surfaceMat == MAT_DIRT) {
-                SET_CELL_SURFACE(x, y, height, SURFACE_GRASS);
-            } else {
-                SET_CELL_SURFACE(x, y, height, SURFACE_BARE);
+                SetVegetation(x, y, height, VEG_GRASS);
             }
 
             float clayN = OctavePerlin(x * clayScale, y * clayScale, 3, 0.5f);
@@ -4060,7 +4056,7 @@ void GenerateCraftingTest(void) {
         for (int x = 0; x < gridWidth; x++) {
             grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
-            SET_CELL_SURFACE(x, y, 0, SURFACE_GRASS);
+            SetVegetation(x, y, 0, VEG_GRASS);
         }
     }
     

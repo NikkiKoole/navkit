@@ -7,6 +7,7 @@
 
 CellType grid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool needsRebuild = false;
 bool hpaNeedsRebuild = false;
 bool jpsNeedsRebuild = false;
@@ -44,8 +45,9 @@ void InitGridWithSizeAndChunkSize(int width, int height, int chunkW, int chunkH)
     chunksY = (gridHeight + chunkHeight - 1) / chunkHeight;
     rampCount = 0;
 
-    // Clear the grid (all z-levels), cell flags, and materials
+    // Clear the grid (all z-levels), cell flags, vegetation, and materials
     memset(cellFlags, 0, sizeof(cellFlags));
+    memset(vegetationGrid, 0, sizeof(vegetationGrid));
     InitMaterials();
     
     for (int z = 0; z < gridDepth; z++) {
@@ -71,7 +73,7 @@ void FillGroundLevel(void) {
             grid[0][y][x] = CELL_WALL;
             SetWallMaterial(x, y, 0, MAT_DIRT);
             SetWallNatural(x, y, 0);
-            SET_CELL_SURFACE(x, y, 0, SURFACE_TALL_GRASS);
+            SetVegetation(x, y, 0, VEG_GRASS_TALLER);
         }
     }
 }

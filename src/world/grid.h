@@ -67,11 +67,23 @@ extern uint8_t cellFlags[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 #define CELL_FLAG_WORKSHOP_BLOCK (1 << 6)
 // Bit 7: reserved
 
-// Surface overlay types (for dirt tiles)
+// Surface overlay types (ground condition only — trampled paths, etc.)
 #define SURFACE_BARE        0
 #define SURFACE_TRAMPLED    1
-#define SURFACE_GRASS       2
-#define SURFACE_TALL_GRASS  3
+
+// Vegetation types (plants growing on ground — separate grid)
+typedef enum {
+    VEG_NONE = 0,
+    VEG_GRASS_SHORT,    // Short grass (recently cut or recovering)
+    VEG_GRASS,          // Normal grass
+    VEG_GRASS_TALL,     // Tall grass (undisturbed)
+    VEG_GRASS_TALLER,   // Very tall grass (harvestable)
+} VegetationType;
+
+extern uint8_t vegetationGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+#define GetVegetation(x,y,z)      ((VegetationType)vegetationGrid[z][y][x])
+#define SetVegetation(x,y,z,v)    (vegetationGrid[z][y][x] = (uint8_t)(v))
 
 // Cell flag helpers
 #define HAS_CELL_FLAG(x,y,z,f)     (!!(cellFlags[z][y][x] & (f)))

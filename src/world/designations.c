@@ -1445,6 +1445,90 @@ int CountPlantSaplingDesignations(void) {
 }
 
 // =============================================================================
+// Gather grass designation functions
+// =============================================================================
+
+// Find the z-level that has vegetation for a given walking position
+// In DF mode, vegetation is on z-1 (dirt below). In flat mode, on z itself.
+static int FindVegetationZ(int x, int y, int z) {
+    if (GetVegetation(x, y, z) >= VEG_GRASS_TALLER) return z;
+    if (z > 0 && GetVegetation(x, y, z - 1) >= VEG_GRASS_TALLER) return z - 1;
+    return -1;
+}
+
+bool DesignateGatherGrass(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+    
+    // Must have harvestable vegetation below (or at) this position
+    if (FindVegetationZ(x, y, z) < 0) {
+        return false;
+    }
+    
+    // Must be walkable (so movers can reach adjacent)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+    
+    designations[z][y][x].type = DESIGNATION_GATHER_GRASS;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
+    
+    return true;
+}
+
+bool HasGatherGrassDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_GATHER_GRASS;
+}
+
+void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
+    (void)moverIdx;
+    
+    // Find where the vegetation actually is
+    int vegZ = FindVegetationZ(x, y, z);
+    if (vegZ >= 0) {
+        SetVegetation(x, y, vegZ, VEG_GRASS_SHORT);
+        MarkChunkDirty(x, y, vegZ);
+    }
+    
+    // Spawn grass item at the walking position
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    SpawnItem(spawnX, spawnY, (float)z, ITEM_GRASS);
+    
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_GATHER_GRASS);
+}
+
+int CountGatherGrassDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_GATHER_GRASS) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

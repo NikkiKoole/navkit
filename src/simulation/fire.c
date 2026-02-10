@@ -82,10 +82,10 @@ int GetFuelAt(int x, int y, int z) {
         }
     }
     
-    // Grass surface adds extra fuel (only on natural dirt or air above dirt)
+    // Grass vegetation adds extra fuel
     {
-        int surface = GET_CELL_SURFACE(x, y, z);
-        if (surface == SURFACE_GRASS || surface == SURFACE_TALL_GRASS) {
+        VegetationType veg = GetVegetation(x, y, z);
+        if (veg >= VEG_GRASS_SHORT) {
             baseFuel = 16;  // Grass is flammable
         }
     }

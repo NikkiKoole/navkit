@@ -399,16 +399,14 @@ void DrawGrassOverlay(void) {
                     }
                     if (!visible) continue;
                     
+                    VegetationType veg = GetVegetation(x, y, zDepth);
                     int surface = GET_CELL_SURFACE(x, y, zDepth);
-                    if (surface == SURFACE_BARE) continue;
-                    
                     int sprite;
-                    switch (surface) {
-                        case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
-                        case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
-                        case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
-                        default: continue;
-                    }
+                    if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
+                    else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
+                    else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
+                    else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
+                    else continue;
                     
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     Rectangle src = SpriteGetRect(sprite);
@@ -430,16 +428,14 @@ void DrawGrassOverlay(void) {
                 if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
                 
+                VegetationType veg = GetVegetation(x, y, zBelow);
                 int surface = GET_CELL_SURFACE(x, y, zBelow);
-                if (surface == SURFACE_BARE) continue;
-                
                 int sprite;
-                switch (surface) {
-                    case SURFACE_TALL_GRASS: sprite = SPRITE_grass_tall; break;
-                    case SURFACE_GRASS:      sprite = SPRITE_grass;      break;
-                    case SURFACE_TRAMPLED:   sprite = SPRITE_grass_trampled; break;
-                    default: continue;
-                }
+                if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
+                else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
+                else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
+                else continue;
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
@@ -1492,6 +1488,24 @@ void DrawMiningDesignations(void) {
                     float barY = sy + size - 8.0f;
                     DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){100, 220, 100, 255});
+                }
+            }
+            // Gather grass designation: yellow-green
+            else if (d->type == DESIGNATION_GATHER_GRASS) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){200, 230, 100, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){160, 200, 60, 255});
                 }
             }
             // Plant sapling designation: dark green

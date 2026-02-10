@@ -120,6 +120,9 @@ static int gatherSaplingCacheCount = 0;
 static OnTileDesignationEntry plantSaplingCache[MAX_DESIGNATION_CACHE];
 static int plantSaplingCacheCount = 0;
 
+static OnTileDesignationEntry gatherGrassCache[MAX_DESIGNATION_CACHE];
+static int gatherGrassCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -130,6 +133,7 @@ static bool chopCacheDirty = true;
 static bool chopFelledCacheDirty = true;
 static bool gatherSaplingCacheDirty = true;
 static bool plantSaplingCacheDirty = true;
+static bool gatherGrassCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -140,6 +144,7 @@ static void RebuildChopDesignationCache(void);
 static void RebuildChopFelledDesignationCache(void);
 static void RebuildGatherSaplingDesignationCache(void);
 static void RebuildPlantSaplingDesignationCache(void);
+static void RebuildGatherGrassDesignationCache(void);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -172,6 +177,8 @@ static DesignationJobSpec designationSpecs[] = {
      gatherSaplingCache, &gatherSaplingCacheCount, &gatherSaplingCacheDirty},
     {DESIGNATION_PLANT_SAPLING, JOBTYPE_PLANT_SAPLING, RebuildPlantSaplingDesignationCache, WorkGiver_PlantSapling,
      plantSaplingCache, &plantSaplingCacheCount, &plantSaplingCacheDirty},
+    {DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS, RebuildGatherGrassDesignationCache, WorkGiver_GatherGrass,
+     gatherGrassCache, &gatherGrassCacheCount, &gatherGrassCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -287,6 +294,12 @@ static void RebuildPlantSaplingDesignationCache(void) {
     if (!plantSaplingCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_PLANT_SAPLING, plantSaplingCache, &plantSaplingCacheCount);
     plantSaplingCacheDirty = false;
+}
+
+static void RebuildGatherGrassDesignationCache(void) {
+    if (!gatherGrassCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_GATHER_GRASS, gatherGrassCache, &gatherGrassCacheCount);
+    gatherGrassCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -1492,6 +1505,63 @@ JobRunResult RunJob_GatherSapling(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Gather grass job driver: walk to grass cell, work, spawn item
+JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_GATHER_GRASS) {
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        // Set goal to the tile itself (it's walkable)
+        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
+            mover->goal = (Point){tx, ty, tz};
+            mover->needsRepath = true;
+        }
+
+        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == tz;
+
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        job->progress += dt / GATHER_GRASS_WORK_TIME;
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            CompleteGatherGrassDesignation(tx, ty, tz, job->assignedMover);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
@@ -2152,10 +2222,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_GATHER_SAPLING] = RunJob_GatherSapling,
     [JOBTYPE_PLANT_SAPLING] = RunJob_PlantSapling,
     [JOBTYPE_CHOP_FELLED] = RunJob_ChopFelled,
+    [JOBTYPE_GATHER_GRASS] = RunJob_GatherGrass,
 };
 
-// Compile-time check: ensure jobDrivers[] covers all job types (JOBTYPE_CHOP_FELLED is the last)
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_CHOP_FELLED,
+// Compile-time check: ensure jobDrivers[] covers all job types (JOBTYPE_GATHER_GRASS is the last)
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_GATHER_GRASS,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -2605,9 +2676,22 @@ void AssignJobs(void) {
         bool safeDrop = false;
 
         if (absorb) {
+            // Try absorbing into the same slot (item matches stockpile filter)
             spIdx = spOnItem;
             slotX = (int)(items[itemIdx].x / CELL_SIZE);
             slotY = (int)(items[itemIdx].y / CELL_SIZE);
+
+            // Check if slot is full — if so, treat as clear instead
+            Stockpile* sp = &stockpiles[spOnItem];
+            int lx = slotX - sp->x;
+            int ly = slotY - sp->y;
+            int idx = ly * sp->width + lx;
+            if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
+                // Slot full, find another stockpile
+                absorb = false;
+                spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
+                if (spIdx < 0) safeDrop = true;
+            }
         } else {
             spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
             if (spIdx < 0) safeDrop = true;
@@ -3321,6 +3405,80 @@ int WorkGiver_PlantSapling(int moverIdx) {
     return jobId;
 }
 
+// WorkGiver_GatherGrass: Find a grass gathering designation to work on
+int WorkGiver_GatherGrass(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canPlant) return -1;
+
+    int moverZ = (int)m->z;
+
+    // Find nearest unassigned gather grass designation from cache
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < gatherGrassCacheCount; i++) {
+        OnTileDesignationEntry* entry = &gatherGrassCache[i];
+
+        if (entry->z != moverZ) continue;
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Check reachability
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_GATHER_GRASS);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
 // WorkGiver_Craft: Find workshop with runnable bill and available materials
 // Returns job ID if successful, -1 if no job available
 int WorkGiver_Craft(int moverIdx) {
@@ -3561,6 +3719,19 @@ int WorkGiver_StockpileMaintenance(int moverIdx) {
         spIdx = spOnItem;
         slotX = (int)(item->x / CELL_SIZE);
         slotY = (int)(item->y / CELL_SIZE);
+
+        // Check if slot is full — if so, treat as clear instead
+        Stockpile* sp = &stockpiles[spOnItem];
+        int lx = slotX - sp->x;
+        int ly = slotY - sp->y;
+        int idx = ly * sp->width + lx;
+        if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
+            absorb = false;
+            spIdx = FindStockpileForItem(item->type, item->material, &slotX, &slotY);
+            if (spIdx < 0) {
+                safeDrop = true;
+            }
+        }
     } else {
         // Clear: find destination stockpile or safe-drop location
         spIdx = FindStockpileForItem(item->type, item->material, &slotX, &slotY);

@@ -287,8 +287,8 @@ static void ExecuteBuildSoil(int x1, int y1, int x2, int y2, int z, CellType soi
             CellType cell = grid[z][dy][dx];
             // Can place soil on air or overwrite existing terrain
             if (cell == CELL_AIR || (cell == CELL_WALL && GetWallMaterial(dx, dy, z) != material)) {
-                uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, material, surface, true, false));
+                PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, material, SURFACE_BARE, true, false));
+                if (material == MAT_DIRT) SetVegetation(dx, dy, z, VEG_GRASS_TALL);
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -328,8 +328,8 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
             // If it was a ramp, we're filling it up - decrease ramp count
             rampCount--;
         }
-        uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-        PlaceCellFull(x, y, placeZ, NaturalTerrainSpec(CELL_WALL, material, surface, true, false));
+        PlaceCellFull(x, y, placeZ, NaturalTerrainSpec(CELL_WALL, material, SURFACE_BARE, true, false));
+        if (material == MAT_DIRT) SetVegetation(x, y, placeZ, VEG_GRASS_TALL);
         InvalidatePathsThroughCell(x, y, placeZ);
         
         // Try to create ramps at adjacent edges for organic look
@@ -388,8 +388,8 @@ static void ExecutePileSoil(int x, int y, int z, CellType soilType, MaterialType
                         // Filling up a ramp - decrease count
                         rampCount--;
                     }
-                    uint8_t surface = (material == MAT_DIRT) ? SURFACE_TALL_GRASS : SURFACE_BARE;
-                    PlaceCellFull(nx, ny, nz, NaturalTerrainSpec(CELL_WALL, material, surface, true, false));
+                    PlaceCellFull(nx, ny, nz, NaturalTerrainSpec(CELL_WALL, material, SURFACE_BARE, true, false));
+                    if (material == MAT_DIRT) SetVegetation(nx, ny, nz, VEG_GRASS_TALL);
                     InvalidatePathsThroughCell(nx, ny, nz);
                     
                     // Try to create organic-looking ramps at adjacent edges
@@ -692,6 +692,33 @@ static void ExecuteCancelGatherSapling(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Cancelled %d gather sapling designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteDesignateGatherGrass(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateGatherGrass(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d grass cell%s for gathering", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelGatherGrass(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasGatherGrassDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d gather grass designation%s", count, count > 1 ? "s" : ""), GREEN);
     }
 }
 
@@ -1120,7 +1147,7 @@ static void ExecutePlaceGrass(int x1, int y1, int x2, int y2, int z) {
             }
             if (grid[z][dy][dx] == CELL_WALL && GetWallMaterial(dx, dy, z) == MAT_DIRT) {
                 // Set tall grass overlay and reset wear
-                SET_CELL_SURFACE(dx, dy, z, SURFACE_TALL_GRASS);
+                SetVegetation(dx, dy, z, VEG_GRASS_TALL);
                 wearGrid[z][dy][dx] = 0;
                 CLEAR_CELL_FLAG(dx, dy, z, CELL_FLAG_BURNED);
                 count++;
@@ -1660,6 +1687,7 @@ void HandleInput(void) {
                             if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_CHOP_FELLED; }
                             if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
                             if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
+                            if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER_GRASS; }
                             break;
                         default:
                             break;
@@ -1746,6 +1774,7 @@ void HandleInput(void) {
         case ACTION_WORK_CHOP_FELLED:  backOneLevel = CheckKey(KEY_F); break;
         case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
+        case ACTION_WORK_GATHER_GRASS:   backOneLevel = CheckKey(KEY_G); break;
         // Gather (top-level)
         case ACTION_WORK_GATHER:       backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
@@ -2043,6 +2072,10 @@ void HandleInput(void) {
             case ACTION_WORK_GATHER_SAPLING:
                 if (leftClick) ExecuteDesignateGatherSapling(x1, y1, x2, y2, z);
                 else ExecuteCancelGatherSapling(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_GATHER_GRASS:
+                if (leftClick) ExecuteDesignateGatherGrass(x1, y1, x2, y2, z);
+                else ExecuteCancelGatherGrass(x1, y1, x2, y2, z);
                 break;
             case ACTION_WORK_PLANT_SAPLING:
                 if (leftClick) ExecuteDesignatePlantSapling(x1, y1, x2, y2, z);

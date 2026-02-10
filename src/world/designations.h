@@ -18,6 +18,7 @@ typedef enum {
     DESIGNATION_CHOP_FELLED,  // Chop up felled trunk (fallen log)
     DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
+    DESIGNATION_GATHER_GRASS,   // Gather tall grass into an item
 } DesignationType;
 
 // Per-cell designation data
@@ -38,6 +39,7 @@ typedef struct {
 #define CHOP_FELLED_WORK_TIME 2.0f   // Chopping fallen trunks
 #define GATHER_SAPLING_WORK_TIME 1.0f // Quick to dig up a sapling
 #define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
+#define GATHER_GRASS_WORK_TIME 1.0f   // Quick to gather grass
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -258,6 +260,22 @@ void CompletePlantSaplingDesignation(int x, int y, int z, MaterialType treeMat, 
 
 // Count active plant sapling designations
 int CountPlantSaplingDesignations(void);
+
+// =============================================================================
+// Gather grass designation functions
+// =============================================================================
+
+// Designate a cell for grass gathering (checks vegetation below walking level)
+bool DesignateGatherGrass(int x, int y, int z);
+
+// Check if a cell has a gather grass designation
+bool HasGatherGrassDesignation(int x, int y, int z);
+
+// Complete a gather grass designation (called when work finishes)
+void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx);
+
+// Count active gather grass designations
+int CountGatherGrassDesignations(void);
 
 // =============================================================================
 // Blueprint functions
