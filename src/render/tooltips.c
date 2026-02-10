@@ -645,6 +645,18 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
     lineCount++;
 
+    // Passive workshop status
+    if (workshopDefs[ws->type].passive) {
+        if (ws->passiveReady) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "Status: Burning (%.0f%%)", ws->passiveProgress * 100.0f);
+            lineColors[lineCount] = ORANGE;
+        } else {
+            snprintf(lines[lineCount], sizeof(lines[0]), "Status: Not ignited");
+            lineColors[lineCount] = GRAY;
+        }
+        lineCount++;
+    }
+
     // Get recipes for this workshop type
     int recipeCount;
     Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);

@@ -3408,6 +3408,7 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
         if (!ws->active) continue;
         if (ws->z != moverZ) continue;
         if (!workshopDefs[ws->type].passive) continue;
+        if (ws->passiveReady) continue;  // Skip workshops that are already burning
         if (ws->billCount == 0) continue;
 
         // Find first runnable bill
@@ -3469,6 +3470,9 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             int cellX = (int)(item->x / CELL_SIZE);
             int cellY = (int)(item->y / CELL_SIZE);
             if (!IsCellWalkableAt((int)item->z, cellY, cellX)) continue;
+
+            // Skip items on passive workshop work tiles (they're in use or waiting for ignition)
+            if (IsPassiveWorkshopWorkTile(cellX, cellY, (int)item->z)) continue;
 
             // Skip items already on the work tile — they're already delivered
             if (cellX == ws->workTileX && cellY == ws->workTileY && (int)item->z == ws->z) continue;

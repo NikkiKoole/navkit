@@ -515,7 +515,11 @@ bool IsPassiveWorkshopWorkTile(int tileX, int tileY, int z) {
         if (!workshopDefs[ws->type].passive) continue;
         if (ws->z != z) continue;
         if (ws->workTileX != tileX || ws->workTileY != tileY) continue;
-        // Check if workshop has a runnable bill
+        
+        // Protect if workshop is currently burning (passiveReady)
+        if (ws->passiveReady) return true;
+        
+        // Protect if workshop has a runnable bill (waiting for delivery/ignition)
         for (int b = 0; b < ws->billCount; b++) {
             if (ShouldBillRun(ws, &ws->bills[b])) return true;
         }
@@ -542,6 +546,11 @@ void PassiveWorkshopsTick(float dt) {
         if (activeBillIdx < 0) {
             ws->passiveProgress = 0.0f;
             ws->passiveBillIdx = -1;
+            // If no runnable bill but workshop is marked ready, clear it
+            if (ws->passiveReady) {
+                ws->passiveReady = false;
+                ws->assignedCrafter = -1;
+            }
             continue;
         }
 
@@ -573,7 +582,14 @@ void PassiveWorkshopsTick(float dt) {
         }
 
         if (inputCount < recipe->inputCount) {
-            continue;  // Not enough input — stall (don't reset progress)
+            // Not enough input — stall (don't reset progress)
+            // But if we're at 0% and passiveReady, the inputs vanished after ignition
+            // Reset so the workshop can be re-ignited and re-delivered
+            if (ws->passiveProgress == 0.0f && ws->passiveReady) {
+                ws->passiveReady = false;
+                ws->assignedCrafter = -1;
+            }
+            continue;
         }
 
         // Semi-passive gate: if recipe needs active crafter work, wait until passiveReady
@@ -628,6 +644,7 @@ void PassiveWorkshopsTick(float dt) {
             ws->passiveProgress = 0.0f;
             ws->passiveBillIdx = -1;  // Re-evaluate next tick
             ws->passiveReady = false; // Needs re-ignition for semi-passive
+            ws->assignedCrafter = -1; // Clear assigned crafter so workshop can be re-ignited
         }
     }
 }
