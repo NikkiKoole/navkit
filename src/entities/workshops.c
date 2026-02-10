@@ -14,32 +14,32 @@ int workshopCount = 0;
 // Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
 // Recipe format: { name, input1, count1, input2, count2, output, outCount, time, matMatch, mat, fuel, itemMatch }
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_BLOCKS, 1, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, 3.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_BLOCKS, 1, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 
 // Sawmill recipes: logs -> planks or sticks (material-preserving)
 Recipe sawmillRecipes[] = {
-    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, 4.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, 2.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
 
 // Kiln recipes: fire processing with fuel
 Recipe kilnRecipes[] = {
-    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, 5.0f, MAT_MATCH_ANY, MAT_NONE, 1 },
-    { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 6.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, 5.0f, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT },
+    { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 6.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
 // Charcoal Pit recipes: primitive charcoal production (slower, lower yield than kiln)
 Recipe charcoalPitRecipes[] = {
-    { "Char Logs",   ITEM_LOG,    1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 8.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Char Peat",   ITEM_PEAT,   1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 7.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
-    { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0 },
+    { "Char Logs",   ITEM_LOG,    1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 8.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Char Peat",   ITEM_PEAT,   1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 7.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, 5.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0]);
 

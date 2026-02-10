@@ -1047,10 +1047,6 @@ int InspectSaveFile(int argc, char** argv) {
     insp_designations = malloc(totalCells * sizeof(Designation));
     
     fread(insp_gridCells, sizeof(CellType), totalCells, f);
-    if (version < 24) {
-        // V23 and earlier had treeType and treePart grids - skip them
-        fseek(f, totalCells * sizeof(uint8_t) * 2, SEEK_CUR);
-    }
     fread(insp_waterCells, sizeof(WaterCell), totalCells, f);
     fread(insp_fireCells, sizeof(FireCell), totalCells, f);
     fread(insp_smokeCells, sizeof(SmokeCell), totalCells, f);
@@ -1065,6 +1061,15 @@ int InspectSaveFile(int argc, char** argv) {
     fread(insp_floorFinish, sizeof(uint8_t), totalCells, f);
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
+    
+    // Wear grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    
+    // Tree growth timer grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    
+    // Tree target height grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(int), SEEK_CUR);
     
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);

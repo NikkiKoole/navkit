@@ -438,7 +438,7 @@ bool StockpileAcceptsItem(int stockpileIdx, ItemType type, uint8_t material) {
     if (!sp->allowedTypes[type]) return false;
 
     MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
-    if (IsWoodMaterial(mat) && !sp->allowedTypes[ITEM_LOG]) return false;
+    if (type == ITEM_LOG && IsWoodMaterial(mat) && !sp->allowedTypes[ITEM_LOG]) return false;
     if (mat != MAT_NONE && !sp->allowedMaterials[mat]) return false;
 
     return true;

@@ -2106,7 +2106,14 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
                 float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
                 for (int i = 0; i < recipe->outputCount; i++) {
-                    uint8_t outMat = (inputMat != MAT_NONE) ? (uint8_t)inputMat : DefaultMaterialForItemType(recipe->outputType);
+                    // Preserve input material for items like planks/blocks (pine log -> pine planks)
+                    // Use default material for transformed items like bricks/charcoal
+                    uint8_t outMat;
+                    if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
+                        outMat = (uint8_t)inputMat;
+                    } else {
+                        outMat = DefaultMaterialForItemType(recipe->outputType);
+                    }
                     SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
                 }
 
