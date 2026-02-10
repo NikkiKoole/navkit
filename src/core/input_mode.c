@@ -346,6 +346,13 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_DRAW_FLOOR:
             n = AddItem(items, n, "1:Stone", KEY_ONE, 0, false, false, selectedMaterial == 1);
             n = AddItem(items, n, "2:Wood", KEY_TWO, 0, false, false, selectedMaterial == 2);
+            n = AddItem(items, n, "3:Dirt", KEY_THREE, 0, false, false, selectedMaterial == 3);
+            n = AddItem(items, n, "4:Oak plank", KEY_FOUR, 0, false, false, selectedMaterial == 4);
+            n = AddItem(items, n, "5:Pine plank", KEY_FIVE, 0, false, false, selectedMaterial == 5);
+            n = AddItem(items, n, "6:Birch plank", KEY_SIX, 0, false, false, selectedMaterial == 6);
+            n = AddItem(items, n, "7:Willow plank", KEY_SEVEN, 0, false, false, selectedMaterial == 7);
+            n = AddItem(items, n, "8:Sandstone", KEY_EIGHT, 0, false, false, selectedMaterial == 8);
+            n = AddItem(items, n, "9:Slate", KEY_NINE, 0, false, false, selectedMaterial == 9);
             n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
             if (inputAction == ACTION_DRAW_WALL) {
                 n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);

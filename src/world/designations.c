@@ -158,6 +158,7 @@ void CompleteMineDesignation(int x, int y, int z) {
         }
         SetFloorFinish(x, y, z, DefaultFinishForNatural(wasNatural));
         SetWallMaterial(x, y, z, MAT_NONE);
+        SetWallSourceItem(x, y, z, ITEM_NONE);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_ROUGH);
         MarkChunkDirty(x, y, z);
@@ -1485,6 +1486,7 @@ int CreateBuildBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->deliveredItemType = ITEM_NONE;
     bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
@@ -1537,6 +1539,7 @@ int CreateLadderBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->deliveredItemType = ITEM_NONE;
     bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
@@ -1589,6 +1592,7 @@ int CreateFloorBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->deliveredItemType = ITEM_NONE;
     bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
@@ -1641,6 +1645,7 @@ int CreateRampBlueprint(int x, int y, int z) {
     bp->deliveredMaterialCount = 0;
     bp->reservedItem = -1;
     bp->deliveredMaterial = MAT_NONE;
+    bp->deliveredItemType = ITEM_NONE;
     bp->requiredItemType = ITEM_TYPE_COUNT;  // Any building material
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
@@ -1728,6 +1733,7 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
         mat = (MaterialType)DefaultMaterialForItemType(items[itemIdx].type);
     }
     bp->deliveredMaterial = mat;
+    bp->deliveredItemType = items[itemIdx].type;
     
     // Consume the item
     DeleteItem(itemIdx);
@@ -1766,6 +1772,7 @@ void CompleteBlueprint(int blueprintIdx) {
                 // Dirt creates natural wall, not a constructed wall
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
+                SetWallSourceItem(x, y, z, ITEM_DIRT);
                 SetWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_ROUGH);
                 CLEAR_FLOOR(x, y, z);  // Terrain is solid, no floor on top
@@ -1776,6 +1783,7 @@ void CompleteBlueprint(int blueprintIdx) {
             } else {
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, bp->deliveredMaterial);
+                SetWallSourceItem(x, y, z, bp->deliveredItemType);
                 ClearWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_SMOOTH);
                 // Floor material preserved - wall is built on top of floor
@@ -1788,6 +1796,7 @@ void CompleteBlueprint(int blueprintIdx) {
         // This handles UP/DOWN/BOTH connections automatically
         PlaceLadder(x, y, z);
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
+        SetWallSourceItem(x, y, z, bp->deliveredItemType);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_SMOOTH);
     } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
@@ -1800,6 +1809,7 @@ void CompleteBlueprint(int blueprintIdx) {
         SET_FLOOR(x, y, z);
         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
         SetFloorMaterial(x, y, z, bp->deliveredMaterial);
+        SetFloorSourceItem(x, y, z, bp->deliveredItemType);
         ClearFloorNatural(x, y, z);
         SetFloorFinish(x, y, z, FINISH_SMOOTH);
         MarkChunkDirty(x, y, z);
@@ -1829,6 +1839,7 @@ void CompleteBlueprint(int blueprintIdx) {
         rampCount++;
         CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
         SetWallMaterial(x, y, z, bp->deliveredMaterial);
+        SetWallSourceItem(x, y, z, bp->deliveredItemType);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_SMOOTH);
         
@@ -1836,6 +1847,7 @@ void CompleteBlueprint(int blueprintIdx) {
         if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
             SET_FLOOR(x, y, z + 1);
             SetFloorMaterial(x, y, z + 1, bp->deliveredMaterial);
+            SetFloorSourceItem(x, y, z + 1, bp->deliveredItemType);
             ClearFloorNatural(x, y, z + 1);
             SetFloorFinish(x, y, z + 1, FINISH_SMOOTH);
         }

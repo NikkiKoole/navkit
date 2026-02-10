@@ -16,6 +16,8 @@ typedef enum {
     MAT_WILLOW,
     // Stone materials
     MAT_GRANITE,
+    MAT_SANDSTONE,
+    MAT_SLATE,
     // Earth/other materials
     MAT_DIRT,          // Dirt/earth
     MAT_BRICK,         // Fired clay bricks
@@ -67,6 +69,10 @@ extern uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Finish grids for wall and floor surfaces
 extern uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+// Source item grids: what item type was used to construct this wall/floor
+// 0xFF (ITEM_NONE as uint8_t) = natural terrain or unknown
+extern uint8_t wallSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern uint8_t floorSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Wall material accessors
 #define GetWallMaterial(x,y,z)      (wallMaterial[z][y][x])
@@ -91,6 +97,12 @@ extern uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Floor finish accessors
 #define GetFloorFinish(x,y,z)       (floorFinish[z][y][x])
 #define SetFloorFinish(x,y,z,f)     (floorFinish[z][y][x] = (uint8_t)(f))
+// Wall source item accessors
+#define GetWallSourceItem(x,y,z)    ((ItemType)(int8_t)wallSourceItem[z][y][x])
+#define SetWallSourceItem(x,y,z,v)  (wallSourceItem[z][y][x] = (uint8_t)(v))
+// Floor source item accessors
+#define GetFloorSourceItem(x,y,z)   ((ItemType)(int8_t)floorSourceItem[z][y][x])
+#define SetFloorSourceItem(x,y,z,v) (floorSourceItem[z][y][x] = (uint8_t)(v))
 
 // Material property accessors
 #define MaterialName(m)         (materialDefs[m].name)
@@ -112,7 +124,7 @@ static inline bool IsWoodMaterial(MaterialType mat) {
     return mat == MAT_OAK || mat == MAT_PINE || mat == MAT_BIRCH || mat == MAT_WILLOW;
 }
 static inline bool IsStoneMaterial(MaterialType mat) {
-    return mat == MAT_GRANITE;
+    return mat == MAT_GRANITE || mat == MAT_SANDSTONE || mat == MAT_SLATE;
 }
 static inline bool IsMetalMaterial(MaterialType mat) {
     return mat == MAT_IRON;

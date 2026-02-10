@@ -190,6 +190,20 @@ bool SaveWorld(const char* filename) {
             fwrite(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
+
+    // Wall source item grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(wallSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Floor source item grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(floorSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
     
     // Temperature grid
     for (int z = 0; z < gridDepth; z++) {
@@ -475,6 +489,20 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(floorFinish[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Wall source item grid (V28)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(wallSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
+    // Floor source item grid (V28)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fread(floorSourceItem[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     

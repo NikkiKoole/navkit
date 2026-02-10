@@ -70,6 +70,7 @@ typedef struct {
     int deliveredMaterialCount;     // How many items delivered so far
     int reservedItem;           // Item index reserved for this blueprint (-1 = none)
     MaterialType deliveredMaterial;  // What material type was delivered (for cell material)
+    ItemType deliveredItemType;      // What item type was actually delivered (for source tracking)
     ItemType requiredItemType;  // Which item type to use (ITEM_TYPE_COUNT = any building mat)
     
     // Construction progress

@@ -83,12 +83,10 @@ static int FinishSprite(SurfaceFinish finish) {
 
 static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
     Color tint = base;
-    int alphaPercent = 50;
     if (finish == FINISH_ROUGH) {
         tint = (Color){30, 30, 30, base.a};  // "kinda black"
-        alphaPercent = 20;
     }
-    tint.a = (unsigned char)((tint.a * alphaPercent) / 100);
+    tint.a = (unsigned char)((tint.a * 20) / 100);
     return tint;
 }
 
@@ -135,6 +133,15 @@ static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
             default: return SPRITE_tree_trunk_oak;
         }
     }
+    if (type == ITEM_PLANKS) {
+        switch ((MaterialType)material) {
+            case MAT_PINE: return SPRITE_tree_planks_pine;
+            case MAT_BIRCH: return SPRITE_tree_planks_birch;
+            case MAT_WILLOW: return SPRITE_tree_planks_willow;
+            case MAT_OAK:
+            default: return SPRITE_tree_planks_oak;
+        }
+    }
     if (type == ITEM_BLOCKS) {
         return MaterialFloorSprite((MaterialType)material);
     }
@@ -151,13 +158,29 @@ static void DrawInsetSprite(int sprite, Rectangle dest, float inset, Color tint)
     DrawTexturePro(atlas, src, insetDest, (Vector2){0,0}, 0, tint);
 }
 
+static int PlankSpriteForMaterial(MaterialType mat) {
+    switch (mat) {
+        case MAT_PINE:   return SPRITE_tree_planks_pine;
+        case MAT_BIRCH:  return SPRITE_tree_planks_birch;
+        case MAT_WILLOW: return SPRITE_tree_planks_willow;
+        case MAT_OAK:
+        default:         return SPRITE_tree_planks_oak;
+    }
+}
+
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
     MaterialType mat = GetWallMaterial(x, y, z);
+    if (cell == CELL_WALL && GetWallSourceItem(x, y, z) == ITEM_PLANKS) {
+        return PlankSpriteForMaterial(mat);
+    }
     return GetSpriteForCellMat(cell, mat);
 }
 
 static int GetFloorSpriteAt(int x, int y, int z) {
     MaterialType mat = GetFloorMaterial(x, y, z);
+    if (GetFloorSourceItem(x, y, z) == ITEM_PLANKS) {
+        return PlankSpriteForMaterial(mat);
+    }
     return MaterialFloorSprite(mat);
 }
 

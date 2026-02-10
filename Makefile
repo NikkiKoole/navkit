@@ -193,9 +193,16 @@ soundsystem-demo: $(BINDIR) $(BINDIR)/soundsystem-demo
 sound-phrase-wav: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/sound_phrase_wav $(sound_phrase_wav_SRC) -lm
 
+# Aseprite CLI
+ASEPRITE := /Applications/Aseprite/aseprite
+
+# Export slices from Aseprite to individual PNGs
+slices:
+	$(ASEPRITE) -b assets/worksheet8x8.ase --save-as "assets/textures8x8/{slice}.png"
+
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
-atlas: $(BINDIR)
+atlas: slices $(BINDIR)
 	$(CC) $(CFLAGS) -DGENERATE_16X16=$(GENERATE_16X16) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
@@ -261,4 +268,4 @@ asan: $(BINDIR)
 release: $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs

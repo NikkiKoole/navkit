@@ -1059,6 +1059,13 @@ int InspectSaveFile(int argc, char** argv) {
 
     fread(insp_wallFinish, sizeof(uint8_t), totalCells, f);
     fread(insp_floorFinish, sizeof(uint8_t), totalCells, f);
+
+    // Wall source item grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+
+    // Floor source item grid (skip - not inspected)
+    fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);
+
     fread(insp_tempCells, sizeof(TempCell), totalCells, f);
     fread(insp_designations, sizeof(Designation), totalCells, f);
     

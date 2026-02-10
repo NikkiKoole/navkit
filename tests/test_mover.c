@@ -1930,23 +1930,31 @@ describe(workshop_mover_collision) {
         ClearWorkshops();
         ClearMovers();
         
-        // Place workshop at (3,0) - blocks (3,0), (4,0), (3,1)
+        // Place 3x3 stonecutter at (3,0):
+        //   (3,0)=# (4,0)=# (5,0)=#
+        //   (3,1)=# (4,1)=X (5,1)=O
+        //   (3,2)=. (4,2)=. (5,2)=#
         int wsIdx = CreateWorkshop(3, 0, 0, WORKSHOP_STONECUTTER);
         expect(wsIdx >= 0);
         
-        // Verify blocked tiles
+        // Verify blocked tiles (#)
         expect(IsWorkshopBlocking(3, 0, 0));
         expect(IsWorkshopBlocking(4, 0, 0));
+        expect(IsWorkshopBlocking(5, 0, 0));
         expect(IsWorkshopBlocking(3, 1, 0));
+        expect(IsWorkshopBlocking(5, 2, 0));
         
         // IsCellWalkableAt(z, y, x) should return false for blocked tiles
-        expect(IsCellWalkableAt(0, 0, 3) == false);  // (x=3,y=0) blocked
-        expect(IsCellWalkableAt(0, 0, 4) == false);  // (x=4,y=0) blocked
-        expect(IsCellWalkableAt(0, 1, 3) == false);  // (x=3,y=1) blocked
+        expect(IsCellWalkableAt(0, 0, 3) == false);  // (x=3,y=0) #
+        expect(IsCellWalkableAt(0, 0, 4) == false);  // (x=4,y=0) #
+        expect(IsCellWalkableAt(0, 0, 5) == false);  // (x=5,y=0) #
+        expect(IsCellWalkableAt(0, 1, 3) == false);  // (x=3,y=1) #
         
-        // Work tile and output tile should still be walkable
+        // Work tile, output tile, and open tiles should still be walkable
         expect(IsCellWalkableAt(0, 1, 4) == true);   // (x=4,y=1) is work tile 'X'
-        expect(IsCellWalkableAt(0, 0, 5) == true);   // (x=5,y=0) is output tile 'O'
+        expect(IsCellWalkableAt(0, 1, 5) == true);   // (x=5,y=1) is output tile 'O'
+        expect(IsCellWalkableAt(0, 2, 3) == true);   // (x=3,y=2) is open '.'
+        expect(IsCellWalkableAt(0, 2, 4) == true);   // (x=4,y=2) is open '.'
         
         DeleteWorkshop(wsIdx);
     }

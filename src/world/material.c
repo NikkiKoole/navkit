@@ -19,6 +19,8 @@ uint8_t wallNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorNatural[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t wallFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 uint8_t floorFinish[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t wallSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+uint8_t floorSourceItem[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 MaterialDef materialDefs[MAT_COUNT] = {
     //                 name       sprite                    flags         fuel  ignRes  dropsItem     insul                  burnsInto
@@ -27,7 +29,9 @@ MaterialDef materialDefs[MAT_COUNT] = {
     [MAT_PINE]    = {"Pine",     SPRITE_tree_trunk_pine,   MF_FLAMMABLE, 96,   30,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
     [MAT_BIRCH]   = {"Birch",    SPRITE_tree_trunk_birch,  MF_FLAMMABLE, 112,  40,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
     [MAT_WILLOW]  = {"Willow",   SPRITE_tree_trunk_willow, MF_FLAMMABLE, 80,   25,     ITEM_LOG,     INSULATION_TIER_WOOD,  MAT_NONE},
-    [MAT_GRANITE] = {"Granite",  SPRITE_rock,              0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_GRANITE},
+    [MAT_GRANITE]   = {"Granite",   SPRITE_granite,              0,            0,    0,      ITEM_ROCK,    INSULATION_TIER_STONE, MAT_GRANITE},
+    [MAT_SANDSTONE] = {"Sandstone", SPRITE_sandstone,         0,            0,    0,      ITEM_ROCK,    INSULATION_TIER_STONE, MAT_SANDSTONE},
+    [MAT_SLATE]     = {"Slate",     SPRITE_slate,             0,            0,    0,      ITEM_ROCK,    INSULATION_TIER_STONE, MAT_SLATE},
     [MAT_DIRT]    = {"Dirt",     SPRITE_dirt,              0,            1,    0,      ITEM_DIRT,    INSULATION_TIER_AIR,   MAT_DIRT},
     [MAT_BRICK]   = {"Brick",    0,                        0,            0,    0,      ITEM_BRICKS,  INSULATION_TIER_STONE, MAT_BRICK},
     [MAT_IRON]    = {"Iron",     0,                        0,            0,    0,      ITEM_BLOCKS,  INSULATION_TIER_STONE, MAT_IRON},
@@ -82,6 +86,8 @@ void InitMaterials(void) {
     memset(floorNatural, 0, sizeof(floorNatural));
     memset(wallFinish, FINISH_ROUGH, sizeof(wallFinish));
     memset(floorFinish, FINISH_ROUGH, sizeof(floorFinish));
+    memset(wallSourceItem, 0xFF, sizeof(wallSourceItem));
+    memset(floorSourceItem, 0xFF, sizeof(floorSourceItem));
     InitSpriteOverrides();
 }
 
@@ -113,7 +119,7 @@ bool IsConstructedWall(int x, int y, int z) {
     return CellBlocksMovement(grid[z][y][x]) && mat != MAT_NONE && !IsWallNatural(x, y, z);
 }
 
-// Get what item a wall drops based on its material
+// Get what item a wall drops based on its source item or material
 ItemType GetWallDropItem(int x, int y, int z) {
     MaterialType mat = GetWallMaterial(x, y, z);
     CellType cell = grid[z][y][x];
@@ -122,11 +128,15 @@ ItemType GetWallDropItem(int x, int y, int z) {
         return ITEM_NONE;
     }
 
-    // All walls (natural and constructed) drop based on material
+    // Constructed walls: drop whatever item was used to build them
+    ItemType src = GetWallSourceItem(x, y, z);
+    if (src != ITEM_NONE) return src;
+
+    // Natural/unknown: fall back to material-based drops
     return MaterialDropsItem(mat);
 }
 
-// Get what item a floor drops based on its material
+// Get what item a floor drops based on its source item or material
 ItemType GetFloorDropItem(int x, int y, int z) {
     MaterialType mat = GetFloorMaterial(x, y, z);
     
@@ -135,7 +145,11 @@ ItemType GetFloorDropItem(int x, int y, int z) {
         return ITEM_NONE;
     }
     
-    // Constructed floor - drop based on material
+    // Constructed floor: drop whatever item was used to build it
+    ItemType src = GetFloorSourceItem(x, y, z);
+    if (src != ITEM_NONE) return src;
+
+    // Unknown: fall back to material-based drops
     return MaterialDropsItem(mat);
 }
 

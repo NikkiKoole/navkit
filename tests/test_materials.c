@@ -200,7 +200,7 @@ describe(material_def_properties) {
     
     it("should have correct drop items") {
         expect(MaterialDropsItem(MAT_OAK) == ITEM_LOG);
-        expect(MaterialDropsItem(MAT_GRANITE) == ITEM_BLOCKS);
+        expect(MaterialDropsItem(MAT_GRANITE) == ITEM_ROCK);
         expect(MaterialDropsItem(MAT_NONE) == ITEM_NONE);
     }
 }
@@ -328,8 +328,8 @@ describe(mining_material_drops) {
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_BLOCKS with granite material (via MaterialDropsItem)
-        expect(CountItemsOfTypeWithMaterial(ITEM_BLOCKS, MAT_GRANITE) == 1);
+        // Should have spawned ITEM_ROCK with granite material (via MaterialDropsItem)
+        expect(CountItemsOfTypeWithMaterial(ITEM_ROCK, MAT_GRANITE) == 1);
     }
     
     it("should drop ITEM_LOG when mining constructed wood wall") {
@@ -364,8 +364,8 @@ describe(mining_material_drops) {
         
         CompleteMineDesignation(0, 0, 0);
         
-        // Should have spawned ITEM_BLOCKS with granite material
-        expect(CountItemsOfTypeWithMaterial(ITEM_BLOCKS, MAT_GRANITE) == 1);
+        // Should have spawned ITEM_ROCK with granite material (no source item set)
+        expect(CountItemsOfTypeWithMaterial(ITEM_ROCK, MAT_GRANITE) == 1);
     }
     
     it("should reset wall material to MAT_NONE after mining") {
@@ -407,20 +407,20 @@ describe(mining_material_drops) {
         InitGridFromAsciiWithChunkSize(
             "#...\n", 4, 1);
         
-        // Natural granite wall - drops based on material
+        // Natural granite wall - drops based on material (no source item)
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         SetWallNatural(0, 0, 0);
-        expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_ROCK);
         
-        // Wood wall
+        // Wood wall (no source item set)
         SetWallMaterial(0, 0, 0, MAT_OAK);
         ClearWallNatural(0, 0, 0);
         expect(GetWallDropItem(0, 0, 0) == ITEM_LOG);
         
-        // Granite wall
+        // Granite wall (no source item set)
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
         ClearWallNatural(0, 0, 0);
-        expect(GetWallDropItem(0, 0, 0) == ITEM_BLOCKS);
+        expect(GetWallDropItem(0, 0, 0) == ITEM_ROCK);
     }
 
     it("should use GetWallDropItem for CELL_WALL material-based drops") {
@@ -641,7 +641,7 @@ describe(material_sprites) {
         expect(MaterialSprite(MAT_GRAVEL) == SPRITE_gravel);
         expect(MaterialSprite(MAT_SAND) == SPRITE_sand);
         expect(MaterialSprite(MAT_PEAT) == SPRITE_peat);
-        expect(MaterialSprite(MAT_GRANITE) == SPRITE_rock);
+        expect(MaterialSprite(MAT_GRANITE) == SPRITE_granite);
         expect(MaterialSprite(MAT_BEDROCK) == SPRITE_bedrock);
     }
 
@@ -674,8 +674,8 @@ describe(material_sprites) {
     }
 
     it("should use material canonical for non-wood leaves, cell default for MAT_NONE") {
-        // Granite has a canonical sprite, so leaves+granite = SPRITE_rock (step 2)
-        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_GRANITE) == SPRITE_rock);
+        // Granite has a canonical sprite, so leaves+granite = SPRITE_granite (step 2)
+        expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_GRANITE) == SPRITE_granite);
         // MAT_NONE has no sprite, falls to cell default (step 3)
         expect(GetSpriteForCellMat(CELL_TREE_LEAVES, MAT_NONE) == SPRITE_tree_leaves_oak);
         expect(GetSpriteForCellMat(CELL_SAPLING, MAT_NONE) == SPRITE_tree_sapling_oak);
@@ -769,7 +769,7 @@ describe(get_cell_sprite_at) {
 
         grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
-        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
+        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_granite);
 
         grid[0][0][2] = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);
@@ -781,7 +781,7 @@ describe(get_cell_sprite_at) {
             "#...\n", 4, 1);
 
         // SyncMaterialsToTerrain sets MAT_GRANITE + natural
-        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_rock);
+        expect(GetCellSpriteAt(0, 0, 0) == SPRITE_granite);
     }
 
     it("should return tree sprites via wallMaterial") {
@@ -906,9 +906,9 @@ describe(sprite_overrides) {
 
     it("should use material canonical sprite when no override") {
         expect(GetSpriteForCellMat(CELL_WALL, MAT_DIRT) == SPRITE_dirt);
-        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_rock);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_granite);
         expect(GetSpriteForCellMat(CELL_WALL, MAT_CLAY) == SPRITE_clay);
-        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_rock);
+        expect(GetSpriteForCellMat(CELL_WALL, MAT_GRANITE) == SPRITE_granite);
         expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_OAK) == SPRITE_tree_trunk_oak);
         expect(GetSpriteForCellMat(CELL_TREE_TRUNK, MAT_PINE) == SPRITE_tree_trunk_pine);
     }
@@ -950,7 +950,7 @@ describe(cell_terrain_with_materials) {
 
         grid[0][0][1] = CELL_WALL;
         SetWallMaterial(1, 0, 0, MAT_GRANITE);
-        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_rock);
+        expect(GetCellSpriteAt(1, 0, 0) == SPRITE_granite);
 
         grid[0][0][2] = CELL_WALL;
         SetWallMaterial(2, 0, 0, MAT_PEAT);

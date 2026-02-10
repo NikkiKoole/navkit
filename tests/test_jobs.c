@@ -3896,10 +3896,10 @@ describe(mining_job_execution) {
         
         expect(completed == true);
         
-        // Find the spawned item and verify it's orange at the mine location
+        // Find the spawned item and verify it's raw stone at the mine location
         bool foundOrange = false;
         for (int i = 0; i < MAX_ITEMS; i++) {
-            if (IsItemActive(i) && GetItemType(i) == ITEM_BLOCKS) {
+            if (IsItemActive(i) && GetItemType(i) == ITEM_ROCK) {
                 foundOrange = true;
                 // Item should be at the dug location (1,1)
                 int itemX = (int)(GetItemX(i) / CELL_SIZE);

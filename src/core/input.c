@@ -95,9 +95,25 @@ static void GetDragRect(int* x1, int* y1, int* x2, int* y2) {
 // Action Handlers - Execute the actual operations
 // ============================================================================
 
+// Map selectedMaterial to MaterialType and source ItemType
+static void GetDrawMaterial(MaterialType* outMat, ItemType* outSource, const char** outName) {
+    switch (selectedMaterial) {
+        case 2: *outMat = MAT_OAK;    *outSource = ITEM_LOG;    *outName = "oak log";      break;
+        case 3: *outMat = MAT_DIRT;    *outSource = ITEM_DIRT;   *outName = "dirt";          break;
+        case 4: *outMat = MAT_OAK;    *outSource = ITEM_PLANKS; *outName = "oak planks";    break;
+        case 5: *outMat = MAT_PINE;   *outSource = ITEM_PLANKS; *outName = "pine planks";   break;
+        case 6: *outMat = MAT_BIRCH;  *outSource = ITEM_PLANKS; *outName = "birch planks";  break;
+        case 7: *outMat = MAT_WILLOW; *outSource = ITEM_PLANKS; *outName = "willow planks"; break;
+        case 8: *outMat = MAT_SANDSTONE; *outSource = ITEM_BLOCKS; *outName = "sandstone";  break;
+        case 9: *outMat = MAT_SLATE;     *outSource = ITEM_BLOCKS; *outName = "slate";      break;
+        default: *outMat = MAT_GRANITE; *outSource = ITEM_BLOCKS; *outName = "granite";     break;
+    }
+}
+
 static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
+    MaterialType mat; ItemType source; const char* matName;
+    GetDrawMaterial(&mat, &source, &matName);
     bool isDirt = (selectedMaterial == 3);
-    MaterialType mat = isDirt ? MAT_DIRT : (selectedMaterial == 2) ? MAT_OAK : MAT_GRANITE;
     int count = 0;
     int skipped = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -112,6 +128,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                 // Dirt creates natural terrain
                 if (grid[z][dy][dx] != CELL_WALL || GetWallMaterial(dx, dy, z) != MAT_DIRT) {
                     PlaceCellFull(dx, dy, z, NaturalTerrainSpec(CELL_WALL, MAT_DIRT, SURFACE_BARE, true, true));
+                    SetWallSourceItem(dx, dy, z, ITEM_DIRT);
                     InvalidatePathsThroughCell(dx, dy, z);
                     count++;
                 }
@@ -128,6 +145,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
                         .surfaceType = SURFACE_BARE
                     };
                     PlaceCellFull(dx, dy, z, spec);
+                    SetWallSourceItem(dx, dy, z, source);
                     InvalidatePathsThroughCell(dx, dy, z);
                     count++;
                 }
@@ -135,8 +153,7 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
         }
     }
     if (count > 0) {
-        const char* matName = isDirt ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
-        AddMessage(TextFormat("Placed %d %s%s", count, matName, count > 1 ? " blocks" : " block"), GREEN);
+        AddMessage(TextFormat("Placed %d %s%s", count, matName, count > 1 ? " walls" : " wall"), GREEN);
     }
     if (skipped > 0) {
         AddMessage(TextFormat("Skipped %d cell%s (workshop)", skipped, skipped > 1 ? "s" : ""), ORANGE);
@@ -144,7 +161,8 @@ static void ExecuteBuildWall(int x1, int y1, int x2, int y2, int z) {
 }
 
 static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
-    MaterialType mat = (selectedMaterial == 3) ? MAT_DIRT : (selectedMaterial == 2) ? MAT_OAK : MAT_GRANITE;
+    MaterialType mat; ItemType source; const char* matName;
+    GetDrawMaterial(&mat, &source, &matName);
     int count = 0;
     int replaced = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -162,6 +180,7 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
                 replaced++;
             }
             SetFloorMaterial(dx, dy, z, mat);
+            SetFloorSourceItem(dx, dy, z, source);
             ClearFloorNatural(dx, dy, z);
             SetFloorFinish(dx, dy, z, FINISH_SMOOTH);
             MarkChunkDirty(dx, dy, z);
@@ -169,11 +188,9 @@ static void ExecuteBuildFloor(int x1, int y1, int x2, int y2, int z) {
         }
     }
     if (count > 0) {
-        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
         AddMessage(TextFormat("Placed %d %s floor%s", count, matName, count > 1 ? "s" : ""), GREEN);
     }
     if (replaced > 0) {
-        const char* matName = (selectedMaterial == 3) ? "dirt" : (selectedMaterial == 2) ? "wood" : "granite";
         AddMessage(TextFormat("Updated %d %s floor%s", replaced, matName, replaced > 1 ? "s" : ""), GREEN);
     }
 }
@@ -1771,6 +1788,12 @@ void HandleInput(void) {
     if (CheckKey(KEY_ONE)) selectedMaterial = 1;
     if (CheckKey(KEY_TWO)) selectedMaterial = 2;
     if (CheckKey(KEY_THREE)) selectedMaterial = 3;
+    if (CheckKey(KEY_FOUR)) selectedMaterial = 4;
+    if (CheckKey(KEY_FIVE)) selectedMaterial = 5;
+    if (CheckKey(KEY_SIX)) selectedMaterial = 6;
+    if (CheckKey(KEY_SEVEN)) selectedMaterial = 7;
+    if (CheckKey(KEY_EIGHT)) selectedMaterial = 8;
+    if (CheckKey(KEY_NINE)) selectedMaterial = 9;
     
     // ========================================================================
     // Ramp direction selection (when ramp action is selected)
