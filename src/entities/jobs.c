@@ -3624,9 +3624,9 @@ int WorkGiver_GatherSapling(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned
+        // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_GATHER_SAPLING || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Check if sapling cell still exists
@@ -3707,9 +3707,9 @@ int WorkGiver_PlantSapling(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned (cache built once per frame, state may have changed)
+        // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_PLANT_SAPLING || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Distance to designation
@@ -3829,7 +3829,7 @@ int WorkGiver_GatherGrass(int moverIdx) {
         if (entry->z != moverZ) continue;
 
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_GATHER_GRASS || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -4341,9 +4341,9 @@ int WorkGiver_Mining(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned and not marked unreachable this frame
+        // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_MINE || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         float minePosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -4420,9 +4420,9 @@ int WorkGiver_Channel(int moverIdx) {
         // Same z-level only for now (mover walks to the tile)
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned and not marked unreachable this frame
+        // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_CHANNEL || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Distance to the tile itself (mover stands on it)
@@ -4503,9 +4503,9 @@ int WorkGiver_DigRamp(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned and not marked unreachable this frame
+        // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_DIG_RAMP || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         float workPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -4583,9 +4583,9 @@ int WorkGiver_RemoveFloor(int moverIdx) {
         // Same z-level only for now (mover walks to the tile)
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned and not marked unreachable this frame
+        // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_REMOVE_FLOOR || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Distance to the tile itself (mover stands on it)
@@ -4666,9 +4666,9 @@ int WorkGiver_RemoveRamp(int moverIdx) {
         // Same z-level only for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned and not marked unreachable this frame
+        // Check if still unassigned, correct type, and not marked unreachable
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_REMOVE_RAMP || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Distance to adjacent tile (pre-computed in cache)
@@ -4747,9 +4747,9 @@ int WorkGiver_Chop(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned
+        // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_CHOP || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Distance to adjacent tile (already cached)
@@ -4826,9 +4826,9 @@ int WorkGiver_ChopFelled(int moverIdx) {
         // Only same z-level for now
         if (entry->z != moverZ) continue;
 
-        // Check if still unassigned
+        // Check if still unassigned and correct type
         Designation* d = GetDesignation(entry->x, entry->y, entry->z);
-        if (!d || d->assignedMover != -1) continue;
+        if (!d || d->type != DESIGNATION_CHOP_FELLED || d->assignedMover != -1) continue;
         if (d->unreachableCooldown > 0.0f) continue;
 
         // Verify felled trunk still exists

@@ -1031,6 +1031,7 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         MarkChunkDirty(cx, cy, cz);
 
         if (designations[cz][cy][cx].type != DESIGNATION_NONE) {
+            InvalidateDesignationCache(designations[cz][cy][cx].type);
             activeDesignationCount--;
             designations[cz][cy][cx].type = DESIGNATION_NONE;
             designations[cz][cy][cx].assignedMover = -1;

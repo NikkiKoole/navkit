@@ -11824,6 +11824,105 @@ describe(semi_passive_workshop) {
     }
 }
 
+// Chop → ChopFelled transition bug:
+// WorkGiver_Chop claims CHOP_FELLED designation via stale cache entry
+describe(chop_felled_transition) {
+    it("stale chop cache does not steal chop-felled designation") {
+        // Bug: after CHOP completes, FellTree clears the CHOP designation but
+        // doesn't invalidate the chop cache. A felled trunk lands at the same cell.
+        // Player designates CHOP_FELLED. WorkGiver_Chop finds the stale cache entry,
+        // sees the CHOP_FELLED designation (doesn't check type), sets assignedMover.
+        // The CHOP job immediately fails (wrong type), but the designation is now
+        // permanently claimed by a mover that doesn't have a job for it.
+
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        InitDesignations();
+        InitTrees();
+        InitJobSystem(MAX_MOVERS);
+
+        // Make solid ground at z=0
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                SetWallNatural(x, y, 0);
+            }
+        }
+
+        // Step 1: Simulate a completed CHOP job at (5,3,z1)
+        // Place trunk, designate, assign to mover 0, build the chop cache
+        grid[1][3][5] = CELL_TREE_TRUNK;
+        SetWallMaterial(5, 3, 1, MAT_OAK);
+        DesignateChop(5, 3, 1);
+
+        Mover* m = &movers[0];
+        Point goal = {5, 2, 1};
+        InitMover(m, CELL_SIZE * 5.5f, CELL_SIZE * 2.5f, 1.0f, goal, 200.0f);
+        m->capabilities.canMine = true;
+        moverCount = 1;
+
+        // Build the chop cache (this is what AssignJobs does)
+        RebuildIdleMoverList();
+        InvalidateDesignationCache(DESIGNATION_CHOP);
+        AssignJobs();  // This builds the cache and assigns mover 0
+
+        // Mover 0 should now have a CHOP job
+        expect(m->currentJobId >= 0);
+
+        // Step 2: Simulate what happens when the chop completes:
+        // FellTree clears the trunk and CHOP designation, places CELL_TREE_FELLED
+        // at the SAME cell. Crucially, FellTree does NOT invalidate the chop cache.
+        grid[1][3][5] = CELL_AIR;  // Trunk removed
+        designations[1][3][5].type = DESIGNATION_NONE;  // CHOP designation cleared
+        designations[1][3][5].assignedMover = -1;
+        activeDesignationCount--;
+
+        // Felled trunk lands at same cell (this is what FellTree does)
+        grid[1][3][5] = CELL_TREE_FELLED;
+        SetWallMaterial(5, 3, 1, MAT_OAK);
+
+        // Release mover's job (simulating JOBRUN_DONE)
+        ReleaseJob(m->currentJobId);
+        m->currentJobId = -1;
+        AddMoverToIdleList(0);
+
+        // Step 3: Player designates CHOP_FELLED on the felled trunk
+        bool designated = DesignateChopFelled(5, 3, 1);
+        expect(designated == true);
+        expect(designations[1][3][5].type == DESIGNATION_CHOP_FELLED);
+        expect(designations[1][3][5].assignedMover == -1);
+
+        // Step 4: Run AssignJobs — mover should get a CHOP_FELLED job, not
+        // have the CHOP_FELLED designation stolen by WorkGiver_Chop
+        BuildItemSpatialGrid();
+        BuildMoverSpatialGrid();
+        AssignJobs();
+
+        // The designation should be assigned to mover 0
+        expect(designations[1][3][5].assignedMover == 0);
+
+        // Mover 0 should have a CHOP_FELLED job, NOT a CHOP job
+        expect(m->currentJobId >= 0);
+        Job* job = GetJob(m->currentJobId);
+        expect(job->type == JOBTYPE_CHOP_FELLED);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -11964,6 +12063,9 @@ int main(int argc, char* argv[]) {
     
     // Semi-passive workshop tests (TDD - charcoal pit ignition)
     test(semi_passive_workshop);
+    
+    // Chop → ChopFelled transition (stale cache bug)
+    test(chop_felled_transition);
     
     return summary();
 }
