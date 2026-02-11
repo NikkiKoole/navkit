@@ -1142,12 +1142,12 @@ int main(int argc, char** argv) {
         DrawJobLines();
 
         // Draw workshop preview when in workshop placement mode
+        // Workshop actions and WorkshopType enums are in the same order, so derive directly
         WorkshopType previewWorkshopType = WORKSHOP_TYPE_COUNT;  // invalid sentinel
-        if (inputAction == ACTION_DRAW_WORKSHOP_STONECUTTER) previewWorkshopType = WORKSHOP_STONECUTTER;
-        else if (inputAction == ACTION_DRAW_WORKSHOP_SAWMILL) previewWorkshopType = WORKSHOP_SAWMILL;
-        else if (inputAction == ACTION_DRAW_WORKSHOP_KILN) previewWorkshopType = WORKSHOP_KILN;
-        else if (inputAction == ACTION_DRAW_WORKSHOP_CHARCOAL_PIT) previewWorkshopType = WORKSHOP_CHARCOAL_PIT;
-        else if (inputAction == ACTION_DRAW_WORKSHOP_HEARTH) previewWorkshopType = WORKSHOP_HEARTH;
+        if (inputAction >= ACTION_DRAW_WORKSHOP_STONECUTTER &&
+            inputAction <= ACTION_DRAW_WORKSHOP_STONECUTTER + WORKSHOP_TYPE_COUNT - 1) {
+            previewWorkshopType = (WorkshopType)(inputAction - ACTION_DRAW_WORKSHOP_STONECUTTER);
+        }
 
         if (previewWorkshopType != WORKSHOP_TYPE_COUNT && !isDragging) {
             int wsWidth = workshopDefs[previewWorkshopType].width;

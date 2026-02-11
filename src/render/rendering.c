@@ -1293,22 +1293,31 @@ void DrawWorkshops(void) {
             }
         }
 
-        // Draw craft progress bar if crafter is working
+        // Draw craft/passive progress bar
+        float progress = -1.0f;
+        Color barColor = YELLOW;
+
         if (ws->assignedCrafter >= 0) {
-            // Find the job to get progress
             Mover* m = &movers[ws->assignedCrafter];
             if (m->currentJobId >= 0) {
                 Job* job = GetJob(m->currentJobId);
                 if (job && job->type == JOBTYPE_CRAFT && job->step == CRAFT_STEP_WORKING) {
-                    float sx = offset.x + ws->x * size;
-                    float sy = offset.y + ws->y * size - 6;
-                    float barWidth = ws->width * size;
-                    float progress = job->progress;
-                    
-                    DrawRectangle((int)sx, (int)sy, (int)barWidth, 4, DARKGRAY);
-                    DrawRectangle((int)sx, (int)sy, (int)(barWidth * progress), 4, YELLOW);
+                    progress = job->progress;
+                    barColor = YELLOW;
                 }
             }
+        }
+        if (progress < 0.0f && ws->passiveProgress > 0.0f) {
+            progress = ws->passiveProgress;
+            barColor = ORANGE;
+        }
+
+        if (progress > 0.0f) {
+            float sx = offset.x + ws->x * size;
+            float sy = offset.y + ws->y * size - 6;
+            float barWidth = ws->width * size;
+            DrawRectangle((int)sx, (int)sy, (int)barWidth, 4, DARKGRAY);
+            DrawRectangle((int)sx, (int)sy, (int)(barWidth * progress), 4, barColor);
         }
     }
     
@@ -1370,337 +1379,100 @@ void DrawHaulDestinations(void) {
     }
 }
 
+// Designation overlay + progress bar colors, indexed by DesignationType
+// {overlayColor, progressBarColor} — {0,0,0,0} means no overlay for that type
+static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
+    [DESIGNATION_NONE]           = {0, 0, 0, 0},
+    [DESIGNATION_MINE]           = {100, 220, 255, 200},
+    [DESIGNATION_CHANNEL]        = {255, 150, 200, 200},
+    [DESIGNATION_DIG_RAMP]       = {180, 120, 220, 200},
+    [DESIGNATION_REMOVE_FLOOR]   = {255, 220, 100, 200},
+    [DESIGNATION_REMOVE_RAMP]    = {100, 220, 220, 200},
+    [DESIGNATION_CHOP]           = {180, 100, 50, 200},
+    [DESIGNATION_CHOP_FELLED]    = {140, 80, 40, 200},
+    [DESIGNATION_GATHER_SAPLING] = {150, 255, 150, 200},
+    [DESIGNATION_PLANT_SAPLING]  = {50, 180, 80, 200},
+    [DESIGNATION_GATHER_GRASS]   = {200, 230, 100, 200},
+    [DESIGNATION_GATHER_TREE]    = {160, 180, 80, 200},
+};
+
+static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
+    [DESIGNATION_NONE]           = {0, 0, 0, 0},
+    [DESIGNATION_MINE]           = {135, 206, 235, 255},  // SKYBLUE
+    [DESIGNATION_CHANNEL]        = {255, 0, 255, 255},    // MAGENTA
+    [DESIGNATION_DIG_RAMP]       = {160, 100, 200, 255},
+    [DESIGNATION_REMOVE_FLOOR]   = {255, 203, 0, 255},    // GOLD
+    [DESIGNATION_REMOVE_RAMP]    = {50, 200, 200, 255},
+    [DESIGNATION_CHOP]           = {200, 120, 60, 255},
+    [DESIGNATION_CHOP_FELLED]    = {170, 100, 50, 255},
+    [DESIGNATION_GATHER_SAPLING] = {100, 220, 100, 255},
+    [DESIGNATION_PLANT_SAPLING]  = {30, 150, 60, 255},
+    [DESIGNATION_GATHER_GRASS]   = {160, 200, 60, 255},
+    [DESIGNATION_GATHER_TREE]    = {130, 160, 50, 255},
+};
+
+// Active job overlay colors, indexed by JobType
+// {0,0,0,0} means no overlay for that job type
+static const Color jobOverlayColors[JOBTYPE_COUNT] = {
+    [JOBTYPE_MINE]           = {255, 200, 100, 180},
+    [JOBTYPE_CHANNEL]        = {255, 180, 150, 180},
+    [JOBTYPE_DIG_RAMP]       = {200, 150, 240, 180},
+    [JOBTYPE_REMOVE_FLOOR]   = {255, 200, 80, 180},
+    [JOBTYPE_REMOVE_RAMP]    = {80, 200, 200, 180},
+    [JOBTYPE_CHOP]           = {220, 140, 80, 180},
+    [JOBTYPE_GATHER_SAPLING] = {180, 255, 180, 180},
+    [JOBTYPE_PLANT_SAPLING]  = {80, 200, 100, 180},
+};
+
 void DrawMiningDesignations(void) {
     // Early exit if no designations
     if (activeDesignationCount == 0) return;
     
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Rectangle spriteSrc = SpriteGetRect(SPRITE_stockpile);
 
+    // Draw designation overlays + progress bars
     for (int y = 0; y < gridHeight; y++) {
         for (int x = 0; x < gridWidth; x++) {
             Designation* d = GetDesignation(x, y, viewZ);
             if (!d) continue;
-            
-            // Mine designation: cyan
-            if (d->type == DESIGNATION_MINE) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
+            if (d->type <= DESIGNATION_NONE || d->type >= DESIGNATION_TYPE_COUNT) continue;
 
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 255, 200});
+            Color overlay = designationOverlayColors[d->type];
+            if (overlay.a == 0) continue;
 
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, SKYBLUE);
-                }
-            }
-            // Channel designation: pink/magenta
-            else if (d->type == DESIGNATION_CHANNEL) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
+            float sx = offset.x + x * size;
+            float sy = offset.y + y * size;
+            Rectangle dest = { sx, sy, size, size };
+            DrawTexturePro(atlas, spriteSrc, dest, (Vector2){0, 0}, 0, overlay);
 
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 150, 200, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, MAGENTA);
-                }
-            }
-            // Remove floor designation: yellow/gold
-            else if (d->type == DESIGNATION_REMOVE_FLOOR) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 220, 100, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, GOLD);
-                }
-            }
-            // Remove ramp designation: cyan/teal
-            else if (d->type == DESIGNATION_REMOVE_RAMP) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){100, 220, 220, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){50, 200, 200, 255});
-                }
-            }
-            // Dig ramp designation: purple/violet
-            else if (d->type == DESIGNATION_DIG_RAMP) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 120, 220, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){160, 100, 200, 255});
-                }
-            }
-            // Chop tree designation: brown/orange
-            else if (d->type == DESIGNATION_CHOP) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 100, 50, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){200, 120, 60, 255});
-                }
-            }
-            // Chop felled designation: darker brown
-            else if (d->type == DESIGNATION_CHOP_FELLED) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){140, 80, 40, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){170, 100, 50, 255});
-                }
-            }
-            // Gather sapling designation: light green
-            else if (d->type == DESIGNATION_GATHER_SAPLING) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){150, 255, 150, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){100, 220, 100, 255});
-                }
-            }
-            // Gather grass designation: yellow-green
-            else if (d->type == DESIGNATION_GATHER_GRASS) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){200, 230, 100, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){160, 200, 60, 255});
-                }
-            }
-            // Gather tree designation: warm brown
-            else if (d->type == DESIGNATION_GATHER_TREE) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){160, 180, 80, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){130, 160, 50, 255});
-                }
-            }
-            // Plant sapling designation: dark green
-            else if (d->type == DESIGNATION_PLANT_SAPLING) {
-                float sx = offset.x + x * size;
-                float sy = offset.y + y * size;
-
-                Rectangle src = SpriteGetRect(SPRITE_stockpile);
-                Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){50, 180, 80, 200});
-
-                if (d->progress > 0.0f) {
-                    float barWidth = size * 0.8f;
-                    float barHeight = 4.0f;
-                    float barX = sx + size * 0.1f;
-                    float barY = sy + size - 8.0f;
-                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
-                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){30, 150, 60, 255});
-                }
+            if (d->progress > 0.0f) {
+                float barWidth = size * 0.8f;
+                float barHeight = 4.0f;
+                float barX = sx + size * 0.1f;
+                float barY = sy + size - 8.0f;
+                DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight,
+                              designationProgressColors[d->type]);
             }
         }
     }
 
-    // Draw active mine jobs (orange overlay for assigned)
+    // Draw active job overlays (brighter tint for assigned/in-progress jobs)
     for (int i = 0; i < activeJobCount; i++) {
         int jobIdx = activeJobList[i];
         Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_MINE) continue;
+        if (job->type <= JOBTYPE_NONE || job->type >= JOBTYPE_COUNT) continue;
         if (job->targetMineZ != viewZ) continue;
+
+        Color overlay = jobOverlayColors[job->type];
+        if (overlay.a == 0) continue;
 
         float sx = offset.x + job->targetMineX * size;
         float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
         Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
-    }
-    
-    // Draw active channel jobs (yellow/orange overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_CHANNEL) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 180, 150, 180});
-    }
-    
-    // Draw active remove floor jobs (gold/orange overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_REMOVE_FLOOR) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 80, 180});
-    }
-    
-    // Draw active remove ramp jobs (cyan/teal overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_REMOVE_RAMP) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 200, 180});
-    }
-    
-    // Draw active dig ramp jobs (purple overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_DIG_RAMP) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){200, 150, 240, 180});
-    }
-    
-    // Draw active chop jobs (brown/orange overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_CHOP) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){220, 140, 80, 180});
-    }
-    
-    // Draw active gather sapling jobs (light green overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_GATHER_SAPLING) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){180, 255, 180, 180});
-    }
-    
-    // Draw active plant sapling jobs (dark green overlay for assigned)
-    for (int i = 0; i < activeJobCount; i++) {
-        int jobIdx = activeJobList[i];
-        Job* job = &jobs[jobIdx];
-        if (job->type != JOBTYPE_PLANT_SAPLING) continue;
-        if (job->targetMineZ != viewZ) continue;
-
-        float sx = offset.x + job->targetMineX * size;
-        float sy = offset.y + job->targetMineY * size;
-
-        Rectangle src = SpriteGetRect(SPRITE_stockpile);
-        Rectangle dest = { sx, sy, size, size };
-        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){80, 200, 100, 180});
+        DrawTexturePro(atlas, spriteSrc, dest, (Vector2){0, 0}, 0, overlay);
     }
     
     // Draw path of assigned mover when hovering over a designation
@@ -1807,15 +1579,11 @@ void DrawTerrainBrushPreview(void) {
     int radius = terrainBrushRadius;
     int radiusSq = radius * radius;
 
-    // Color by mode (S key=smooth/blue, left=raise/green, right=lower/red)
-    bool isSmoothMode = IsKeyDown(KEY_S);
+    // Color by mode (left=raise/green, right=lower/red)
     bool isLowerMode = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
 
     Color fillColor, lineColor;
-    if (isSmoothMode) {
-        fillColor = (Color){80, 120, 220, 60};     // Blue for smooth
-        lineColor = (Color){100, 150, 255, 200};
-    } else if (isLowerMode) {
+    if (isLowerMode) {
         fillColor = (Color){220, 80, 80, 60};      // Red for lower
         lineColor = (Color){255, 100, 100, 200};
     } else {
@@ -1840,10 +1608,7 @@ void DrawTerrainBrushPreview(void) {
             // Validate operation
             int z = currentViewZ;
             bool valid = false;
-            if (isSmoothMode) {
-                // Smooth works on natural terrain (walls or air)
-                valid = (grid[z][y][x] == CELL_AIR || IsWallNatural(x, y, z));
-            } else if (isLowerMode) {
+            if (isLowerMode) {
                 valid = (grid[z][y][x] == CELL_WALL && IsWallNatural(x, y, z));
             } else {
                 valid = (grid[z][y][x] == CELL_AIR && z > 0 &&
