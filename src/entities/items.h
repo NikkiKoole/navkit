@@ -28,6 +28,8 @@ typedef enum {
     ITEM_BRICKS,       // Fired clay bricks from kiln
     ITEM_CHARCOAL,     // Charcoal from kiln (efficient fuel)
     ITEM_ASH,          // Ash from burning fuel (hearth byproduct)
+    ITEM_BARK,         // Bark stripped from logs at sawmill
+    ITEM_STRIPPED_LOG,  // Log after bark removal (bonus planks)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -142,7 +144,8 @@ static inline bool IsLeafItem(ItemType type) {
 
 static inline bool ItemTypeUsesMaterialName(ItemType type) {
     return type == ITEM_LOG || type == ITEM_BLOCKS || type == ITEM_ROCK ||
-           type == ITEM_PLANKS || type == ITEM_SAPLING || type == ITEM_LEAVES;
+           type == ITEM_PLANKS || type == ITEM_SAPLING || type == ITEM_LEAVES ||
+           type == ITEM_BARK || type == ITEM_STRIPPED_LOG;
 }
 
 #endif

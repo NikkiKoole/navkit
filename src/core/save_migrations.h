@@ -5,7 +5,7 @@
 #include "../world/material.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 32
+#define CURRENT_SAVE_VERSION 33
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -37,5 +37,19 @@ typedef struct {
     bool allowedMaterials[MAT_COUNT];
     int maxStackSize;
 } StockpileV31;
+
+// Version 32 constants (before bark/stripped log items)
+#define V32_ITEM_TYPE_COUNT 22
+
+// V32 Stockpile struct (before bark/stripped log addition)
+// v32 had 22 item types, v33 adds ITEM_BARK and ITEM_STRIPPED_LOG at end (indices 22-23)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V32_ITEM_TYPE_COUNT];  // OLD: 22 bools
+    bool allowedMaterials[MAT_COUNT];
+    int maxStackSize;
+} StockpileV32;
 
 #endif

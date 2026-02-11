@@ -30,4 +30,6 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BRICKS]       = { "Bricks",       SPRITE_wall,         IF_STACKABLE | IF_BUILDING_MAT, 20 },
     [ITEM_CHARCOAL]     = { "Charcoal",     SPRITE_block_wood,   IF_STACKABLE | IF_FUEL, 20 },
     [ITEM_ASH]          = { "Ash",          SPRITE_gravel,       IF_STACKABLE, 20 },
+    [ITEM_BARK]         = { "Bark",         SPRITE_tree_bark_oak, IF_STACKABLE | IF_FUEL, 20 },
+    [ITEM_STRIPPED_LOG] = { "Stripped Log",  SPRITE_tree_stripped_log_oak, IF_STACKABLE | IF_BUILDING_MAT | IF_FUEL, 20 },
 };

@@ -374,7 +374,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
@@ -623,8 +623,28 @@ bool LoadWorld(const char* filename) {
             memcpy(stockpiles[i].allowedMaterials, v31_sp.allowedMaterials,
                    sizeof(v31_sp.allowedMaterials));
         }
+    } else if (version == 32) {
+        // V32 had 22 item types, v33 adds ITEM_BARK and ITEM_STRIPPED_LOG at end
+        StockpileV32 v32_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v32_sp, sizeof(StockpileV32), 1, f);
+            stockpiles[i].x = v32_sp.x;
+            stockpiles[i].y = v32_sp.y;
+            stockpiles[i].z = v32_sp.z;
+            stockpiles[i].width = v32_sp.width;
+            stockpiles[i].height = v32_sp.height;
+            stockpiles[i].active = v32_sp.active;
+            stockpiles[i].maxStackSize = v32_sp.maxStackSize;
+            for (int j = 0; j < V32_ITEM_TYPE_COUNT; j++) {
+                stockpiles[i].allowedTypes[j] = v32_sp.allowedTypes[j];
+            }
+            stockpiles[i].allowedTypes[ITEM_BARK] = false;
+            stockpiles[i].allowedTypes[ITEM_STRIPPED_LOG] = false;
+            memcpy(stockpiles[i].allowedMaterials, v32_sp.allowedMaterials,
+                   sizeof(v32_sp.allowedMaterials));
+        }
     } else {
-        // v32+ format - direct read
+        // v33+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 

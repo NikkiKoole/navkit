@@ -73,6 +73,8 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_PLANKS:
         case ITEM_STICKS:
         case ITEM_POLES:
+        case ITEM_BARK:
+        case ITEM_STRIPPED_LOG:
             return MAT_OAK;
         case ITEM_GRASS:
         case ITEM_DRIED_GRASS:

@@ -23,8 +23,10 @@ int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterReci
 
 // Sawmill recipes: logs -> planks or sticks (material-preserving)
 Recipe sawmillRecipes[] = {
-    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Saw Planks",    ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Cut Sticks",    ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Strip Bark",    ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STRIPPED_LOG, 1, ITEM_BARK, 2, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Saw Stripped",  ITEM_STRIPPED_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 5, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
 

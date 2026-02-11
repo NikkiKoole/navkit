@@ -296,7 +296,56 @@ After chopping a tree, stump remains:
 
 ---
 
-## 8. Open Questions
+## 8. Water-Dependent Workshops (Requires New Systems)
+
+See detailed design: `docs/todo/design/water-dependent-crafting.md`
+
+### Core Concept
+Workshops that require **location-based resource access** (water, dryness) rather than hauled items. Enables mud/cob crafting without container system.
+
+### Proposed Workshops
+
+#### Mud Mixer (2x2) - Wet Workshop
+**Must be placed on/adjacent to water.**
+- Mix Mud: DIRT x2 + CLAY x1 → MUD x3 (requires water access)
+- Make Cob: MUD x2 + DRIED_GRASS x1 → COB x2
+- Form Mud Brick: MUD x1 → MUD_BRICK x1 (outputs WET)
+
+#### Brick Drying Yard (3x3) - Drying Workshop
+**Must be DRY (no water within 3 tiles).**
+- Dry Bricks: MUD_BRICK (WET) → MUD_BRICK (BONE_DRY) (passive, 2-3 days)
+
+#### Wattle Frame Builder (2x2)
+- Weave Wattle: STICKS x4 → WATTLE_PANEL x1
+
+#### Mason's Bench (3x3)
+- Daub Wattle: WATTLE_PANEL x1 + MUD x2 → WATTLE_DAUB_WALL x1
+- Pack Earth: DIRT x3 + GRAVEL x1 → PACKED_EARTH x2
+- Cob Wall: COB x4 → COB_WALL x1
+
+### New Items Required
+- ITEM_MUD (wet mixture)
+- ITEM_COB (mud + straw)
+- ITEM_DAUB (mud coating)
+- ITEM_MUD_BRICK (formed brick, needs drying)
+- ITEM_WATTLE_PANEL (stick frame)
+- ITEM_PACKED_EARTH (floor material)
+
+### New Systems Required
+- Moisture state enum on items (MOISTURE_WET → DRY → BONE_DRY)
+- Workshop placement validators (requiresWater, requiresDry flags)
+- Stockpile environment tags (dry/wet/covered)
+- Passive moisture transitions (like Drying Rack)
+
+### Gameplay Unlocks
+- Early shelter: wattle-and-daub huts (sticks + mud + thatch)
+- Primitive floors: packed earth, mud tamped by foot traffic
+- Cob walls: thick insulated walls without sawmill/kiln
+- Mud brick production: cheaper alternative to clay bricks
+
+---
+
+## 9. Open Questions
 
 - Should **Hearth** be a workshop or a single-tile structure?
 - Should **Glass** be a new item or a material variant of BLOCKS?

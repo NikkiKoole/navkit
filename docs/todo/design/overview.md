@@ -14,6 +14,37 @@ The central reference. Tracks everything that exists and everything proposed.
 - Prioritizes next workshops: Rope Maker, Glass Kiln, Pottery Wheel, then systems-heavy ones (Bloomery, Loom, Tanner, Hand Mill).
 - Documents design principles: every addition needs a source, a sink, and feedback into existing loops.
 
+### [Water-Dependent Crafting](water-dependent-crafting.md)
+Enables mud/cob crafting through location-based resource access (no containers needed).
+- Three workshop archetypes: Wet (must be on water), Moisture (benefits from water), Drying (needs dry location).
+- Mud Mixer on riverbed: DIRT + CLAY + water → MUD; MUD + DRIED_GRASS → COB.
+- Material moisture states: WET → DAMP → DRY → BONE_DRY (passive transitions over time).
+- Stockpile environment tags (dry/wet/covered) drive conditioning without full weather system.
+- Unlocks wattle-and-daub construction (sticks + mud + thatch) for early shelter.
+- Requires new systems: moisture states, placement validators, stockpile tags, passive moisture ticks.
+- **Prerequisite:** Water placement tools (see below) - players need to control where rivers flow.
+
+### [Terrain Sculpting - Simple](terrain-sculpting-simple.md) ⭐
+**Instant draw mode only** - paint terrain up/down with mouse, no jobs/workers.
+- Lower brush (carve) + Raise brush (build) with adjustable diameter (1x1, 3x3, 5x5, 7x7).
+- Freehand mouse dragging (smooth strokes, no gaps) - like painting walls/floors but for terrain.
+- Instant feedback: terrain changes immediately (no designations, no material costs).
+- Enables: river carving for mud mixer, moats, terrain leveling, dams.
+- **Start here:** Simple, focused, ~7 hours to implement.
+
+### [Terrain Sculpting - Full](terrain-sculpting-brushes.md)
+**Extended version** with worker designations, material economy, advanced features.
+- Everything from simple version PLUS survival mode (movers dig/build) and material consumption.
+- Can be added later if instant mode isn't sufficient.
+- Estimated ~30 hours total (simple mode + all extensions).
+
+### [Water Placement Tools](water-placement-tools.md)
+Alternative/supplement to terrain brushes: specific water source/drain placement.
+- Place Water Source (spring) + Place Water Drain (outflow) for controlled water spawning.
+- Less flexible than terrain brushes but simpler for just adding water to existing terrain.
+- Functions already exist (SetWaterSource/SetWaterDrain) - just needs UI actions.
+- **Recommendation:** Terrain brushes are more powerful; water tools optional supplement.
+
 ### [Tile Ingredients Next](tile-ingredients-next.md)
 A short, actionable list of new tiles and the minimum new ingredients they require.
 - Identifies tiles addable right now with existing items: material floors (wood/brick/block), water source/drain.
@@ -97,11 +128,13 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - ITEM_GRASS — harvestable from VEG_GRASS_TALLER cells via Work > Harvest > Gather Grass. Full designation/job/action pipeline (DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS). Groundwear system migrated to write vegetation grid; trampling thresholds control grass stage transitions.
 
 **Not yet implemented:**
-- No bark, cordage, reeds items. Bark and stripped log sprites exist in atlas but ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE not yet added.
+- ~~No bark, cordage, reeds items. Bark and stripped log sprites exist in atlas but ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE not yet added.~~ **DONE**: ITEM_BARK and ITEM_STRIPPED_LOG added (v33). ITEM_CORDAGE and rope-making chain still pending.
 - No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
-- No stockpile environment tags.
+- No moisture states (no MoistureState enum or moisture ticks).
+- No stockpile environment tags (dry/wet/covered).
+- No water-dependent workshops (mud mixer, brick drying, etc.).
 - No tree stumps/coppicing.
 - No containers, tools, durability, or quality systems.
 - Sand and dirt have no recipe sinks.
@@ -115,12 +148,14 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-2. **One remaining gateway item: cordage.** Poles are done (from tree branches). Dried grass is done (Drying Rack converts ITEM_GRASS → ITEM_DRIED_GRASS). Cordage (for lashing/frames) is the last gateway item needed — requires ITEM_BARK, ITEM_STRIPPED_LOG, and ITEM_CORDAGE plus Sawmill strip recipes. Multi-output recipe support is ready (Strip Bark: LOG → STRIPPED_LOG + BARK).
+2. **One remaining gateway item: cordage.** Poles are done (from tree branches). Dried grass is done (Drying Rack converts ITEM_GRASS → ITEM_DRIED_GRASS). Bark and stripped logs are done (v33). Cordage (for lashing/frames) is the last gateway item needed — requires ITEM_CORDAGE plus Rope Maker workshop with recipes (BARK → SHORT_STRING → CORDAGE chain).
 
-3. **Rope Maker workshop (2x2).** Once bark and cordage items exist, this small workshop closes the leaf and bark loops and feeds into future construction staging.
+3. **Rope Maker workshop (2x2).** Bark items exist, cordage item and workshop remain to close the cordage loop and feed into future construction staging.
 
-4. **Two-stage construction (frame then fill).** Add a `stage` field to blueprints/jobs. Frame stage uses sticks or planks; fill stage uses planks, bricks, or blocks. This is the smallest change that makes building feel earned and makes stockpile logistics matter.
+4. **Water-dependent crafting (mud/cob system).** Fully designed in `water-dependent-crafting.md` but requires multiple new systems: moisture states on items, workshop placement validators (requiresWater/requiresDry), stockpile environment tags, passive moisture transitions. Enables early wattle-and-daub shelter but is a larger undertaking than rope-making.
 
-5. **Item condition states (seasoning/curing).** Add a lightweight condition enum and timer to items. Start with wood only (green/seasoned). Hook into stockpile environment once staging is working.
+5. **Two-stage construction (frame then fill).** Add a `stage` field to blueprints/jobs. Frame stage uses sticks or planks; fill stage uses planks, bricks, or blocks. This is the smallest change that makes building feel earned and makes stockpile logistics matter.
 
-6. **Sand and dirt sinks.** Glass Kiln (sand + fuel) and farming (dirt as soil) are the proposed solutions. Glass Kiln is simpler and self-contained; farming is a larger system.
+6. **Item condition states (seasoning/curing).** Add a lightweight condition enum and timer to items. Start with wood only (green/seasoned). Hook into stockpile environment once staging is working.
+
+7. **Sand and dirt sinks.** Glass Kiln (sand + fuel) and farming (dirt as soil) are the proposed solutions. Glass Kiln is simpler and self-contained; farming is a larger system.
