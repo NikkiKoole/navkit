@@ -1373,7 +1373,9 @@ void TickWithDt(float dt) {
     UpdateGroundWear();
 
     // Lighting (recompute if terrain changed)
+    PROFILE_BEGIN(Lighting);
     UpdateLighting();
+    PROFILE_END(Lighting);
     
     // Tree growth
     PROFILE_BEGIN(Trees);
