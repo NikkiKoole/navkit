@@ -257,7 +257,7 @@ clean-atlas:
 
 # Fast build - no optimization, no sanitizers (~0.5s)
 fast: $(BINDIR)
-	$(CC) -std=c11 -O0 -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
+	$(CC) -std=c11 -O0  -fno-omit-frame-pointer  -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
 	ln -sf path_fast $(BINDIR)/path
 
 # Debug build - no optimization, all sanitizers
