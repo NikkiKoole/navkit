@@ -310,7 +310,8 @@ void DrawCellGrid(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
                 Rectangle src = SpriteGetRect(sprite);
-                Color lightTint = GetLightColor(x, y, zDepth, skyColor);
+                // Light the top surface from the air above (zDepth+1), not inside the solid
+                Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
                 Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
                 if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
                     tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
@@ -518,7 +519,8 @@ void DrawGrassOverlay(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
-                Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth, skyColor));
+                // Grass is on top of solid, lit from the air above (zDepth+1)
+                Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
