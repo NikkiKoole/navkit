@@ -22,6 +22,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../simulation/trees.h"
+#include "../simulation/lighting.h"
 #include "save_migrations.h"
 
 #define INSPECT_V21_MAT_COUNT 10
@@ -1288,6 +1289,15 @@ int InspectSaveFile(int argc, char** argv) {
     }
     if (insp_activeJobCnt > 0) fread(insp_activeJobList, sizeof(int), insp_activeJobCnt, f);
     
+    // Light sources (v37+)
+    int insp_lightSourceCount = 0;
+    if (version >= 37) {
+        fread(&insp_lightSourceCount, sizeof(insp_lightSourceCount), 1, f);
+        if (insp_lightSourceCount > 0) {
+            fseek(f, insp_lightSourceCount * (int)sizeof(LightSource), SEEK_CUR);
+        }
+    }
+    
     fclose(f);
     
     // Print summary if no specific queries
@@ -1318,6 +1328,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("Workshops: %d active\n", activeWorkshops);
         printf("Gather zones: %d\n", insp_gatherZoneCount);
         printf("Jobs: %d active (hwm %d)\n", insp_activeJobCnt, insp_jobHWM);
+        printf("Light sources: %d\n", insp_lightSourceCount);
         
         // Temperature stats
         int tempAt0 = 0, tempAt20 = 0, tempOther = 0, tempMin = 9999, tempMax = -9999;

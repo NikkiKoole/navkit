@@ -6,6 +6,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/lighting.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 #include "save_migrations.h"
@@ -293,6 +294,10 @@ bool SaveWorld(const char* filename) {
     fwrite(jobs, sizeof(Job), jobHighWaterMark, f);
     fwrite(jobIsActive, sizeof(bool), jobHighWaterMark, f);
     fwrite(activeJobList, sizeof(int), activeJobCount, f);
+    
+    // Light sources (v37+)
+    fwrite(&lightSourceCount, sizeof(lightSourceCount), 1, f);
+    fwrite(lightSources, sizeof(LightSource), lightSourceCount, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -749,6 +754,18 @@ bool LoadWorld(const char* filename) {
     fread(jobs, sizeof(Job), jobHighWaterMark, f);
     fread(jobIsActive, sizeof(bool), jobHighWaterMark, f);
     fread(activeJobList, sizeof(int), activeJobCount, f);
+    
+    // Light sources (v37+)
+    if (version >= 37) {
+        fread(&lightSourceCount, sizeof(lightSourceCount), 1, f);
+        if (lightSourceCount > 0) {
+            fread(lightSources, sizeof(LightSource), lightSourceCount, f);
+        }
+    } else {
+        lightSourceCount = 0;
+        memset(lightSources, 0, sizeof(lightSources));
+    }
+    InvalidateLighting();
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);
