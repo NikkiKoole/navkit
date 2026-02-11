@@ -8,6 +8,7 @@
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
 #include "../simulation/floordirt.h"
+#include "../core/sim_manager.h"
 #include <math.h>
 
 // Helper: calculate visible cell range with view frustum culling
@@ -257,6 +258,26 @@ static Color GetDepthTint(int itemZ, int viewZ) {
     return WHITE;
 }
 
+// Helper: get depth tint with floor darkening pre-applied (avoids separate FloorDarkenTint call)
+static Color GetDepthTintDarkened(int itemZ, int viewZ) {
+    static const Color depthTintsDarkened[] = {
+        {191, 191, 191, 255},  // index 0: z-1 (WHITE * 75%)
+        {176, 168, 161, 255},  // index 1: z-2
+        {165, 153, 142, 255},  // index 2: z-3
+        {150, 135, 120, 255},  // index 3: z-4
+        {135, 116,  97, 255},  // index 4: z-5
+        {120,  97,  75, 255},  // index 5: z-6
+        {105,  82,  60, 255},  // index 6: z-7
+        { 82,  63,  45, 255},  // index 7: z-8
+        { 60,  45,  30, 255}   // index 8: z-9
+    };
+    int depthIndex = viewZ - itemZ - 1;
+    if (depthIndex >= 0 && depthIndex < 9) {
+        return depthTintsDarkened[depthIndex];
+    }
+    return WHITE;
+}
+
 // Helper: check if a cell at (x, y, cellZ) is visible from viewZ
 static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     for (int zCheck = cellZ; zCheck < viewZ; zCheck++) {
@@ -287,11 +308,10 @@ void DrawCellGrid(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
                 Rectangle src = SpriteGetRect(sprite);
-                Color tint = GetDepthTint(zDepth, z);
+                Color tint = GetDepthTintDarkened(zDepth, z);
                 if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
                     tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                 }
-                tint = FloorDarkenTint(tint);
                 if (CellIsRamp(cellAtDepth)) tint.a = 64;
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
@@ -525,6 +545,7 @@ void DrawGrassOverlay(void) {
 }
 
 void DrawWater(void) {
+    if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -598,6 +619,7 @@ void DrawWater(void) {
 }
 
 void DrawFire(void) {
+    if (fireActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -673,6 +695,7 @@ void DrawFire(void) {
 }
 
 void DrawSmoke(void) {
+    if (smokeActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -717,6 +740,7 @@ void DrawSmoke(void) {
 }
 
 void DrawSteam(void) {
+    if (steamActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
