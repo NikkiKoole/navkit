@@ -1,10 +1,17 @@
 # Design Overview
 
-These six documents describe the production and construction systems for a DF/CDDA-inspired colony sim. Together they outline how raw materials flow from the environment through workshops into buildings and useful goods, how construction should feel multi-step and earned, and what small set of new items and systems would unlock the most gameplay depth. The recurring theme is **complete loops over long chains**: every new item should have a clear source, a clear sink, and ideally strengthen an existing cycle.
+These documents describe the production and construction systems for a DF/CDDA-inspired colony sim. Together they outline how raw materials flow from the environment through workshops into buildings and useful goods, how construction should feel multi-step and earned, and what small set of new items and systems would unlock the most gameplay depth. The recurring theme is **complete loops over long chains**: every new item should have a clear source, a clear sink, and ideally strengthen an existing cycle.
 
 ---
 
 ## Document Summaries
+
+### [Progression Story](progression-story.md) ⭐
+A narrative walkthrough showing how a player progresses from a naked mover with nothing to an established colony.
+- Demonstrates the full arc: gathering → workshops → construction → closed loops.
+- Uses only systems that exist in the codebase today (no speculative features).
+- Shows four phases: bare-hands gathering, first workshop chain, fire/permanence, expanding colony.
+- Useful as a reference for what gameplay loops are already complete and working.
 
 ### [Workshops & Item Loops (Master)](workshops-master.md)
 The central reference. Tracks everything that exists and everything proposed.

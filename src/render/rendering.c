@@ -49,6 +49,22 @@ static Color MultiplyColor(Color a, Color b) {
     };
 }
 
+static Color FireLevelColor(int level) {
+    int r, g, b, alpha;
+    if (level <= 2) {
+        r = 180; g = 60; b = 20;
+        alpha = 120 + level * 20;
+    } else if (level <= 4) {
+        r = 220; g = 100; b = 30;
+        alpha = 150 + (level - 2) * 15;
+    } else {
+        r = 255; g = 150 + (level - 4) * 20; b = 50;
+        alpha = 180 + (level - 4) * 15;
+    }
+    if (alpha > 230) alpha = 230;
+    return (Color){r, g, b, alpha};
+}
+
 static Color FloorDarkenTint(Color base) {
     base.r = (unsigned char)((base.r * 75) / 100);
     base.g = (unsigned char)((base.g * 75) / 100);
@@ -221,6 +237,36 @@ static int GetFloorSpriteAt(int x, int y, int z) {
     return MaterialFloorSprite(mat);
 }
 
+// Helper: get depth tint for a given z-level relative to view
+static Color GetDepthTint(int itemZ, int viewZ) {
+    static const Color depthTints[] = {
+        {255, 255, 255, 255},  // index 0: z-1 (no tint)
+        {235, 225, 215, 255},  // index 1: z-2
+        {220, 205, 190, 255},  // index 2: z-3
+        {200, 180, 160, 255},  // index 3: z-4
+        {180, 155, 130, 255},  // index 4: z-5
+        {160, 130, 100, 255},  // index 5: z-6
+        {140, 110, 80, 255},   // index 6: z-7
+        {110, 85, 60, 255},    // index 7: z-8
+        {80, 60, 40, 255}      // index 8: z-9
+    };
+    int depthIndex = viewZ - itemZ - 1;
+    if (depthIndex >= 0 && depthIndex < 9) {
+        return depthTints[depthIndex];
+    }
+    return WHITE;
+}
+
+// Helper: check if a cell at (x, y, cellZ) is visible from viewZ
+static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
+    for (int zCheck = cellZ; zCheck < viewZ; zCheck++) {
+        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -228,53 +274,36 @@ void DrawCellGrid(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
-    // Draw deeper levels first (z-3, z-2) with blue tint for depth
-    // These show terrain dropping away below current view
-        Color depthTints[] = {
-            {100, 120, 160, 255},  // z-3: darker blue
-            {130, 150, 180, 255}   // z-2: lighter blue
-        };
-        int depthLevels[] = {z - 3, z - 2};
+    // Draw deeper levels first (z-9 through z-2) with earthy brown depth tint
+    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+        if (zDepth < 0) continue;
         
-        for (int d = 0; d < 2; d++) {
-            int zDepth = depthLevels[d];
-            if (zDepth < 0) continue;
-            
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cellAtDepth = grid[zDepth][y][x];
-                    // Only draw if this cell is solid AND there's air above it
-                    // (otherwise it's hidden by terrain above)
-                    if (!CellIsSolid(cellAtDepth)) continue;
-                    
-                    // Check if all cells between zDepth+1 and z-1 are air (visible from above, no floors blocking)
-                    bool visible = true;
-                    for (int zCheck = zDepth + 1; zCheck < z; zCheck++) {
-                        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
-                            visible = false;
-                            break;
-                        }
-                    }
-                    if (!visible) continue;
-                    
-                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
-                    Rectangle src = SpriteGetRect(sprite);
-                    Color tint = depthTints[d];
-                    if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
-                        tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
-                    }
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                CellType cellAtDepth = grid[zDepth][y][x];
+                if (cellAtDepth == CELL_AIR) continue;
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
+                Rectangle src = SpriteGetRect(sprite);
+                Color tint = GetDepthTint(zDepth, z);
+                if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
+                    tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
+                }
+                tint = FloorDarkenTint(tint);
+                if (CellIsRamp(cellAtDepth)) tint.a = 64;
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
-                    if (cellAtDepth == CELL_WALL) {
-                        SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
-                        int finishSprite = FinishSprite(finish);
-                        Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
-                    }
+                if (cellAtDepth == CELL_WALL) {
+                    SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
+                    int finishSprite = FinishSprite(finish);
+                    Rectangle finishSrc = SpriteGetRect(finishSprite);
+                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
                 }
             }
         }
+    }
         
         // DF mode: draw floor from z-1 (the ground you're standing ON)
         // At z=1, you see z=0's surface as the floor
@@ -291,10 +320,27 @@ void DrawCellGrid(void) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
-                        // Wall tops (looking down at a wall from above) tinted blue
-                        // to distinguish from walls at current level (depth cue)
-                        Color tint = CellBlocksMovement(cellBelow) ? (Color){140, 160, 200, 255} : WHITE;
+                        // Wall tops (looking down at a wall from above) - no depth tint at z-1
+                        // (closest floor to viewer, should be brightest)
+                        Color tint = WHITE;
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, FloorDarkenTint(tint));
+                        
+                        // Apply finish overlay to z-1 floor (same as deeper levels)
+                        if (cellBelow == CELL_WALL) {
+                            SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zBelow);
+                            int finishSprite = FinishSprite(finish);
+                            Rectangle finishSrc = SpriteGetRect(finishSprite);
+                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, FloorDarkenTint(tint)));
+                        }
+                    }
+                    // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
+                    else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                        int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
+                        Rectangle src = SpriteGetRect(sprite);
+                        Color tint = FloorDarkenTint(WHITE);
+                        if (CellIsRamp(cellBelow)) tint.a = 64;
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                     }
                 }
             }
@@ -423,47 +469,31 @@ void DrawGrassOverlay(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
-    // Draw grass for deeper levels (z-3, z-2) with blue tint
-        Color depthTints[] = {
-            {100, 120, 160, 255},  // z-3: darker blue
-            {130, 150, 180, 255}   // z-2: lighter blue
-        };
-        int depthLevels[] = {z - 3, z - 2};
+    // Draw grass for deeper levels (z-9 through z-2) with earthy brown tint
+    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+        if (zDepth < 0) continue;
         
-        for (int d = 0; d < 2; d++) {
-            int zDepth = depthLevels[d];
-            if (zDepth < 0) continue;
-            
-            Color tint = depthTints[d];
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
-                    
-                    // Check if visible from above (air all the way through, no floors blocking)
-                    bool visible = true;
-                    for (int zCheck = zDepth + 1; zCheck <= z; zCheck++) {
-                        if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
-                            visible = false;
-                            break;
-                        }
-                    }
-                    if (!visible) continue;
-                    
-                    VegetationType veg = GetVegetation(x, y, zDepth);
-                    int surface = GET_CELL_SURFACE(x, y, zDepth);
-                    int sprite;
-                    if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
-                    else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
-                    else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
-                    else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
-                    else continue;
-                    
-                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    Rectangle src = SpriteGetRect(sprite);
-                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
-                }
+        Color tint = GetDepthTint(zDepth, z);
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
+                
+                VegetationType veg = GetVegetation(x, y, zDepth);
+                int surface = GET_CELL_SURFACE(x, y, zDepth);
+                int sprite;
+                if (veg >= VEG_GRASS_TALLER)     sprite = SPRITE_grass_taller;
+                else if (veg >= VEG_GRASS_TALL)  sprite = SPRITE_grass_tall;
+                else if (veg >= VEG_GRASS_SHORT) sprite = SPRITE_grass;
+                else if (surface == SURFACE_TRAMPLED) sprite = SPRITE_grass_trampled;
+                else continue;
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                Rectangle src = SpriteGetRect(sprite);
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
+    }
         
         // DF mode: grass overlay comes from z-1 (the floor you're standing ON)
         if (z <= 0) return;  // No floor below z=0
@@ -501,6 +531,40 @@ void DrawWater(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
+    // Draw water at deeper levels (z-9 through z-1) with depth darkening
+    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+        if (zDepth < 0) continue;
+        
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                int level = GetWaterLevel(x, y, zDepth);
+                if (level <= 0) continue;
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
+                
+                int alpha = 80 + (level * 15);
+                if (alpha > 230) alpha = 230;
+                
+                Color waterColor = FloorDarkenTint((Color){30, 100, 200, alpha});
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, waterColor);
+                
+                if (waterGrid[zDepth][y][x].isSource) {
+                    float inset = size * 0.3f;
+                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                    DrawRectangleRec(inner, (Color){75, 135, 191, 200});
+                }
+                
+                if (waterGrid[zDepth][y][x].isDrain) {
+                    float inset = size * 0.3f;
+                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                    DrawRectangleRec(inner, (Color){15, 30, 60, 200});
+                }
+            }
+        }
+    }
+
+    // Draw water at current level (z) - brightest, no darkening
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             int level = GetWaterLevel(x, y, z);
@@ -540,9 +604,42 @@ void DrawFire(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
+    // Draw fire at deeper levels (z-9 through z-2)
+    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+        if (zDepth < 0) continue;
+        
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
+                
+                FireCell* cell = &fireGrid[zDepth][y][x];
+                int level = cell->level;
+                
+                if (level == 0 && HAS_CELL_FLAG(x, y, zDepth, CELL_FLAG_BURNED)) {
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    DrawRectangleRec(dest, (Color){30, 22, 15, 75});
+                    continue;
+                }
+                if (level <= 0) continue;
+                
+                Color fireColor = FireLevelColor(level);
+                fireColor = FloorDarkenTint(fireColor);
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, fireColor);
+                
+                if (cell->isSource) {
+                    float inset = size * 0.3f;
+                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+                    DrawRectangleRec(inner, (Color){191, 165, 75, 200});
+                }
+            }
+        }
+    }
+    
+    // Draw fire at z-1 and current z
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            // Fire on the floor (z-1) should be visible when viewing z
             int fireZ = z;
             if (z > 0 && grid[z][y][x] == CELL_AIR && CellIsSolid(grid[z-1][y][x])) {
                 fireZ = z - 1;
@@ -551,41 +648,25 @@ void DrawFire(void) {
             FireCell* cell = &fireGrid[fireZ][y][x];
             int level = cell->level;
             
-            // Draw burned cells with a darker tint
             if (level == 0 && HAS_CELL_FLAG(x, y, fireZ, CELL_FLAG_BURNED)) {
-                Color burnedColor = (Color){40, 30, 20, 100};
+                Color burnedColor = fireZ < z ? (Color){30, 22, 15, 75} : (Color){40, 30, 20, 100};
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawRectangleRec(dest, burnedColor);
                 continue;
             }
-            
             if (level <= 0) continue;
-
-            // Color based on fire level (darker orange to bright yellow)
-            int r, g, b, alpha;
-            if (level <= 2) {
-                r = 180; g = 60; b = 20;
-                alpha = 120 + level * 20;
-            } else if (level <= 4) {
-                r = 220; g = 100; b = 30;
-                alpha = 150 + (level - 2) * 15;
-            } else {
-                r = 255; g = 150 + (level - 4) * 20; b = 50;
-                alpha = 180 + (level - 4) * 15;
-            }
-            if (alpha > 230) alpha = 230;
             
-            Color fireColor = (Color){r, g, b, alpha};
+            Color fireColor = FireLevelColor(level);
+            if (fireZ < z) fireColor = FloorDarkenTint(fireColor);
             
-            // Draw fire overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             DrawRectangleRec(dest, fireColor);
             
-            // Mark sources with a brighter center
             if (cell->isSource) {
                 float inset = size * 0.3f;
                 Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                DrawRectangleRec(inner, (Color){255, 220, 100, 200});
+                Color srcColor = fireZ < z ? (Color){191, 165, 75, 200} : (Color){255, 220, 100, 200};
+                DrawRectangleRec(inner, srcColor);
             }
         }
     }
@@ -598,19 +679,39 @@ void DrawSmoke(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
+    // Draw smoke at deeper levels (z-9 through z-1) with depth darkening
+    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+        if (zDepth < 0) continue;
+        
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
+                
+                int level = GetSmokeLevel(x, y, zDepth);
+                if (level <= 0) continue;
+
+                int alpha = 30 + (level * 25);
+                if (alpha > 205) alpha = 205;
+                
+                Color smokeColor = FloorDarkenTint((Color){80, 80, 90, alpha});
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, smokeColor);
+            }
+        }
+    }
+
+    // Draw smoke at current level (brightest)
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             int level = GetSmokeLevel(x, y, z);
             if (level <= 0) continue;
 
-            int alpha = 30 + (level * 25);  // 55-205 range
+            int alpha = 30 + (level * 25);
             if (alpha > 205) alpha = 205;
             
-            Color smokeColor = (Color){80, 80, 90, alpha};
-            
-            // Draw smoke overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, smokeColor);
+            DrawRectangleRec(dest, (Color){80, 80, 90, alpha});
         }
     }
 }
@@ -622,20 +723,39 @@ void DrawSteam(void) {
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
+    // Draw steam at deeper levels (z-9 through z-1) with depth darkening
+    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+        if (zDepth < 0) continue;
+        
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
+                
+                int level = GetSteamLevel(x, y, zDepth);
+                if (level <= 0) continue;
+
+                int alpha = 40 + (level * 20);
+                if (alpha > 180) alpha = 180;
+                
+                Color steamColor = FloorDarkenTint((Color){220, 220, 230, alpha});
+                
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, steamColor);
+            }
+        }
+    }
+
+    // Draw steam at current level (brightest)
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
             int level = GetSteamLevel(x, y, z);
             if (level <= 0) continue;
 
-            // Steam is white/light gray, more translucent than smoke
-            int alpha = 40 + (level * 20);  // 60-180 range
+            int alpha = 40 + (level * 20);
             if (alpha > 180) alpha = 180;
             
-            Color steamColor = (Color){220, 220, 230, alpha};
-            
-            // Draw steam overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-            DrawRectangleRec(dest, steamColor);
+            DrawRectangleRec(dest, (Color){220, 220, 230, alpha});
         }
     }
 }
@@ -879,8 +999,17 @@ void DrawMovers(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
 
-        // Only draw movers on the current z-level
-        if ((int)m->z != viewZ) continue;
+        int moverZ = (int)m->z;
+        
+        // Only draw movers within visible depth range (current z and up to 9 levels below)
+        if (moverZ > viewZ || moverZ < viewZ - 9) continue;
+        
+        // Check if mover is visible (clear line of sight from above)
+        if (moverZ < viewZ) {
+            int cellX = (int)(m->x / CELL_SIZE);
+            int cellY = (int)(m->y / CELL_SIZE);
+            if (!IsCellVisibleFromAbove(cellX, cellY, moverZ, viewZ)) continue;
+        }
 
         // Screen position
         float sx = offset.x + m->x * zoom;
@@ -946,6 +1075,12 @@ void DrawMovers(void) {
             moverColor = BLUE;
         }
 
+        // Apply depth tinting and darkening if mover is below current view
+        if (moverZ < viewZ) {
+            moverColor = MultiplyColor(moverColor, GetDepthTint(moverZ, viewZ));
+            moverColor = FloorDarkenTint(moverColor);
+        }
+
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
         Rectangle src = SpriteGetRect(SPRITE_head);
@@ -964,11 +1099,21 @@ void DrawMovers(void) {
             float itemSize = size * ITEM_SIZE_CARRIED;
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
             Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
+            
+            // Apply depth tinting and darkening to carried items
+            Color itemTint = WHITE;
+            Color borderTint = ItemBorderTint(item->type);
+            if (moverZ < viewZ) {
+                Color depthTint = GetDepthTint(moverZ, viewZ);
+                itemTint = FloorDarkenTint(MultiplyColor(itemTint, depthTint));
+                borderTint = FloorDarkenTint(MultiplyColor(borderTint, depthTint));
+            }
+            
             if (ItemUsesBorder(item->type)) {
-                DrawItemWithBorder(sprite, itemDest, WHITE, ItemBorderTint(item->type));
+                DrawItemWithBorder(sprite, itemDest, itemTint, borderTint);
             } else {
                 Rectangle itemSrc = SpriteGetRect(sprite);
-                DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, WHITE);
+                DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, itemTint);
             }
         }
     }
@@ -1135,7 +1280,15 @@ void DrawItems(void) {
         if (item->state == ITEM_CARRIED) continue;
         if (item->state == ITEM_IN_STOCKPILE) continue;
 
-        if ((int)item->z != viewZ) continue;
+        int itemZ = (int)item->z;
+        if (itemZ > viewZ || itemZ < viewZ - 9) continue;
+
+        // Visibility check for items below current view
+        if (itemZ < viewZ) {
+            int cellX = (int)(item->x / CELL_SIZE);
+            int cellY = (int)(item->y / CELL_SIZE);
+            if (!IsCellVisibleFromAbove(cellX, cellY, itemZ, viewZ)) continue;
+        }
 
         float sx = offset.x + item->x * zoom;
         float sy = offset.y + item->y * zoom;
@@ -1149,8 +1302,18 @@ void DrawItems(void) {
         if (item->reservedBy >= 0) {
             tint = MultiplyColor(tint, (Color){200, 200, 200, 255});
         }
+        // Apply depth tinting
+        if (itemZ < viewZ) {
+            tint = MultiplyColor(tint, GetDepthTint(itemZ, viewZ));
+            tint = FloorDarkenTint(tint);
+        }
+        Color borderTint = ItemBorderTint(item->type);
+        if (itemZ < viewZ) {
+            borderTint = MultiplyColor(borderTint, GetDepthTint(itemZ, viewZ));
+            borderTint = FloorDarkenTint(borderTint);
+        }
         if (ItemUsesBorder(item->type)) {
-            DrawItemWithBorder(sprite, dest, tint, ItemBorderTint(item->type));
+            DrawItemWithBorder(sprite, dest, tint, borderTint);
         } else {
             DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
         }
@@ -1164,15 +1327,26 @@ void DrawGatherZones(void) {
     for (int i = 0; i < MAX_GATHER_ZONES; i++) {
         GatherZone* gz = &gatherZones[i];
         if (!gz->active) continue;
-        if (gz->z != viewZ) continue;
+        if (gz->z > viewZ || gz->z < viewZ - 9) continue;
+
+        // Simple visibility: skip if any cell in the zone is blocked
+        bool belowView = gz->z < viewZ;
+        if (belowView && !IsCellVisibleFromAbove(gz->x, gz->y, gz->z, viewZ)) continue;
 
         float sx = offset.x + gz->x * size;
         float sy = offset.y + gz->y * size;
         float w = gz->width * size;
         float h = gz->height * size;
 
-        DrawRectangle((int)sx, (int)sy, (int)w, (int)h, (Color){255, 180, 50, 40});
-        DrawRectangleLinesEx((Rectangle){sx, sy, w, h}, 2.0f, (Color){255, 180, 50, 180});
+        Color fill = (Color){255, 180, 50, 40};
+        Color outline = (Color){255, 180, 50, 180};
+        if (belowView) {
+            Color dt = GetDepthTint(gz->z, viewZ);
+            fill = MultiplyColor(fill, dt);
+            outline = MultiplyColor(outline, dt);
+        }
+        DrawRectangle((int)sx, (int)sy, (int)w, (int)h, fill);
+        DrawRectangleLinesEx((Rectangle){sx, sy, w, h}, 2.0f, outline);
     }
 }
 
@@ -1183,7 +1357,10 @@ void DrawStockpileTiles(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
-        if (sp->z != viewZ) continue;
+        if (sp->z > viewZ || sp->z < viewZ - 9) continue;
+
+        // Visibility check for stockpiles below current view
+        bool belowView = sp->z < viewZ;
 
         for (int dy = 0; dy < sp->height; dy++) {
             for (int dx = 0; dx < sp->width; dx++) {
@@ -1193,12 +1370,19 @@ void DrawStockpileTiles(void) {
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
 
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z, viewZ)) continue;
+
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
 
                 Rectangle src = SpriteGetRect(SPRITE_stockpile);
                 Rectangle dest = { sx, sy, size, size };
-                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, WHITE);
+                Color tint = WHITE;
+                if (belowView) {
+                    tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
+                    tint = FloorDarkenTint(tint);
+                }
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
 
                 if (i == hoveredStockpile) {
                     float pulse = (sinf(GetTime() * 4.0f) + 1.0f) * 0.5f;
@@ -1225,7 +1409,9 @@ void DrawStockpileItems(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
-        if (sp->z != viewZ) continue;
+        if (sp->z > viewZ || sp->z < viewZ - 9) continue;
+
+        bool belowView = sp->z < viewZ;
 
         for (int dy = 0; dy < sp->height; dy++) {
             for (int dx = 0; dx < sp->width; dx++) {
@@ -1238,6 +1424,8 @@ void DrawStockpileItems(void) {
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
 
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z, viewZ)) continue;
+
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
 
@@ -1247,13 +1435,20 @@ void DrawStockpileItems(void) {
                 float itemSize = size * ITEM_SIZE_STOCKPILE;
                 float stackOffset = size * 0.08f;
                 Color tint = MaterialTint((MaterialType)sp->slotMaterials[slotIdx]);
+                Color borderTint = ItemBorderTint(type);
+                if (belowView) {
+                    tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
+                    tint = FloorDarkenTint(tint);
+                    borderTint = MultiplyColor(borderTint, GetDepthTint(sp->z, viewZ));
+                    borderTint = FloorDarkenTint(borderTint);
+                }
 
                 for (int s = 0; s < visibleCount; s++) {
                     float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
                     float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
                     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
                     if (ItemUsesBorder(type)) {
-                        DrawItemWithBorder(sprite, destItem, tint, ItemBorderTint(type));
+                        DrawItemWithBorder(sprite, destItem, tint, borderTint);
                     } else {
                         Rectangle srcItem = SpriteGetRect(sprite);
                         DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
@@ -1271,13 +1466,17 @@ void DrawWorkshops(void) {
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         Workshop* ws = &workshops[i];
         if (!ws->active) continue;
-        if (ws->z != viewZ) continue;
+        if (ws->z > viewZ || ws->z < viewZ - 9) continue;
+
+        bool belowView = ws->z < viewZ;
 
         // Draw workshop footprint based on template
         for (int dy = 0; dy < ws->height; dy++) {
             for (int dx = 0; dx < ws->width; dx++) {
                 int gx = ws->x + dx;
                 int gy = ws->y + dy;
+
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, ws->z, viewZ)) continue;
 
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
@@ -1299,6 +1498,11 @@ void DrawWorkshops(void) {
                     default:
                         tint = (Color){200, 180, 140, 255};
                         break;
+                }
+
+                if (belowView) {
+                    tint = MultiplyColor(tint, GetDepthTint(ws->z, viewZ));
+                    tint = FloorDarkenTint(tint);
                 }
 
                 Rectangle src = SpriteGetRect(SPRITE_generic);
