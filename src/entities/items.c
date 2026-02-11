@@ -65,43 +65,10 @@ int SpawnItemWithMaterial(float x, float y, float z, ItemType type, uint8_t mate
 }
 
 uint8_t DefaultMaterialForItemType(ItemType type) {
-    switch (type) {
-        case ITEM_ROCK:
-        case ITEM_BLOCKS:
-            return MAT_GRANITE;
-        case ITEM_LOG:
-        case ITEM_PLANKS:
-        case ITEM_STICKS:
-        case ITEM_POLES:
-        case ITEM_BARK:
-        case ITEM_STRIPPED_LOG:
-            return MAT_OAK;
-        case ITEM_GRASS:
-        case ITEM_DRIED_GRASS:
-            return MAT_NONE;
-        case ITEM_SAPLING:
-        case ITEM_LEAVES:
-            return MAT_OAK;
-        case ITEM_DIRT:
-            return MAT_DIRT;
-        case ITEM_CLAY:
-            return MAT_CLAY;
-        case ITEM_GRAVEL:
-            return MAT_GRAVEL;
-        case ITEM_SAND:
-            return MAT_SAND;
-        case ITEM_PEAT:
-            return MAT_PEAT;
-        case ITEM_BRICKS:
-            return MAT_BRICK;
-        case ITEM_CHARCOAL:
-            return MAT_NONE;
-        default:
-            #ifdef DEBUG
-            TraceLog(LOG_WARNING, "DefaultMaterialForItemType: unhandled ItemType %d, returning MAT_NONE", type);
-            #endif
-            return MAT_NONE;
+    if (type >= 0 && type < ITEM_TYPE_COUNT) {
+        return ItemDefaultMaterial(type);
     }
+    return MAT_NONE;
 }
 
 void DeleteItem(int index) {

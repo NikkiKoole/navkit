@@ -11,12 +11,14 @@
 #define IF_EDIBLE         (1 << 2)  // Can be eaten (future)
 #define IF_SPOILS         (1 << 3)  // Decays over time (future)
 #define IF_FUEL           (1 << 4)  // Can be burned for heat (future)
+#define IF_MATERIAL_NAME  (1 << 5)  // Display material name (e.g. "Oak Log" not just "Log")
 
 typedef struct {
     const char* name;     // Display name for tooltips
     int sprite;           // Sprite index from atlas
     uint8_t flags;        // IF_* flags
     uint8_t maxStack;     // Max items per stockpile slot
+    uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -34,5 +36,7 @@ extern const ItemDef itemDefs[];
 #define ItemIsEdible(t)       (itemDefs[t].flags & IF_EDIBLE)
 #define ItemSpoils(t)         (itemDefs[t].flags & IF_SPOILS)
 #define ItemIsFuel(t)         (itemDefs[t].flags & IF_FUEL)
+#define ItemUsesMaterialName(t) (itemDefs[t].flags & IF_MATERIAL_NAME)
+#define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 
 #endif

@@ -34,13 +34,27 @@ typedef enum {
 } JobType;
 
 static inline const char* JobTypeName(int type) {
-    static const char* names[] = {
-        "NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR",
-        "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING",
-        "PLANT_SAPLING", "CHOP_FELLED", "GATHER_GRASS", "GATHER_TREE", "DELIVER_TO_WS", "IGNITE_WS"
+    static const char* names[JOBTYPE_COUNT] = {
+        [JOBTYPE_NONE]                = "NONE",
+        [JOBTYPE_HAUL]                = "HAUL",
+        [JOBTYPE_CLEAR]               = "CLEAR",
+        [JOBTYPE_MINE]                = "MINE",
+        [JOBTYPE_CHANNEL]             = "CHANNEL",
+        [JOBTYPE_DIG_RAMP]            = "DIG_RAMP",
+        [JOBTYPE_REMOVE_FLOOR]        = "REMOVE_FLOOR",
+        [JOBTYPE_HAUL_TO_BLUEPRINT]   = "HAUL_TO_BP",
+        [JOBTYPE_BUILD]               = "BUILD",
+        [JOBTYPE_CRAFT]               = "CRAFT",
+        [JOBTYPE_REMOVE_RAMP]         = "REMOVE_RAMP",
+        [JOBTYPE_CHOP]                = "CHOP",
+        [JOBTYPE_GATHER_SAPLING]      = "GATHER_SAPLING",
+        [JOBTYPE_PLANT_SAPLING]       = "PLANT_SAPLING",
+        [JOBTYPE_CHOP_FELLED]         = "CHOP_FELLED",
+        [JOBTYPE_GATHER_GRASS]        = "GATHER_GRASS",
+        [JOBTYPE_GATHER_TREE]         = "GATHER_TREE",
+        [JOBTYPE_DELIVER_TO_WORKSHOP] = "DELIVER_TO_WS",
+        [JOBTYPE_IGNITE_WORKSHOP]     = "IGNITE_WS",
     };
-    _Static_assert(sizeof(names)/sizeof(names[0]) == JOBTYPE_COUNT,
-                   "JobTypeName out of sync with JobType enum");
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
 
