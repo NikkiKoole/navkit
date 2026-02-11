@@ -19,6 +19,7 @@ int smokeActiveCells = 0;
 int tempSourceCount = 0;
 int tempUnstableCells = 0;
 int treeActiveCells = 0;
+int treeRegenCells = 0;
 int wearActiveCells = 0;
 int dirtActiveCells = 0;
 
@@ -30,6 +31,7 @@ void InitSimActivity(void) {
     tempSourceCount = 0;
     tempUnstableCells = 0;
     treeActiveCells = 0;
+    treeRegenCells = 0;
     wearActiveCells = 0;
     dirtActiveCells = 0;
 }
@@ -43,6 +45,7 @@ void RebuildSimActivityCounts(void) {
     tempSourceCount = 0;
     tempUnstableCells = 0;
     treeActiveCells = 0;
+    treeRegenCells = 0;
     wearActiveCells = 0;
     dirtActiveCells = 0;
     
@@ -82,6 +85,12 @@ void RebuildSimActivityCounts(void) {
                 if (cell == CELL_SAPLING) {
                     treeActiveCells++;
                 }
+                // Tree regen: trunk bases with depleted harvest
+                if (cell == CELL_TREE_TRUNK &&
+                    (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) &&
+                    treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
+                    treeRegenCells++;
+                }
                 // Groundwear: worn dirt terrain tiles
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) {
                     wearActiveCells++;
@@ -99,7 +108,7 @@ void RebuildSimActivityCounts(void) {
 // Returns true if counters are valid, false if drift was detected and corrected
 bool ValidateSimActivityCounts(void) {
     int actualWater = 0, actualSteam = 0, actualFire = 0, actualSmoke = 0;
-    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualWear = 0, actualDirt = 0;
+    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualTreeRegen = 0, actualWear = 0, actualDirt = 0;
     
     // Count actual active cells from grids (same logic as RebuildSimActivityCounts)
     for (int z = 0; z < gridDepth; z++) {
@@ -117,6 +126,9 @@ bool ValidateSimActivityCounts(void) {
                 if (!tc->stable || tc->current != ambient) actualTempUnstable++;
                 CellType cell = grid[z][y][x];
                 if (cell == CELL_SAPLING) actualTree++;
+                if (cell == CELL_TREE_TRUNK &&
+                    (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) &&
+                    treeHarvestState[z][y][x] < TREE_HARVEST_MAX) actualTreeRegen++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
                 if (floorDirtGrid[z][y][x] > 0) actualDirt++;
             }
@@ -139,6 +151,7 @@ bool ValidateSimActivityCounts(void) {
     CHECK_COUNTER(tempSourceCount, actualTempSource);
     CHECK_COUNTER(tempUnstableCells, actualTempUnstable);
     CHECK_COUNTER(treeActiveCells, actualTree);
+    CHECK_COUNTER(treeRegenCells, actualTreeRegen);
     CHECK_COUNTER(wearActiveCells, actualWear);
     CHECK_COUNTER(dirtActiveCells, actualDirt);
     

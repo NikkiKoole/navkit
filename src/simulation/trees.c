@@ -399,6 +399,10 @@ void TreesTick(float dt) {
     (void)dt;
 
     bool hasGrowing = (treeActiveCells > 0);
+    bool hasRegen = (treeRegenCells > 0);
+
+    // Early exit: nothing to grow and nothing to regenerate
+    if (!hasGrowing && !hasRegen) return;
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -422,13 +426,16 @@ void TreesTick(float dt) {
                         }
                     }
 
-                    // Harvest regen on trunk base cells only (reuses growthTimer, idle on mature bases)
-                    if (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) {
+                    // Harvest regen on trunk base cells only
+                    if (hasRegen && (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK)) {
                         if (treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
                             growthTimer[z][y][x]++;
                             if (growthTimer[z][y][x] >= TREE_HARVEST_REGEN_TICKS) {
                                 treeHarvestState[z][y][x]++;
                                 growthTimer[z][y][x] = 0;
+                                if (treeHarvestState[z][y][x] >= TREE_HARVEST_MAX) {
+                                    treeRegenCells--;
+                                }
                             }
                         }
                     }

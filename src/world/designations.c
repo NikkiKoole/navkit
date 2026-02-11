@@ -1043,6 +1043,13 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         // and removing them would leave a hole to bedrock
         if (cellType == CELL_TREE_ROOT && cz == 0) continue;
 
+        // If removing a trunk base with depleted harvest, decrement regen counter
+        if (cellType == CELL_TREE_TRUNK &&
+            (cz == 0 || grid[cz - 1][cy][cx] != CELL_TREE_TRUNK) &&
+            treeHarvestState[cz][cy][cx] < TREE_HARVEST_MAX) {
+            treeRegenCells--;
+        }
+
         grid[cz][cy][cx] = CELL_AIR;
         SetWallMaterial(cx, cy, cz, MAT_NONE);
         MarkChunkDirty(cx, cy, cz);
@@ -1595,8 +1602,12 @@ void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
 
     // Decrement harvest state
     if (treeHarvestState[baseZ][y][x] > 0) {
+        bool wasMax = (treeHarvestState[baseZ][y][x] >= TREE_HARVEST_MAX);
         treeHarvestState[baseZ][y][x]--;
         growthTimer[baseZ][y][x] = 0;  // Reset regen timer
+        if (wasMax && treeHarvestState[baseZ][y][x] < TREE_HARVEST_MAX) {
+            treeRegenCells++;
+        }
     }
 
     // Spawn items at mover position (trunk cell is solid, not walkable)
