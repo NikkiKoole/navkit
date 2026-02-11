@@ -58,6 +58,14 @@ Recipe dryingRackRecipes[] = {
 };
 int dryingRackRecipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]);
 
+// Rope Maker recipes: twist fibers into string, braid string into cordage
+Recipe ropeMakerRecipes[] = {
+    { "Twist Bark",    ITEM_BARK, 2,         ITEM_NONE, 0, ITEM_SHORT_STRING, 3, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Twist Grass",   ITEM_DRIED_GRASS, 2,  ITEM_NONE, 0, ITEM_SHORT_STRING, 2, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Braid Cordage", ITEM_SHORT_STRING, 3, ITEM_NONE, 0, ITEM_CORDAGE, 1,     ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+};
+int ropeMakerRecipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]);
+
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
     [WORKSHOP_STONECUTTER] = {
@@ -131,6 +139,18 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
         .recipes = dryingRackRecipes,
         .recipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]),
         .passive = true
+    },
+    [WORKSHOP_ROPE_MAKER] = {
+        .type = WORKSHOP_ROPE_MAKER,
+        .name = "ROPE_MAKER",
+        .displayName = "Rope Maker",
+        .width = 2,
+        .height = 2,
+        .template = "#X"
+                    "O.",
+        .recipes = ropeMakerRecipes,
+        .recipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]),
+        .passive = false
     },
 };
 

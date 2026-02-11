@@ -1065,7 +1065,7 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         fclose(f);
         return 1;
@@ -1224,8 +1224,28 @@ int InspectSaveFile(int argc, char** argv) {
             memcpy(insp_stockpiles[i].allowedMaterials, v32_sp.allowedMaterials,
                    sizeof(v32_sp.allowedMaterials));
         }
+    } else if (version == 33 || version == 34) {
+        // V33/V34 had 24 item types, v35 adds SHORT_STRING and CORDAGE
+        StockpileV34 v34_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v34_sp, sizeof(StockpileV34), 1, f);
+            insp_stockpiles[i].x = v34_sp.x;
+            insp_stockpiles[i].y = v34_sp.y;
+            insp_stockpiles[i].z = v34_sp.z;
+            insp_stockpiles[i].width = v34_sp.width;
+            insp_stockpiles[i].height = v34_sp.height;
+            insp_stockpiles[i].active = v34_sp.active;
+            insp_stockpiles[i].maxStackSize = v34_sp.maxStackSize;
+            for (int j = 0; j < V34_ITEM_TYPE_COUNT; j++) {
+                insp_stockpiles[i].allowedTypes[j] = v34_sp.allowedTypes[j];
+            }
+            insp_stockpiles[i].allowedTypes[ITEM_SHORT_STRING] = false;
+            insp_stockpiles[i].allowedTypes[ITEM_CORDAGE] = false;
+            memcpy(insp_stockpiles[i].allowedMaterials, v34_sp.allowedMaterials,
+                   sizeof(v34_sp.allowedMaterials));
+        }
     } else {
-        // v33+ format - direct read
+        // v35+ format - direct read
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
     

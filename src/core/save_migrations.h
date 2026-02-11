@@ -5,7 +5,7 @@
 #include "../world/material.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 34
+#define CURRENT_SAVE_VERSION 35
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -51,5 +51,19 @@ typedef struct {
     bool allowedMaterials[MAT_COUNT];
     int maxStackSize;
 } StockpileV32;
+
+// Version 34 constants (before short string/cordage items)
+#define V34_ITEM_TYPE_COUNT 24
+
+// V34 Stockpile struct (before short string/cordage addition)
+// v33/v34 had 24 item types, v35 adds ITEM_SHORT_STRING and ITEM_CORDAGE at end (indices 24-25)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V34_ITEM_TYPE_COUNT];  // OLD: 24 bools
+    bool allowedMaterials[MAT_COUNT];
+    int maxStackSize;
+} StockpileV34;
 
 #endif

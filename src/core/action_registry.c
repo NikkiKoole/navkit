@@ -139,6 +139,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = false
     },
     
+    // DRAW > WORKSHOP > ROPE MAKER - [R]ope maker
+    {
+        .action = ACTION_DRAW_WORKSHOP_ROPE_MAKER,
+        .name = "ROPE_MAKER",
+        .barText = "L-drag place  [ESC]Back",
+        .barKey = 'r',
+        .barUnderlinePos = 0,  // [R]ope maker
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = true,
+        .canErase = false
+    },
+    
     // DRAW > SOIL (category) - s[O]il
     {
         .action = ACTION_DRAW_SOIL,

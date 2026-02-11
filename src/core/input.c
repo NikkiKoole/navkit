@@ -1308,61 +1308,6 @@ static void RaiseTerrainCell(int x, int y, int z) {
     DestabilizeWater(x, y, z);
 }
 
-// Smooth terrain: create gradual slopes by averaging heights
-static void SmoothTerrainCell(int x, int y, int z) {
-    // Count solid neighbors at current z and adjacent z-levels
-    int countAtZ = 0;
-    int countAtZMinus1 = 0;
-    int countAtZPlus1 = 0;
-
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            if (dx == 0 && dy == 0) continue;  // Skip center
-            int nx = x + dx;
-            int ny = y + dy;
-            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
-
-            if (grid[z][ny][nx] == CELL_WALL) countAtZ++;
-            if (z > 0 && grid[z-1][ny][nx] == CELL_WALL) countAtZMinus1++;
-            if (z < gridDepth-1 && grid[z+1][ny][nx] == CELL_WALL) countAtZPlus1++;
-        }
-    }
-
-    bool isWall = (grid[z][y][x] == CELL_WALL);
-    bool isNatural = isWall && IsWallNatural(x, y, z);
-
-    // If this is a wall sticking up (few neighbors at same level), remove it
-    if (isWall && isNatural && countAtZ < 3 && countAtZMinus1 >= 4) {
-        MaterialType mat = GetWallMaterial(x, y, z);
-        grid[z][y][x] = CELL_AIR;
-        SetWallMaterial(x, y, z, MAT_NONE);
-        ClearWallNatural(x, y, z);
-
-        // Place at z-1 if empty
-        if (z > 0 && grid[z-1][y][x] == CELL_AIR) {
-            grid[z-1][y][x] = CELL_WALL;
-            SetWallMaterial(x, y, z-1, mat);
-            SetWallNatural(x, y, z-1);
-        }
-
-        MarkChunkDirty(x, y, z);
-        InvalidatePathsThroughCell(x, y, z);
-        DestabilizeWater(x, y, z);
-    }
-    // If this is an air gap surrounded by walls, fill it
-    else if (!isWall && countAtZ >= 5 && z > 0 && CellIsSolid(grid[z-1][y][x])) {
-        MaterialType mat = GetWallMaterial(x, y, z-1);
-        if (mat == MAT_NONE || mat == MAT_BEDROCK) mat = MAT_DIRT;
-
-        grid[z][y][x] = CELL_WALL;
-        SetWallMaterial(x, y, z, mat);
-        SetWallNatural(x, y, z);
-
-        MarkChunkDirty(x, y, z);
-        InvalidatePathsThroughCell(x, y, z);
-        DestabilizeWater(x, y, z);
-    }
-}
 
 // Apply brush in circular pattern
 static void ApplyCircularBrush(int centerX, int centerY, int z, int radius,
@@ -1393,11 +1338,6 @@ static void ExecuteLowerTerrain(int x, int y, int z, int radius) {
 // Execute raise terrain at position with radius
 static void ExecuteRaiseTerrain(int x, int y, int z, int radius) {
     ApplyCircularBrush(x, y, z, radius, RaiseTerrainCell);
-}
-
-// Execute smooth terrain at position with radius
-static void ExecuteSmoothTerrain(int x, int y, int z, int radius) {
-    ApplyCircularBrush(x, y, z, radius, SmoothTerrainCell);
 }
 
 // Bresenham line interpolation for smooth strokes
@@ -1910,6 +1850,7 @@ void HandleInput(void) {
         if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT; }
         if (CheckKey(KEY_H)) { inputAction = ACTION_DRAW_WORKSHOP_HEARTH; }
         if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_WORKSHOP_DRYING_RACK; }
+        if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_WORKSHOP_ROPE_MAKER; }
         return;
     }
 
@@ -1942,6 +1883,7 @@ void HandleInput(void) {
         case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: backOneLevel = CheckKey(KEY_C); break;
         case ACTION_DRAW_WORKSHOP_HEARTH: backOneLevel = CheckKey(KEY_H); break;
         case ACTION_DRAW_WORKSHOP_DRYING_RACK: backOneLevel = CheckKey(KEY_D); break;
+        case ACTION_DRAW_WORKSHOP_ROPE_MAKER: backOneLevel = CheckKey(KEY_R); break;
         case ACTION_DRAW_SOIL:      backOneLevel = CheckKey(KEY_O); break;
         case ACTION_DRAW_SOIL_DIRT:  backOneLevel = CheckKey(KEY_D); break;
         case ACTION_DRAW_SOIL_CLAY:  backOneLevel = CheckKey(KEY_C); break;
@@ -2100,12 +2042,8 @@ void HandleInput(void) {
             lastBrushY = dragStartY;
             brushStrokeActive = true;
 
-            bool smoothMode = IsKeyDown(KEY_S);
             // Execute at initial position
-            if (smoothMode) {
-                // S key held = smooth (works with either mouse button)
-                ExecuteSmoothTerrain(lastBrushX, lastBrushY, z, terrainBrushRadius);
-            } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 // Left = raise
                 ExecuteRaiseTerrain(lastBrushX, lastBrushY, z, terrainBrushRadius);
             } else if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
@@ -2119,7 +2057,6 @@ void HandleInput(void) {
     if (brushStrokeActive && inputAction == ACTION_SANDBOX_SCULPT) {
         bool leftDown = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
         bool rightDown = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
-        bool smoothMode = IsKeyDown(KEY_S);
 
         if (leftDown || rightDown) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -2127,11 +2064,7 @@ void HandleInput(void) {
             int mouseY = (int)gp.y;
 
             if (mouseX != lastBrushX || mouseY != lastBrushY) {
-                if (smoothMode) {
-                    // S held = smooth (either button)
-                    InterpolateBrushStroke(lastBrushX, lastBrushY, mouseX, mouseY, z,
-                                          terrainBrushRadius, ExecuteSmoothTerrain);
-                } else if (leftDown) {
+                if (leftDown) {
                     // Left = raise
                     InterpolateBrushStroke(lastBrushX, lastBrushY, mouseX, mouseY, z,
                                           terrainBrushRadius, ExecuteRaiseTerrain);
@@ -2231,6 +2164,9 @@ void HandleInput(void) {
                 break;
             case ACTION_DRAW_WORKSHOP_DRYING_RACK:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_DRYING_RACK);
+                break;
+            case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_ROPE_MAKER);
                 break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {

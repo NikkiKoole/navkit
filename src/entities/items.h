@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "item_defs.h"
 
 // Item types (for Phase 0, just colors)
 typedef enum {
@@ -30,6 +31,8 @@ typedef enum {
     ITEM_ASH,          // Ash from burning fuel (hearth byproduct)
     ITEM_BARK,         // Bark stripped from logs at sawmill
     ITEM_STRIPPED_LOG,  // Log after bark removal (bonus planks)
+    ITEM_SHORT_STRING,  // Twisted plant fiber string
+    ITEM_CORDAGE,       // Braided rope from string
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
@@ -143,9 +146,7 @@ static inline bool IsLeafItem(ItemType type) {
 }
 
 static inline bool ItemTypeUsesMaterialName(ItemType type) {
-    return type == ITEM_LOG || type == ITEM_BLOCKS || type == ITEM_ROCK ||
-           type == ITEM_PLANKS || type == ITEM_SAPLING || type == ITEM_LEAVES ||
-           type == ITEM_BARK || type == ITEM_STRIPPED_LOG;
+    return type >= 0 && type < ITEM_TYPE_COUNT && ItemUsesMaterialName(type);
 }
 
 #endif

@@ -29,6 +29,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_CHARCOAL,  'c', "Charcoal", "C", GRAY},
     {ITEM_BARK,      'a', "Bark",     "A", BROWN},
     {ITEM_STRIPPED_LOG, 'e', "Stripped Log", "E", BROWN},
+    {ITEM_SHORT_STRING, 'n', "String",      "N", BEIGE},
+    {ITEM_CORDAGE,      'j', "Cordage",     "J", BEIGE},
 };
 const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
 
