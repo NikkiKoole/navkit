@@ -356,7 +356,7 @@ describe(sapling_plant_job) {
         InitDesignations();
         
         // Spawn a sapling item (mover would carry this)
-        int itemIdx = SpawnItem(6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_SAPLING_OAK);
+        int itemIdx = SpawnItemWithMaterial(6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_SAPLING, MAT_OAK);
         expect(IsItemActive(itemIdx));
         
         // Target location for planting
@@ -417,9 +417,9 @@ describe(sapling_plant_job) {
         AddMoverToIdleList(0);
         
         // Create sapling item at (3,1)
-        int itemIdx = SpawnItem(CELL_SIZE * 3.5f, CELL_SIZE * 1.5f, (float)workZ, ITEM_SAPLING_OAK);
+        int itemIdx = SpawnItemWithMaterial(CELL_SIZE * 3.5f, CELL_SIZE * 1.5f, (float)workZ, ITEM_SAPLING, MAT_OAK);
         expect(IsItemActive(itemIdx));
-        expect(CountItemType(ITEM_SAPLING_OAK) == 1);
+        expect(CountItemType(ITEM_SAPLING) == 1);
         
         // Designate plant location at (6,1) - AIR cell
         int plantX = 6, plantY = 1, plantZ = workZ;
@@ -767,9 +767,9 @@ describe(stockpile_sapling_filter) {
         
         // Create stockpile with sapling filter ON
         int spIdx = CreateStockpile(2, 2, 1, 2, 2);
-        SetStockpileFilter(spIdx, ITEM_SAPLING_OAK, true);
-        
-        expect(StockpileAcceptsType(spIdx, ITEM_SAPLING_OAK) == true);
+        SetStockpileFilter(spIdx, ITEM_SAPLING, true);
+
+        expect(StockpileAcceptsType(spIdx, ITEM_SAPLING) == true);
     }
     
     it("should reject saplings when filter is disabled") {
@@ -779,9 +779,9 @@ describe(stockpile_sapling_filter) {
         // Create stockpile and explicitly disable sapling filter
         int spIdx = CreateStockpile(2, 2, 1, 2, 2);
         // Stockpiles default to allowing all types, so we must explicitly disable
-        SetStockpileFilter(spIdx, ITEM_SAPLING_OAK, false);
-        
-        expect(StockpileAcceptsType(spIdx, ITEM_SAPLING_OAK) == false);
+        SetStockpileFilter(spIdx, ITEM_SAPLING, false);
+
+        expect(StockpileAcceptsType(spIdx, ITEM_SAPLING) == false);
     }
     
     it("should find stockpile for sapling item when filter enabled") {
@@ -790,14 +790,14 @@ describe(stockpile_sapling_filter) {
         
         // Create stockpile accepting saplings
         int spIdx = CreateStockpile(2, 2, 1, 2, 2);
-        SetStockpileFilter(spIdx, ITEM_SAPLING_OAK, true);
-        
+        SetStockpileFilter(spIdx, ITEM_SAPLING, true);
+
         // Must rebuild free slot counts for FindStockpileForItem to work
         RebuildStockpileFreeSlotCounts();
         
         int outX, outY;
-        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, MAT_NONE, &outX, &outY);
-        
+        int foundSp = FindStockpileForItem(ITEM_SAPLING, MAT_NONE, &outX, &outY);
+
         expect(foundSp == spIdx);
     }
     
@@ -815,8 +815,8 @@ describe(stockpile_sapling_filter) {
         (void)spIdx;
         
         int outX, outY;
-        int foundSp = FindStockpileForItem(ITEM_SAPLING_OAK, MAT_NONE, &outX, &outY);
-        
+        int foundSp = FindStockpileForItem(ITEM_SAPLING, MAT_NONE, &outX, &outY);
+
         expect(foundSp == -1);
     }
 }

@@ -8080,7 +8080,7 @@ describe(job_lifecycle) {
         moverCount = 1;
 
         // Spawn a sapling item near the mover
-        int sapIdx = SpawnItemWithMaterial(CELL_SIZE * 3.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_SAPLING_OAK, MAT_OAK);
+        int sapIdx = SpawnItemWithMaterial(CELL_SIZE * 3.5f, CELL_SIZE * 2.5f, 0.0f, ITEM_SAPLING, MAT_OAK);
 
         // Designate tile (5,2) for planting
         DesignatePlantSapling(5, 2, 0);

@@ -1,13 +1,16 @@
 #ifndef SAVE_MIGRATIONS_H
 #define SAVE_MIGRATIONS_H
 
+#include <stdbool.h>
+#include "../world/material.h"
+
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 31
+#define CURRENT_SAVE_VERSION 32
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
 // ============================================================================
-// 
+//
 // When the save format changes (add/remove fields, change enum sizes, etc.):
 // 1. Bump CURRENT_SAVE_VERSION
 // 2. Add version constants here (e.g., #define V22_ITEM_TYPE_COUNT 24)
@@ -19,5 +22,20 @@
 //
 // Currently in development: only V22 is supported, old saves will error out cleanly.
 // ============================================================================
+
+// Version 31 constants (before sapling/leaf consolidation)
+#define V31_ITEM_TYPE_COUNT 28
+
+// V31 Stockpile struct (before sapling/leaf consolidation)
+// v31 had 8 separate types: ITEM_SAPLING_OAK/PINE/BIRCH/WILLOW at indices 16-19,
+// ITEM_LEAVES_OAK/PINE/BIRCH/WILLOW at indices 20-23
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V31_ITEM_TYPE_COUNT];  // OLD: 28 bools
+    bool allowedMaterials[MAT_COUNT];
+    int maxStackSize;
+} StockpileV31;
 
 #endif

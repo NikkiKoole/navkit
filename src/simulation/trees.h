@@ -14,7 +14,6 @@ extern int trunkGrowTicks;       // Ticks between trunk growth (default 50)
 const char* TreeTypeName(MaterialType mat);
 ItemType SaplingItemFromTreeType(MaterialType mat);
 ItemType LeafItemFromTreeType(MaterialType mat);
-MaterialType TreeTypeFromSaplingItem(ItemType type);
 
 // Growth grids (exposed for save/load)
 extern int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

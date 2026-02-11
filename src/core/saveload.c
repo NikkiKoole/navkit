@@ -373,10 +373,10 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    // Only support current version (development mode - no backward compatibility)
-    if (version != CURRENT_SAVE_VERSION) {
-        printf("ERROR: Save version mismatch (file: v%d, supported: v%d only)\n", version, CURRENT_SAVE_VERSION);
-        AddMessage(TextFormat("Save version mismatch: v%d (expected v%d). Old saves not supported in development.", version, CURRENT_SAVE_VERSION), RED);
+    // Support current version and v31 (with migration)
+    if (version != CURRENT_SAVE_VERSION && version != 31) {
+        printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
+        AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
         return false;
     }
@@ -583,10 +583,51 @@ bool LoadWorld(const char* filename) {
         }
     }
     
-    // Stockpiles (V22 only - old versions rejected at version check)
-    fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
-        // V21/V20: Stockpile struct before MAT_COUNT expansion
-    
+    // Stockpiles - migrate v31 → v32 if needed
+    if (version == 31) {
+        // V31 had 8 separate sapling/leaf types, v32 consolidates to 2
+        StockpileV31 v31_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v31_sp, sizeof(StockpileV31), 1, f);
+
+            // Copy unchanged fields
+            stockpiles[i].x = v31_sp.x;
+            stockpiles[i].y = v31_sp.y;
+            stockpiles[i].z = v31_sp.z;
+            stockpiles[i].width = v31_sp.width;
+            stockpiles[i].height = v31_sp.height;
+            stockpiles[i].active = v31_sp.active;
+            stockpiles[i].maxStackSize = v31_sp.maxStackSize;
+
+            // Migrate allowedTypes: if ANY old sapling/leaf type enabled, enable unified type
+            // v31 indices 16-19: oak/pine/birch/willow saplings
+            // v31 indices 20-23: oak/pine/birch/willow leaves
+            bool anySapling = v31_sp.allowedTypes[16] || v31_sp.allowedTypes[17] ||
+                              v31_sp.allowedTypes[18] || v31_sp.allowedTypes[19];
+            bool anyLeaves = v31_sp.allowedTypes[20] || v31_sp.allowedTypes[21] ||
+                             v31_sp.allowedTypes[22] || v31_sp.allowedTypes[23];
+
+            // Copy items 0-15 directly (ITEM_RED through ITEM_LOG)
+            for (int j = 0; j < 16; j++) {
+                stockpiles[i].allowedTypes[j] = v31_sp.allowedTypes[j];
+            }
+            // Set unified types at indices 16-17 (ITEM_SAPLING, ITEM_LEAVES)
+            stockpiles[i].allowedTypes[16] = anySapling;  // ITEM_SAPLING
+            stockpiles[i].allowedTypes[17] = anyLeaves;   // ITEM_LEAVES
+            // Copy items 24-27 to positions 18-21 (shift up 6)
+            for (int j = 24; j < V31_ITEM_TYPE_COUNT; j++) {
+                stockpiles[i].allowedTypes[j - 6] = v31_sp.allowedTypes[j];
+            }
+
+            // Copy materials array unchanged
+            memcpy(stockpiles[i].allowedMaterials, v31_sp.allowedMaterials,
+                   sizeof(v31_sp.allowedMaterials));
+        }
+    } else {
+        // v32+ format - direct read
+        fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
+    }
+
     // Clear transient reservation counts (not meaningful across save/load)
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;

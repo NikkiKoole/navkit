@@ -77,18 +77,9 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
         case ITEM_GRASS:
         case ITEM_DRIED_GRASS:
             return MAT_NONE;
-        case ITEM_SAPLING_OAK:
-        case ITEM_LEAVES_OAK:
+        case ITEM_SAPLING:
+        case ITEM_LEAVES:
             return MAT_OAK;
-        case ITEM_SAPLING_PINE:
-        case ITEM_LEAVES_PINE:
-            return MAT_PINE;
-        case ITEM_SAPLING_BIRCH:
-        case ITEM_LEAVES_BIRCH:
-            return MAT_BIRCH;
-        case ITEM_SAPLING_WILLOW:
-        case ITEM_LEAVES_WILLOW:
-            return MAT_WILLOW;
         case ITEM_DIRT:
             return MAT_DIRT;
         case ITEM_CLAY:

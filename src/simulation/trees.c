@@ -40,33 +40,13 @@ const char* TreeTypeName(MaterialType mat) {
 }
 
 ItemType SaplingItemFromTreeType(MaterialType mat) {
-    switch (mat) {
-        case MAT_PINE: return ITEM_SAPLING_PINE;
-        case MAT_BIRCH: return ITEM_SAPLING_BIRCH;
-        case MAT_WILLOW: return ITEM_SAPLING_WILLOW;
-        case MAT_OAK:
-        default: return ITEM_SAPLING_OAK;
-    }
+    (void)mat;  // Material stored on item, not in type
+    return ITEM_SAPLING;
 }
 
 ItemType LeafItemFromTreeType(MaterialType mat) {
-    switch (mat) {
-        case MAT_PINE: return ITEM_LEAVES_PINE;
-        case MAT_BIRCH: return ITEM_LEAVES_BIRCH;
-        case MAT_WILLOW: return ITEM_LEAVES_WILLOW;
-        case MAT_OAK:
-        default: return ITEM_LEAVES_OAK;
-    }
-}
-
-MaterialType TreeTypeFromSaplingItem(ItemType type) {
-    switch (type) {
-        case ITEM_SAPLING_PINE: return MAT_PINE;
-        case ITEM_SAPLING_BIRCH: return MAT_BIRCH;
-        case ITEM_SAPLING_WILLOW: return MAT_WILLOW;
-        case ITEM_SAPLING_OAK:
-        default: return MAT_OAK;
-    }
+    (void)mat;  // Material stored on item, not in type
+    return ITEM_LEAVES;
 }
 
 static void GetTreeHeightRange(MaterialType treeMat, int* outMin, int* outMax) {

@@ -1394,14 +1394,9 @@ void HandleInput(void) {
                 return;
             }
             if (IsKeyPressed(KEY_T)) {
-                bool anySapling = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
-                                  sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
-                bool newVal = !anySapling;
-                sp->allowedTypes[ITEM_SAPLING_OAK] = newVal;
-                sp->allowedTypes[ITEM_SAPLING_PINE] = newVal;
-                sp->allowedTypes[ITEM_SAPLING_BIRCH] = newVal;
-                sp->allowedTypes[ITEM_SAPLING_WILLOW] = newVal;
-                AddMessage(TextFormat("Saplings: %s", newVal ? "ON" : "OFF"), GREEN);
+                bool current = sp->allowedTypes[ITEM_SAPLING];
+                sp->allowedTypes[ITEM_SAPLING] = !current;
+                AddMessage(TextFormat("Saplings: %s", !current ? "ON" : "OFF"), GREEN);
                 return;
             }
         }

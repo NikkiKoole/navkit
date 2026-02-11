@@ -13,14 +13,8 @@ typedef enum {
     ITEM_ROCK,         // Raw stone from mining (rock block)
     ITEM_BLOCKS,       // Crafted blocks (material determines wood vs stone)
     ITEM_LOG,          // Raw logs from chopping felled trees
-    ITEM_SAPLING_OAK,  // Oak sapling
-    ITEM_SAPLING_PINE, // Pine sapling
-    ITEM_SAPLING_BIRCH,// Birch sapling
-    ITEM_SAPLING_WILLOW,// Willow sapling
-    ITEM_LEAVES_OAK,   // Oak leaves
-    ITEM_LEAVES_PINE,  // Pine leaves
-    ITEM_LEAVES_BIRCH, // Birch leaves
-    ITEM_LEAVES_WILLOW,// Willow leaves
+    ITEM_SAPLING,      // Tree saplings (material determines species)
+    ITEM_LEAVES,       // Tree leaves (material determines species)
     ITEM_DIRT,         // Dirt blocks from digging dirt
     ITEM_CLAY,         // Clay blocks from clay soil
     ITEM_GRAVEL,       // Gravel blocks from gravel soil
@@ -139,18 +133,16 @@ static inline ItemType GetItemType(int itemIdx) { return items[itemIdx].type; }
 static inline int GetItemReservedBy(int itemIdx) { return items[itemIdx].reservedBy; }
 
 static inline bool IsSaplingItem(ItemType type) {
-    return type == ITEM_SAPLING_OAK || type == ITEM_SAPLING_PINE ||
-           type == ITEM_SAPLING_BIRCH || type == ITEM_SAPLING_WILLOW;
+    return type == ITEM_SAPLING;
 }
 
 static inline bool IsLeafItem(ItemType type) {
-    return type == ITEM_LEAVES_OAK || type == ITEM_LEAVES_PINE ||
-           type == ITEM_LEAVES_BIRCH || type == ITEM_LEAVES_WILLOW;
+    return type == ITEM_LEAVES;
 }
 
 static inline bool ItemTypeUsesMaterialName(ItemType type) {
     return type == ITEM_LOG || type == ITEM_BLOCKS || type == ITEM_ROCK ||
-           type == ITEM_PLANKS || IsSaplingItem(type) || IsLeafItem(type);
+           type == ITEM_PLANKS || type == ITEM_SAPLING || type == ITEM_LEAVES;
 }
 
 #endif

@@ -145,6 +145,24 @@ static int ItemSpriteForTypeMaterial(ItemType type, uint8_t material) {
     if (type == ITEM_BLOCKS) {
         return MaterialFloorSprite((MaterialType)material);
     }
+    if (type == ITEM_SAPLING) {
+        switch ((MaterialType)material) {
+            case MAT_PINE: return SPRITE_tree_sapling_pine;
+            case MAT_BIRCH: return SPRITE_tree_sapling_birch;
+            case MAT_WILLOW: return SPRITE_tree_sapling_willow;
+            case MAT_OAK:
+            default: return SPRITE_tree_sapling_oak;
+        }
+    }
+    if (type == ITEM_LEAVES) {
+        switch ((MaterialType)material) {
+            case MAT_PINE: return SPRITE_tree_leaves_pine;
+            case MAT_BIRCH: return SPRITE_tree_leaves_birch;
+            case MAT_WILLOW: return SPRITE_tree_leaves_willow;
+            case MAT_OAK:
+            default: return SPRITE_tree_leaves_oak;
+        }
+    }
     return ItemSprite(type);
 }
 
