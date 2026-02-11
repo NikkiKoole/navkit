@@ -306,7 +306,7 @@ WIN_RCFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/includ
 WIN_LDFLAGS := -L$(WIN_BINDIR) -lraylib -lopengl32 -lgdi32 -lwinmm -lm -lpthread -static -mwindows
 WIN_RAYLIB_SRCS := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
                    $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
-                   $(RAYLIB_DIR)/rglfw.c
+                   $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
 WIN_RAYLIB_OBJS := $(patsubst $(RAYLIB_DIR)/%.c,$(WIN_BINDIR)/raylib_%.o,$(WIN_RAYLIB_SRCS))
 
 $(WIN_BINDIR):

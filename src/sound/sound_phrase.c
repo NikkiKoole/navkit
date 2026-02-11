@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include "../../assets/sound/phrase_palette_embedded.h"
 
 // Simple xorshift RNG for deterministic phrase generation
 void SoundRngSeed(SoundRng* rng, uint32_t seed) {
@@ -156,6 +157,8 @@ static bool setPaletteValue(SoundPalette* palette, const char* key, const char* 
     return false;
 }
 
+
+
 bool SoundPaletteLoad(SoundPalette* palette, const char* path) {
     if (!palette || !path) return false;
     FILE* f = fopen(path, "r");
@@ -183,10 +186,17 @@ bool SoundPaletteLoad(SoundPalette* palette, const char* path) {
 
 bool SoundPaletteLoadDefault(const char* path) {
     if (!gSoundPaletteInit) {
-        SoundPaletteReset(&gSoundPalette);
+        // Initialize with embedded defaults
+        gSoundPalette = EMBEDDED_SOUND_PALETTE;
         gSoundPaletteInit = true;
     }
-    return SoundPaletteLoad(&gSoundPalette, path);
+    
+    // Try to load from file (optional override)
+    if (path) {
+        SoundPaletteLoad(&gSoundPalette, path);
+    }
+    
+    return true;
 }
 
 static SoundToken makeBirdToken(SoundRng* rng, float baseMidi, const SoundPalette* pal) {
