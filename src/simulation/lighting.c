@@ -169,27 +169,22 @@ static void PropagateBlockLight(LightSource* src) {
         LightBfsNode node = bfsQueue[head++];
         if (node.level <= 1) continue;
 
-        // 6 directions: 4 cardinal + up + down
-        static const int dx[] = {1, -1, 0, 0, 0, 0};
-        static const int dy[] = {0, 0, 1, -1, 0, 0};
-        static const int dz[] = {0, 0, 0, 0, 1, -1};
-        for (int d = 0; d < 6; d++) {
+        // 4 cardinal directions (block light stays on same z-level)
+        static const int dx[] = {1, -1, 0, 0};
+        static const int dy[] = {0, 0, 1, -1};
+        for (int d = 0; d < 4; d++) {
             int nx = node.x + dx[d];
             int ny = node.y + dy[d];
-            int nz = node.z + dz[d];
-            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight ||
-                nz < 0 || nz >= gridDepth) continue;
+            int nz = node.z;
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
 
             // Blocked by solid cells
             if (CellIsSolid(grid[nz][ny][nx])) continue;
-            // Floors block light passing through vertically
-            if (dz[d] != 0 && HAS_FLOOR(nx, ny, nz)) continue;
 
             // Euclidean distance from source for circular falloff
             float ddx = (float)(nx - src->x);
             float ddy = (float)(ny - src->y);
-            float ddz = (float)(nz - src->z);
-            float dist = sqrtf(ddx * ddx + ddy * ddy + ddz * ddz);
+            float dist = sqrtf(ddx * ddx + ddy * ddy);
             if (dist >= radius) continue;  // Outside light radius
 
             // Scale color by (1 - dist/radius) for smooth circular falloff
