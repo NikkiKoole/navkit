@@ -113,6 +113,7 @@ bool sectionMemEntities = false;
 bool sectionMemSpatial = false;
 bool sectionJobs = false;
 bool sectionTime = false;
+bool sectionLighting = false;
 
 int hoveredStockpile = -1;
 int hoveredWorkshop = -1;

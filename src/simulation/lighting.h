@@ -15,10 +15,17 @@
 // Maximum number of placed light sources
 #define MAX_LIGHT_SOURCES 1024
 
-// Ambient minimum light (prevents pitch black)
-#define LIGHT_AMBIENT_MIN_R 15
-#define LIGHT_AMBIENT_MIN_G 15
-#define LIGHT_AMBIENT_MIN_B 20
+// Tweakable settings
+extern bool lightingEnabled;       // Master toggle — when off, GetLightColor returns WHITE
+extern bool skyLightEnabled;       // Toggle sky light computation
+extern bool blockLightEnabled;     // Toggle block light computation
+extern int  lightAmbientR;         // Ambient minimum red (0-255, prevents pitch black)
+extern int  lightAmbientG;         // Ambient minimum green
+extern int  lightAmbientB;         // Ambient minimum blue
+extern int  lightDefaultIntensity; // Default torch intensity for sandbox placement (1-15)
+extern int  lightDefaultR;         // Default torch red (0-255)
+extern int  lightDefaultG;         // Default torch green (0-255)
+extern int  lightDefaultB;         // Default torch blue (0-255)
 
 // Per-cell computed light (what rendering reads)
 typedef struct {

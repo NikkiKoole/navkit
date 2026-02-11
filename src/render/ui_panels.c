@@ -4,6 +4,7 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/lighting.h"
 #include <time.h>
 
 // ============================================================================
@@ -798,6 +799,74 @@ void DrawUI(void) {
             TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
         y += 22;
         DrawTextShadow(TextFormat("Sandbox Tree Type: %s", TreeTypeName(currentTreeType)), x, y, 14, GRAY);
+    }
+    y += 22;
+
+    // === LIGHTING ===
+    y += 8;
+    if (SectionHeader(x, y, TextFormat("Lighting (%d src)", lightSourceCount), &sectionLighting)) {
+        y += 18;
+        {
+            bool wasEnabled = lightingEnabled;
+            ToggleBoolT(x, y, "Enabled", &lightingEnabled,
+                "Master toggle for lighting system. When off, all tiles render at full brightness (no light/dark cycle).");
+            if (wasEnabled != lightingEnabled) InvalidateLighting();
+        }
+        y += 22;
+        {
+            bool was = skyLightEnabled;
+            ToggleBoolT(x, y, "Sky Light", &skyLightEnabled,
+                "Compute sky light from open columns. Sky light intensity follows time-of-day sky color.");
+            if (was != skyLightEnabled) InvalidateLighting();
+        }
+        y += 22;
+        {
+            bool was = blockLightEnabled;
+            ToggleBoolT(x, y, "Block Light", &blockLightEnabled,
+                "Compute light from placed sources (torches). Colored BFS flood fill through open cells.");
+            if (was != blockLightEnabled) InvalidateLighting();
+        }
+        y += 22;
+
+        // Ambient minimum
+        DrawTextShadow("Ambient Minimum:", x, y, 14, GRAY);
+        y += 18;
+        DraggableIntT(x, y, "Red", &lightAmbientR, 1.0f, 0, 255,
+            "Minimum red component. Prevents completely black tiles. Higher = brighter in total darkness.");
+        y += 22;
+        DraggableIntT(x, y, "Green", &lightAmbientG, 1.0f, 0, 255,
+            "Minimum green component. Prevents completely black tiles.");
+        y += 22;
+        DraggableIntT(x, y, "Blue", &lightAmbientB, 1.0f, 0, 255,
+            "Minimum blue component. Slightly higher default gives a cool moonlight feel in darkness.");
+        y += 22;
+
+        // Torch defaults (for sandbox placement)
+        DrawTextShadow("Torch Defaults:", x, y, 14, GRAY);
+        y += 18;
+        DraggableIntT(x, y, "Intensity", &lightDefaultIntensity, 1.0f, 1, 15,
+            TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.", lightDefaultIntensity, lightDefaultIntensity));
+        y += 22;
+        DraggableIntT(x, y, "R", &lightDefaultR, 1.0f, 0, 255, "Red component of new torches.");
+        y += 22;
+        DraggableIntT(x, y, "G", &lightDefaultG, 1.0f, 0, 255, "Green component of new torches.");
+        y += 22;
+        DraggableIntT(x, y, "B", &lightDefaultB, 1.0f, 0, 255, "Blue component of new torches.");
+        y += 22;
+
+        // Color preview
+        {
+            Color preview = { (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB, 255 };
+            DrawRectangle((int)x, (int)y, 60, 14, preview);
+            DrawRectangleLinesEx((Rectangle){x, y, 60, 14}, 1, GRAY);
+            DrawTextShadow("Preview", x + 65, y, 14, GRAY);
+        }
+        y += 18;
+
+        if (PushButton(x, y, "Clear Lights")) {
+            ClearLightSources();
+            InvalidateLighting();
+        }
     }
     y += 22;
 

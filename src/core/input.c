@@ -2259,8 +2259,9 @@ void HandleInput(void) {
                 break;
             case ACTION_SANDBOX_LIGHT:
                 if (leftClick) {
-                    // Place a warm torch light (radius 10)
-                    AddLightSource(x1, y1, z, 255, 180, 100, 10);
+                    AddLightSource(x1, y1, z,
+                        (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB,
+                        (uint8_t)lightDefaultIntensity);
                 } else {
                     RemoveLightSource(x1, y1, z);
                 }

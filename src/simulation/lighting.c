@@ -9,6 +9,18 @@
 #include "../world/material.h"
 #include <string.h>
 
+// Tweakable settings
+bool lightingEnabled = true;
+bool skyLightEnabled = true;
+bool blockLightEnabled = true;
+int  lightAmbientR = 15;
+int  lightAmbientG = 15;
+int  lightAmbientB = 20;
+int  lightDefaultIntensity = 10;
+int  lightDefaultR = 255;
+int  lightDefaultG = 180;
+int  lightDefaultB = 100;
+
 // Light grid (per-cell computed light)
 LightCell lightGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
@@ -217,9 +229,21 @@ static void ComputeBlockLight(void) {
 // --------------------------------------------------------------------------
 
 void RecomputeLighting(void) {
-    ComputeSkyColumns();
-    SpreadSkyLight();
-    ComputeBlockLight();
+    if (skyLightEnabled) {
+        ComputeSkyColumns();
+        SpreadSkyLight();
+    } else {
+        // Clear sky light when disabled
+        for (int z = 0; z < gridDepth; z++)
+            for (int y = 0; y < gridHeight; y++)
+                for (int x = 0; x < gridWidth; x++)
+                    lightGrid[z][y][x].skyLevel = 0;
+    }
+    if (blockLightEnabled) {
+        ComputeBlockLight();
+    } else {
+        ClearBlockLight();
+    }
     lightingDirty = false;
 }
 
@@ -285,8 +309,10 @@ void ClearLightSources(void) {
 // --------------------------------------------------------------------------
 
 Color GetLightColor(int x, int y, int z, Color skyColor) {
+    if (!lightingEnabled) return WHITE;
+
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        return (Color){ 255, 255, 255, 255 };
+        return WHITE;
     }
 
     LightCell* lc = &lightGrid[z][y][x];
@@ -302,9 +328,9 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
     int b = sb > lc->blockB ? sb : lc->blockB;
 
     // Ambient minimum
-    if (r < LIGHT_AMBIENT_MIN_R) r = LIGHT_AMBIENT_MIN_R;
-    if (g < LIGHT_AMBIENT_MIN_G) g = LIGHT_AMBIENT_MIN_G;
-    if (b < LIGHT_AMBIENT_MIN_B) b = LIGHT_AMBIENT_MIN_B;
+    if (r < lightAmbientR) r = lightAmbientR;
+    if (g < lightAmbientG) g = lightAmbientG;
+    if (b < lightAmbientB) b = lightAmbientB;
 
     return (Color){ (uint8_t)r, (uint8_t)g, (uint8_t)b, 255 };
 }

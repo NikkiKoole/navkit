@@ -144,6 +144,7 @@ extern bool sectionMemEntities;
 extern bool sectionMemSpatial;
 extern bool sectionJobs;
 extern bool sectionTime;
+extern bool sectionLighting;
 
 // Hover state
 extern int hoveredStockpile;
