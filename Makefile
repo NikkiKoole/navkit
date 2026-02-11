@@ -6,9 +6,39 @@ export MACOSX_DEPLOYMENT_TARGET
 GENERATE_16X16 ?= 0
 
 CFLAGS  := -std=c11 -O2 -g -I. -Ivendor -Wall -Wextra
-LDFLAGS := $(shell pkg-config --libs raylib)
 
 BINDIR := bin
+
+# ---------------------------------------------------------------------------
+# Vendored raylib (built from vendor/raylib/)
+# ---------------------------------------------------------------------------
+RAYLIB_DIR    := vendor/raylib
+RAYLIB_LIB    := $(BINDIR)/libraylib.a
+RAYLIB_CFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
+                 -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
+                 -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
+                 -Wno-missing-field-initializers -Wno-implicit-fallthrough
+RAYLIB_SRCS   := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
+                 $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
+                 $(RAYLIB_DIR)/rglfw.c
+RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(BINDIR)/raylib_%.o,$(RAYLIB_SRCS))
+
+# macOS link flags for raylib (static)
+LDFLAGS := -L$(BINDIR) -lraylib -framework OpenGL -framework Cocoa -framework IOKit \
+           -framework CoreAudio -framework CoreVideo -lm -lpthread
+
+# Build individual raylib object files
+$(BINDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(BINDIR)
+	@$(CC) $(RAYLIB_CFLAGS) -c -o $@ $<
+
+# rglfw includes Objective-C (.m) files on macOS
+$(BINDIR)/raylib_rglfw.o: $(RAYLIB_DIR)/rglfw.c | $(BINDIR)
+	@$(CC) $(RAYLIB_CFLAGS) -x objective-c -c -o $@ $<
+
+# Archive into static library
+$(RAYLIB_LIB): $(RAYLIB_OBJS)
+	@ar rcs $@ $^
+	@echo "Built $(RAYLIB_LIB)"
 
 # Define your targets here
 TARGETS := steer crowd path soundsystem-demo
@@ -42,19 +72,19 @@ test_floordirt_SRC   := tests/test_floordirt.c
 test_lighting_SRC    := tests/test_lighting.c
 
 # Precompile test_unity.o once (the expensive part)
-$(TEST_UNITY_OBJ): tests/test_unity.c | $(BINDIR)
+$(TEST_UNITY_OBJ): tests/test_unity.c $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Soundsystem test - standalone, no test_unity.c needed
 test_soundsystem_SRC := tests/test_soundsystem.c
 
-all: $(BINDIR) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
+all: $(RAYLIB_LIB) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
 # Pattern rule: build any target from its corresponding _SRC
-$(BINDIR)/%:
+$(BINDIR)/%: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS)
 
 # Soundsystem demo needs -Wno-unused-function for header-only library functions
@@ -217,7 +247,7 @@ slices:
 
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
-atlas: slices $(BINDIR)
+atlas: slices $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -DGENERATE_16X16=$(GENERATE_16X16) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
@@ -245,16 +275,48 @@ sample_embed: $(BINDIR)
 embed: atlas embed_font
 
 # Build with 8x8 tiles
-path8 $(BINDIR)/path8: $(BINDIR)
+path8 $(BINDIR)/path8: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -DTILE_SIZE=8 -o $(BINDIR)/path8 $(path_SRC) $(LDFLAGS)
 
 # Build with 16x16 tiles
-path16 $(BINDIR)/path16: $(BINDIR)
+path16 $(BINDIR)/path16: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -DTILE_SIZE=16 -o $(BINDIR)/path16 $(path_SRC) $(LDFLAGS)
 
 # Build with soundsystem enabled
-path-sound: $(BINDIR)
+path-sound: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -DUSE_SOUNDSYSTEM -o $(BINDIR)/path_sound $(path_SRC) $(LDFLAGS)
+
+# ---------------------------------------------------------------------------
+# Windows cross-compile (requires: brew install mingw-w64)
+# ---------------------------------------------------------------------------
+WIN_CC      := x86_64-w64-mingw32-gcc
+WIN_AR      := x86_64-w64-mingw32-ar
+WIN_BINDIR  := bin/win64
+WIN_RAYLIB  := $(WIN_BINDIR)/libraylib.a
+WIN_CFLAGS  := -std=c11 -O2 -I. -Ivendor -Wall -Wextra
+WIN_RCFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
+               -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
+               -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
+               -Wno-missing-field-initializers -Wno-implicit-fallthrough
+WIN_LDFLAGS := -L$(WIN_BINDIR) -lraylib -lopengl32 -lgdi32 -lwinmm -lm -lpthread -static -mwindows
+WIN_RAYLIB_SRCS := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
+                   $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
+                   $(RAYLIB_DIR)/rglfw.c
+WIN_RAYLIB_OBJS := $(patsubst $(RAYLIB_DIR)/%.c,$(WIN_BINDIR)/raylib_%.o,$(WIN_RAYLIB_SRCS))
+
+$(WIN_BINDIR):
+	mkdir -p $(WIN_BINDIR)
+
+$(WIN_BINDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(WIN_BINDIR)
+	@$(WIN_CC) $(WIN_RCFLAGS) -c -o $@ $<
+
+$(WIN_RAYLIB): $(WIN_RAYLIB_OBJS)
+	@$(WIN_AR) rcs $@ $^
+	@echo "Built $(WIN_RAYLIB)"
+
+windows: $(WIN_RAYLIB)
+	$(WIN_CC) $(WIN_CFLAGS) -o $(WIN_BINDIR)/path.exe $(path_SRC) $(WIN_LDFLAGS)
+	@echo "Built $(WIN_BINDIR)/path.exe"
 
 clean:
 	rm -rf $(BINDIR)
@@ -263,24 +325,24 @@ clean-atlas:
 	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png
 
 # Fast build - no optimization, no sanitizers (~0.5s)
-fast: $(BINDIR)
+fast: $(RAYLIB_LIB)
 	$(CC) -std=c11 -O0  -fno-omit-frame-pointer  -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
 	ln -sf path_fast $(BINDIR)/path
 
 # Debug build - no optimization, all sanitizers
 debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
 debug: LDFLAGS += -fsanitize=address,undefined
-debug: $(BINDIR)
+debug: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
 
 # AddressSanitizer build for memory debugging
 asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra
 asan: LDFLAGS += -fsanitize=address
-asan: $(BINDIR)
+asan: $(RAYLIB_LIB)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
 # Release build - max optimization, no debug symbols
-release: $(BINDIR)
+release: $(RAYLIB_LIB)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs
+.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
