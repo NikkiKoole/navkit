@@ -28,6 +28,7 @@
 #include "simulation/floordirt.c"
 #include "simulation/temperature.c"
 #include "simulation/trees.c"
+#include "simulation/lighting.c"
 
 // Entity systems
 #include "entities/items.c"

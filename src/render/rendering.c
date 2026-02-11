@@ -8,6 +8,7 @@
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/lighting.h"
 #include "../core/sim_manager.h"
 #include <math.h>
 
@@ -291,6 +292,7 @@ static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
 void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -308,7 +310,8 @@ void DrawCellGrid(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
                 Rectangle src = SpriteGetRect(sprite);
-                Color tint = GetDepthTintDarkened(zDepth, z);
+                Color lightTint = GetLightColor(x, y, zDepth, skyColor);
+                Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
                 if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
                     tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                 }
@@ -340,17 +343,17 @@ void DrawCellGrid(void) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
-                        // Wall tops (looking down at a wall from above) - no depth tint at z-1
-                        // (closest floor to viewer, should be brightest)
-                        Color tint = WHITE;
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, FloorDarkenTint(tint));
+                        // Wall tops - light from the z level above (where viewer is)
+                        Color lightTint = GetLightColor(x, y, z, skyColor);
+                        Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                         
                         // Apply finish overlay to z-1 floor (same as deeper levels)
                         if (cellBelow == CELL_WALL) {
                             SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zBelow);
                             int finishSprite = FinishSprite(finish);
                             Rectangle finishSrc = SpriteGetRect(finishSprite);
-                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, FloorDarkenTint(tint)));
+                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
                         }
                     }
                     // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
@@ -358,7 +361,8 @@ void DrawCellGrid(void) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
-                        Color tint = FloorDarkenTint(WHITE);
+                        Color lightTint = GetLightColor(x, y, z, skyColor);
+                        Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
                         if (CellIsRamp(cellBelow)) tint.a = 64;
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                     }
@@ -372,7 +376,8 @@ void DrawCellGrid(void) {
                     if (cellHere == CELL_AIR) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         Rectangle src = SpriteGetRect(SPRITE_bedrock);
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, FloorDarkenTint(WHITE));
+                        Color lightTint = GetLightColor(x, y, z, skyColor);
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, MultiplyColor(FloorDarkenTint(WHITE), lightTint));
                     }
                 }
             }
@@ -385,7 +390,8 @@ void DrawCellGrid(void) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                     MaterialType mat = GetFloorMaterial(x, y, z);
                     int sprite = GetFloorSpriteAt(x, y, z);
-                    Color tint = FloorDarkenTint(MaterialTint(mat));
+                    Color lightTint = GetLightColor(x, y, z, skyColor);
+                    Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
                     DrawInsetSprite(sprite, dest, 0.0f, tint);
 
                     // Finish overlay
@@ -422,9 +428,10 @@ void DrawCellGrid(void) {
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 int sprite = GetWallSpriteAt(x, y, z, cell);
                 Rectangle src = SpriteGetRect(sprite);
-                Color tint = WHITE;
+                Color lightTint = GetLightColor(x, y, z, skyColor);
+                Color tint = lightTint;
                 if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
-                    tint = MaterialTint(GetWallMaterial(x, y, z));
+                    tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
                 }
                 if (CellIsRamp(cell)) tint.a = 64;
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
@@ -485,6 +492,7 @@ void DrawCellGrid(void) {
 void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -493,7 +501,7 @@ void DrawGrassOverlay(void) {
     for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
         
-        Color tint = GetDepthTint(zDepth, z);
+        Color depthTint = GetDepthTint(zDepth, z);
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 if (!IsWallNatural(x, y, zDepth) || GetWallMaterial(x, y, zDepth) != MAT_DIRT) continue;
@@ -510,6 +518,7 @@ void DrawGrassOverlay(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
+                Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth, skyColor));
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
@@ -539,7 +548,8 @@ void DrawGrassOverlay(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, WHITE);
+                Color lightTint = GetLightColor(x, y, z, skyColor);
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
             }
         }
 }
@@ -1011,6 +1021,7 @@ void DrawAgents(void) {
 void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
     
     // Frustum culling bounds with one cell margin for partially visible movers
     float margin = size;
@@ -1105,6 +1116,13 @@ void DrawMovers(void) {
             moverColor = FloorDarkenTint(moverColor);
         }
 
+        // Apply lighting
+        {
+            int cellX = (int)(m->x / CELL_SIZE);
+            int cellY = (int)(m->y / CELL_SIZE);
+            moverColor = MultiplyColor(moverColor, GetLightColor(cellX, cellY, moverZ, skyColor));
+        }
+
         // Draw mover as head sprite with color tint
         float moverSize = size * MOVER_SIZE;
         Rectangle src = SpriteGetRect(SPRITE_head);
@@ -1124,9 +1142,12 @@ void DrawMovers(void) {
             float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
             Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
             
-            // Apply depth tinting and darkening to carried items
-            Color itemTint = WHITE;
-            Color borderTint = ItemBorderTint(item->type);
+            // Apply depth tinting, darkening, and lighting to carried items
+            int cellX = (int)(m->x / CELL_SIZE);
+            int cellY = (int)(m->y / CELL_SIZE);
+            Color lightTint = GetLightColor(cellX, cellY, moverZ, skyColor);
+            Color itemTint = lightTint;
+            Color borderTint = MultiplyColor(ItemBorderTint(item->type), lightTint);
             if (moverZ < viewZ) {
                 Color depthTint = GetDepthTint(moverZ, viewZ);
                 itemTint = FloorDarkenTint(MultiplyColor(itemTint, depthTint));
@@ -1297,6 +1318,7 @@ void DrawJobLines(void) {
 void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
@@ -1307,10 +1329,11 @@ void DrawItems(void) {
         int itemZ = (int)item->z;
         if (itemZ > viewZ || itemZ < viewZ - 9) continue;
 
+        int cellX = (int)(item->x / CELL_SIZE);
+        int cellY = (int)(item->y / CELL_SIZE);
+
         // Visibility check for items below current view
         if (itemZ < viewZ) {
-            int cellX = (int)(item->x / CELL_SIZE);
-            int cellY = (int)(item->y / CELL_SIZE);
             if (!IsCellVisibleFromAbove(cellX, cellY, itemZ, viewZ)) continue;
         }
 
@@ -1322,7 +1345,8 @@ void DrawItems(void) {
         Rectangle src = SpriteGetRect(sprite);
         Rectangle dest = { sx - itemSize/2, sy - itemSize/2, itemSize, itemSize };
 
-        Color tint = MaterialTint((MaterialType)item->material);
+        Color lightTint = GetLightColor(cellX, cellY, itemZ, skyColor);
+        Color tint = MultiplyColor(MaterialTint((MaterialType)item->material), lightTint);
         if (item->reservedBy >= 0) {
             tint = MultiplyColor(tint, (Color){200, 200, 200, 255});
         }
@@ -1331,7 +1355,7 @@ void DrawItems(void) {
             tint = MultiplyColor(tint, GetDepthTint(itemZ, viewZ));
             tint = FloorDarkenTint(tint);
         }
-        Color borderTint = ItemBorderTint(item->type);
+        Color borderTint = MultiplyColor(ItemBorderTint(item->type), lightTint);
         if (itemZ < viewZ) {
             borderTint = MultiplyColor(borderTint, GetDepthTint(itemZ, viewZ));
             borderTint = FloorDarkenTint(borderTint);

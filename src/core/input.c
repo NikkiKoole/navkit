@@ -9,6 +9,7 @@
 #include "../simulation/temperature.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/trees.h"
+#include "../simulation/lighting.h"
 #include "input_mode.h"
 #include "action_registry.h"
 #include "pie_menu.h"
@@ -2255,6 +2256,14 @@ void HandleInput(void) {
             case ACTION_SANDBOX_LOWER:
             case ACTION_SANDBOX_RAISE:
                 // Brush sculpting handled in continuous stroke mode above
+                break;
+            case ACTION_SANDBOX_LIGHT:
+                if (leftClick) {
+                    // Place a warm torch light (radius 10)
+                    AddLightSource(x1, y1, z, 255, 180, 100, 10);
+                } else {
+                    RemoveLightSource(x1, y1, z);
+                }
                 break;
             default:
                 break;

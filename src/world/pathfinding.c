@@ -11,6 +11,7 @@
  */
 #include "grid.h"
 #include "cell_defs.h"
+#include "../simulation/lighting.h"
 /*
  *
  * IMPORTANT: JPS/JPS+ LIMITATIONS
@@ -465,6 +466,7 @@ void MarkChunkDirty(int cellX, int cellY, int cellZ) {
         needsRebuild = true;
         hpaNeedsRebuild = true;
         jpsNeedsRebuild = true;
+        InvalidateLighting();
     }
 }
 

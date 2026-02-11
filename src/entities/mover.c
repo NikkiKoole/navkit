@@ -16,6 +16,7 @@
 #include "../simulation/floordirt.h"
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
+#include "../simulation/lighting.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1370,6 +1371,9 @@ void TickWithDt(float dt) {
     
     // Ground wear (emergent paths)
     UpdateGroundWear();
+
+    // Lighting (recompute if terrain changed)
+    UpdateLighting();
     
     // Tree growth
     PROFILE_BEGIN(Trees);

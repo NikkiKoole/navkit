@@ -663,6 +663,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+    {
+        .action = ACTION_SANDBOX_LIGHT,
+        .name = "LIGHT",
+        .barDisplayText = "Light",
+        .barText = "L-click place  R-click remove  [ESC]Back",
+        .barKey = 'l',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = true
+    },
 };
 
 const int ACTION_REGISTRY_COUNT = sizeof(ACTION_REGISTRY) / sizeof(ACTION_REGISTRY[0]);
