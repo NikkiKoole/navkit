@@ -24,13 +24,20 @@ typedef enum {
 } DesignationType;
 
 static inline const char* DesignationTypeName(int type) {
-    static const char* names[] = {
-        "NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP",
-        "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING", "GATHER_GRASS",
-        "GATHER_TREE"
+    static const char* names[DESIGNATION_TYPE_COUNT] = {
+        [DESIGNATION_NONE]           = "NONE",
+        [DESIGNATION_MINE]           = "MINE",
+        [DESIGNATION_CHANNEL]        = "CHANNEL",
+        [DESIGNATION_DIG_RAMP]       = "DIG_RAMP",
+        [DESIGNATION_REMOVE_FLOOR]   = "REMOVE_FLOOR",
+        [DESIGNATION_REMOVE_RAMP]    = "REMOVE_RAMP",
+        [DESIGNATION_CHOP]           = "CHOP",
+        [DESIGNATION_CHOP_FELLED]    = "CHOP_FELLED",
+        [DESIGNATION_GATHER_SAPLING] = "GATHER_SAPLING",
+        [DESIGNATION_PLANT_SAPLING]  = "PLANT_SAPLING",
+        [DESIGNATION_GATHER_GRASS]   = "GATHER_GRASS",
+        [DESIGNATION_GATHER_TREE]    = "GATHER_TREE",
     };
-    _Static_assert(sizeof(names)/sizeof(names[0]) == DESIGNATION_TYPE_COUNT,
-                   "DesignationTypeName out of sync with DesignationType enum");
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
 

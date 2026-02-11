@@ -7,6 +7,7 @@
 #include "../entities/mover.h"  // for CELL_SIZE
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
+#include "../simulation/groundwear.h"
 #include "../core/sim_manager.h"
 #include <string.h>
 #include <math.h>
@@ -1515,8 +1516,9 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx) {
     // Find where the vegetation actually is
     int vegZ = FindVegetationZ(x, y, z);
     if (vegZ >= 0) {
-        SetVegetation(x, y, vegZ, VEG_GRASS_SHORT);
-        MarkChunkDirty(x, y, vegZ);
+        SetVegetation(x, y, vegZ, VEG_NONE);
+        SET_CELL_SURFACE(x, y, vegZ, SURFACE_TRAMPLED);
+        wearGrid[vegZ][y][x] = wearNormalToTrampled;
     }
     
     // Spawn grass item at the walking position
