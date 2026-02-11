@@ -13,7 +13,8 @@ BINDIR := bin
 # Vendored raylib (built from vendor/raylib/)
 # ---------------------------------------------------------------------------
 RAYLIB_DIR    := vendor/raylib
-RAYLIB_LIB    := $(BINDIR)/libraylib.a
+RAYLIB_BUILDDIR := build_raylib
+RAYLIB_LIB    := $(RAYLIB_BUILDDIR)/libraylib.a
 RAYLIB_CFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
                  -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
                  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
@@ -21,18 +22,18 @@ RAYLIB_CFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/incl
 RAYLIB_SRCS   := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
                  $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
                  $(RAYLIB_DIR)/rglfw.c
-RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(BINDIR)/raylib_%.o,$(RAYLIB_SRCS))
+RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(RAYLIB_BUILDDIR)/raylib_%.o,$(RAYLIB_SRCS))
 
 # macOS link flags for raylib (static)
-LDFLAGS := -L$(BINDIR) -lraylib -framework OpenGL -framework Cocoa -framework IOKit \
+LDFLAGS := -L$(RAYLIB_BUILDDIR) -lraylib -framework OpenGL -framework Cocoa -framework IOKit \
            -framework CoreAudio -framework CoreVideo -lm -lpthread
 
 # Build individual raylib object files
-$(BINDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(BINDIR)
+$(RAYLIB_BUILDDIR)/raylib_%.o: $(RAYLIB_DIR)/%.c | $(RAYLIB_BUILDDIR)
 	@$(CC) $(RAYLIB_CFLAGS) -c -o $@ $<
 
 # rglfw includes Objective-C (.m) files on macOS
-$(BINDIR)/raylib_rglfw.o: $(RAYLIB_DIR)/rglfw.c | $(BINDIR)
+$(RAYLIB_BUILDDIR)/raylib_rglfw.o: $(RAYLIB_DIR)/rglfw.c | $(RAYLIB_BUILDDIR)
 	@$(CC) $(RAYLIB_CFLAGS) -x objective-c -c -o $@ $<
 
 # Archive into static library
@@ -82,6 +83,9 @@ all: $(RAYLIB_LIB) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
+
+$(RAYLIB_BUILDDIR):
+	mkdir -p $(RAYLIB_BUILDDIR)
 
 # Pattern rule: build executable targets from their corresponding _SRC
 # (only matches direct children of BINDIR, not subdirectories or .o files)
@@ -326,24 +330,24 @@ clean-atlas:
 	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png
 
 # Fast build - no optimization, no sanitizers (~0.5s)
-fast: $(RAYLIB_LIB)
+fast: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O0  -fno-omit-frame-pointer  -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
 	ln -sf path_fast $(BINDIR)/path
 
 # Debug build - no optimization, all sanitizers
 debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
 debug: LDFLAGS += -fsanitize=address,undefined
-debug: $(RAYLIB_LIB)
+debug: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
 
 # AddressSanitizer build for memory debugging
 asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra
 asan: LDFLAGS += -fsanitize=address
-asan: $(RAYLIB_LIB)
+asan: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/path_asan $(path_SRC) $(LDFLAGS)
 
 # Release build - max optimization, no debug symbols
-release: $(RAYLIB_LIB)
+release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
 .PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
