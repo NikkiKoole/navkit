@@ -9,9 +9,29 @@ A text-based storytelling system using ASCII art, typewriter effects, and sequen
 
 ## Visual Style
 
-### Character Set
-Use extended ASCII / Unicode box-drawing characters:
+### Character Set — Minimal 10-Sprite Subset
 
+Rather than implementing the full CP437 set, we use just 10 block/shade characters as 8x8 sprites in the atlas. Regular text (A-Z, 0-9, punctuation) is drawn with the existing BMFont via `DrawTextEx`.
+
+```
+Shading (4):   █  ▓  ▒  ░     Full, dark, medium, light — gives 5 density levels (incl. space)
+Half blocks:   ▄  ▀           Lower, upper — sharp edges, silhouettes, ground/ceiling lines
+Lines (2):     │  ─           Vertical, horizontal — borders, rain, structure
+Detail (1):    ·              Middle dot — stars, dust, sparks, sparse texture
+Diagonal (1):  ╲              Backslash/diagonal — rooflines, rain angle, dynamism
+```
+
+These 10 sprites exist in the Aseprite worksheet as 8x8 tiles. Scenes are composed on a character grid where each cell is either a regular text char (BMFont) or a special block char (atlas sprite).
+
+**Rendering approach — two options:**
+
+- **Option A: UTF-8 in string literals.** Author panels with actual Unicode characters (`█`, `░`, etc.) in the C source. The cutscene renderer scans each character: multi-byte codepoints matching one of the 10 special chars get drawn as sprite tiles; everything else goes through `DrawTextEx`. Natural to author, slightly more complex renderer (UTF-8 decode + lookup table).
+
+- **Option B: ASCII shorthand mapping.** Map single printable ASCII chars to sprites (e.g., `#`=█, `:`=░, `=`=▄). Easier to type and no UTF-8 handling, but limits which ASCII chars can appear as literal text.
+
+**Recommended: Option A** — UTF-8 is more readable in source, C11 handles it fine in string literals, and a 10-entry lookup table is trivial.
+
+**Full CP437 reference (not implemented, for context only):**
 ```
 Box Drawing:  ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ ═ ║ ╔ ╗ ╚ ╝
 Block Chars:  █ ▓ ▒ ░ ▀ ▄ ▌ ▐ ▖ ▗ ▘ ▝
