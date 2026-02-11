@@ -8,6 +8,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include <string.h>
+#include <math.h>
 
 // Tweakable settings
 bool lightingEnabled = true;
@@ -144,9 +145,10 @@ static void ClearBlockLight(void) {
     }
 }
 
-// Propagate a single block light source via BFS
+// Propagate a single block light source via BFS with Euclidean falloff
 static void PropagateBlockLight(LightSource* src) {
     int head = 0, tail = 0;
+    float radius = (float)src->intensity;
 
     // Seed with the source cell
     bfsQueue[0] = (LightBfsNode){ src->x, src->y, src->z, src->intensity };
@@ -167,12 +169,6 @@ static void PropagateBlockLight(LightSource* src) {
         LightBfsNode node = bfsQueue[head++];
         if (node.level <= 1) continue;
 
-        uint8_t newLevel = node.level - 1;
-        // Color scaled by distance from source
-        int scaledR = (src->r * newLevel) / src->intensity;
-        int scaledG = (src->g * newLevel) / src->intensity;
-        int scaledB = (src->b * newLevel) / src->intensity;
-
         // 6 directions: 4 cardinal + up + down
         static const int dx[] = {1, -1, 0, 0, 0, 0};
         static const int dy[] = {0, 0, 1, -1, 0, 0};
@@ -184,13 +180,28 @@ static void PropagateBlockLight(LightSource* src) {
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight ||
                 nz < 0 || nz >= gridDepth) continue;
 
-            // Blocked by solid cells (but not by floors for vertical propagation)
+            // Blocked by solid cells
             if (CellIsSolid(grid[nz][ny][nx])) continue;
             // Floors block light passing through vertically
             if (dz[d] != 0 && HAS_FLOOR(nx, ny, nz)) continue;
 
+            // Euclidean distance from source for circular falloff
+            float ddx = (float)(nx - src->x);
+            float ddy = (float)(ny - src->y);
+            float ddz = (float)(nz - src->z);
+            float dist = sqrtf(ddx * ddx + ddy * ddy + ddz * ddz);
+            if (dist >= radius) continue;  // Outside light radius
+
+            // Scale color by (1 - dist/radius) for smooth circular falloff
+            float falloff = 1.0f - (dist / radius);
+            int scaledR = (int)(src->r * falloff);
+            int scaledG = (int)(src->g * falloff);
+            int scaledB = (int)(src->b * falloff);
+            if (scaledR < 0) scaledR = 0;
+            if (scaledG < 0) scaledG = 0;
+            if (scaledB < 0) scaledB = 0;
+
             // Only update if we're adding more light than already there
-            // (approximate check using the brightest channel)
             LightCell* lc = &lightGrid[nz][ny][nx];
             int existingMax = lc->blockR;
             if (lc->blockG > existingMax) existingMax = lc->blockG;
@@ -201,7 +212,7 @@ static void PropagateBlockLight(LightSource* src) {
 
             if (newMax <= existingMax) continue;  // Already brighter from another source
 
-            // Additive blending (clamped)
+            // Max blending
             int r = scaledR > lc->blockR ? scaledR : lc->blockR;
             int g = scaledG > lc->blockG ? scaledG : lc->blockG;
             int b = scaledB > lc->blockB ? scaledB : lc->blockB;
@@ -210,7 +221,7 @@ static void PropagateBlockLight(LightSource* src) {
             lc->blockB = (uint8_t)b;
 
             if (tail < LIGHT_BFS_MAX) {
-                bfsQueue[tail++] = (LightBfsNode){ nx, ny, nz, newLevel };
+                bfsQueue[tail++] = (LightBfsNode){ nx, ny, nz, (uint8_t)(node.level - 1) };
             }
         }
     }
