@@ -27,8 +27,6 @@
 // World seed for reproducible terrain generation
 uint64_t worldSeed = 0;
 
-// Global font (loaded at startup)
-Font comicFont;
 
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
@@ -891,7 +889,7 @@ int main(int argc, char** argv) {
     SetExitKey(0);  // Disable ESC closing the window - we use ESC for input navigation
     atlas = AtlasLoadEmbedded();
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
-    comicFont = LoadEmbeddedFont();
+    Font comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;
@@ -972,10 +970,6 @@ int main(int argc, char** argv) {
 
         HandleInput();
 
-        // Cutscene test key
-        if (IsKeyPressed(KEY_I)) {
-            PlayTestCutscene();
-        }
 
         // Sound debug toggles (independent from input modes)
         if (IsKeyPressed(KEY_KP_1)) {

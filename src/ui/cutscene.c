@@ -7,7 +7,8 @@
 #include <ctype.h>
 
 // Global font from main.c
-extern Font comicFont;
+// Font comicFont — cutscene disabled, use default font as fallback
+static Font comicFont = {0};
 
 // Global sound synth from main.c
 extern SoundSynth* soundDebugSynth;

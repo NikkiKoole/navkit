@@ -21,7 +21,7 @@ RAYLIB_CFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/incl
                  -Wno-missing-field-initializers -Wno-implicit-fallthrough
 RAYLIB_SRCS   := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
                  $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
-                 $(RAYLIB_DIR)/rglfw.c
+                 $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
 RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(RAYLIB_BUILDDIR)/raylib_%.o,$(RAYLIB_SRCS))
 
 # macOS link flags for raylib (static)
