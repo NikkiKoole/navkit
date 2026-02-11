@@ -77,6 +77,7 @@
     #define SPRITE_sand SPRITE8X8_sand
     #define SPRITE_tree_bark_pine SPRITE8X8_tree_bark_pine
     #define SPRITE_tree_leaves_willow SPRITE8X8_tree_leaves_willow
+    #define SPRITE_loose_rock SPRITE8X8_loose_rock
     #define SPRITE_tree_planks_birch SPRITE8X8_tree_planks_birch
     #define SPRITE_tree_sapling_oak SPRITE8X8_tree_sapling_oak
     #define SPRITE_granite SPRITE8X8_granite
@@ -153,6 +154,7 @@
     #define SPRITE_sand SPRITE16X16_sand
     #define SPRITE_tree_bark_pine SPRITE16X16_tree_bark_pine
     #define SPRITE_tree_leaves_willow SPRITE16X16_tree_leaves_willow
+    #define SPRITE_loose_rock SPRITE16X16_loose_rock
     #define SPRITE_tree_planks_birch SPRITE16X16_tree_planks_birch
     #define SPRITE_tree_sapling_oak SPRITE16X16_tree_sapling_oak
     #define SPRITE_granite SPRITE16X16_granite

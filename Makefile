@@ -83,9 +83,10 @@ all: $(RAYLIB_LIB) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-# Pattern rule: build any target from its corresponding _SRC
+# Pattern rule: build executable targets from their corresponding _SRC
+# (only matches direct children of BINDIR, not subdirectories or .o files)
 $(BINDIR)/%: $(RAYLIB_LIB)
-	$(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS)
+	@if [ -n "$($*_SRC)" ]; then $(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS); fi
 
 # Soundsystem demo needs -Wno-unused-function for header-only library functions
 $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
@@ -291,7 +292,7 @@ path-sound: $(RAYLIB_LIB)
 # ---------------------------------------------------------------------------
 WIN_CC      := x86_64-w64-mingw32-gcc
 WIN_AR      := x86_64-w64-mingw32-ar
-WIN_BINDIR  := bin/win64
+WIN_BINDIR  := build_win64
 WIN_RAYLIB  := $(WIN_BINDIR)/libraylib.a
 WIN_CFLAGS  := -std=c11 -O2 -I. -Ivendor -Wall -Wextra
 WIN_RCFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
@@ -319,7 +320,7 @@ windows: $(WIN_RAYLIB)
 	@echo "Built $(WIN_BINDIR)/path.exe"
 
 clean:
-	rm -rf $(BINDIR)
+	rm -rf $(BINDIR) $(WIN_BINDIR)
 
 clean-atlas:
 	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png

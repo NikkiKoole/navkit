@@ -13,6 +13,23 @@ A narrative walkthrough showing how a player progresses from a naked mover with 
 - Shows four phases: bare-hands gathering, first workshop chain, fire/permanence, expanding colony.
 - Useful as a reference for what gameplay loops are already complete and working.
 
+### [Progression Gaps Analysis](progression-gaps-analysis.md) ⭐⭐⭐
+Critical analysis of what's missing from current progression and how to complete it.
+- Identifies 8 major gaps: cordage has no use, rock gathering unrealistic, no primitive shelter, sand/dirt/leaves dead ends, construction too simple, no water interaction, no tools, blocks feel identical.
+- Proposes solutions with implementation notes for each gap.
+- Priority-ranked phases: A) Complete fiber loop (cordage use), B) Bare-hands rock gathering, C) Water access, D) Close open loops, E) Tools.
+- Shows complete Era 0→4 progression arc after all gaps filled.
+- **Recommended first step:** Construction staging + cordage use (~2-3 days, biggest impact).
+
+### [Cutscene Panel System](cutscene-panel-system.md)
+ASCII-art storytelling system with typewriter effects and sequential panels.
+- Aesthetic: CP437/box-drawing chars, monospace, resolution-independent virtual grid (80x30 scaled to screen).
+- Use cases: intro sequence, milestone celebrations (first workshop, first wall, etc.), recipe discoveries, atmospheric moments.
+- Triggers: first launch, job completion milestones, workshop placement, item crafting.
+- Tone: minimalist, poetic, grounded ("Rock becomes block." "The fire feeds itself.")
+- Phase 1 (~3-4 days): Core system + typewriter + 5-6 milestone cutscenes.
+- Includes visual mockups, content examples, and writing guidelines.
+
 ### [Workshops & Item Loops (Master)](workshops-master.md)
 The central reference. Tracks everything that exists and everything proposed.
 - Lists all implemented workshops (Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth) and their recipes.
@@ -113,7 +130,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 ## Where We Are Now
 
 **Implemented and working:**
-- Six workshops: Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth, Drying Rack.
+- Seven workshops: Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth, Drying Rack, Rope Maker.
 - Multi-input recipes (e.g., Bind Gravel: gravel + clay).
 - Multi-output recipes (outputType2/outputCount2 on Recipe struct, spawning + storage checks + tooltip display all handled).
 - Fuel system with matching (any IF_FUEL item satisfies fuel requirements).
@@ -121,9 +138,10 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - ASH item produced by the Hearth.
 - ITEM_DRIED_GRASS produced by Drying Rack (passive conversion from ITEM_GRASS).
 - ITEM_BARK and ITEM_STRIPPED_LOG (save v33). Sawmill recipes: Strip Bark (LOG → STRIPPED_LOG + BARK), Saw Stripped (STRIPPED_LOG → PLANKS x5). Both items have per-species sprites.
+- ITEM_SHORT_STRING and ITEM_CORDAGE (save v35). Rope Maker recipes: Twist Bark (bark x2 → string x3), Twist Grass (dried grass x4 → string x2), Braid Cordage (string x3 → cordage x1). Closes the bark loop.
 - Stone loop fully closed (rock to blocks to construction). Three stone types: granite, sandstone, slate.
 - Clay loop closed (clay to bricks; clay + gravel to blocks).
-- Wood loop mostly closed (logs to planks/sticks to construction/charcoal). Bark chain partial (bark exists, cordage not yet).
+- Wood loop fully closed (logs to planks/sticks to construction/charcoal; bark to string to cordage).
 - Material floors exist in the cell/rendering system (HAS_FLOOR + floorMaterial).
 - wallSourceItem/floorSourceItem grids track which item type built each wall/floor.
 - Plank walls/floors render with per-species sprites (oak/pine/birch/willow).
@@ -131,6 +149,10 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - ITEM_POLES from tree branches. Branch cells use thin per-species sprites.
 - Tree trunk taper: top 1-2 trunk cells become CELL_TREE_BRANCH (thin sprite at canopy, thick at base).
 - Water, fire/smoke/steam, and temperature systems are in place.
+- Lighting system (partial): sky light (column scan + BFS spread) + block light (colored BFS from sources). UI panel with toggles. Sandbox torch placement. Save/load (v37). Tests (48 tests, 5241 assertions).
+- Floor dirt tracking and cleaning system (save v36). Movers track dirt from natural soil onto constructed floors. Designation-based cleaning jobs.
+- Data-driven action registry (action_registry.c): single source of truth for all action metadata.
+- Data-driven item metadata with designated initializers.
 - 10-step craft job state machine with item reservation.
 - Vegetation grid (`vegetationGrid[]`) — dedicated uint8_t 3D grid for ground cover, separate from cellFlags surface bits. Five stages: VEG_NONE, VEG_GRASS_SHORT, VEG_GRASS, VEG_GRASS_TALL, VEG_GRASS_TALLER. Surface bits simplified to ground condition only (BARE/TRAMPLED).
 - ITEM_GRASS — harvestable from VEG_GRASS_TALLER cells via Work > Harvest > Gather Grass. Full designation/job/action pipeline (DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS). Groundwear system migrated to write vegetation grid; trampling thresholds control grass stage transitions.
@@ -139,8 +161,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Sapling/leaf item unification (save v32): consolidated 8 separate types into 2 unified types (ITEM_SAPLING, ITEM_LEAVES) using material field for species.
 
 **Not yet implemented:**
-- No ITEM_SHORT_STRING, ITEM_CORDAGE. Sprites exist in Aseprite worksheet but not yet wired into code.
-- No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
+- No Glass Kiln, Pottery Wheel, or any tier 2+ workshop beyond Rope Maker.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
 - No moisture states (no MoistureState enum or moisture ticks).
@@ -154,6 +175,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Brick walls/floors don't have distinct sprites yet either.
 - Terrain generation only uses MAT_GRANITE — sandstone/slate don't appear naturally yet.
 - Water placement tools not yet in UI (SetWaterSource/SetWaterDrain functions exist but no player actions).
+- Lighting system: still needs depth-brown tint on torch-lit areas below.
 
 ---
 
@@ -162,7 +184,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 ### Era 0 Completeness (Bare Hands)
 The early game (before sawmill/kiln) needs more material sources that don't require tools:
 
-1. **Cordage chain (last gateway item).** ITEM_SHORT_STRING + ITEM_CORDAGE + Rope Maker workshop (2x2). Recipes: BARK x2 → SHORT_STRING x3, DRIED_GRASS x2 → SHORT_STRING x2, SHORT_STRING x3 → CORDAGE x1. Sprites already exist in Aseprite. This closes the bark loop and feeds into construction staging.
+1. ~~**Cordage chain.**~~ **DONE.** Rope Maker workshop with Twist Bark, Twist Grass, Braid Cordage recipes. Bark loop closed.
 
 2. **Early-game rock gathering.** Mining is currently the only rock source, but mining implies tools. Three bare-hands sources:
    - **Surface scatter** — spawn loose ITEM_ROCK on ground near exposed stone during worldgen. Free pickup, finite.

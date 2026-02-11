@@ -178,8 +178,7 @@ static void PropagateBlockLight(LightSource* src) {
             int nz = node.z;
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
 
-            // Blocked by solid cells
-            if (CellIsSolid(grid[nz][ny][nx])) continue;
+            bool solid = CellIsSolid(grid[nz][ny][nx]);
 
             // Euclidean distance from source for circular falloff
             float ddx = (float)(nx - src->x);
@@ -207,7 +206,7 @@ static void PropagateBlockLight(LightSource* src) {
 
             if (newMax <= existingMax) continue;  // Already brighter from another source
 
-            // Max blending
+            // Max blending — write light to surface of solid cells too
             int r = scaledR > lc->blockR ? scaledR : lc->blockR;
             int g = scaledG > lc->blockG ? scaledG : lc->blockG;
             int b = scaledB > lc->blockB ? scaledB : lc->blockB;
@@ -215,7 +214,8 @@ static void PropagateBlockLight(LightSource* src) {
             lc->blockG = (uint8_t)g;
             lc->blockB = (uint8_t)b;
 
-            if (tail < LIGHT_BFS_MAX) {
+            // Only propagate through non-solid cells (light hits walls but stops)
+            if (!solid && tail < LIGHT_BFS_MAX) {
                 bfsQueue[tail++] = (LightBfsNode){ nx, ny, nz, (uint8_t)(node.level - 1) };
             }
         }

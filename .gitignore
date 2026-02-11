@@ -1,5 +1,6 @@
 # Build artifacts
 bin/
+build_win64/
 
 # macOS
 .DS_Store

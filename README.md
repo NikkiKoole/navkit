@@ -32,6 +32,17 @@ make debug                  # debug build with sanitizers
 make clean                  # removes bin/
 ```
 
+### Windows Cross-Compilation
+
+Build a Windows `.exe` from macOS using mingw-w64:
+
+```bash
+brew install mingw-w64      # install cross-compiler (one-time)
+make windows                # builds build_win64/path.exe
+```
+
+The output is a statically linked single `.exe` — no DLLs needed. Raylib is compiled from the vendored source for the Windows target automatically.
+
 ### Atlas
 
 ```bash
@@ -98,7 +109,7 @@ The atlas generator validates that both atlases have matching sprite names.
 ./bin/crowd               # crowd demo
 ```
 
-Requires raylib.
+Raylib is vendored in `vendor/raylib/` and built automatically — no external dependencies needed.
 
 ## Save/Load & Inspector
 
