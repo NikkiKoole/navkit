@@ -343,8 +343,8 @@ void DrawCellGrid(void) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
-                        // Wall tops - light from zBelow (where the torches are)
-                        Color lightTint = GetLightColor(x, y, zBelow, skyColor);
+                        // Wall tops - lit by the air above (z), where torches sit
+                        Color lightTint = GetLightColor(x, y, z, skyColor);
                         Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                         
@@ -361,7 +361,7 @@ void DrawCellGrid(void) {
                         Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                         int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
                         Rectangle src = SpriteGetRect(sprite);
-                        Color lightTint = GetLightColor(x, y, zBelow, skyColor);
+                        Color lightTint = GetLightColor(x, y, z, skyColor);
                         Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
                         if (CellIsRamp(cellBelow)) tint.a = 64;
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
@@ -548,7 +548,7 @@ void DrawGrassOverlay(void) {
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 Rectangle src = SpriteGetRect(sprite);
-                Color lightTint = GetLightColor(x, y, zBelow, skyColor);
+                Color lightTint = GetLightColor(x, y, z, skyColor);
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
             }
         }
