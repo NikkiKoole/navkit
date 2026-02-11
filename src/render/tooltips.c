@@ -170,9 +170,8 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
         fx += MeasureText(filter->shortName, 14) + 4;
     }
     
-    // Special case: Saplings (T key toggles multiple types)
-    bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING_OAK] || sp->allowedTypes[ITEM_SAPLING_PINE] ||
-                          sp->allowedTypes[ITEM_SAPLING_BIRCH] || sp->allowedTypes[ITEM_SAPLING_WILLOW];
+    // Special case: Saplings (T key toggles sapling type)
+    bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING];
     DrawTextShadow(saplingAllowed ? "T" : "-", fx, y, 14,
         saplingAllowed ? GREEN : DARKGRAY);
     y += 18;
@@ -752,13 +751,20 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
         for (int r = 0; r < recipeCount && r < 9 && lineCount < 28; r++) {
             const char* inputName = (recipes[r].inputItemMatch == ITEM_MATCH_ANY_FUEL)
                 ? "Any Fuel" : ItemName(recipes[r].inputType);
+            char outputStr[64];
+            if (recipes[r].outputType2 != ITEM_NONE) {
+                snprintf(outputStr, sizeof(outputStr), "%s+%s",
+                    ItemName(recipes[r].outputType), ItemName(recipes[r].outputType2));
+            } else {
+                snprintf(outputStr, sizeof(outputStr), "%s", ItemName(recipes[r].outputType));
+            }
             if (recipes[r].inputType2 != ITEM_NONE) {
                 snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s+%s -> %s)",
                     r + 1, recipes[r].name, inputName,
-                    ItemName(recipes[r].inputType2), ItemName(recipes[r].outputType));
+                    ItemName(recipes[r].inputType2), outputStr);
             } else {
                 snprintf(lines[lineCount], sizeof(lines[0]), " %d: %s (%s -> %s)",
-                    r + 1, recipes[r].name, inputName, ItemName(recipes[r].outputType));
+                    r + 1, recipes[r].name, inputName, outputStr);
             }
             lineColors[lineCount] = (Color){140, 180, 200, 255};
             lineCount++;

@@ -61,6 +61,8 @@ typedef struct {
     int inputCount2;             // count of second input
     ItemType outputType;
     int outputCount;
+    ItemType outputType2;        // second output type (ITEM_NONE = no second output)
+    int outputCount2;            // count of second output
     float workRequired;           // seconds of active crafter work (0 = no crafter needed)
     float passiveWorkRequired;    // seconds of passive timer work (0 = no passive phase)
     MaterialMatchType inputMaterialMatch;

@@ -13,46 +13,46 @@ Workshop workshops[MAX_WORKSHOPS];
 int workshopCount = 0;
 
 // Stonecutter recipes: 1 raw stone -> 2 blocks (material-preserving)
-// Recipe format: { name, input1, count1, input2, count2, output, outCount, workRequired, passiveWorkRequired, matMatch, mat, fuel, itemMatch }
+// Recipe format: { name, input1, count1, input2, count2, output, outCount, output2, outCount2, workRequired, passiveWorkRequired, matMatch, mat, fuel, itemMatch }
 Recipe stonecutterRecipes[] = {
-    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_BLOCKS, 1, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Cut Stone Blocks", ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_BLOCKS, 2, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Crush Gravel",     ITEM_ROCK, 1, ITEM_NONE, 0, ITEM_GRAVEL, 3, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Bind Gravel",      ITEM_GRAVEL, 2, ITEM_CLAY, 1, ITEM_BLOCKS, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int stonecutterRecipeCount = sizeof(stonecutterRecipes) / sizeof(stonecutterRecipes[0]);
 
 // Sawmill recipes: logs -> planks or sticks (material-preserving)
 Recipe sawmillRecipes[] = {
-    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Saw Planks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 4, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Cut Sticks", ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
 
 // Kiln recipes: fire processing with fuel
 Recipe kilnRecipes[] = {
-    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT },
-    { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 6.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT },
+    { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 6.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
 // Charcoal Pit recipes: semi-passive (short ignition + long passive burn)
 Recipe charcoalPitRecipes[] = {
-    { "Char Logs",   ITEM_LOG,    1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 2.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Char Peat",   ITEM_PEAT,   1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, 2.0f, 50.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
-    { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, 2.0f, 40.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Char Logs",   ITEM_LOG,    1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, ITEM_NONE, 0, 2.0f, 60.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Char Peat",   ITEM_PEAT,   1, ITEM_NONE, 0, ITEM_CHARCOAL, 2, ITEM_NONE, 0, 2.0f, 50.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Char Sticks", ITEM_STICKS, 4, ITEM_NONE, 0, ITEM_CHARCOAL, 1, ITEM_NONE, 0, 2.0f, 40.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int charcoalPitRecipeCount = sizeof(charcoalPitRecipes) / sizeof(charcoalPitRecipes[0]);
 
 // Hearth recipes: burn any fuel to produce ash (fuel sink)
 Recipe hearthRecipes[] = {
-    { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_ASH, 1, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL },
+    { "Burn Fuel", ITEM_NONE, 1, ITEM_NONE, 0, ITEM_ASH, 1, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_ANY_FUEL },
 };
 int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 
 // Drying Rack recipes: pure passive (no crafter, only timer)
 Recipe dryingRackRecipes[] = {
-    { "Dry Grass", ITEM_GRASS, 1, ITEM_NONE, 0, ITEM_DRIED_GRASS, 1, 0, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Dry Grass", ITEM_GRASS, 1, ITEM_NONE, 0, ITEM_DRIED_GRASS, 1, ITEM_NONE, 0, 0, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int dryingRackRecipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]);
 
@@ -638,6 +638,17 @@ void PassiveWorkshopsTick(float dt) {
                 }
                 SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
             }
+            if (recipe->outputType2 != ITEM_NONE) {
+                for (int i = 0; i < recipe->outputCount2; i++) {
+                    uint8_t outMat2;
+                    if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
+                        outMat2 = (uint8_t)inputMat;
+                    } else {
+                        outMat2 = DefaultMaterialForItemType(recipe->outputType2);
+                    }
+                    SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                }
+            }
 
             // Update bill and reset state
             bill->completedCount++;
@@ -698,8 +709,11 @@ void UpdateWorkshopDiagnostics(float dt) {
                 if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
                 int outSlotX, outSlotY;
                 if (FindStockpileForItem(recipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
-                    hasStorage = true;
-                    break;
+                    if (recipe->outputType2 == ITEM_NONE ||
+                        FindStockpileForItem(recipe->outputType2, mat, &outSlotX, &outSlotY) >= 0) {
+                        hasStorage = true;
+                        break;
+                    }
                 }
             }
             if (!hasStorage) {

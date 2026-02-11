@@ -1410,7 +1410,7 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
         if (job->progress >= 1.0f) {
             // Planting complete - place sapling cell
             if (itemIdx >= 0 && items[itemIdx].active) {
-                MaterialType treeMat = TreeTypeFromSaplingItem(items[itemIdx].type);
+                MaterialType treeMat = (MaterialType)items[itemIdx].material;
                 PlaceSapling(tx, ty, tz, treeMat);
             } else {
                 return JOBRUN_FAIL;
@@ -2185,6 +2185,18 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                         outMat = DefaultMaterialForItemType(recipe->outputType);
                     }
                     SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                }
+                // Spawn second output if recipe has one (e.g., Strip Bark -> stripped log + bark)
+                if (recipe->outputType2 != ITEM_NONE) {
+                    for (int i = 0; i < recipe->outputCount2; i++) {
+                        uint8_t outMat2;
+                        if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
+                            outMat2 = (uint8_t)inputMat;
+                        } else {
+                            outMat2 = DefaultMaterialForItemType(recipe->outputType2);
+                        }
+                        SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                    }
                 }
 
                 // Update bill progress
@@ -3939,9 +3951,12 @@ int WorkGiver_Craft(int moverIdx) {
                         if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
                         int outSlotX, outSlotY;
                         if (FindStockpileForItem(resumeRecipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
-                            bill->suspended = false;
-                            bill->suspendedNoStorage = false;
-                            break;
+                            if (resumeRecipe->outputType2 == ITEM_NONE ||
+                                FindStockpileForItem(resumeRecipe->outputType2, mat, &outSlotX, &outSlotY) >= 0) {
+                                bill->suspended = false;
+                                bill->suspendedNoStorage = false;
+                                break;
+                            }
                         }
                     }
                 }
@@ -3995,6 +4010,12 @@ int WorkGiver_Craft(int moverIdx) {
             }
             int outSlotX, outSlotY;
             if (FindStockpileForItem(recipe->outputType, outputMat, &outSlotX, &outSlotY) < 0) {
+                bill->suspended = true;
+                bill->suspendedNoStorage = true;
+                continue;
+            }
+            if (recipe->outputType2 != ITEM_NONE &&
+                FindStockpileForItem(recipe->outputType2, outputMat, &outSlotX, &outSlotY) < 0) {
                 bill->suspended = true;
                 bill->suspendedNoStorage = true;
                 continue;

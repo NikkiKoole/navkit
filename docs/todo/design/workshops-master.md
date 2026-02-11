@@ -130,110 +130,92 @@ Missing: General fuel consumer (Hearth)
 
 ## 4. Proposed: Bark & Cordage Chain
 
-Inspired by [Primitive Technology](https://primitivetechnology.wordpress.com/).
+Inspired by [Primitive Technology](https://primitivetechnology.wordpress.com/) and CDDA's nested crafting, but simplified to 2 steps (not CDDA's 3-step twist→braid→ply).
 
 ### New Items
 - `BARK` - stripped from logs
 - `STRIPPED_LOG` - log after bark removal
-- `CORDAGE` - rope/fiber from bark
+- `SHORT_STRING` - twisted fiber from bark or dried grass (intermediate)
+- `CORDAGE` - braided rope from short strings (final product)
 
-### New Recipes
-| Workshop | Recipe | Input | Output |
-|----------|--------|-------|--------|
-| Sawmill | Strip Bark | LOG x1 | STRIPPED_LOG x1 + BARK x2 |
-| Sawmill | Saw Stripped | STRIPPED_LOG x1 | PLANKS x5 | (bonus yield)
-| Rope Maker | Twist Cordage | BARK x2 | CORDAGE x1 |
-| Rope Maker | Leaf Cordage | LEAVES x4 | CORDAGE x1 |
+### New Recipes (Multi-Step Chain)
+
+**Sawmill** (existing workshop, new recipes):
+
+| Recipe | Input | Output | Notes |
+|--------|-------|--------|-------|
+| Strip Bark | LOG x1 | STRIPPED_LOG x1 + BARK x2 | Uses multi-output recipe |
+| Saw Stripped | STRIPPED_LOG x1 | PLANKS x5 | Bonus yield (+1 vs regular log) |
+
+**Rope Maker** (new 2x2 workshop):
+
+| Recipe | Input | Output | Notes |
+|--------|-------|--------|-------|
+| Twist Bark | BARK x2 | SHORT_STRING x3 | Bark fiber path |
+| Twist Grass | DRIED_GRASS x2 | SHORT_STRING x2 | Dried grass path (lower yield) |
+| Braid Cordage | SHORT_STRING x3 | CORDAGE x1 | Final product |
 
 ### Updated Wood Loop
 ```
 Trees → LOG → Sawmill (strip) → STRIPPED_LOG → PLANKS (x5)
-                             ↘ BARK → Rope Maker → CORDAGE
-     → LEAVES_* → Rope Maker → CORDAGE
-                ↘ Hearth → ASH
+                             ↘ BARK → Rope Maker → SHORT_STRING → CORDAGE
+     → LEAVES_* → Hearth → ASH
+
+Vegetation → GRASS → Drying Rack → DRIED_GRASS → Rope Maker → SHORT_STRING → CORDAGE
 ```
 
-### Implementation Requirements (2026-02-10)
+### Uses for SHORT_STRING:
+- **Leaf Mat**: SHORT_STRING + LEAVES → woven mat (bedding, crude roofing, floor covering). Closes the leaf loop — gives leaves a recipe sink beyond fuel. Needs ITEM_MATCH_ANY_LEAVES or 4 separate recipes.
+- **Simple tools**: SHORT_STRING + ROCK + STICKS → stone knife/scraper [future:tools]. Short string is the low-tier lashing for basic tools (vs cordage for proper axes/picks).
+- Possible: tinder bundles, snares/traps, fishing line, wick for lamps
+- Possible: lightweight binding for drying racks / small frames (vs cordage for heavy construction)
+
+### Uses for CORDAGE:
+- Construction staging: frames require cordage as lashing material
+- Multi-stage builds: shelter = poles + cordage + thatch
+- Tool crafting: stone axe = rock + sticks + cordage [future:tools] — stronger tools than short string variants
+
+### Future consideration: Bark Lashing
+CDDA has "bark lashing" — strips of fresh bark used directly as crude ties (no twisting).
+Could be a quick low-tier alternative to cordage (bark → lashing, single step, weaker/fewer uses).
+Deferred for now — the short string / cordage chain is sufficient.
+
+### Implementation Requirements (2026-02-11)
 
 **Current Code State:**
 - ✅ ITEM_GRASS, ITEM_DRIED_GRASS, ITEM_POLES already exist
 - ✅ Sawmill workshop exists with 2 recipes (Saw Planks, Cut Sticks)
 - ✅ Drying Rack workshop exists (pure passive, dries grass)
 - ✅ Recipe struct supports two inputs via `inputType2`, `inputCount2`
-- ❌ ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE **do not exist yet**
+- ✅ Recipe struct supports two outputs via `outputType2`, `outputCount2` (added 2026-02-11)
+- ✅ Bark and stripped log sprites exist in atlas (per species: oak/pine/birch/willow)
+- ❌ ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_SHORT_STRING, ITEM_CORDAGE **do not exist yet**
 - ❌ WORKSHOP_ROPE_MAKER **does not exist yet**
-- ⚠️ Recipe struct does **not support multiple outputs** (one output type only)
 
 **Implementation Checklist:**
 
 1. **Add new item types** to `src/entities/items.h` enum:
    ```c
    ITEM_BARK,          // Stripped from logs at sawmill
-   ITEM_STRIPPED_LOG,  // Log after bark removal
-   ITEM_CORDAGE,       // Rope/fiber for lashing, construction
+   ITEM_STRIPPED_LOG,   // Log after bark removal
+   ITEM_SHORT_STRING,   // Twisted fiber (intermediate)
+   ITEM_CORDAGE,        // Braided rope for construction/crafting
    ```
 
-2. **Add item definitions** to `src/entities/item_defs.c` table:
-   ```c
-   [ITEM_BARK]         = { "Bark",         SPRITE_bark,  IF_STACKABLE, 99 },
-   [ITEM_STRIPPED_LOG] = { "Stripped Log", SPRITE_log,   IF_STACKABLE|IF_BUILDING_MAT|IF_FUEL, 99 },
-   [ITEM_CORDAGE]      = { "Cordage",      SPRITE_rope,  IF_STACKABLE, 99 },
-   ```
+2. **Add item definitions** to `src/entities/item_defs.c` table
 
-3. **Handle multi-output recipe** (Strip Bark produces 2 items):
-   - **Option A**: Extend Recipe struct to support `outputType2`, `outputCount2`
-   - **Option B**: Spawn second output manually in craft job completion code (CRAFT_STEP_FINISH)
-   - **Recommended**: Option B for now (minimal change, avoids struct bloat)
+3. **Add Sawmill recipes** (Strip Bark uses multi-output: STRIPPED_LOG + BARK)
 
-4. **Add Sawmill recipes** to `src/entities/workshops.c`:
-   ```c
-   { "Strip Bark",   ITEM_LOG,         1, ITEM_NONE, 0, ITEM_STRIPPED_LOG, 1, 4.0f, 0, ... },
-   // (BARK x2 spawned manually in job code)
-   { "Saw Stripped", ITEM_STRIPPED_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS,      5, 4.0f, 0, ... },
-   ```
+4. **Add WORKSHOP_ROPE_MAKER** and define recipes (Twist Bark, Twist Grass, Braid Cordage)
 
-5. **Add WORKSHOP_ROPE_MAKER** enum to `src/entities/workshops.h`
+5. **Add input actions** for placing Rope Maker workshop
 
-6. **Define Rope Maker workshop** in `src/entities/workshops.c`:
-   ```c
-   Recipe ropeMakerRecipes[] = {
-       { "Twist Cordage", ITEM_BARK,        2, ITEM_NONE, 0, ITEM_CORDAGE, 1, 3.0f, 0, ... },
-       { "Leaf Cordage",  ITEM_LEAVES_OAK,  4, ITEM_NONE, 0, ITEM_CORDAGE, 1, 4.0f, 0, ... },
-       // Note: may need ITEM_MATCH_ANY_LEAVES to accept all leaf types
-   };
+6. **Bump SAVE_VERSION** and add migration for new items
 
-   [WORKSHOP_ROPE_MAKER] = {
-       .type = WORKSHOP_ROPE_MAKER,
-       .name = "ROPE_MAKER",
-       .displayName = "Rope Maker",
-       .width = 2,
-       .height = 2,
-       .template = "#X"
-                   "O.",
-       .recipes = ropeMakerRecipes,
-       .recipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0])
-   }
-   ```
-
-7. **Modify craft job code** (`src/entities/jobs.c`) to spawn bonus BARK when Strip Bark recipe completes
-
-8. **Add input actions** for placing Rope Maker workshop (follow existing workshop placement pattern)
-
-9. **Bump SAVE_VERSION** and add migration for new items (if save/load implemented)
-
-10. **Add stockpile filter support** for new items (BARK, STRIPPED_LOG, CORDAGE)
+7. **Add stockpile filter support** for new items
 
 **Technical Challenges:**
-- **Multi-output recipes**: Current Recipe struct only has `outputType` + `outputCount` (single output). Strip Bark needs to produce BOTH stripped_log AND bark. Two approaches:
-  1. Special-case in job completion (check recipe name, spawn extra items)
-  2. Extend Recipe struct with optional second output (cleaner but touches more code)
-
-- **Leaf type matching**: "Leaf Cordage" should accept ANY leaf type (oak/pine/birch/willow). May need new `ITEM_MATCH_ANY_LEAVES` flag, or 4 separate recipes.
-
-**Uses for CORDAGE (future):**
-- Construction staging: frames require cordage as lashing material
-- Multi-stage builds: shelter = poles + cordage + thatch
-- Tool crafting: stone axe = rock + sticks + cordage [future:tools]
+- **Leaf type matching**: If we add a "Leaf" recipe to Rope Maker, it should accept ANY leaf type (oak/pine/birch/willow). May need `ITEM_MATCH_ANY_LEAVES` flag, or 4 separate recipes. Deferred — current design uses bark and dried grass only.
 
 ---
 
@@ -363,3 +345,5 @@ After chopping a tree, stump remains:
 - 2026-02-09: Added design principles, limitations, future markers from workshops-and-jobs
 - 2026-02-09: Added withies, tree stumps/coppicing, additional workshops, open questions
 - 2026-02-10: Added implementation requirements for bark/cordage chain (code audit findings)
+- 2026-02-11: Multi-output recipe support implemented (outputType2/outputCount2 on Recipe struct)
+- 2026-02-11: Redesigned cordage chain: 2-step process (bark/dried grass → short string → cordage) instead of single-step. Added SHORT_STRING as intermediate item. Noted bark lashing as future alternative. Added TODO for short string direct uses

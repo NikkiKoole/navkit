@@ -75,10 +75,13 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 ## Where We Are Now
 
 **Implemented and working:**
-- Five workshops: Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth.
+- Six workshops: Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth, Drying Rack.
 - Multi-input recipes (e.g., Bind Gravel: gravel + clay).
+- Multi-output recipes (outputType2/outputCount2 on Recipe struct, spawning + storage checks + tooltip display all handled).
 - Fuel system with matching (any IF_FUEL item satisfies fuel requirements).
+- Passive workshop system (Drying Rack: pure passive, Charcoal Pit: semi-passive with ignition).
 - ASH item produced by the Hearth.
+- ITEM_DRIED_GRASS produced by Drying Rack (passive conversion from ITEM_GRASS).
 - Stone loop fully closed (rock to blocks to construction). Three stone types: granite, sandstone, slate.
 - Clay loop closed (clay to bricks; clay + gravel to blocks).
 - Wood loop mostly closed (logs to planks/sticks to construction/charcoal).
@@ -94,7 +97,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - ITEM_GRASS — harvestable from VEG_GRASS_TALLER cells via Work > Harvest > Gather Grass. Full designation/job/action pipeline (DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS). Groundwear system migrated to write vegetation grid; trampling thresholds control grass stage transitions.
 
 **Not yet implemented:**
-- No bark, cordage, reeds items. Raw grass exists (ITEM_GRASS) but no dried grass (cured form) yet.
+- No bark, cordage, reeds items. Bark and stripped log sprites exist in atlas but ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE not yet added.
 - No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
@@ -112,7 +115,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-2. **Two remaining gateway items: dried grass, cordage.** Poles are done (from tree branches). Raw grass is harvestable (ITEM_GRASS from tall vegetation). Dried grass (the cured form, for thatch roofing and bedding) and cordage (for lashing/frames) are the minimum additions that unlock early shelter and the rope-maker workshop. Dried grass could be a simple timed conversion (grass left in a dry stockpile) or a workshop recipe.
+2. **One remaining gateway item: cordage.** Poles are done (from tree branches). Dried grass is done (Drying Rack converts ITEM_GRASS → ITEM_DRIED_GRASS). Cordage (for lashing/frames) is the last gateway item needed — requires ITEM_BARK, ITEM_STRIPPED_LOG, and ITEM_CORDAGE plus Sawmill strip recipes. Multi-output recipe support is ready (Strip Bark: LOG → STRIPPED_LOG + BARK).
 
 3. **Rope Maker workshop (2x2).** Once bark and cordage items exist, this small workshop closes the leaf and bark loops and feeds into future construction staging.
 
