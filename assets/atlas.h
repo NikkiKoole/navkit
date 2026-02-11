@@ -45,7 +45,6 @@
     #define SPRITE_tree_stripped_log_oak SPRITE8X8_tree_stripped_log_oak
     #define SPRITE_tree_leaves_oak SPRITE8X8_tree_leaves_oak
     #define SPRITE_gravel SPRITE8X8_gravel
-    #define SPRITE_rock SPRITE8X8_rock
     #define SPRITE_grass_tall SPRITE8X8_grass_tall
     #define SPRITE_ramp_w SPRITE8X8_ramp_w
     #define SPRITE_tree_planks_willow SPRITE8X8_tree_planks_willow
@@ -66,7 +65,9 @@
     #define SPRITE_head SPRITE8X8_head
     #define SPRITE_wall SPRITE8X8_wall
     #define SPRITE_generic SPRITE8X8_generic
+    #define SPRITE_short_string SPRITE8X8_short_string
     #define SPRITE_stockpile SPRITE8X8_stockpile
+    #define SPRITE_cordage SPRITE8X8_cordage
     #define SPRITE_wall_wood SPRITE8X8_wall_wood
     #define SPRITE_floor SPRITE8X8_floor
     #define SPRITE_tree_leaves_pine SPRITE8X8_tree_leaves_pine
@@ -120,7 +121,6 @@
     #define SPRITE_tree_stripped_log_oak SPRITE16X16_tree_stripped_log_oak
     #define SPRITE_tree_leaves_oak SPRITE16X16_tree_leaves_oak
     #define SPRITE_gravel SPRITE16X16_gravel
-    #define SPRITE_rock SPRITE16X16_rock
     #define SPRITE_grass_tall SPRITE16X16_grass_tall
     #define SPRITE_ramp_w SPRITE16X16_ramp_w
     #define SPRITE_tree_planks_willow SPRITE16X16_tree_planks_willow
@@ -141,7 +141,9 @@
     #define SPRITE_head SPRITE16X16_head
     #define SPRITE_wall SPRITE16X16_wall
     #define SPRITE_generic SPRITE16X16_generic
+    #define SPRITE_short_string SPRITE16X16_short_string
     #define SPRITE_stockpile SPRITE16X16_stockpile
+    #define SPRITE_cordage SPRITE16X16_cordage
     #define SPRITE_wall_wood SPRITE16X16_wall_wood
     #define SPRITE_floor SPRITE16X16_floor
     #define SPRITE_tree_leaves_pine SPRITE16X16_tree_leaves_pine

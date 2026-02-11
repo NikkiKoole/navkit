@@ -198,6 +198,7 @@ ASEPRITE := /Applications/Aseprite/aseprite
 
 # Export slices from Aseprite to individual PNGs
 slices:
+	rm -f assets/textures8x8/*.png
 	$(ASEPRITE) -b assets/worksheet8x8.ase --save-as "assets/textures8x8/{slice}.png"
 
 # Texture atlas generator
