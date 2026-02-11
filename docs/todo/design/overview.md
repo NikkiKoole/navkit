@@ -113,9 +113,10 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Passive workshop system (Drying Rack: pure passive, Charcoal Pit: semi-passive with ignition).
 - ASH item produced by the Hearth.
 - ITEM_DRIED_GRASS produced by Drying Rack (passive conversion from ITEM_GRASS).
+- ITEM_BARK and ITEM_STRIPPED_LOG (save v33). Sawmill recipes: Strip Bark (LOG → STRIPPED_LOG + BARK), Saw Stripped (STRIPPED_LOG → PLANKS x5). Both items have per-species sprites.
 - Stone loop fully closed (rock to blocks to construction). Three stone types: granite, sandstone, slate.
 - Clay loop closed (clay to bricks; clay + gravel to blocks).
-- Wood loop mostly closed (logs to planks/sticks to construction/charcoal).
+- Wood loop mostly closed (logs to planks/sticks to construction/charcoal). Bark chain partial (bark exists, cordage not yet).
 - Material floors exist in the cell/rendering system (HAS_FLOOR + floorMaterial).
 - wallSourceItem/floorSourceItem grids track which item type built each wall/floor.
 - Plank walls/floors render with per-species sprites (oak/pine/birch/willow).
@@ -126,9 +127,12 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - 10-step craft job state machine with item reservation.
 - Vegetation grid (`vegetationGrid[]`) — dedicated uint8_t 3D grid for ground cover, separate from cellFlags surface bits. Five stages: VEG_NONE, VEG_GRASS_SHORT, VEG_GRASS, VEG_GRASS_TALL, VEG_GRASS_TALLER. Surface bits simplified to ground condition only (BARE/TRAMPLED).
 - ITEM_GRASS — harvestable from VEG_GRASS_TALLER cells via Work > Harvest > Gather Grass. Full designation/job/action pipeline (DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS). Groundwear system migrated to write vegetation grid; trampling thresholds control grass stage transitions.
+- Tree harvest system (save v34): gather sticks + leaves from living trees without chopping. `treeHarvestState` uint8_t grid on trunk base cells, max 2 harvests before depletion, ~60s regen per level (reuses growthTimer on idle mature trunks). Full pipeline: DESIGNATION_GATHER_TREE → JOBTYPE_GATHER_TREE → ACTION_WORK_GATHER_TREE under Work > Harvest > gather [T]ree. Overlay + progress bar, tooltip shows harvest state.
+- Terrain sculpting (sandbox mode): instant lower/raise/smooth terrain with circular brush. Brush sizes 1x1 to 7x7. Left-drag raise, right-drag lower, hold S to smooth. Freehand stroke interpolation. Enables river carving, moats, terrain leveling.
+- Sapling/leaf item unification (save v32): consolidated 8 separate types into 2 unified types (ITEM_SAPLING, ITEM_LEAVES) using material field for species.
 
 **Not yet implemented:**
-- ~~No bark, cordage, reeds items. Bark and stripped log sprites exist in atlas but ITEM_BARK, ITEM_STRIPPED_LOG, ITEM_CORDAGE not yet added.~~ **DONE**: ITEM_BARK and ITEM_STRIPPED_LOG added (v33). ITEM_CORDAGE and rope-making chain still pending.
+- No ITEM_SHORT_STRING, ITEM_CORDAGE. Sprites exist in Aseprite worksheet but not yet wired into code.
 - No Rope Maker, Glass Kiln, Pottery Wheel, or any tier 2+ workshop.
 - No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
@@ -137,25 +141,41 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - No water-dependent workshops (mud mixer, brick drying, etc.).
 - No tree stumps/coppicing.
 - No containers, tools, durability, or quality systems.
+- No early-game rock gathering (no boulders, river stones, or surface scatter — mining is the only rock source).
 - Sand and dirt have no recipe sinks.
 - Block walls/floors don't have distinct sprites yet (blocks use the material's default sprite).
 - Brick walls/floors don't have distinct sprites yet either.
 - Terrain generation only uses MAT_GRANITE — sandstone/slate don't appear naturally yet.
+- Water placement tools not yet in UI (SetWaterSource/SetWaterDrain functions exist but no player actions).
 
 ---
 
 ## Suggested Next Moves
 
-1. ~~**Material floor/wall sinks.**~~ **Mostly done.** wallSourceItem/floorSourceItem grids track which item type (planks/logs/blocks/bricks) built each wall/floor. Plank walls and floors render with per-species sprites. Mining drops the correct source item. Three stone types exist (granite, sandstone, slate). Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
+### Era 0 Completeness (Bare Hands)
+The early game (before sawmill/kiln) needs more material sources that don't require tools:
 
-2. **One remaining gateway item: cordage.** Poles are done (from tree branches). Dried grass is done (Drying Rack converts ITEM_GRASS → ITEM_DRIED_GRASS). Bark and stripped logs are done (v33). Cordage (for lashing/frames) is the last gateway item needed — requires ITEM_CORDAGE plus Rope Maker workshop with recipes (BARK → SHORT_STRING → CORDAGE chain).
+1. **Cordage chain (last gateway item).** ITEM_SHORT_STRING + ITEM_CORDAGE + Rope Maker workshop (2x2). Recipes: BARK x2 → SHORT_STRING x3, DRIED_GRASS x2 → SHORT_STRING x2, SHORT_STRING x3 → CORDAGE x1. Sprites already exist in Aseprite. This closes the bark loop and feeds into construction staging.
 
-3. **Rope Maker workshop (2x2).** Bark items exist, cordage item and workshop remain to close the cordage loop and feed into future construction staging.
+2. **Early-game rock gathering.** Mining is currently the only rock source, but mining implies tools. Three bare-hands sources:
+   - **Surface scatter** — spawn loose ITEM_ROCK on ground near exposed stone during worldgen. Free pickup, finite.
+   - **Boulders** — lone 1-cell natural stone walls on the surface. Designate → bare-hands work → ITEM_ROCK x3-5, wall consumed. Reuses gather designation pattern.
+   - **River stones** — rocks found near water. Worldgen scatter or gather designation near water cells.
 
-4. **Water-dependent crafting (mud/cob system).** Fully designed in `water-dependent-crafting.md` but requires multiple new systems: moisture states on items, workshop placement validators (requiresWater/requiresDry), stockpile environment tags, passive moisture transitions. Enables early wattle-and-daub shelter but is a larger undertaking than rope-making.
+3. **Water placement tools.** SetWaterSource/SetWaterDrain functions already exist — just need UI actions. Minimal work, unblocks water-dependent crafting later.
 
-5. **Two-stage construction (frame then fill).** Add a `stage` field to blueprints/jobs. Frame stage uses sticks or planks; fill stage uses planks, bricks, or blocks. This is the smallest change that makes building feel earned and makes stockpile logistics matter.
+### Production Chain Extensions
 
-6. **Item condition states (seasoning/curing).** Add a lightweight condition enum and timer to items. Start with wood only (green/seasoned). Hook into stockpile environment once staging is working.
+4. ~~**Material floor/wall sinks.**~~ **Mostly done.** Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-7. **Sand and dirt sinks.** Glass Kiln (sand + fuel) and farming (dirt as soil) are the proposed solutions. Glass Kiln is simpler and self-contained; farming is a larger system.
+5. **Two-stage construction (frame then fill).** Add a `stage` field to blueprints/jobs. Frame stage uses sticks or planks; fill stage uses planks, bricks, or blocks. Smallest change that makes building feel earned and makes stockpile logistics matter.
+
+6. **Sand and dirt sinks.** Glass Kiln (sand + fuel → GLASS) is simplest. Farming (dirt as soil) is a larger system. Mud Mixer (dirt + clay + water → MUD) bridges both.
+
+### Larger Systems (Later)
+
+7. **Water-dependent crafting (mud/cob system).** Requires moisture states, placement validators, stockpile tags, passive moisture ticks. Enables wattle-and-daub shelter. Prerequisites: water placement tools, terrain sculpting (for river carving).
+
+8. **Item condition states (seasoning/curing).** Lightweight condition enum + timer on items. Start with wood (green/seasoned). Hook into stockpile environment tags.
+
+9. **Containers and tools.** No inventory/equipment systems yet. Containers enable water hauling (removes "must be on water" restriction for mud mixer). Tools enable mining, faster chopping, etc.
