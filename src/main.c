@@ -548,6 +548,7 @@ void DrawWorkshops(void);
 void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
+void DrawTerrainBrushPreview(void);
 
 // From render/tooltips.c
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid);
@@ -1118,6 +1119,7 @@ int main(int argc, char** argv) {
         DrawStockpileItems();
         DrawMiningDesignations();
         DrawBlueprints();
+        DrawTerrainBrushPreview();
         if (showChunkBoundaries) {
             DrawChunkBoundaries();
         }
@@ -1177,8 +1179,9 @@ int main(int argc, char** argv) {
             DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
         }
         
-        // Draw drag preview rectangle when dragging
-        if (isDragging && inputAction != ACTION_NONE) {
+        // Draw drag preview rectangle when dragging (but not for sculpt brush)
+        if (isDragging && inputAction != ACTION_NONE &&
+            inputAction != ACTION_SANDBOX_SCULPT) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
             int x1 = dragStartX < x ? dragStartX : x;

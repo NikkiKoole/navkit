@@ -1065,7 +1065,7 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         fclose(f);
         return 1;
@@ -1142,6 +1142,11 @@ int InspectSaveFile(int argc, char** argv) {
     
     // Tree target height grid (skip - not inspected)
     fseek(f, totalCells * sizeof(int), SEEK_CUR);
+    
+    // Tree harvest state grid (v34+, skip - not inspected)
+    if (version >= 34) {
+        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // treeHarvestState
+    }
     
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);

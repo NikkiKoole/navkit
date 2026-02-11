@@ -123,6 +123,9 @@ static int plantSaplingCacheCount = 0;
 static OnTileDesignationEntry gatherGrassCache[MAX_DESIGNATION_CACHE];
 static int gatherGrassCacheCount = 0;
 
+static AdjacentDesignationEntry gatherTreeCache[MAX_DESIGNATION_CACHE];
+static int gatherTreeCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -134,6 +137,7 @@ static bool chopFelledCacheDirty = true;
 static bool gatherSaplingCacheDirty = true;
 static bool plantSaplingCacheDirty = true;
 static bool gatherGrassCacheDirty = true;
+static bool gatherTreeCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -145,6 +149,7 @@ static void RebuildChopFelledDesignationCache(void);
 static void RebuildGatherSaplingDesignationCache(void);
 static void RebuildPlantSaplingDesignationCache(void);
 static void RebuildGatherGrassDesignationCache(void);
+static void RebuildGatherTreeDesignationCache(void);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -179,6 +184,8 @@ static DesignationJobSpec designationSpecs[] = {
      plantSaplingCache, &plantSaplingCacheCount, &plantSaplingCacheDirty},
     {DESIGNATION_GATHER_GRASS, JOBTYPE_GATHER_GRASS, RebuildGatherGrassDesignationCache, WorkGiver_GatherGrass,
      gatherGrassCache, &gatherGrassCacheCount, &gatherGrassCacheDirty},
+    {DESIGNATION_GATHER_TREE, JOBTYPE_GATHER_TREE, RebuildGatherTreeDesignationCache, WorkGiver_GatherTree,
+     gatherTreeCache, &gatherTreeCacheCount, &gatherTreeCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -300,6 +307,12 @@ static void RebuildGatherGrassDesignationCache(void) {
     if (!gatherGrassCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_GATHER_GRASS, gatherGrassCache, &gatherGrassCacheCount);
     gatherGrassCacheDirty = false;
+}
+
+static void RebuildGatherTreeDesignationCache(void) {
+    if (!gatherTreeCacheDirty) return;
+    RebuildAdjacentDesignationCache(DESIGNATION_GATHER_TREE, gatherTreeCache, &gatherTreeCacheCount);
+    gatherTreeCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -1562,6 +1575,72 @@ JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Gather tree job driver: walk to adjacent tile, work, spawn items
+JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_GATHER_TREE) {
+        return JOBRUN_FAIL;
+    }
+
+    // Check if trunk still exists
+    if (grid[tz][ty][tx] != CELL_TREE_TRUNK) {
+        CancelDesignation(tx, ty, tz);
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        int adjX = job->targetAdjX;
+        int adjY = job->targetAdjY;
+
+        if (mover->goal.x != adjX || mover->goal.y != adjY || mover->goal.z != tz) {
+            mover->goal = (Point){adjX, adjY, tz};
+            mover->needsRepath = true;
+        }
+
+        float goalX = adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == tz;
+
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, adjX, adjY, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        mover->timeWithoutProgress = 0;  // Intentionally still while working
+        job->progress += dt / GATHER_TREE_WORK_TIME;
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            CompleteGatherTreeDesignation(tx, ty, tz, job->assignedMover);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Haul to blueprint job driver: pick up item -> carry to blueprint for construction
 JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
     (void)dt;
@@ -2387,6 +2466,7 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_PLANT_SAPLING] = RunJob_PlantSapling,
     [JOBTYPE_CHOP_FELLED] = RunJob_ChopFelled,
     [JOBTYPE_GATHER_GRASS] = RunJob_GatherGrass,
+    [JOBTYPE_GATHER_TREE] = RunJob_GatherTree,
     [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
     [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
 };
@@ -3894,6 +3974,81 @@ int WorkGiver_GatherGrass(int moverIdx) {
     // Update mover
     m->currentJobId = jobId;
     m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_GatherTree: Find a tree gather designation to work on
+int WorkGiver_GatherTree(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canPlant) return -1;
+
+    int moverZ = (int)m->z;
+
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    int bestAdjX = -1, bestAdjY = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < gatherTreeCacheCount; i++) {
+        AdjacentDesignationEntry* entry = &gatherTreeCache[i];
+
+        if (entry->z != moverZ) continue;
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_GATHER_TREE || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float adjPosX = entry->adjX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float adjPosY = entry->adjY * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = adjPosX - m->x;
+        float distY = adjPosY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+            bestAdjX = entry->adjX;
+            bestAdjY = entry->adjY;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Check reachability
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    if (!FindReachableAdjacentTile(bestDesigX, bestDesigY, bestDesigZ, moverCell, &bestAdjX, &bestAdjY)) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_GATHER_TREE);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->targetAdjX = bestAdjX;
+    job->targetAdjY = bestAdjY;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestAdjX, bestAdjY, bestDesigZ };
     m->needsRepath = true;
 
     RemoveMoverFromIdleList(moverIdx);

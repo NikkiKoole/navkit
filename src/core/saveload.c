@@ -247,6 +247,13 @@ bool SaveWorld(const char* filename) {
         }
     }
 
+    // Tree harvest state grid
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(treeHarvestState[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -374,7 +381,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
@@ -559,6 +566,30 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(targetHeight[z][y], sizeof(int), gridWidth, f);
+        }
+    }
+
+    // Tree harvest state grid (v34+)
+    if (version >= 34) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(treeHarvestState[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        // Old save: init all mature trees to full harvest
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    treeHarvestState[z][y][x] = 0;
+                    if (grid[z][y][x] == CELL_TREE_TRUNK) {
+                        // Only set on trunk base cells
+                        if (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) {
+                            treeHarvestState[z][y][x] = TREE_HARVEST_MAX;
+                        }
+                    }
+                }
+            }
         }
     }
 

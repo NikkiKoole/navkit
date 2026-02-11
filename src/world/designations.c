@@ -1547,6 +1547,88 @@ int CountGatherGrassDesignations(void) {
 }
 
 // =============================================================================
+// Gather tree designations
+// =============================================================================
+
+bool DesignateGatherTree(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must be a tree trunk cell
+    if (grid[z][y][x] != CELL_TREE_TRUNK) {
+        return false;
+    }
+
+    // Check harvest state at trunk base
+    int baseZ = FindTrunkBaseZAt(x, y, z);
+    if (treeHarvestState[baseZ][y][x] <= 0) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_GATHER_TREE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
+
+    return true;
+}
+
+bool HasGatherTreeDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_GATHER_TREE;
+}
+
+void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx) {
+    int baseZ = FindTrunkBaseZAt(x, y, z);
+    MaterialType treeMat = GetWallMaterial(x, y, baseZ);
+
+    // Decrement harvest state
+    if (treeHarvestState[baseZ][y][x] > 0) {
+        treeHarvestState[baseZ][y][x]--;
+        growthTimer[baseZ][y][x] = 0;  // Reset regen timer
+    }
+
+    // Spawn items at mover position (trunk cell is solid, not walkable)
+    float spawnX = x * CELL_SIZE + CELL_SIZE * 0.5f;
+    float spawnY = y * CELL_SIZE + CELL_SIZE * 0.5f;
+    if (moverIdx >= 0 && moverIdx < moverCount && movers[moverIdx].active) {
+        spawnX = movers[moverIdx].x;
+        spawnY = movers[moverIdx].y;
+    }
+    SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_STICKS, (uint8_t)treeMat);
+    SpawnItemWithMaterial(spawnX, spawnY, (float)z, ITEM_LEAVES, (uint8_t)treeMat);
+
+    // Clear designation
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount--;
+    InvalidateDesignationCache(DESIGNATION_GATHER_TREE);
+}
+
+int CountGatherTreeDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_GATHER_TREE) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
 // Blueprint functions
 // =============================================================================
 

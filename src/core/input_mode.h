@@ -60,6 +60,7 @@ typedef enum {
     ACTION_WORK_GATHER_SAPLING,
     ACTION_WORK_PLANT_SAPLING,
     ACTION_WORK_GATHER_GRASS,
+    ACTION_WORK_GATHER_TREE,
     // Work > Gather (top-level, no submode)
     ACTION_WORK_GATHER,
     // Sandbox actions (sim systems)
@@ -71,6 +72,9 @@ typedef enum {
     ACTION_SANDBOX_STEAM,
     ACTION_SANDBOX_GRASS,
     ACTION_SANDBOX_TREE,
+    ACTION_SANDBOX_SCULPT,      // Category action
+    ACTION_SANDBOX_LOWER,       // Lower terrain (carve down)
+    ACTION_SANDBOX_RAISE,       // Raise terrain (build up)
 } InputAction;
 
 // Current input state
@@ -81,6 +85,12 @@ extern int selectedMaterial;  // 1-based material index
 
 // Soil pile mode settings
 extern float soilPileRadius;  // How far soil spreads in pile mode (shift+draw)
+
+// Terrain brush state
+extern int terrainBrushRadius;     // 0-3 for 1x1, 3x3, 5x5, 7x7
+extern int lastBrushX;             // Previous mouse grid position
+extern int lastBrushY;
+extern bool brushStrokeActive;     // True during continuous drag
 
 // Drag state
 extern bool isDragging;

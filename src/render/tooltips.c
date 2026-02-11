@@ -416,6 +416,17 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s (%s)",
                 cellTypeName, TreeTypeName(treeMat));
         }
+        // Show harvest state for trunk cells
+        if (ct == CELL_TREE_TRUNK) {
+            int baseZ = cellZ;
+            while (baseZ > 0 && grid[baseZ - 1][cellY][cellX] == CELL_TREE_TRUNK) baseZ--;
+            uint8_t hs = treeHarvestState[baseZ][cellY][cellX];
+            if (hs > 0) {
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: %d/%d", hs, TREE_HARVEST_MAX);
+            } else {
+                snprintf(lines[lineCount++], sizeof(lines[0]), "Harvest: depleted");
+            }
+        }
     } else {
         if (isBurned) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Type: %s [BURNED]", cellTypeName);
@@ -950,6 +961,12 @@ void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             desName = "Gather Grass";
             bgColor = (Color){45, 50, 25, 230};
             borderColor = (Color){200, 230, 100, 255};
+            workerName = "Gatherer";
+            break;
+        case DESIGNATION_GATHER_TREE:
+            desName = "Gather Tree";
+            bgColor = (Color){40, 35, 20, 230};
+            borderColor = (Color){180, 140, 80, 255};
             workerName = "Gatherer";
             break;
         default:

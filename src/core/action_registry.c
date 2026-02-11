@@ -410,6 +410,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
+
+    // WORK > HARVEST > GATHER TREE - gather [T]ree
+    {
+        .action = ACTION_WORK_GATHER_TREE,
+        .name = "GATHER TREE",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 't',
+        .barUnderlinePos = 7,  // gather [T]ree
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // WORK > HARVEST > PLANT SAPLING - [P]lant sapling
     {
@@ -547,6 +560,39 @@ const ActionDef ACTION_REGISTRY[] = {
         .requiredSubMode = SUBMODE_NONE,
         .canDrag = false,
         .canErase = true
+    },
+    {
+        .action = ACTION_SANDBOX_SCULPT,
+        .name = "SCULPT",
+        .barText = "L-drag raise  R-drag lower  hold [S]mooth  [1-4]Brush  [ESC]Back",
+        .barKey = 'c',
+        .barUnderlinePos = 1,  // s[c]ulpt
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_SANDBOX_LOWER,
+        .name = "LOWER",
+        .barText = "Unused - sculpt uses mouse buttons",
+        .barKey = 'l',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    {
+        .action = ACTION_SANDBOX_RAISE,
+        .name = "RAISE",
+        .barText = "Unused - sculpt uses mouse buttons",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = false,
+        .canErase = false
     }
 };
 

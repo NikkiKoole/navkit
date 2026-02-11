@@ -1544,6 +1544,24 @@ void DrawMiningDesignations(void) {
                     DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){160, 200, 60, 255});
                 }
             }
+            // Gather tree designation: warm brown
+            else if (d->type == DESIGNATION_GATHER_TREE) {
+                float sx = offset.x + x * size;
+                float sy = offset.y + y * size;
+
+                Rectangle src = SpriteGetRect(SPRITE_stockpile);
+                Rectangle dest = { sx, sy, size, size };
+                DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){160, 180, 80, 200});
+
+                if (d->progress > 0.0f) {
+                    float barWidth = size * 0.8f;
+                    float barHeight = 4.0f;
+                    float barX = sx + size * 0.1f;
+                    float barY = sy + size - 8.0f;
+                    DrawRectangle((int)barX, (int)barY, (int)barWidth, (int)barHeight, DARKGRAY);
+                    DrawRectangle((int)barX, (int)barY, (int)(barWidth * d->progress), (int)barHeight, (Color){130, 160, 50, 255});
+                }
+            }
             // Plant sapling designation: dark green
             else if (d->type == DESIGNATION_PLANT_SAPLING) {
                 float sx = offset.x + x * size;
@@ -1765,7 +1783,7 @@ void DrawBlueprints(void) {
         Job* job = &jobs[jobIdx];
         if (job->type != JOBTYPE_HAUL_TO_BLUEPRINT && job->type != JOBTYPE_BUILD) continue;
         if (job->targetBlueprint < 0 || job->targetBlueprint >= MAX_BLUEPRINTS) continue;
-        
+
         Blueprint* bp = &blueprints[job->targetBlueprint];
         if (!bp->active || bp->z != viewZ) continue;
 
@@ -1776,4 +1794,70 @@ void DrawBlueprints(void) {
         Rectangle dest = { sx, sy, size, size };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, (Color){255, 200, 100, 180});
     }
+}
+
+void DrawTerrainBrushPreview(void) {
+    if (inputAction != ACTION_SANDBOX_SCULPT) return;
+
+    Vector2 gp = ScreenToGrid(GetMousePosition());
+    int mouseX = (int)gp.x;
+    int mouseY = (int)gp.y;
+
+    float size = CELL_SIZE * zoom;
+    int radius = terrainBrushRadius;
+    int radiusSq = radius * radius;
+
+    // Color by mode (S key=smooth/blue, left=raise/green, right=lower/red)
+    bool isSmoothMode = IsKeyDown(KEY_S);
+    bool isLowerMode = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+
+    Color fillColor, lineColor;
+    if (isSmoothMode) {
+        fillColor = (Color){80, 120, 220, 60};     // Blue for smooth
+        lineColor = (Color){100, 150, 255, 200};
+    } else if (isLowerMode) {
+        fillColor = (Color){220, 80, 80, 60};      // Red for lower
+        lineColor = (Color){255, 100, 100, 200};
+    } else {
+        fillColor = (Color){80, 220, 80, 60};      // Green for raise
+        lineColor = (Color){100, 255, 100, 200};
+    }
+
+    // Draw affected cells
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            int distSq = dx * dx + dy * dy;
+            if (distSq > radiusSq) continue;
+
+            int x = mouseX + dx;
+            int y = mouseY + dy;
+
+            if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) continue;
+
+            float px = offset.x + x * size;
+            float py = offset.y + y * size;
+
+            // Validate operation
+            int z = currentViewZ;
+            bool valid = false;
+            if (isSmoothMode) {
+                // Smooth works on natural terrain (walls or air)
+                valid = (grid[z][y][x] == CELL_AIR || IsWallNatural(x, y, z));
+            } else if (isLowerMode) {
+                valid = (grid[z][y][x] == CELL_WALL && IsWallNatural(x, y, z));
+            } else {
+                valid = (grid[z][y][x] == CELL_AIR && z > 0 &&
+                        CellIsSolid(grid[z-1][y][x]));
+            }
+
+            Color cellColor = valid ? fillColor : (Color){100, 100, 100, 40};
+            DrawRectangle((int)px, (int)py, (int)size, (int)size, cellColor);
+        }
+    }
+
+    // Circle outline
+    float centerX = offset.x + (mouseX + 0.5f) * size;
+    float centerY = offset.y + (mouseY + 0.5f) * size;
+    float circleRadius = (radius + 0.5f) * size;
+    DrawCircleLines((int)centerX, (int)centerY, circleRadius, lineColor);
 }

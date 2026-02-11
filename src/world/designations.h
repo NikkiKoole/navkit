@@ -19,13 +19,15 @@ typedef enum {
     DESIGNATION_GATHER_SAPLING, // Gather a sapling cell into an item
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
     DESIGNATION_GATHER_GRASS,   // Gather tall grass into an item
+    DESIGNATION_GATHER_TREE,    // Gather materials from living tree (sticks, leaves)
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
 static inline const char* DesignationTypeName(int type) {
     static const char* names[] = {
         "NONE", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR", "REMOVE_RAMP",
-        "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING", "GATHER_GRASS"
+        "CHOP", "CHOP_FELLED", "GATHER_SAPLING", "PLANT_SAPLING", "GATHER_GRASS",
+        "GATHER_TREE"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == DESIGNATION_TYPE_COUNT,
                    "DesignationTypeName out of sync with DesignationType enum");
@@ -51,6 +53,7 @@ typedef struct {
 #define GATHER_SAPLING_WORK_TIME 1.0f // Quick to dig up a sapling
 #define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
 #define GATHER_GRASS_WORK_TIME 1.0f   // Quick to gather grass
+#define GATHER_TREE_WORK_TIME 2.0f   // Gather materials from living tree
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -287,6 +290,22 @@ void CompleteGatherGrassDesignation(int x, int y, int z, int moverIdx);
 
 // Count active gather grass designations
 int CountGatherGrassDesignations(void);
+
+// =============================================================================
+// Gather tree designation functions
+// =============================================================================
+
+// Designate a tree trunk for gathering (non-destructive harvest)
+bool DesignateGatherTree(int x, int y, int z);
+
+// Check if a cell has a gather tree designation
+bool HasGatherTreeDesignation(int x, int y, int z);
+
+// Complete a gather tree designation (decrements harvest state, spawns items)
+void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx);
+
+// Count active gather tree designations
+int CountGatherTreeDesignations(void);
 
 // =============================================================================
 // Blueprint functions

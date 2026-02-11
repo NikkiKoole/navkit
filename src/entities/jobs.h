@@ -27,6 +27,7 @@ typedef enum {
     JOBTYPE_PLANT_SAPLING,     // Plant a sapling (haul item, place cell)
     JOBTYPE_CHOP_FELLED,       // Chop up fallen trunks
     JOBTYPE_GATHER_GRASS,      // Gather tall grass (creates grass item)
+    JOBTYPE_GATHER_TREE,       // Gather materials from living tree (sticks, leaves)
     JOBTYPE_DELIVER_TO_WORKSHOP, // Haul item to passive workshop work tile
     JOBTYPE_IGNITE_WORKSHOP,     // Walk to semi-passive workshop, do short active work, set passiveReady
     JOBTYPE_COUNT
@@ -36,7 +37,7 @@ static inline const char* JobTypeName(int type) {
     static const char* names[] = {
         "NONE", "HAUL", "CLEAR", "MINE", "CHANNEL", "DIG_RAMP", "REMOVE_FLOOR",
         "HAUL_TO_BP", "BUILD", "CRAFT", "REMOVE_RAMP", "CHOP", "GATHER_SAPLING",
-        "PLANT_SAPLING", "CHOP_FELLED", "GATHER_GRASS", "DELIVER_TO_WS", "IGNITE_WS"
+        "PLANT_SAPLING", "CHOP_FELLED", "GATHER_GRASS", "GATHER_TREE", "DELIVER_TO_WS", "IGNITE_WS"
     };
     _Static_assert(sizeof(names)/sizeof(names[0]) == JOBTYPE_COUNT,
                    "JobTypeName out of sync with JobType enum");
@@ -152,6 +153,7 @@ JobRunResult RunJob_Build(Job* job, void* mover, float dt);
 JobRunResult RunJob_Craft(Job* job, void* mover, float dt);
 JobRunResult RunJob_GatherSapling(Job* job, void* mover, float dt);
 JobRunResult RunJob_PlantSapling(Job* job, void* mover, float dt);
+JobRunResult RunJob_GatherTree(Job* job, void* mover, float dt);
 JobRunResult RunJob_DeliverToWorkshop(Job* job, void* mover, float dt);
 JobRunResult RunJob_IgniteWorkshop(Job* job, void* mover, float dt);
 
@@ -207,6 +209,7 @@ int WorkGiver_Craft(int moverIdx);
 int WorkGiver_GatherSapling(int moverIdx);
 int WorkGiver_PlantSapling(int moverIdx);
 int WorkGiver_GatherGrass(int moverIdx);
+int WorkGiver_GatherTree(int moverIdx);
 int WorkGiver_DeliverToPassiveWorkshop(int moverIdx);
 int WorkGiver_IgniteWorkshop(int moverIdx);
 

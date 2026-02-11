@@ -722,6 +722,33 @@ static void ExecuteCancelGatherGrass(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateGatherTree(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateGatherTree(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d tree%s for gathering", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelGatherTree(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasGatherTreeDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d gather tree designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
 static void ExecuteDesignatePlantSapling(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1182,6 +1209,11 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
 static void ExecutePlaceTree(int x, int y, int z) {
     // Check if we can place a tree here (need solid ground below or at z=0)
     CellType cell = grid[z][y][x];
+    if (cell == CELL_TREE_TRUNK || cell == CELL_TREE_LEAVES || cell == CELL_TREE_BRANCH ||
+        cell == CELL_TREE_ROOT || cell == CELL_SAPLING) {
+        AddMessage("Tree already here", RED);
+        return;
+    }
     if (cell != CELL_AIR && !CellIsSolid(cell)) {
         AddMessage("Can't place tree here", RED);
         return;
@@ -1225,6 +1257,166 @@ static void ExecuteRemoveTree(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Removed %d tree cell%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
+// ============================================================================
+// Terrain Sculpting
+// ============================================================================
+
+// Lower terrain: remove cell at z, place at z-1 if possible
+static void LowerTerrainCell(int x, int y, int z) {
+    // Only lower solid natural terrain
+    if (grid[z][y][x] != CELL_WALL) return;
+    if (!IsWallNatural(x, y, z)) return;
+
+    MaterialType mat = GetWallMaterial(x, y, z);
+
+    // Remove at current z
+    grid[z][y][x] = CELL_AIR;
+    SetWallMaterial(x, y, z, MAT_NONE);
+    ClearWallNatural(x, y, z);
+
+    // Place at z-1 if empty
+    if (z > 0 && grid[z-1][y][x] == CELL_AIR) {
+        grid[z-1][y][x] = CELL_WALL;
+        SetWallMaterial(x, y, z-1, mat);
+        SetWallNatural(x, y, z-1);
+    }
+
+    MarkChunkDirty(x, y, z);
+    InvalidatePathsThroughCell(x, y, z);
+    DestabilizeWater(x, y, z);
+}
+
+// Raise terrain: add cell at z if air and has support
+static void RaiseTerrainCell(int x, int y, int z) {
+    if (grid[z][y][x] != CELL_AIR) return;
+    if (z == 0) return;  // Can't raise at bedrock
+    if (!CellIsSolid(grid[z-1][y][x])) return;  // Need support
+
+    // Inherit material from below
+    MaterialType mat = GetWallMaterial(x, y, z-1);
+    if (mat == MAT_NONE || mat == MAT_BEDROCK) mat = MAT_DIRT;
+
+    grid[z][y][x] = CELL_WALL;
+    SetWallMaterial(x, y, z, mat);
+    SetWallNatural(x, y, z);
+
+    MarkChunkDirty(x, y, z);
+    InvalidatePathsThroughCell(x, y, z);
+    DestabilizeWater(x, y, z);
+}
+
+// Smooth terrain: create gradual slopes by averaging heights
+static void SmoothTerrainCell(int x, int y, int z) {
+    // Count solid neighbors at current z and adjacent z-levels
+    int countAtZ = 0;
+    int countAtZMinus1 = 0;
+    int countAtZPlus1 = 0;
+
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;  // Skip center
+            int nx = x + dx;
+            int ny = y + dy;
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+
+            if (grid[z][ny][nx] == CELL_WALL) countAtZ++;
+            if (z > 0 && grid[z-1][ny][nx] == CELL_WALL) countAtZMinus1++;
+            if (z < gridDepth-1 && grid[z+1][ny][nx] == CELL_WALL) countAtZPlus1++;
+        }
+    }
+
+    bool isWall = (grid[z][y][x] == CELL_WALL);
+    bool isNatural = isWall && IsWallNatural(x, y, z);
+
+    // If this is a wall sticking up (few neighbors at same level), remove it
+    if (isWall && isNatural && countAtZ < 3 && countAtZMinus1 >= 4) {
+        MaterialType mat = GetWallMaterial(x, y, z);
+        grid[z][y][x] = CELL_AIR;
+        SetWallMaterial(x, y, z, MAT_NONE);
+        ClearWallNatural(x, y, z);
+
+        // Place at z-1 if empty
+        if (z > 0 && grid[z-1][y][x] == CELL_AIR) {
+            grid[z-1][y][x] = CELL_WALL;
+            SetWallMaterial(x, y, z-1, mat);
+            SetWallNatural(x, y, z-1);
+        }
+
+        MarkChunkDirty(x, y, z);
+        InvalidatePathsThroughCell(x, y, z);
+        DestabilizeWater(x, y, z);
+    }
+    // If this is an air gap surrounded by walls, fill it
+    else if (!isWall && countAtZ >= 5 && z > 0 && CellIsSolid(grid[z-1][y][x])) {
+        MaterialType mat = GetWallMaterial(x, y, z-1);
+        if (mat == MAT_NONE || mat == MAT_BEDROCK) mat = MAT_DIRT;
+
+        grid[z][y][x] = CELL_WALL;
+        SetWallMaterial(x, y, z, mat);
+        SetWallNatural(x, y, z);
+
+        MarkChunkDirty(x, y, z);
+        InvalidatePathsThroughCell(x, y, z);
+        DestabilizeWater(x, y, z);
+    }
+}
+
+// Apply brush in circular pattern
+static void ApplyCircularBrush(int centerX, int centerY, int z, int radius,
+                               void (*operation)(int, int, int)) {
+    int radiusSq = radius * radius;
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            int distSq = dx * dx + dy * dy;
+            if (distSq > radiusSq) continue;  // Circle check
+
+            int x = centerX + dx;
+            int y = centerY + dy;
+
+            // Bounds check
+            if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) continue;
+            if (z < 1 || z >= gridDepth - 1) continue;  // Don't sculpt z=0 or top
+
+            operation(x, y, z);
+        }
+    }
+}
+
+// Execute lower terrain at position with radius
+static void ExecuteLowerTerrain(int x, int y, int z, int radius) {
+    ApplyCircularBrush(x, y, z, radius, LowerTerrainCell);
+}
+
+// Execute raise terrain at position with radius
+static void ExecuteRaiseTerrain(int x, int y, int z, int radius) {
+    ApplyCircularBrush(x, y, z, radius, RaiseTerrainCell);
+}
+
+// Execute smooth terrain at position with radius
+static void ExecuteSmoothTerrain(int x, int y, int z, int radius) {
+    ApplyCircularBrush(x, y, z, radius, SmoothTerrainCell);
+}
+
+// Bresenham line interpolation for smooth strokes
+static void InterpolateBrushStroke(int x0, int y0, int x1, int y1, int z, int radius,
+                                   void (*execute)(int, int, int, int)) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = x0 < x1 ? 1 : -1;
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx - dy;
+
+    int x = x0, y = y0;
+    while (true) {
+        execute(x, y, z, radius);
+        if (x == x1 && y == y1) break;
+
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx)  { err += dx; y += sy; }
     }
 }
 
@@ -1683,6 +1875,7 @@ void HandleInput(void) {
                             if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
                             if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
                             if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER_GRASS; }
+                            if (CheckKey(KEY_T)) { inputAction = ACTION_WORK_GATHER_TREE; }
                             break;
                         default:
                             break;
@@ -1693,11 +1886,12 @@ void HandleInput(void) {
                 if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
                 if (CheckKey(KEY_F)) { inputAction = ACTION_SANDBOX_FIRE; }
                 if (CheckKey(KEY_H)) { inputAction = ACTION_SANDBOX_HEAT; }
-                if (CheckKey(KEY_C)) { inputAction = ACTION_SANDBOX_COLD; }
+                if (CheckKey(KEY_O)) { inputAction = ACTION_SANDBOX_COLD; }  // Changed to KEY_O
                 if (CheckKey(KEY_M)) { inputAction = ACTION_SANDBOX_SMOKE; }
                 if (CheckKey(KEY_T)) { inputAction = ACTION_SANDBOX_STEAM; }
                 if (CheckKey(KEY_G)) { inputAction = ACTION_SANDBOX_GRASS; }
                 if (CheckKey(KEY_R)) { inputAction = ACTION_SANDBOX_TREE; }
+                if (CheckKey(KEY_C)) { inputAction = ACTION_SANDBOX_SCULPT; }
                 break;
             default:
                 break;
@@ -1772,17 +1966,21 @@ void HandleInput(void) {
         case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
         case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
         case ACTION_WORK_GATHER_GRASS:   backOneLevel = CheckKey(KEY_G); break;
+        case ACTION_WORK_GATHER_TREE:    backOneLevel = CheckKey(KEY_T); break;
         // Gather (top-level)
         case ACTION_WORK_GATHER:       backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
         case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
         case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
         case ACTION_SANDBOX_HEAT:   backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_SANDBOX_COLD:   backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_SANDBOX_COLD:   backOneLevel = CheckKey(KEY_O); break;
         case ACTION_SANDBOX_SMOKE:  backOneLevel = CheckKey(KEY_M); break;
         case ACTION_SANDBOX_STEAM:  backOneLevel = CheckKey(KEY_T); break;
         case ACTION_SANDBOX_GRASS:  backOneLevel = CheckKey(KEY_G); break;
         case ACTION_SANDBOX_TREE:   backOneLevel = CheckKey(KEY_R); break;
+        case ACTION_SANDBOX_SCULPT: backOneLevel = CheckKey(KEY_C); break;
+        case ACTION_SANDBOX_LOWER:  backOneLevel = CheckKey(KEY_L); break;
+        case ACTION_SANDBOX_RAISE:  backOneLevel = CheckKey(KEY_R); break;
         default: break;
     }
     if (backOneLevel) {
@@ -1820,7 +2018,18 @@ void HandleInput(void) {
     if (CheckKey(KEY_SEVEN)) selectedMaterial = 7;
     if (CheckKey(KEY_EIGHT)) selectedMaterial = 8;
     if (CheckKey(KEY_NINE)) selectedMaterial = 9;
-    
+
+    // ========================================================================
+    // Terrain brush size selection (when sculpt action is selected)
+    // ========================================================================
+
+    if (inputAction == ACTION_SANDBOX_SCULPT) {
+        if (CheckKey(KEY_ONE))   { terrainBrushRadius = 0; AddMessage("Brush: 1x1", GREEN); }
+        if (CheckKey(KEY_TWO))   { terrainBrushRadius = 1; AddMessage("Brush: 3x3", GREEN); }
+        if (CheckKey(KEY_THREE)) { terrainBrushRadius = 2; AddMessage("Brush: 5x5", GREEN); }
+        if (CheckKey(KEY_FOUR))  { terrainBrushRadius = 3; AddMessage("Brush: 7x7", GREEN); }
+    }
+
     // ========================================================================
     // Ramp direction selection (when ramp action is selected)
     // Arrow keys override auto-detect, 'A' resets to auto-detect
@@ -1884,8 +2093,66 @@ void HandleInput(void) {
         dragStartX = (int)gp.x;
         dragStartY = (int)gp.y;
         isDragging = true;
+
+        // Terrain sculpting: start stroke on mouse down
+        if (inputAction == ACTION_SANDBOX_SCULPT) {
+            lastBrushX = dragStartX;
+            lastBrushY = dragStartY;
+            brushStrokeActive = true;
+
+            bool smoothMode = IsKeyDown(KEY_S);
+            // Execute at initial position
+            if (smoothMode) {
+                // S key held = smooth (works with either mouse button)
+                ExecuteSmoothTerrain(lastBrushX, lastBrushY, z, terrainBrushRadius);
+            } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                // Left = raise
+                ExecuteRaiseTerrain(lastBrushX, lastBrushY, z, terrainBrushRadius);
+            } else if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+                // Right = lower
+                ExecuteLowerTerrain(lastBrushX, lastBrushY, z, terrainBrushRadius);
+            }
+        }
     }
-    
+
+    // Terrain sculpting: continuous brush stroke while dragging
+    if (brushStrokeActive && inputAction == ACTION_SANDBOX_SCULPT) {
+        bool leftDown = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        bool rightDown = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+        bool smoothMode = IsKeyDown(KEY_S);
+
+        if (leftDown || rightDown) {
+            Vector2 gp = ScreenToGrid(GetMousePosition());
+            int mouseX = (int)gp.x;
+            int mouseY = (int)gp.y;
+
+            if (mouseX != lastBrushX || mouseY != lastBrushY) {
+                if (smoothMode) {
+                    // S held = smooth (either button)
+                    InterpolateBrushStroke(lastBrushX, lastBrushY, mouseX, mouseY, z,
+                                          terrainBrushRadius, ExecuteSmoothTerrain);
+                } else if (leftDown) {
+                    // Left = raise
+                    InterpolateBrushStroke(lastBrushX, lastBrushY, mouseX, mouseY, z,
+                                          terrainBrushRadius, ExecuteRaiseTerrain);
+                } else if (rightDown) {
+                    // Right = lower
+                    InterpolateBrushStroke(lastBrushX, lastBrushY, mouseX, mouseY, z,
+                                          terrainBrushRadius, ExecuteLowerTerrain);
+                }
+                lastBrushX = mouseX;
+                lastBrushY = mouseY;
+            }
+        }
+    }
+
+    // End terrain sculpting stroke
+    if (brushStrokeActive && (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) || IsMouseButtonReleased(MOUSE_BUTTON_RIGHT))) {
+        brushStrokeActive = false;
+        lastBrushX = -1;
+        lastBrushY = -1;
+    }
+
     // Pile mode: continuous placement while dragging with shift
     if (isDragging && shift && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         Vector2 gp = ScreenToGrid(GetMousePosition());
@@ -2077,6 +2344,10 @@ void HandleInput(void) {
                 if (leftClick) ExecuteDesignateGatherGrass(x1, y1, x2, y2, z);
                 else ExecuteCancelGatherGrass(x1, y1, x2, y2, z);
                 break;
+            case ACTION_WORK_GATHER_TREE:
+                if (leftClick) ExecuteDesignateGatherTree(x1, y1, x2, y2, z);
+                else ExecuteCancelGatherTree(x1, y1, x2, y2, z);
+                break;
             case ACTION_WORK_PLANT_SAPLING:
                 if (leftClick) ExecuteDesignatePlantSapling(x1, y1, x2, y2, z);
                 else ExecuteCancelPlantSapling(x1, y1, x2, y2, z);
@@ -2113,6 +2384,11 @@ void HandleInput(void) {
             case ACTION_SANDBOX_TREE:
                 if (leftClick) ExecutePlaceTree(x1, y1, z);  // Single click for tree placement
                 else ExecuteRemoveTree(x1, y1, x2, y2, z);
+                break;
+            case ACTION_SANDBOX_SCULPT:
+            case ACTION_SANDBOX_LOWER:
+            case ACTION_SANDBOX_RAISE:
+                // Brush sculpting handled in continuous stroke mode above
                 break;
             default:
                 break;

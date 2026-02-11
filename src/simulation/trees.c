@@ -23,6 +23,9 @@ int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Target height per tree (set when sapling becomes trunk, based on position)
 int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Harvest state per cell (only meaningful on trunk base cells)
+uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Simple hash for position-based randomness (deterministic)
 static unsigned int PositionHash(int x, int y, int z) {
     unsigned int h = (unsigned int)(x * 374761393 + y * 668265263 + z * 2147483647);
@@ -69,6 +72,7 @@ void InitTrees(void) {
             for (int x = 0; x < gridWidth; x++) {
                 growthTimer[z][y][x] = 0;
                 targetHeight[z][y][x] = 0;
+                treeHarvestState[z][y][x] = 0;
             }
         }
     }
@@ -344,6 +348,9 @@ static void GrowCell(int x, int y, int z) {
         // Stagger trunk growth timer to avoid all trunks growing at once
         growthTimer[z][y][x] = hash % trunkGrowTicks;
 
+        // Tree starts fully harvestable
+        treeHarvestState[z][y][x] = TREE_HARVEST_MAX;
+
         // Roots on conversion
         PlaceRootsForTree(x, y, z, treeMat);
     } else if (cell == CELL_TREE_TRUNK) {
@@ -391,9 +398,7 @@ static void GrowCell(int x, int y, int z) {
 void TreesTick(float dt) {
     (void)dt;
 
-    if (treeActiveCells == 0) {
-        return;
-    }
+    bool hasGrowing = (treeActiveCells > 0);
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -401,21 +406,34 @@ void TreesTick(float dt) {
                 CellType cell = grid[z][y][x];
 
                 if (cell == CELL_SAPLING) {
+                    if (!hasGrowing) continue;
                     growthTimer[z][y][x]++;
                     if (growthTimer[z][y][x] >= saplingGrowTicks) {
                         GrowCell(x, y, z);
                     }
                 } else if (cell == CELL_TREE_TRUNK) {
-                    // Only grow from topmost trunk in a column
-                    if (z + 1 >= gridDepth ||
-                        grid[z + 1][y][x] != CELL_TREE_TRUNK) {
+                    // Growth: only topmost trunk, only when trees are growing
+                    if (hasGrowing &&
+                        (z + 1 >= gridDepth || grid[z + 1][y][x] != CELL_TREE_TRUNK)) {
                         growthTimer[z][y][x]++;
                         if (growthTimer[z][y][x] >= trunkGrowTicks) {
                             GrowCell(x, y, z);
                             growthTimer[z][y][x] = 0;
                         }
                     }
+
+                    // Harvest regen on trunk base cells only (reuses growthTimer, idle on mature bases)
+                    if (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK) {
+                        if (treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
+                            growthTimer[z][y][x]++;
+                            if (growthTimer[z][y][x] >= TREE_HARVEST_REGEN_TICKS) {
+                                treeHarvestState[z][y][x]++;
+                                growthTimer[z][y][x] = 0;
+                            }
+                        }
+                    }
                 } else if (cell == CELL_TREE_LEAVES) {
+                    if (!hasGrowing) continue;
                     growthTimer[z][y][x]++;
                     if (growthTimer[z][y][x] >= LEAF_DECAY_TICKS) {
                         GrowCell(x, y, z);
@@ -430,6 +448,13 @@ void TreesTick(float dt) {
 // Instantly grow a full tree from a sapling position
 void TreeGrowFull(int x, int y, int z, MaterialType treeMat) {
     treeMat = NormalizeTreeType(treeMat);
+
+    // Don't grow on cells that already have a tree (re-growing corrupts taper/leaves)
+    CellType existing = grid[z][y][x];
+    if (existing == CELL_TREE_TRUNK || existing == CELL_TREE_BRANCH ||
+        existing == CELL_TREE_LEAVES || existing == CELL_TREE_ROOT) {
+        return;
+    }
 
     bool addedActive = false;
     if (grid[z][y][x] != CELL_SAPLING && grid[z][y][x] != CELL_TREE_TRUNK) {

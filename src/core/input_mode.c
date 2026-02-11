@@ -10,6 +10,12 @@ WorkSubMode workSubMode = SUBMODE_NONE;
 InputAction inputAction = ACTION_NONE;
 int selectedMaterial = 1;
 
+// Terrain brush state
+int terrainBrushRadius = 1;  // Default 3x3
+int lastBrushX = -1;
+int lastBrushY = -1;
+bool brushStrokeActive = false;
+
 bool isDragging = false;
 int dragStartX = 0;
 int dragStartY = 0;
@@ -95,12 +101,12 @@ const char* InputMode_GetBarText(void) {
                     case SUBMODE_BUILD:
                         return "WORK > BUILD: [W]all  [F]loor  [L]adder  [R]amp    [ESC]Back";
                     case SUBMODE_HARVEST:
-                        return "WORK > HARVEST: [C]hop tree  chop [F]elled  gather [S]apling  [P]lant sapling    [ESC]Back";
+                        return "WORK > HARVEST: [C]hop tree  chop [F]elled  gather [G]rass  gather [S]apling  gather [T]ree  [P]lant sapling    [ESC]Back";
                     default:
                         return "[ESC]Back";
                 }
             case MODE_SANDBOX:
-                return "SANDBOX: [W]ater  [F]ire  [H]eat  [C]old  s[M]oke  s[T]eam  [G]rass  t[R]ee    [ESC]Back";
+                return "SANDBOX: [W]ater  [F]ire  [H]eat  c[O]ld  s[M]oke  s[T]eam  [G]rass  t[R]ee  s[C]ulpt    [ESC]Back";
             default:
                 return "[ESC]Back";
         }
@@ -234,7 +240,9 @@ int InputMode_GetBarItems(BarItem* items) {
                             n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
                             n = AddItem(items, n, "Chop tree", KEY_C, 0, false, false, false);
                             n = AddItem(items, n, "chop Felled", KEY_F, 5, false, false, false);
+                            n = AddItem(items, n, "gather Grass", KEY_G, 7, false, false, false);
                             n = AddItem(items, n, "gather Sapling", KEY_S, 7, false, false, false);
+                            n = AddItem(items, n, "gather Tree", KEY_T, 7, false, false, false);
                             n = AddItem(items, n, "Plant sapling", KEY_P, 0, false, false, false);
                             break;
                         default:
@@ -248,11 +256,12 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "Water", KEY_W, 0, false, false, false);
                 n = AddItem(items, n, "Fire", KEY_F, 0, false, false, false);
                 n = AddItem(items, n, "Heat", KEY_H, 0, false, false, false);
-                n = AddItem(items, n, "Cold", KEY_C, 0, false, false, false);
+                n = AddItem(items, n, "cOld", KEY_O, 1, false, false, false);
                 n = AddItem(items, n, "sMoke", KEY_M, 1, false, false, false);
                 n = AddItem(items, n, "sTeam", KEY_T, 1, false, false, false);
                 n = AddItem(items, n, "Grass", KEY_G, 0, false, false, false);
                 n = AddItem(items, n, "tRee", KEY_R, 1, false, false, false);
+                n = AddItem(items, n, "sCulpt", KEY_C, 1, false, false, false);
                 n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
             default:
@@ -330,11 +339,14 @@ int InputMode_GetBarItems(BarItem* items) {
         case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
         case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
         case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;
-        case ACTION_SANDBOX_COLD:   actionKey = KEY_C; break;
+        case ACTION_SANDBOX_COLD:   actionKey = KEY_O; actionUnderline = 1; break;
         case ACTION_SANDBOX_SMOKE:  actionKey = KEY_M; actionUnderline = 1; break;
         case ACTION_SANDBOX_STEAM:  actionKey = KEY_T; actionUnderline = 1; break;
         case ACTION_SANDBOX_GRASS:  actionKey = KEY_G; break;
         case ACTION_SANDBOX_TREE:   actionKey = KEY_R; actionUnderline = 1; break;
+        case ACTION_SANDBOX_SCULPT: actionKey = KEY_C; actionUnderline = 1; break;
+        case ACTION_SANDBOX_LOWER:  actionKey = KEY_L; break;
+        case ACTION_SANDBOX_RAISE:  actionKey = KEY_R; break;
         default: break;
     }
     const char* actionName = GetActionName();
@@ -452,6 +464,19 @@ int InputMode_GetBarItems(BarItem* items) {
             n = AddItem(items, n, TextFormat("Cycle tree (%s)", TreeTypeName(currentTreeType)), KEY_T, 0, false, false, false);
             n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
             n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+            break;
+        case ACTION_SANDBOX_SCULPT:
+            n = AddItem(items, n, "1:1x1", KEY_ONE, 0, false, false, terrainBrushRadius == 0);
+            n = AddItem(items, n, "2:3x3", KEY_TWO, 0, false, false, terrainBrushRadius == 1);
+            n = AddItem(items, n, "3:5x5", KEY_THREE, 0, false, false, terrainBrushRadius == 2);
+            n = AddItem(items, n, "4:7x7", KEY_FOUR, 0, false, false, terrainBrushRadius == 3);
+            n = AddItem(items, n, "L-drag raise", 0, -1, false, true, false);
+            n = AddItem(items, n, "R-drag lower", 0, -1, false, true, false);
+            n = AddItem(items, n, "Hold S=smooth", 0, -1, false, true, false);
+            break;
+        case ACTION_SANDBOX_LOWER:
+        case ACTION_SANDBOX_RAISE:
+            // These actions are now unused - sculpt handles both via mouse buttons
             break;
         default:
             n = AddItem(items, n, "L-drag", 0, -1, false, true, false);

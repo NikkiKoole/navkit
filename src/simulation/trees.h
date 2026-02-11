@@ -19,6 +19,13 @@ ItemType LeafItemFromTreeType(MaterialType mat);
 extern int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
+// Harvest state (stored on trunk base cell only)
+// 0 = depleted, TREE_HARVEST_MAX = fully harvestable
+// Regen uses growthTimer on the base cell (idle on mature trees)
+#define TREE_HARVEST_MAX 2
+#define TREE_HARVEST_REGEN_TICKS 3600  // Ticks to regen one harvest level (~60s at 60fps)
+extern uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Initialize tree growth system
 void InitTrees(void);
 
