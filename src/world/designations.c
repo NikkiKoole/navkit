@@ -1037,6 +1037,10 @@ static void FellTree(int x, int y, int z, float chopperX, float chopperY) {
         if (cellType != CELL_TREE_TRUNK && cellType != CELL_TREE_BRANCH && cellType != CELL_TREE_ROOT) continue;
         if (GetWallMaterial(cx, cy, cz) != treeMat) continue;
 
+        // Don't remove roots at z=0 — they replaced the natural ground cell
+        // and removing them would leave a hole to bedrock
+        if (cellType == CELL_TREE_ROOT && cz == 0) continue;
+
         grid[cz][cy][cx] = CELL_AIR;
         SetWallMaterial(cx, cy, cz, MAT_NONE);
         MarkChunkDirty(cx, cy, cz);
