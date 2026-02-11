@@ -328,22 +328,26 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
     int sg = (skyColor.g * lc->skyLevel) / SKY_LIGHT_MAX;
     int sb = (skyColor.b * lc->skyLevel) / SKY_LIGHT_MAX;
 
-    // Block light: max of this level and one level below
-    // (so torches are visible when looking down from above)
+    // Block light from this level
     int br = lc->blockR;
     int bg = lc->blockG;
     int bb = lc->blockB;
-    if (z > 0 && !CellIsSolid(grid[z][y][x])) {
-        LightCell* below = &lightGrid[z - 1][y][x];
-        if (below->blockR > br) br = below->blockR;
-        if (below->blockG > bg) bg = below->blockG;
-        if (below->blockB > bb) bb = below->blockB;
-    }
 
     // Combined: max of sky and block per channel
     int r = sr > br ? sr : br;
     int g = sg > bg ? sg : bg;
     int b = sb > bb ? sb : bb;
+
+    // Add block light from one level below (additive, so torches glow through)
+    if (z > 0 && !CellIsSolid(grid[z][y][x])) {
+        LightCell* below = &lightGrid[z - 1][y][x];
+        r += below->blockR / 2;
+        g += below->blockG / 2;
+        b += below->blockB / 2;
+        if (r > 255) r = 255;
+        if (g > 255) g = 255;
+        if (b > 255) b = 255;
+    }
 
     // Ambient minimum
     if (r < lightAmbientR) r = lightAmbientR;
