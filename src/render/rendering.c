@@ -7,6 +7,7 @@
 #include "../core/time.h"
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
+#include "../simulation/floordirt.h"
 #include <math.h>
 
 // Helper: calculate visible cell range with view frustum culling
@@ -327,6 +328,19 @@ void DrawCellGrid(void) {
                         int finishSprite = FinishSprite(finish);
                         Rectangle finishSrc = SpriteGetRect(finishSprite);
                         DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, WHITE));
+                    }
+
+                    // Floor dirt overlay (tracked-in dirt from natural terrain)
+                    {
+                        uint8_t dirt = floorDirtGrid[z][y][x];
+                        if (dirt >= DIRT_VISIBLE_THRESHOLD) {
+                            Rectangle dirtSrc = SpriteGetRect(SPRITE_finish_messy);
+                            float t = (float)(dirt - DIRT_VISIBLE_THRESHOLD)
+                                    / (float)(DIRT_MAX - DIRT_VISIBLE_THRESHOLD);
+                            unsigned char alpha = (unsigned char)(t * 128);  // Max 50% opacity
+                            Color dirtTint = {80, 60, 40, alpha};
+                            DrawTexturePro(atlas, dirtSrc, dest, (Vector2){0,0}, 0, dirtTint);
+                        }
                     }
                 }
             }
@@ -1394,6 +1408,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_PLANT_SAPLING]  = {50, 180, 80, 200},
     [DESIGNATION_GATHER_GRASS]   = {200, 230, 100, 200},
     [DESIGNATION_GATHER_TREE]    = {160, 180, 80, 200},
+    [DESIGNATION_CLEAN]          = {180, 220, 255, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -1409,6 +1424,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_PLANT_SAPLING]  = {30, 150, 60, 255},
     [DESIGNATION_GATHER_GRASS]   = {160, 200, 60, 255},
     [DESIGNATION_GATHER_TREE]    = {130, 160, 50, 255},
+    [DESIGNATION_CLEAN]          = {150, 200, 240, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -1422,6 +1438,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_CHOP]           = {220, 140, 80, 180},
     [JOBTYPE_GATHER_SAPLING] = {180, 255, 180, 180},
     [JOBTYPE_PLANT_SAPLING]  = {80, 200, 100, 180},
+    [JOBTYPE_CLEAN]          = {200, 230, 255, 180},
 };
 
 void DrawMiningDesignations(void) {

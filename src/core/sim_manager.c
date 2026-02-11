@@ -6,6 +6,7 @@
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/floordirt.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "vendor/raylib.h"
@@ -19,6 +20,7 @@ int tempSourceCount = 0;
 int tempUnstableCells = 0;
 int treeActiveCells = 0;
 int wearActiveCells = 0;
+int dirtActiveCells = 0;
 
 void InitSimActivity(void) {
     waterActiveCells = 0;
@@ -29,6 +31,7 @@ void InitSimActivity(void) {
     tempUnstableCells = 0;
     treeActiveCells = 0;
     wearActiveCells = 0;
+    dirtActiveCells = 0;
 }
 
 // Rebuild counters from simulation grids (call after loading a save)
@@ -41,6 +44,7 @@ void RebuildSimActivityCounts(void) {
     tempUnstableCells = 0;
     treeActiveCells = 0;
     wearActiveCells = 0;
+    dirtActiveCells = 0;
     
     for (int z = 0; z < gridDepth; z++) {
         int ambient = GetAmbientTemperature(z);
@@ -82,6 +86,10 @@ void RebuildSimActivityCounts(void) {
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) {
                     wearActiveCells++;
                 }
+                // Floor dirt: constructed floor tiles with tracked-in dirt
+                if (floorDirtGrid[z][y][x] > 0) {
+                    dirtActiveCells++;
+                }
             }
         }
     }
@@ -91,7 +99,7 @@ void RebuildSimActivityCounts(void) {
 // Returns true if counters are valid, false if drift was detected and corrected
 bool ValidateSimActivityCounts(void) {
     int actualWater = 0, actualSteam = 0, actualFire = 0, actualSmoke = 0;
-    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualWear = 0;
+    int actualTempSource = 0, actualTempUnstable = 0, actualTree = 0, actualWear = 0, actualDirt = 0;
     
     // Count actual active cells from grids (same logic as RebuildSimActivityCounts)
     for (int z = 0; z < gridDepth; z++) {
@@ -110,6 +118,7 @@ bool ValidateSimActivityCounts(void) {
                 CellType cell = grid[z][y][x];
                 if (cell == CELL_SAPLING) actualTree++;
                 if (cell == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT && GetGroundWear(x, y, z) > 0) actualWear++;
+                if (floorDirtGrid[z][y][x] > 0) actualDirt++;
             }
         }
     }
@@ -131,6 +140,7 @@ bool ValidateSimActivityCounts(void) {
     CHECK_COUNTER(tempUnstableCells, actualTempUnstable);
     CHECK_COUNTER(treeActiveCells, actualTree);
     CHECK_COUNTER(wearActiveCells, actualWear);
+    CHECK_COUNTER(dirtActiveCells, actualDirt);
     
     #undef CHECK_COUNTER
     

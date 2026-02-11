@@ -10,6 +10,7 @@
 #include "stockpiles.h"
 #include "../world/designations.h"
 #include "../simulation/trees.h"
+#include "../simulation/floordirt.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -126,6 +127,9 @@ static int gatherGrassCacheCount = 0;
 static AdjacentDesignationEntry gatherTreeCache[MAX_DESIGNATION_CACHE];
 static int gatherTreeCacheCount = 0;
 
+static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
+static int cleanCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -138,6 +142,7 @@ static bool gatherSaplingCacheDirty = true;
 static bool plantSaplingCacheDirty = true;
 static bool gatherGrassCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
+static bool cleanCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -150,6 +155,10 @@ static void RebuildGatherSaplingDesignationCache(void);
 static void RebuildPlantSaplingDesignationCache(void);
 static void RebuildGatherGrassDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
+static void RebuildCleanDesignationCache(void);
+
+// Forward declaration for WorkGiver_Clean (needed for designationSpecs table)
+static int WorkGiver_CleanDesignation(int moverIdx);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -186,6 +195,8 @@ static DesignationJobSpec designationSpecs[] = {
      gatherGrassCache, &gatherGrassCacheCount, &gatherGrassCacheDirty},
     {DESIGNATION_GATHER_TREE, JOBTYPE_GATHER_TREE, RebuildGatherTreeDesignationCache, WorkGiver_GatherTree,
      gatherTreeCache, &gatherTreeCacheCount, &gatherTreeCacheDirty},
+    {DESIGNATION_CLEAN, JOBTYPE_CLEAN, RebuildCleanDesignationCache, WorkGiver_CleanDesignation,
+     cleanCache, &cleanCacheCount, &cleanCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -313,6 +324,12 @@ static void RebuildGatherTreeDesignationCache(void) {
     if (!gatherTreeCacheDirty) return;
     RebuildAdjacentDesignationCache(DESIGNATION_GATHER_TREE, gatherTreeCache, &gatherTreeCacheCount);
     gatherTreeCacheDirty = false;
+}
+
+static void RebuildCleanDesignationCache(void) {
+    if (!cleanCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount);
+    cleanCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -2448,6 +2465,69 @@ JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Clean floor job driver: walk to dirty floor -> clean it
+JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+    int tx = job->targetMineX;
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    // Check if designation still exists
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_CLEAN) {
+        return JOBRUN_FAIL;
+    }
+
+    // Check if still dirty enough to clean
+    if (GetFloorDirt(tx, ty, tz) < DIRT_CLEAN_THRESHOLD) {
+        CompleteCleanDesignation(tx, ty, tz);
+        return JOBRUN_DONE;
+    }
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        // Walk directly to the dirty tile (floors are walkable)
+        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
+            mover->goal = (Point){tx, ty, tz};
+            mover->needsRepath = true;
+        }
+
+        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+        bool correctZ = (int)mover->z == tz;
+
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+            job->progress = 0.0f;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        mover->timeWithoutProgress = 0.0f;  // Intentionally stationary while cleaning
+        job->progress += dt / CLEAN_WORK_TIME;
+        d->progress = job->progress;  // Sync to designation for progress bar rendering
+
+        if (job->progress >= 1.0f) {
+            CompleteCleanDesignation(tx, ty, tz);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Driver lookup table
 static JobDriver jobDrivers[] = {
     [JOBTYPE_NONE] = NULL,
@@ -2469,10 +2549,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_GATHER_TREE] = RunJob_GatherTree,
     [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
     [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
+    [JOBTYPE_CLEAN] = RunJob_Clean,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_IGNITE_WORKSHOP,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_CLEAN,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -3229,7 +3310,7 @@ void AssignJobs(void) {
     }
 
     // =========================================================================
-    // PRIORITY 3c: Consolidate fragmented stacks - ITEM-CENTRIC
+    // PRIORITY 3b: Consolidate fragmented stacks - ITEM-CENTRIC
     // Move items from small partial stacks into larger ones of same type.
     // Limited to one consolidation per stockpile to avoid congestion.
     // =========================================================================
@@ -4054,6 +4135,83 @@ int WorkGiver_GatherTree(int moverIdx) {
     RemoveMoverFromIdleList(moverIdx);
 
     return jobId;
+}
+
+// WorkGiver_CleanDesignation: Find a clean designation to work on (on-tile, no capability check)
+static int WorkGiver_CleanDesignation(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    int moverZ = (int)m->z;
+
+    // Find nearest unassigned clean designation from cache
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < cleanCacheCount; i++) {
+        OnTileDesignationEntry* entry = &cleanCache[i];
+
+        if (entry->z != moverZ) continue;
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_CLEAN || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    // Check reachability
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    // Create job
+    int jobId = CreateJob(JOBTYPE_CLEAN);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    // Reserve designation
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
+    // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// Public wrapper for the header declaration
+int WorkGiver_Clean(int moverIdx) {
+    return WorkGiver_CleanDesignation(moverIdx);
 }
 
 // WorkGiver_Craft: Find workshop with runnable bill and available materials

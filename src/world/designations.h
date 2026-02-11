@@ -20,6 +20,7 @@ typedef enum {
     DESIGNATION_PLANT_SAPLING,  // Plant a sapling item at this location
     DESIGNATION_GATHER_GRASS,   // Gather tall grass into an item
     DESIGNATION_GATHER_TREE,    // Gather materials from living tree (sticks, leaves)
+    DESIGNATION_CLEAN,          // Clean a dirty floor tile
     DESIGNATION_TYPE_COUNT
 } DesignationType;
 
@@ -37,6 +38,7 @@ static inline const char* DesignationTypeName(int type) {
         [DESIGNATION_PLANT_SAPLING]  = "PLANT_SAPLING",
         [DESIGNATION_GATHER_GRASS]   = "GATHER_GRASS",
         [DESIGNATION_GATHER_TREE]    = "GATHER_TREE",
+        [DESIGNATION_CLEAN]          = "CLEAN",
     };
     return (type >= 0 && type < DESIGNATION_TYPE_COUNT) ? names[type] : "?";
 }
@@ -61,6 +63,7 @@ typedef struct {
 #define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
 #define GATHER_GRASS_WORK_TIME 1.0f   // Quick to gather grass
 #define GATHER_TREE_WORK_TIME 2.0f   // Gather materials from living tree
+#define CLEAN_WORK_TIME 3.0f          // Cleaning a dirty floor
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -313,6 +316,22 @@ void CompleteGatherTreeDesignation(int x, int y, int z, int moverIdx);
 
 // Count active gather tree designations
 int CountGatherTreeDesignations(void);
+
+// =============================================================================
+// Clean designation functions
+// =============================================================================
+
+// Designate a dirty floor for cleaning
+bool DesignateClean(int x, int y, int z);
+
+// Check if a cell has a clean designation
+bool HasCleanDesignation(int x, int y, int z);
+
+// Complete a clean designation (called when work finishes)
+void CompleteCleanDesignation(int x, int y, int z);
+
+// Count active clean designations
+int CountCleanDesignations(void);
 
 // =============================================================================
 // Blueprint functions

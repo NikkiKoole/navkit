@@ -13,6 +13,7 @@
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/floordirt.h"
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
 #include "../../shared/profiler.h"
@@ -677,6 +678,7 @@ void ClearMovers(void) {
     }
     // Initialize job system idle mover cache
     InitJobSystem(MAX_MOVERS);
+    ResetMoverDirtTracking();
 }
 
 int CountActiveMovers(void) {
@@ -1197,6 +1199,7 @@ void UpdateMovers(void) {
             int trampleCellY = (int)(m->y / CELL_SIZE);
             int trampleCellZ = (int)m->z;
             TrampleGround(trampleCellX, trampleCellY, trampleCellZ);
+            MoverTrackDirt(i, trampleCellX, trampleCellY, trampleCellZ);
             
             // Track progress for stuck detection
             float dx = m->x - m->lastX;

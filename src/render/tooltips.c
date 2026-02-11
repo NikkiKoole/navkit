@@ -7,6 +7,7 @@
 #include "../entities/jobs.h"
 #include "../world/designations.h"
 #include "../simulation/trees.h"
+#include "../simulation/floordirt.h"
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
@@ -452,6 +453,14 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Floor: %s", MaterialName(floorMat));
         }
+    }
+
+    // Floor dirt level
+    int dirtLevel = GetFloorDirt(cellX, cellY, cellZ);
+    if (dirtLevel > 0) {
+        const char* dirtDesc = dirtLevel >= DIRT_CLEAN_THRESHOLD ? "Dirty" :
+                               dirtLevel >= DIRT_VISIBLE_THRESHOLD ? "Slightly dirty" : "Trace dirt";
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
     }
 
     // Temperature info (all values are now Celsius directly)

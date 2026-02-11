@@ -8,6 +8,7 @@
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
 #include <string.h>
 #include <math.h>
@@ -1622,6 +1623,76 @@ int CountGatherTreeDesignations(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_GATHER_TREE) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Clean designation functions
+// =============================================================================
+
+bool DesignateClean(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must have a dirty floor above threshold
+    if (GetFloorDirt(x, y, z) < DIRT_CLEAN_THRESHOLD) {
+        return false;
+    }
+
+    // Must be walkable (mover stands on tile to clean)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_CLEAN;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_CLEAN);
+
+    return true;
+}
+
+bool HasCleanDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_CLEAN;
+}
+
+void CompleteCleanDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+
+    // Fully clean the tile (set to 0)
+    SetFloorDirt(x, y, z, 0);
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    InvalidateDesignationCache(DESIGNATION_CLEAN);
+}
+
+int CountCleanDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_CLEAN) {
                     count++;
                 }
             }

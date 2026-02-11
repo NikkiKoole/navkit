@@ -5,6 +5,7 @@
 #include "../simulation/steam.h"
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
+#include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 #include "save_migrations.h"
@@ -254,6 +255,13 @@ bool SaveWorld(const char* filename) {
         }
     }
 
+    // Floor dirt grid (v36+)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(floorDirtGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+
     // === ENTITIES SECTION ===
     marker = MARKER_ENTITIES;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -381,7 +389,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
@@ -591,6 +599,17 @@ bool LoadWorld(const char* filename) {
                 }
             }
         }
+    }
+
+    // Floor dirt grid (v36+)
+    if (version >= 36) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(floorDirtGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        memset(floorDirtGrid, 0, sizeof(floorDirtGrid));
     }
 
     // === ENTITIES SECTION ===

@@ -776,6 +776,33 @@ static void ExecuteCancelPlantSapling(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateClean(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateClean(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d floor%s for cleaning", count, count > 1 ? "s" : ""), SKYBLUE);
+    }
+}
+
+static void ExecuteCancelClean(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasCleanDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d clean designation%s", count, count > 1 ? "s" : ""), SKYBLUE);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1792,6 +1819,7 @@ void HandleInput(void) {
                     if (CheckKey(KEY_D)) { workSubMode = SUBMODE_DIG; }
                     if (CheckKey(KEY_B)) { workSubMode = SUBMODE_BUILD; }
                     if (CheckKey(KEY_H)) { workSubMode = SUBMODE_HARVEST; }
+                    if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CLEAN; }
                     if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
                 } else {
                     // In a submode - select action
@@ -1909,6 +1937,8 @@ void HandleInput(void) {
         case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
         case ACTION_WORK_GATHER_GRASS:   backOneLevel = CheckKey(KEY_G); break;
         case ACTION_WORK_GATHER_TREE:    backOneLevel = CheckKey(KEY_T); break;
+        // Clean (top-level)
+        case ACTION_WORK_CLEAN:        backOneLevel = CheckKey(KEY_C); break;
         // Gather (top-level)
         case ACTION_WORK_GATHER:       backOneLevel = CheckKey(KEY_G); break;
         // Sandbox actions
@@ -2287,6 +2317,10 @@ void HandleInput(void) {
             case ACTION_WORK_PLANT_SAPLING:
                 if (leftClick) ExecuteDesignatePlantSapling(x1, y1, x2, y2, z);
                 else ExecuteCancelPlantSapling(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_CLEAN:
+                if (leftClick) ExecuteDesignateClean(x1, y1, x2, y2, z);
+                else ExecuteCancelClean(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

@@ -30,6 +30,7 @@ typedef enum {
     JOBTYPE_GATHER_TREE,       // Gather materials from living tree (sticks, leaves)
     JOBTYPE_DELIVER_TO_WORKSHOP, // Haul item to passive workshop work tile
     JOBTYPE_IGNITE_WORKSHOP,     // Walk to semi-passive workshop, do short active work, set passiveReady
+    JOBTYPE_CLEAN,               // Clean a dirty floor tile
     JOBTYPE_COUNT
 } JobType;
 
@@ -54,6 +55,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_GATHER_TREE]         = "GATHER_TREE",
         [JOBTYPE_DELIVER_TO_WORKSHOP] = "DELIVER_TO_WS",
         [JOBTYPE_IGNITE_WORKSHOP]     = "IGNITE_WS",
+        [JOBTYPE_CLEAN]               = "CLEAN",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }
@@ -170,6 +172,7 @@ JobRunResult RunJob_PlantSapling(Job* job, void* mover, float dt);
 JobRunResult RunJob_GatherTree(Job* job, void* mover, float dt);
 JobRunResult RunJob_DeliverToWorkshop(Job* job, void* mover, float dt);
 JobRunResult RunJob_IgniteWorkshop(Job* job, void* mover, float dt);
+JobRunResult RunJob_Clean(Job* job, void* mover, float dt);
 
 
 
@@ -226,6 +229,7 @@ int WorkGiver_GatherGrass(int moverIdx);
 int WorkGiver_GatherTree(int moverIdx);
 int WorkGiver_DeliverToPassiveWorkshop(int moverIdx);
 int WorkGiver_IgniteWorkshop(int moverIdx);
+int WorkGiver_Clean(int moverIdx);
 
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h

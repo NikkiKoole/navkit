@@ -52,6 +52,7 @@ int hillsWaterConnectivitySmallThreshold = 50;
 #include "../src/simulation/smoke.c"
 #include "../src/simulation/steam.c"
 #include "../src/simulation/groundwear.c"
+#include "../src/simulation/floordirt.c"
 #include "../src/simulation/temperature.c"
 #include "../src/simulation/trees.c"
 

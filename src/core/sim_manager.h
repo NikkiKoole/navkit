@@ -18,6 +18,7 @@ extern int tempSourceCount;
 extern int tempUnstableCells;  // Cells that are unstable OR differ from ambient
 extern int treeActiveCells;    // Saplings + growing trunks
 extern int wearActiveCells;    // Dirt tiles with wear > 0
+extern int dirtActiveCells;    // Floor tiles with tracked-in dirt > 0
 
 void InitSimActivity(void);
 void RebuildSimActivityCounts(void);  // Rebuild counters from grids (call after load)

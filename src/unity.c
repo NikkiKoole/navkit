@@ -25,6 +25,7 @@
 #include "simulation/smoke.c"
 #include "simulation/steam.c"
 #include "simulation/groundwear.c"
+#include "simulation/floordirt.c"
 #include "simulation/temperature.c"
 #include "simulation/trees.c"
 

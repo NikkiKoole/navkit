@@ -451,8 +451,21 @@ const ActionDef ACTION_REGISTRY[] = {
     },
     
     // ========================================================================
-    // MODE_WORK > SUBMODE_NONE (top-level WORK action)
+    // MODE_WORK > SUBMODE_NONE (top-level WORK actions)
     // ========================================================================
+    
+    // WORK > CLEAN - [C]lean
+    {
+        .action = ACTION_WORK_CLEAN,
+        .name = "CLEAN",
+        .barText = "L-drag designate  R-drag cancel  [ESC]Back",
+        .barKey = 'c',
+        .barUnderlinePos = 0,  // [C]lean
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // WORK > GATHER - [G]ather
     {

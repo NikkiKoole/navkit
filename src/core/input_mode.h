@@ -62,6 +62,8 @@ typedef enum {
     ACTION_WORK_PLANT_SAPLING,
     ACTION_WORK_GATHER_GRASS,
     ACTION_WORK_GATHER_TREE,
+    // Work > Clean (top-level, no submode)
+    ACTION_WORK_CLEAN,
     // Work > Gather (top-level, no submode)
     ACTION_WORK_GATHER,
     // Sandbox actions (sim systems)
