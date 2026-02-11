@@ -970,6 +970,10 @@ int main(int argc, char** argv) {
 
         HandleInput();
 
+        // Cutscene test key
+        if (IsKeyPressed(KEY_I)) {
+            PlayTestCutscene();
+        }
 
         // Sound debug toggles (independent from input modes)
         if (IsKeyPressed(KEY_KP_1)) {

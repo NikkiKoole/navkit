@@ -6,9 +6,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
-// Global font from main.c
-// Font comicFont — cutscene disabled, use default font as fallback
-static Font comicFont = {0};
+// g_ui_font is available from shared/ui.h (included via unity build)
 
 // Global sound synth from main.c
 extern SoundSynth* soundDebugSynth;
@@ -201,23 +199,23 @@ void RenderCutscene(void) {
     int spacing = 2;
 
     // Use Comic Sans BMFont
-    DrawTextEx(comicFont, buffer, (Vector2){textX, textY}, fontSize, spacing, RAYWHITE);
+    DrawTextEx(*g_ui_font, buffer, (Vector2){textX, textY}, fontSize, spacing, RAYWHITE);
 
     // Show prompt when text fully revealed
     bool textFullyRevealed = cutsceneState.revealedChars >= (int)strlen(panel->text);
     if (textFullyRevealed) {
         const char* prompt = "[SPACE] to continue";
-        Vector2 promptSize = MeasureTextEx(comicFont, prompt, 20, 2);
+        Vector2 promptSize = MeasureTextEx(*g_ui_font, prompt, 20, 2);
         int promptX = panelX + panelW - (int)promptSize.x - 20;
         int promptY = panelY + panelH - 35;
-        DrawTextEx(comicFont, prompt, (Vector2){promptX, promptY}, 20, 2, GRAY);
+        DrawTextEx(*g_ui_font, prompt, (Vector2){promptX, promptY}, 20, 2, GRAY);
     }
 
     // Panel counter (bottom left of panel)
     char counter[32];
     snprintf(counter, sizeof(counter), "%d / %d",
              cutsceneState.currentPanel + 1, cutsceneState.panelCount);
-    DrawTextEx(comicFont, counter, (Vector2){panelX + 20, panelY + panelH - 35}, 20, 2, DARKGRAY);
+    DrawTextEx(*g_ui_font, counter, (Vector2){panelX + 20, panelY + panelH - 35}, 20, 2, DARKGRAY);
 }
 
 void CloseCutscene(void) {
