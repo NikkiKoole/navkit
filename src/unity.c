@@ -52,5 +52,8 @@
 #include "render/tooltips.c"
 #include "render/ui_panels.c"
 
+// UI systems
+#include "ui/cutscene.c"
+
 // Entry point (contains global state definitions)
 #include "main.c"

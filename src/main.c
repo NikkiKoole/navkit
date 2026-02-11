@@ -14,6 +14,7 @@
 #include "assets/fonts/comic_embedded.h"
 #include "sound/sound_phrase.h"
 #include "sound/sound_synth_bridge.h"
+#include "ui/cutscene.h"
 
 #ifdef USE_SOUNDSYSTEM
 #include "soundsystem/soundsystem.h"
@@ -25,6 +26,9 @@
 
 // World seed for reproducible terrain generation
 uint64_t worldSeed = 0;
+
+// Global font (loaded at startup)
+Font comicFont;
 
 float zoom = 1.0f;
 Vector2 offset = {0, 0};
@@ -55,7 +59,7 @@ static bool soundDebugAuto = true;
 static float soundDebugTimer = 0.0f;
 static float soundDebugInterval = 2.5f;
 static uint32_t soundDebugSeed = 1;
-static SoundSynth* soundDebugSynth = NULL;
+SoundSynth* soundDebugSynth = NULL;  // Non-static so cutscene.c can access it
 static const char* soundPalettePath = "assets/sound/phrase_palette.cfg";
 static bool soundDebugResponsePending = false;
 static float soundDebugResponseTimer = 0.0f;
@@ -215,8 +219,13 @@ static void SoundDebugCallResponseMirror(void) {
 }
 
 static void SoundDebugUpdate(float dt) {
+    // Always update synth if it exists (needed for cutscene sounds)
+    if (soundDebugSynth) {
+        SoundSynthUpdate(soundDebugSynth, dt);
+    }
+
+    // Sound debug auto-play (only if enabled)
     if (!soundDebugEnabled || !soundDebugSynth) return;
-    SoundSynthUpdate(soundDebugSynth, dt);
     if (!soundDebugAuto) return;
     soundDebugTimer += dt;
     if (soundDebugTimer >= soundDebugInterval) {
@@ -882,7 +891,7 @@ int main(int argc, char** argv) {
     SetExitKey(0);  // Disable ESC closing the window - we use ESC for input navigation
     atlas = AtlasLoadEmbedded();
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
-    Font comicFont = LoadEmbeddedFont();
+    comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
     SetTargetFPS(60);
     use8Dir = true;
@@ -962,6 +971,11 @@ int main(int argc, char** argv) {
         }
 
         HandleInput();
+
+        // Cutscene test key
+        if (IsKeyPressed(KEY_I)) {
+            PlayTestCutscene();
+        }
 
         // Sound debug toggles (independent from input modes)
         if (IsKeyPressed(KEY_KP_1)) {
@@ -1051,7 +1065,12 @@ int main(int argc, char** argv) {
         SoundDebugUpdate(frameTime);
         SoundDebugUpdateResponse(frameTime);
 
-        if (!paused) {
+        // Cutscene system (pauses game when active)
+        if (IsCutsceneActive()) {
+            UpdateCutscene(frameTime);
+        }
+
+        if (!paused && !IsCutsceneActive()) {
             bool shouldTick = useFixedTimestep ? (accumulator >= TICK_DT) : true;
             float tickDt = useFixedTimestep ? TICK_DT : frameTime;
             
@@ -1505,6 +1524,11 @@ int main(int argc, char** argv) {
         }
 
         DrawTooltip();
+
+        // Cutscene system (renders as overlay on top of game)
+        if (IsCutsceneActive()) {
+            RenderCutscene();
+        }
 
         PROFILE_BEGIN(EndDraw);
         EndDrawing();
