@@ -182,6 +182,17 @@ static int AddExitHeader(BarItem* items, int count, const char* text, int key, i
     return count + 1;
 }
 
+// Helper to add bar items from the action registry for a given context
+static int AddRegistryItems(BarItem* items, int n, InputMode mode, WorkSubMode subMode, InputAction parent) {
+    const ActionDef* defs[MAX_BAR_ITEMS];
+    int count = GetActionsForContext(mode, subMode, parent, defs, MAX_BAR_ITEMS);
+    for (int i = 0; i < count; i++) {
+        n = AddItem(items, n, defs[i]->barDisplayText, KeyFromChar(defs[i]->barKey),
+                    defs[i]->barUnderlinePos, false, false, false);
+    }
+    return n;
+}
+
 int InputMode_GetBarItems(BarItem* items) {
     int n = 0;
     
@@ -193,86 +204,51 @@ int InputMode_GetBarItems(BarItem* items) {
     }
     
     if (inputAction == ACTION_NONE) {
-        // In a mode, no action selected
+        // In a mode, no action selected — generate menu from registry
         switch (inputMode) {
             case MODE_DRAW:
                 n = AddExitHeader(items, n, "DRAW:", KEY_D, 0);
-                n = AddItem(items, n, "Wall", KEY_W, 0, false, false, false);
-                n = AddItem(items, n, "Floor", KEY_F, 0, false, false, false);
-                n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
-                n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
-                n = AddItem(items, n, "Stockpile", KEY_S, 0, false, false, false);
-                n = AddItem(items, n, "sOil", KEY_O, 1, false, false, false);
-                n = AddItem(items, n, "dIrt", KEY_I, 1, false, false, false);
-                n = AddItem(items, n, "rocK", KEY_K, 3, false, false, false);
-                n = AddItem(items, n, "workshop(T)", KEY_T, 9, false, false, false);
-                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                n = AddRegistryItems(items, n, MODE_DRAW, SUBMODE_NONE, ACTION_NONE);
                 break;
             case MODE_WORK:
                 if (workSubMode == SUBMODE_NONE) {
-                    // Top-level WORK menu
                     n = AddExitHeader(items, n, "WORK:", KEY_W, 0);
+                    // Submodes are hardcoded (not actions)
                     n = AddItem(items, n, "Dig", KEY_D, 0, false, false, false);
                     n = AddItem(items, n, "Build", KEY_B, 0, false, false, false);
                     n = AddItem(items, n, "Harvest", KEY_H, 0, false, false, false);
-                    n = AddItem(items, n, "Gather", KEY_G, 0, false, false, false);
-                    n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                    // Top-level WORK actions from registry (Clean, Gather, etc.)
+                    n = AddRegistryItems(items, n, MODE_WORK, SUBMODE_NONE, ACTION_NONE);
                 } else {
-                    // Sub-mode selected
                     n = AddExitHeader(items, n, "WORK >", KEY_W, 0);
                     switch (workSubMode) {
                         case SUBMODE_DIG:
                             n = AddItem(items, n, "DIG:", KEY_D, 0, true, false, false);
-                            n = AddItem(items, n, "Mine", KEY_M, 0, false, false, false);
-                            n = AddItem(items, n, "cHannel", KEY_H, 1, false, false, false);
-                            n = AddItem(items, n, "dig Ramp", KEY_R, 4, false, false, false);
-                            n = AddItem(items, n, "remove Floor", KEY_F, 7, false, false, false);
-                            n = AddItem(items, n, "remove ramp(Z)", KEY_Z, 12, false, false, false);
                             break;
                         case SUBMODE_BUILD:
                             n = AddItem(items, n, "BUILD:", KEY_B, 0, true, false, false);
-                            n = AddItem(items, n, "Wall", KEY_W, 0, false, false, false);
-                            n = AddItem(items, n, "Floor", KEY_F, 0, false, false, false);
-                            n = AddItem(items, n, "Ladder", KEY_L, 0, false, false, false);
-                            n = AddItem(items, n, "Ramp", KEY_R, 0, false, false, false);
                             break;
                         case SUBMODE_HARVEST:
                             n = AddItem(items, n, "HARVEST:", KEY_H, 0, true, false, false);
-                            n = AddItem(items, n, "Chop tree", KEY_C, 0, false, false, false);
-                            n = AddItem(items, n, "chop Felled", KEY_F, 5, false, false, false);
-                            n = AddItem(items, n, "gather Grass", KEY_G, 7, false, false, false);
-                            n = AddItem(items, n, "gather Sapling", KEY_S, 7, false, false, false);
-                            n = AddItem(items, n, "gather Tree", KEY_T, 7, false, false, false);
-                            n = AddItem(items, n, "Plant sapling", KEY_P, 0, false, false, false);
                             break;
                         default:
                             break;
                     }
-                    n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                    n = AddRegistryItems(items, n, MODE_WORK, workSubMode, ACTION_NONE);
                 }
                 break;
             case MODE_SANDBOX:
                 n = AddExitHeader(items, n, "SANDBOX:", KEY_S, 0);
-                n = AddItem(items, n, "Water", KEY_W, 0, false, false, false);
-                n = AddItem(items, n, "Fire", KEY_F, 0, false, false, false);
-                n = AddItem(items, n, "Heat", KEY_H, 0, false, false, false);
-                n = AddItem(items, n, "cOld", KEY_O, 1, false, false, false);
-                n = AddItem(items, n, "sMoke", KEY_M, 1, false, false, false);
-                n = AddItem(items, n, "sTeam", KEY_T, 1, false, false, false);
-                n = AddItem(items, n, "Grass", KEY_G, 0, false, false, false);
-                n = AddItem(items, n, "tRee", KEY_R, 1, false, false, false);
-                n = AddItem(items, n, "sCulpt", KEY_C, 1, false, false, false);
-                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
+                n = AddRegistryItems(items, n, MODE_SANDBOX, SUBMODE_NONE, ACTION_NONE);
                 break;
             default:
-                n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
                 break;
         }
+        n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);
         return n;
     }
     
-    // Action selected - show mode header and action header separately
-    // Mode header (click to exit to normal)
+    // Action selected — show mode header, submode header, action header from registry
     switch (inputMode) {
         case MODE_DRAW:    n = AddExitHeader(items, n, "DRAW >", KEY_D, 0); break;
         case MODE_WORK:    n = AddExitHeader(items, n, "WORK >", KEY_W, 0); break;
@@ -280,7 +256,7 @@ int InputMode_GetBarItems(BarItem* items) {
         default: break;
     }
     
-    // Submode header for WORK mode (click to go back to submode selection)
+    // Submode header for WORK mode
     if (workSubMode != SUBMODE_NONE) {
         int subKey = 0;
         const char* subName = NULL;
@@ -295,194 +271,118 @@ int InputMode_GetBarItems(BarItem* items) {
         }
     }
     
-    // Action header (click to go back one level)
-    int actionKey = 0;
-    int actionUnderline = 0;
-    switch (inputAction) {
-        case ACTION_DRAW_WALL:      actionKey = KEY_W; break;
-        case ACTION_DRAW_FLOOR:     actionKey = KEY_F; break;
-        case ACTION_DRAW_LADDER:    actionKey = KEY_L; break;
-        case ACTION_DRAW_RAMP:      actionKey = KEY_R; break;
-        case ACTION_DRAW_STOCKPILE: actionKey = KEY_S; break;
-        case ACTION_DRAW_WORKSHOP:  actionKey = KEY_T; actionUnderline = 1; break;
-        case ACTION_DRAW_WORKSHOP_STONECUTTER: actionKey = KEY_S; break;
-        case ACTION_DRAW_WORKSHOP_SAWMILL:     actionKey = KEY_A; actionUnderline = 1; break;
-        case ACTION_DRAW_WORKSHOP_KILN:        actionKey = KEY_K; break;
-        case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: actionKey = KEY_C; break;
-        case ACTION_DRAW_WORKSHOP_DRYING_RACK: actionKey = KEY_D; break;
-        case ACTION_DRAW_WORKSHOP_ROPE_MAKER: actionKey = KEY_R; break;
-        case ACTION_DRAW_SOIL:      actionKey = KEY_O; actionUnderline = 1; break;
-        case ACTION_DRAW_SOIL_DIRT:  actionKey = KEY_D; break;
-        case ACTION_DRAW_SOIL_CLAY:  actionKey = KEY_C; break;
-        case ACTION_DRAW_SOIL_GRAVEL: actionKey = KEY_G; break;
-        case ACTION_DRAW_SOIL_SAND:  actionKey = KEY_S; break;
-        case ACTION_DRAW_SOIL_PEAT:  actionKey = KEY_P; break;
-        case ACTION_DRAW_SOIL_ROCK:  actionKey = KEY_K; actionUnderline = 3; break;
-        // Dig actions
-        case ACTION_WORK_MINE:         actionKey = KEY_M; break;
-        case ACTION_WORK_CHANNEL:      actionKey = KEY_H; actionUnderline = 1; break;
-        case ACTION_WORK_DIG_RAMP:     actionKey = KEY_R; break;
-        case ACTION_WORK_REMOVE_FLOOR: actionKey = KEY_F; break;
-        case ACTION_WORK_REMOVE_RAMP:  actionKey = KEY_Z; break;
-        // Build actions
-        case ACTION_WORK_CONSTRUCT:    actionKey = KEY_W; break;
-        case ACTION_WORK_FLOOR:        actionKey = KEY_F; break;
-        case ACTION_WORK_LADDER:       actionKey = KEY_L; break;
-        case ACTION_WORK_RAMP:         actionKey = KEY_R; break;
-        // Harvest actions
-        case ACTION_WORK_CHOP:         actionKey = KEY_C; break;
-        case ACTION_WORK_CHOP_FELLED:  actionKey = KEY_F; break;
-        case ACTION_WORK_GATHER_SAPLING: actionKey = KEY_S; break;
-        case ACTION_WORK_PLANT_SAPLING:  actionKey = KEY_P; break;
-        // Gather (top-level)
-        case ACTION_WORK_GATHER:       actionKey = KEY_G; break;
-        // Sandbox actions
-        case ACTION_SANDBOX_WATER:  actionKey = KEY_W; break;
-        case ACTION_SANDBOX_FIRE:   actionKey = KEY_F; break;
-        case ACTION_SANDBOX_HEAT:   actionKey = KEY_H; break;
-        case ACTION_SANDBOX_COLD:   actionKey = KEY_O; actionUnderline = 1; break;
-        case ACTION_SANDBOX_SMOKE:  actionKey = KEY_M; actionUnderline = 1; break;
-        case ACTION_SANDBOX_STEAM:  actionKey = KEY_T; actionUnderline = 1; break;
-        case ACTION_SANDBOX_GRASS:  actionKey = KEY_G; break;
-        case ACTION_SANDBOX_TREE:   actionKey = KEY_R; actionUnderline = 1; break;
-        case ACTION_SANDBOX_SCULPT: actionKey = KEY_C; actionUnderline = 1; break;
-        case ACTION_SANDBOX_LOWER:  actionKey = KEY_L; break;
-        case ACTION_SANDBOX_RAISE:  actionKey = KEY_R; break;
-        default: break;
-    }
+    // Action header — key and underline from registry
+    const ActionDef* def = GetActionDef(inputAction);
+    int actionKey = KeyFromChar(def->barKey);
+    int actionUnderline = def->barUnderlinePos;
     const char* actionName = GetActionName();
     char actionHeader[32];
     snprintf(actionHeader, sizeof(actionHeader), "%s:", actionName);
     n = AddItem(items, n, actionHeader, actionKey, actionUnderline, true, false, false);
     
-    switch (inputAction) {
-        case ACTION_DRAW_WALL:
-        case ACTION_DRAW_FLOOR:
-            n = AddItem(items, n, "1:Stone", KEY_ONE, 0, false, false, selectedMaterial == 1);
-            n = AddItem(items, n, "2:Wood", KEY_TWO, 0, false, false, selectedMaterial == 2);
-            n = AddItem(items, n, "3:Dirt", KEY_THREE, 0, false, false, selectedMaterial == 3);
-            n = AddItem(items, n, "4:Oak plank", KEY_FOUR, 0, false, false, selectedMaterial == 4);
-            n = AddItem(items, n, "5:Pine plank", KEY_FIVE, 0, false, false, selectedMaterial == 5);
-            n = AddItem(items, n, "6:Birch plank", KEY_SIX, 0, false, false, selectedMaterial == 6);
-            n = AddItem(items, n, "7:Willow plank", KEY_SEVEN, 0, false, false, selectedMaterial == 7);
-            n = AddItem(items, n, "8:Sandstone", KEY_EIGHT, 0, false, false, selectedMaterial == 8);
-            n = AddItem(items, n, "9:Slate", KEY_NINE, 0, false, false, selectedMaterial == 9);
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            if (inputAction == ACTION_DRAW_WALL) {
+    // Check if this action has children (is a category like WORKSHOP/SOIL)
+    const ActionDef* children[MAX_BAR_ITEMS];
+    int childCount = GetActionsForContext(def->requiredMode, def->requiredSubMode, inputAction, children, MAX_BAR_ITEMS);
+    if (childCount > 0) {
+        // Category action — show children from registry
+        for (int i = 0; i < childCount; i++) {
+            n = AddItem(items, n, children[i]->barDisplayText, KeyFromChar(children[i]->barKey),
+                        children[i]->barUnderlinePos, false, false, false);
+        }
+    } else {
+        // Leaf action — show action-specific UI (special cases that depend on runtime state)
+        switch (inputAction) {
+            case ACTION_DRAW_WALL:
+            case ACTION_DRAW_FLOOR:
+                n = AddItem(items, n, "1:Stone", KEY_ONE, 0, false, false, selectedMaterial == 1);
+                n = AddItem(items, n, "2:Wood", KEY_TWO, 0, false, false, selectedMaterial == 2);
+                n = AddItem(items, n, "3:Dirt", KEY_THREE, 0, false, false, selectedMaterial == 3);
+                n = AddItem(items, n, "4:Oak plank", KEY_FOUR, 0, false, false, selectedMaterial == 4);
+                n = AddItem(items, n, "5:Pine plank", KEY_FIVE, 0, false, false, selectedMaterial == 5);
+                n = AddItem(items, n, "6:Birch plank", KEY_SIX, 0, false, false, selectedMaterial == 6);
+                n = AddItem(items, n, "7:Willow plank", KEY_SEVEN, 0, false, false, selectedMaterial == 7);
+                n = AddItem(items, n, "8:Sandstone", KEY_EIGHT, 0, false, false, selectedMaterial == 8);
+                n = AddItem(items, n, "9:Slate", KEY_NINE, 0, false, false, selectedMaterial == 9);
+                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+                if (inputAction == ACTION_DRAW_WALL) {
+                    n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
+                }
+                break;
+            case ACTION_DRAW_LADDER:
+                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+                break;
+            case ACTION_DRAW_RAMP:
+                n = AddItem(items, n, "Auto", KEY_A, -1, false, false, selectedRampDirection == CELL_AIR);
+                n = AddItem(items, n, "N", KEY_UP, -1, false, false, selectedRampDirection == CELL_RAMP_N);
+                n = AddItem(items, n, "E", KEY_RIGHT, -1, false, false, selectedRampDirection == CELL_RAMP_E);
+                n = AddItem(items, n, "S", KEY_DOWN, -1, false, false, selectedRampDirection == CELL_RAMP_S);
+                n = AddItem(items, n, "W", KEY_LEFT, -1, false, false, selectedRampDirection == CELL_RAMP_W);
+                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-            }
-            break;
-        case ACTION_DRAW_LADDER:
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_RAMP:
-            n = AddItem(items, n, "Auto", KEY_A, -1, false, false, selectedRampDirection == CELL_AIR);
-            n = AddItem(items, n, "N", KEY_UP, -1, false, false, selectedRampDirection == CELL_RAMP_N);
-            n = AddItem(items, n, "E", KEY_RIGHT, -1, false, false, selectedRampDirection == CELL_RAMP_E);
-            n = AddItem(items, n, "S", KEY_DOWN, -1, false, false, selectedRampDirection == CELL_RAMP_S);
-            n = AddItem(items, n, "W", KEY_LEFT, -1, false, false, selectedRampDirection == CELL_RAMP_W);
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_STOCKPILE:
-            n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_WORKSHOP:
-            n = AddItem(items, n, "Stonecutter", KEY_S, 0, false, false, false);
-            n = AddItem(items, n, "sAwmill", KEY_A, 1, false, false, false);
-            n = AddItem(items, n, "Kiln", KEY_K, 0, false, false, false);
-            n = AddItem(items, n, "Charcoal pit", KEY_C, 0, false, false, false);
-            n = AddItem(items, n, "Hearth", KEY_H, 0, false, false, false);
-            n = AddItem(items, n, "Drying rack", KEY_D, 0, false, false, false);
-            n = AddItem(items, n, "Rope maker", KEY_R, 0, false, false, false);
-            break;
-        case ACTION_DRAW_WORKSHOP_STONECUTTER:
-        case ACTION_DRAW_WORKSHOP_SAWMILL:
-        case ACTION_DRAW_WORKSHOP_KILN:
-        case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
-        case ACTION_DRAW_WORKSHOP_HEARTH:
-        case ACTION_DRAW_WORKSHOP_DRYING_RACK:
-        case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
-            n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_SOIL:
-            n = AddItem(items, n, "Dirt", KEY_D, 0, false, false, false);
-            n = AddItem(items, n, "Clay", KEY_C, 0, false, false, false);
-            n = AddItem(items, n, "Gravel", KEY_G, 0, false, false, false);
-            n = AddItem(items, n, "Sand", KEY_S, 0, false, false, false);
-            n = AddItem(items, n, "Peat", KEY_P, 0, false, false, false);
-            break;
-        case ACTION_DRAW_SOIL_DIRT:
-        case ACTION_DRAW_SOIL_CLAY:
-        case ACTION_DRAW_SOIL_GRAVEL:
-        case ACTION_DRAW_SOIL_SAND:
-        case ACTION_DRAW_SOIL_PEAT:
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
-            break;
-        case ACTION_DRAW_SOIL_ROCK:
-            n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
-            n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
-            break;
-        case ACTION_WORK_MINE:
-        case ACTION_WORK_CHANNEL:
-        case ACTION_WORK_REMOVE_FLOOR:
-        case ACTION_WORK_REMOVE_RAMP:
-        case ACTION_WORK_GATHER:
-        case ACTION_WORK_CHOP:
-        case ACTION_WORK_CHOP_FELLED:
-        case ACTION_WORK_GATHER_SAPLING:
-        case ACTION_WORK_PLANT_SAPLING:
-            n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-            break;
-        case ACTION_WORK_CONSTRUCT:
-        case ACTION_WORK_LADDER:
-        case ACTION_WORK_FLOOR:
-        case ACTION_WORK_RAMP:
-            n = AddItem(items, n, TextFormat("Mat: %s", GetSelectedBuildMaterialName()), KEY_M, 0, false, false, false);
-            n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_WATER:
-            n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-            n = AddItem(items, n, "+Shift=source/drain", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_FIRE:
-            n = AddItem(items, n, "L-drag ignite", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag extinguish", 0, -1, false, true, false);
-            n = AddItem(items, n, "+Shift=source", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_HEAT:
-        case ACTION_SANDBOX_COLD:
-        case ACTION_SANDBOX_SMOKE:
-        case ACTION_SANDBOX_STEAM:
-        case ACTION_SANDBOX_GRASS:
-            n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_TREE:
-            n = AddItem(items, n, TextFormat("Cycle tree (%s)", TreeTypeName(currentTreeType)), KEY_T, 0, false, false, false);
-            n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_SCULPT:
-            n = AddItem(items, n, "1:1x1", KEY_ONE, 0, false, false, terrainBrushRadius == 0);
-            n = AddItem(items, n, "2:3x3", KEY_TWO, 0, false, false, terrainBrushRadius == 1);
-            n = AddItem(items, n, "3:5x5", KEY_THREE, 0, false, false, terrainBrushRadius == 2);
-            n = AddItem(items, n, "4:7x7", KEY_FOUR, 0, false, false, terrainBrushRadius == 3);
-            n = AddItem(items, n, "L-drag raise", 0, -1, false, true, false);
-            n = AddItem(items, n, "R-drag lower", 0, -1, false, true, false);
-            break;
-        case ACTION_SANDBOX_LOWER:
-        case ACTION_SANDBOX_RAISE:
-            // These actions are now unused - sculpt handles both via mouse buttons
-            break;
-        default:
-            n = AddItem(items, n, "L-drag", 0, -1, false, true, false);
-            break;
+                break;
+            case ACTION_DRAW_STOCKPILE:
+                n = AddItem(items, n, "L-drag create", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag erase", 0, -1, false, true, false);
+                break;
+            case ACTION_DRAW_WORKSHOP_STONECUTTER:
+            case ACTION_DRAW_WORKSHOP_SAWMILL:
+            case ACTION_DRAW_WORKSHOP_KILN:
+            case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT:
+            case ACTION_DRAW_WORKSHOP_HEARTH:
+            case ACTION_DRAW_WORKSHOP_DRYING_RACK:
+            case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
+                n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
+                break;
+            case ACTION_DRAW_SOIL_DIRT:
+            case ACTION_DRAW_SOIL_CLAY:
+            case ACTION_DRAW_SOIL_GRAVEL:
+            case ACTION_DRAW_SOIL_SAND:
+            case ACTION_DRAW_SOIL_PEAT:
+            case ACTION_DRAW_SOIL_ROCK:
+                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+                n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
+                break;
+            case ACTION_WORK_CONSTRUCT:
+            case ACTION_WORK_LADDER:
+            case ACTION_WORK_FLOOR:
+            case ACTION_WORK_RAMP:
+                n = AddItem(items, n, TextFormat("Mat: %s", GetSelectedBuildMaterialName()), KEY_M, 0, false, false, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                break;
+            case ACTION_SANDBOX_WATER:
+                n = AddItem(items, n, "L-drag add", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+                n = AddItem(items, n, "+Shift=source/drain", 0, -1, false, true, false);
+                break;
+            case ACTION_SANDBOX_FIRE:
+                n = AddItem(items, n, "L-drag ignite", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag extinguish", 0, -1, false, true, false);
+                n = AddItem(items, n, "+Shift=source", 0, -1, false, true, false);
+                break;
+            case ACTION_SANDBOX_TREE:
+                n = AddItem(items, n, TextFormat("Cycle tree (%s)", TreeTypeName(currentTreeType)), KEY_T, 0, false, false, false);
+                n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
+                break;
+            case ACTION_SANDBOX_SCULPT:
+                n = AddItem(items, n, "1:1x1", KEY_ONE, 0, false, false, terrainBrushRadius == 0);
+                n = AddItem(items, n, "2:3x3", KEY_TWO, 0, false, false, terrainBrushRadius == 1);
+                n = AddItem(items, n, "3:5x5", KEY_THREE, 0, false, false, terrainBrushRadius == 2);
+                n = AddItem(items, n, "4:7x7", KEY_FOUR, 0, false, false, terrainBrushRadius == 3);
+                n = AddItem(items, n, "L-drag raise", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag lower", 0, -1, false, true, false);
+                break;
+            default:
+                // Generic: show drag/cancel hints based on registry canDrag/canErase
+                if (def->canDrag) {
+                    n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                }
+                if (def->canErase) {
+                    n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                }
+                break;
+        }
     }
     
     n = AddItem(items, n, "Esc", KEY_ESCAPE, -1, false, false, false);

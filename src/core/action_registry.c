@@ -1,244 +1,302 @@
 #include "action_registry.h"
 
-// Centralized registry for all InputAction metadata
-// This eliminates parallel update patterns across GetActionName(), InputMode_GetBarText(),
-// keybinding handlers, and mode transition logic.
+// Centralized registry for all InputAction metadata.
+// This is the single source of truth for action names, keys, bar display text,
+// mode/submode requirements, and parent-child relationships.
+// Adding a new action here automatically gives it a bar button, key binding,
+// and back-one-level support.
 
 const ActionDef ACTION_REGISTRY[] = {
     // ACTION_NONE - no action selected
     {
         .action = ACTION_NONE,
         .name = "NONE",
+        .barDisplayText = NULL,
         .barText = NULL,
         .barKey = 0,
         .barUnderlinePos = -1,
         .requiredMode = MODE_NORMAL,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = false
     },
     
     // ========================================================================
-    // MODE_DRAW actions
+    // MODE_DRAW actions (top-level)
     // ========================================================================
     
-    // DRAW > WALL - [W]all in "DRAW: [W]all [F]loor..."
     {
         .action = ACTION_DRAW_WALL,
         .name = "WALL",
+        .barDisplayText = "Wall",
         .barText = "[1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  R-drag erase  [ESC]Back",
         .barKey = 'w',
-        .barUnderlinePos = 0,  // [W]all
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // DRAW > FLOOR - [F]loor
     {
         .action = ACTION_DRAW_FLOOR,
         .name = "FLOOR",
+        .barDisplayText = "Floor",
         .barText = "[1]Stone%s [2]Wood%s [3]Dirt%s    L-drag place  [ESC]Back",
         .barKey = 'f',
-        .barUnderlinePos = 0,  // [F]loor
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > LADDER - [L]adder
     {
         .action = ACTION_DRAW_LADDER,
         .name = "LADDER",
+        .barDisplayText = "Ladder",
         .barText = "L-drag place  [ESC]Back",
         .barKey = 'l',
-        .barUnderlinePos = 0,  // [L]adder
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > RAMP - [R]amp
     {
         .action = ACTION_DRAW_RAMP,
         .name = "RAMP",
+        .barDisplayText = "Ramp",
         .barText = "L-click place  R-click erase  [ESC]Back",
         .barKey = 'r',
-        .barUnderlinePos = 0,  // [R]amp
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
-    
-    // DRAW > STOCKPILE - [S]tockpile
     {
         .action = ACTION_DRAW_STOCKPILE,
         .name = "STOCKPILE",
+        .barDisplayText = "Stockpile",
         .barText = "L-drag create  R-drag erase  [ESC]Back",
         .barKey = 's',
-        .barUnderlinePos = 0,  // [S]tockpile
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
     
-    // DRAW > WORKSHOP (category) - workshop([T])
-    {
-        .action = ACTION_DRAW_WORKSHOP,
-        .name = "WORKSHOP",
-        .barText = "[S]tonecutter  sa[W]mill  [K]iln    [ESC]Back",
-        .barKey = 't',
-        .barUnderlinePos = 9,  // workshop([T])
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = false,
-        .canErase = false
-    },
-    
-    // DRAW > WORKSHOP > STONECUTTER - [S]tonecutter
-    {
-        .action = ACTION_DRAW_WORKSHOP_STONECUTTER,
-        .name = "STONECUTTER",
-        .barText = "L-drag place  [ESC]Back",
-        .barKey = 's',
-        .barUnderlinePos = 0,  // [S]tonecutter
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = false
-    },
-    
-    // DRAW > WORKSHOP > SAWMILL - sa[W]mill
-    {
-        .action = ACTION_DRAW_WORKSHOP_SAWMILL,
-        .name = "SAWMILL",
-        .barText = "L-drag place  [ESC]Back",
-        .barKey = 'w',
-        .barUnderlinePos = 2,  // sa[W]mill
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = false
-    },
-    
-    // DRAW > WORKSHOP > KILN - [K]iln
-    {
-        .action = ACTION_DRAW_WORKSHOP_KILN,
-        .name = "KILN",
-        .barText = "L-drag place  [ESC]Back",
-        .barKey = 'k',
-        .barUnderlinePos = 0,  // [K]iln
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = false
-    },
-    
-    // DRAW > WORKSHOP > ROPE MAKER - [R]ope maker
-    {
-        .action = ACTION_DRAW_WORKSHOP_ROPE_MAKER,
-        .name = "ROPE_MAKER",
-        .barText = "L-drag place  [ESC]Back",
-        .barKey = 'r',
-        .barUnderlinePos = 0,  // [R]ope maker
-        .requiredMode = MODE_DRAW,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = true,
-        .canErase = false
-    },
-    
-    // DRAW > SOIL (category) - s[O]il
+    // DRAW > SOIL (category)
     {
         .action = ACTION_DRAW_SOIL,
         .name = "SOIL",
+        .barDisplayText = "sOil",
         .barText = "[D]irt  [C]lay  [G]ravel  [S]and  [P]eat  roc[K]    [ESC]Back",
         .barKey = 'o',
-        .barUnderlinePos = 1,  // s[O]il
+        .barUnderlinePos = 1,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = false
     },
     
-    // DRAW > SOIL > DIRT - [D]irt (UI ISSUE: duplicate with ACTION_DRAW_DIRT)
+    // DRAW > WORKSHOP (category)
+    {
+        .action = ACTION_DRAW_WORKSHOP,
+        .name = "WORKSHOP",
+        .barDisplayText = "workshop(T)",
+        .barText = "[S]tonecutter  s[A]wmill  [K]iln    [ESC]Back",
+        .barKey = 't',
+        .barUnderlinePos = 9,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    
+    // ========================================================================
+    // MODE_DRAW > SOIL children
+    // ========================================================================
+    
     {
         .action = ACTION_DRAW_SOIL_DIRT,
         .name = "DIRT",
+        .barDisplayText = "Dirt",
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 'd',
-        .barUnderlinePos = 0,  // [D]irt
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > SOIL > CLAY - [C]lay
     {
         .action = ACTION_DRAW_SOIL_CLAY,
         .name = "CLAY",
+        .barDisplayText = "Clay",
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 'c',
-        .barUnderlinePos = 0,  // [C]lay
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > SOIL > GRAVEL - [G]ravel
     {
         .action = ACTION_DRAW_SOIL_GRAVEL,
         .name = "GRAVEL",
+        .barDisplayText = "Gravel",
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 'g',
-        .barUnderlinePos = 0,  // [G]ravel
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > SOIL > SAND - [S]and
     {
         .action = ACTION_DRAW_SOIL_SAND,
         .name = "SAND",
+        .barDisplayText = "Sand",
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 's',
-        .barUnderlinePos = 0,  // [S]and
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
         .canDrag = true,
         .canErase = false
     },
-    
-    // DRAW > SOIL > PEAT - [P]eat
     {
         .action = ACTION_DRAW_SOIL_PEAT,
         .name = "PEAT",
+        .barDisplayText = "Peat",
         .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
         .barKey = 'p',
-        .barUnderlinePos = 0,  // [P]eat
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_SOIL_ROCK,
+        .name = "ROCK",
+        .barDisplayText = "rocK",
+        .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
+        .barKey = 'k',
+        .barUnderlinePos = 3,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_SOIL,
         .canDrag = true,
         .canErase = false
     },
     
-    // DRAW > SOIL > ROCK - roc[K]
+    // ========================================================================
+    // MODE_DRAW > WORKSHOP children
+    // ========================================================================
+    
     {
-        .action = ACTION_DRAW_SOIL_ROCK,
-        .name = "ROCK",
-        .barText = "L-drag place  +Shift=pile mode  [ESC]Back",
-        .barKey = 'k',
-        .barUnderlinePos = 3,  // roc[K]
+        .action = ACTION_DRAW_WORKSHOP_STONECUTTER,
+        .name = "STONECUTTER",
+        .barDisplayText = "Stonecutter",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 's',
+        .barUnderlinePos = 0,
         .requiredMode = MODE_DRAW,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_SAWMILL,
+        .name = "SAWMILL",
+        .barDisplayText = "sAwmill",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'a',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_KILN,
+        .name = "KILN",
+        .barDisplayText = "Kiln",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'k',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT,
+        .name = "CHARCOAL PIT",
+        .barDisplayText = "Charcoal pit",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'c',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_HEARTH,
+        .name = "HEARTH",
+        .barDisplayText = "Hearth",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'h',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_DRYING_RACK,
+        .name = "DRYING RACK",
+        .barDisplayText = "Drying rack",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'd',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
+        .canDrag = true,
+        .canErase = false
+    },
+    {
+        .action = ACTION_DRAW_WORKSHOP_ROPE_MAKER,
+        .name = "ROPE MAKER",
+        .barDisplayText = "Rope maker",
+        .barText = "L-click place  [ESC]Back",
+        .barKey = 'r',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_WORKSHOP,
         .canDrag = true,
         .canErase = false
     },
@@ -247,67 +305,68 @@ const ActionDef ACTION_REGISTRY[] = {
     // MODE_WORK > SUBMODE_DIG actions
     // ========================================================================
     
-    // WORK > DIG > MINE - [M]ine
     {
         .action = ACTION_WORK_MINE,
         .name = "MINE",
+        .barDisplayText = "Mine",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'm',
-        .barUnderlinePos = 0,  // [M]ine
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > DIG > CHANNEL - c[H]annel
     {
         .action = ACTION_WORK_CHANNEL,
         .name = "CHANNEL",
+        .barDisplayText = "cHannel",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'h',
-        .barUnderlinePos = 1,  // c[H]annel
+        .barUnderlinePos = 1,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > DIG > DIG RAMP - dig [R]amp
     {
         .action = ACTION_WORK_DIG_RAMP,
         .name = "DIG RAMP",
+        .barDisplayText = "dig Ramp",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'r',
-        .barUnderlinePos = 4,  // dig [R]amp
+        .barUnderlinePos = 4,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
-    
-    // WORK > DIG > REMOVE FLOOR - remove [F]loor
     {
         .action = ACTION_WORK_REMOVE_FLOOR,
         .name = "REMOVE FLOOR",
+        .barDisplayText = "remove Floor",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'f',
-        .barUnderlinePos = 7,  // remove [F]loor
+        .barUnderlinePos = 7,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > DIG > REMOVE RAMP - remove ramp[Z]
     {
         .action = ACTION_WORK_REMOVE_RAMP,
         .name = "REMOVE RAMP",
+        .barDisplayText = "remove ramp(Z)",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'z',
-        .barUnderlinePos = 11,  // remove ramp[Z]
+        .barUnderlinePos = 12,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_DIG,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
@@ -316,54 +375,55 @@ const ActionDef ACTION_REGISTRY[] = {
     // MODE_WORK > SUBMODE_BUILD actions
     // ========================================================================
     
-    // WORK > BUILD > WALL - [W]all
     {
         .action = ACTION_WORK_CONSTRUCT,
         .name = "WALL",
+        .barDisplayText = "Wall",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'w',
-        .barUnderlinePos = 0,  // [W]all
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > BUILD > FLOOR - [F]loor
     {
         .action = ACTION_WORK_FLOOR,
         .name = "FLOOR",
+        .barDisplayText = "Floor",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'f',
-        .barUnderlinePos = 0,  // [F]loor
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > BUILD > LADDER - [L]adder
     {
         .action = ACTION_WORK_LADDER,
         .name = "LADDER",
+        .barDisplayText = "Ladder",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'l',
-        .barUnderlinePos = 0,  // [L]adder
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > BUILD > RAMP - [R]amp
     {
         .action = ACTION_WORK_RAMP,
         .name = "RAMP",
+        .barDisplayText = "Ramp",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'r',
-        .barUnderlinePos = 0,  // [R]amp
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
@@ -372,80 +432,81 @@ const ActionDef ACTION_REGISTRY[] = {
     // MODE_WORK > SUBMODE_HARVEST actions
     // ========================================================================
     
-    // WORK > HARVEST > CHOP TREE - [C]hop tree
     {
         .action = ACTION_WORK_CHOP,
         .name = "CHOP TREE",
+        .barDisplayText = "Chop tree",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'c',
-        .barUnderlinePos = 0,  // [C]hop tree
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
-    
-    // WORK > HARVEST > CHOP FELLED - chop [F]elled
     {
         .action = ACTION_WORK_CHOP_FELLED,
         .name = "CHOP FELLED",
+        .barDisplayText = "chop Felled",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'f',
-        .barUnderlinePos = 5,  // chop [F]elled
+        .barUnderlinePos = 5,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
-    
-    // WORK > HARVEST > GATHER SAPLING - gather [S]apling
-    {
-        .action = ACTION_WORK_GATHER_SAPLING,
-        .name = "GATHER SAPLING",
-        .barText = "L-click designate  R-click cancel  [ESC]Back",
-        .barKey = 's',
-        .barUnderlinePos = 7,  // gather [S]apling
-        .requiredMode = MODE_WORK,
-        .requiredSubMode = SUBMODE_HARVEST,
-        .canDrag = false,
-        .canErase = true
-    },
-    
-    // WORK > HARVEST > GATHER GRASS - gather [G]rass
     {
         .action = ACTION_WORK_GATHER_GRASS,
         .name = "GATHER GRASS",
+        .barDisplayText = "gather Grass",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'g',
-        .barUnderlinePos = 7,  // gather [G]rass
+        .barUnderlinePos = 7,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-
-    // WORK > HARVEST > GATHER TREE - gather [T]ree
+    {
+        .action = ACTION_WORK_GATHER_SAPLING,
+        .name = "GATHER SAPLING",
+        .barDisplayText = "gather Sapling",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 's',
+        .barUnderlinePos = 7,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = true
+    },
     {
         .action = ACTION_WORK_GATHER_TREE,
         .name = "GATHER TREE",
+        .barDisplayText = "gather Tree",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 't',
-        .barUnderlinePos = 7,  // gather [T]ree
+        .barUnderlinePos = 7,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > HARVEST > PLANT SAPLING - [P]lant sapling
     {
         .action = ACTION_WORK_PLANT_SAPLING,
         .name = "PLANT SAPLING",
+        .barDisplayText = "Plant sapling",
         .barText = "L-click designate  R-click cancel  [ESC]Back",
         .barKey = 'p',
-        .barUnderlinePos = 0,  // [P]lant sapling
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
@@ -454,28 +515,29 @@ const ActionDef ACTION_REGISTRY[] = {
     // MODE_WORK > SUBMODE_NONE (top-level WORK actions)
     // ========================================================================
     
-    // WORK > CLEAN - [C]lean
     {
         .action = ACTION_WORK_CLEAN,
         .name = "CLEAN",
+        .barDisplayText = "Clean",
         .barText = "L-drag designate  R-drag cancel  [ESC]Back",
         .barKey = 'c',
-        .barUnderlinePos = 0,  // [C]lean
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // WORK > GATHER - [G]ather
     {
         .action = ACTION_WORK_GATHER,
         .name = "GATHER",
+        .barDisplayText = "Gather",
         .barText = "L-drag create zone  R-drag delete zone  [ESC]Back",
         .barKey = 'g',
-        .barUnderlinePos = 0,  // [G]ather
+        .barUnderlinePos = 0,
         .requiredMode = MODE_WORK,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
@@ -484,142 +546,123 @@ const ActionDef ACTION_REGISTRY[] = {
     // MODE_SANDBOX actions
     // ========================================================================
     
-    // SANDBOX > WATER - [W]ater
     {
         .action = ACTION_SANDBOX_WATER,
         .name = "WATER",
+        .barDisplayText = "Water",
         .barText = "L-drag add  R-drag remove  [ESC]Back",
         .barKey = 'w',
-        .barUnderlinePos = 0,  // [W]ater
+        .barUnderlinePos = 0,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > FIRE - [F]ire
     {
         .action = ACTION_SANDBOX_FIRE,
         .name = "FIRE",
+        .barDisplayText = "Fire",
         .barText = "L-drag ignite  R-drag extinguish  [ESC]Back",
         .barKey = 'f',
-        .barUnderlinePos = 0,  // [F]ire
+        .barUnderlinePos = 0,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > HEAT - [H]eat
     {
         .action = ACTION_SANDBOX_HEAT,
         .name = "HEAT",
+        .barDisplayText = "Heat",
         .barText = "L-drag heat  R-drag cool  [ESC]Back",
         .barKey = 'h',
-        .barUnderlinePos = 0,  // [H]eat
+        .barUnderlinePos = 0,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > COLD - [C]old
     {
         .action = ACTION_SANDBOX_COLD,
         .name = "COLD",
+        .barDisplayText = "cOld",
         .barText = "L-drag cool  R-drag heat  [ESC]Back",
-        .barKey = 'c',
-        .barUnderlinePos = 0,  // [C]old
+        .barKey = 'o',
+        .barUnderlinePos = 1,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > SMOKE - s[M]oke
     {
         .action = ACTION_SANDBOX_SMOKE,
         .name = "SMOKE",
+        .barDisplayText = "sMoke",
         .barText = "L-drag add  R-drag remove  [ESC]Back",
         .barKey = 'm',
-        .barUnderlinePos = 1,  // s[M]oke
+        .barUnderlinePos = 1,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > STEAM - s[T]eam
     {
         .action = ACTION_SANDBOX_STEAM,
         .name = "STEAM",
+        .barDisplayText = "sTeam",
         .barText = "L-drag add  R-drag remove  [ESC]Back",
         .barKey = 't',
-        .barUnderlinePos = 1,  // s[T]eam
+        .barUnderlinePos = 1,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > GRASS - [G]rass
     {
         .action = ACTION_SANDBOX_GRASS,
         .name = "GRASS",
+        .barDisplayText = "Grass",
         .barText = "L-drag grow  R-drag trample  [ESC]Back",
         .barKey = 'g',
-        .barUnderlinePos = 0,  // [G]rass
+        .barUnderlinePos = 0,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    
-    // SANDBOX > TREE - t[R]ee
     {
         .action = ACTION_SANDBOX_TREE,
         .name = "TREE",
+        .barDisplayText = "tRee",
         .barText = "L-click place  R-click remove  [ESC]Back",
         .barKey = 'r',
-        .barUnderlinePos = 1,  // t[R]ee
+        .barUnderlinePos = 1,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = false,
         .canErase = true
     },
     {
         .action = ACTION_SANDBOX_SCULPT,
         .name = "SCULPT",
+        .barDisplayText = "sCulpt",
         .barText = "L-drag raise  R-drag lower  hold [S]mooth  [1-4]Brush  [ESC]Back",
         .barKey = 'c',
-        .barUnderlinePos = 1,  // s[c]ulpt
+        .barUnderlinePos = 1,
         .requiredMode = MODE_SANDBOX,
         .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
         .canDrag = true,
         .canErase = true
     },
-    {
-        .action = ACTION_SANDBOX_LOWER,
-        .name = "LOWER",
-        .barText = "Unused - sculpt uses mouse buttons",
-        .barKey = 'l',
-        .barUnderlinePos = 0,
-        .requiredMode = MODE_SANDBOX,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = false,
-        .canErase = false
-    },
-    {
-        .action = ACTION_SANDBOX_RAISE,
-        .name = "RAISE",
-        .barText = "Unused - sculpt uses mouse buttons",
-        .barKey = 'r',
-        .barUnderlinePos = 0,
-        .requiredMode = MODE_SANDBOX,
-        .requiredSubMode = SUBMODE_NONE,
-        .canDrag = false,
-        .canErase = false
-    }
 };
 
 const int ACTION_REGISTRY_COUNT = sizeof(ACTION_REGISTRY) / sizeof(ACTION_REGISTRY[0]);
@@ -632,4 +675,19 @@ const ActionDef* GetActionDef(InputAction action) {
     }
     // Return ACTION_NONE entry if not found
     return &ACTION_REGISTRY[0];
+}
+
+int GetActionsForContext(InputMode mode, WorkSubMode subMode, InputAction parent,
+                         const ActionDef** out, int maxOut) {
+    int count = 0;
+    for (int i = 0; i < ACTION_REGISTRY_COUNT && count < maxOut; i++) {
+        const ActionDef* def = &ACTION_REGISTRY[i];
+        if (def->requiredMode == mode &&
+            def->requiredSubMode == subMode &&
+            def->parentAction == parent &&
+            def->barKey != 0) {
+            out[count++] = def;
+        }
+    }
+    return count;
 }

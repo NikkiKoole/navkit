@@ -10,6 +10,7 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/trees.h"
 #include "input_mode.h"
+#include "action_registry.h"
 #include "pie_menu.h"
 
 // Forward declarations
@@ -1803,159 +1804,54 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputAction == ACTION_NONE) {
-        switch (inputMode) {
-            case MODE_DRAW:
-                if (CheckKey(KEY_W)) { inputAction = ACTION_DRAW_WALL; selectedMaterial = 1; }
-                if (CheckKey(KEY_F)) { inputAction = ACTION_DRAW_FLOOR; selectedMaterial = 1; }
-                if (CheckKey(KEY_L)) { inputAction = ACTION_DRAW_LADDER; selectedMaterial = 1; }
-                if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_RAMP; }
-                if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_STOCKPILE; }
-                if (CheckKey(KEY_O)) { inputAction = ACTION_DRAW_SOIL; }
-                if (CheckKey(KEY_T)) { inputAction = ACTION_DRAW_WORKSHOP; }
-                break;
-            case MODE_WORK:
-                if (workSubMode == SUBMODE_NONE) {
-                    // Top-level WORK menu - select submode or Gather
-                    if (CheckKey(KEY_D)) { workSubMode = SUBMODE_DIG; }
-                    if (CheckKey(KEY_B)) { workSubMode = SUBMODE_BUILD; }
-                    if (CheckKey(KEY_H)) { workSubMode = SUBMODE_HARVEST; }
-                    if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CLEAN; }
-                    if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER; }
-                } else {
-                    // In a submode - select action
-                    switch (workSubMode) {
-                        case SUBMODE_DIG:
-                            if (CheckKey(KEY_M)) { inputAction = ACTION_WORK_MINE; }
-                            if (CheckKey(KEY_H)) { inputAction = ACTION_WORK_CHANNEL; }
-                            if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_DIG_RAMP; }
-                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_REMOVE_FLOOR; }
-                            if (CheckKey(KEY_Z)) { inputAction = ACTION_WORK_REMOVE_RAMP; }
-                            break;
-                        case SUBMODE_BUILD:
-                            if (CheckKey(KEY_W)) { inputAction = ACTION_WORK_CONSTRUCT; }
-                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_FLOOR; }
-                            if (CheckKey(KEY_L)) { inputAction = ACTION_WORK_LADDER; }
-                            if (CheckKey(KEY_R)) { inputAction = ACTION_WORK_RAMP; }
-                            break;
-                        case SUBMODE_HARVEST:
-                            if (CheckKey(KEY_C)) { inputAction = ACTION_WORK_CHOP; }
-                            if (CheckKey(KEY_F)) { inputAction = ACTION_WORK_CHOP_FELLED; }
-                            if (CheckKey(KEY_S)) { inputAction = ACTION_WORK_GATHER_SAPLING; }
-                            if (CheckKey(KEY_P)) { inputAction = ACTION_WORK_PLANT_SAPLING; }
-                            if (CheckKey(KEY_G)) { inputAction = ACTION_WORK_GATHER_GRASS; }
-                            if (CheckKey(KEY_T)) { inputAction = ACTION_WORK_GATHER_TREE; }
-                            break;
-                        default:
-                            break;
-                    }
+        // Action selection — data-driven from registry
+        if (inputMode == MODE_WORK && workSubMode == SUBMODE_NONE) {
+            // Submodes are hardcoded (not actions)
+            if (CheckKey(KEY_D)) { workSubMode = SUBMODE_DIG; }
+            if (CheckKey(KEY_B)) { workSubMode = SUBMODE_BUILD; }
+            if (CheckKey(KEY_H)) { workSubMode = SUBMODE_HARVEST; }
+        }
+        // Select action from registry for current mode/submode
+        const ActionDef* defs[MAX_BAR_ITEMS];
+        int count = GetActionsForContext(inputMode, workSubMode, ACTION_NONE, defs, MAX_BAR_ITEMS);
+        for (int i = 0; i < count; i++) {
+            if (CheckKey(KeyFromChar(defs[i]->barKey))) {
+                inputAction = defs[i]->action;
+                // Reset material for draw actions that need it
+                if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR ||
+                    inputAction == ACTION_DRAW_LADDER) {
+                    selectedMaterial = 1;
                 }
                 break;
-            case MODE_SANDBOX:
-                if (CheckKey(KEY_W)) { inputAction = ACTION_SANDBOX_WATER; }
-                if (CheckKey(KEY_F)) { inputAction = ACTION_SANDBOX_FIRE; }
-                if (CheckKey(KEY_H)) { inputAction = ACTION_SANDBOX_HEAT; }
-                if (CheckKey(KEY_O)) { inputAction = ACTION_SANDBOX_COLD; }  // Changed to KEY_O
-                if (CheckKey(KEY_M)) { inputAction = ACTION_SANDBOX_SMOKE; }
-                if (CheckKey(KEY_T)) { inputAction = ACTION_SANDBOX_STEAM; }
-                if (CheckKey(KEY_G)) { inputAction = ACTION_SANDBOX_GRASS; }
-                if (CheckKey(KEY_R)) { inputAction = ACTION_SANDBOX_TREE; }
-                if (CheckKey(KEY_C)) { inputAction = ACTION_SANDBOX_SCULPT; }
-                break;
-            default:
-                break;
+            }
         }
         return;
     }
     
     // ========================================================================
-    // Soil type selection (when ACTION_DRAW_SOIL is active)
+    // Category child selection — data-driven from registry
     // ========================================================================
-    
-    if (inputAction == ACTION_DRAW_WORKSHOP) {
-        if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_WORKSHOP_STONECUTTER; }
-        if (CheckKey(KEY_A)) { inputAction = ACTION_DRAW_WORKSHOP_SAWMILL; }
-        if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_WORKSHOP_KILN; }
-        if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_WORKSHOP_CHARCOAL_PIT; }
-        if (CheckKey(KEY_H)) { inputAction = ACTION_DRAW_WORKSHOP_HEARTH; }
-        if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_WORKSHOP_DRYING_RACK; }
-        if (CheckKey(KEY_R)) { inputAction = ACTION_DRAW_WORKSHOP_ROPE_MAKER; }
-        return;
-    }
-
-    if (inputAction == ACTION_DRAW_SOIL) {
-        if (CheckKey(KEY_D)) { inputAction = ACTION_DRAW_SOIL_DIRT; }
-        if (CheckKey(KEY_C)) { inputAction = ACTION_DRAW_SOIL_CLAY; }
-        if (CheckKey(KEY_G)) { inputAction = ACTION_DRAW_SOIL_GRAVEL; }
-        if (CheckKey(KEY_S)) { inputAction = ACTION_DRAW_SOIL_SAND; }
-        if (CheckKey(KEY_P)) { inputAction = ACTION_DRAW_SOIL_PEAT; }
-        if (CheckKey(KEY_K)) { inputAction = ACTION_DRAW_SOIL_ROCK; }
-        return;
+    {
+        const ActionDef* curDef = GetActionDef(inputAction);
+        const ActionDef* children[MAX_BAR_ITEMS];
+        int childCount = GetActionsForContext(curDef->requiredMode, curDef->requiredSubMode, inputAction, children, MAX_BAR_ITEMS);
+        if (childCount > 0) {
+            for (int i = 0; i < childCount; i++) {
+                if (CheckKey(KeyFromChar(children[i]->barKey))) {
+                    inputAction = children[i]->action;
+                    return;
+                }
+            }
+        }
     }
 
     // ========================================================================
     // Re-tap action key to go back one level
     // ========================================================================
     
-    bool backOneLevel = false;
-    switch (inputAction) {
-        // Draw actions
-        case ACTION_DRAW_WALL:      backOneLevel = CheckKey(KEY_W); break;
-        case ACTION_DRAW_FLOOR:     backOneLevel = CheckKey(KEY_F); break;
-        case ACTION_DRAW_LADDER:    backOneLevel = CheckKey(KEY_L); break;
-        case ACTION_DRAW_RAMP:      backOneLevel = CheckKey(KEY_R); break;
-        case ACTION_DRAW_STOCKPILE: backOneLevel = CheckKey(KEY_S); break;
-        case ACTION_DRAW_WORKSHOP:  backOneLevel = CheckKey(KEY_T); break;
-        case ACTION_DRAW_WORKSHOP_STONECUTTER: backOneLevel = CheckKey(KEY_S); break;
-        case ACTION_DRAW_WORKSHOP_SAWMILL:     backOneLevel = CheckKey(KEY_A); break;
-        case ACTION_DRAW_WORKSHOP_KILN:        backOneLevel = CheckKey(KEY_K); break;
-        case ACTION_DRAW_WORKSHOP_CHARCOAL_PIT: backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_DRAW_WORKSHOP_HEARTH: backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_DRAW_WORKSHOP_DRYING_RACK: backOneLevel = CheckKey(KEY_D); break;
-        case ACTION_DRAW_WORKSHOP_ROPE_MAKER: backOneLevel = CheckKey(KEY_R); break;
-        case ACTION_DRAW_SOIL:      backOneLevel = CheckKey(KEY_O); break;
-        case ACTION_DRAW_SOIL_DIRT:  backOneLevel = CheckKey(KEY_D); break;
-        case ACTION_DRAW_SOIL_CLAY:  backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_DRAW_SOIL_GRAVEL: backOneLevel = CheckKey(KEY_G); break;
-        case ACTION_DRAW_SOIL_SAND:  backOneLevel = CheckKey(KEY_S); break;
-        case ACTION_DRAW_SOIL_PEAT:  backOneLevel = CheckKey(KEY_P); break;
-        case ACTION_DRAW_SOIL_ROCK:  backOneLevel = CheckKey(KEY_K); break;
-        // Dig actions
-        case ACTION_WORK_MINE:         backOneLevel = CheckKey(KEY_M); break;
-        case ACTION_WORK_CHANNEL:      backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_WORK_DIG_RAMP:     backOneLevel = CheckKey(KEY_R); break;
-        case ACTION_WORK_REMOVE_FLOOR: backOneLevel = CheckKey(KEY_F); break;
-        case ACTION_WORK_REMOVE_RAMP:  backOneLevel = CheckKey(KEY_Z); break;
-        // Build actions
-        case ACTION_WORK_CONSTRUCT:    backOneLevel = CheckKey(KEY_W); break;
-        case ACTION_WORK_FLOOR:        backOneLevel = CheckKey(KEY_F); break;
-        case ACTION_WORK_LADDER:       backOneLevel = CheckKey(KEY_L); break;
-        case ACTION_WORK_RAMP:         backOneLevel = CheckKey(KEY_R); break;
-        // Harvest actions
-        case ACTION_WORK_CHOP:         backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_WORK_CHOP_FELLED:  backOneLevel = CheckKey(KEY_F); break;
-        case ACTION_WORK_GATHER_SAPLING: backOneLevel = CheckKey(KEY_S); break;
-        case ACTION_WORK_PLANT_SAPLING:  backOneLevel = CheckKey(KEY_P); break;
-        case ACTION_WORK_GATHER_GRASS:   backOneLevel = CheckKey(KEY_G); break;
-        case ACTION_WORK_GATHER_TREE:    backOneLevel = CheckKey(KEY_T); break;
-        // Clean (top-level)
-        case ACTION_WORK_CLEAN:        backOneLevel = CheckKey(KEY_C); break;
-        // Gather (top-level)
-        case ACTION_WORK_GATHER:       backOneLevel = CheckKey(KEY_G); break;
-        // Sandbox actions
-        case ACTION_SANDBOX_WATER:  backOneLevel = CheckKey(KEY_W); break;
-        case ACTION_SANDBOX_FIRE:   backOneLevel = CheckKey(KEY_F); break;
-        case ACTION_SANDBOX_HEAT:   backOneLevel = CheckKey(KEY_H); break;
-        case ACTION_SANDBOX_COLD:   backOneLevel = CheckKey(KEY_O); break;
-        case ACTION_SANDBOX_SMOKE:  backOneLevel = CheckKey(KEY_M); break;
-        case ACTION_SANDBOX_STEAM:  backOneLevel = CheckKey(KEY_T); break;
-        case ACTION_SANDBOX_GRASS:  backOneLevel = CheckKey(KEY_G); break;
-        case ACTION_SANDBOX_TREE:   backOneLevel = CheckKey(KEY_R); break;
-        case ACTION_SANDBOX_SCULPT: backOneLevel = CheckKey(KEY_C); break;
-        case ACTION_SANDBOX_LOWER:  backOneLevel = CheckKey(KEY_L); break;
-        case ACTION_SANDBOX_RAISE:  backOneLevel = CheckKey(KEY_R); break;
-        default: break;
-    }
-    if (backOneLevel) {
+    // Back-one-level — data-driven from registry
+    const ActionDef* backDef = GetActionDef(inputAction);
+    if (backDef->barKey != 0 && CheckKey(KeyFromChar(backDef->barKey))) {
         InputMode_Back();
         return;
     }
