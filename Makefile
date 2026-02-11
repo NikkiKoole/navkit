@@ -332,7 +332,7 @@ clean-atlas:
 # Fast build - no optimization, no sanitizers (~0.5s)
 fast: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O0  -fno-omit-frame-pointer  -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
-	ln -sf path_fast $(BINDIR)/path
+	ln -sfn path_fast $(BINDIR)/path
 
 # Debug build - no optimization, all sanitizers
 debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
