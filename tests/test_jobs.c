@@ -8694,9 +8694,7 @@ describe(stockpile_lifecycle) {
         expect(stockpiles[spB].slotCounts[0] == 0);
     }
     
-    // DISABLED: Performance vs correctness trade-off
-    // See docs/todo/stockpile-priority-performance.md for full analysis
-    xit("movers should haul items to stockpiles in priority order") {
+    it("movers should haul items to stockpiles in priority order") {
         // Finding 9 (MEDIUM): FindStockpileForItem doesn't respect priority
         // Story: Player creates high-priority stockpile near workshop for quick access.
         // Expected: Items hauled to high-priority stockpile first.
