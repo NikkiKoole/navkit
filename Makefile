@@ -254,7 +254,7 @@ slices:
 
 # Texture atlas generator
 atlas_gen_SRC := tools/atlas_gen.c
-atlas: slices $(RAYLIB_LIB)
+atlas: slices $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) $(CFLAGS) -DGENERATE_16X16=$(GENERATE_16X16) -o $(BINDIR)/atlas_gen $(atlas_gen_SRC) $(LDFLAGS)
 	./$(BINDIR)/atlas_gen
 
