@@ -224,6 +224,7 @@ int WorkGiver_RemoveFloor(int moverIdx);
 int WorkGiver_RemoveRamp(int moverIdx);
 int WorkGiver_Chop(int moverIdx);
 int WorkGiver_ChopFelled(int moverIdx);
+int WorkGiver_BlueprintClear(int moverIdx);
 int WorkGiver_BlueprintHaul(int moverIdx);
 int WorkGiver_Build(int moverIdx);
 int WorkGiver_Craft(int moverIdx);

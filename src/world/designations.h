@@ -77,6 +77,7 @@ typedef enum {
     BLUEPRINT_AWAITING_MATERIALS,  // Needs materials hauled to it
     BLUEPRINT_READY_TO_BUILD,      // Materials delivered, waiting for builder
     BLUEPRINT_BUILDING,            // Builder assigned and working
+    BLUEPRINT_CLEARING,            // Hauling away pre-existing items before construction
 } BlueprintState;
 
 typedef enum {

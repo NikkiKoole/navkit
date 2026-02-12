@@ -435,17 +435,25 @@ alternative locking) already handled everything correctly.
 (14 tests in 3 describe blocks: construction_or_materials,
 construction_alternative_locking, construction_any_building_mat)
 
-### Phase 5: Site Clearing
+### Phase 5: Site Clearing  ✓ COMPLETE
 
 Add the CLEARING state.
 
-**What to build:**
-- BLUEPRINT_CLEARING state
-- WorkGiver_BlueprintClear — scans items at blueprint cell, creates haul-away jobs
-- Transition from CLEARING → AWAITING_MATERIALS when cell is empty
-- Prevent item drops on active blueprint cells
+**What was built:**
+- `BLUEPRINT_CLEARING` state added to `BlueprintState` enum
+- `CreateRecipeBlueprint` checks for items at cell, starts in CLEARING if any exist
+- `WorkGiver_BlueprintClear` — scans items at blueprint cell, creates haul-away jobs to stockpiles
+- Transition from CLEARING → AWAITING_MATERIALS when cell is empty (checked each time WorkGiver runs)
+- Wired into AssignJobs dispatch chain: `WorkGiver_BlueprintClear` → `WorkGiver_BlueprintHaul` → `WorkGiver_Build`
+- CLEARING rendering: orange tint + "CLR" text overlay
+- Inspect panel shows "CLEARING" state name
 
-**Tests:** 0a, 0b, 0c, 0d, 0e, 52
+**Tests (6 tests):**
+- Items at cell → CLEARING state; no items → AWAITING skip
+- Manual item removal → transition on next WorkGiver call
+- WorkGiver creates haul jobs to stockpile
+- BlueprintHaul blocked while still CLEARING
+- End-to-end: dirt cleared → rocks delivered → wall built
 
 **What this proves:** Pre-construction site preparation works.
 

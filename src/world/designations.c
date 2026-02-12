@@ -1777,6 +1777,20 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     bp->recipeIndex = recipeIndex;
     bp->type = BLUEPRINT_TYPE_WALL;  // legacy field, set for rendering compat
 
+    // Check for items on ground at this cell — start in CLEARING if any exist
+    bool hasItems = false;
+    for (int i = 0; i < itemHighWaterMark && !hasItems; i++) {
+        if (!items[i].active) continue;
+        if ((int)items[i].z != z) continue;
+        if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+        int ix = (int)(items[i].x / CELL_SIZE);
+        int iy = (int)(items[i].y / CELL_SIZE);
+        if (ix == x && iy == y) hasItems = true;
+    }
+    if (hasItems) {
+        bp->state = BLUEPRINT_CLEARING;
+    }
+
     blueprintCount++;
     return idx;
 }

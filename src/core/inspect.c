@@ -229,7 +229,7 @@ static void print_stockpile(int idx) {
     if (!found) printf("  (none)\n");
 }
 
-static const char* blueprintStateNames[] = {"AWAITING_MATERIALS", "READY_TO_BUILD", "BUILDING"};
+static const char* blueprintStateNames[] = {"AWAITING_MATERIALS", "READY_TO_BUILD", "BUILDING", "CLEARING"};
 
 static void print_blueprint(int idx) {
     if (idx < 0 || idx >= MAX_BLUEPRINTS) {
@@ -242,7 +242,7 @@ static void print_blueprint(int idx) {
     if (!bp->active) return;
     
     printf("Position: (%d, %d, z%d)\n", bp->x, bp->y, bp->z);
-    printf("State: %s\n", bp->state < 3 ? blueprintStateNames[bp->state] : "UNKNOWN");
+    printf("State: %s\n", bp->state < 4 ? blueprintStateNames[bp->state] : "UNKNOWN");
 
     if (BlueprintUsesRecipe(bp)) {
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);

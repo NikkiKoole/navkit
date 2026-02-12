@@ -13329,6 +13329,250 @@ describe(construction_plank_wall) {
     }
 }
 
+// Phase 5: Site clearing tests
+describe(construction_site_clearing) {
+    it("should start in CLEARING state when items exist at cell") {
+        // Test #0a: blueprint on cell with items → state = CLEARING
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Place an item at (3,3)
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        int bpIdx = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bpIdx >= 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+    }
+
+    it("should start in AWAITING_MATERIALS when cell is empty") {
+        // Test #0c: blueprint on empty cell → skips CLEARING
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bpIdx >= 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+    }
+
+    it("should transition to AWAITING_MATERIALS when items are removed") {
+        // Test #0b: all items removed → advances to AWAITING_MATERIALS
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Place item at blueprint cell
+        int itemIdx = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                            3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                            ITEM_ROCK, MAT_GRANITE);
+
+        int bpIdx = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+
+        // Manually delete the item (simulating hauler took it away)
+        DeleteItem(itemIdx);
+
+        // Create a mover so WorkGiver can run
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // WorkGiver_BlueprintClear scans and finds no items → transitions
+        WorkGiver_BlueprintClear(0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+    }
+
+    it("should create haul job for items at CLEARING blueprint") {
+        // Test #0e: WorkGiver_BlueprintClear creates haul-away jobs
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Create a stockpile to receive the hauled item
+        int spIdx = CreateStockpile(8, 8, 0, 1, 1);
+        expect(spIdx >= 0);
+        SetStockpileFilter(spIdx, ITEM_ROCK, true);
+
+        // Place item at (5,5)
+        SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        int jobId = WorkGiver_BlueprintClear(0);
+        expect(jobId >= 0);
+
+        Job* job = GetJob(jobId);
+        expect(job->type == JOBTYPE_HAUL);
+        expect(job->targetStockpile == spIdx);
+    }
+
+    it("should clear site then build wall end to end") {
+        // Full sim: item at cell → clear → deliver materials → build → wall
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Stockpile to receive cleared items (only accepts dirt)
+        int spIdx = CreateStockpile(9, 9, 0, 1, 1);
+        expect(spIdx >= 0);
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            SetStockpileFilter(spIdx, (ItemType)t, false);
+        }
+        SetStockpileFilter(spIdx, ITEM_DIRT, true);
+
+        // Pre-existing dirt at the construction site
+        int dirtIdx = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+
+        // Spawn 3 rocks nearby for construction (not at the blueprint cell)
+        for (int i = 0; i < 3; i++) {
+            SpawnItemWithMaterial((1 + i) * CELL_SIZE + CELL_SIZE * 0.5f,
+                                 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                 ITEM_ROCK, MAT_GRANITE);
+        }
+
+        // Mover
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Run simulation: clear → haul materials → build
+        bool wallBuilt = false;
+        for (int i = 0; i < 60000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+        }
+
+        expect(wallBuilt == true);
+        expect(GetWallMaterial(5, 5, 0) == MAT_GRANITE);
+    }
+
+    it("should not haul construction materials while still clearing") {
+        // While in CLEARING state, BlueprintHaul should not pick up materials
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Item at blueprint cell (triggers CLEARING)
+        SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(blueprints[bpIdx].state == BLUEPRINT_CLEARING);
+
+        // Spawn rocks for construction
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // BlueprintHaul should not create a job — bp is still CLEARING
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId == -1);
+    }
+}
+
 // Phase 4: OR-materials + locking tests
 describe(construction_or_materials) {
     it("should accept dirt OR clay for wattle fill stage") {
@@ -13924,6 +14168,9 @@ int main(int argc, char* argv[]) {
     test(construction_multi_stage);
     test(construction_multi_stage_edge_cases);
     test(construction_plank_wall);
+    
+    // Construction recipe system (Phase 5 - site clearing)
+    test(construction_site_clearing);
     
     // Construction recipe system (Phase 4 - OR-materials + locking)
     test(construction_or_materials);

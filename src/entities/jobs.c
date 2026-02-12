@@ -3392,7 +3392,9 @@ void AssignJobs(void) {
         for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
             Blueprint* bp = &blueprints[bpIdx];
             if (!bp->active) continue;
-            if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+            if (bp->state == BLUEPRINT_CLEARING) {
+                hasBlueprintWork = true;
+            } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
                 if (BlueprintUsesRecipe(bp)) {
                     // Check if any slot has room
                     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
@@ -3435,9 +3437,10 @@ void AssignJobs(void) {
                     }
                 }
 
-                // Try blueprint work (haul materials or build)
+                // Try blueprint work (clear site, haul materials, or build)
                 if (jobId < 0 && hasBlueprintWork) {
-                    jobId = WorkGiver_BlueprintHaul(moverIdx);
+                    jobId = WorkGiver_BlueprintClear(moverIdx);
+                    if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
                     if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
                 }
 
@@ -5352,6 +5355,99 @@ int WorkGiver_Build(int moverIdx) {
     RemoveMoverFromIdleList(moverIdx);
 
     return jobId;
+}
+
+// WorkGiver_BlueprintClear: Haul items away from CLEARING blueprint cells
+// Returns job ID if successful, -1 if no job available
+int WorkGiver_BlueprintClear(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+    if (!m->capabilities.canHaul) return -1;
+
+    int moverZ = (int)m->z;
+    int moverTileX = (int)(m->x / CELL_SIZE);
+    int moverTileY = (int)(m->y / CELL_SIZE);
+    Point moverCell = { moverTileX, moverTileY, moverZ };
+    Point tempPath[MAX_PATH];
+
+    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS; bpIdx++) {
+        Blueprint* bp = &blueprints[bpIdx];
+        if (!bp->active) continue;
+        if (bp->state != BLUEPRINT_CLEARING) continue;
+
+        // Find an unreserved item at this blueprint's cell
+        int foundItem = -1;
+        bool anyItemsLeft = false;
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            if (!items[i].active) continue;
+            if ((int)items[i].z != bp->z) continue;
+            if (items[i].state != ITEM_ON_GROUND && items[i].state != ITEM_IN_STOCKPILE) continue;
+            int ix = (int)(items[i].x / CELL_SIZE);
+            int iy = (int)(items[i].y / CELL_SIZE);
+            if (ix != bp->x || iy != bp->y) continue;
+            anyItemsLeft = true;
+            if (items[i].reservedBy != -1) continue;
+            if (items[i].unreachableCooldown > 0.0f) continue;
+            foundItem = i;
+            break;
+        }
+
+        // If no items left at all, transition to AWAITING_MATERIALS
+        if (!anyItemsLeft) {
+            bp->state = BLUEPRINT_AWAITING_MATERIALS;
+            continue;
+        }
+
+        if (foundItem < 0) continue;  // all items reserved, skip
+
+        // Find stockpile for this item
+        uint8_t mat = ResolveItemMaterialForJobs(&items[foundItem]);
+        int slotX, slotY;
+        int spIdx = FindStockpileForItem(items[foundItem].type, mat, &slotX, &slotY);
+        if (spIdx < 0) {
+            // No stockpile — just drop it on a walkable neighbor instead
+            // For now, skip (item stays, blueprint stays in CLEARING)
+            continue;
+        }
+
+        // Check item reachability
+        Point itemCell = { (int)(items[foundItem].x / CELL_SIZE),
+                           (int)(items[foundItem].y / CELL_SIZE),
+                           (int)items[foundItem].z };
+        int pathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
+        if (pathLen == 0) continue;
+
+        // Reserve item and stockpile slot
+        if (!ReserveItem(foundItem, moverIdx)) continue;
+        if (!ReserveStockpileSlot(spIdx, slotX, slotY, moverIdx,
+                                   items[foundItem].type, items[foundItem].material)) {
+            ReleaseItemReservation(foundItem);
+            continue;
+        }
+
+        // Create haul job
+        int jobId = CreateJob(JOBTYPE_HAUL);
+        if (jobId < 0) {
+            ReleaseItemReservation(foundItem);
+            ReleaseStockpileSlot(spIdx, slotX, slotY);
+            continue;
+        }
+
+        Job* job = GetJob(jobId);
+        job->assignedMover = moverIdx;
+        job->targetItem = foundItem;
+        job->targetStockpile = spIdx;
+        job->targetSlotX = slotX;
+        job->targetSlotY = slotY;
+        job->step = 0;
+
+        m->currentJobId = jobId;
+        m->goal = itemCell;
+        m->needsRepath = true;
+        RemoveMoverFromIdleList(moverIdx);
+        return jobId;
+    }
+
+    return -1;
 }
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint

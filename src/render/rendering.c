@@ -1793,7 +1793,9 @@ static void DrawBlueprints(void) {
         float sy = offset.y + bp->y * size;
 
         Color tint;
-        if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+        if (bp->state == BLUEPRINT_CLEARING) {
+            tint = (Color){255, 180, 80, 200};  // orange — clearing items
+        } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
             tint = (Color){100, 150, 255, 200};
         } else if (bp->state == BLUEPRINT_READY_TO_BUILD) {
             tint = (Color){100, 220, 255, 200};
@@ -1814,7 +1816,11 @@ static void DrawBlueprints(void) {
             DrawRectangle((int)barX, (int)barY, (int)(barWidth * bp->progress), (int)barHeight, GREEN);
         }
 
-        if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+        if (bp->state == BLUEPRINT_CLEARING) {
+            const char* text = "CLR";
+            int textW = MeasureTextUI(text, 10);
+            DrawTextShadow(text, (int)(sx + size/2 - textW/2), (int)(sy + 2), 10, WHITE);
+        } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
             int delivered = BlueprintStageDeliveredCount(bp);
             int required = BlueprintStageRequiredCount(bp);
             const char* text = TextFormat("%d/%d", delivered, required);
