@@ -106,6 +106,24 @@ screen area.
 - TreesTick early exit via treeRegenCells counter
 - Helper extraction (GetDepthTint, IsCellVisibleFromAbove, FireLevelColor)
 
+### 6. Periodic mover sorting (cache locality)
+
+Reorder mover array by cell every N frames for cache locality. Movers that are
+spatially close would be adjacent in memory, improving cache hit rates during
+per-mover updates and rendering.
+
+**Complexity:** low  
+**Risk:** may cause subtle ordering changes in update/draw
+
+### 7. Y-band sorting for movers (depth sorting)
+
+Hybrid bucket+insertion sort for 2.5D depth sorting. Group movers into
+horizontal bands, sort within each band. Reduces sort cost from O(n log n)
+to O(n) for mostly-sorted data.
+
+**Complexity:** moderate  
+**Risk:** must preserve correct overlap for same-tile movers
+
 ## What NOT to optimize
 
 - **DrawTexturePro itself** (21.1%): this is raylib's internal draw function.
