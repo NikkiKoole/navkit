@@ -2,6 +2,8 @@
 
 Date: 2026-02-07, updated 2026-02-12
 
+**Status: Phases 1-5 complete (5/7). Next: Phase 6 (Cancel + Lossy Refund).**
+
 ## Resolved Decisions (2026-02-12)
 
 **Recipe selection UI**: Cycle through available recipes the same way material
@@ -283,94 +285,90 @@ No timeout, no auto-cancel. Player can cancel manually if they want.
 
 ## Test Plan
 
-### Site clearing
-0a. Blueprint on cell with items → state = CLEARING
-0b. All items removed → advances to AWAITING_MATERIALS
-0c. Blueprint on empty cell → skips CLEARING, straight to AWAITING_MATERIALS
-0d. Prevent non-blueprint item drops on active blueprint cells — CancelJob
-    safe-drop and other placement should avoid cells with active blueprints
-0e. WorkGiver_BlueprintClear creates haul-away jobs for items at CLEARING blueprints
+Legend: ✓ = tested, — = not yet tested
 
-### Single-stage recipes
-1. Dry stone wall: deliver 3 rocks, build → wall with stone material
-2. Brick floor: deliver 2 bricks, build → floor with MAT_BRICK
-3. Ladder: deliver 1 log, build → ladder placed
-4. Ramp with anyBuildingMat: deliver 1 rock → ramp placed
+### Site clearing (Phase 5)
+✓ 0a. Blueprint on cell with items → state = CLEARING
+✓ 0b. All items removed → advances to AWAITING_MATERIALS
+✓ 0c. Blueprint on empty cell → skips CLEARING, straight to AWAITING_MATERIALS
+— 0d. Prevent non-blueprint item drops on active blueprint cells
+✓ 0e. WorkGiver_BlueprintClear creates haul-away jobs for items at CLEARING blueprints
 
-### Multi-stage recipes
-5. Wattle & daub stage 0: deliver sticks + cordage, build → advances to stage 1,
-   state resets to AWAITING_MATERIALS
-6. Wattle & daub stage 1: deliver 2 dirt, build → wall with MAT_DIRT
-7. Plank wall end-to-end: sticks + cordage → build → planks → build → final wall
-8. Thatch floor end-to-end: dirt → build base → dried grass → build → floor
+### Single-stage recipes (Phase 1)
+✓ 1. Dry stone wall: deliver 3 rocks, build → wall with stone material
+— 2. Brick floor: deliver 2 bricks, build → floor with MAT_BRICK
+— 3. Ladder: deliver 1 log, build → ladder placed
+✓ 4. Ramp with anyBuildingMat: deliver 1 rock → ramp placed (Phase 4)
 
-### OR-materials
-9. Wattle fill with dirt available → hauler picks dirt → MAT_DIRT
-10. Wattle fill with only clay available → hauler picks clay → MAT_CLAY
-11. Stone wall: rocks and blocks both available → either satisfies the recipe
-12. Thatch floor base: dirt, gravel, sand all valid → hauler picks closest
+### Multi-stage recipes (Phases 2+3)
+✓ 5. Wattle & daub stage 0: deliver sticks + cordage, build → advances to stage 1
+✓ 6. Wattle & daub stage 1: deliver 2 dirt, build → wall with MAT_DIRT
+✓ 7. Plank wall end-to-end: sticks + cordage → build → planks → build → final wall
+— 8. Thatch floor end-to-end: dirt → build base → dried grass → build → floor
 
-### Alternative + material locking
-13. First reservation to slot locks chosenAlternative
-14. Second hauler for same slot must match chosenAlternative (won't reserve clay
-    if dirt was first reserved)
-15. Material also locked: won't reserve pine log if oak log was first reserved
-    for same slot
-16. Stage advance resets chosenAlternative and material locks for new stage
-17. If locked alternative runs out, slot is stuck until cancel or more items
-    appear (no silent switch to different alternative)
+### OR-materials (Phase 4)
+✓ 9. Wattle fill with dirt available → hauler picks dirt → MAT_DIRT
+✓ 10. Wattle fill with only clay available → hauler picks clay → MAT_CLAY
+✓ 11. Stone wall: rocks and blocks both available → either satisfies the recipe
+— 12. Thatch floor base: dirt, gravel, sand all valid → hauler picks closest
 
-### Material inheritance
-18. Log wall with oak logs → MAT_OAK
-19. Log wall with pine logs → MAT_PINE
-20. Stone wall with granite rocks → MAT_GRANITE
-21. Wattle wall: material comes from fill stage (materialFromStage=1), not frame
-22. Brick wall: fixed material (MAT_BRICK), ignores item material
-23. Thatch floor: fixed MAT_DIRT regardless of whether base was dirt/gravel/sand
+### Alternative + material locking (Phase 4)
+✓ 13. First reservation to slot locks chosenAlternative
+✓ 14. Second hauler for same slot must match chosenAlternative
+✓ 15. Material also locked: won't reserve pine log if oak log was first reserved
+✓ 16. Stage advance resets chosenAlternative and material locks for new stage
+✓ 17. If locked alternative runs out, slot is stuck until cancel or more items
 
-### Delivery checklist
-24. Frame needs 2 sticks + 1 cordage: deliver 1 stick → still AWAITING_MATERIALS
-25. Deliver second stick → still AWAITING (cordage missing)
-26. Deliver cordage → all filled → READY_TO_BUILD
-27. Need 3 rocks, deliver 2 → slot not filled, still waiting
+### Material inheritance (Phases 1-3)
+— 18. Log wall with oak logs → MAT_OAK
+— 19. Log wall with pine logs → MAT_PINE
+✓ 20. Stone wall with granite rocks → MAT_GRANITE
+— 21. Wattle wall: material comes from fill stage (materialFromStage=1), not frame
+— 22. Brick wall: fixed material (MAT_BRICK), ignores item material
+— 23. Thatch floor: fixed MAT_DIRT regardless of whether base was dirt/gravel/sand
 
-### Reservations
-28. Hauler reserves item for slot → item.reserved = true, slot.reservedCount++
-29. Slot with deliveredCount + reservedCount == required → no more haul jobs
-30. Two haulers assigned to different slots of same blueprint simultaneously
-31. Two blueprints competing for same item → only one gets reservation
-32. Cancel haul mid-walk → reservation released, reservedCount--, slot unfilled
+### Delivery checklist (Phases 1-3)
+✓ 24. Frame needs 2 sticks + 1 cordage: deliver 1 stick → still AWAITING_MATERIALS
+✓ 25. Deliver second stick → still AWAITING (cordage missing)
+✓ 26. Deliver cordage → all filled → READY_TO_BUILD
+✓ 27. Need 3 rocks, deliver 2 → slot not filled, still waiting
 
-### Build time
-33. Build step uses per-stage buildTime from recipe, not flat constant
+### Reservations (Phases 1-3)
+✓ 28. Hauler reserves item for slot → item.reserved = true, slot.reservedCount++
+✓ 29. Slot with deliveredCount + reservedCount == required → no more haul jobs
+✓ 30. Two haulers assigned to different slots of same blueprint simultaneously
+✓ 31. Two blueprints competing for same item → only one gets reservation
+— 32. Cancel haul mid-walk → reservation released, reservedCount--, slot unfilled
 
-### Cancellation
-34. Cancel before any deliveries → no items dropped, blueprint removed
-35. Cancel mid-stage, items delivered but not built → delivered items dropped
-36. Cancel after stage 0 complete, during stage 1 → lossy refund from both stages
-37. Cancel during build step → partial progress lost, lossy refund
-38. Lossy refund: consumed items have recovery chance, not all always returned
-39. Cancel releases all reservations on in-transit items
+### Build time (Phase 1)
+✓ 33. Build step uses per-stage buildTime from recipe, not flat constant
 
-### Job assignment
-40. WorkGiver_BlueprintHaul finds AWAITING_MATERIALS → haul for unfilled slot
-41. All slots filled → WorkGiver_Build creates build job, not haul
-42. Stage advances → new haul jobs for next stage's inputs
-43. Builder is independently assigned (not necessarily the last hauler)
+### Cancellation (Phase 6 — not yet implemented)
+✓ 34. Cancel before any deliveries → no items dropped, blueprint removed
+— 35. Cancel mid-stage, items delivered but not built → delivered items dropped
+✓ 36. Cancel after stage 0 complete, during stage 1 → lossy refund from both stages
+— 37. Cancel during build step → partial progress lost, lossy refund
+— 38. Lossy refund: consumed items have recovery chance, not all always returned
+— 39. Cancel releases all reservations on in-transit items
 
-### Edge cases
-44. Blueprint on cell that already has a blueprint → rejected
-45. Blueprint on cell that already has a wall → rejected (must mine first)
-46. Blueprint on cell that already has a floor → rejected (must remove first)
-47. Materials run out entirely → blueprint sits in AWAITING_MATERIALS, no crash
-48. Hauler carrying wrong item type → not assigned to any slot
-49. anyBuildingMat slot accepts rock, blocks, dirt, etc. — any IF_BUILDING_MAT
+### Job assignment (Phases 1-3)
+✓ 40. WorkGiver_BlueprintHaul finds AWAITING_MATERIALS → haul for unfilled slot
+— 41. All slots filled → WorkGiver_Build creates build job, not haul
+✓ 42. Stage advances → new haul jobs for next stage's inputs
+✓ 43. Builder is independently assigned (not necessarily the last hauler)
 
-### Save/load
-50. Save mid-stage with partial deliveries → load → resumes correctly
-51. Save between stages (stage 0 done, stage 1 awaiting) → load → preserves
-    stage, consumedItems, stageDeliveries, and chosenAlternative
-52. Save during CLEARING state → load → resumes clearing
+### Edge cases (Phase 1)
+✓ 44. Blueprint on cell that already has a blueprint → rejected
+✓ 45. Blueprint on cell that already has a wall → rejected (must mine first)
+— 46. Blueprint on cell that already has a floor → rejected (must remove first)
+✓ 47. Materials run out entirely → blueprint sits in AWAITING_MATERIALS, no crash
+✓ 48. Hauler carrying wrong item type → not assigned to any slot
+✓ 49. anyBuildingMat slot accepts rock, blocks, dirt, etc. — any IF_BUILDING_MAT
+
+### Save/load (Phase 1)
+✓ 50. Save mid-stage with partial deliveries → load → resumes correctly
+✓ 51. Save between stages (stage 0 done, stage 1 awaiting) → load → preserves
+— 52. Save during CLEARING state → load → resumes clearing
 
 ## Implementation Phases
 
@@ -488,15 +486,15 @@ Fill out the recipe table and migrate ladders/ramps/floors.
 
 ### Phase Summary
 
-| Phase | Adds                        | Recipes              | Key risk          |
-|-------|-----------------------------|-----------------------|-------------------|
-| 1     | Core recipe system          | Dry stone wall        | Data model right? |
-| 2     | Multi-input slots           | Wattle frame (temp)   | Parallel hauling  |
-| 3     | Multi-stage                 | Wattle & daub, plank  | Stage transitions |
-| 4     | OR-materials + locking      | Updates existing      | Locking edge cases|
-| 5     | Site clearing               | —                     | New WorkGiver     |
-| 6     | Cancel + lossy refund       | —                     | State cleanup     |
-| 7     | All recipes + migration     | Everything else       | Old code removal  |
+| Phase | Adds                        | Recipes              | Status   |
+|-------|-----------------------------|-----------------------|----------|
+| 1     | Core recipe system          | Dry stone wall        | ✓ Done   |
+| 2     | Multi-input slots           | Wattle frame (temp)   | ✓ Done   |
+| 3     | Multi-stage                 | Wattle & daub, plank  | ✓ Done   |
+| 4     | OR-materials + locking      | Updates existing      | ✓ Done   |
+| 5     | Site clearing               | —                     | ✓ Done   |
+| 6     | Cancel + lossy refund       | —                     | Pending  |
+| 7     | All recipes + migration     | Everything else       | Pending  |
 
 Each phase is independently shippable — the game works after each one.
 Phase 1-3 are the critical path. Phases 4-7 can be reordered.
