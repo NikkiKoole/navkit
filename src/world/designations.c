@@ -10,6 +10,7 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
+#include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
 #include <string.h>
 #include <math.h>
 
@@ -1958,6 +1959,16 @@ void CancelBlueprint(int blueprintIdx) {
     
     Blueprint* bp = &blueprints[blueprintIdx];
     if (!bp->active) return;
+
+    // Proactively cancel all jobs targeting this blueprint.
+    // Must happen before bp->active = false so CancelJob's cleanup works.
+    for (int i = 0; i < moverCount; i++) {
+        if (movers[i].currentJobId < 0) continue;
+        Job* job = GetJob(movers[i].currentJobId);
+        if (job && job->targetBlueprint == blueprintIdx) {
+            CancelJob((void*)&movers[i], i);
+        }
+    }
     
     float spawnX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
@@ -1965,7 +1976,7 @@ void CancelBlueprint(int blueprintIdx) {
     if (BlueprintUsesRecipe(bp)) {
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
 
-        // Refund current stage delivered items
+        // Refund current stage delivered items — 100% (not yet built into anything)
         if (recipe) {
             const ConstructionStage* stage = &recipe->stages[bp->stage];
             for (int s = 0; s < stage->inputCount; s++) {
@@ -1985,14 +1996,16 @@ void CancelBlueprint(int blueprintIdx) {
             }
         }
 
-        // Refund consumed items from completed stages
+        // Refund consumed items from completed stages — lossy
         for (int st = 0; st < bp->stage; st++) {
             for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
                 ConsumedRecord* cr = &bp->consumedItems[st][s];
                 if (cr->count > 0 && cr->itemType != ITEM_NONE) {
                     for (int i = 0; i < cr->count; i++) {
-                        SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z,
-                                             cr->itemType, (uint8_t)cr->material);
+                        if (GetRandomValue(1, 100) <= CONSTRUCTION_REFUND_CHANCE) {
+                            SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z,
+                                                 cr->itemType, (uint8_t)cr->material);
+                        }
                     }
                 }
             }

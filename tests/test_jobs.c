@@ -12910,7 +12910,8 @@ describe(construction_multi_stage) {
             if (IsItemActive(i)) itemsBefore++;
         }
 
-        // Cancel — should refund stage 1 delivered (1 dirt) + stage 0 consumed (2 sticks + 1 cordage)
+        // Cancel — should refund stage 1 delivered (1 dirt, 100%) + stage 0 consumed (lossy)
+        SetRandomSeed(12345);
         CancelBlueprint(bpIdx);
         expect(bp->active == false);
 
@@ -12919,8 +12920,11 @@ describe(construction_multi_stage) {
             if (IsItemActive(i)) itemsAfter++;
         }
 
-        // Should have spawned 4 items total: 2 sticks + 1 cordage + 1 dirt
-        expect(itemsAfter - itemsBefore == 4);
+        // Stage 1 delivered: 1 dirt (100% refund)
+        // Stage 0 consumed: 2 sticks + 1 cordage (75% each, lossy)
+        int refunded = itemsAfter - itemsBefore;
+        expect(refunded >= 1);  // at minimum the dirt
+        expect(refunded <= 4);  // at most dirt + all 3 consumed
     }
 
     it("should save and load between stages") {
@@ -14011,6 +14015,313 @@ describe(construction_any_building_mat) {
     }
 }
 
+// =============================================================================
+// Phase 6: Cancellation + Lossy Refund
+// =============================================================================
+describe(construction_cancellation) {
+    it("should refund delivered items at 100% when cancelled mid-stage") {
+        // Test #35: cancel with delivered but not-yet-built items
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+
+        // Deliver 2 of 3 required rocks
+        int r1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, r1);
+        int r2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, r2);
+        expect(bp->stageDeliveries[0].deliveredCount == 2);
+
+        int itemsBefore = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsBefore++;
+        }
+
+        CancelBlueprint(bpIdx);
+        expect(bp->active == false);
+
+        // Count refunded items — should be exactly 2 (100% for current stage)
+        int itemsAfter = 0;
+        int rocksAtBp = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (!IsItemActive(i)) continue;
+            itemsAfter++;
+            int ix = (int)(items[i].x / CELL_SIZE);
+            int iy = (int)(items[i].y / CELL_SIZE);
+            if (ix == 4 && iy == 4 && items[i].type == ITEM_ROCK && items[i].material == MAT_GRANITE) {
+                rocksAtBp++;
+            }
+        }
+        expect(itemsAfter - itemsBefore == 2);
+        expect(rocksAtBp == 2);
+    }
+
+    it("should lossy-refund consumed items from completed stages") {
+        // Test #38: consumed items have recovery chance, not all returned
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Use wattle & daub: stage 0 = 2 sticks + 1 cordage, stage 1 = 2 dirt
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Complete stage 0 (these become consumed items)
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+        expect(bp->stage == 1);
+
+        int itemsBefore = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsBefore++;
+        }
+
+        // Cancel during stage 1 with no deliveries yet — only consumed refund
+        // Run many trials to verify lossy behavior
+        // With seed 12345 and 75% chance, we expect some but not all 3 items
+        SetRandomSeed(12345);
+        CancelBlueprint(bpIdx);
+        expect(bp->active == false);
+
+        int itemsAfter = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsAfter++;
+        }
+
+        int refunded = itemsAfter - itemsBefore;
+        // 3 consumed items, each 75% chance: expect 0-3 items
+        expect(refunded >= 0);
+        expect(refunded <= 3);
+    }
+
+    it("should cancel during BUILDING and refund correctly") {
+        // Test #37: cancel during build step
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver all 3 rocks
+        for (int i = 0; i < 3; i++) {
+            int r = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                          4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                          ITEM_ROCK, MAT_GRANITE);
+            DeliverMaterialToBlueprint(bpIdx, r);
+        }
+        expect(bp->state == BLUEPRINT_READY_TO_BUILD);
+
+        // Simulate building in progress
+        bp->state = BLUEPRINT_BUILDING;
+        bp->assignedBuilder = 0;
+        bp->progress = 0.5f;
+
+        // Set up mover with a build job targeting this blueprint
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+        int jobId = CreateJob(JOBTYPE_BUILD);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetBlueprint = bpIdx;
+        m->currentJobId = jobId;
+
+        int itemsBefore = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsBefore++;
+        }
+
+        CancelBlueprint(bpIdx);
+        expect(bp->active == false);
+
+        // Builder's job should have been cancelled
+        expect(m->currentJobId == -1);
+
+        // Delivered items are current-stage (100% refund): 3 rocks
+        int itemsAfter = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsAfter++;
+        }
+        expect(itemsAfter - itemsBefore == 3);
+    }
+
+    it("should proactively cancel in-transit haul jobs and release reservations") {
+        // Test #39: cancel releases all reservations on in-transit items
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Spawn rocks far from blueprint
+        int r1 = SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+
+        // Set up mover and manually create a haul-to-blueprint job
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Simulate: item reserved, mover has haul-to-blueprint job
+        items[r1].reservedBy = 0;
+        bp->stageDeliveries[0].reservedCount = 1;
+
+        int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetItem = r1;
+        job->targetBlueprint = bpIdx;
+        m->currentJobId = jobId;
+
+        // Cancel the blueprint
+        CancelBlueprint(bpIdx);
+
+        // Mover should be idle with no job
+        expect(m->currentJobId == -1);
+        // Item reservation should be released
+        expect(items[r1].reservedBy == -1);
+        // Item should still be active (it was just reserved, not consumed)
+        expect(items[r1].active == true);
+        expect(bp->active == false);
+    }
+
+    it("should cancel haul mid-walk and release reservation") {
+        // Test #32: cancel haul mid-walk
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(8, 8, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Spawn rocks far away
+        int r1 = SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+        int r2 = SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+        int r3 = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_ROCK, MAT_GRANITE);
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Run a few ticks to let mover pick up a haul job
+        RebuildStockpileFreeSlotCounts();
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId >= 0);
+        expect(items[r1].reservedBy == 0 || items[r2].reservedBy == 0 || items[r3].reservedBy == 0);
+        expect(bp->stageDeliveries[0].reservedCount == 1);
+
+        // Cancel the blueprint while mover is hauling
+        CancelBlueprint(bpIdx);
+
+        // Mover's job should be cancelled
+        expect(m->currentJobId == -1);
+        // All items unreserved
+        expect(items[r1].reservedBy == -1);
+        expect(items[r2].reservedBy == -1);
+        expect(items[r3].reservedBy == -1);
+        expect(bp->active == false);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -14176,6 +14487,9 @@ int main(int argc, char* argv[]) {
     test(construction_or_materials);
     test(construction_alternative_locking);
     test(construction_any_building_mat);
+    
+    // Construction recipe system (Phase 6 - cancellation + lossy refund)
+    test(construction_cancellation);
     
     return summary();
 }

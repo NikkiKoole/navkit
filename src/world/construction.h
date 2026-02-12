@@ -63,6 +63,9 @@ typedef enum {
 // Recipe table (defined in construction.c)
 extern const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT];
 
+// Refund chance: percent chance to recover each consumed item on cancel (0-100)
+#define CONSTRUCTION_REFUND_CHANCE 75
+
 // Per-slot delivery tracking (runtime, stored in Blueprint)
 typedef struct {
     int deliveredCount;           // how many delivered so far

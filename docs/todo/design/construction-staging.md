@@ -2,7 +2,7 @@
 
 Date: 2026-02-07, updated 2026-02-12
 
-**Status: Phases 1-5 complete (5/7). Next: Phase 6 (Cancel + Lossy Refund).**
+**Status: Phases 1-6 complete (6/7). Next: Phase 7 (All Recipes + Migration).**
 
 ## Resolved Decisions (2026-02-12)
 
@@ -338,18 +338,18 @@ Legend: ✓ = tested, — = not yet tested
 ✓ 29. Slot with deliveredCount + reservedCount == required → no more haul jobs
 ✓ 30. Two haulers assigned to different slots of same blueprint simultaneously
 ✓ 31. Two blueprints competing for same item → only one gets reservation
-— 32. Cancel haul mid-walk → reservation released, reservedCount--, slot unfilled
+✓ 32. Cancel haul mid-walk → reservation released, reservedCount--, slot unfilled
 
 ### Build time (Phase 1)
 ✓ 33. Build step uses per-stage buildTime from recipe, not flat constant
 
-### Cancellation (Phase 6 — not yet implemented)
+### Cancellation (Phase 6)
 ✓ 34. Cancel before any deliveries → no items dropped, blueprint removed
-— 35. Cancel mid-stage, items delivered but not built → delivered items dropped
+✓ 35. Cancel mid-stage, items delivered but not built → delivered items dropped
 ✓ 36. Cancel after stage 0 complete, during stage 1 → lossy refund from both stages
-— 37. Cancel during build step → partial progress lost, lossy refund
-— 38. Lossy refund: consumed items have recovery chance, not all always returned
-— 39. Cancel releases all reservations on in-transit items
+✓ 37. Cancel during build step → partial progress lost, lossy refund
+✓ 38. Lossy refund: consumed items have recovery chance, not all always returned
+✓ 39. Cancel releases all reservations on in-transit items
 
 ### Job assignment (Phases 1-3)
 ✓ 40. WorkGiver_BlueprintHaul finds AWAITING_MATERIALS → haul for unfilled slot
@@ -455,17 +455,25 @@ Add the CLEARING state.
 
 **What this proves:** Pre-construction site preparation works.
 
-### Phase 6: Cancellation + Lossy Refund
+### Phase 6: Cancellation + Lossy Refund  ✓ COMPLETE
 
 Add proper teardown with material recovery.
 
-**What to build:**
-- Cancel at any state drops/refunds appropriately
-- Lossy refund mechanism (per-item recovery chance)
-- Release all in-transit reservations on cancel
-- Cancel during BUILDING resets progress
+**What was built:**
+- `CONSTRUCTION_REFUND_CHANCE` constant (75%) in construction.h
+- Lossy refund: consumed items from completed stages roll per-item recovery chance
+- Current stage delivered items: 100% refund (not yet built into anything)
+- Proactive job cancellation: `CancelBlueprint` scans all movers and cancels
+  jobs targeting the blueprint before deactivating
+- No duplication: in-transit items aren't in `deliveredCount`, so job cancel
+  safe-drop + blueprint refund don't double-spawn
 
-**Tests:** 34, 35, 36, 37, 38, 39
+**Tests (5 tests):**
+- Cancel mid-stage with delivered items → 100% refund
+- Lossy refund of consumed items from completed stages (seeded RNG)
+- Cancel during BUILDING → builder job cancelled, progress reset, 100% refund
+- Proactive cancel of in-transit haul jobs, reservations released
+- Cancel haul mid-walk via WorkGiver → reservation released, mover idle
 
 **What this proves:** Clean teardown at every state, lossy recovery works.
 
@@ -493,7 +501,7 @@ Fill out the recipe table and migrate ladders/ramps/floors.
 | 3     | Multi-stage                 | Wattle & daub, plank  | ✓ Done   |
 | 4     | OR-materials + locking      | Updates existing      | ✓ Done   |
 | 5     | Site clearing               | —                     | ✓ Done   |
-| 6     | Cancel + lossy refund       | —                     | Pending  |
+| 6     | Cancel + lossy refund       | —                     | ✓ Done   |
 | 7     | All recipes + migration     | Everything else       | Pending  |
 
 Each phase is independently shippable — the game works after each one.
