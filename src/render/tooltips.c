@@ -72,14 +72,15 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     int slotIdx = localY * sp->width + localX;
     int cellCount = (slotIdx >= 0 && slotIdx < totalSlots) ? sp->slotCounts[slotIdx] : 0;
 
-    // Build tooltip text
-    const char* titleText = TextFormat("Stockpile #%d", spIdx);
-    const char* priorityText = TextFormat("Priority: %d", sp->priority);
-    const char* stackText = TextFormat("Stack size: %d", sp->maxStackSize);
-    const char* storageText = TextFormat("Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
+    // Build tooltip text into local buffers (avoids TextFormat buffer clobbering)
+    char titleBuf[40], priorityBuf[32], stackBuf[32], storageBuf[48], fillBuf[48];
+    snprintf(titleBuf, sizeof(titleBuf), "Stockpile #%d", spIdx);
+    snprintf(priorityBuf, sizeof(priorityBuf), "Priority: %d", sp->priority);
+    snprintf(stackBuf, sizeof(stackBuf), "Stack size: %d", sp->maxStackSize);
+    snprintf(storageBuf, sizeof(storageBuf), "Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
     char fillMeter[64];
     BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
-    const char* fillText = TextFormat("Fill: %s", fillMeter);
+    snprintf(fillBuf, sizeof(fillBuf), "Fill: %s", fillMeter);
     // Cell contents with item name
     char cellBuf[80];
     if (cellCount > 0 && slotIdx >= 0 && slotIdx < totalSlots) {
@@ -98,39 +99,67 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     } else {
         snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     }
-    const char* cellText = cellBuf;
-    const char* helpText = "+/- priority, [/] stack, X toggle all, 1-4 wood mats";
+    const char* helpText = "+/- priority, [/] stack, X toggle all, 1-4 wood";
 
-    // Measure text widths
-    int maxW = MeasureText(titleText, 14);
-    int widths[] = {
-        MeasureText(priorityText, 14),
-        MeasureText(stackText, 14),
-        MeasureText(storageText, 14),
-        MeasureText(fillText, 14),
-        MeasureText(cellText, 14),
-        MeasureText(helpText, 12),
+    // Pre-build filter entry strings ("k:Name") and measure widths
+    char filterEntries[32][20];  // "k:DisplayName" per filter
+    int filterEntryWidths[32];
+    int filterGap = MeasureTextUI(" ", 14) * 2;  // gap between entries
+    for (int i = 0; i < STOCKPILE_FILTER_COUNT && i < 32; i++) {
+        snprintf(filterEntries[i], sizeof(filterEntries[0]), "%c:%s",
+                 STOCKPILE_FILTERS[i].key, STOCKPILE_FILTERS[i].displayName);
+        filterEntryWidths[i] = MeasureTextUI(filterEntries[i], 14);
+    }
+
+    // Pre-build material entry strings
+    char matEntries[8][16];
+    int matEntryWidths[8];
+    for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT && i < 8; i++) {
+        snprintf(matEntries[i], sizeof(matEntries[0]), "%c:%s",
+                 STOCKPILE_MATERIAL_FILTERS[i].key, STOCKPILE_MATERIAL_FILTERS[i].displayName);
+        matEntryWidths[i] = MeasureTextUI(matEntries[i], 14);
+    }
+
+    // Calculate box width: use a target content width, capped to keep tooltip reasonable
+    int maxContentW = 420;
+    int headerWidths[] = {
+        MeasureTextUI(titleBuf, 14),
+        MeasureTextUI(priorityBuf, 14),
+        MeasureTextUI(stackBuf, 14),
+        MeasureTextUI(storageBuf, 14),
+        MeasureTextUI(fillBuf, 14),
+        MeasureTextUI(cellBuf, 14),
+        MeasureTextUI(helpText, 12),
     };
-    for (int i = 0; i < (int)(sizeof(widths)/sizeof(widths[0])); i++) {
-        if (widths[i] > maxW) maxW = widths[i];
+    int maxW = 0;
+    for (int i = 0; i < (int)(sizeof(headerWidths)/sizeof(headerWidths[0])); i++) {
+        if (headerWidths[i] > maxW) maxW = headerWidths[i];
     }
-    // Estimate filter line width from table
-    int filterLineW = MeasureText("Filters: ", 14);
-    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-        filterLineW += MeasureText(STOCKPILE_FILTERS[i].shortName, 14) + 4;
+    if (maxW > maxContentW) maxContentW = maxW;
+
+    // Count how many filter rows we need by simulating wrapping
+    int filterRows = 1;
+    {
+        int fx = 0;
+        for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+            int entryW = filterEntryWidths[i] + filterGap;
+            if (fx > 0 && fx + filterEntryWidths[i] > maxContentW) {
+                filterRows++;
+                fx = 0;
+            }
+            fx += entryW;
+        }
     }
-    if (filterLineW > maxW) maxW = filterLineW;
-    // Estimate material line width from table
-    int matLineW = MeasureText("Materials: ", 14);
-    for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
-        matLineW += MeasureText(STOCKPILE_MATERIAL_FILTERS[i].shortName, 14) + 4;
-    }
-    if (matLineW > maxW) maxW = matLineW;
+
+    // Material row (always fits on one line)
+    int matRows = 1;
 
     int padding = 6;
-    int boxW = maxW + padding * 2;
     int lineH = 16;
-    int boxH = lineH * 9 + padding * 2;
+    // 6 header lines + "Filters:" label + filterRows + "Wood:" label + matRows + help
+    int totalLines = 6 + 1 + filterRows + 1 + matRows + 1;
+    int boxW = maxContentW + padding * 2;
+    int boxH = lineH * totalLines + padding * 2;
 
     // Position tooltip near mouse, keep on screen
     int tx = (int)mouse.x + 15;
@@ -142,53 +171,62 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 20, 220});
     DrawRectangleLines(tx, ty, boxW, boxH, (Color){80, 80, 80, 255});
 
-    // Draw text
+    // Draw header lines
     int y = ty + padding;
-    DrawTextShadow(titleText, tx + padding, y, 14, YELLOW);
-    y += 16;
+    DrawTextShadow(titleBuf, tx + padding, y, 14, YELLOW);
+    y += lineH;
 
-    DrawTextShadow(priorityText, tx + padding, y, 14, WHITE);
-    y += 16;
+    DrawTextShadow(priorityBuf, tx + padding, y, 14, WHITE);
+    y += lineH;
 
-    DrawTextShadow(stackText, tx + padding, y, 14, WHITE);
-    y += 16;
+    DrawTextShadow(stackBuf, tx + padding, y, 14, WHITE);
+    y += lineH;
 
     bool overfull = IsStockpileOverfull(spIdx);
-    DrawTextShadow(storageText, tx + padding, y, 14, overfull ? RED : WHITE);
-    y += 16;
+    DrawTextShadow(storageBuf, tx + padding, y, 14, overfull ? RED : WHITE);
+    y += lineH;
 
-    DrawTextShadow(fillText, tx + padding, y, 14, WHITE);
-    y += 16;
+    DrawTextShadow(fillBuf, tx + padding, y, 14, WHITE);
+    y += lineH;
 
     bool cellFull = cellCount >= sp->maxStackSize;
-    DrawTextShadow(cellText, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
-    y += 16;
+    DrawTextShadow(cellBuf, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
+    y += lineH;
 
-    // Draw filters with color coding (data-driven from STOCKPILE_FILTERS table)
-    int fx = tx + padding;
-    DrawTextShadow("Filters: ", fx, y, 14, WHITE);
-    fx += MeasureText("Filters: ", 14);
-    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
-        const StockpileFilterDef* filter = &STOCKPILE_FILTERS[i];
-        bool allowed = sp->allowedTypes[filter->itemType];
-        DrawTextShadow(allowed ? filter->shortName : "-", fx, y, 14,
-            allowed ? filter->color : DARKGRAY);
-        fx += MeasureText(filter->shortName, 14) + 4;
-    }
-    y += 18;
+    // Draw "Filters:" label
+    DrawTextShadow("Filters:", tx + padding, y, 14, WHITE);
+    y += lineH;
 
-    // Draw material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
-    int mx = tx + padding;
-    DrawTextShadow("Materials: ", mx, y, 14, WHITE);
-    mx += MeasureText("Materials: ", 14);
-    for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
-        const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
-        bool allowed = sp->allowedMaterials[mf->material];
-        DrawTextShadow(allowed ? mf->shortName : "-", mx, y, 14,
-            allowed ? mf->color : DARKGRAY);
-        mx += MeasureText(mf->shortName, 14) + 4;
+    // Draw filter entries with wrapping (key:Name format)
+    {
+        int fx = 0;
+        for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+            int entryW = filterEntryWidths[i];
+            if (fx > 0 && fx + entryW > maxContentW) {
+                y += lineH;
+                fx = 0;
+            }
+            bool allowed = sp->allowedTypes[STOCKPILE_FILTERS[i].itemType];
+            DrawTextShadow(filterEntries[i], tx + padding + fx, y, 14,
+                allowed ? STOCKPILE_FILTERS[i].color : DARKGRAY);
+            fx += entryW + filterGap;
+        }
+        y += lineH;
     }
-    y += 18;
+
+    // Draw "Wood:" label + material entries
+    DrawTextShadow("Wood:", tx + padding, y, 14, WHITE);
+    y += lineH;
+    {
+        int mx = 0;
+        for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
+            bool allowed = sp->allowedMaterials[STOCKPILE_MATERIAL_FILTERS[i].material];
+            DrawTextShadow(matEntries[i], tx + padding + mx, y, 14,
+                allowed ? STOCKPILE_MATERIAL_FILTERS[i].color : DARKGRAY);
+            mx += matEntryWidths[i] + filterGap;
+        }
+        y += lineH;
+    }
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);
 }
