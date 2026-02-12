@@ -9,15 +9,18 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .stageCount = 1,
         .stages = {{
             .inputs = {{
-                .alternatives = {{ .itemType = ITEM_ROCK }},
-                .altCount = 1,
+                .alternatives = {
+                    { .itemType = ITEM_ROCK },
+                    { .itemType = ITEM_BLOCKS },
+                },
+                .altCount = 2,
                 .count = 3,
                 .anyBuildingMat = false,
             }},
             .inputCount = 1,
             .buildTime = 3.0f,
         }},
-        .resultMaterial = MAT_NONE,    // inherited from delivered rocks
+        .resultMaterial = MAT_NONE,    // inherited from delivered rocks/blocks
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
@@ -46,8 +49,11 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
             },
             {   // Stage 1: Fill
                 .inputs = {{
-                    .alternatives = {{ .itemType = ITEM_DIRT }},
-                    .altCount = 1,
+                    .alternatives = {
+                        { .itemType = ITEM_DIRT },
+                        { .itemType = ITEM_CLAY },
+                    },
+                    .altCount = 2,
                     .count = 2,
                     .anyBuildingMat = false,
                 }},
@@ -55,7 +61,7 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
                 .buildTime = 3.0f,
             },
         },
-        .resultMaterial = MAT_NONE,    // inherited from fill material
+        .resultMaterial = MAT_NONE,    // inherited from fill material (dirt or clay)
         .materialFromStage = 1,        // material comes from fill stage
         .materialFromSlot = 0,
     },
@@ -95,6 +101,24 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         },
         .resultMaterial = MAT_NONE,    // inherited from planks
         .materialFromStage = 1,        // material comes from clad stage
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_RAMP] = {
+        .name = "Ramp",
+        .buildCategory = BUILD_RAMP,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {0},   // ignored when anyBuildingMat is true
+                .altCount = 0,
+                .count = 1,
+                .anyBuildingMat = true,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // inherited from delivered item
+        .materialFromStage = 0,
         .materialFromSlot = 0,
     },
 };

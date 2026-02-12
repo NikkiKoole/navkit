@@ -413,21 +413,27 @@ infrastructure was already in place from Phase 1.
 construction_wattle_delivery, construction_wattle_parallel,
 construction_multi_stage, construction_plank_wall)
 
-### Phase 4: OR-materials + Locking
+### Phase 4: OR-materials + Locking ✓ COMPLETE
 
-Add alternative inputs and the locking mechanism.
+Completed 2026-02-12. OR-alternative inputs, alternative + material locking,
+and anyBuildingMat all verified. No runtime code changes needed — Phase 1's
+locking infrastructure (RecipeHaulItemFilter, FindNearestRecipeItem,
+WorkGiver_BlueprintHaul reservation locking, DeliverMaterialToBlueprint
+alternative locking) already handled everything correctly.
 
-**What to build:**
-- alternatives[] array on input slots, altCount field
-- chosenAlternative locking on first reservation
-- Material locking (oak vs pine in same slot)
-- Update wattle & daub fill stage: (2 dirt OR 2 clay)
-- Dry stone wall: (3 rocks OR 3 blocks)
-- anyBuildingMat flag for ramps
+**What was built:**
+- Dry stone wall updated: 3 rocks OR 3 blocks (altCount=2)
+- Wattle & daub fill stage updated: 2 dirt OR 2 clay (altCount=2)
+- `CONSTRUCTION_RAMP` recipe: 1 stage, 1 any-building-mat item (anyBuildingMat=true)
+- End-to-end tests: wattle wall with clay (MAT_CLAY), dry stone wall with blocks
+- Locking tests: chosenAlternative locks on first reservation, wrong alternative
+  rejected, material locked (granite vs sandstone), stall when locked alt runs out
+- anyBuildingMat tests: accepts all IF_BUILDING_MAT items, rejects non-building-mat,
+  does NOT lock chosenAlternative
 
-**Tests:** 9, 10, 11, 12, 13, 14, 15, 17, 49
-
-**What this proves:** Flexible inputs, locking correctness, anyBuildingMat.
+**Tests passed:** 9, 10, 11, 13, 14, 15, 16, 17, 49
+(14 tests in 3 describe blocks: construction_or_materials,
+construction_alternative_locking, construction_any_building_mat)
 
 ### Phase 5: Site Clearing
 

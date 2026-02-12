@@ -11937,18 +11937,19 @@ describe(construction_recipe_data) {
         expect(r->stageCount == 1);
         expect(r->stages[0].inputCount == 1);
         expect(r->stages[0].inputs[0].count == 3);
-        expect(r->stages[0].inputs[0].altCount == 1);
+        expect(r->stages[0].inputs[0].altCount == 2);
         expect(r->stages[0].inputs[0].alternatives[0].itemType == ITEM_ROCK);
+        expect(r->stages[0].inputs[0].alternatives[1].itemType == ITEM_BLOCKS);
         expect(r->stages[0].buildTime == 3.0f);
         expect(r->resultMaterial == MAT_NONE);  // inherited
         expect(r->materialFromStage == 0);
         expect(r->materialFromSlot == 0);
     }
 
-    it("should accept ITEM_ROCK for dry stone wall input") {
+    it("should accept ITEM_ROCK and ITEM_BLOCKS for dry stone wall input") {
         const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
         expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_ROCK) == true);
-        expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_BLOCKS) == false);
+        expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_BLOCKS) == true);
         expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_LOG) == false);
     }
 
@@ -13328,6 +13329,444 @@ describe(construction_plank_wall) {
     }
 }
 
+// Phase 4: OR-materials + locking tests
+describe(construction_or_materials) {
+    it("should accept dirt OR clay for wattle fill stage") {
+        // Test #9/#10: wattle fill accepts both dirt and clay
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_WATTLE_DAUB_WALL);
+        const ConstructionInput* fill = &r->stages[1].inputs[0];
+        expect(fill->altCount == 2);
+        expect(ConstructionInputAcceptsItem(fill, ITEM_DIRT) == true);
+        expect(ConstructionInputAcceptsItem(fill, ITEM_CLAY) == true);
+        expect(ConstructionInputAcceptsItem(fill, ITEM_ROCK) == false);
+    }
+
+    it("should accept rocks OR blocks for dry stone wall") {
+        // Test #11: both alternatives accepted
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
+        const ConstructionInput* input = &r->stages[0].inputs[0];
+        expect(input->altCount == 2);
+        expect(ConstructionInputAcceptsItem(input, ITEM_ROCK) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_BLOCKS) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_DIRT) == false);
+    }
+
+    it("should build wattle wall with clay instead of dirt") {
+        // Test #10: only clay available → hauler picks clay → MAT_CLAY
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+
+        // Stage 0: sticks + cordage
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_CORDAGE, MAT_NONE);
+        // Stage 1: clay instead of dirt
+        SpawnItemWithMaterial(7 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_CLAY, MAT_CLAY);
+        SpawnItemWithMaterial(8 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_CLAY, MAT_CLAY);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        bool wallBuilt = false;
+        for (int i = 0; i < 30000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+        }
+
+        expect(wallBuilt == true);
+        expect(GetWallMaterial(5, 5, 0) == MAT_CLAY);
+    }
+
+    it("should build dry stone wall with blocks instead of rocks") {
+        // Test #11 end-to-end: only blocks available → wall with block material
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        // 3 blocks (granite)
+        for (int i = 0; i < 3; i++) {
+            SpawnItemWithMaterial((1 + i) * CELL_SIZE + CELL_SIZE * 0.5f,
+                                 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                 ITEM_BLOCKS, MAT_GRANITE);
+        }
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        bool wallBuilt = false;
+        for (int i = 0; i < 30000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+            if (grid[0][5][5] == CELL_WALL) { wallBuilt = true; break; }
+        }
+
+        expect(wallBuilt == true);
+        expect(GetWallMaterial(5, 5, 0) == MAT_GRANITE);
+    }
+}
+
+describe(construction_alternative_locking) {
+    it("should lock chosenAlternative on first reservation") {
+        // Test #13: first reservation locks the slot's chosenAlternative
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Spawn 1 rock nearby
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        // Mover to pick it up
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // One tick of job assignment should reserve
+        AssignJobs();
+
+        // chosenAlternative should be locked to 0 (ITEM_ROCK)
+        expect(bp->stageDeliveries[0].chosenAlternative == 0);
+        expect(bp->stageDeliveries[0].reservedCount == 1);
+    }
+
+    it("should not reserve wrong alternative after slot is locked") {
+        // Test #14: once slot locked to rock, blocks should be rejected
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver 1 rock to lock to alternative 0
+        int rock = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                         ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, rock);
+        expect(bp->stageDeliveries[0].chosenAlternative == 0);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+
+        // Now only blocks available — should NOT be picked up
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_BLOCKS, MAT_GRANITE);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Try to assign — should fail since only blocks available and slot locked to rocks
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId == -1);
+        expect(bp->stageDeliveries[0].reservedCount == 0);
+    }
+
+    it("should lock material on first reservation preventing mixed materials") {
+        // Test #15: first reservation locks material — won't mix oak and pine rocks
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver 1 granite rock to lock material
+        int rock = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                         ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, rock);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_GRANITE);
+
+        // Only sandstone rocks available — should NOT be picked up (material mismatch)
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_SANDSTONE);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId == -1);
+    }
+
+    it("should reset locking when stage advances") {
+        // Test #16 (already covered in multi_stage tests, but verify explicitly for OR-inputs)
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver all stage 0 inputs
+        int s1 = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                      3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                      ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c);
+
+        expect(bp->state == BLUEPRINT_READY_TO_BUILD);
+
+        // Complete stage 0 build
+        bp->assignedBuilder = 0;
+        bp->state = BLUEPRINT_BUILDING;
+        CompleteBlueprint(bpIdx);
+
+        // Should advance to stage 1
+        expect(bp->stage == 1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+        // Stage 1 fill slot should have fresh locking state
+        expect(bp->stageDeliveries[0].chosenAlternative == -1);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_NONE);
+        expect(bp->stageDeliveries[0].deliveredCount == 0);
+    }
+
+    it("should stall when locked alternative runs out") {
+        // Test #17: if locked to rock but no more rocks exist, slot stalls
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver 1 rock to lock
+        int rock = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                         ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, rock);
+
+        // No more rocks or blocks — only dirt available (wrong type entirely)
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+        // Also blocks available — but locked to rocks, so rejected
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_BLOCKS, MAT_GRANITE);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Blueprint stays stuck — no haul job created
+        int jobId = WorkGiver_BlueprintHaul(0);
+        expect(jobId == -1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+    }
+}
+
+describe(construction_any_building_mat) {
+    it("should have ramp recipe with anyBuildingMat flag") {
+        // Test #49: ramp recipe structure
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_RAMP);
+        expect(r != NULL);
+        expect(r->buildCategory == BUILD_RAMP);
+        expect(r->stageCount == 1);
+        expect(r->stages[0].inputCount == 1);
+        expect(r->stages[0].inputs[0].anyBuildingMat == true);
+        expect(r->stages[0].inputs[0].count == 1);
+    }
+
+    it("should accept any IF_BUILDING_MAT item for ramp input") {
+        // Test #49: anyBuildingMat accepts blocks, logs, planks, poles, bricks, stripped_log
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_RAMP);
+        const ConstructionInput* input = &r->stages[0].inputs[0];
+
+        expect(ConstructionInputAcceptsItem(input, ITEM_BLOCKS) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_LOG) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_PLANKS) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_POLES) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_BRICKS) == true);
+        expect(ConstructionInputAcceptsItem(input, ITEM_STRIPPED_LOG) == true);
+    }
+
+    it("should reject non-building-mat items for ramp input") {
+        // Items without IF_BUILDING_MAT should be rejected
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_RAMP);
+        const ConstructionInput* input = &r->stages[0].inputs[0];
+
+        expect(ConstructionInputAcceptsItem(input, ITEM_ROCK) == false);
+        expect(ConstructionInputAcceptsItem(input, ITEM_DIRT) == false);
+        expect(ConstructionInputAcceptsItem(input, ITEM_CLAY) == false);
+        expect(ConstructionInputAcceptsItem(input, ITEM_STICKS) == false);
+        expect(ConstructionInputAcceptsItem(input, ITEM_CORDAGE) == false);
+    }
+
+    it("should not lock chosenAlternative for anyBuildingMat slots") {
+        // anyBuildingMat slots skip alternative locking — different building mats can mix
+        // Ramp needs CELL_AIR + HAS_FLOOR — use a wall recipe with anyBuildingMat to test
+        // the locking behavior directly via delivery, bypassing placement preconditions
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Ramp requires CELL_AIR + HAS_FLOOR — z=0 walkable from bedrock, need explicit floor
+        SET_FLOOR(3, 3, 0);
+        int bpIdx = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_RAMP);
+        expect(bpIdx >= 0);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver a log — anyBuildingMat should NOT lock chosenAlternative
+        int log = SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                        3 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                        ITEM_LOG, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, log);
+
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+        expect(bp->stageDeliveries[0].chosenAlternative == -1);  // not locked
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -13485,6 +13924,11 @@ int main(int argc, char* argv[]) {
     test(construction_multi_stage);
     test(construction_multi_stage_edge_cases);
     test(construction_plank_wall);
+    
+    // Construction recipe system (Phase 4 - OR-materials + locking)
+    test(construction_or_materials);
+    test(construction_alternative_locking);
+    test(construction_any_building_mat);
     
     return summary();
 }
