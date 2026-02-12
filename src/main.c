@@ -566,7 +566,6 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawBlueprintTooltip(int bpIdx, Vector2 mouse);
-void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 
 // From render/ui_panels.c

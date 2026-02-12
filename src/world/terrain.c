@@ -1644,61 +1644,6 @@ float OctavePerlin(float x, float y, int octaves, float persistence) {
 }
 
 // ============================================================================
-// 3D Perlin Noise (for volumetric terrain)
-// ============================================================================
-
-static float Grad3D(int hash, float x, float y, float z) {
-    int h = hash & 15;
-    float u = h < 8 ? x : y;
-    float v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
-    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
-}
-
-static float Perlin3D(float x, float y, float z) {
-    int xi = (int)floorf(x) & 255;
-    int yi = (int)floorf(y) & 255;
-    int zi = (int)floorf(z) & 255;
-    
-    float xf = x - floorf(x);
-    float yf = y - floorf(y);
-    float zf = z - floorf(z);
-    
-    float u = MyFade(xf);
-    float v = MyFade(yf);
-    float w = MyFade(zf);
-    
-    int aaa = permutation[permutation[permutation[xi] + yi] + zi];
-    int aba = permutation[permutation[permutation[xi] + yi + 1] + zi];
-    int aab = permutation[permutation[permutation[xi] + yi] + zi + 1];
-    int abb = permutation[permutation[permutation[xi] + yi + 1] + zi + 1];
-    int baa = permutation[permutation[permutation[xi + 1] + yi] + zi];
-    int bba = permutation[permutation[permutation[xi + 1] + yi + 1] + zi];
-    int bab = permutation[permutation[permutation[xi + 1] + yi] + zi + 1];
-    int bbb = permutation[permutation[permutation[xi + 1] + yi + 1] + zi + 1];
-    
-    float x1 = MyLerp(Grad3D(aaa, xf, yf, zf), Grad3D(baa, xf - 1, yf, zf), u);
-    float x2 = MyLerp(Grad3D(aba, xf, yf - 1, zf), Grad3D(bba, xf - 1, yf - 1, zf), u);
-    float y1 = MyLerp(x1, x2, v);
-    
-    float x3 = MyLerp(Grad3D(aab, xf, yf, zf - 1), Grad3D(bab, xf - 1, yf, zf - 1), u);
-    float x4 = MyLerp(Grad3D(abb, xf, yf - 1, zf - 1), Grad3D(bbb, xf - 1, yf - 1, zf - 1), u);
-    float y2 = MyLerp(x3, x4, v);
-    
-    return (MyLerp(y1, y2, w) + 1.0f) / 2.0f;
-}
-
-static float OctavePerlin3D(float x, float y, float z, int octaves, float persistence) {
-    float total = 0, freq = 1, amp = 1, maxVal = 0;
-    for (int i = 0; i < octaves; i++) {
-        total += Perlin3D(x * freq, y * freq, z * freq) * amp;
-        maxVal += amp;
-        amp *= persistence;
-        freq *= 2;
-    }
-    return total / maxVal;
-}
-
-// ============================================================================
 // Hills/Mountains Generator
 // Uses 2D Perlin noise for heightmap, fills with dirt up to that height
 // Creates natural rolling hills and mountains

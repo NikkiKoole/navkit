@@ -1072,8 +1072,3 @@ static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mous
         y += lineH;
     }
 }
-
-// Draw mining designation tooltip (legacy, calls generic)
-static void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
-    DrawDesignationTooltip(cellX, cellY, cellZ, mouse);
-}
