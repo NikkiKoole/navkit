@@ -45,7 +45,7 @@ DEALINGS IN THE SOFTWARE.
 /* "describe" encapsulates a set of "it" clauses in a function                */
 /* MODULE should be a valid C function literal                                */
 #define describe(MODULE) \
-   void MODULE(void)
+   static void MODULE(void)
 
 /* "expect" tests the passed scalar, and prints the result and time.          */
 /* You can have several expect tests declared in a single "it" clause but     */
