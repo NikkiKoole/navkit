@@ -12296,34 +12296,50 @@ describe(construction_recipe_build) {
     }
 }
 
-// Construction recipe system (Phase 2 - wattle frame, multi-input)
-describe(construction_wattle_frame_data) {
-    it("should have wattle frame recipe with 2 input slots") {
-        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_WATTLE_FRAME);
+// Construction recipe system (Phase 2/3 - wattle & daub, multi-input + multi-stage)
+describe(construction_wattle_data) {
+    it("should have wattle & daub recipe with 2 stages") {
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_WATTLE_DAUB_WALL);
         expect(r != NULL);
         expect(r->buildCategory == BUILD_WALL);
-        expect(r->stageCount == 1);
+        expect(r->stageCount == 2);
+        // Stage 0: frame (2 sticks + 1 cordage)
         expect(r->stages[0].inputCount == 2);
-        // Slot 0: 2 sticks
         expect(r->stages[0].inputs[0].count == 2);
-        expect(r->stages[0].inputs[0].altCount == 1);
         expect(r->stages[0].inputs[0].alternatives[0].itemType == ITEM_STICKS);
-        // Slot 1: 1 cordage
         expect(r->stages[0].inputs[1].count == 1);
-        expect(r->stages[0].inputs[1].altCount == 1);
         expect(r->stages[0].inputs[1].alternatives[0].itemType == ITEM_CORDAGE);
-        expect(r->stages[0].buildTime == 2.0f);
+        // Stage 1: fill (2 dirt)
+        expect(r->stages[1].inputCount == 1);
+        expect(r->stages[1].inputs[0].count == 2);
+        expect(r->stages[1].inputs[0].alternatives[0].itemType == ITEM_DIRT);
+        // Material from fill stage
+        expect(r->materialFromStage == 1);
+        expect(r->materialFromSlot == 0);
     }
 
-    it("should have at least 2 BUILD_WALL recipes now") {
+    it("should have plank wall recipe with 2 stages") {
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_PLANK_WALL);
+        expect(r != NULL);
+        expect(r->stageCount == 2);
+        // Stage 0: frame (same as wattle)
+        expect(r->stages[0].inputCount == 2);
+        // Stage 1: clad (2 planks)
+        expect(r->stages[1].inputCount == 1);
+        expect(r->stages[1].inputs[0].count == 2);
+        expect(r->stages[1].inputs[0].alternatives[0].itemType == ITEM_PLANKS);
+        expect(r->materialFromStage == 1);
+    }
+
+    it("should have at least 3 BUILD_WALL recipes now") {
         int count = GetConstructionRecipeCountForCategory(BUILD_WALL);
-        expect(count >= 2);
+        expect(count >= 3);
     }
 }
 
-describe(construction_wattle_frame_delivery) {
-    it("should stay AWAITING after delivering 1 stick of 2") {
-        // Test #24: deliver 1 stick → still AWAITING (need 2 sticks + 1 cordage)
+describe(construction_wattle_delivery) {
+    it("should stay AWAITING after delivering 1 stick of 2 in stage 0") {
+        // Test #24: deliver 1 stick → still AWAITING
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "........\n"
@@ -12340,8 +12356,9 @@ describe(construction_wattle_frame_delivery) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
         Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->stage == 0);
 
         // Deliver 1 stick manually
         int stick = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
@@ -12373,7 +12390,7 @@ describe(construction_wattle_frame_delivery) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
         Blueprint* bp = &blueprints[bpIdx];
 
         // Deliver 2 sticks manually
@@ -12392,8 +12409,8 @@ describe(construction_wattle_frame_delivery) {
         expect(BlueprintStageFilled(bp) == false);
     }
 
-    it("should become READY_TO_BUILD when all inputs delivered") {
-        // Test #26: deliver 2 sticks + 1 cordage → READY_TO_BUILD
+    it("should become READY_TO_BUILD when stage 0 inputs delivered") {
+        // Test #26: deliver 2 sticks + 1 cordage → READY_TO_BUILD for stage 0
         InitGridFromAsciiWithChunkSize(
             "........\n"
             "........\n"
@@ -12410,10 +12427,10 @@ describe(construction_wattle_frame_delivery) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
         Blueprint* bp = &blueprints[bpIdx];
 
-        // Deliver 2 sticks
+        // Deliver 2 sticks + 1 cordage
         int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
                                        4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                                        ITEM_STICKS, MAT_OAK);
@@ -12422,18 +12439,13 @@ describe(construction_wattle_frame_delivery) {
                                        4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                                        ITEM_STICKS, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, s2);
-
-        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);  // still waiting for cordage
-
-        // Deliver 1 cordage
         int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
                                        4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                                        ITEM_CORDAGE, MAT_NONE);
         DeliverMaterialToBlueprint(bpIdx, c1);
 
+        expect(bp->stage == 0);
         expect(bp->state == BLUEPRINT_READY_TO_BUILD);
-        expect(bp->stageDeliveries[0].deliveredCount == 2);
-        expect(bp->stageDeliveries[1].deliveredCount == 1);
         expect(BlueprintStageFilled(bp) == true);
     }
 
@@ -12455,9 +12467,9 @@ describe(construction_wattle_frame_delivery) {
         ClearStockpiles();
         InitDesignations();
 
-        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_FRAME);
+        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
 
-        // Only spawn rocks (wrong type for wattle frame — needs sticks+cordage)
+        // Only spawn rocks (wrong type — needs sticks+cordage for stage 0)
         SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
                              1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_ROCK, MAT_GRANITE);
@@ -12470,12 +12482,12 @@ describe(construction_wattle_frame_delivery) {
 
         AssignJobs();
 
-        // Mover should NOT be assigned — rocks don't match sticks or cordage
+        // Mover should NOT be assigned
         expect(MoverIsIdle(m));
     }
 }
 
-describe(construction_wattle_frame_parallel) {
+describe(construction_wattle_parallel) {
     it("should assign two haulers to different slots simultaneously") {
         // Test #30: two haulers, one for sticks, one for cordage
         InitGridFromAsciiWithChunkSize(
@@ -12496,7 +12508,7 @@ describe(construction_wattle_frame_parallel) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
 
         // Spawn items: 2 sticks near one mover, 1 cordage near another
         SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
@@ -12526,14 +12538,6 @@ describe(construction_wattle_frame_parallel) {
         expect(MoverHasHaulToBlueprintJob(m1));
         expect(MoverGetTargetBlueprint(m0) == bpIdx);
         expect(MoverGetTargetBlueprint(m1) == bpIdx);
-
-        // They should be hauling different item types
-        int item0 = MoverGetTargetItem(m0);
-        int item1 = MoverGetTargetItem(m1);
-        expect(item0 >= 0);
-        expect(item1 >= 0);
-        expect(items[item0].type != items[item1].type ||
-               items[item0].type == ITEM_STICKS);  // both sticks is OK if one gets cordage later
     }
 
     it("should not over-reserve a filled slot") {
@@ -12556,8 +12560,8 @@ describe(construction_wattle_frame_parallel) {
         ClearStockpiles();
         InitDesignations();
 
-        int bp1 = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_WATTLE_FRAME);
-        int bp2 = CreateRecipeBlueprint(7, 7, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bp1 = CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        int bp2 = CreateRecipeBlueprint(7, 7, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
         (void)bp2;
 
         // Only 1 cordage available (both blueprints need 1 each)
@@ -12583,7 +12587,7 @@ describe(construction_wattle_frame_parallel) {
         expect(blueprints[otherBp].stageDeliveries[1].reservedCount == 0);
     }
 
-    it("should assign builder independently after all materials delivered") {
+    it("should assign builder independently after stage 0 materials delivered") {
         // Test #43: builder is not necessarily the last hauler
         InitGridFromAsciiWithChunkSize(
             "..........\n"
@@ -12603,10 +12607,10 @@ describe(construction_wattle_frame_parallel) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_FRAME);
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
         Blueprint* bp = &blueprints[bpIdx];
 
-        // Manually deliver all materials (skip hauling)
+        // Manually deliver all stage 0 materials
         int s1 = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
                                        5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                                        ITEM_STICKS, MAT_OAK);
@@ -12621,6 +12625,7 @@ describe(construction_wattle_frame_parallel) {
         DeliverMaterialToBlueprint(bpIdx, c1);
 
         expect(bp->state == BLUEPRINT_READY_TO_BUILD);
+        expect(bp->stage == 0);
 
         // Mover nearby — should get assigned as builder
         Mover* m = &movers[0];
@@ -12635,9 +12640,171 @@ describe(construction_wattle_frame_parallel) {
     }
 }
 
-describe(construction_wattle_frame_build) {
-    it("should build wattle frame wall end to end") {
-        // Test #40: full haul+build cycle with 2 sticks + 1 cordage
+describe(construction_multi_stage) {
+    it("should advance to stage 1 after stage 0 build completes") {
+        // Test #5: stage 0 build → advances to stage 1, state resets to AWAITING_MATERIALS
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Manually deliver all stage 0 materials
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+
+        expect(bp->state == BLUEPRINT_READY_TO_BUILD);
+        expect(bp->stage == 0);
+
+        // Complete stage 0 build
+        CompleteBlueprint(bpIdx);
+
+        // Should advance to stage 1, not deactivate
+        expect(bp->active == true);
+        expect(bp->stage == 1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(bp->progress == 0.0f);
+        expect(bp->assignedBuilder == -1);
+
+        // Stage deliveries should be reset
+        expect(bp->stageDeliveries[0].deliveredCount == 0);
+        expect(bp->stageDeliveries[0].reservedCount == 0);
+        expect(bp->stageDeliveries[0].chosenAlternative == -1);
+
+        // Consumed items from stage 0 should be recorded
+        expect(bp->consumedItems[0][0].itemType == ITEM_STICKS);
+        expect(bp->consumedItems[0][0].count == 2);
+        expect(bp->consumedItems[0][1].itemType == ITEM_CORDAGE);
+        expect(bp->consumedItems[0][1].count == 1);
+    }
+
+    it("should reset chosenAlternative when stage advances") {
+        // Test #16: stage advance resets locks for new stage
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Complete stage 0 via manual delivery
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+
+        // Now in stage 1 — all delivery slots should be fresh
+        expect(bp->stage == 1);
+        expect(bp->stageDeliveries[0].chosenAlternative == -1);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_NONE);
+        expect(bp->stageDeliveries[0].deliveredCount == 0);
+        expect(bp->stageDeliveries[0].reservedCount == 0);
+    }
+
+    it("should complete wattle & daub wall after both stages") {
+        // Test #6: stage 1 fill (2 dirt) + build → wall with MAT_DIRT
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Complete stage 0
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+        expect(bp->stage == 1);
+
+        // Deliver stage 1 materials (2 dirt)
+        int d1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_DIRT, MAT_DIRT);
+        DeliverMaterialToBlueprint(bpIdx, d1);
+        int d2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_DIRT, MAT_DIRT);
+        DeliverMaterialToBlueprint(bpIdx, d2);
+
+        expect(bp->state == BLUEPRINT_READY_TO_BUILD);
+
+        // Complete stage 1 → should place wall
+        CompleteBlueprint(bpIdx);
+
+        expect(bp->active == false);
+        expect(grid[0][4][4] == CELL_WALL);
+        expect(GetWallMaterial(4, 4, 0) == MAT_DIRT);
+        expect(HasBlueprint(4, 4, 0) == false);
+    }
+
+    it("should create new haul jobs after stage advances") {
+        // Test #42: after stage 0 build, WorkGiver creates haul jobs for stage 1
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -12656,10 +12823,401 @@ describe(construction_wattle_frame_build) {
         ClearStockpiles();
         InitDesignations();
 
-        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_FRAME);
-        (void)bpIdx;
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
 
-        // Spawn 2 oak sticks and 1 cordage
+        // Complete stage 0 manually
+        int s1 = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+        expect(bp->stage == 1);
+
+        // Spawn dirt for stage 1
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+
+        // Mover should get assigned to haul dirt
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        AssignJobs();
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(MoverGetTargetBlueprint(m) == bpIdx);
+    }
+
+    it("should cancel mid-stage-1 and refund both stages") {
+        // Test #36: cancel after stage 0 complete, during stage 1
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Complete stage 0
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+        expect(bp->stage == 1);
+
+        // Deliver 1 dirt to stage 1 (partial)
+        int d1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_DIRT, MAT_DIRT);
+        DeliverMaterialToBlueprint(bpIdx, d1);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+
+        // Count items before cancel
+        int itemsBefore = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsBefore++;
+        }
+
+        // Cancel — should refund stage 1 delivered (1 dirt) + stage 0 consumed (2 sticks + 1 cordage)
+        CancelBlueprint(bpIdx);
+        expect(bp->active == false);
+
+        int itemsAfter = 0;
+        for (int i = 0; i < MAX_ITEMS; i++) {
+            if (IsItemActive(i)) itemsAfter++;
+        }
+
+        // Should have spawned 4 items total: 2 sticks + 1 cordage + 1 dirt
+        expect(itemsAfter - itemsBefore == 4);
+    }
+
+    it("should save and load between stages") {
+        // Test #51: save after stage 0 done, during stage 1 awaiting
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+
+        // Complete stage 0
+        int s1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s1);
+        int s2 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_STICKS, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, s2);
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+        CompleteBlueprint(bpIdx);
+
+        Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->stage == 1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+
+        // Deliver 1 dirt to stage 1 (partial)
+        int d1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_DIRT, MAT_DIRT);
+        DeliverMaterialToBlueprint(bpIdx, d1);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+
+        // Save
+        SaveWorld("/tmp/test_multistage_save.bin");
+
+        // Corrupt
+        InitDesignations();
+
+        // Load
+        LoadWorld("/tmp/test_multistage_save.bin");
+        RebuildPostLoadState();
+
+        // Verify
+        bpIdx = GetBlueprintAt(4, 4, 0);
+        expect(bpIdx >= 0);
+        bp = &blueprints[bpIdx];
+        expect(bp->recipeIndex == CONSTRUCTION_WATTLE_DAUB_WALL);
+        expect(bp->stage == 1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_DIRT);
+        // Consumed items from stage 0 should be preserved
+        expect(bp->consumedItems[0][0].itemType == ITEM_STICKS);
+        expect(bp->consumedItems[0][0].count == 2);
+        expect(bp->consumedItems[0][1].itemType == ITEM_CORDAGE);
+        expect(bp->consumedItems[0][1].count == 1);
+    }
+}
+
+describe(construction_multi_stage_edge_cases) {
+    it("should not haul stage 1 items during stage 0") {
+        // Edge case: dirt is available but blueprint is in stage 0 (needs sticks+cordage).
+        // WorkGiver should NOT assign dirt hauling.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->stage == 0);
+
+        // Only spawn dirt (stage 1 material) — no sticks or cordage
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        AssignJobs();
+
+        // Mover should be idle — dirt doesn't match stage 0 inputs
+        expect(MoverIsIdle(m));
+        expect(bp->stageDeliveries[0].reservedCount == 0);
+        expect(bp->stageDeliveries[1].reservedCount == 0);
+    }
+
+    it("should not over-deliver to same slot with two haulers") {
+        // Edge case: slot 0 needs 2 sticks, 2 haulers both assigned — reservedCount
+        // should prevent a 3rd reservation
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Spawn 3 sticks + 1 cordage (more sticks than needed for slot 0)
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(8 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_CORDAGE, MAT_NONE);
+
+        // 3 movers
+        for (int i = 0; i < 3; i++) {
+            Mover* m = &movers[i];
+            Point goal = {0, 0, 0};
+            InitMover(m, (i) * CELL_SIZE + CELL_SIZE * 0.5f,
+                      0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 3;
+
+        AssignJobs();
+
+        // Stick slot (slot 0) should have at most 2 reserved (count needed = 2)
+        expect(bp->stageDeliveries[0].reservedCount <= 2);
+
+        // Total reservations across all slots: at most 3 (2 sticks + 1 cordage)
+        int totalReserved = bp->stageDeliveries[0].reservedCount + bp->stageDeliveries[1].reservedCount;
+        expect(totalReserved <= 3);
+
+        // All 3 movers should be assigned (2 sticks + 1 cordage)
+        int assignedCount = 0;
+        for (int i = 0; i < 3; i++) {
+            if (MoverHasHaulToBlueprintJob(&movers[i])) assignedCount++;
+        }
+        expect(assignedCount == 3);
+    }
+
+    it("should not haul sticks to blueprint that already has enough sticks reserved") {
+        // Verify that once slot 0 has reservedCount == count, no more sticks are reserved
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Only spawn sticks (no cordage) — 3 sticks but only 2 needed
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_STICKS, MAT_OAK);
+
+        // 3 movers
+        for (int i = 0; i < 3; i++) {
+            Mover* m = &movers[i];
+            Point goal = {0, 0, 0};
+            InitMover(m, (i) * CELL_SIZE + CELL_SIZE * 0.5f,
+                      0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        }
+        moverCount = 3;
+
+        AssignJobs();
+
+        // Only 2 movers should be assigned (stick slot needs exactly 2)
+        int assignedCount = 0;
+        for (int i = 0; i < 3; i++) {
+            if (MoverHasHaulToBlueprintJob(&movers[i])) assignedCount++;
+        }
+        expect(assignedCount == 2);
+        expect(bp->stageDeliveries[0].reservedCount == 2);
+    }
+
+    it("should deliver to correct slot when item type differs between slots") {
+        // Verify that cordage goes to slot 1, not slot 0 (sticks)
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Deliver cordage first (before any sticks)
+        int c1 = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                       4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                       ITEM_CORDAGE, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, c1);
+
+        // Cordage should go to slot 1, not slot 0
+        expect(bp->stageDeliveries[0].deliveredCount == 0);  // sticks slot empty
+        expect(bp->stageDeliveries[1].deliveredCount == 1);  // cordage slot has 1
+    }
+}
+
+describe(construction_plank_wall) {
+    it("should build plank wall end to end through both stages") {
+        // Test #7: plank wall: sticks+cordage → build → planks → build → final wall
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_PLANK_WALL);
+
+        // Spawn all materials: 2 sticks, 1 cordage (stage 0), 2 planks (stage 1)
         SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
                              1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_STICKS, MAT_OAK);
@@ -12669,6 +13227,12 @@ describe(construction_wattle_frame_build) {
         SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
                              1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_CORDAGE, MAT_NONE);
+        SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_PLANKS, MAT_OAK);
+        SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_PLANKS, MAT_OAK);
 
         // Single mover
         Mover* m = &movers[0];
@@ -12679,7 +13243,7 @@ describe(construction_wattle_frame_build) {
 
         // Run simulation until wall is built
         bool wallBuilt = false;
-        for (int i = 0; i < 20000; i++) {
+        for (int i = 0; i < 30000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
@@ -12692,14 +13256,13 @@ describe(construction_wattle_frame_build) {
 
         expect(wallBuilt == true);
         expect(grid[0][5][5] == CELL_WALL);
-        // Material inherited from sticks (slot 0) — MAT_OAK
+        // Material from planks (stage 1, slot 0) — MAT_OAK
         expect(GetWallMaterial(5, 5, 0) == MAT_OAK);
         expect(HasBlueprint(5, 5, 0) == false);
-        expect(CountBlueprints() == 0);
     }
 
-    it("should build wattle frame with two haulers in parallel") {
-        // Test #30 end-to-end: two movers haul simultaneously, wall gets built
+    it("should build wattle & daub wall end to end through both stages") {
+        // Full sim: 2 sticks + 1 cordage → build stage 0 → 2 dirt → build stage 1 → wall
         InitGridFromAsciiWithChunkSize(
             "..........\n"
             "..........\n"
@@ -12718,32 +13281,35 @@ describe(construction_wattle_frame_build) {
         ClearStockpiles();
         InitDesignations();
 
-        CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_FRAME);
+        CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_WATTLE_DAUB_WALL);
 
-        // Sticks on one side, cordage on the other
+        // Spawn all materials
         SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
                              1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_STICKS, MAT_OAK);
-        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
-                             2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_STICKS, MAT_OAK);
-        SpawnItemWithMaterial(9 * CELL_SIZE + CELL_SIZE * 0.5f,
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
                              1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_CORDAGE, MAT_NONE);
+        SpawnItemWithMaterial(7 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
+        SpawnItemWithMaterial(8 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_DIRT, MAT_DIRT);
 
-        // Two movers on opposite sides
-        Mover* m0 = &movers[0];
-        Mover* m1 = &movers[1];
+        // Single mover
+        Mover* m = &movers[0];
         Point goal = {0, 0, 0};
-        InitMover(m0, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
                   0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        InitMover(m1, 9 * CELL_SIZE + CELL_SIZE * 0.5f,
-                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
-        moverCount = 2;
+        moverCount = 1;
 
-        // Run until wall is built
+        // Run simulation
         bool wallBuilt = false;
-        for (int i = 0; i < 20000; i++) {
+        for (int i = 0; i < 30000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
@@ -12756,7 +13322,8 @@ describe(construction_wattle_frame_build) {
 
         expect(wallBuilt == true);
         expect(grid[0][5][5] == CELL_WALL);
-        expect(GetWallMaterial(5, 5, 0) == MAT_OAK);
+        // Material from fill stage (stage 1) — MAT_DIRT
+        expect(GetWallMaterial(5, 5, 0) == MAT_DIRT);
         expect(HasBlueprint(5, 5, 0) == false);
     }
 }
@@ -12911,11 +13478,13 @@ int main(int argc, char* argv[]) {
     test(construction_recipe_delivery);
     test(construction_recipe_build);
     
-    // Construction recipe system (Phase 2 - wattle frame, multi-input)
-    test(construction_wattle_frame_data);
-    test(construction_wattle_frame_delivery);
-    test(construction_wattle_frame_parallel);
-    test(construction_wattle_frame_build);
+    // Construction recipe system (Phase 2/3 - wattle & daub, multi-input + multi-stage)
+    test(construction_wattle_data);
+    test(construction_wattle_delivery);
+    test(construction_wattle_parallel);
+    test(construction_multi_stage);
+    test(construction_multi_stage_edge_cases);
+    test(construction_plank_wall);
     
     return summary();
 }

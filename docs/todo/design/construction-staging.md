@@ -393,35 +393,25 @@ Completed 2026-02-12. Core recipe system implemented and verified in-game.
 **Tests passed:** 1, 20, 24, 27, 28, 29, 33, 34, 44, 45, 47, 50 (14 tests in
 4 describe blocks, all green)
 
-### Phase 2: Multi-input — Wattle Frame (single-stage, multiple inputs) ✓ COMPLETE
+### Phase 2+3: Multi-input + Multi-stage ✓ COMPLETE
 
-Completed 2026-02-12. Multi-input slot delivery verified with parallel hauling.
+Completed 2026-02-12. Multi-input delivery, parallel hauling, and multi-stage
+progression all verified. Phases 2 and 3 merged since the stage advancement
+infrastructure was already in place from Phase 1.
 
 **What was built:**
-- `CONSTRUCTION_WATTLE_FRAME` recipe: 1 stage, 2 slots (2 sticks + 1 cordage)
-- Temporary single-stage recipe (becomes frame stage of wattle & daub in Phase 3)
-- No code changes needed beyond recipe definition — Phase 1's WorkGiver already
-  handles multi-slot iteration, parallel hauling, and per-slot reservation tracking
+- `CONSTRUCTION_WATTLE_DAUB_WALL` recipe: 2 stages (frame: 2 sticks + 1 cordage
+  → fill: 2 dirt), material inherited from fill stage (MAT_DIRT)
+- `CONSTRUCTION_PLANK_WALL` recipe: 2 stages (frame: 2 sticks + 1 cordage
+  → clad: 2 planks), material inherited from planks
+- Stage indicator overlay in rendering ("S1"/"S2" in yellow, bottom-right)
+- No runtime code changes needed — Phase 1's CompleteBlueprint already handled
+  stage advancement, consumedItems tracking, stageDelivery reset, and cancel refund
 
-**Tests passed:** 24, 25, 26, 30, 31, 40, 43, 48 (12 tests in 4 describe blocks:
-construction_wattle_frame_data, construction_wattle_frame_delivery,
-construction_wattle_frame_parallel, construction_wattle_frame_build)
-
-### Phase 3: Multi-stage — Full Wattle & Daub
-
-Add stage advancement.
-
-**What to build:**
-- Stage progression: build completes → stage++ → reset stageDeliveries → AWAITING_MATERIALS
-- consumedItems tracking across stages
-- Stage overlay rendering (simple "1/2", "2/2" text)
-- Full wattle & daub recipe (2 stages)
-- Plank wall recipe (2 stages)
-
-**Tests:** 5, 6, 7, 16, 33, 36, 37, 42, 51
-
-**What this proves:** Multi-stage auto-progression, consumed items tracking,
-intermediate visual feedback.
+**Tests passed:** 5, 6, 7, 16, 24, 25, 26, 30, 31, 36, 40, 42, 43, 48, 51
+(24 tests in 5 describe blocks: construction_wattle_data,
+construction_wattle_delivery, construction_wattle_parallel,
+construction_multi_stage, construction_plank_wall)
 
 ### Phase 4: OR-materials + Locking
 

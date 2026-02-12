@@ -1821,6 +1821,15 @@ static void DrawBlueprints(void) {
             int textW = MeasureTextUI(text, 10);
             DrawTextShadow(text, (int)(sx + size/2 - textW/2), (int)(sy + 2), 10, WHITE);
         }
+
+        // Stage indicator for multi-stage recipes
+        if (BlueprintUsesRecipe(bp)) {
+            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+            if (recipe && recipe->stageCount > 1) {
+                const char* stageText = TextFormat("S%d", bp->stage + 1);
+                DrawTextShadow(stageText, (int)(sx + size - 14), (int)(sy + size - 12), 8, YELLOW);
+            }
+        }
     }
 
     for (int i = 0; i < activeJobCount; i++) {

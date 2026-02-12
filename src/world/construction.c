@@ -21,31 +21,81 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
-    [CONSTRUCTION_WATTLE_FRAME] = {
-        .name = "Wattle Frame",
+    [CONSTRUCTION_WATTLE_DAUB_WALL] = {
+        .name = "Wattle & Daub Wall",
         .buildCategory = BUILD_WALL,
-        .stageCount = 1,
-        .stages = {{
-            .inputs = {
-                {   // Slot 0: sticks
-                    .alternatives = {{ .itemType = ITEM_STICKS }},
+        .stageCount = 2,
+        .stages = {
+            {   // Stage 0: Frame
+                .inputs = {
+                    {   // Slot 0: sticks
+                        .alternatives = {{ .itemType = ITEM_STICKS }},
+                        .altCount = 1,
+                        .count = 2,
+                        .anyBuildingMat = false,
+                    },
+                    {   // Slot 1: cordage
+                        .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                        .altCount = 1,
+                        .count = 1,
+                        .anyBuildingMat = false,
+                    },
+                },
+                .inputCount = 2,
+                .buildTime = 2.0f,
+            },
+            {   // Stage 1: Fill
+                .inputs = {{
+                    .alternatives = {{ .itemType = ITEM_DIRT }},
                     .altCount = 1,
                     .count = 2,
                     .anyBuildingMat = false,
-                },
-                {   // Slot 1: cordage
-                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
-                    .altCount = 1,
-                    .count = 1,
-                    .anyBuildingMat = false,
-                },
+                }},
+                .inputCount = 1,
+                .buildTime = 3.0f,
             },
-            .inputCount = 2,
-            .buildTime = 2.0f,
-        }},
-        .resultMaterial = MAT_NONE,    // inherited from sticks
-        .materialFromStage = 0,
-        .materialFromSlot = 0,         // material from sticks (wood type)
+        },
+        .resultMaterial = MAT_NONE,    // inherited from fill material
+        .materialFromStage = 1,        // material comes from fill stage
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_PLANK_WALL] = {
+        .name = "Plank Wall",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 2,
+        .stages = {
+            {   // Stage 0: Frame
+                .inputs = {
+                    {   // Slot 0: sticks
+                        .alternatives = {{ .itemType = ITEM_STICKS }},
+                        .altCount = 1,
+                        .count = 2,
+                        .anyBuildingMat = false,
+                    },
+                    {   // Slot 1: cordage
+                        .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                        .altCount = 1,
+                        .count = 1,
+                        .anyBuildingMat = false,
+                    },
+                },
+                .inputCount = 2,
+                .buildTime = 2.0f,
+            },
+            {   // Stage 1: Clad
+                .inputs = {{
+                    .alternatives = {{ .itemType = ITEM_PLANKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                }},
+                .inputCount = 1,
+                .buildTime = 3.0f,
+            },
+        },
+        .resultMaterial = MAT_NONE,    // inherited from planks
+        .materialFromStage = 1,        // material comes from clad stage
+        .materialFromSlot = 0,
     },
 };
 
