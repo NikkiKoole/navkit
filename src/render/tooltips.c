@@ -739,11 +739,13 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             } else if (bill->mode == BILL_DO_X_TIMES) {
                 snprintf(statusStr, sizeof(statusStr), " (%d/%d)", bill->completedCount, bill->targetCount);
             } else if (bill->mode == BILL_DO_UNTIL_X) {
-                snprintf(statusStr, sizeof(statusStr), " (until %d)", bill->targetCount);
+                int have = recipe ? CountItemsInStockpiles(recipe->outputType) : 0;
+                snprintf(statusStr, sizeof(statusStr), " (%d/%d)", have, bill->targetCount);
             }
 
-            snprintf(lines[lineCount], sizeof(lines[0]), " %d. %s (%s)%s", 
-                b + 1, recipeName, modeName, statusStr);
+            char selChar = (b == workshopSelectedBillIdx) ? '>' : ' ';
+            snprintf(lines[lineCount], sizeof(lines[0]), "%c%d. %s (%s)%s", 
+                selChar, b + 1, recipeName, modeName, statusStr);
             if (bill->suspended && bill->suspendedNoStorage) {
                 lineColors[lineCount] = ORANGE;
             } else if (bill->suspended) {
@@ -827,7 +829,7 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
 
     // Help text
-    snprintf(lines[lineCount], sizeof(lines[0]), "X:remove  P:pause  D:delete");
+    snprintf(lines[lineCount], sizeof(lines[0]), "X:del P:pause M:mode +/-:count []:sel D:del ws");
     lineColors[lineCount] = GRAY;
     lineCount++;
 

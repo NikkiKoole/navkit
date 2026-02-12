@@ -452,7 +452,7 @@ void SuspendBill(int workshopIdx, int billIdx, bool suspended) {
 }
 
 // Count items of a type in all stockpiles
-static int CountItemsInStockpiles(ItemType type) {
+int CountItemsInStockpiles(ItemType type) {
     int count = 0;
     for (int s = 0; s < MAX_STOCKPILES; s++) {
         Stockpile* sp = &stockpiles[s];

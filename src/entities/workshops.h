@@ -179,6 +179,7 @@ int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount);
 void RemoveBill(int workshopIdx, int billIdx);
 void SuspendBill(int workshopIdx, int billIdx, bool suspended);
 bool ShouldBillRun(Workshop* ws, Bill* bill);
+int CountItemsInStockpiles(ItemType type);
 
 // Fuel queries
 bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius);

@@ -1542,7 +1542,21 @@ void HandleInput(void) {
     // Workshop hover controls (always active when hovering)
     // ========================================================================
     if (hoveredWorkshop >= 0 && inputMode == MODE_NORMAL) {
+        static int lastHoveredWorkshop = -1;
         Workshop* ws = &workshops[hoveredWorkshop];
+        
+        // Reset bill selection when workshop changes
+        if (hoveredWorkshop != lastHoveredWorkshop) {
+            workshopSelectedBillIdx = 0;
+            lastHoveredWorkshop = hoveredWorkshop;
+        }
+        // Clamp selection to valid range
+        if (ws->billCount > 0) {
+            if (workshopSelectedBillIdx >= ws->billCount) workshopSelectedBillIdx = ws->billCount - 1;
+            if (workshopSelectedBillIdx < 0) workshopSelectedBillIdx = 0;
+        } else {
+            workshopSelectedBillIdx = 0;
+        }
         
         // 1-9 = Add bill for specific recipe
         {
@@ -1552,6 +1566,7 @@ void HandleInput(void) {
                 if (IsKeyPressed(KEY_ONE + r)) {
                     if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
                         AddBill(hoveredWorkshop, r, BILL_DO_FOREVER, 0);
+                        workshopSelectedBillIdx = ws->billCount - 1;
                         AddMessage(TextFormat("Added bill: %s (Do Forever)", recipes[r].name), GREEN);
                     } else {
                         AddMessage(TextFormat("Workshop has max bills (%d)", MAX_BILLS_PER_WORKSHOP), RED);
@@ -1561,10 +1576,56 @@ void HandleInput(void) {
             }
         }
         
-        // X = Remove last bill
+        // [ / ] = Select previous/next bill
+        if (IsKeyPressed(KEY_LEFT_BRACKET) && ws->billCount > 0) {
+            if (workshopSelectedBillIdx > 0) workshopSelectedBillIdx--;
+            return;
+        }
+        if (IsKeyPressed(KEY_RIGHT_BRACKET) && ws->billCount > 0) {
+            if (workshopSelectedBillIdx < ws->billCount - 1) workshopSelectedBillIdx++;
+            return;
+        }
+        
+        // M = Cycle bill mode on selected bill
+        if (IsKeyPressed(KEY_M) && ws->billCount > 0) {
+            Bill* bill = &ws->bills[workshopSelectedBillIdx];
+            const char* modeNames[] = {"Do X Times", "Do Until X", "Do Forever"};
+            bill->mode = (bill->mode + 1) % 3;
+            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
+                if (bill->targetCount <= 0) bill->targetCount = 5;
+            }
+            bill->completedCount = 0;
+            AddMessage(TextFormat("Bill mode: %s", modeNames[bill->mode]), WHITE);
+            return;
+        }
+        
+        // +/= and - = Adjust target count on selected bill
+        if ((IsKeyPressed(KEY_EQUAL) || IsKeyPressed(KEY_KP_ADD)) && ws->billCount > 0) {
+            Bill* bill = &ws->bills[workshopSelectedBillIdx];
+            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
+                int step = IsKeyDown(KEY_LEFT_SHIFT) ? 5 : 1;
+                bill->targetCount += step;
+                AddMessage(TextFormat("Target: %d", bill->targetCount), WHITE);
+            }
+            return;
+        }
+        if ((IsKeyPressed(KEY_MINUS) || IsKeyPressed(KEY_KP_SUBTRACT)) && ws->billCount > 0) {
+            Bill* bill = &ws->bills[workshopSelectedBillIdx];
+            if (bill->mode == BILL_DO_X_TIMES || bill->mode == BILL_DO_UNTIL_X) {
+                int step = IsKeyDown(KEY_LEFT_SHIFT) ? 5 : 1;
+                bill->targetCount -= step;
+                if (bill->targetCount < 1) bill->targetCount = 1;
+                AddMessage(TextFormat("Target: %d", bill->targetCount), WHITE);
+            }
+            return;
+        }
+        
+        // X = Remove selected bill
         if (IsKeyPressed(KEY_X)) {
             if (ws->billCount > 0) {
-                ws->billCount--;
+                RemoveBill(hoveredWorkshop, workshopSelectedBillIdx);
+                if (workshopSelectedBillIdx >= ws->billCount && ws->billCount > 0)
+                    workshopSelectedBillIdx = ws->billCount - 1;
                 AddMessage(TextFormat("Removed bill (now %d)", ws->billCount), ORANGE);
             } else {
                 AddMessage("No bills to remove", RED);
@@ -1572,12 +1633,14 @@ void HandleInput(void) {
             return;
         }
         
-        // P = Toggle pause on first bill
+        // P = Toggle pause on selected bill
         if (IsKeyPressed(KEY_P)) {
             if (ws->billCount > 0) {
-                ws->bills[0].suspended = !ws->bills[0].suspended;
-                AddMessage(TextFormat("Bill %s", ws->bills[0].suspended ? "PAUSED" : "RESUMED"), 
-                    ws->bills[0].suspended ? RED : GREEN);
+                Bill* bill = &ws->bills[workshopSelectedBillIdx];
+                bill->suspended = !bill->suspended;
+                bill->suspendedNoStorage = false;
+                AddMessage(TextFormat("Bill %s", bill->suspended ? "PAUSED" : "RESUMED"), 
+                    bill->suspended ? RED : GREEN);
             }
             return;
         }

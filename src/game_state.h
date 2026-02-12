@@ -149,6 +149,7 @@ extern bool sectionLighting;
 // Hover state
 extern int hoveredStockpile;
 extern int hoveredWorkshop;
+extern int workshopSelectedBillIdx;
 extern int hoveredMover;
 extern int hoveredItemCell[16];
 extern int hoveredItemCount;

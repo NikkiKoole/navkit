@@ -22,5 +22,5 @@ Crowd behavior and social movement features.
 ## Dependencies
 
 Queuing is a prerequisite for:
-- [elevators.md](elevators.md) - Elevator wait queues
+- [elevators.md](../../world/elevators.md) - Elevator wait queues
 - Full social navigation features above

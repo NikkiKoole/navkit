@@ -119,6 +119,7 @@ bool sectionLighting = false;
 
 int hoveredStockpile = -1;
 int hoveredWorkshop = -1;
+int workshopSelectedBillIdx = 0;
 int hoveredMover = -1;
 int hoveredItemCell[16];
 int hoveredItemCount = 0;
