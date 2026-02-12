@@ -289,7 +289,7 @@ static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     return true;
 }
 
-void DrawCellGrid(void) {
+static void DrawCellGrid(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     Color skyColor = GetSkyColorForTime(timeOfDay);
@@ -490,7 +490,7 @@ void DrawCellGrid(void) {
         // Shadows from blocks above disabled (per user request)
 }
 
-void DrawGrassOverlay(void) {
+static void DrawGrassOverlay(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     Color skyColor = GetSkyColorForTime(timeOfDay);
@@ -556,7 +556,7 @@ void DrawGrassOverlay(void) {
         }
 }
 
-void DrawWater(void) {
+static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -630,7 +630,7 @@ void DrawWater(void) {
     }
 }
 
-void DrawFire(void) {
+static void DrawFire(void) {
     if (fireActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -706,7 +706,7 @@ void DrawFire(void) {
     }
 }
 
-void DrawSmoke(void) {
+static void DrawSmoke(void) {
     if (smokeActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -751,7 +751,7 @@ void DrawSmoke(void) {
     }
 }
 
-void DrawSteam(void) {
+static void DrawSteam(void) {
     if (steamActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -796,7 +796,7 @@ void DrawSteam(void) {
     }
 }
 
-void DrawTemperature(void) {
+static void DrawTemperature(void) {
     // Auto-show when placing heat or cold
     bool autoShow = (inputAction == ACTION_SANDBOX_HEAT || inputAction == ACTION_SANDBOX_COLD);
     if (!showTemperatureOverlay && !autoShow) return;
@@ -862,7 +862,7 @@ void DrawTemperature(void) {
     }
 }
 
-void DrawSimSources(void) {
+static void DrawSimSources(void) {
     if (!showSimSources) return;
 
     float size = CELL_SIZE * zoom;
@@ -900,7 +900,7 @@ void DrawSimSources(void) {
     }
 }
 
-void DrawFrozenWater(void) {
+static void DrawFrozenWater(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -919,7 +919,7 @@ void DrawFrozenWater(void) {
     }
 }
 
-void DrawChunkBoundaries(void) {
+static void DrawChunkBoundaries(void) {
     float cellSize = CELL_SIZE * zoom;
     float chunkPixelsX = chunkWidth * cellSize;
     float chunkPixelsY = chunkHeight * cellSize;
@@ -935,7 +935,7 @@ void DrawChunkBoundaries(void) {
     }
 }
 
-void DrawEntrances(void) {
+static void DrawEntrances(void) {
     float size = CELL_SIZE * zoom;
     float ms = size * 0.5f;
     int z = currentViewZ;
@@ -948,7 +948,7 @@ void DrawEntrances(void) {
     }
 }
 
-void DrawGraph(void) {
+static void DrawGraph(void) {
     if (!showGraph) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -964,7 +964,7 @@ void DrawGraph(void) {
     }
 }
 
-void DrawPath(void) {
+static void DrawPath(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
 
@@ -989,7 +989,7 @@ void DrawPath(void) {
     }
 }
 
-void DrawAgents(void) {
+static void DrawAgents(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
     for (int i = 0; i < agentCount; i++) {
@@ -1020,7 +1020,7 @@ void DrawAgents(void) {
     }
 }
 
-void DrawMovers(void) {
+static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
     Color skyColor = GetSkyColorForTime(timeOfDay);
@@ -1225,7 +1225,7 @@ void DrawMovers(void) {
     }
 }
 
-void DrawJobLines(void) {
+static void DrawJobLines(void) {
     if (!showJobLines) return;
 
     for (int i = 0; i < moverCount; i++) {
@@ -1317,7 +1317,7 @@ void DrawJobLines(void) {
     }
 }
 
-void DrawItems(void) {
+static void DrawItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
     Color skyColor = GetSkyColorForTime(timeOfDay);
@@ -1370,7 +1370,7 @@ void DrawItems(void) {
     }
 }
 
-void DrawGatherZones(void) {
+static void DrawGatherZones(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1400,7 +1400,7 @@ void DrawGatherZones(void) {
     }
 }
 
-void DrawStockpileTiles(void) {
+static void DrawStockpileTiles(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1452,7 +1452,7 @@ void DrawStockpileTiles(void) {
     }
 }
 
-void DrawStockpileItems(void) {
+static void DrawStockpileItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1509,7 +1509,7 @@ void DrawStockpileItems(void) {
     }
 }
 
-void DrawWorkshops(void) {
+static void DrawWorkshops(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1624,7 +1624,7 @@ void DrawWorkshops(void) {
     }
 }
 
-void DrawHaulDestinations(void) {
+static void DrawHaulDestinations(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1695,7 +1695,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_CLEAN]          = {200, 230, 255, 180},
 };
 
-void DrawMiningDesignations(void) {
+static void DrawMiningDesignations(void) {
     // Early exit if no designations
     if (activeDesignationCount == 0) return;
     
@@ -1781,7 +1781,7 @@ void DrawMiningDesignations(void) {
     }
 }
 
-void DrawBlueprints(void) {
+static void DrawBlueprints(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
 
@@ -1839,7 +1839,7 @@ void DrawBlueprints(void) {
     }
 }
 
-void DrawTerrainBrushPreview(void) {
+static void DrawTerrainBrushPreview(void) {
     if (inputAction != ACTION_SANDBOX_SCULPT) return;
 
     Vector2 gp = ScreenToGrid(GetMousePosition());

@@ -1654,7 +1654,7 @@ static float Grad3D(int hash, float x, float y, float z) {
     return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
 }
 
-float Perlin3D(float x, float y, float z) {
+static float Perlin3D(float x, float y, float z) {
     int xi = (int)floorf(x) & 255;
     int yi = (int)floorf(y) & 255;
     int zi = (int)floorf(z) & 255;
@@ -1687,7 +1687,7 @@ float Perlin3D(float x, float y, float z) {
     return (MyLerp(y1, y2, w) + 1.0f) / 2.0f;
 }
 
-float OctavePerlin3D(float x, float y, float z, int octaves, float persistence) {
+static float OctavePerlin3D(float x, float y, float z, int octaves, float persistence) {
     float total = 0, freq = 1, amp = 1, maxVal = 0;
     for (int i = 0; i < octaves; i++) {
         total += Perlin3D(x * freq, y * freq, z * freq) * amp;

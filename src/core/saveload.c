@@ -1,5 +1,10 @@
 // core/saveload.c - Save and Load functions
 #include "../game_state.h"
+
+// Forward declarations
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
+void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"

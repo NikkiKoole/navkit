@@ -14,6 +14,9 @@
 #include "action_registry.h"
 #include "pie_menu.h"
 
+// Forward declaration
+void HandleInput(void);
+
 // Forward declarations
 bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);

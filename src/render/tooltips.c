@@ -47,7 +47,7 @@ static void BuildFillMeter(char* out, size_t outSize, float ratio, int width) {
 }
 
 // Draw stockpile tooltip at mouse position
-void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
+static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     if (spIdx < 0 || spIdx >= MAX_STOCKPILES) return;
     Stockpile* sp = &stockpiles[spIdx];
     if (!sp->active) return;
@@ -232,7 +232,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 }
 
 // Draw mover debug tooltip (only shown when paused)
-void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
+static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     if (moverIdx < 0 || moverIdx >= moverCount) return;
     Mover* m = &movers[moverIdx];
     if (!m->active) return;
@@ -367,7 +367,7 @@ void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
 }
 
 // Draw item tooltip (only shown when paused)
-void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
+static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
     if (itemCount <= 0) return;
 
     const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
@@ -421,7 +421,7 @@ void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, 
 }
 
 // Draw comprehensive cell tooltip (shown when paused)
-void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (cellX < 0 || cellX >= gridWidth || cellY < 0 || cellY >= gridHeight) return;
     if (cellZ < 0 || cellZ >= gridDepth) return;
 
@@ -607,7 +607,7 @@ void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 }
 
 // Draw water tooltip when hovering over water
-void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+static void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     WaterCell* cell = &waterGrid[cellZ][cellY][cellX];
     if (cell->level == 0 && !cell->isSource && !cell->isDrain) return;
 
@@ -667,7 +667,7 @@ void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 }
 
 // Draw workshop tooltip showing bills and status
-void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
+static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     if (wsIdx < 0 || wsIdx >= MAX_WORKSHOPS) return;
     Workshop* ws = &workshops[wsIdx];
     if (!ws->active) return;
@@ -862,7 +862,7 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
 }
 
 // Draw blueprint (construction) tooltip
-void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
+static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
     if (bpIdx < 0 || bpIdx >= MAX_BLUEPRINTS) return;
     Blueprint* bp = &blueprints[bpIdx];
     if (!bp->active) return;
@@ -942,7 +942,7 @@ void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 }
 
 // Draw designation tooltip (generic for all designation types)
-void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+static void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     Designation* des = GetDesignation(cellX, cellY, cellZ);
     if (!des || des->type == DESIGNATION_NONE) return;
 
@@ -1074,6 +1074,6 @@ void DrawDesignationTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
 }
 
 // Draw mining designation tooltip (legacy, calls generic)
-void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
+static void DrawMiningTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     DrawDesignationTooltip(cellX, cellY, cellZ, mouse);
 }

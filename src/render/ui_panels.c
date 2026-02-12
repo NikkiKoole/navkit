@@ -7,6 +7,11 @@
 #include "../simulation/lighting.h"
 #include <time.h>
 
+// Forward declarations
+void DrawTimeOfDayWidget(float x, float y);
+void DrawUI(void);
+void DrawProfilerPanel(float rightEdge, float y);
+
 // ============================================================================
 // TIME OF DAY WIDGET
 // ============================================================================
