@@ -87,18 +87,18 @@ Legend: `#` = block, `X` = work tile, `O` = output, `F` = fuel, `.` = floor
 | CLAY | stackable | Mining clay | Kiln, Stonecutter (Bind) |
 | BRICKS | stackable, building | Kiln | Construction |
 | PEAT | stackable, fuel | Mining peat | Kiln, Charcoal Pit |
-| SAND | stackable | Mining sand | (none yet) |
-| DIRT | stackable | Mining dirt | (none yet) |
+| SAND | stackable | Mining sand | Construction (thatch floor base) |
+| DIRT | stackable | Mining dirt | Construction (wattle & daub fill, thatch floor base) |
 | LEAVES | stackable, fuel | Trees (unified type with material) | Hearth (fuel) |
 | SAPLING | stackable | Gathering (unified type with material) | Planting |
 | ASH | stackable | Hearth | (none yet -- future: cement, fertilizer) |
 | GRASS | stackable | Vegetation gathering | Drying Rack |
 | DRIED_GRASS | stackable, fuel | Drying Rack | Rope Maker (Twist Grass) |
-| POLES | stackable | Tree harvest (branches) | (none yet -- future: construction) |
+| POLES | stackable | Tree harvest (branches) | (none yet — future: lean-to, scaffolding) |
 | BARK | stackable | Sawmill (Strip Bark) | Rope Maker (Twist Bark) |
 | STRIPPED_LOG | stackable, building | Sawmill (Strip Bark) | Sawmill (Saw Stripped -> planks) |
 | SHORT_STRING | stackable | Rope Maker | Rope Maker (Braid Cordage) |
-| CORDAGE | stackable | Rope Maker | (none yet -- future: construction staging) |
+| CORDAGE | stackable | Rope Maker | Construction (wattle & daub frame, plank wall frame) |
 
 ---
 
@@ -135,11 +135,11 @@ Sources: LOG, PLANKS, STICKS, CHARCOAL, PEAT, LEAVES, DRIED_GRASS
 Sinks: Kiln (Fire Bricks), Hearth (any fuel -> ASH)
 ```
 
-### Fiber Loop (PARTIAL - needs sink for cordage)
+### Fiber Loop (CLOSED)
 ```
 Vegetation -> GRASS -> Drying Rack -> DRIED_GRASS -> Rope Maker -> SHORT_STRING
 Trees -> LOG -> Sawmill (Strip) -> BARK -> Rope Maker -> SHORT_STRING
-SHORT_STRING -> Rope Maker (Braid) -> CORDAGE -> (no sink yet)
+SHORT_STRING -> Rope Maker (Braid) -> CORDAGE -> Construction (wall frames)
 ```
 
 ---
@@ -148,11 +148,11 @@ SHORT_STRING -> Rope Maker (Braid) -> CORDAGE -> (no sink yet)
 
 | Item | Problem | Proposed Solution |
 |------|---------|-------------------|
-| CORDAGE | No recipe or construction sink | Construction staging (frame lashing) |
-| POLES | No recipe or construction sink | Construction staging (frames) |
-| ASH | No recipe sink | Future: cement (ASH + CLAY -> BLOCKS), fertilizer |
-| SAND | No use | Glass Kiln: SAND + fuel -> GLASS |
-| DIRT | No use | Farming (soil for crops), Mud Mixer (DIRT + CLAY + water -> MUD) |
+| ~~CORDAGE~~ | ~~No sink~~ | **CLOSED** — used in wattle & daub + plank wall frames |
+| POLES | No recipe or construction sink | Future: lean-to, scaffolding |
+| ASH | No recipe sink | Future: cement (ASH + CLAY → BLOCKS), fertilizer |
+| ~~SAND~~ | ~~No use~~ | **Partial** — construction sink (thatch floor base). Still needs: Glass Kiln |
+| ~~DIRT~~ | ~~No use~~ | **Partial** — construction sinks (wattle & daub fill, thatch floor base). Still needs: Farming, Mud Mixer |
 | SHORT_STRING | Only used for cordage | Future: leaf mats, simple tools |
 
 ---
@@ -427,3 +427,4 @@ Workshops that require **location-based resource access** (water, dryness) rathe
 - 2026-02-11: Multi-output recipe support implemented (outputType2/outputCount2 on Recipe struct)
 - 2026-02-11: Redesigned cordage chain: 2-step process (bark/dried grass -> short string -> cordage) instead of single-step. Added SHORT_STRING as intermediate item. Noted bark lashing as future alternative. Added TODO for short string direct uses
 - 2026-02-12: Major status update. Marked all Tier 1 workshops as DONE (Hearth, Rope Maker, Drying Rack). Updated items table with all 22 item types. Updated loops analysis (Wood loop CLOSED, Fuel loop CLOSED, added Fiber loop). Bark/cordage chain marked IMPLEMENTED. Updated open loops (cordage, poles, ash, sand, dirt need sinks). Sapling/leaf types unified with material field (save v32).
+- 2026-02-12: Construction staging implemented. Fiber loop now CLOSED (cordage used in wattle & daub + plank wall frames). Sand/dirt now have construction sinks (thatch floor base, wattle & daub fill). Updated items table and open loops accordingly.

@@ -44,89 +44,54 @@ Fiber loop is now **CLOSED**: bark/dried grass → short string → cordage → 
 
 ---
 
-### 4. **Sand/Dirt/Leaves Are Dead Ends** 🟡
+### 4. **Sand/Dirt/Leaves Are Dead Ends** 🟡 (PARTIALLY ADDRESSED)
 
-**Problem:** These items are gathered but have no recipe sinks.
+**Problem:** These items are gathered but have limited recipe sinks.
 
-**Current State:**
-- ITEM_SAND - gatherable from MAT_SAND cells, no recipe use
-- ITEM_DIRT - gatherable from MAT_DIRT cells, no recipe use
-- ITEM_LEAVES - gatherable from trees, only use is fuel (IF_FUEL flag)
+**Current State (updated 2026-02-12):**
+- ITEM_SAND - now used in thatch floor base (construction sink). No workshop recipe sink yet.
+- ITEM_DIRT - now used in wattle & daub fill + thatch floor base (construction sinks). No workshop recipe sink yet.
+- ITEM_LEAVES - gatherable from trees, only use is fuel (IF_FUEL flag). No recipe sink.
 
-**Solutions:**
-- **Sand** → Glass Kiln (SAND + fuel → GLASS) for windows
-  - New workshop: WORKSHOP_GLASS_KILN
-  - Recipe: SAND x2 + 1 fuel → GLASS x1
-  - GLASS used for windows, containers (future)
-- **Dirt** → Farming system (plant crops in dirt)
-  - Requires full farming system (future, deferred)
-  - Alternative: composting (DIRT + LEAVES → COMPOST for enriched soil)
-- **Leaves** → Composting (LEAVES + DIRT → COMPOST) for farming
-  - Or: Mulch recipe (LEAVES x5 → MULCH x1 at workshop)
-  - MULCH used as soil amendment (future farming) or bedding
-
-**Impact:** Closes gathering loops, enables farming/glass systems.
+**Remaining solutions:**
+- **Sand** → Glass Kiln (SAND + fuel → GLASS) for windows. Simplest next workshop.
+- **Dirt** → Farming system (future) or Mud Mixer (DIRT + CLAY + water → MUD).
+- **Leaves** → Composting (LEAVES + DIRT → COMPOST) or Mulch recipe.
 
 **Implementation Priority:**
-1. Glass Kiln (simple, closes sand loop immediately)
+1. Glass Kiln (simple, closes sand loop fully)
 2. Leaf mulching (simple workshop recipe)
 3. Composting (ties dirt + leaves together, enables farming later)
 
 ---
 
-### 5. **Construction Is Too Simple** 🟡
+### 5. ~~**Construction Is Too Simple**~~ RESOLVED
 
-**Problem:** Place blueprint → haul 1 item → wall appears instantly. No time investment, no staging.
+**Original problem:** Place blueprint → haul 1 item → wall appears instantly.
 
-**Current System:**
-- Blueprint placed → JOBTYPE_BUILD created → mover walks to site → 3s work → wall appears
-- No material preparation, no multi-step process, no visible construction phases
-
-**Solutions (from docs/todo/design/construction-staging.md):**
-- **Frame stage** - build skeleton first (fast, uses sticks/poles/cordage)
-  - Visible as transparent/ghosted structure
-  - Walkable (or not, depending on design)
-- **Fill stage** - add walls/floors (slower, uses planks/bricks/blocks)
-  - Each stage = separate hauling burst + work time
-- **Curing/settling stage** (optional, future) - wait time before usable
-
-**Impact:** Construction feels earned, stockpile logistics matter, progression is visible.
-
-**Implementation Notes:**
-- Add `uint8_t stage` to Blueprint struct (0 = frame, 1 = fill, 2 = complete)
-- Add `Recipe frameRecipe` and `Recipe fillRecipe` to construction system
-- JOBTYPE_BUILD checks current stage, uses appropriate recipe
-- Visual: render partial structures differently per stage
-- Storage checks need to verify space for BOTH stages' outputs
+**Resolution (2026-02-12):** Construction staging fully implemented via ConstructionRecipe system:
+- 10 recipes total, 3 are multi-stage (wattle & daub, plank wall, thatch floor).
+- Blueprint struct has `stage`, per-stage delivery tracking, consumed item records.
+- Each stage is a separate hauling burst + work time with per-stage build times.
+- Lossy refund (75%) for completed stages on cancellation.
+- UI: "S1/S2" stage overlay, "Stage: X/Y" tooltip.
+- Deferred: curing/settling timers, tool checks, multi-colonist stages.
 
 ---
 
-### 6. **No Water Interaction** 🟡
+### 6. **No Water Interaction** 🟡 (PARTIALLY ADDRESSED)
 
-**Problem:** Water exists (flows, visible) but movers never use it.
+**Problem:** Water exists (flows, visible) but movers never use it for crafting.
 
-**Current State:**
+**Current State (updated 2026-02-12):**
 - Water simulation works (cellular automata, flow, evaporation)
-- Water tiles render correctly
+- Water placement tools now in sandbox UI: ACTION_SANDBOX_WATER (click=water, shift+click=source, right=remove, shift+right=drain)
 - But: no crafting uses water, no hauling water, no water-dependent recipes
 
-**Solutions (from docs/todo/design/water-dependent-crafting.md):**
-- **Water placement tools** - SetWaterSource/SetWaterDrain already exist, just need UI actions
-  - ACTION_PLACE_WATER_SOURCE
-  - ACTION_PLACE_WATER_DRAIN
+**Remaining:**
 - **Mud Mixer workshop** - DIRT + CLAY + water tile → MUD (location-based, no container needed)
-  - Must be placed on water cell or adjacent to water
-  - Recipe checks for water at work tile
-  - MUD used for wattle-daub construction
-- **Simple container** (future) - ITEM_BASKET (woven from cordage) for hauling water later
-
-**Impact:** Water becomes gameplay element, enables mud/cob construction, unlocks clay-working area.
-
-**Implementation Notes:**
-- Add water placement actions to ACTION_REGISTRY
-- Add WORKSHOP_MUD_MIXER with placement validator (CheckAdjacentWater)
-- Recipe: DIRT x2 + CLAY x1 → MUD x3 (no fuel, location provides water)
-- Future: add ITEM_WATER (requires containers) for hauling to non-water locations
+- **Simple container** (future) - ITEM_BASKET (woven from cordage) for hauling water
+- Water placement in survival mode (not just sandbox) could use designation-based actions
 
 ---
 
@@ -393,61 +358,54 @@ Fiber loop is now **CLOSED**: bark/dried grass → short string → cordage → 
 
 ## What This Achieves
 
-**Before (current state):**
+**Current state (updated 2026-02-12):**
 - ✅ Gather → workshops → construction works
-- ❌ Cordage is pointless
-- ❌ Rock gathering is unrealistic (bare-hands mining)
-- ❌ Construction is instant/identical for all materials
-- ❌ Sand/dirt/leaves are dead ends
-- ❌ Water is decorative only
-- ❌ No primitive shelter
+- ✅ Cordage closes fiber loop (bark/grass → string → cordage → construction)
+- ✅ Rock gathering works (bare-hands mining, canMine=true by default)
+- ✅ Construction feels earned (multi-stage frame+fill, hauling bursts)
+- ✅ Primitive shelter exists (wattle & daub walls, thatch floors)
+- 🟡 Sand/dirt partially addressed (construction sinks, no workshop sinks)
+- ❌ Water is decorative only (placement tools in sandbox, no crafting uses)
+- ❌ Leaves are dead ends (fuel only)
+- ❌ ASH, POLES have no sinks
 - ❌ No tool progression
 
-**After (complete progression):**
+**After remaining phases:**
 - ✅ All gathered items have purpose (no dead ends)
-- ✅ Cordage closes fiber loop (bark/grass → string → cordage → construction)
-- ✅ Realistic rock gathering (surface scatter, boulders, river stones)
-- ✅ Construction feels earned (staging, time investment, visible phases)
 - ✅ Sand → glass, leaves → mulch, dirt → mud (loops closed)
 - ✅ Water is interactive (placement, mud mixer, future hauling)
-- ✅ Primitive shelter (lean-to, wattle-daub) bridges bare hands → stone
 - ✅ Tool progression (bare hands → stone tools → efficiency boost)
 - ✅ Material differentiation (wood/brick/stone feel different)
 
 **Progression arc:**
 1. Bare hands gathering → 2. Cordage/primitive shelter → 3. Stone tools → 4. Wood processing → 5. Mud/clay/fire → 6. Stone fortifications
 
-Each era builds on the previous, no gaps, all items meaningful.
+Steps 1-2 are now implemented. Steps 3+ remain future work.
 
 ---
 
 ## Smallest Complete Next Step
 
-If you want **one feature that does the most**, I recommend:
+~~**Construction Staging + Cordage Use** — DONE.~~ This was the highest-impact feature and is now fully implemented.
 
-### **Construction Staging + Cordage Use** (~2-3 days)
+### **Next highest-impact feature: Glass Kiln** (~1 day)
 
-**Why this first:**
-- Fixes the biggest gap: cordage exists but is useless
-- Transforms construction from instant → multi-phase process
-- Enables primitive shelter (wattle-daub)
-- Makes stockpile logistics meaningful
-- Sets foundation for material differentiation
+**Why this next:**
+- Closes the sand loop (SAND currently only has construction sink)
+- Adds first tier 2 workshop
+- GLASS enables future windows, containers
+- Simple implementation: follows existing Kiln pattern (fuel-based workshop)
 
 **What it includes:**
-1. Add `stage` field to Blueprint struct
-2. Frame stage recipe: STICKS x2 + CORDAGE x1
-3. Fill stage recipe: PLANKS/BRICKS/BLOCKS (material-dependent)
-4. Visual: render partial structures differently
-5. Wattle-daub variant: frame + DIRT/CLAY daub
+1. Add WORKSHOP_GLASS_KILN (3x3, fuel-based)
+2. Add ITEM_GLASS to items
+3. Recipe: SAND x2 + 1 fuel → GLASS x1
+4. Add stockpile filter for GLASS
 
-**What it unlocks:**
-- Cordage loop complete (bark → string → cordage → construction)
-- Primitive shelter (wattle-daub hut)
-- Construction progression (lean-to → hut → cabin → fortress)
-- Foundation for future staging complexity (curing, multi-colonist, etc.)
-
-This single feature would transform the progression from "instant walls" to "build shelter, then upgrade to cabin, then fortress."
+**Alternative next step: Fire auto-light** (~half day)
+- Small integration: fire cells emit proportional block light
+- Makes fire system feel more complete
+- Connects two existing systems (fire + lighting)
 
 ---
 
@@ -463,16 +421,20 @@ This single feature would transform the progression from "instant walls" to "bui
 - `tech-tree-outline.md` - Era progression framework
 
 **Implementation Status (updated 2026-02-12):**
-- Done: Fiber chain complete: bark/dried grass -> string -> cordage (Rope Maker, Drying Rack, Sawmill strip bark)
-- Done: Hearth (fuel sink -> ash), Charcoal Pit (semi-passive)
+- Done: Fiber chain complete: bark/dried grass → string → cordage → construction (fiber loop CLOSED)
+- Done: Construction staging — 10 recipes (3 multi-stage: wattle & daub, plank wall, thatch floor)
+- Done: Cordage sinks — used in wattle & daub + plank wall frame stages
+- Done: Sand/dirt partial sinks — used in construction recipes (thatch floor base, wattle & daub fill)
+- Done: Water placement in sandbox UI (ACTION_SANDBOX_WATER)
+- Done: Hearth (fuel sink → ash), Charcoal Pit (semi-passive)
 - Done: Terrain sculpting (sandbox mode, circular brush, raise/lower)
 - Done: Sapling/leaf unification (material-based), tree harvest system (sticks/poles/leaves from living trees)
-- Done: Floor dirt tracking + cleaning, lighting system (partial), vegetation grid
+- Done: Floor dirt tracking + cleaning, lighting system (sky+block light, torch placement, save/load), vegetation grid
 - Done: Data-driven stockpile filters (25 item type filters, 4 material sub-filters)
-- TODO: Cordage sink -- no recipes or construction uses it yet (highest priority gap)
-- TODO: Construction staging -- instant single-step only
-- TODO: Water interaction -- no placement UI, no water-dependent crafting (functions exist)
-- TODO: Primitive shelter -- no wattle-daub, lean-to, or thatch
-- TODO: Tool system -- no tools, no speed bonuses, no durability
-- TODO: Glass/composting -- sand/leaves have no sinks
-- TODO: Early rock gathering -- mining is only rock source
+- Done: Primitive shelter — wattle & daub walls + thatch floors exist
+- Done: Rock gathering — mining is bare-hands (canMine=true by default, no tools)
+- TODO: Tool system — no tools, no speed bonuses, no durability
+- TODO: Glass/composting — sand/leaves have no workshop recipe sinks
+- TODO: Water-dependent crafting — no mud mixer, no moisture states
+- TODO: ASH, POLES still need sinks
+- TODO: Fire auto-light — fire cells don't illuminate surroundings
