@@ -12,27 +12,46 @@ GatherZone gatherZones[MAX_GATHER_ZONES];
 int gatherZoneCount = 0;
 
 // Stockpile filter definitions (shared between input.c keybindings and tooltips.c display)
+// This table is the single source of truth for all item type filters.
+// To add a new filterable item: just add a row here with a unique key.
 const StockpileFilterDef STOCKPILE_FILTERS[] = {
-    {ITEM_RED,       'r', "Red",      "R", RED},
-    {ITEM_GREEN,     'g', "Green",    "G", GREEN},
-    {ITEM_BLUE,      'b', "Blue",     "B", BLUE},
-    {ITEM_ROCK,      'o', "Rock",     "O", ORANGE},
-    {ITEM_BLOCKS,    's', "Blocks",   "S", GRAY},
-    {ITEM_LOG,       'w', "Wood",     "W", BROWN},
-    {ITEM_DIRT,      'd', "Dirt",     "D", BROWN},
-    {ITEM_PLANKS,    'p', "Planks",   "P", BROWN},
-    {ITEM_STICKS,    'k', "Sticks",   "K", BROWN},
-    {ITEM_POLES,     'l', "Poles",    "L", BROWN},
-    {ITEM_GRASS,     'g', "Grass",   "G", GREEN},
-    {ITEM_DRIED_GRASS, 'h', "Dried Grass", "H", YELLOW},
-    {ITEM_BRICKS,    'i', "Bricks",   "I", ORANGE},
-    {ITEM_CHARCOAL,  'c', "Charcoal", "C", GRAY},
-    {ITEM_BARK,      'a', "Bark",     "A", BROWN},
-    {ITEM_STRIPPED_LOG, 'e', "Stripped Log", "E", BROWN},
-    {ITEM_SHORT_STRING, 'n', "String",      "N", BEIGE},
-    {ITEM_CORDAGE,      'j', "Cordage",     "J", BEIGE},
+    {ITEM_RED,          'r', "Red",          "R", RED},
+    {ITEM_GREEN,        'g', "Green",        "G", GREEN},
+    {ITEM_BLUE,         'b', "Blue",         "B", BLUE},
+    {ITEM_ROCK,         'o', "Rock",         "O", ORANGE},
+    {ITEM_BLOCKS,       's', "Blocks",       "S", GRAY},
+    {ITEM_LOG,          'w', "Wood",         "W", BROWN},
+    {ITEM_DIRT,         'd', "Dirt",         "D", BROWN},
+    {ITEM_PLANKS,       'p', "Planks",       "P", BROWN},
+    {ITEM_STICKS,       'k', "Sticks",       "K", BROWN},
+    {ITEM_POLES,        'l', "Poles",         "L", BROWN},
+    {ITEM_GRASS,        'm', "Grass",        "M", GREEN},
+    {ITEM_DRIED_GRASS,  'h', "Dried Grass",  "H", YELLOW},
+    {ITEM_BRICKS,       'i', "Bricks",       "I", ORANGE},
+    {ITEM_CHARCOAL,     'c', "Charcoal",     "C", GRAY},
+    {ITEM_BARK,         'a', "Bark",         "A", BROWN},
+    {ITEM_STRIPPED_LOG,  'e', "Stripped Log",  "E", BROWN},
+    {ITEM_SHORT_STRING, 'n', "String",        "N", BEIGE},
+    {ITEM_CORDAGE,      'j', "Cordage",       "J", BEIGE},
+    {ITEM_SAPLING,      't', "Saplings",      "T", GREEN},
+    {ITEM_LEAVES,       'v', "Leaves",        "V", GREEN},
+    {ITEM_CLAY,         'y', "Clay",          "Y", BROWN},
+    {ITEM_GRAVEL,       'q', "Gravel",        "Q", GRAY},
+    {ITEM_SAND,         'z', "Sand",          "Z", YELLOW},
+    {ITEM_PEAT,         'u', "Peat",          "U", BROWN},
+    {ITEM_ASH,          'f', "Ash",           "F", GRAY},
 };
 const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
+
+// Material sub-filter definitions (e.g. wood species within ITEM_LOG)
+// To add a new material sub-filter: just add a row here.
+const StockpileMaterialFilterDef STOCKPILE_MATERIAL_FILTERS[] = {
+    {MAT_OAK,    ITEM_LOG, '1', "Oak",    "1", BROWN},
+    {MAT_PINE,   ITEM_LOG, '2', "Pine",   "2", BROWN},
+    {MAT_BIRCH,  ITEM_LOG, '3', "Birch",  "3", BROWN},
+    {MAT_WILLOW, ITEM_LOG, '4', "Willow", "4", BROWN},
+};
+const int STOCKPILE_MATERIAL_FILTER_COUNT = sizeof(STOCKPILE_MATERIAL_FILTERS) / sizeof(STOCKPILE_MATERIAL_FILTERS[0]);
 
 static inline uint8_t ResolveItemMaterial(ItemType type, uint8_t material) {
     uint8_t mat = (material == MAT_NONE) ? DefaultMaterialForItemType(type) : material;

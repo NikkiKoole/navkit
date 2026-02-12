@@ -99,27 +99,33 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
         snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     }
     const char* cellText = cellBuf;
-    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter, X all, 1-4 wood mats";
+    const char* helpText = "+/- priority, [/] stack, X toggle all, 1-4 wood mats";
 
-    // Measure text
-    int w0 = MeasureText(titleText, 14);
-    int w1 = MeasureText(priorityText, 14);
-    int w2 = MeasureText(stackText, 14);
-    int w3 = MeasureText(storageText, 14);
-    int w4 = MeasureText(fillText, 14);
-    int w5 = MeasureText(cellText, 14);
-    int w6 = MeasureText("Filters: R G B O S W T D", 14);
-    int w7 = MeasureText("Wood mats: 1 2 3 4", 14);
-    int w8 = MeasureText(helpText, 12);
-    int maxW = w0;
-    if (w1 > maxW) maxW = w1;
-    if (w2 > maxW) maxW = w2;
-    if (w3 > maxW) maxW = w3;
-    if (w4 > maxW) maxW = w4;
-    if (w5 > maxW) maxW = w5;
-    if (w6 > maxW) maxW = w6;
-    if (w7 > maxW) maxW = w7;
-    if (w8 > maxW) maxW = w8;
+    // Measure text widths
+    int maxW = MeasureText(titleText, 14);
+    int widths[] = {
+        MeasureText(priorityText, 14),
+        MeasureText(stackText, 14),
+        MeasureText(storageText, 14),
+        MeasureText(fillText, 14),
+        MeasureText(cellText, 14),
+        MeasureText(helpText, 12),
+    };
+    for (int i = 0; i < (int)(sizeof(widths)/sizeof(widths[0])); i++) {
+        if (widths[i] > maxW) maxW = widths[i];
+    }
+    // Estimate filter line width from table
+    int filterLineW = MeasureText("Filters: ", 14);
+    for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
+        filterLineW += MeasureText(STOCKPILE_FILTERS[i].shortName, 14) + 4;
+    }
+    if (filterLineW > maxW) maxW = filterLineW;
+    // Estimate material line width from table
+    int matLineW = MeasureText("Materials: ", 14);
+    for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
+        matLineW += MeasureText(STOCKPILE_MATERIAL_FILTERS[i].shortName, 14) + 4;
+    }
+    if (matLineW > maxW) maxW = matLineW;
 
     int padding = 6;
     int boxW = maxW + padding * 2;
@@ -158,11 +164,10 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(cellText, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
     y += 16;
 
-    // Draw filters with color coding
+    // Draw filters with color coding (data-driven from STOCKPILE_FILTERS table)
     int fx = tx + padding;
     DrawTextShadow("Filters: ", fx, y, 14, WHITE);
     fx += MeasureText("Filters: ", 14);
-    // Display filter status using STOCKPILE_FILTERS table
     for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
         const StockpileFilterDef* filter = &STOCKPILE_FILTERS[i];
         bool allowed = sp->allowedTypes[filter->itemType];
@@ -170,27 +175,19 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
             allowed ? filter->color : DARKGRAY);
         fx += MeasureText(filter->shortName, 14) + 4;
     }
-    
-    // Special case: Saplings (T key toggles sapling type)
-    bool saplingAllowed = sp->allowedTypes[ITEM_SAPLING];
-    DrawTextShadow(saplingAllowed ? "T" : "-", fx, y, 14,
-        saplingAllowed ? GREEN : DARKGRAY);
     y += 18;
 
+    // Draw material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
     int mx = tx + padding;
-    DrawTextShadow("Wood mats: ", mx, y, 14, WHITE);
-    mx += MeasureText("Wood mats: ", 14);
-    DrawTextShadow(sp->allowedMaterials[MAT_OAK] ? "1" : "-", mx, y, 14,
-        sp->allowedMaterials[MAT_OAK] ? BROWN : DARKGRAY);
-    mx += MeasureText("1", 14) + 4;
-    DrawTextShadow(sp->allowedMaterials[MAT_PINE] ? "2" : "-", mx, y, 14,
-        sp->allowedMaterials[MAT_PINE] ? BROWN : DARKGRAY);
-    mx += MeasureText("2", 14) + 4;
-    DrawTextShadow(sp->allowedMaterials[MAT_BIRCH] ? "3" : "-", mx, y, 14,
-        sp->allowedMaterials[MAT_BIRCH] ? BROWN : DARKGRAY);
-    mx += MeasureText("3", 14) + 4;
-    DrawTextShadow(sp->allowedMaterials[MAT_WILLOW] ? "4" : "-", mx, y, 14,
-        sp->allowedMaterials[MAT_WILLOW] ? BROWN : DARKGRAY);
+    DrawTextShadow("Materials: ", mx, y, 14, WHITE);
+    mx += MeasureText("Materials: ", 14);
+    for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
+        const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
+        bool allowed = sp->allowedMaterials[mf->material];
+        DrawTextShadow(allowed ? mf->shortName : "-", mx, y, 14,
+            allowed ? mf->color : DARKGRAY);
+        mx += MeasureText(mf->shortName, 14) + 4;
+    }
     y += 18;
 
     DrawTextShadow(helpText, tx + padding, y, 12, GRAY);

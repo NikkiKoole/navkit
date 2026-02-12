@@ -22,6 +22,19 @@ typedef struct {
 extern const StockpileFilterDef STOCKPILE_FILTERS[];
 extern const int STOCKPILE_FILTER_COUNT;
 
+// Material sub-filter definition (e.g. wood species within ITEM_LOG)
+typedef struct {
+    MaterialType material;
+    ItemType parentItem;     // which item type this is a sub-filter for
+    char key;                // Keyboard key ('1', '2', etc.)
+    const char* displayName;
+    const char* shortName;
+    Color color;
+} StockpileMaterialFilterDef;
+
+extern const StockpileMaterialFilterDef STOCKPILE_MATERIAL_FILTERS[];
+extern const int STOCKPILE_MATERIAL_FILTER_COUNT;
+
 typedef struct {
     int x, y, z;           // top-left corner
     int width, height;

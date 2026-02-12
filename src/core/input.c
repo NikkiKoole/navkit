@@ -1515,50 +1515,27 @@ void HandleInput(void) {
         }
         // Filter toggles - only in normal mode (R/G/B/O aren't used by other modes)
         if (inputMode == MODE_NORMAL) {
-            // Simple item type filters (from STOCKPILE_FILTERS table)
+            // Item type filters (data-driven from STOCKPILE_FILTERS table)
             for (int i = 0; i < STOCKPILE_FILTER_COUNT; i++) {
                 const StockpileFilterDef* filter = &STOCKPILE_FILTERS[i];
                 int rayKey = KEY_A + (filter->key - 'a');  // Convert 'a'-'z' to KEY_A-KEY_Z
                 if (IsKeyPressed(rayKey)) {
                     sp->allowedTypes[filter->itemType] = !sp->allowedTypes[filter->itemType];
-                    const char* name = (filter->itemType == ITEM_LOG) ? "Wood (any)" : filter->displayName;
-                    AddMessage(TextFormat("%s: %s", name, sp->allowedTypes[filter->itemType] ? "ON" : "OFF"), filter->color);
+                    AddMessage(TextFormat("%s: %s", filter->displayName, sp->allowedTypes[filter->itemType] ? "ON" : "OFF"), filter->color);
                     return;
                 }
             }
-            if (IsKeyPressed(KEY_ONE)) {
-                bool newVal = !sp->allowedMaterials[MAT_OAK];
-                sp->allowedMaterials[MAT_OAK] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
-                AddMessage(TextFormat("Wood mat Oak: %s", newVal ? "ON" : "OFF"), BROWN);
-                return;
-            }
-            if (IsKeyPressed(KEY_TWO)) {
-                bool newVal = !sp->allowedMaterials[MAT_PINE];
-                sp->allowedMaterials[MAT_PINE] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
-                AddMessage(TextFormat("Wood mat Pine: %s", newVal ? "ON" : "OFF"), BROWN);
-                return;
-            }
-            if (IsKeyPressed(KEY_THREE)) {
-                bool newVal = !sp->allowedMaterials[MAT_BIRCH];
-                sp->allowedMaterials[MAT_BIRCH] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
-                AddMessage(TextFormat("Wood mat Birch: %s", newVal ? "ON" : "OFF"), BROWN);
-                return;
-            }
-            if (IsKeyPressed(KEY_FOUR)) {
-                bool newVal = !sp->allowedMaterials[MAT_WILLOW];
-                sp->allowedMaterials[MAT_WILLOW] = newVal;
-                if (newVal) sp->allowedTypes[ITEM_LOG] = true;
-                AddMessage(TextFormat("Wood mat Willow: %s", newVal ? "ON" : "OFF"), BROWN);
-                return;
-            }
-            if (IsKeyPressed(KEY_T)) {
-                bool current = sp->allowedTypes[ITEM_SAPLING];
-                sp->allowedTypes[ITEM_SAPLING] = !current;
-                AddMessage(TextFormat("Saplings: %s", !current ? "ON" : "OFF"), GREEN);
-                return;
+            // Material sub-filters (data-driven from STOCKPILE_MATERIAL_FILTERS table)
+            for (int i = 0; i < STOCKPILE_MATERIAL_FILTER_COUNT; i++) {
+                const StockpileMaterialFilterDef* mf = &STOCKPILE_MATERIAL_FILTERS[i];
+                int rayKey = KEY_ZERO + (mf->key - '0');  // Convert '0'-'9' to KEY_ZERO-KEY_NINE
+                if (IsKeyPressed(rayKey)) {
+                    bool newVal = !sp->allowedMaterials[mf->material];
+                    sp->allowedMaterials[mf->material] = newVal;
+                    if (newVal) sp->allowedTypes[mf->parentItem] = true;
+                    AddMessage(TextFormat("%s: %s", mf->displayName, newVal ? "ON" : "OFF"), mf->color);
+                    return;
+                }
             }
             if (IsKeyPressed(KEY_X)) {
                 // Check if any filter is on
