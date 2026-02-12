@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+a.out
 
 # macOS
 .DS_Store
