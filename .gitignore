@@ -1,7 +1,5 @@
 # Build artifacts
-bin/
-build_raylib/
-build_win64/
+build/
 
 # macOS
 .DS_Store

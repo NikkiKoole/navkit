@@ -29,7 +29,7 @@ make test                   # runs all tests (~9s, mover stress tests use 5 iter
 make test-quick             # fast tests (~4s, skips mover tests entirely)
 make test-full              # full tests (~37s, mover stress tests use 20 iterations)
 make debug                  # debug build with sanitizers
-make clean                  # removes bin/
+make clean                  # removes build/
 ```
 
 ### Windows Cross-Compilation
@@ -38,7 +38,7 @@ Build a Windows `.exe` from macOS using mingw-w64:
 
 ```bash
 brew install mingw-w64      # install cross-compiler (one-time)
-make windows                # builds build_win64/path.exe
+make windows                # builds build/win64/path.exe
 ```
 
 The output is a statically linked single `.exe` — no DLLs needed. Raylib is compiled from the vendored source for the Windows target automatically.
@@ -77,7 +77,7 @@ make atlas                  # regenerate embedded atlas only
 2. Place both files in `assets/fonts/` with the same base name (e.g., `myfont.fnt` and `myfont.png`)
 3. Update the Makefile `embed_font` target to point to your font:
    ```makefile
-   ./$(BINDIR)/font_embed assets/fonts/myfont.fnt assets/fonts/myfont_embedded.h
+   ./build/bin/font_embed assets/fonts/myfont.fnt assets/fonts/myfont_embedded.h
    ```
 4. Update the include in `src/main.c`:
    ```c
@@ -96,17 +96,17 @@ make atlas                  # regenerate embedded atlas only
    ```bash
    make path16
    ```
-4. Run with `./bin/path16`
+4. Run with `./build/bin/path16`
 
 The atlas generator validates that both atlases have matching sprite names.
 
 ## Run
 
 ```bash
-./bin/path                # pathfinding demo
-./bin/path --seed 12345   # run with specific world seed (for reproducible terrain)
-./bin/steer               # steering demo
-./bin/crowd               # crowd demo
+./build/bin/path                # pathfinding demo
+./build/bin/path --seed 12345   # run with specific world seed (for reproducible terrain)
+./build/bin/steer               # steering demo
+./build/bin/crowd               # crowd demo
 ```
 
 Raylib is vendored in `vendor/raylib/` and built automatically — no external dependencies needed.
@@ -120,24 +120,24 @@ In-game:
 Inspect save files from the command line (works with `.bin` and `.gz` files):
 
 ```bash
-./bin/path --inspect debug_save.bin                    # summary (includes world seed)
-./bin/path --inspect saves/bug_name.bin.gz             # works with gzipped files too
-./bin/path --inspect debug_save.bin --mover 0          # mover details
-./bin/path --inspect debug_save.bin --item 5           # item details
-./bin/path --inspect debug_save.bin --job 3            # job details
-./bin/path --inspect debug_save.bin --stockpile 0      # stockpile details
-./bin/path --inspect debug_save.bin --cell 10,20,0     # cell at (x,y,z)
-./bin/path --inspect debug_save.bin --designations     # all designations (MINE/CHANNEL/etc)
-./bin/path --inspect debug_save.bin --stuck            # movers stuck > 2s
-./bin/path --inspect debug_save.bin --reserved         # items with reservations
-./bin/path --inspect debug_save.bin --jobs-active      # all active jobs
-./bin/path --inspect debug_save.bin --entrances        # HPA* graph: chunk entrances summary
-./bin/path --inspect debug_save.bin --entrances 1      # HPA* entrances at z=1 only
+./build/bin/path --inspect debug_save.bin                    # summary (includes world seed)
+./build/bin/path --inspect saves/bug_name.bin.gz             # works with gzipped files too
+./build/bin/path --inspect debug_save.bin --mover 0          # mover details
+./build/bin/path --inspect debug_save.bin --item 5           # item details
+./build/bin/path --inspect debug_save.bin --job 3            # job details
+./build/bin/path --inspect debug_save.bin --stockpile 0      # stockpile details
+./build/bin/path --inspect debug_save.bin --cell 10,20,0     # cell at (x,y,z)
+./build/bin/path --inspect debug_save.bin --designations     # all designations (MINE/CHANNEL/etc)
+./build/bin/path --inspect debug_save.bin --stuck            # movers stuck > 2s
+./build/bin/path --inspect debug_save.bin --reserved         # items with reservations
+./build/bin/path --inspect debug_save.bin --jobs-active      # all active jobs
+./build/bin/path --inspect debug_save.bin --entrances        # HPA* graph: chunk entrances summary
+./build/bin/path --inspect debug_save.bin --entrances 1      # HPA* entrances at z=1 only
 
 # Path testing with algorithm selection
-./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1              # test path (A* default)
-./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo hpa   # test with HPA*
-./bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo jps   # test with JPS
+./build/bin/path --inspect debug_save.bin --path 8,17,1 12,16,1              # test path (A* default)
+./build/bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo hpa   # test with HPA*
+./build/bin/path --inspect debug_save.bin --path 8,17,1 12,16,1 --algo jps   # test with JPS
 ```
 
 Bug save workflow: F5 to save → rename `saves/*.bin.gz` to something meaningful → inspect later.
@@ -148,17 +148,17 @@ Run simulation without GUI for debugging and automated testing:
 
 ```bash
 # Run 100 ticks (default)
-./bin/path --headless --load save.bin.gz
+./build/bin/path --headless --load save.bin.gz
 
 # Run custom number of ticks
-./bin/path --headless --load save.bin.gz --ticks 500
+./build/bin/path --headless --load save.bin.gz --ticks 500
 
 # Run and show mover state after
-./bin/path --headless --load save.bin.gz --ticks 100 --mover all
-./bin/path --headless --load save.bin.gz --ticks 100 --mover 0
+./build/bin/path --headless --load save.bin.gz --ticks 100 --mover all
+./build/bin/path --headless --load save.bin.gz --ticks 100 --mover 0
 
 # Run and save result
-./bin/path --headless --load save.bin.gz --ticks 100 --save /tmp/after.bin
+./build/bin/path --headless --load save.bin.gz --ticks 100 --save /tmp/after.bin
 ```
 
 Output includes tick count, performance (ms/tick), movers stuck in non-walkable cells before/after, and movers with no pathfinding progress.

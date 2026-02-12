@@ -30,7 +30,7 @@ make test_high_speed   # Run high-speed simulation tests
 Add `-v` flag to see raylib log output:
 
 ```bash
-./bin/test_mover -v
+./build/bin/test_mover -v
 ```
 
 ## Running Benchmarks
@@ -145,7 +145,7 @@ int main(int argc, char* argv[]) {
    
    test_<system>: $(BINDIR)
        $(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_<system>_SRC) $(LDFLAGS)
-       ./$(BINDIR)/test_<system>
+       ./build/bin/test_<system>
    ```
 4. Add to the `test:` target
 5. Add to `.PHONY` line

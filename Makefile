@@ -7,21 +7,20 @@ GENERATE_16X16 ?= 0
 
 CFLAGS  := -std=c11 -O2 -g -I. -Ivendor -Wall -Wextra
 
-BINDIR := bin
+BINDIR := build/bin
 
 # ---------------------------------------------------------------------------
 # Vendored raylib (built from vendor/raylib/)
 # ---------------------------------------------------------------------------
 RAYLIB_DIR    := vendor/raylib
-RAYLIB_BUILDDIR := build_raylib
+RAYLIB_BUILDDIR := build/raylib
 RAYLIB_LIB    := $(RAYLIB_BUILDDIR)/libraylib.a
 RAYLIB_CFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
                  -DPLATFORM_DESKTOP -DGRAPHICS_API_OPENGL_33 \
                  -Wno-unused-function -Wno-unused-variable -Wno-unused-parameter \
                  -Wno-missing-field-initializers -Wno-implicit-fallthrough
 RAYLIB_SRCS   := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
-                 $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
-                 $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
+                 $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/raudio.c $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
 RAYLIB_OBJS   := $(patsubst $(RAYLIB_DIR)/%.c,$(RAYLIB_BUILDDIR)/raylib_%.o,$(RAYLIB_SRCS))
 
 # macOS link flags for raylib (static)
@@ -296,7 +295,7 @@ path-sound: $(RAYLIB_LIB)
 # ---------------------------------------------------------------------------
 WIN_CC      := x86_64-w64-mingw32-gcc
 WIN_AR      := x86_64-w64-mingw32-ar
-WIN_BINDIR  := build_win64
+WIN_BINDIR  := build/win64
 WIN_RAYLIB  := $(WIN_BINDIR)/libraylib.a
 WIN_CFLAGS  := -std=c11 -O2 -I. -Ivendor -Wall -Wextra
 WIN_RCFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/include \
@@ -305,8 +304,7 @@ WIN_RCFLAGS := -std=c11 -O2 -I$(RAYLIB_DIR) -I$(RAYLIB_DIR)/external/glfw/includ
                -Wno-missing-field-initializers -Wno-implicit-fallthrough
 WIN_LDFLAGS := -L$(WIN_BINDIR) -lraylib -lopengl32 -lgdi32 -lwinmm -lm -lpthread -static -mwindows
 WIN_RAYLIB_SRCS := $(RAYLIB_DIR)/rcore.c $(RAYLIB_DIR)/rshapes.c $(RAYLIB_DIR)/rtextures.c \
-                   $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/rmodels.c $(RAYLIB_DIR)/raudio.c \
-                   $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
+                   $(RAYLIB_DIR)/rtext.c $(RAYLIB_DIR)/raudio.c $(RAYLIB_DIR)/utils.c $(RAYLIB_DIR)/rglfw.c
 WIN_RAYLIB_OBJS := $(patsubst $(RAYLIB_DIR)/%.c,$(WIN_BINDIR)/raylib_%.o,$(WIN_RAYLIB_SRCS))
 
 $(WIN_BINDIR):
@@ -325,6 +323,9 @@ windows: $(WIN_RAYLIB)
 
 clean:
 	rm -rf $(BINDIR) $(WIN_BINDIR)
+
+clean-raylib:
+	rm -rf $(RAYLIB_BUILDDIR)
 
 clean-atlas:
 	rm -f assets/atlas.h assets/atlas8x8.h assets/atlas8x8.png assets/atlas16x16.h assets/atlas16x16.png
@@ -350,4 +351,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows

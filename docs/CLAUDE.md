@@ -5,10 +5,10 @@
 ## Build & Run
 
 ```bash
-make path         # build main binary (not just `make`)
-./bin/path        # run
-make test         # run tests
-make debug        # debug build with sanitizers
+make path              # build main binary (not just `make`)
+./build/bin/path       # run
+make test              # run tests
+make debug             # debug build with sanitizers
 ```
 
 ## Debug Tips
@@ -65,17 +65,17 @@ F5                    # Quick save
 F6                    # Quick load
 
 # CLI inspection
-./bin/path --inspect save.bin              # Summary
-./bin/path --inspect save.bin --mover 0    # Mover details
-./bin/path --inspect save.bin --stuck      # Movers stuck > 2s
-./bin/path --inspect save.bin --jobs-active
-./bin/path --inspect save.bin --path 8,17,1 12,16,1 --algo hpa
+./build/bin/path --inspect save.bin              # Summary
+./build/bin/path --inspect save.bin --mover 0    # Mover details
+./build/bin/path --inspect save.bin --stuck      # Movers stuck > 2s
+./build/bin/path --inspect save.bin --jobs-active
+./build/bin/path --inspect save.bin --path 8,17,1 12,16,1 --algo hpa
 ```
 
 ## Headless Mode
 
 ```bash
-./bin/path --headless --load save.bin.gz --ticks 100
+./build/bin/path --headless --load save.bin.gz --ticks 100
 ```
 
 ---

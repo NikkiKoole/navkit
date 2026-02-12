@@ -6,13 +6,13 @@ This document explains how to debug the navkit codebase using the `--inspect` an
 
 ```bash
 # Inspect a save file (summary)
-./bin/path --inspect saves/my-save.bin.gz
+./build/bin/path --inspect saves/my-save.bin.gz
 
 # Run simulation headless for 500 ticks
-./bin/path --headless --load saves/my-save.bin.gz --ticks 500
+./build/bin/path --headless --load saves/my-save.bin.gz --ticks 500
 
 # Combine: run headless, then inspect specific mover
-./bin/path --headless --load saves/my-save.bin.gz --ticks 100 --mover 0
+./build/bin/path --headless --load saves/my-save.bin.gz --ticks 100 --mover 0
 ```
 
 ## The Inspect Tool
@@ -22,7 +22,7 @@ The `--inspect` flag loads a save file and prints information without starting t
 ### Basic Usage
 
 ```bash
-./bin/path --inspect <savefile> [options]
+./build/bin/path --inspect <savefile> [options]
 ```
 
 Both `.bin` and `.bin.gz` files are supported. Gzipped files are automatically decompressed to `/tmp/`.
@@ -32,7 +32,7 @@ Both `.bin` and `.bin.gz` files are supported. Gzipped files are automatically d
 Running without options prints a summary:
 
 ```bash
-./bin/path --inspect saves/bug.bin.gz
+./build/bin/path --inspect saves/bug.bin.gz
 ```
 
 Output:
@@ -64,7 +64,7 @@ Drill into specific entities by index:
 Example - inspecting a mover:
 
 ```bash
-./bin/path --inspect save.bin.gz --mover 0
+./build/bin/path --inspect save.bin.gz --mover 0
 ```
 
 Output:
@@ -94,7 +94,7 @@ Job ID: 2
 Inspect a specific grid cell:
 
 ```bash
-./bin/path --inspect save.bin.gz --cell 10,20,1
+./build/bin/path --inspect save.bin.gz --cell 10,20,1
 ```
 
 Output:
@@ -120,7 +120,7 @@ This shows the cell type, walkability reason, floor flag, water/fire/smoke/tempe
 Test if a path exists between two points:
 
 ```bash
-./bin/path --inspect save.bin.gz --path 5,5,0 20,15,1
+./build/bin/path --inspect save.bin.gz --path 5,5,0 20,15,1
 ```
 
 Output:
@@ -138,7 +138,7 @@ Path: FOUND (23 steps)
 View a region of the grid:
 
 ```bash
-./bin/path --inspect save.bin.gz --map 30,30,1 15
+./build/bin/path --inspect save.bin.gz --map 30,30,1 15
 ```
 
 The format is `--map X,Y,Z [radius]`. Default radius is 10.
@@ -169,7 +169,7 @@ Find problems across all entities:
 Example - finding stuck movers:
 
 ```bash
-./bin/path --inspect save.bin.gz --stuck
+./build/bin/path --inspect save.bin.gz --stuck
 ```
 
 Output:
@@ -192,7 +192,7 @@ The `--headless` flag runs the simulation without GUI. Use this for:
 ### Basic Usage
 
 ```bash
-./bin/path --headless --load <savefile> [options]
+./build/bin/path --headless --load <savefile> [options]
 ```
 
 ### Options
@@ -208,23 +208,23 @@ The `--headless` flag runs the simulation without GUI. Use this for:
 1. User reports a bug with a save file
 2. Run it headless to see current state:
    ```bash
-   ./bin/path --headless --load bug.bin.gz --ticks 0
+   ./build/bin/path --headless --load bug.bin.gz --ticks 0
    ```
 
 3. Run forward and check if movers get stuck:
    ```bash
-   ./bin/path --headless --load bug.bin.gz --ticks 500
+   ./build/bin/path --headless --load bug.bin.gz --ticks 500
    ```
 
 4. Inspect specific mover after running:
    ```bash
-   ./bin/path --headless --load bug.bin.gz --ticks 500 --mover 0
+   ./build/bin/path --headless --load bug.bin.gz --ticks 500 --mover 0
    ```
 
 5. Save the result for further analysis:
    ```bash
-   ./bin/path --headless --load bug.bin.gz --ticks 500 --save /tmp/after.bin
-   ./bin/path --inspect /tmp/after.bin --stuck
+   ./build/bin/path --headless --load bug.bin.gz --ticks 500 --save /tmp/after.bin
+   ./build/bin/path --inspect /tmp/after.bin --stuck
    ```
 
 ### Output
@@ -242,63 +242,63 @@ Headless mode prints:
 1. Save the game (F5)
 2. Inspect the mover:
    ```bash
-   ./bin/path --inspect saves/*.bin.gz --mover N
+   ./build/bin/path --inspect saves/*.bin.gz --mover N
    ```
 3. Check: Does it have a path? Is `needsRepath` true? What's `timeWithoutProgress`?
 4. Inspect the goal cell:
    ```bash
-   ./bin/path --inspect saves/*.bin.gz --cell X,Y,Z
+   ./build/bin/path --inspect saves/*.bin.gz --cell X,Y,Z
    ```
 5. Is the goal walkable? Test path:
    ```bash
-   ./bin/path --inspect saves/*.bin.gz --path MX,MY,MZ GX,GY,GZ
+   ./build/bin/path --inspect saves/*.bin.gz --path MX,MY,MZ GX,GY,GZ
    ```
 
 ### "Job not completing" issues
 
 1. Find the mover's job:
    ```bash
-   ./bin/path --inspect save.bin.gz --mover N
+   ./build/bin/path --inspect save.bin.gz --mover N
    ```
 2. Inspect the job:
    ```bash
-   ./bin/path --inspect save.bin.gz --job J
+   ./build/bin/path --inspect save.bin.gz --job J
    ```
 3. Check the job step, target item/stockpile/blueprint
 4. If hauling, check item reservation:
    ```bash
-   ./bin/path --inspect save.bin.gz --item I
+   ./build/bin/path --inspect save.bin.gz --item I
    ```
 5. If building, check blueprint state:
    ```bash
-   ./bin/path --inspect save.bin.gz --blueprint B
+   ./build/bin/path --inspect save.bin.gz --blueprint B
    ```
 
 ### "Items not being hauled" issues
 
 1. Check reserved items:
    ```bash
-   ./bin/path --inspect save.bin.gz --reserved
+   ./build/bin/path --inspect save.bin.gz --reserved
    ```
 2. Check active jobs:
    ```bash
-   ./bin/path --inspect save.bin.gz --jobs-active
+   ./build/bin/path --inspect save.bin.gz --jobs-active
    ```
 3. Inspect stockpiles for free slots:
    ```bash
-   ./bin/path --inspect save.bin.gz --stockpile N
+   ./build/bin/path --inspect save.bin.gz --stockpile N
    ```
 
 ### "Mining not working" issues
 
 1. Check designations:
    ```bash
-   ./bin/path --inspect save.bin.gz --designations
+   ./build/bin/path --inspect save.bin.gz --designations
    ```
 2. Look for `[UNREACHABLE]` markers
 3. Test path from mover to designation:
    ```bash
-   ./bin/path --inspect save.bin.gz --path MX,MY,MZ DX,DY,DZ
+   ./build/bin/path --inspect save.bin.gz --path MX,MY,MZ DX,DY,DZ
    ```
 
 ## Understanding Job Steps

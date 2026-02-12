@@ -15,7 +15,7 @@ If the test doesn't pass, the feature isn't done.
 ## 2. Verify In-Game or Headless
 
 ```bash
-./bin/path --headless --load save.bin.gz --ticks 500
+./build/bin/path --headless --load save.bin.gz --ticks 500
 ```
 
 Don't trust "it compiles" - actually see movers do the job.
@@ -36,9 +36,9 @@ For any new job type:
 ## 4. Use Inspector to Verify State
 
 ```bash
-./bin/path --inspect save.bin.gz --designations    # See waiting work
-./bin/path --inspect save.bin.gz --mover 0         # Check capabilities
-./bin/path --inspect save.bin.gz --jobs-active     # See assigned jobs
+./build/bin/path --inspect save.bin.gz --designations    # See waiting work
+./build/bin/path --inspect save.bin.gz --mover 0         # Check capabilities
+./build/bin/path --inspect save.bin.gz --jobs-active     # See assigned jobs
 ```
 
 ## 5. UI for Testing
