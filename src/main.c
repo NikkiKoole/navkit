@@ -883,7 +883,7 @@ int main(int argc, char** argv) {
     printf("World seed: %llu\n", (unsigned long long)worldSeed);
 
     int screenWidth = 1280, screenHeight = 800;
-    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
     InitWindow(screenWidth, screenHeight, "HPA* Pathfinding");
     SetExitKey(0);  // Disable ESC closing the window - we use ESC for input navigation
     atlas = AtlasLoadEmbedded();

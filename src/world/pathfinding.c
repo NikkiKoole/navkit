@@ -2395,6 +2395,13 @@ int FindPath(PathAlgorithm algo, Point start, Point goal, Point* outPath, int ma
     goalPos = savedGoal;
     pathLength = savedPathLength;
     
+    // Warn if path length is near capacity (could indicate truncation)
+    if (len > 0 && len >= maxLen * 9 / 10) {
+        TraceLog(LOG_WARNING, "Path near MAX_PATH limit: %d/%d (%.0f%%) from (%d,%d,%d) to (%d,%d,%d)",
+                 len, maxLen, (float)len / maxLen * 100.0f,
+                 start.x, start.y, start.z, goal.x, goal.y, goal.z);
+    }
+
     // Track stats
     statsPathCount++;
     statsTotalTime += lastPathTime;
