@@ -87,14 +87,15 @@ Identifies the smallest set of items needed to enable early survival builds.
 - Sticks harvestable from living trees via tree harvest system (no sawmill needed).
 - Minimal survival build set: shelter (poles+cordage done, thatch roofing not yet), fire (hearth done), water (UI not yet), storage (not yet).
 
-### [Construction Staging](construction-staging.md)
-Replaces instant "item becomes wall" with a multi-step build process.
-- Walls: frame stage (sticks/planks) then fill stage (planks/bricks/blocks).
-- Floors: base layer (dirt/gravel) then finish layer (planks/bricks/blocks).
-- Ladders/ramps stay single-stage for now.
-- Data model: add a `stage` field to Blueprint/Job plus per-stage input requirements.
-- Each stage is a distinct hauling burst, making stockpile logistics meaningful.
-- Defers: weather/curing timers, tool checks, multi-colonist stages.
+### [Construction Staging](construction-staging.md) — IMPLEMENTED
+Multi-step build process replacing instant construction. **Moved to `docs/done/design/`.**
+- 3 multi-stage recipes: wattle & daub (2-stage), plank wall (2-stage), thatch floor (2-stage).
+- Frame stage uses sticks + cordage; fill stage uses planks/dirt/clay/dried grass.
+- Single-stage recipes: dry stone wall, log wall, brick wall, plank floor, brick floor, ladder, ramp.
+- Blueprint struct has `stage`, `stageDeliveries[]`, `consumedItems[]`.
+- Lossy refund (75%) for completed stages on cancellation, 100% for current stage.
+- UI: "S1/S2" overlay, "Stage: X/Y" tooltip.
+- Deferred: weather/curing timers, tool checks, multi-colonist stages.
 
 ### [Seasoning & Curing](seasoning-curing.md)
 Adds material states that evolve over time, making stockpiles feel like conditioning zones.
@@ -112,9 +113,9 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 **Three gateway items -- ALL DONE.** Dried grass, cordage, and poles were identified across nearly every document as the minimum additions. All three are now implemented: dried grass (Drying Rack), cordage (Rope Maker chain), poles (tree harvest). The next bottleneck is giving cordage a *sink* via construction staging.
 
-**Construction as a pipeline, not an instant.** Construction staging and seasoning/curing are designed as a pair. Staging splits building into frame-then-fill steps; seasoning makes the materials for those steps require time in stockpiles. Together they turn "place wall" into "harvest, condition, haul frame materials, haul fill materials, wait for cure."
+**Construction as a pipeline, not an instant.** Construction staging is **implemented** — multi-stage frame-then-fill for wattle & daub, plank wall, and thatch floor. Each stage triggers a separate hauling burst, making stockpile logistics meaningful. Seasoning/curing (the other half of the pair) is still future — would make materials require time in stockpiles before use.
 
-**Stockpiles become meaningful.** Seasoning/curing turns stockpiles into conditioning zones (dry shed vs wet riverbank). Construction staging turns them into logistics hubs (each stage triggers a hauling burst). Multiple docs reference this as the key payoff.
+**Stockpiles become meaningful.** Construction staging already turns stockpiles into logistics hubs (each stage triggers a hauling burst). Seasoning/curing (future) would further turn stockpiles into conditioning zones (dry shed vs wet riverbank).
 
 **Fuel loop closure.** The hearth closes the fuel loop by consuming any fuel item and producing ash. All fuel items now have a sink. ASH itself still needs sinks (cement, fertilizer).
 
@@ -144,7 +145,7 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - ITEM_POLES from tree branches. Branch cells use thin per-species sprites.
 - Tree trunk taper: top 1-2 trunk cells become CELL_TREE_BRANCH (thin sprite at canopy, thick at base).
 - Water, fire/smoke/steam, and temperature systems are in place.
-- Lighting system (partial): sky light (column scan + BFS spread) + block light (colored BFS from sources). UI panel with toggles. Sandbox torch placement. Save/load (v37). Tests (48 tests, 5241 assertions).
+- Lighting system: sky light (column scan + BFS spread), block light (colored BFS from sources), depth-tint integration, UI panel with toggles, sandbox torch placement, save/load (v37), 48 tests. Only missing: fire cells don't auto-emit light.
 - Floor dirt tracking and cleaning system (save v36). Movers track dirt from natural soil onto constructed floors. Designation-based cleaning jobs.
 - Data-driven action registry (action_registry.c): single source of truth for all action metadata.
 - Data-driven item metadata with designated initializers.
@@ -154,51 +155,51 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 - Tree harvest system (save v34): gather sticks + leaves from living trees without chopping. `treeHarvestState` uint8_t grid on trunk base cells, max 2 harvests before depletion, ~60s regen per level (reuses growthTimer on idle mature trunks). Full pipeline: DESIGNATION_GATHER_TREE → JOBTYPE_GATHER_TREE → ACTION_WORK_GATHER_TREE under Work > Harvest > gather [T]ree. Overlay + progress bar, tooltip shows harvest state.
 - Terrain sculpting (sandbox mode): instant lower/raise/smooth terrain with circular brush. Brush sizes 1x1 to 7x7. Left-drag raise, right-drag lower, hold S to smooth. Freehand stroke interpolation. Enables river carving, moats, terrain leveling.
 - Sapling/leaf item unification (save v32): consolidated 8 separate types into 2 unified types (ITEM_SAPLING, ITEM_LEAVES) using material field for species.
+- Construction staging (multi-stage building): Blueprint struct has `stage` field, `stageDeliveries[]`, `consumedItems[]`. 3 multi-stage recipes: wattle & daub (frame: sticks+cordage, fill: dirt/clay), plank wall (frame: sticks+cordage, fill: planks), thatch floor (base: dirt/gravel/sand, finish: dried grass). Stage progression resets delivery tracking. Lossy refund (75%) for completed stages on cancellation. UI shows "S1/S2" overlay and "Stage: X/Y" tooltip.
+- Cordage has sinks: used in wattle & daub wall frame (1 cordage) and plank wall frame (1 cordage). Fiber loop closed.
+- Sand and dirt have construction sinks: dirt used in wattle & daub fill + thatch floor base, sand used in thatch floor base.
+- Water placement tools in sandbox UI: ACTION_SANDBOX_WATER with click=water, shift+click=source, right-click=remove, shift+right=drain.
+- Rock gathering: mining is bare-hands (all movers have canMine=true by default, no tools required). Rocks are regular ground items hauled normally.
 
 **Not yet implemented:**
 - No Glass Kiln, Pottery Wheel, or any tier 2+ workshop beyond Rope Maker.
-- No construction staging (walls/floors are still single-step).
 - No seasoning/curing (no item condition states or timers).
 - No moisture states (no MoistureState enum or moisture ticks).
 - No stockpile environment tags (dry/wet/covered).
 - No water-dependent workshops (mud mixer, brick drying, etc.).
 - No tree stumps/coppicing.
 - No containers, tools, durability, or quality systems.
-- No early-game rock gathering (no boulders, river stones, or surface scatter — mining is the only rock source).
-- Sand and dirt have no recipe sinks.
+- ASH, POLES still have no recipe sinks.
+- Sand/dirt partially addressed (construction sinks) but no Glass Kiln or farming yet.
 - Block walls/floors don't have distinct sprites yet (blocks use the material's default sprite).
 - Brick walls/floors don't have distinct sprites yet either.
 - Terrain generation only uses MAT_GRANITE — sandstone/slate don't appear naturally yet.
-- Water placement tools not yet in UI (SetWaterSource/SetWaterDrain functions exist but no player actions).
-- Lighting system: still needs depth-brown tint on torch-lit areas below.
+- Fire cells don't auto-emit light (fire is visually bright but doesn't illuminate surroundings).
 
 ---
 
 ## Suggested Next Moves
 
-### Era 0 Completeness (Bare Hands)
-The early game (before sawmill/kiln) needs more material sources that don't require tools:
-
+### Recently Completed
 1. ~~**Cordage chain.**~~ **DONE.** Rope Maker workshop with Twist Bark, Twist Grass, Braid Cordage recipes. Bark loop closed.
+2. ~~**Construction staging.**~~ **DONE.** Multi-stage frame-then-fill for wattle & daub, plank wall, thatch floor. Cordage used as frame lashing. Fiber loop closed.
+3. ~~**Cordage sinks.**~~ **DONE.** Wattle & daub + plank wall frames consume cordage.
+4. ~~**Sand/dirt partial sinks.**~~ **DONE.** Used in construction recipes (thatch floor base, wattle & daub fill).
+5. ~~**Water placement tools.**~~ **DONE.** ACTION_SANDBOX_WATER in sandbox mode.
+6. ~~**Material floor/wall sinks.**~~ **Mostly done.** Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
 
-2. **Early-game rock gathering.** Mining is currently the only rock source, but mining implies tools. Three bare-hands sources:
-   - **Surface scatter** — spawn loose ITEM_ROCK on ground near exposed stone during worldgen. Free pickup, finite.
-   - **Boulders** — lone 1-cell natural stone walls on the surface. Designate → bare-hands work → ITEM_ROCK x3-5, wall consumed. Reuses gather designation pattern.
-   - **River stones** — rocks found near water. Worldgen scatter or gather designation near water cells.
-
-3. **Water placement tools.** SetWaterSource/SetWaterDrain functions already exist — just need UI actions. Minimal work, unblocks water-dependent crafting later.
+### Visual Polish
+1. **Block/brick wall sprites.** Blocks and bricks render with generic wall sprite. Need distinct SPRITE_wall_stone_block, SPRITE_wall_brick, etc.
+2. **Sandstone/slate worldgen.** MAT_SANDSTONE and MAT_SLATE exist and are placeable but don't appear in terrain generation. Add geological layers.
 
 ### Production Chain Extensions
-
-4. ~~**Material floor/wall sinks.**~~ **Mostly done.** Still open: distinct block and brick wall/floor sprites, and natural generation of sandstone/slate.
-
-5. **Two-stage construction (frame then fill).** Add a `stage` field to blueprints/jobs. Frame stage uses sticks or planks; fill stage uses planks, bricks, or blocks. Smallest change that makes building feel earned and makes stockpile logistics matter.
-
-6. **Sand and dirt sinks.** Glass Kiln (sand + fuel → GLASS) is simplest. Farming (dirt as soil) is a larger system. Mud Mixer (dirt + clay + water → MUD) bridges both.
+3. **Remaining sand/dirt sinks.** Glass Kiln (sand + fuel → GLASS) is simplest. Farming (dirt as soil) is a larger system. Mud Mixer (dirt + clay + water → MUD) bridges both.
+4. **ASH sinks.** Cement recipe (ASH + CLAY → BLOCKS) at Stonecutter, or fertilizer for future farming.
+5. **POLES sinks.** Could be used in lean-to or scaffold construction recipes.
+6. **Fire auto-light.** Active fire cells should emit proportional block light. Small integration task.
 
 ### Larger Systems (Later)
-
-7. **Water-dependent crafting (mud/cob system).** Requires moisture states, placement validators, stockpile tags, passive moisture ticks. Enables wattle-and-daub shelter. Prerequisites: water placement tools, terrain sculpting (for river carving).
+7. **Water-dependent crafting (mud/cob system).** Requires moisture states, placement validators, stockpile tags, passive moisture ticks. Prerequisites: terrain sculpting (done), water placement (done in sandbox).
 
 8. **Item condition states (seasoning/curing).** Lightweight condition enum + timer on items. Start with wood (green/seasoned). Hook into stockpile environment tags.
 

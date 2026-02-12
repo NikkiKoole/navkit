@@ -890,6 +890,8 @@ int main(int argc, char** argv) {
     SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
     Font comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
+    Console_Init();
+    SetTraceLogCallback(Console_LogCallback);
     SetTargetFPS(60);
     use8Dir = true;
     InitGridWithSizeAndChunkSize(32, 32, 8, 8);
@@ -967,7 +969,13 @@ int main(int argc, char** argv) {
             ui_add_block_rect((Rectangle){barX, barY, GetScreenWidth() - barX, barH});
         }
 
-        HandleInput();
+        // Developer console
+        if (IsKeyPressed(KEY_GRAVE)) Console_Toggle();
+        if (Console_IsOpen()) {
+            Console_Update();
+        } else {
+            HandleInput();
+        }
 
         // Cutscene test key
         if (IsKeyPressed(KEY_I)) {
@@ -1521,6 +1529,7 @@ int main(int argc, char** argv) {
         }
 
         DrawTooltip();
+        Console_Draw();
 
         // Cutscene system (renders as overlay on top of game)
         if (IsCutsceneActive()) {

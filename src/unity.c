@@ -55,6 +55,7 @@
 
 // UI systems
 #include "ui/cutscene.c"
+#include "ui/console.c"
 
 // Entry point (contains global state definitions)
 #include "main.c"

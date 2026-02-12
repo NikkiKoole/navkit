@@ -10,71 +10,37 @@ An analysis of what's missing from the current progression system and how to com
 
 ## Critical Gaps in Current Progression
 
-### 1. **Rock Gathering is Unrealistic** 🔴
+### 1. ~~**Rock Gathering is Unrealistic**~~ RESOLVED
 
-**Problem:** Story says "mining with bare hands" but that's not believable for the first minutes of play.
+**Original concern:** "mining with bare hands" not believable.
 
-**Solutions (from docs/todo/design/primitives-missing.md):**
-- **Surface scatter** - spawn loose ITEM_ROCK on ground near stone during worldgen (finite, free pickup)
-- **Boulders** - lone 1-cell natural stone walls on surface → designate → gather → 3-5 rocks, wall consumed
-- **River stones** - rocks near water, bare-hands gathering
+**Resolution:** Mining is bare-hands by default — all movers have `canMine=true` with no tool requirement. Rocks are regular ground items that movers haul normally. This is consistent with the game's current "no tools" state. When tools are added later, mining could be gated behind a pickaxe, at which point surface scatter/boulders would become relevant as an early-game source.
 
-**Impact:** Enables stonecutter without mining, makes early game feel grounded.
-
-**Implementation Notes:**
-- Surface scatter: worldgen spawns random ITEM_ROCK near exposed MAT_GRANITE/SANDSTONE/SLATE cells
-- Boulder designation: reuse DESIGNATION_GATHER pattern, new JOBTYPE_GATHER_BOULDER
-- River stones: similar to surface scatter but near water cells
+**Optional future enhancement:** Surface scatter, boulders, or river stones could add variety to rock sourcing even without tool gating.
 
 ---
 
-### 2. **Cordage Has No Purpose** 🔴 (PARTIALLY ADDRESSED)
+### 2. ~~**Cordage Has No Purpose**~~ RESOLVED
 
-**Problem:** SHORT_STRING and CORDAGE exist in code but aren't used anywhere. The rope maker produces them, then... nothing.
+**Original problem:** SHORT_STRING and CORDAGE existed but weren't used anywhere.
 
-**Current State (updated 2026-02-12):**
-- ITEM_SHORT_STRING exists (from bark x2 -> 3 string, or dried grass x4 -> 2 string)
-- ITEM_CORDAGE exists (from short string x3 -> 1 cordage)
-- Rope Maker workshop implemented with all recipes
-- Full fiber chain works: bark/dried grass -> short string -> cordage
-- **But NO recipes or construction uses cordage as input -- this is the key remaining gap**
+**Resolution (2026-02-12):** Construction staging implemented. Cordage is now consumed by:
+- Wattle & daub wall, frame stage: 2 STICKS + 1 CORDAGE
+- Plank wall, frame stage: 2 STICKS + 1 CORDAGE
 
-**Solutions (from docs/todo/design/construction-staging.md):**
-- **Construction staging** - walls need cordage to bind frame together
-  - Frame stage: STICKS + CORDAGE → frame
-  - Fill stage: PLANKS/BRICKS/BLOCKS → finished wall
-- **Primitive construction** - lean-to, wattle-and-daub needs cordage as lashing
-
-**Impact:** Closes the fiber loop, makes cordage meaningful, adds construction depth.
-
-**Implementation Notes:**
-- Add `stage` field to Blueprint struct
-- Add per-stage input requirements to blueprint system
-- Frame stage recipe: 2 STICKS + 1 CORDAGE (creates frame structure)
-- Fill stage recipe: varies by material (4 PLANKS, 6 BRICKS, 4 BLOCKS)
+Fiber loop is now **CLOSED**: bark/dried grass → short string → cordage → construction.
 
 ---
 
-### 3. **No Primitive Shelter** 🔴
+### 3. ~~**No Primitive Shelter**~~ MOSTLY RESOLVED
 
-**Problem:** Mover goes from nothing → stone blocks. No intermediate shelter tier.
+**Original problem:** No intermediate shelter between nothing and stone blocks.
 
-**Current Gap:**
-- Smallest buildable structure uses PLANKS (requires sawmill) or BLOCKS (requires stonecutter + mining)
-- No "day 1" shelter option using only gathered materials
+**Resolution (2026-02-12):** Two primitive construction options now exist:
+- **Wattle & daub wall** (2-stage): frame (sticks + cordage) → fill (dirt or clay). Uses only gathered materials.
+- **Thatch floor** (2-stage): base (dirt/gravel/sand) → finish (dried grass).
 
-**Solutions (from docs/todo/design/primitives-missing.md + workshops-master.md):**
-- **Thatch roofing** - DRIED_GRASS as roofing material (item already exists)
-- **Wattle-and-daub walls** - STICKS + CORDAGE frame + DIRT/CLAY daub
-- **Lean-to structure** - POLES + CORDAGE + DRIED_GRASS (simple 1x2 shelter)
-
-**Impact:** Natural progression: lean-to → wattle-daub hut → wood cabin → stone keep.
-
-**Implementation Notes:**
-- New wall type: CELL_WALL with MAT_WATTLE_DAUB material
-- Construction recipe: Frame stage (STICKS + CORDAGE) + Daub stage (DIRT or CLAY x3)
-- New roof/floor type using DRIED_GRASS (thatch material)
-- Lean-to as single-tile angled structure (new cell type or special blueprint)
+**Remaining:** Lean-to structure (POLES + CORDAGE + DRIED_GRASS) not yet implemented. POLES still have no construction sink.
 
 ---
 
