@@ -1,6 +1,7 @@
 # Workshops & Item Loops - Master Document
 
 Date: 2026-02-09
+Updated: 2026-02-12
 Status: Living document - update as implementation progresses
 
 ---
@@ -37,12 +38,15 @@ When documenting future ideas, mark dependencies:
 
 ### Workshops
 
-| Workshop | Size | Layout | Recipes |
-|----------|------|--------|---------|
-| Stonecutter | 3x3 | `###` `#XO` `..#` (dense) | Cut Blocks, Crush Gravel, Bind Gravel |
-| Sawmill | 3x3 | `#O#` `.X.` `#..` (open lane) | Saw Planks, Cut Sticks |
-| Kiln | 3x3 | `#F#` `#XO` `###` (enclosed) | Fire Bricks, Make Charcoal, Burn Peat |
-| Charcoal Pit | 2x2 | `FX` `O.` | Char Logs, Char Peat, Char Sticks |
+| Workshop | Size | Layout | Type | Recipes |
+|----------|------|--------|------|---------|
+| Stonecutter | 3x3 | `###` `#XO` `..#` | Active | Cut Blocks, Crush Gravel, Bind Gravel |
+| Sawmill | 3x3 | `#O#` `.X.` `#..` | Active | Saw Planks, Cut Sticks, Strip Bark, Saw Stripped |
+| Kiln | 3x3 | `#F#` `#XO` `###` | Active | Fire Bricks, Make Charcoal, Burn Peat |
+| Charcoal Pit | 2x2 | `FX` `O.` | Semi-passive | Char Logs, Char Peat, Char Sticks |
+| Hearth | 2x2 | `FX` `O.` | Passive | Burn Fuel (any fuel -> ash) |
+| Drying Rack | 2x2 | `.X` `O.` | Passive | Dry Grass (grass -> dried grass) |
+| Rope Maker | 2x2 | `.X` `O.` | Active | Twist Bark, Twist Grass, Braid Cordage |
 
 Legend: `#` = block, `X` = work tile, `O` = output, `F` = fuel, `.` = floor
 
@@ -55,31 +59,46 @@ Legend: `#` = block, `X` = work tile, `O` = output, `F` = fuel, `.` = floor
 | Stonecutter | Bind Gravel | GRAVEL x2 + CLAY x1 | BLOCKS x1 | 4s | - |
 | Sawmill | Saw Planks | LOG x1 | PLANKS x4 | 4s | - |
 | Sawmill | Cut Sticks | LOG x1 | STICKS x8 | 2s | - |
+| Sawmill | Strip Bark | LOG x1 | STRIPPED_LOG x1 + BARK x2 | 3s | - |
+| Sawmill | Saw Stripped | STRIPPED_LOG x1 | PLANKS x5 | 4s | - |
 | Kiln | Fire Bricks | CLAY x1 | BRICKS x2 | 5s | 1 |
 | Kiln | Make Charcoal | LOG x1 | CHARCOAL x3 | 6s | - |
 | Kiln | Burn Peat | PEAT x1 | CHARCOAL x3 | 5s | - |
 | Charcoal Pit | Char Logs | LOG x1 | CHARCOAL x2 | 8s | - |
 | Charcoal Pit | Char Peat | PEAT x1 | CHARCOAL x2 | 7s | - |
 | Charcoal Pit | Char Sticks | STICKS x4 | CHARCOAL x1 | 5s | - |
+| Hearth | Burn Fuel | any fuel x1 | ASH x1 | passive | - |
+| Drying Rack | Dry Grass | GRASS x1 | DRIED_GRASS x1 | passive | - |
+| Rope Maker | Twist Bark | BARK x2 | SHORT_STRING x3 | 3s | - |
+| Rope Maker | Twist Grass | DRIED_GRASS x4 | SHORT_STRING x2 | 3s | - |
+| Rope Maker | Braid Cordage | SHORT_STRING x3 | CORDAGE x1 | 4s | - |
 
 ### Items & Flags
 
 | Item | Flags | Source | Sinks |
 |------|-------|--------|-------|
-| ROCK | stackable | Mining | Stonecutter |
+| ROCK | stackable | Mining, loose rocks | Stonecutter |
 | BLOCKS | stackable, building | Stonecutter | Construction |
 | GRAVEL | stackable | Stonecutter, Mining | Stonecutter (Bind) |
 | LOG | stackable, building, fuel | Chopping trees | Sawmill, Kiln, Charcoal Pit |
 | PLANKS | stackable, building, fuel | Sawmill | Construction |
-| STICKS | stackable, fuel | Sawmill | Charcoal Pit |
-| CHARCOAL | stackable, fuel | Kiln, Charcoal Pit | (fuel only) |
+| STICKS | stackable, fuel | Sawmill, tree harvest | Charcoal Pit |
+| CHARCOAL | stackable, fuel | Kiln, Charcoal Pit | Hearth (fuel), Kiln (fuel) |
 | CLAY | stackable | Mining clay | Kiln, Stonecutter (Bind) |
 | BRICKS | stackable, building | Kiln | Construction |
 | PEAT | stackable, fuel | Mining peat | Kiln, Charcoal Pit |
 | SAND | stackable | Mining sand | (none yet) |
 | DIRT | stackable | Mining dirt | (none yet) |
-| LEAVES_* | stackable, fuel | Trees | (fuel only) |
-| SAPLING_* | stackable | Gathering | Planting |
+| LEAVES | stackable, fuel | Trees (unified type with material) | Hearth (fuel) |
+| SAPLING | stackable | Gathering (unified type with material) | Planting |
+| ASH | stackable | Hearth | (none yet -- future: cement, fertilizer) |
+| GRASS | stackable | Vegetation gathering | Drying Rack |
+| DRIED_GRASS | stackable, fuel | Drying Rack | Rope Maker (Twist Grass) |
+| POLES | stackable | Tree harvest (branches) | (none yet -- future: construction) |
+| BARK | stackable | Sawmill (Strip Bark) | Rope Maker (Twist Bark) |
+| STRIPPED_LOG | stackable, building | Sawmill (Strip Bark) | Sawmill (Saw Stripped -> planks) |
+| SHORT_STRING | stackable | Rope Maker | Rope Maker (Braid Cordage) |
+| CORDAGE | stackable | Rope Maker | (none yet -- future: construction staging) |
 
 ---
 
@@ -87,31 +106,40 @@ Legend: `#` = block, `X` = work tile, `O` = output, `F` = fuel, `.` = floor
 
 ### Stone Loop (CLOSED)
 ```
-Mining → ROCK → Stonecutter → BLOCKS → Construction
-              ↘ Stonecutter → GRAVEL ↘
-                              + CLAY → BLOCKS
+Mining -> ROCK -> Stonecutter -> BLOCKS -> Construction
+              \-> Stonecutter -> GRAVEL -\
+                              + CLAY -> BLOCKS
 ```
 
-### Wood Loop (PARTIAL)
+### Wood Loop (CLOSED)
 ```
-Trees → LOG → Sawmill → PLANKS → Construction
-           ↘ Sawmill → STICKS → Charcoal Pit → CHARCOAL
-           ↘ Kiln/Pit → CHARCOAL
-     → LEAVES_* → (fuel only, no recipe sink)
-     → SAPLING_* → Planting (regrows trees)
+Trees -> LOG -> Sawmill -> PLANKS -> Construction
+            \-> Sawmill -> STICKS -> Charcoal Pit -> CHARCOAL
+            \-> Sawmill (Strip) -> STRIPPED_LOG -> PLANKS (x5 bonus)
+                               \-> BARK -> Rope Maker -> SHORT_STRING -> CORDAGE
+            \-> Kiln/Pit -> CHARCOAL
+     -> LEAVES -> Hearth (fuel -> ASH)
+     -> SAPLING -> Planting (regrows trees)
+     -> branches -> POLES, STICKS (tree harvest)
 ```
 
 ### Clay Loop (CLOSED)
 ```
-Mining → CLAY → Kiln → BRICKS → Construction
-             ↘ Stonecutter (Bind Gravel) → BLOCKS
+Mining -> CLAY -> Kiln -> BRICKS -> Construction
+             \-> Stonecutter (Bind Gravel) -> BLOCKS
 ```
 
-### Fuel Loop (OPEN - no consumer)
+### Fuel Loop (CLOSED)
 ```
-Sources: LOG, PLANKS, STICKS, CHARCOAL, PEAT, LEAVES_*
-Sink: Kiln (Fire Bricks uses 1 fuel)
-Missing: General fuel consumer (Hearth)
+Sources: LOG, PLANKS, STICKS, CHARCOAL, PEAT, LEAVES, DRIED_GRASS
+Sinks: Kiln (Fire Bricks), Hearth (any fuel -> ASH)
+```
+
+### Fiber Loop (PARTIAL - needs sink for cordage)
+```
+Vegetation -> GRASS -> Drying Rack -> DRIED_GRASS -> Rope Maker -> SHORT_STRING
+Trees -> LOG -> Sawmill (Strip) -> BARK -> Rope Maker -> SHORT_STRING
+SHORT_STRING -> Rope Maker (Braid) -> CORDAGE -> (no sink yet)
 ```
 
 ---
@@ -120,15 +148,16 @@ Missing: General fuel consumer (Hearth)
 
 | Item | Problem | Proposed Solution |
 |------|---------|-------------------|
-| LEAVES_* | IF_FUEL but no recipe | Hearth consumes → ASH; or Compost → MULCH |
-| SAND | No use | Glass Kiln: SAND + fuel → GLASS |
-| DIRT | No use | Farming (soil for crops) |
-| CHARCOAL | Only fuel sink | Hearth, Bloomery (smelting) |
-| STICKS | Limited use | Crafting bench: tools, baskets |
+| CORDAGE | No recipe or construction sink | Construction staging (frame lashing) |
+| POLES | No recipe or construction sink | Construction staging (frames) |
+| ASH | No recipe sink | Future: cement (ASH + CLAY -> BLOCKS), fertilizer |
+| SAND | No use | Glass Kiln: SAND + fuel -> GLASS |
+| DIRT | No use | Farming (soil for crops), Mud Mixer (DIRT + CLAY + water -> MUD) |
+| SHORT_STRING | Only used for cordage | Future: leaf mats, simple tools |
 
 ---
 
-## 4. Proposed: Bark & Cordage Chain
+## 4. Bark & Cordage Chain -- IMPLEMENTED
 
 Inspired by [Primitive Technology](https://primitivetechnology.wordpress.com/) and CDDA's nested crafting, but simplified to 2 steps (not CDDA's 3-step twist→braid→ply).
 
@@ -219,9 +248,9 @@ Deferred for now — the short string / cordage chain is sufficient.
 
 ---
 
-## 5. Proposed: Hearth (Fuel Consumer)
+## 5. Hearth (Fuel Consumer) -- IMPLEMENTED
 
-The missing fuel sink. Burns any IF_FUEL item, produces ASH.
+Burns any IF_FUEL item, produces ASH. Passive workshop.
 
 ### Workshop Definition
 - **Size**: 2x2
@@ -239,9 +268,10 @@ The missing fuel sink. Burns any IF_FUEL item, produces ASH.
 
 ## 6. Next Workshops (Priority Order)
 
-### Tier 1: Minimal New Systems
-1. **Hearth** (2x2) - fuel sink, produces ASH
-2. **Rope Maker** (2x2) - BARK/LEAVES → CORDAGE
+### Tier 1: Minimal New Systems -- ALL DONE
+1. ~~**Hearth** (2x2) - fuel sink, produces ASH~~ DONE
+2. ~~**Rope Maker** (2x2) - BARK/DRIED_GRASS -> SHORT_STRING -> CORDAGE~~ DONE
+3. ~~**Drying Rack** (2x2) - GRASS -> DRIED_GRASS (passive)~~ DONE
 
 ### Tier 2: One New Item Each
 3. **Glass Kiln** (3x3) - SAND + fuel → GLASS
@@ -395,4 +425,5 @@ Workshops that require **location-based resource access** (water, dryness) rathe
 - 2026-02-09: Added withies, tree stumps/coppicing, additional workshops, open questions
 - 2026-02-10: Added implementation requirements for bark/cordage chain (code audit findings)
 - 2026-02-11: Multi-output recipe support implemented (outputType2/outputCount2 on Recipe struct)
-- 2026-02-11: Redesigned cordage chain: 2-step process (bark/dried grass → short string → cordage) instead of single-step. Added SHORT_STRING as intermediate item. Noted bark lashing as future alternative. Added TODO for short string direct uses
+- 2026-02-11: Redesigned cordage chain: 2-step process (bark/dried grass -> short string -> cordage) instead of single-step. Added SHORT_STRING as intermediate item. Noted bark lashing as future alternative. Added TODO for short string direct uses
+- 2026-02-12: Major status update. Marked all Tier 1 workshops as DONE (Hearth, Rope Maker, Drying Rack). Updated items table with all 22 item types. Updated loops analysis (Wood loop CLOSED, Fuel loop CLOSED, added Fiber loop). Bark/cordage chain marked IMPLEMENTED. Updated open loops (cordage, poles, ash, sand, dirt need sinks). Sapling/leaf types unified with material field (save v32).

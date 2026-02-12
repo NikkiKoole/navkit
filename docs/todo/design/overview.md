@@ -32,10 +32,10 @@ ASCII-art storytelling system with typewriter effects and sequential panels.
 
 ### [Workshops & Item Loops (Master)](workshops-master.md)
 The central reference. Tracks everything that exists and everything proposed.
-- Lists all implemented workshops (Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth) and their recipes.
-- Maps every item's source and sink; flags open loops (sand, dirt, leaves have no recipe sink yet).
-- Proposes a bark/cordage chain (strip logs at sawmill, twist bark into cordage at a Rope Maker).
-- Prioritizes next workshops: Rope Maker, Glass Kiln, Pottery Wheel, then systems-heavy ones (Bloomery, Loom, Tanner, Hand Mill).
+- Lists all 7 implemented workshops (Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth, Drying Rack, Rope Maker) and their 18 recipes.
+- Maps every item's source and sink; flags remaining open loops (cordage, poles, ash, sand, dirt need sinks).
+- Bark/cordage chain fully implemented (strip logs at sawmill, twist bark/dried grass at Rope Maker, braid into cordage).
+- All Tier 1 workshops done. Next tier: Glass Kiln, Pottery Wheel, then systems-heavy ones (Bloomery, Loom, Tanner, Hand Mill).
 - Documents design principles: every addition needs a source, a sink, and feedback into existing loops.
 
 ### [Water-Dependent Crafting](water-dependent-crafting.md)
@@ -48,19 +48,13 @@ Enables mud/cob crafting through location-based resource access (no containers n
 - Requires new systems: moisture states, placement validators, stockpile tags, passive moisture ticks.
 - **Prerequisite:** Water placement tools (see below) - players need to control where rivers flow.
 
-### [Terrain Sculpting - Simple](terrain-sculpting-simple.md) ⭐
-**Instant draw mode only** - paint terrain up/down with mouse, no jobs/workers.
-- Lower brush (carve) + Raise brush (build) with adjustable diameter (1x1, 3x3, 5x5, 7x7).
-- Freehand mouse dragging (smooth strokes, no gaps) - like painting walls/floors but for terrain.
-- Instant feedback: terrain changes immediately (no designations, no material costs).
-- Enables: river carving for mud mixer, moats, terrain leveling, dams.
-- **Start here:** Simple, focused, ~7 hours to implement.
-
-### [Terrain Sculpting - Full](terrain-sculpting-brushes.md)
-**Extended version** with worker designations, material economy, advanced features.
-- Everything from simple version PLUS survival mode (movers dig/build) and material consumption.
-- Can be added later if instant mode isn't sufficient.
-- Estimated ~30 hours total (simple mode + all extensions).
+### Terrain Sculpting -- DONE (moved to docs/done/)
+**Implemented.** Instant sandbox mode sculpting with circular brush (1x1 to 7x7).
+- Left-drag raise, right-drag lower. Freehand stroke interpolation.
+- Material preservation from source terrain.
+- Enables river carving, moats, terrain leveling.
+- Full design doc moved to `docs/done/terrain-sculpting-brushes.md`.
+- Survival mode (designation-based, resource-consuming) still possible as future extension.
 
 ### [Water Placement Tools](water-placement-tools.md)
 Alternative/supplement to terrain brushes: specific water source/drain placement.
@@ -87,10 +81,11 @@ Frames the existing and proposed content as an era progression from bare hands t
 
 ### [Primitives Missing](primitives-missing.md)
 Identifies the smallest set of items needed to enable early survival builds.
-- Top three picks: **dried grass** (roofing, bedding), **cordage/vines** (lashing, frames), **poles** (from a new young-tree growth stage).
-- Secondary picks: bark/resin (waterproofing, glue), mud/cob mix (daub walls), reeds (pipes, mats), flat stone (grinding), simple container (basket/pot).
-- Notes that sticks already exist but may need a bare-hands gather path (snap branch) for pre-sawmill play.
-- Minimal survival build set once added: shelter (poles + cordage + thatch), fire (hearth + fuel), water (spring/drain + container).
+- **Top three picks ALL DONE:** dried grass (Drying Rack), cordage (Rope Maker), poles (tree harvest from branches).
+- **Also done:** bark (Sawmill strip bark), short string (Rope Maker), stripped log.
+- Remaining: mud/cob mix (needs water-dependent crafting), reeds, flat stone, simple container.
+- Sticks harvestable from living trees via tree harvest system (no sawmill needed).
+- Minimal survival build set: shelter (poles+cordage done, thatch roofing not yet), fire (hearth done), water (UI not yet), storage (not yet).
 
 ### [Construction Staging](construction-staging.md)
 Replaces instant "item becomes wall" with a multi-step build process.
@@ -115,13 +110,13 @@ Adds material states that evolve over time, making stockpiles feel like conditio
 
 **Closed loops everywhere.** The master doc and tile-ingredients doc both insist that every new item must have both a source and a sink. Sand, dirt, and leaves are flagged repeatedly as open-ended -- each doc proposes a concrete fix (glass kiln, farming, composting or cordage).
 
-**Three gateway items.** Dried grass, cordage, and poles appear in nearly every document. They are the minimum additions that unlock early shelter, multi-stage construction, and the rope-maker workshop chain. The primitives doc, tech tree, and tile-ingredients doc all converge on this same short list.
+**Three gateway items -- ALL DONE.** Dried grass, cordage, and poles were identified across nearly every document as the minimum additions. All three are now implemented: dried grass (Drying Rack), cordage (Rope Maker chain), poles (tree harvest). The next bottleneck is giving cordage a *sink* via construction staging.
 
 **Construction as a pipeline, not an instant.** Construction staging and seasoning/curing are designed as a pair. Staging splits building into frame-then-fill steps; seasoning makes the materials for those steps require time in stockpiles. Together they turn "place wall" into "harvest, condition, haul frame materials, haul fill materials, wait for cure."
 
 **Stockpiles become meaningful.** Seasoning/curing turns stockpiles into conditioning zones (dry shed vs wet riverbank). Construction staging turns them into logistics hubs (each stage triggers a hauling burst). Multiple docs reference this as the key payoff.
 
-**Fuel loop closure.** The hearth (now implemented) was the most-requested addition across the master doc, tile-ingredients, and tech tree. It closes the fuel loop by consuming any fuel item and producing ash, which feeds back into cement and future farming.
+**Fuel loop closure.** The hearth closes the fuel loop by consuming any fuel item and producing ash. All fuel items now have a sink. ASH itself still needs sinks (cement, fertilizer).
 
 **Small workshops, composable chains.** Every doc prefers 2x2 or 3x3 workshops with 1-3 recipes each, chained together. The charcoal pit (primitive, no fuel needed) feeds the kiln (needs fuel). The sawmill feeds the rope maker. No single workshop should be a dead end.
 

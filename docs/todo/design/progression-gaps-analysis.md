@@ -3,6 +3,7 @@
 An analysis of what's missing from the current progression system and how to complete it into a coherent bare-hands → stone fortress arc.
 
 **Date:** 2026-02-11
+**Updated:** 2026-02-12
 **Context:** Based on `progression-story.md` and current codebase state
 
 ---
@@ -27,15 +28,16 @@ An analysis of what's missing from the current progression system and how to com
 
 ---
 
-### 2. **Cordage Has No Purpose** 🔴
+### 2. **Cordage Has No Purpose** 🔴 (PARTIALLY ADDRESSED)
 
 **Problem:** SHORT_STRING and CORDAGE exist in code but aren't used anywhere. The rope maker produces them, then... nothing.
 
-**Current State:**
-- ITEM_SHORT_STRING exists (from bark x2 → 3 string, or dried grass x4 → 2 string)
-- ITEM_CORDAGE exists (from short string x3 → 1 cordage)
-- Rope Maker workshop implemented with recipes
-- But NO recipes or construction uses cordage as input
+**Current State (updated 2026-02-12):**
+- ITEM_SHORT_STRING exists (from bark x2 -> 3 string, or dried grass x4 -> 2 string)
+- ITEM_CORDAGE exists (from short string x3 -> 1 cordage)
+- Rope Maker workshop implemented with all recipes
+- Full fiber chain works: bark/dried grass -> short string -> cordage
+- **But NO recipes or construction uses cordage as input -- this is the key remaining gap**
 
 **Solutions (from docs/todo/design/construction-staging.md):**
 - **Construction staging** - walls need cordage to bind frame together
@@ -494,12 +496,17 @@ This single feature would transform the progression from "instant walls" to "bui
 - `workshops-master.md` - Workshop/item loop master doc
 - `tech-tree-outline.md` - Era progression framework
 
-**Implementation Status:**
-- ✅ Fiber chain partial: bark/grass → string → cordage (Rope Maker exists)
-- ❌ Cordage sink: no recipes use it yet
-- ✅ Water simulation: works
-- ❌ Water interaction: no placement UI, no water-dependent crafting
-- ❌ Construction staging: instant single-step only
-- ❌ Primitive shelter: no wattle-daub, lean-to, or thatch
-- ❌ Tool system: no tools, no speed bonuses, no durability
-- ❌ Glass/composting: sand/leaves have no sinks
+**Implementation Status (updated 2026-02-12):**
+- Done: Fiber chain complete: bark/dried grass -> string -> cordage (Rope Maker, Drying Rack, Sawmill strip bark)
+- Done: Hearth (fuel sink -> ash), Charcoal Pit (semi-passive)
+- Done: Terrain sculpting (sandbox mode, circular brush, raise/lower)
+- Done: Sapling/leaf unification (material-based), tree harvest system (sticks/poles/leaves from living trees)
+- Done: Floor dirt tracking + cleaning, lighting system (partial), vegetation grid
+- Done: Data-driven stockpile filters (25 item type filters, 4 material sub-filters)
+- TODO: Cordage sink -- no recipes or construction uses it yet (highest priority gap)
+- TODO: Construction staging -- instant single-step only
+- TODO: Water interaction -- no placement UI, no water-dependent crafting (functions exist)
+- TODO: Primitive shelter -- no wattle-daub, lean-to, or thatch
+- TODO: Tool system -- no tools, no speed bonuses, no durability
+- TODO: Glass/composting -- sand/leaves have no sinks
+- TODO: Early rock gathering -- mining is only rock source

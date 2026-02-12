@@ -1,78 +1,74 @@
-# Primitive Ingredients Missing (Survival‑Build Enablers)
+# Primitive Ingredients Missing (Survival-Build Enablers)
 
 Date: 2026-02-07
+Updated: 2026-02-12
 Scope: Identify the *smallest set* of primitive items/cells needed to unlock early survival builds, grounded in the current codebase.
 
 ## Current Baseline (Already in Code)
-**Items**: logs, planks, sticks, leaves, dirt, clay, gravel, sand, peat, bricks, charcoal, ash.
+**Items**: logs, planks, sticks, leaves, dirt, clay, gravel, sand, peat, bricks, charcoal, ash, bark, stripped log, short string, cordage, dried grass, poles, saplings (unified with material).
 **Cells**: sapling, tree trunk/branch/root/leaves/felled.
-
-This means **sticks already exist** (`ITEM_STICKS`) and can be used as early fuel or light construction input.
+**Workshops**: Stonecutter, Sawmill, Kiln, Charcoal Pit, Hearth, Drying Rack, Rope Maker.
 
 ---
 
-## Missing Primitives (High Leverage)
-These are the minimum additions that unlock many survival constructions.
+## Primitives Status
 
-### 1) Cordage / Vines (Lashing)
-- **Why**: required for tying frames, racks, mats, early tools.
-- **Use cases**: lean‑to frame, drying rack, reed pipe connections.
+### 1) Cordage / Vines (Lashing) - DONE
+- **ITEM_SHORT_STRING** and **ITEM_CORDAGE** implemented (save v35).
+- Rope Maker workshop: Twist Bark, Twist Grass, Braid Cordage recipes.
+- **Still needed**: cordage has no *sink* yet -- construction staging would use it.
 
-### 2) Dried Grass / Thatch
-- **Why**: needed for roofing, bedding, tinder, insulation.
-- **Use cases**: thatch roof, sleeping mat, fire starting.
+### 2) Dried Grass / Thatch - DONE
+- **ITEM_DRIED_GRASS** implemented. Drying Rack (passive) converts ITEM_GRASS.
+- Used as Rope Maker input (Twist Grass -> string).
+- **Still needed**: thatch as roofing/construction material.
 
-### 3) Poles / Young Trunk (Intermediate wood)
-- **Why**: bridges the gap between saplings and full logs.
-- **Use cases**: frames, scaffolds, wattle walls, racks, fences.
+### 3) Poles - DONE
+- **ITEM_POLES** implemented. Harvested from tree branches via tree harvest system.
+- Branch cells use thin per-species sprites. Tree trunk taper at canopy.
+- Note: implemented differently than proposed (from branches, not young trunk growth stage).
 
-**Explicit proposal**:
-- Add `CELL_TREE_YOUNG` as a growth stage: `SAPLING → YOUNG → TRUNK`.
-- Add `ITEM_POLE` harvested from `CELL_TREE_YOUNG` (early structural wood).
+### 4) Bark - DONE
+- **ITEM_BARK** and **ITEM_STRIPPED_LOG** implemented (save v33).
+- Sawmill recipe: Strip Bark (LOG -> STRIPPED_LOG x1 + BARK x2).
+- Bark feeds into Rope Maker -> string -> cordage chain.
+- Resin not implemented (deferred).
 
-### 4) Bark / Resin (Primitive glue + waterproofing)
-- **Why**: enables early adhesives and weatherproofing.
-- **Use cases**: lash reinforcement, shingles, torch/roof sealant.
-
-### 5) Mud / Cob Mix (Soil + Water)
+### 5) Mud / Cob Mix (Soil + Water) - TODO
 - **Why**: base material for daub walls, kilns, hearths.
-- **Use cases**: wattle‑and‑daub walls, kiln shell, firepit lining.
+- **Use cases**: wattle-and-daub walls, kiln shell, firepit lining.
+- **Depends on**: water-dependent crafting system (see water-dependent-crafting.md).
 
-### 6) Reeds / Hollow Grass
+### 6) Reeds / Hollow Grass - TODO
 - **Why**: acts like primitive tubing and weaving material.
-- **Use cases**: reed pipes, blow‑pipe, mats, screens.
+- **Use cases**: reed pipes, blow-pipe, mats, screens.
 
-### 7) Flat Stone / Grinding Stone
+### 7) Flat Stone / Grinding Stone - TODO
 - **Why**: essential for early tool improvement and food processing.
-- **Use cases**: quern/hand‑mill, sharpening slabs, fire ring.
+- **Use cases**: quern/hand-mill, sharpening slabs, fire ring.
 
-### 8) Simple Container (basket or clay pot)
+### 8) Simple Container (basket or clay pot) - TODO
 - **Why**: enables water hauling and storage.
 - **Use cases**: water transport, cooking prep, seed storage.
+- **Depends on**: container/inventory system [future:containers].
 
 ---
 
-## “Sticks” Clarification
-You already have **sticks** as `ITEM_STICKS` (from the sawmill). If you want *early‑game* sticks without a sawmill, consider:
-- **Spawn sticks** from tree leaf/felled interactions, or
-- **Add “snap branch”** as a bare‑hands gather action producing `ITEM_STICKS`.
-
-This preserves the early survival loop without introducing a new item.
+## "Sticks" Clarification
+**Sticks** exist as `ITEM_STICKS` (from the sawmill, Cut Sticks recipe). Also harvestable from tree branches alongside poles via the tree harvest system. Early-game sticks available without a sawmill.
 
 ---
 
-## Minimal Survival Build Set (Once Added)
-- **Shelter**: poles + cordage + thatch (+ mud for better tier)
-- **Fire**: hearth + tinder + fuel
-- **Water handling**: spring/drain or reed pipe + container
-- **Storage**: basket/pot
+## Minimal Survival Build Set (Status)
+- **Shelter**: poles (done) + cordage (done) + thatch (dried grass exists, thatch roofing not yet)
+- **Fire**: hearth (done) + tinder + fuel (done)
+- **Water handling**: spring/drain (functions exist, UI not yet) + container (not yet)
+- **Storage**: basket/pot (not yet)
 
 ---
 
-## Suggested First Additions
-If you only add a few right now, pick:
-1. **Dried Grass**
-2. **Cordage/Vines**
-3. **Poles (young trunk)**
-
-These three unlock most early survival builds with the least new systems.
+## Remaining Priorities
+The original top 3 picks (dried grass, cordage, poles) are **all done**. Next priorities:
+1. **Construction staging** -- gives cordage a purpose (lashing for frames)
+2. **Mud/cob** -- requires water-dependent crafting system
+3. **Containers** -- requires inventory system (larger effort)
