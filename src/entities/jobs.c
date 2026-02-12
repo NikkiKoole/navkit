@@ -1858,12 +1858,9 @@ JobRunResult RunJob_Build(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Progress building — use recipe buildTime if available
-        float buildTime = BUILD_WORK_TIME;
-        if (BlueprintUsesRecipe(bp)) {
-            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-            if (recipe) buildTime = recipe->stages[bp->stage].buildTime;
-        }
+        // Progress building using recipe buildTime
+        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+        float buildTime = recipe ? recipe->stages[bp->stage].buildTime : 2.0f;
         job->progress += dt;
         bp->progress = job->progress / buildTime;
 
@@ -2812,26 +2809,19 @@ void CancelJob(void* moverPtr, int moverIdx) {
         if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
             Blueprint* bp = &blueprints[job->targetBlueprint];
             if (bp->active) {
-                if (BlueprintUsesRecipe(bp)) {
-                    // Recipe path: decrement reservedCount for the cancelled item's slot
-                    if (job->targetItem >= 0 && items[job->targetItem].active) {
-                        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-                        if (recipe) {
-                            const ConstructionStage* stage = &recipe->stages[bp->stage];
-                            ItemType itemType = items[job->targetItem].type;
-                            for (int s = 0; s < stage->inputCount; s++) {
-                                StageDelivery* sd = &bp->stageDeliveries[s];
-                                if (sd->reservedCount <= 0) continue;
-                                if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
-                                sd->reservedCount--;
-                                break;
-                            }
+                // Decrement reservedCount for the cancelled item's slot
+                if (job->targetItem >= 0 && items[job->targetItem].active) {
+                    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+                    if (recipe) {
+                        const ConstructionStage* stage = &recipe->stages[bp->stage];
+                        ItemType itemType = items[job->targetItem].type;
+                        for (int s = 0; s < stage->inputCount; s++) {
+                            StageDelivery* sd = &bp->stageDeliveries[s];
+                            if (sd->reservedCount <= 0) continue;
+                            if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
+                            sd->reservedCount--;
+                            break;
                         }
-                    }
-                } else {
-                    // Legacy path: release the reserved item
-                    if (bp->reservedItem >= 0 && items[bp->reservedItem].reservedBy == moverIdx) {
-                        bp->reservedItem = -1;
                     }
                 }
                 // If we were building, release the builder assignment
@@ -3395,20 +3385,15 @@ void AssignJobs(void) {
             if (bp->state == BLUEPRINT_CLEARING) {
                 hasBlueprintWork = true;
             } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-                if (BlueprintUsesRecipe(bp)) {
-                    // Check if any slot has room
-                    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-                    if (recipe) {
-                        const ConstructionStage* stage = &recipe->stages[bp->stage];
-                        for (int s = 0; s < stage->inputCount; s++) {
-                            if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
-                                hasBlueprintWork = true;
-                                break;
-                            }
+                const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+                if (recipe) {
+                    const ConstructionStage* stage = &recipe->stages[bp->stage];
+                    for (int s = 0; s < stage->inputCount; s++) {
+                        if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
+                            hasBlueprintWork = true;
+                            break;
                         }
                     }
-                } else if (bp->reservedItem < 0) {
-                    hasBlueprintWork = true;
                 }
             } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
                 hasBlueprintWork = true;
@@ -5452,20 +5437,6 @@ int WorkGiver_BlueprintClear(int moverIdx) {
 
 // WorkGiver_BlueprintHaul: Find material to haul to a blueprint
 // Returns job ID if successful, -1 if no job available
-// Filter for blueprint haul items (building materials, optionally filtered by type)
-static bool BlueprintHaulItemFilter(int itemIdx, void* userData) {
-    ItemType required = *(ItemType*)userData;
-    Item* item = &items[itemIdx];
-
-    if (!item->active) return false;
-    if (!ItemIsBuildingMat(item->type)) return false;
-    if (required != ITEM_TYPE_COUNT && item->type != required) return false;
-    if (item->reservedBy != -1) return false;
-    if (item->state != ITEM_ON_GROUND) return false;
-    if (item->unreachableCooldown > 0.0f) return false;
-
-    return true;
-}
 
 // Filter for recipe-based blueprint haul: matches a specific ConstructionInput
 typedef struct {
@@ -5497,52 +5468,6 @@ static bool RecipeHaulItemFilter(int itemIdx, void* userData) {
     }
 
     return true;
-}
-
-// Find nearest matching building material for a blueprint's requiredItemType
-static int FindNearestBuildingMat(int moverTileX, int moverTileY, int moverZ, float mx, float my, ItemType required) {
-    int bestItemIdx = -1;
-    float bestDistSq = 1e30f;
-
-    // Try spatial grid first for ground items
-    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        int radii[] = {10, 25, 50, 100};
-        int numRadii = sizeof(radii) / sizeof(radii[0]);
-
-        for (int r = 0; r < numRadii && bestItemIdx < 0; r++) {
-            bestItemIdx = FindFirstItemInRadius(moverTileX, moverTileY, moverZ, radii[r],
-                                                BlueprintHaulItemFilter, &required);
-        }
-
-        if (bestItemIdx >= 0) {
-            float dx = items[bestItemIdx].x - mx;
-            float dy = items[bestItemIdx].y - my;
-            bestDistSq = dx * dx + dy * dy;
-        }
-    }
-
-    // Linear scan fallback (for tests, plus checks stockpile items)
-    for (int j = 0; j < itemHighWaterMark; j++) {
-        Item* item = &items[j];
-        if (!item->active) continue;
-        if (!ItemIsBuildingMat(item->type)) continue;
-        if (required != ITEM_TYPE_COUNT && item->type != required) continue;
-        if (item->reservedBy != -1) continue;
-        if (item->state != ITEM_ON_GROUND && item->state != ITEM_IN_STOCKPILE) continue;
-        if (item->unreachableCooldown > 0.0f) continue;
-        if ((int)item->z != moverZ) continue;
-
-        float dx = item->x - mx;
-        float dy = item->y - my;
-        float distSq = dx * dx + dy * dy;
-
-        if (distSq < bestDistSq) {
-            bestDistSq = distSq;
-            bestItemIdx = j;
-        }
-    }
-
-    return bestItemIdx;
 }
 
 // Find nearest item matching a recipe input slot (with locking checks)
@@ -5644,70 +5569,31 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
         if (!bp->active) continue;
         if (bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
 
-        if (BlueprintUsesRecipe(bp)) {
-            // Recipe path: find an unfilled slot, then find a matching item
-            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-            if (!recipe) continue;
-            const ConstructionStage* stage = &recipe->stages[bp->stage];
+        // Find an unfilled slot, then find a matching item
+        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+        if (!recipe) continue;
+        const ConstructionStage* stage = &recipe->stages[bp->stage];
 
-            for (int s = 0; s < stage->inputCount; s++) {
-                StageDelivery* sd = &bp->stageDeliveries[s];
-                if (sd->deliveredCount + sd->reservedCount >= stage->inputs[s].count) continue;  // slot full
+        for (int s = 0; s < stage->inputCount; s++) {
+            StageDelivery* sd = &bp->stageDeliveries[s];
+            if (sd->deliveredCount + sd->reservedCount >= stage->inputs[s].count) continue;  // slot full
 
-                int itemIdx = FindNearestRecipeItem(moverTileX, moverTileY, moverZ, m->x, m->y,
-                                                     &stage->inputs[s], sd);
-                if (itemIdx < 0) continue;
-
-                // Check reachability
-                if (!IsBlueprintReachable(bp, moverCell, tempPath)) break;  // bp unreachable, skip all slots
-
-                Point itemCell = { (int)(items[itemIdx].x / CELL_SIZE), (int)(items[itemIdx].y / CELL_SIZE), (int)items[itemIdx].z };
-                int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
-                if (itemPathLen == 0) continue;
-
-                bestBpIdx = bpIdx;
-                bestItemIdx = itemIdx;
-                break;
-            }
-            if (bestBpIdx >= 0) break;
-        } else {
-            // Legacy path
-            if (bp->reservedItem >= 0) continue;
-
-            // Quick z-level reachability check
-            if (bp->z != moverZ) {
-                bool hasWalkableAdjacent = false;
-                int dx[] = {1, -1, 0, 0};
-                int dy[] = {0, 0, 1, -1};
-                for (int i = 0; i < 4; i++) {
-                    int ax = bp->x + dx[i];
-                    int ay = bp->y + dy[i];
-                    if (ax >= 0 && ax < gridWidth && ay >= 0 && ay < gridHeight) {
-                        if (IsCellWalkableAt(bp->z, ay, ax)) {
-                            hasWalkableAdjacent = true;
-                            break;
-                        }
-                    }
-                }
-                if (!hasWalkableAdjacent && !IsCellWalkableAt(bp->z, bp->y, bp->x)) continue;
-            }
-
-            // Find nearest item matching this blueprint's required type
-            int itemIdx = FindNearestBuildingMat(moverTileX, moverTileY, moverZ, m->x, m->y, bp->requiredItemType);
+            int itemIdx = FindNearestRecipeItem(moverTileX, moverTileY, moverZ, m->x, m->y,
+                                                 &stage->inputs[s], sd);
             if (itemIdx < 0) continue;
 
-            if (!IsBlueprintReachable(bp, moverCell, tempPath)) continue;
+            // Check reachability
+            if (!IsBlueprintReachable(bp, moverCell, tempPath)) break;  // bp unreachable, skip all slots
 
-            // Check item reachability
             Point itemCell = { (int)(items[itemIdx].x / CELL_SIZE), (int)(items[itemIdx].y / CELL_SIZE), (int)items[itemIdx].z };
             int itemPathLen = FindPath(moverPathAlgorithm, moverCell, itemCell, tempPath, MAX_PATH);
             if (itemPathLen == 0) continue;
 
-            // Found a valid blueprint + item pair
             bestBpIdx = bpIdx;
             bestItemIdx = itemIdx;
             break;
         }
+        if (bestBpIdx >= 0) break;
     }
 
     if (bestBpIdx < 0 || bestItemIdx < 0) return -1;
@@ -5717,8 +5603,8 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
     // Reserve item
     if (!ReserveItem(bestItemIdx, moverIdx)) return -1;
 
-    if (BlueprintUsesRecipe(bp)) {
-        // Find which slot this reservation is for and increment reservedCount
+    // Find which slot this reservation is for and increment reservedCount
+    {
         const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
         if (recipe) {
             const ConstructionStage* stage = &recipe->stages[bp->stage];
@@ -5746,15 +5632,12 @@ int WorkGiver_BlueprintHaul(int moverIdx) {
                 break;
             }
         }
-    } else {
-        bp->reservedItem = bestItemIdx;
     }
 
     // Create job
     int jobId = CreateJob(JOBTYPE_HAUL_TO_BLUEPRINT);
     if (jobId < 0) {
         ReleaseItemReservation(bestItemIdx);
-        bp->reservedItem = -1;
         return -1;
     }
 

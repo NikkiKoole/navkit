@@ -56,7 +56,12 @@ typedef enum {
     CONSTRUCTION_WATTLE_DAUB_WALL,  // 2 stages: frame (sticks+cordage) → fill (dirt)
     CONSTRUCTION_PLANK_WALL,        // 2 stages: frame (sticks+cordage) → clad (planks)
     CONSTRUCTION_RAMP,              // 1 stage: 1 any-building-mat
-    // Future: CONSTRUCTION_LOG_WALL, CONSTRUCTION_BRICK_WALL, etc.
+    CONSTRUCTION_LOG_WALL,          // 1 stage: 2 logs
+    CONSTRUCTION_BRICK_WALL,        // 1 stage: 3 bricks
+    CONSTRUCTION_PLANK_FLOOR,       // 1 stage: 2 planks
+    CONSTRUCTION_BRICK_FLOOR,       // 1 stage: 2 bricks
+    CONSTRUCTION_THATCH_FLOOR,      // 2 stages: 1 dirt/gravel/sand → 1 dried grass
+    CONSTRUCTION_LADDER,            // 1 stage: 1 log or planks
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

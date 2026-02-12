@@ -4058,8 +4058,8 @@ void GenerateCraftingTest(void) {
         SetStockpilePriority(buildSp, 5);  // Normal priority
     }
     
-    // Create wall blueprint at (6, 10) - requires STONE_BLOCKS
-    CreateBuildBlueprint(6, 10, 1);
+    // Create wall blueprint at (6, 10)
+    CreateRecipeBlueprint(6, 10, 1, CONSTRUCTION_DRY_STONE_WALL);
     
     needsRebuild = true;
 }

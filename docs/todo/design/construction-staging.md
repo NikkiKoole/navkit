@@ -2,7 +2,7 @@
 
 Date: 2026-02-07, updated 2026-02-12
 
-**Status: Phases 1-6 complete (6/7). Next: Phase 7 (All Recipes + Migration).**
+**Status: All 7 phases complete. Recipe system is the only construction path.**
 
 ## Resolved Decisions (2026-02-12)
 
@@ -163,8 +163,7 @@ set `resultMaterial` directly and `materialFromStage`/`materialFromSlot` to -1.
 
 ### Blueprint (runtime, per-placed-construction)
 
-Current single-item fields (`requiredMaterials`, `deliveredMaterialCount`,
-`reservedItem`) get replaced with a delivery checklist:
+The delivery checklist (all legacy single-item fields removed in Phase 7):
 
 ```
 Blueprint {
@@ -294,23 +293,23 @@ Legend: ✓ = tested, — = not yet tested
 — 0d. Prevent non-blueprint item drops on active blueprint cells
 ✓ 0e. WorkGiver_BlueprintClear creates haul-away jobs for items at CLEARING blueprints
 
-### Single-stage recipes (Phase 1)
+### Single-stage recipes (Phase 1+7)
 ✓ 1. Dry stone wall: deliver 3 rocks, build → wall with stone material
-— 2. Brick floor: deliver 2 bricks, build → floor with MAT_BRICK
-— 3. Ladder: deliver 1 log, build → ladder placed
+✓ 2. Brick floor: deliver 2 bricks, build → floor with MAT_BRICK
+✓ 3. Ladder: deliver 1 log, build → ladder placed
 ✓ 4. Ramp with anyBuildingMat: deliver 1 rock → ramp placed (Phase 4)
 
 ### Multi-stage recipes (Phases 2+3)
 ✓ 5. Wattle & daub stage 0: deliver sticks + cordage, build → advances to stage 1
 ✓ 6. Wattle & daub stage 1: deliver 2 dirt, build → wall with MAT_DIRT
 ✓ 7. Plank wall end-to-end: sticks + cordage → build → planks → build → final wall
-— 8. Thatch floor end-to-end: dirt → build base → dried grass → build → floor
+✓ 8. Thatch floor end-to-end: dirt → build base → dried grass → build → floor
 
 ### OR-materials (Phase 4)
 ✓ 9. Wattle fill with dirt available → hauler picks dirt → MAT_DIRT
 ✓ 10. Wattle fill with only clay available → hauler picks clay → MAT_CLAY
 ✓ 11. Stone wall: rocks and blocks both available → either satisfies the recipe
-— 12. Thatch floor base: dirt, gravel, sand all valid → hauler picks closest
+✓ 12. Thatch floor base: dirt, gravel, sand all valid → hauler picks closest
 
 ### Alternative + material locking (Phase 4)
 ✓ 13. First reservation to slot locks chosenAlternative
@@ -319,13 +318,13 @@ Legend: ✓ = tested, — = not yet tested
 ✓ 16. Stage advance resets chosenAlternative and material locks for new stage
 ✓ 17. If locked alternative runs out, slot is stuck until cancel or more items
 
-### Material inheritance (Phases 1-3)
-— 18. Log wall with oak logs → MAT_OAK
-— 19. Log wall with pine logs → MAT_PINE
+### Material inheritance (Phases 1-3+7)
+✓ 18. Log wall with oak logs → MAT_OAK
+✓ 19. Log wall with pine logs → MAT_PINE
 ✓ 20. Stone wall with granite rocks → MAT_GRANITE
-— 21. Wattle wall: material comes from fill stage (materialFromStage=1), not frame
-— 22. Brick wall: fixed material (MAT_BRICK), ignores item material
-— 23. Thatch floor: fixed MAT_DIRT regardless of whether base was dirt/gravel/sand
+✓ 21. Wattle wall: material comes from fill stage (materialFromStage=1), not frame
+✓ 22. Brick wall: fixed material (MAT_BRICK), ignores item material
+✓ 23. Thatch floor: fixed MAT_DIRT regardless of whether base was dirt/gravel/sand
 
 ### Delivery checklist (Phases 1-3)
 ✓ 24. Frame needs 2 sticks + 1 cordage: deliver 1 stick → still AWAITING_MATERIALS
@@ -353,14 +352,14 @@ Legend: ✓ = tested, — = not yet tested
 
 ### Job assignment (Phases 1-3)
 ✓ 40. WorkGiver_BlueprintHaul finds AWAITING_MATERIALS → haul for unfilled slot
-— 41. All slots filled → WorkGiver_Build creates build job, not haul
+✓ 41. All slots filled → WorkGiver_Build creates build job, not haul
 ✓ 42. Stage advances → new haul jobs for next stage's inputs
 ✓ 43. Builder is independently assigned (not necessarily the last hauler)
 
 ### Edge cases (Phase 1)
 ✓ 44. Blueprint on cell that already has a blueprint → rejected
 ✓ 45. Blueprint on cell that already has a wall → rejected (must mine first)
-— 46. Blueprint on cell that already has a floor → rejected (must remove first)
+✓ 46. Blueprint on cell that already has a floor → rejected (must remove first)
 ✓ 47. Materials run out entirely → blueprint sits in AWAITING_MATERIALS, no crash
 ✓ 48. Hauler carrying wrong item type → not assigned to any slot
 ✓ 49. anyBuildingMat slot accepts rock, blocks, dirt, etc. — any IF_BUILDING_MAT
@@ -477,18 +476,31 @@ Add proper teardown with material recovery.
 
 **What this proves:** Clean teardown at every state, lossy recovery works.
 
-### Phase 7: Remaining Recipes + Migration
+### Phase 7: Remaining Recipes + Migration  ✓ COMPLETE
 
-Fill out the recipe table and migrate ladders/ramps/floors.
+Completed 2026-02-12. All remaining recipes added, all build types migrated to
+recipes, all legacy code removed. Recipe system is the only construction path.
 
-**What to build:**
-- All remaining recipes: log wall, plank floor, brick wall, brick floor,
-  thatch floor, ladder, ramp
-- Migrate existing ladder/ramp/floor blueprint creation to use recipes
-- Recipe selection UI (minimal — simple list/sub-menu)
-- Remove old BlueprintType, old single-item fields
+**What was built:**
+- 6 new recipes: CONSTRUCTION_LOG_WALL (2 logs), CONSTRUCTION_BRICK_WALL (3 bricks),
+  CONSTRUCTION_PLANK_FLOOR (2 planks), CONSTRUCTION_BRICK_FLOOR (2 bricks),
+  CONSTRUCTION_THATCH_FLOOR (2 stages: 1 dirt/gravel/sand + 1 dried grass),
+  CONSTRUCTION_LADDER (1 log or planks)
+- CompleteBlueprint extended: BUILD_FLOOR, BUILD_LADDER, BUILD_RAMP handlers
+- input.c migrated: ExecuteDesignateLadder/Floor/Ramp all use CreateRecipeBlueprint;
+  selectedFloorRecipe/selectedLadderRecipe variables with M key cycling per category
+- Removed: BlueprintType enum, CreateBuildBlueprint, CreateLadderBlueprint,
+  CreateFloorBlueprint, CreateRampBlueprint, BlueprintUsesRecipe, BUILD_WORK_TIME,
+  all legacy Blueprint fields (requiredMaterials, deliveredMaterialCount,
+  reservedItem, deliveredMaterial, deliveredItemType, requiredItemType)
+- Removed: all legacy branches in CancelBlueprint, FindBlueprintNeedingMaterials,
+  DeliverMaterialToBlueprint, WorkGiver_BlueprintHaul, CancelJob, etc.
+- Removed: FindNearestBuildingMat, BlueprintHaulItemFilter (dead code after migration)
+- Save version bumped to v39
 
-**Tests:** 2, 3, 4, 8, 18, 19, 21, 22, 23, 46
+**Tests passed:** 2, 3, 8, 12, 18, 19, 22, 23, 46 (10 new tests in
+construction_new_recipes describe block, plus all 27+ existing tests migrated
+from CreateBuildBlueprint to CreateRecipeBlueprint)
 
 **What this proves:** Full recipe coverage, old system fully replaced.
 
@@ -502,7 +514,7 @@ Fill out the recipe table and migrate ladders/ramps/floors.
 | 4     | OR-materials + locking      | Updates existing      | ✓ Done   |
 | 5     | Site clearing               | —                     | ✓ Done   |
 | 6     | Cancel + lossy refund       | —                     | ✓ Done   |
-| 7     | All recipes + migration     | Everything else       | Pending  |
+| 7     | All recipes + migration     | Everything else       | ✓ Done   |
 
 Each phase is independently shippable — the game works after each one.
 Phase 1-3 are the critical path. Phases 4-7 can be reordered.

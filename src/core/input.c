@@ -24,11 +24,10 @@ bool LoadWorld(const char* filename);
 // Pile mode configuration
 float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
 
-// Build material selection (persists during session)
-static ItemType selectedBuildMaterial = ITEM_TYPE_COUNT;  // ITEM_TYPE_COUNT = any
-
-// Construction recipe selection for walls (persists during session)
+// Construction recipe selection (persists during session)
 static int selectedWallRecipe = CONSTRUCTION_DRY_STONE_WALL;
+static int selectedFloorRecipe = CONSTRUCTION_PLANK_FLOOR;
+static int selectedLadderRecipe = CONSTRUCTION_LADDER;
 
 // Right-click tap detection for pie menu
 static Vector2 rightClickStart = {0};
@@ -36,46 +35,18 @@ static double rightClickTime = 0.0;
 #define RIGHT_TAP_MAX_DIST 5.0f
 #define RIGHT_TAP_MAX_TIME 0.25
 
-static void CycleBuildMaterial(void) {
-    // Build list of IF_BUILDING_MAT item types
-    ItemType buildMats[ITEM_TYPE_COUNT];
-    int count = 0;
-    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
-        if (ItemIsBuildingMat((ItemType)t)) {
-            buildMats[count++] = (ItemType)t;
-        }
-    }
-    if (count == 0) return;
-
-    // Find current position and advance
-    if (selectedBuildMaterial == ITEM_TYPE_COUNT) {
-        selectedBuildMaterial = buildMats[0];
-    } else {
-        bool found = false;
-        for (int i = 0; i < count; i++) {
-            if (buildMats[i] == selectedBuildMaterial) {
-                if (i + 1 < count) {
-                    selectedBuildMaterial = buildMats[i + 1];
-                } else {
-                    selectedBuildMaterial = ITEM_TYPE_COUNT;  // Wrap to "Any"
-                }
-                found = true;
-                break;
-            }
-        }
-        if (!found) selectedBuildMaterial = ITEM_TYPE_COUNT;
-    }
-
-    const char* name = (selectedBuildMaterial == ITEM_TYPE_COUNT) ? "Any" : ItemName(selectedBuildMaterial);
-    AddMessage(TextFormat("Build material: %s", name), BLUE);
-}
-
-const char* GetSelectedBuildMaterialName(void) {
-    return (selectedBuildMaterial == ITEM_TYPE_COUNT) ? "Any" : ItemName(selectedBuildMaterial);
-}
-
 const char* GetSelectedWallRecipeName(void) {
     const ConstructionRecipe* recipe = GetConstructionRecipe(selectedWallRecipe);
+    return recipe ? recipe->name : "?";
+}
+
+const char* GetSelectedFloorRecipeName(void) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFloorRecipe);
+    return recipe ? recipe->name : "?";
+}
+
+const char* GetSelectedLadderRecipeName(void) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(selectedLadderRecipe);
     return recipe ? recipe->name : "?";
 }
 
@@ -837,15 +808,16 @@ static void ExecuteDesignateLadder(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            int bpIdx = CreateLadderBlueprint(dx, dy, z);
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, selectedLadderRecipe);
             if (bpIdx >= 0) {
-                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
                 count++;
             }
         }
     }
     if (count > 0) {
-        AddMessage(TextFormat("Created %d ladder blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+        const ConstructionRecipe* recipe = GetConstructionRecipe(selectedLadderRecipe);
+        AddMessage(TextFormat("Created %d %s blueprint%s", count,
+                   recipe ? recipe->name : "ladder", count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -853,15 +825,16 @@ static void ExecuteDesignateFloor(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            int bpIdx = CreateFloorBlueprint(dx, dy, z);
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, selectedFloorRecipe);
             if (bpIdx >= 0) {
-                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
                 count++;
             }
         }
     }
     if (count > 0) {
-        AddMessage(TextFormat("Created %d floor blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+        const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFloorRecipe);
+        AddMessage(TextFormat("Created %d %s blueprint%s", count,
+                   recipe ? recipe->name : "floor", count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -869,9 +842,8 @@ static void ExecuteDesignateRamp(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            int bpIdx = CreateRampBlueprint(dx, dy, z);
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, CONSTRUCTION_RAMP);
             if (bpIdx >= 0) {
-                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
                 count++;
             }
         }
@@ -1952,10 +1924,35 @@ void HandleInput(void) {
             return;
         }
     }
-    if (inputAction == ACTION_WORK_FLOOR ||
-        inputAction == ACTION_WORK_LADDER || inputAction == ACTION_WORK_RAMP) {
+    if (inputAction == ACTION_WORK_FLOOR) {
         if (IsKeyPressed(KEY_M)) {
-            CycleBuildMaterial();
+            int indices[16];
+            int count = GetConstructionRecipeIndicesForCategory(BUILD_FLOOR, indices, 16);
+            if (count > 0) {
+                int cur = -1;
+                for (int i = 0; i < count; i++) {
+                    if (indices[i] == selectedFloorRecipe) { cur = i; break; }
+                }
+                selectedFloorRecipe = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFloorRecipe);
+                AddMessage(TextFormat("Floor recipe: %s", recipe ? recipe->name : "?"), BLUE);
+            }
+            return;
+        }
+    }
+    if (inputAction == ACTION_WORK_LADDER) {
+        if (IsKeyPressed(KEY_M)) {
+            int indices[16];
+            int count = GetConstructionRecipeIndicesForCategory(BUILD_LADDER, indices, 16);
+            if (count > 1) {
+                int cur = -1;
+                for (int i = 0; i < count; i++) {
+                    if (indices[i] == selectedLadderRecipe) { cur = i; break; }
+                }
+                selectedLadderRecipe = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedLadderRecipe);
+                AddMessage(TextFormat("Ladder recipe: %s", recipe ? recipe->name : "?"), BLUE);
+            }
             return;
         }
     }

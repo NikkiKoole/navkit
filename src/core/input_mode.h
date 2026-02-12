@@ -135,9 +135,10 @@ typedef struct {
 #define MAX_BAR_ITEMS 16
 int InputMode_GetBarItems(BarItem* items);  // Returns count of items
 
-// Build material selection (defined in input.c)
-const char* GetSelectedBuildMaterialName(void);
+// Recipe selection (defined in input.c)
 const char* GetSelectedWallRecipeName(void);
+const char* GetSelectedFloorRecipeName(void);
+const char* GetSelectedLadderRecipeName(void);
 
 // Trigger a bar item action (called when button clicked)
 void InputMode_TriggerKey(int key);

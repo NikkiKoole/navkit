@@ -51,8 +51,6 @@ void InitDesignations(void) {
     memset(blueprints, 0, sizeof(blueprints));
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         blueprints[i].assignedBuilder = -1;
-        blueprints[i].reservedItem = -1;
-        blueprints[i].deliveredMaterial = MAT_NONE;
     }
     blueprintCount = 0;
 }
@@ -1725,18 +1723,12 @@ static void InitBlueprintSlot(Blueprint* bp, int x, int y, int z) {
     bp->z = z;
     bp->active = true;
     bp->state = BLUEPRINT_AWAITING_MATERIALS;
-    bp->recipeIndex = -1;  // legacy by default
+    bp->recipeIndex = -1;
     bp->stage = 0;
     for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
         bp->stageDeliveries[s].chosenAlternative = -1;
         bp->stageDeliveries[s].deliveredMaterial = MAT_NONE;
     }
-    bp->requiredMaterials = 1;
-    bp->deliveredMaterialCount = 0;
-    bp->reservedItem = -1;
-    bp->deliveredMaterial = MAT_NONE;
-    bp->deliveredItemType = ITEM_NONE;
-    bp->requiredItemType = ITEM_TYPE_COUNT;
     bp->assignedBuilder = -1;
     bp->progress = 0.0f;
 }
@@ -1776,7 +1768,6 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     Blueprint* bp = &blueprints[idx];
     InitBlueprintSlot(bp, x, y, z);
     bp->recipeIndex = recipeIndex;
-    bp->type = BLUEPRINT_TYPE_WALL;  // legacy field, set for rendering compat
 
     // Check for items on ground at this cell — start in CLEARING if any exist
     bool hasItems = false;
@@ -1792,164 +1783,6 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         bp->state = BLUEPRINT_CLEARING;
     }
 
-    blueprintCount++;
-    return idx;
-}
-
-int CreateBuildBlueprint(int x, int y, int z) {
-    // Bounds check
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        return -1;
-    }
-    
-    // Can only build on walkable floor
-    if (!IsCellWalkableAt(z, y, x)) {
-        return -1;
-    }
-    
-    // Already has a blueprint?
-    if (HasBlueprint(x, y, z)) {
-        return -1;
-    }
-    
-    // Find free slot
-    int idx = -1;
-    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
-        if (!blueprints[i].active) {
-            idx = i;
-            break;
-        }
-    }
-    
-    if (idx < 0) return -1;  // No free slots
-    
-    Blueprint* bp = &blueprints[idx];
-    InitBlueprintSlot(bp, x, y, z);
-    bp->type = BLUEPRINT_TYPE_WALL;
-    
-    blueprintCount++;
-    return idx;
-}
-
-int CreateLadderBlueprint(int x, int y, int z) {
-    // Bounds check
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        return -1;
-    }
-    
-    // Can only build on walkable floor
-    if (!IsCellWalkableAt(z, y, x)) {
-        return -1;
-    }
-    
-    // Already has a blueprint?
-    if (HasBlueprint(x, y, z)) {
-        return -1;
-    }
-    
-    // Already has a ladder?
-    CellType ct = grid[z][y][x];
-    if (ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH) {
-        return -1;
-    }
-    
-    // Find free slot
-    int idx = -1;
-    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
-        if (!blueprints[i].active) {
-            idx = i;
-            break;
-        }
-    }
-    
-    if (idx < 0) return -1;  // No free slots
-    
-    Blueprint* bp = &blueprints[idx];
-    InitBlueprintSlot(bp, x, y, z);
-    bp->type = BLUEPRINT_TYPE_LADDER;
-    
-    blueprintCount++;
-    return idx;
-}
-
-int CreateFloorBlueprint(int x, int y, int z) {
-    // Bounds check
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        return -1;
-    }
-    
-    // Can't build floor on a wall
-    if (IsWallCell(grid[z][y][x])) {
-        return -1;
-    }
-    
-    // Already has a floor? (check flag or solid ground)
-    CellType ct = grid[z][y][x];
-    if (HAS_FLOOR(x, y, z) || CellIsSolid(ct)) {
-        return -1;
-    }
-    
-    // Already has a blueprint?
-    if (HasBlueprint(x, y, z)) {
-        return -1;
-    }
-    
-    // Find free slot
-    int idx = -1;
-    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
-        if (!blueprints[i].active) {
-            idx = i;
-            break;
-        }
-    }
-    
-    if (idx < 0) return -1;  // No free slots
-    
-    Blueprint* bp = &blueprints[idx];
-    InitBlueprintSlot(bp, x, y, z);
-    bp->type = BLUEPRINT_TYPE_FLOOR;
-    
-    blueprintCount++;
-    return idx;
-}
-
-int CreateRampBlueprint(int x, int y, int z) {
-    // Bounds check
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        return -1;
-    }
-    
-    // Can only build ramp in air
-    CellType ct = grid[z][y][x];
-    if (ct != CELL_AIR) {
-        return -1;
-    }
-    
-    // Must have floor at this position (something to stand on while building)
-    if (!HAS_FLOOR(x, y, z)) {
-        return -1;
-    }
-    
-    // Already has a blueprint?
-    if (HasBlueprint(x, y, z)) {
-        return -1;
-    }
-    
-    // Find free slot
-    int idx = -1;
-    for (int i = 0; i < MAX_BLUEPRINTS; i++) {
-        if (!blueprints[i].active) {
-            idx = i;
-            break;
-        }
-    }
-    
-    if (idx < 0) return -1;  // No free slots
-    
-    Blueprint* bp = &blueprints[idx];
-    InitBlueprintSlot(bp, x, y, z);
-    bp->type = BLUEPRINT_TYPE_RAMP;
-    
     blueprintCount++;
     return idx;
 }
@@ -1973,62 +1806,44 @@ void CancelBlueprint(int blueprintIdx) {
     float spawnX = bp->x * CELL_SIZE + CELL_SIZE * 0.5f;
     float spawnY = bp->y * CELL_SIZE + CELL_SIZE * 0.5f;
 
-    if (BlueprintUsesRecipe(bp)) {
-        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
 
-        // Refund current stage delivered items — 100% (not yet built into anything)
-        if (recipe) {
-            const ConstructionStage* stage = &recipe->stages[bp->stage];
-            for (int s = 0; s < stage->inputCount; s++) {
-                StageDelivery* sd = &bp->stageDeliveries[s];
-                if (sd->deliveredCount > 0) {
-                    ItemType refundType = ITEM_ROCK;  // fallback
-                    if (sd->chosenAlternative >= 0 && sd->chosenAlternative < stage->inputs[s].altCount) {
-                        refundType = stage->inputs[s].alternatives[sd->chosenAlternative].itemType;
-                    } else if (stage->inputs[s].altCount > 0) {
-                        refundType = stage->inputs[s].alternatives[0].itemType;
-                    }
-                    for (int i = 0; i < sd->deliveredCount; i++) {
+    // Refund current stage delivered items — 100% (not yet built into anything)
+    if (recipe) {
+        const ConstructionStage* stage = &recipe->stages[bp->stage];
+        for (int s = 0; s < stage->inputCount; s++) {
+            StageDelivery* sd = &bp->stageDeliveries[s];
+            if (sd->deliveredCount > 0) {
+                ItemType refundType = ITEM_ROCK;  // fallback
+                if (sd->chosenAlternative >= 0 && sd->chosenAlternative < stage->inputs[s].altCount) {
+                    refundType = stage->inputs[s].alternatives[sd->chosenAlternative].itemType;
+                } else if (stage->inputs[s].altCount > 0) {
+                    refundType = stage->inputs[s].alternatives[0].itemType;
+                }
+                for (int i = 0; i < sd->deliveredCount; i++) {
+                    SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z,
+                                         refundType, (uint8_t)sd->deliveredMaterial);
+                }
+            }
+        }
+    }
+
+    // Refund consumed items from completed stages — lossy
+    for (int st = 0; st < bp->stage; st++) {
+        for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
+            ConsumedRecord* cr = &bp->consumedItems[st][s];
+            if (cr->count > 0 && cr->itemType != ITEM_NONE) {
+                for (int i = 0; i < cr->count; i++) {
+                    if (GetRandomValue(1, 100) <= CONSTRUCTION_REFUND_CHANCE) {
                         SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z,
-                                             refundType, (uint8_t)sd->deliveredMaterial);
+                                             cr->itemType, (uint8_t)cr->material);
                     }
                 }
-            }
-        }
-
-        // Refund consumed items from completed stages — lossy
-        for (int st = 0; st < bp->stage; st++) {
-            for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
-                ConsumedRecord* cr = &bp->consumedItems[st][s];
-                if (cr->count > 0 && cr->itemType != ITEM_NONE) {
-                    for (int i = 0; i < cr->count; i++) {
-                        if (GetRandomValue(1, 100) <= CONSTRUCTION_REFUND_CHANCE) {
-                            SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z,
-                                                 cr->itemType, (uint8_t)cr->material);
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        // Legacy path
-        // Release reserved item if any
-        if (bp->reservedItem >= 0 && bp->reservedItem < MAX_ITEMS) {
-            items[bp->reservedItem].reservedBy = -1;
-        }
-
-        // Refund delivered materials by spawning items at the blueprint location
-        if (bp->deliveredMaterialCount > 0) {
-            ItemType refundType = (bp->requiredItemType < ITEM_TYPE_COUNT) ? bp->requiredItemType : ITEM_BLOCKS;
-            for (int i = 0; i < bp->deliveredMaterialCount; i++) {
-                SpawnItemWithMaterial(spawnX, spawnY, (float)bp->z, refundType,
-                                     (uint8_t)bp->deliveredMaterial);
             }
         }
     }
     
     bp->active = false;
-    bp->reservedItem = -1;
     bp->assignedBuilder = -1;
     blueprintCount--;
 }
@@ -2052,20 +1867,14 @@ int FindBlueprintNeedingMaterials(void) {
         Blueprint* bp = &blueprints[i];
         if (!bp->active || bp->state != BLUEPRINT_AWAITING_MATERIALS) continue;
 
-        if (BlueprintUsesRecipe(bp)) {
-            // Recipe: check if any slot has room for more deliveries
-            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-            if (!recipe) continue;
-            const ConstructionStage* stage = &recipe->stages[bp->stage];
-            for (int s = 0; s < stage->inputCount; s++) {
-                StageDelivery* sd = &bp->stageDeliveries[s];
-                if (sd->deliveredCount + sd->reservedCount < stage->inputs[s].count) {
-                    return i;
-                }
+        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+        if (!recipe) continue;
+        const ConstructionStage* stage = &recipe->stages[bp->stage];
+        for (int s = 0; s < stage->inputCount; s++) {
+            StageDelivery* sd = &bp->stageDeliveries[s];
+            if (sd->deliveredCount + sd->reservedCount < stage->inputs[s].count) {
+                return i;
             }
-        } else {
-            // Legacy: single reserved item
-            if (bp->reservedItem < 0) return i;
         }
     }
     return -1;
@@ -2097,77 +1906,52 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
     }
     ItemType deliveredType = items[itemIdx].type;
 
-    if (BlueprintUsesRecipe(bp)) {
-        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-        if (!recipe) return;
-        const ConstructionStage* stage = &recipe->stages[bp->stage];
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    if (!recipe) return;
+    const ConstructionStage* stage = &recipe->stages[bp->stage];
 
-        // Find which slot this item goes to
-        int targetSlot = -1;
-        for (int s = 0; s < stage->inputCount; s++) {
-            StageDelivery* sd = &bp->stageDeliveries[s];
-            if (sd->deliveredCount >= stage->inputs[s].count) continue;  // slot full
-            if (!ConstructionInputAcceptsItem(&stage->inputs[s], deliveredType)) continue;
-            // Check locking: if slot has a chosen alternative, must match
-            if (sd->chosenAlternative >= 0) {
-                if (stage->inputs[s].alternatives[sd->chosenAlternative].itemType != deliveredType) continue;
-                if (sd->deliveredMaterial != MAT_NONE && sd->deliveredMaterial != mat) continue;
-            }
-            targetSlot = s;
-            break;
+    // Find which slot this item goes to
+    int targetSlot = -1;
+    for (int s = 0; s < stage->inputCount; s++) {
+        StageDelivery* sd = &bp->stageDeliveries[s];
+        if (sd->deliveredCount >= stage->inputs[s].count) continue;  // slot full
+        if (!ConstructionInputAcceptsItem(&stage->inputs[s], deliveredType)) continue;
+        // Check locking: if slot has a chosen alternative, must match
+        if (sd->chosenAlternative >= 0) {
+            if (stage->inputs[s].alternatives[sd->chosenAlternative].itemType != deliveredType) continue;
+            if (sd->deliveredMaterial != MAT_NONE && sd->deliveredMaterial != mat) continue;
         }
+        targetSlot = s;
+        break;
+    }
 
-        if (targetSlot < 0) return;  // no matching slot (shouldn't happen if WorkGiver is correct)
+    if (targetSlot < 0) return;  // no matching slot (shouldn't happen if WorkGiver is correct)
 
-        StageDelivery* sd = &bp->stageDeliveries[targetSlot];
-        sd->deliveredCount++;
-        if (sd->reservedCount > 0) sd->reservedCount--;
-        sd->deliveredMaterial = mat;
+    StageDelivery* sd = &bp->stageDeliveries[targetSlot];
+    sd->deliveredCount++;
+    if (sd->reservedCount > 0) sd->reservedCount--;
+    sd->deliveredMaterial = mat;
 
-        // Lock alternative on first delivery if not already locked
-        if (sd->chosenAlternative < 0 && !stage->inputs[targetSlot].anyBuildingMat) {
-            for (int a = 0; a < stage->inputs[targetSlot].altCount; a++) {
-                if (stage->inputs[targetSlot].alternatives[a].itemType == deliveredType) {
-                    sd->chosenAlternative = a;
-                    break;
-                }
+    // Lock alternative on first delivery if not already locked
+    if (sd->chosenAlternative < 0 && !stage->inputs[targetSlot].anyBuildingMat) {
+        for (int a = 0; a < stage->inputs[targetSlot].altCount; a++) {
+            if (stage->inputs[targetSlot].alternatives[a].itemType == deliveredType) {
+                sd->chosenAlternative = a;
+                break;
             }
         }
+    }
 
-        // Also update legacy fields for rendering compatibility
-        bp->deliveredMaterial = mat;
-        bp->deliveredItemType = deliveredType;
+    // Consume the item
+    DeleteItem(itemIdx);
 
-        // Consume the item
-        DeleteItem(itemIdx);
-
-        // Check if all slots for current stage are filled
-        if (BlueprintStageFilled(bp)) {
-            bp->state = BLUEPRINT_READY_TO_BUILD;
-        }
-    } else {
-        // Legacy path
-        bp->deliveredMaterial = mat;
-        bp->deliveredItemType = deliveredType;
-
-        // Consume the item
-        DeleteItem(itemIdx);
-
-        // Update blueprint
-        bp->deliveredMaterialCount++;
-        bp->reservedItem = -1;
-
-        // Check if we have all materials
-        if (bp->deliveredMaterialCount >= bp->requiredMaterials) {
-            bp->state = BLUEPRINT_READY_TO_BUILD;
-        }
+    // Check if all slots for current stage are filled
+    if (BlueprintStageFilled(bp)) {
+        bp->state = BLUEPRINT_READY_TO_BUILD;
     }
 }
 
 bool BlueprintStageFilled(const Blueprint* bp) {
-    if (!BlueprintUsesRecipe(bp)) {
-        return bp->deliveredMaterialCount >= bp->requiredMaterials;
-    }
     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
     if (!recipe) return false;
     const ConstructionStage* stage = &recipe->stages[bp->stage];
@@ -2178,7 +1962,6 @@ bool BlueprintStageFilled(const Blueprint* bp) {
 }
 
 int BlueprintStageRequiredCount(const Blueprint* bp) {
-    if (!BlueprintUsesRecipe(bp)) return bp->requiredMaterials;
     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
     if (!recipe) return 0;
     const ConstructionStage* stage = &recipe->stages[bp->stage];
@@ -2190,7 +1973,6 @@ int BlueprintStageRequiredCount(const Blueprint* bp) {
 }
 
 int BlueprintStageDeliveredCount(const Blueprint* bp) {
-    if (!BlueprintUsesRecipe(bp)) return bp->deliveredMaterialCount;
     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
     if (!recipe) return 0;
     const ConstructionStage* stage = &recipe->stages[bp->stage];
@@ -2218,7 +2000,7 @@ static MaterialType GetRecipeFinalMaterial(const Blueprint* bp, const Constructi
             return bp->consumedItems[st][sl].material;
         }
     }
-    return bp->deliveredMaterial;  // fallback
+    return MAT_NONE;  // fallback
 }
 
 // Helper: determine final source item for a recipe blueprint
@@ -2235,7 +2017,7 @@ static ItemType GetRecipeFinalSourceItem(const Blueprint* bp, const Construction
             return bp->consumedItems[st][sl].itemType;
         }
     }
-    return bp->deliveredItemType;  // fallback
+    return ITEM_NONE;  // fallback
 }
 
 void CompleteBlueprint(int blueprintIdx) {
@@ -2246,186 +2028,129 @@ void CompleteBlueprint(int blueprintIdx) {
     
     int x = bp->x, y = bp->y, z = bp->z;
 
-    // Recipe-based completion
-    if (BlueprintUsesRecipe(bp)) {
-        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-        if (!recipe) { bp->active = false; blueprintCount--; return; }
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    if (!recipe) { bp->active = false; blueprintCount--; return; }
 
-        // Record consumed items for current stage before advancing
-        const ConstructionStage* stage = &recipe->stages[bp->stage];
-        for (int s = 0; s < stage->inputCount; s++) {
-            ConsumedRecord* cr = &bp->consumedItems[bp->stage][s];
-            StageDelivery* sd = &bp->stageDeliveries[s];
-            cr->count = sd->deliveredCount;
-            cr->material = sd->deliveredMaterial;
-            if (sd->chosenAlternative >= 0 && sd->chosenAlternative < stage->inputs[s].altCount) {
-                cr->itemType = stage->inputs[s].alternatives[sd->chosenAlternative].itemType;
-            } else if (stage->inputs[s].altCount > 0) {
-                cr->itemType = stage->inputs[s].alternatives[0].itemType;
-            }
+    // Record consumed items for current stage before advancing
+    const ConstructionStage* stage = &recipe->stages[bp->stage];
+    for (int s = 0; s < stage->inputCount; s++) {
+        ConsumedRecord* cr = &bp->consumedItems[bp->stage][s];
+        StageDelivery* sd = &bp->stageDeliveries[s];
+        cr->count = sd->deliveredCount;
+        cr->material = sd->deliveredMaterial;
+        if (sd->chosenAlternative >= 0 && sd->chosenAlternative < stage->inputs[s].altCount) {
+            cr->itemType = stage->inputs[s].alternatives[sd->chosenAlternative].itemType;
+        } else if (stage->inputs[s].altCount > 0) {
+            cr->itemType = stage->inputs[s].alternatives[0].itemType;
         }
-
-        // Check if this is the final stage
-        if (bp->stage + 1 < recipe->stageCount) {
-            // Advance to next stage
-            bp->stage++;
-            for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
-                bp->stageDeliveries[s].deliveredCount = 0;
-                bp->stageDeliveries[s].reservedCount = 0;
-                bp->stageDeliveries[s].chosenAlternative = -1;
-                bp->stageDeliveries[s].deliveredMaterial = MAT_NONE;
-            }
-            bp->state = BLUEPRINT_AWAITING_MATERIALS;
-            bp->assignedBuilder = -1;
-            bp->progress = 0.0f;
-            return;  // don't deactivate — more stages to go
-        }
-
-        // Final stage done — place the result
-        MaterialType finalMat = GetRecipeFinalMaterial(bp, recipe);
-        ItemType finalSource = GetRecipeFinalSourceItem(bp, recipe);
-
-        if (recipe->buildCategory == BUILD_WALL) {
-            PushMoversOutOfCell(x, y, z);
-            PushItemsOutOfCell(x, y, z);
-            if (IsCellWalkableAt(z, y, x)) {
-                ClearCellCleanup(x, y, z);
-                DisplaceWater(x, y, z);
-                if (finalMat == MAT_DIRT) {
-                    grid[z][y][x] = CELL_WALL;
-                    SetWallMaterial(x, y, z, MAT_DIRT);
-                    SetWallSourceItem(x, y, z, ITEM_DIRT);
-                    SetWallNatural(x, y, z);
-                    SetWallFinish(x, y, z, FINISH_ROUGH);
-                    CLEAR_FLOOR(x, y, z);
-                    SetFloorMaterial(x, y, z, MAT_NONE);
-                    ClearFloorNatural(x, y, z);
-                    SetFloorFinish(x, y, z, FINISH_ROUGH);
-                    SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
-                } else {
-                    grid[z][y][x] = CELL_WALL;
-                    SetWallMaterial(x, y, z, finalMat);
-                    SetWallSourceItem(x, y, z, finalSource);
-                    ClearWallNatural(x, y, z);
-                    SetWallFinish(x, y, z, FINISH_SMOOTH);
-                }
-                MarkChunkDirty(x, y, z);
-                InvalidatePathsThroughCell(x, y, z);
-            }
-        }
-        // BUILD_FLOOR, BUILD_LADDER, BUILD_RAMP will be handled when those recipes are added
-
-        bp->active = false;
-        bp->assignedBuilder = -1;
-        blueprintCount--;
-        return;
     }
 
-    // Legacy path
-    if (bp->type == BLUEPRINT_TYPE_WALL) {
-        // Push any movers out of this cell before placing the wall
+    // Check if this is the final stage
+    if (bp->stage + 1 < recipe->stageCount) {
+        // Advance to next stage
+        bp->stage++;
+        for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {
+            bp->stageDeliveries[s].deliveredCount = 0;
+            bp->stageDeliveries[s].reservedCount = 0;
+            bp->stageDeliveries[s].chosenAlternative = -1;
+            bp->stageDeliveries[s].deliveredMaterial = MAT_NONE;
+        }
+        bp->state = BLUEPRINT_AWAITING_MATERIALS;
+        bp->assignedBuilder = -1;
+        bp->progress = 0.0f;
+        return;  // don't deactivate — more stages to go
+    }
+
+    // Final stage done — place the result
+    MaterialType finalMat = GetRecipeFinalMaterial(bp, recipe);
+    ItemType finalSource = GetRecipeFinalSourceItem(bp, recipe);
+
+    if (recipe->buildCategory == BUILD_WALL) {
         PushMoversOutOfCell(x, y, z);
-        
-        // Push any items out of this cell before placing the wall
         PushItemsOutOfCell(x, y, z);
-        
-        // Convert floor to wall (or dirt for landscaping)
         if (IsCellWalkableAt(z, y, x)) {
-            // Clean up ramps/ladders before overwriting
             ClearCellCleanup(x, y, z);
             DisplaceWater(x, y, z);
-            if (bp->deliveredMaterial == MAT_DIRT) {
-                // Dirt creates natural wall, not a constructed wall
+            if (finalMat == MAT_DIRT) {
                 grid[z][y][x] = CELL_WALL;
                 SetWallMaterial(x, y, z, MAT_DIRT);
                 SetWallSourceItem(x, y, z, ITEM_DIRT);
                 SetWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_ROUGH);
-                CLEAR_FLOOR(x, y, z);  // Terrain is solid, no floor on top
+                CLEAR_FLOOR(x, y, z);
                 SetFloorMaterial(x, y, z, MAT_NONE);
                 ClearFloorNatural(x, y, z);
                 SetFloorFinish(x, y, z, FINISH_ROUGH);
-                SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // No grass yet, will grow over time
+                SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
             } else {
                 grid[z][y][x] = CELL_WALL;
-                SetWallMaterial(x, y, z, bp->deliveredMaterial);
-                SetWallSourceItem(x, y, z, bp->deliveredItemType);
+                SetWallMaterial(x, y, z, finalMat);
+                SetWallSourceItem(x, y, z, finalSource);
                 ClearWallNatural(x, y, z);
                 SetWallFinish(x, y, z, FINISH_SMOOTH);
-                // Floor material preserved - wall is built on top of floor
             }
             MarkChunkDirty(x, y, z);
             InvalidatePathsThroughCell(x, y, z);
         }
-    } else if (bp->type == BLUEPRINT_TYPE_LADDER) {
-        // Place ladder using existing ladder placement logic
-        // This handles UP/DOWN/BOTH connections automatically
-        PlaceLadder(x, y, z);
-        SetWallMaterial(x, y, z, bp->deliveredMaterial);
-        SetWallSourceItem(x, y, z, bp->deliveredItemType);
-        ClearWallNatural(x, y, z);
-        SetWallFinish(x, y, z, FINISH_SMOOTH);
-    } else if (bp->type == BLUEPRINT_TYPE_FLOOR) {
-        // Clean up ramps/ladders before overwriting
+    }
+    if (recipe->buildCategory == BUILD_FLOOR) {
         ClearCellCleanup(x, y, z);
-        
-        // Place floor - set floor flag on air cell (same as draw tool)
         DisplaceWater(x, y, z);
         grid[z][y][x] = CELL_AIR;
         SET_FLOOR(x, y, z);
-        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);  // Clear grass overlay
-        SetFloorMaterial(x, y, z, bp->deliveredMaterial);
-        SetFloorSourceItem(x, y, z, bp->deliveredItemType);
+        SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+        SetFloorMaterial(x, y, z, finalMat);
+        SetFloorSourceItem(x, y, z, finalSource);
         ClearFloorNatural(x, y, z);
         SetFloorFinish(x, y, z, FINISH_SMOOTH);
         MarkChunkDirty(x, y, z);
-    } else if (bp->type == BLUEPRINT_TYPE_RAMP) {
-        // Push items out before placing ramp
-        PushItemsOutOfCell(x, y, z);
-        
-        // Place ramp - auto-detect direction based on adjacent cells
-        DisplaceWater(x, y, z);
-        
-        // Use similar logic to draw tool for auto-detecting ramp direction
-        CellType rampType = CELL_RAMP_N;  // Default
-        
-        // Check for adjacent walls to determine ramp direction
-        // Ramp faces AWAY from wall (toward walkable space)
-        if (y > 0 && IsWallCell(grid[z][y-1][x])) {
-            rampType = CELL_RAMP_S;  // Wall to north, exit south
-        } else if (x < gridWidth - 1 && IsWallCell(grid[z][y][x+1])) {
-            rampType = CELL_RAMP_W;  // Wall to east, exit west
-        } else if (y < gridHeight - 1 && IsWallCell(grid[z][y+1][x])) {
-            rampType = CELL_RAMP_N;  // Wall to south, exit north
-        } else if (x > 0 && IsWallCell(grid[z][y][x-1])) {
-            rampType = CELL_RAMP_E;  // Wall to west, exit east
-        }
-        
-        grid[z][y][x] = rampType;
-        rampCount++;
-        CLEAR_FLOOR(x, y, z);  // Ramps don't have floors
-        SetWallMaterial(x, y, z, bp->deliveredMaterial);
-        SetWallSourceItem(x, y, z, bp->deliveredItemType);
+    }
+
+    if (recipe->buildCategory == BUILD_LADDER) {
+        PlaceLadder(x, y, z);
+        SetWallMaterial(x, y, z, finalMat);
+        SetWallSourceItem(x, y, z, finalSource);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_SMOOTH);
-        
-        // Create floor above the ramp (at z+1)
+    }
+
+    if (recipe->buildCategory == BUILD_RAMP) {
+        PushItemsOutOfCell(x, y, z);
+        DisplaceWater(x, y, z);
+
+        CellType rampType = CELL_RAMP_N;
+        if (y > 0 && IsWallCell(grid[z][y-1][x])) {
+            rampType = CELL_RAMP_S;
+        } else if (x < gridWidth - 1 && IsWallCell(grid[z][y][x+1])) {
+            rampType = CELL_RAMP_W;
+        } else if (y < gridHeight - 1 && IsWallCell(grid[z][y+1][x])) {
+            rampType = CELL_RAMP_N;
+        } else if (x > 0 && IsWallCell(grid[z][y][x-1])) {
+            rampType = CELL_RAMP_E;
+        }
+
+        grid[z][y][x] = rampType;
+        rampCount++;
+        CLEAR_FLOOR(x, y, z);
+        SetWallMaterial(x, y, z, finalMat);
+        SetWallSourceItem(x, y, z, finalSource);
+        ClearWallNatural(x, y, z);
+        SetWallFinish(x, y, z, FINISH_SMOOTH);
+
         if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
             SET_FLOOR(x, y, z + 1);
-            SetFloorMaterial(x, y, z + 1, bp->deliveredMaterial);
-            SetFloorSourceItem(x, y, z + 1, bp->deliveredItemType);
+            SetFloorMaterial(x, y, z + 1, finalMat);
+            SetFloorSourceItem(x, y, z + 1, finalSource);
             ClearFloorNatural(x, y, z + 1);
             SetFloorFinish(x, y, z + 1, FINISH_SMOOTH);
         }
-        
+
         MarkChunkDirty(x, y, z);
         if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
     }
-    
-    // Remove blueprint
+
     bp->active = false;
     bp->assignedBuilder = -1;
-    bp->reservedItem = -1;
     blueprintCount--;
 }
 

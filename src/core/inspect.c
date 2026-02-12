@@ -244,25 +244,17 @@ static void print_blueprint(int idx) {
     printf("Position: (%d, %d, z%d)\n", bp->x, bp->y, bp->z);
     printf("State: %s\n", bp->state < 4 ? blueprintStateNames[bp->state] : "UNKNOWN");
 
-    if (BlueprintUsesRecipe(bp)) {
-        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-        printf("Recipe: %s (index %d)\n", recipe ? recipe->name : "?", bp->recipeIndex);
-        printf("Stage: %d/%d\n", bp->stage + 1, recipe ? recipe->stageCount : 0);
-        if (recipe) {
-            const ConstructionStage* stage = &recipe->stages[bp->stage];
-            for (int s = 0; s < stage->inputCount; s++) {
-                StageDelivery* sd = &bp->stageDeliveries[s];
-                printf("  Slot %d: %d/%d delivered, %d reserved, alt=%d\n",
-                       s, sd->deliveredCount, stage->inputs[s].count,
-                       sd->reservedCount, sd->chosenAlternative);
-            }
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    printf("Recipe: %s (index %d)\n", recipe ? recipe->name : "?", bp->recipeIndex);
+    printf("Stage: %d/%d\n", bp->stage + 1, recipe ? recipe->stageCount : 0);
+    if (recipe) {
+        const ConstructionStage* stage = &recipe->stages[bp->stage];
+        for (int s = 0; s < stage->inputCount; s++) {
+            StageDelivery* sd = &bp->stageDeliveries[s];
+            printf("  Slot %d: %d/%d delivered, %d reserved, alt=%d\n",
+                   s, sd->deliveredCount, stage->inputs[s].count,
+                   sd->reservedCount, sd->chosenAlternative);
         }
-    } else {
-        printf("Materials: %d/%d delivered\n", bp->deliveredMaterialCount, bp->requiredMaterials);
-        printf("Required item type: %s\n",
-               bp->requiredItemType < ITEM_TYPE_COUNT ? ItemName(bp->requiredItemType) : "Any");
-        printf("Reserved item: %d%s\n", bp->reservedItem,
-               bp->reservedItem < 0 ? " (none)" : "");
     }
 
     printf("Assigned builder: %d%s\n", bp->assignedBuilder,

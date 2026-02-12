@@ -352,9 +352,16 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
                 break;
             case ACTION_WORK_LADDER:
+                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedLadderRecipeName()), KEY_M, 0, false, false, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_FLOOR:
+                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedFloorRecipeName()), KEY_M, 0, false, false, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_RAMP:
-                n = AddItem(items, n, TextFormat("Mat: %s", GetSelectedBuildMaterialName()), KEY_M, 0, false, false, false);
                 n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
                 break;

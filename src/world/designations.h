@@ -80,40 +80,23 @@ typedef enum {
     BLUEPRINT_CLEARING,            // Hauling away pre-existing items before construction
 } BlueprintState;
 
-typedef enum {
-    BLUEPRINT_TYPE_WALL,
-    BLUEPRINT_TYPE_LADDER,
-    BLUEPRINT_TYPE_FLOOR,
-    BLUEPRINT_TYPE_RAMP,
-} BlueprintType;
-
 typedef struct {
     int x, y, z;
     bool active;
     BlueprintState state;
-    BlueprintType type;         // What to build (wall, ladder, etc.) — legacy, used by non-wall types
 
-    // Recipe-based construction (walls use this; ladder/floor/ramp still use legacy fields)
-    int recipeIndex;            // ConstructionRecipeIndex, or -1 for legacy blueprints
+    // Recipe-based construction
+    int recipeIndex;            // ConstructionRecipeIndex
     int stage;                  // current recipe stage (0-indexed)
     StageDelivery stageDeliveries[MAX_INPUTS_PER_STAGE];
     ConsumedRecord consumedItems[MAX_CONSTRUCTION_STAGES][MAX_INPUTS_PER_STAGE];
 
-    // Legacy material requirements (used by ladder/floor/ramp until migrated)
-    int requiredMaterials;      // How many items needed (1 for simple wall)
-    int deliveredMaterialCount;     // How many items delivered so far
-    int reservedItem;           // Item index reserved for this blueprint (-1 = none)
-    MaterialType deliveredMaterial;  // What material type was delivered (for cell material)
-    ItemType deliveredItemType;      // What item type was actually delivered (for source tracking)
-    ItemType requiredItemType;  // Which item type to use (ITEM_TYPE_COUNT = any building mat)
-    
     // Construction progress
     int assignedBuilder;        // Mover index doing the building (-1 = none)
     float progress;             // 0.0 to 1.0
 } Blueprint;
 
 #define MAX_BLUEPRINTS 1000
-#define BUILD_WORK_TIME 2.0f    // Seconds to build (after materials delivered)
 
 extern Blueprint blueprints[MAX_BLUEPRINTS];
 extern int blueprintCount;
@@ -345,17 +328,8 @@ int CountCleanDesignations(void);
 // Blueprint functions
 // =============================================================================
 
-// Create a blueprint for building a wall at the given location (recipe-based)
-// Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
-int CreateBuildBlueprint(int x, int y, int z);
-
 // Create a blueprint using a specific construction recipe
 int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex);
-
-// Check if blueprint uses recipe system (vs legacy)
-static inline bool BlueprintUsesRecipe(const Blueprint* bp) {
-    return bp->recipeIndex >= 0;
-}
 
 // Check if all delivery slots for current stage are filled
 bool BlueprintStageFilled(const Blueprint* bp);
@@ -365,18 +339,6 @@ int BlueprintStageRequiredCount(const Blueprint* bp);
 
 // Get total delivered items across all slots for current stage
 int BlueprintStageDeliveredCount(const Blueprint* bp);
-
-// Create a blueprint for building a ladder at the given location
-// Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
-int CreateLadderBlueprint(int x, int y, int z);
-
-// Create a blueprint for building a floor at the given location
-// Returns blueprint index, or -1 if failed (already has floor, already has blueprint, etc.)
-int CreateFloorBlueprint(int x, int y, int z);
-
-// Create a blueprint for building a ramp at the given location
-// Returns blueprint index, or -1 if failed (already has ramp, already has blueprint, etc.)
-int CreateRampBlueprint(int x, int y, int z);
 
 // Cancel/remove a blueprint
 void CancelBlueprint(int blueprintIdx);

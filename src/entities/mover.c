@@ -652,7 +652,6 @@ void ClearMovers(void) {
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         if (blueprints[i].active) {
             blueprints[i].assignedBuilder = -1;
-            blueprints[i].reservedItem = -1;
             blueprints[i].progress = 0.0f;
             // Reset recipe delivery reservedCounts (in-transit items are released on load)
             for (int s = 0; s < MAX_INPUTS_PER_STAGE; s++) {

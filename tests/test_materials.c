@@ -210,18 +210,17 @@ describe(material_def_properties) {
 // =============================================================================
 
 describe(blueprint_material_tracking) {
-    it("should initialize blueprint with MAT_NONE") {
+    it("should initialize blueprint with MAT_NONE deliveries") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         InitDesignations();
         ClearItems();
         
-        // Create floor so we can place blueprint
         SET_FLOOR(1, 0, 0);
         
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_LOG_WALL);
         expect(bpIdx >= 0);
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_NONE);
+        expect(blueprints[bpIdx].stageDeliveries[0].deliveredMaterial == MAT_NONE);
     }
     
     it("should set wood material when delivering wood item") {
@@ -232,14 +231,14 @@ describe(blueprint_material_tracking) {
         
         SET_FLOOR(1, 0, 0);
         
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_LOG_WALL);
         expect(bpIdx >= 0);
         
         // Spawn and deliver wood (oak)
         int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_OAK);
+        expect(blueprints[bpIdx].stageDeliveries[0].deliveredMaterial == MAT_OAK);
     }
     
     it("should set stone material when delivering stone blocks") {
@@ -250,17 +249,17 @@ describe(blueprint_material_tracking) {
         
         SET_FLOOR(1, 0, 0);
         
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
         
         // Spawn and deliver granite blocks
         int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
         
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_GRANITE);
+        expect(blueprints[bpIdx].stageDeliveries[0].deliveredMaterial == MAT_GRANITE);
     }
     
-    it("should set wall material when completing wall blueprint with wood") {
+    it("should set wall material when completing log wall blueprint with pine") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         InitDesignations();
@@ -268,14 +267,14 @@ describe(blueprint_material_tracking) {
         
         SET_FLOOR(1, 0, 0);
         
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_LOG_WALL);
         
-        // Deliver wood (pine) and complete
-        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_PINE);
-        DeliverMaterialToBlueprint(bpIdx, itemIdx);
+        // Deliver 2 pine logs and complete
+        for (int i = 0; i < 2; i++) {
+            int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_PINE);
+            DeliverMaterialToBlueprint(bpIdx, itemIdx);
+        }
         
-        // Simulate builder completing
-        blueprints[bpIdx].progress = BUILD_WORK_TIME;
         CompleteBlueprint(bpIdx);
         
         // Cell should be CELL_WALL with MAT_PINE (constructed)
@@ -284,7 +283,7 @@ describe(blueprint_material_tracking) {
         expect(!IsWallNatural(1, 0, 0));
     }
     
-    it("should set wall material when completing wall blueprint with stone") {
+    it("should set wall material when completing dry stone wall with granite") {
         InitGridFromAsciiWithChunkSize(
             "....\n", 4, 1);
         InitDesignations();
@@ -292,13 +291,14 @@ describe(blueprint_material_tracking) {
         
         SET_FLOOR(1, 0, 0);
         
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_DRY_STONE_WALL);
         
-        // Deliver granite blocks and complete
-        int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
-        DeliverMaterialToBlueprint(bpIdx, itemIdx);
+        // Deliver 3 granite rocks and complete
+        for (int i = 0; i < 3; i++) {
+            int itemIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_ROCK, MAT_GRANITE);
+            DeliverMaterialToBlueprint(bpIdx, itemIdx);
+        }
         
-        blueprints[bpIdx].progress = BUILD_WORK_TIME;
         CompleteBlueprint(bpIdx);
         
         // Cell should be CELL_WALL with MAT_GRANITE (constructed)
@@ -580,13 +580,15 @@ describe(build_mine_cycle) {
         InitDesignations();
         ClearItems();
         
-        // Step 1: Create floor and blueprint
+        // Step 1: Create floor and blueprint (log wall = 2 logs)
         SET_FLOOR(1, 0, 0);
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_LOG_WALL);
         
-        // Step 2: Deliver wood and complete build
-        int woodItem = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
-        DeliverMaterialToBlueprint(bpIdx, woodItem);
+        // Step 2: Deliver 2 oak logs and complete build
+        for (int i = 0; i < 2; i++) {
+            int woodItem = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
+            DeliverMaterialToBlueprint(bpIdx, woodItem);
+        }
         CompleteBlueprint(bpIdx);
         
         // Verify: wall exists with wood material
@@ -610,11 +612,13 @@ describe(build_mine_cycle) {
         InitDesignations();
         ClearItems();
         
-        // Build with stone
+        // Build with stone (dry stone wall = 3 rocks/blocks)
         SET_FLOOR(1, 0, 0);
-        int bpIdx = CreateBuildBlueprint(1, 0, 0);
-        int stoneItem = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
-        DeliverMaterialToBlueprint(bpIdx, stoneItem);
+        int bpIdx = CreateRecipeBlueprint(1, 0, 0, CONSTRUCTION_DRY_STONE_WALL);
+        for (int i = 0; i < 3; i++) {
+            int stoneItem = SpawnItemWithMaterial(0, 0, 0, ITEM_BLOCKS, MAT_GRANITE);
+            DeliverMaterialToBlueprint(bpIdx, stoneItem);
+        }
         CompleteBlueprint(bpIdx);
         
         expect(grid[0][0][1] == CELL_WALL);

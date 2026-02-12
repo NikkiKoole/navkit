@@ -1829,7 +1829,7 @@ static void DrawBlueprints(void) {
         }
 
         // Stage indicator for multi-stage recipes
-        if (BlueprintUsesRecipe(bp)) {
+        {
             const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
             if (recipe && recipe->stageCount > 1) {
                 const char* stageText = TextFormat("S%d", bp->stage + 1);

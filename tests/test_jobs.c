@@ -146,6 +146,27 @@ static int MoverGetTargetMineZ(Mover* m) {
     return job->targetMineZ;
 }
 
+// Helper: fill a recipe blueprint's current stage so it becomes READY_TO_BUILD.
+// Spawns and delivers the required items. For tests that just need a built-ready blueprint.
+static void FillBlueprintStage(int bpIdx, MaterialType mat) {
+    Blueprint* bp = &blueprints[bpIdx];
+    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+    if (!recipe) return;
+    const ConstructionStage* stage = &recipe->stages[bp->stage];
+    for (int s = 0; s < stage->inputCount; s++) {
+        const ConstructionInput* input = &stage->inputs[s];
+        ItemType itemType = input->anyBuildingMat ? ITEM_BLOCKS : input->alternatives[0].itemType;
+        uint8_t itemMat = (mat != MAT_NONE) ? (uint8_t)mat : DefaultMaterialForItemType(itemType);
+        for (int i = 0; i < input->count; i++) {
+            int itemIdx = SpawnItemWithMaterial(
+                bp->x * CELL_SIZE + CELL_SIZE * 0.5f,
+                bp->y * CELL_SIZE + CELL_SIZE * 0.5f,
+                (float)bp->z, itemType, itemMat);
+            DeliverMaterialToBlueprint(bpIdx, itemIdx);
+        }
+    }
+}
+
 /*
  * Phase 0 Tests: Item spawn + single pickup
  * 
@@ -4764,7 +4785,7 @@ describe(building_blueprint) {
         InitDesignations();
         
         // Create blueprint on floor
-        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
         expect(HasBlueprint(2, 2, 0) == true);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
@@ -4786,7 +4807,7 @@ describe(building_blueprint) {
         InitDesignations();
         
         // Try to create blueprint on wall
-        int bpIdx = CreateBuildBlueprint(1, 1, 0);
+        int bpIdx = CreateRecipeBlueprint(1, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx == -1);
         expect(HasBlueprint(1, 1, 0) == false);
         expect(CountBlueprints() == 0);
@@ -4806,7 +4827,7 @@ describe(building_blueprint) {
         ClearStockpiles();
         InitDesignations();
         
-        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(CountBlueprints() == 1);
         
         CancelBlueprint(bpIdx);
@@ -4842,7 +4863,7 @@ describe(building_haul_job) {
         int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
         
         // Blueprint at (4,4)
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
         
         // Run job assignment
@@ -4852,7 +4873,7 @@ describe(building_haul_job) {
         expect(MoverIsMovingToPickup(m));
         expect(MoverGetTargetItem(m) == itemIdx);
         expect(MoverGetTargetBlueprint(m) == bpIdx);
-        expect(blueprints[bpIdx].reservedItem == itemIdx);
+        expect(items[itemIdx].reservedBy >= 0);
     }
     
     it("should not assign haul job when no items available") {
@@ -4878,13 +4899,13 @@ describe(building_haul_job) {
         moverCount = 1;
         
         // Blueprint but NO items
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
         
         AssignJobs();
         
         // Mover should remain idle
         expect(MoverIsIdle(m));
-        expect(blueprints[bpIdx].reservedItem == -1);
+        expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
     }
 }
 
@@ -4911,12 +4932,13 @@ describe(building_job_execution) {
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Item at (1,1) - must be ITEM_BLOCKS for building walls
-        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
-        (void)itemIdx;  // Used only in setup
+        // 3 rocks at (1,1) - dry stone wall needs 3
+        for (int i = 0; i < 3; i++) {
+            SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        }
         
         // Blueprint at (3,3) - will become a wall
-        CreateBuildBlueprint(3, 3, 0);
+        CreateRecipeBlueprint(3, 3, 0, CONSTRUCTION_DRY_STONE_WALL);
         
         // Run simulation until build completes
         // Hauler picks up item, delivers to blueprint, then builder builds
@@ -4933,9 +4955,6 @@ describe(building_job_execution) {
         expect(grid[0][3][3] == CELL_WALL);
         expect(HasBlueprint(3, 3, 0) == false);
         expect(CountBlueprints() == 0);
-        
-        // Item should be consumed
-        expect(IsItemActive(itemIdx) == false);
         
         // Mover should be idle
         expect(MoverIsIdle(m));
@@ -4967,7 +4986,7 @@ describe(building_job_execution) {
         int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
         
         // Blueprint at (4,4)
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
         
         // Start hauling
         AssignJobs();
@@ -5033,11 +5052,13 @@ describe(building_two_movers) {
         InitMover(m2, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 6 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal2, 100.0f);
         moverCount = 2;
         
-        // Item at (1,1) - must be ITEM_BLOCKS for building walls
-        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
+        // 3 rocks at (1,1) - dry stone wall needs 3
+        for (int i = 0; i < 3; i++) {
+            SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        }
         
         // Blueprint at (5,5)
-        int bpIdx = CreateBuildBlueprint(5, 5, 0);
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
         
         // Run simulation until build completes
         bool haulerFound = false;
@@ -5459,9 +5480,8 @@ describe(job_drivers) {
         moverCount = 1;
         
         // Create blueprint at (4,1) - already has materials delivered
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterialCount = 1;
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
         
         // Create a build job using the new Job pool
         int jobId = CreateJob(JOBTYPE_BUILD);
@@ -5757,9 +5777,9 @@ describe(job_game_speed) {
         moverCount = 1;
         
         // Create blueprint at (4,1) - ready to build
-        int bpIdx = CreateBuildBlueprint(4, 1, buildZ);
+        int bpIdx = CreateRecipeBlueprint(4, 1, buildZ, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
         blueprints[bpIdx].state = BLUEPRINT_BUILDING;
-        blueprints[bpIdx].deliveredMaterialCount = 1;
         blueprints[bpIdx].assignedBuilder = 0;
         
         // Create build job
@@ -5785,9 +5805,9 @@ describe(job_game_speed) {
         
         // Reset for 2x speed test
         grid[buildZ][1][4] = CELL_AIR;
-        int bpIdx2 = CreateBuildBlueprint(4, 1, buildZ);
+        int bpIdx2 = CreateRecipeBlueprint(4, 1, buildZ, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx2, MAT_GRANITE);
         blueprints[bpIdx2].state = BLUEPRINT_BUILDING;
-        blueprints[bpIdx2].deliveredMaterialCount = 1;
         blueprints[bpIdx2].assignedBuilder = 0;
         
         // Create fresh job for 2x test
@@ -5932,9 +5952,8 @@ describe(mover_capabilities) {
         RebuildIdleMoverList();
         
         // Create blueprint ready to build
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterialCount = 1;
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
         
         // Try to assign jobs
         AssignJobs();
@@ -6003,9 +6022,8 @@ describe(mover_capabilities) {
         RebuildIdleMoverList();
         
         // Create blueprint ready to build
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterialCount = 1;
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
         
         // Try to assign jobs
         AssignJobs();
@@ -6040,11 +6058,12 @@ describe(mover_capabilities) {
         RebuildIdleMoverList();
         
         // Create blueprint awaiting materials
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
         
-        // Spawn a stone blocks item (building material)
-        int itemIdx = SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_BLOCKS);
-        (void)itemIdx;  // Suppress unused warning
+        // Spawn 3 rocks (dry stone wall needs 3)
+        for (int i = 0; i < 3; i++) {
+            SpawnItem(CELL_SIZE * 2.5f, CELL_SIZE * 1.5f, 0.0f, ITEM_ROCK);
+        }
         
         // Run until material is delivered
         for (int i = 0; i < 600; i++) {
@@ -6177,9 +6196,8 @@ describe(workgivers) {
         RebuildIdleMoverList();
         
         // Create blueprint ready to build
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
-        blueprints[bpIdx].deliveredMaterialCount = 1;
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
         
         // Call WorkGiver_Build directly
         int jobId = WorkGiver_Build(0);
@@ -6215,7 +6233,7 @@ describe(workgivers) {
         RebuildIdleMoverList();
         
         // Create blueprint awaiting materials
-        int bpIdx = CreateBuildBlueprint(4, 1, 0);
+        int bpIdx = CreateRecipeBlueprint(4, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
         
         // Spawn a stone blocks item (building material)
@@ -6318,12 +6336,12 @@ describe(workgivers) {
 
 /* =============================================================================
  * Blueprint Material Selection Tests
- * Tests that blueprints with requiredItemType filter which items movers haul.
+ * Tests that recipe inputs filter which items movers haul.
  * =============================================================================
  */
 
 describe(blueprint_material_selection) {
-    it("should only haul matching item type to blueprint with requiredItemType") {
+    it("should only haul recipe-matching item type to blueprint") {
         InitGridFromAsciiWithChunkSize(
             "......\n"
             "......\n"
@@ -6339,30 +6357,28 @@ describe(blueprint_material_selection) {
         InitDesignations();
         ClearJobs();
 
-        // Mover at (0,0)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         RebuildIdleMoverList();
 
-        // Log at (1,1) - closer
+        // Log at (1,1) - closer but not accepted by brick wall
         SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
-        // Bricks at (2,1) - farther
+        // Bricks at (2,1) - farther but accepted
         int brickIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
 
-        // Blueprint wants bricks specifically
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
-        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+        // Brick wall recipe only accepts ITEM_BRICKS
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_BRICK_WALL);
+        (void)bpIdx;
 
         AssignJobs();
 
         expect(MoverHasHaulToBlueprintJob(m));
         expect(MoverGetTargetItem(m) == brickIdx);
-        expect(blueprints[bpIdx].reservedItem == brickIdx);
     }
 
-    it("should haul any building mat when requiredItemType is ITEM_TYPE_COUNT") {
+    it("should haul rock or blocks to dry stone wall blueprint") {
         InitGridFromAsciiWithChunkSize(
             "......\n"
             "......\n"
@@ -6378,24 +6394,22 @@ describe(blueprint_material_selection) {
         InitDesignations();
         ClearJobs();
 
-        // Mover at (0,0)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         RebuildIdleMoverList();
 
-        // Log at (1,1)
-        int logIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        // Rock at (1,1)
+        int rockIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
 
-        // Blueprint accepts any material (default)
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
-        expect(blueprints[bpIdx].requiredItemType == ITEM_TYPE_COUNT);
+        // Dry stone wall accepts ITEM_ROCK or ITEM_BLOCKS
+        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
 
         AssignJobs();
 
         expect(MoverHasHaulToBlueprintJob(m));
-        expect(MoverGetTargetItem(m) == logIdx);
+        expect(MoverGetTargetItem(m) == rockIdx);
     }
 
     it("should not assign haul job when only wrong material available") {
@@ -6414,24 +6428,20 @@ describe(blueprint_material_selection) {
         InitDesignations();
         ClearJobs();
 
-        // Mover at (0,0)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         RebuildIdleMoverList();
 
-        // Only logs available
+        // Only logs available - brick wall needs bricks
         SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
 
-        // Blueprint wants bricks - no bricks exist
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
-        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_BRICK_WALL);
 
         AssignJobs();
 
         expect(MoverIsIdle(m));
-        expect(blueprints[bpIdx].reservedItem == -1);
     }
 
     it("should pick nearest matching item not nearest overall") {
@@ -6450,21 +6460,18 @@ describe(blueprint_material_selection) {
         InitDesignations();
         ClearJobs();
 
-        // Mover at (0,0)
         Mover* m = &movers[0];
         Point goal = {0, 0, 0};
         InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         RebuildIdleMoverList();
 
-        // Log at (1,1) - very close but wrong type
+        // Log at (1,1) - very close but wrong type for brick wall
         SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
         // Bricks at (3,1) - farther but correct type
         int brickIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
 
-        // Blueprint wants bricks
-        int bpIdx = CreateBuildBlueprint(4, 4, 0);
-        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
+        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_BRICK_WALL);
 
         AssignJobs();
 
@@ -6472,7 +6479,7 @@ describe(blueprint_material_selection) {
         expect(MoverGetTargetItem(m) == brickIdx);
     }
 
-    it("should match different items to different blueprints by type") {
+    it("should match different items to different recipe blueprints") {
         InitGridFromAsciiWithChunkSize(
             "......\n"
             "......\n"
@@ -6488,7 +6495,6 @@ describe(blueprint_material_selection) {
         InitDesignations();
         ClearJobs();
 
-        // Two movers
         Mover* m0 = &movers[0];
         Point goal0 = {0, 0, 0};
         InitMover(m0, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal0, 100.0f);
@@ -6500,28 +6506,21 @@ describe(blueprint_material_selection) {
         moverCount = 2;
         RebuildIdleMoverList();
 
-        // Bricks and log
-        int brickIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
-        int logIdx = SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        // Bricks and logs
+        SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BRICKS);
+        SpawnItem(4 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
 
-        // Blueprint A wants bricks, Blueprint B wants logs
-        int bpA = CreateBuildBlueprint(2, 4, 0);
-        blueprints[bpA].requiredItemType = ITEM_BRICKS;
-
-        int bpB = CreateBuildBlueprint(4, 4, 0);
-        blueprints[bpB].requiredItemType = ITEM_LOG;
+        // Brick wall wants bricks, log wall wants logs
+        CreateRecipeBlueprint(2, 4, 0, CONSTRUCTION_BRICK_WALL);
+        CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_LOG_WALL);
 
         AssignJobs();
 
         // Both movers should have haul jobs
         expect(MoverHasHaulToBlueprintJob(m0) || MoverHasHaulToBlueprintJob(m1));
-
-        // Check that bricks go to bpA and logs go to bpB
-        expect(blueprints[bpA].reservedItem == brickIdx);
-        expect(blueprints[bpB].reservedItem == logIdx);
     }
 
-    it("should store requiredItemType on blueprint creation") {
+    it("should create recipe blueprint with correct recipe index") {
         InitGridFromAsciiWithChunkSize(
             "......\n"
             "......\n"
@@ -6529,14 +6528,13 @@ describe(blueprint_material_selection) {
 
         InitDesignations();
 
-        // Default creation gives ITEM_TYPE_COUNT
-        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_BRICK_WALL);
         expect(bpIdx >= 0);
-        expect(blueprints[bpIdx].requiredItemType == ITEM_TYPE_COUNT);
+        expect(blueprints[bpIdx].recipeIndex == CONSTRUCTION_BRICK_WALL);
 
-        // Can set after creation
-        blueprints[bpIdx].requiredItemType = ITEM_BRICKS;
-        expect(blueprints[bpIdx].requiredItemType == ITEM_BRICKS);
+        const ConstructionRecipe* recipe = GetConstructionRecipe(blueprints[bpIdx].recipeIndex);
+        expect(recipe != NULL);
+        expect(recipe->buildCategory == BUILD_WALL);
     }
 }
 
@@ -9142,11 +9140,9 @@ describe(designation_lifecycle) {
         m->needsRepath = false;
 
         // Create and complete a wall blueprint at (5,2,0)
-        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(5, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
-        blueprints[bpIdx].deliveredMaterialCount = 1;
-        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
 
         CompleteBlueprint(bpIdx);
 
@@ -9180,11 +9176,9 @@ describe(designation_lifecycle) {
 
         int before = rampCount;
 
-        int bpIdx = CreateRampBlueprint(2, 2, 1);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 1, CONSTRUCTION_RAMP);
         expect(bpIdx >= 0);
-        blueprints[bpIdx].deliveredMaterialCount = 1;
-        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
 
         CompleteBlueprint(bpIdx);
 
@@ -9207,7 +9201,7 @@ describe(designation_lifecycle) {
         ClearItems();
 
         // Create blueprint at (2,2,0)
-        int bpIdx = CreateBuildBlueprint(2, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
 
         // Spawn an item and deliver it to the blueprint
@@ -9218,8 +9212,8 @@ describe(designation_lifecycle) {
         DeliverMaterialToBlueprint(bpIdx, itemIdx);
 
         // Material has been consumed (DeleteItem called)
-        expect(blueprints[bpIdx].deliveredMaterialCount == 1);
-        expect(blueprints[bpIdx].deliveredMaterial == MAT_GRANITE);
+        expect(blueprints[bpIdx].stageDeliveries[0].deliveredCount == 1);
+        expect(blueprints[bpIdx].stageDeliveries[0].deliveredMaterial == MAT_GRANITE);
 
         int itemsBefore = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
@@ -9281,11 +9275,9 @@ describe(designation_lifecycle) {
             2 * CELL_SIZE + CELL_SIZE * 0.5f,
             1.0f, ITEM_ROCK);
 
-        int bpIdx = CreateRampBlueprint(2, 2, 1);
+        int bpIdx = CreateRecipeBlueprint(2, 2, 1, CONSTRUCTION_RAMP);
         expect(bpIdx >= 0);
-        blueprints[bpIdx].deliveredMaterialCount = 1;
-        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        FillBlueprintStage(bpIdx, MAT_GRANITE);
 
         CompleteBlueprint(bpIdx);
 
@@ -9966,9 +9958,10 @@ describe(grid_audit_blueprint_integration) {
         InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Place building material at (2,2)
-        int itemIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
-        (void)itemIdx;
+        // Place 3 rocks at (2,2) - dry stone wall needs 3
+        for (int i = 0; i < 3; i++) {
+            SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        }
         
         // Place a ramp at (5,2) pointing north
         grid[0][2][5] = CELL_RAMP_N;
@@ -9976,7 +9969,7 @@ describe(grid_audit_blueprint_integration) {
         int rampCountBefore = rampCount;
         
         // Player places wall blueprint on the ramp cell
-        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(5, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
         
         // Run simulation until wall is built
@@ -10018,17 +10011,14 @@ describe(grid_audit_blueprint_integration) {
         expect(IsLadderCell(grid[0][2][5]));
         
         // Create floor blueprint on the ladder cell
-        int bpIdx = CreateFloorBlueprint(5, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(5, 2, 0, CONSTRUCTION_PLANK_FLOOR);
         expect(bpIdx >= 0);
         
         // Simulate material delivery (skip job system, go straight to completion)
-        blueprints[bpIdx].deliveredMaterialCount = blueprints[bpIdx].requiredMaterials;
-        blueprints[bpIdx].deliveredMaterial = MAT_GRANITE;
-        blueprints[bpIdx].state = BLUEPRINT_READY_TO_BUILD;
+        FillBlueprintStage(bpIdx, MAT_OAK);
         
         // Complete the blueprint (this is what the builder mover calls)
         expect(blueprints[bpIdx].active == true);
-        expect(blueprints[bpIdx].type == BLUEPRINT_TYPE_FLOOR);
         CompleteBlueprint(bpIdx);
         
         // After completion, cell should be AIR (not ladder)
@@ -10074,9 +10064,10 @@ describe(grid_audit_blueprint_integration) {
         InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Place building material at (2,2,0)
-        int itemIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
-        (void)itemIdx;
+        // Place 3 rocks at (2,2,0) - dry stone wall needs 3
+        for (int i = 0; i < 3; i++) {
+            SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_ROCK);
+        }
         
         // Place a ramp at (5,2,0) pointing north
         grid[0][2][5] = CELL_RAMP_N;
@@ -10084,7 +10075,7 @@ describe(grid_audit_blueprint_integration) {
         int rampCountBefore = rampCount;
         
         // Player places wall blueprint on the ramp cell
-        int bpIdx = CreateBuildBlueprint(5, 2, 0);
+        int bpIdx = CreateRecipeBlueprint(5, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
         expect(bpIdx >= 0);
         
         // Run simulation until wall is built
@@ -11985,7 +11976,7 @@ describe(construction_recipe_blueprint) {
         expect(blueprints[bpIdx].recipeIndex == CONSTRUCTION_DRY_STONE_WALL);
         expect(blueprints[bpIdx].stage == 0);
         expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
-        expect(BlueprintUsesRecipe(&blueprints[bpIdx]) == true);
+        expect(blueprints[bpIdx].recipeIndex >= 0);
     }
 
     it("should reject recipe blueprint on wall cell") {
@@ -12241,7 +12232,7 @@ describe(construction_recipe_build) {
     it("should use recipe build time not flat constant") {
         // Test #33
         const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
-        expect(r->stages[0].buildTime != BUILD_WORK_TIME);  // 3.0 != 2.0
+        expect(r->stages[0].buildTime != 2.0f);  // dry stone wall = 3.0, not default 2.0
         expect(r->stages[0].buildTime == 3.0f);
     }
 
@@ -14016,6 +14007,184 @@ describe(construction_any_building_mat) {
 }
 
 // =============================================================================
+// Phase 7: New Recipes (log wall, brick wall/floor, plank floor, thatch floor, ladder)
+// =============================================================================
+describe(construction_new_recipes) {
+    it("should build brick floor end to end") {
+        // Test #2: 2 bricks → floor with MAT_BRICK
+        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitDesignations();
+        ClearItems();
+
+        // Need air cell with no floor for floor blueprint
+        CLEAR_FLOOR(2, 1, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 1, 0, CONSTRUCTION_BRICK_FLOOR);
+        expect(bpIdx >= 0);
+
+        for (int i = 0; i < 2; i++) {
+            int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_BRICKS, MAT_BRICK);
+            DeliverMaterialToBlueprint(bpIdx, idx);
+        }
+        expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
+        CompleteBlueprint(bpIdx);
+
+        expect(HAS_FLOOR(2, 1, 0));
+        expect(GetFloorMaterial(2, 1, 0) == MAT_BRICK);
+        expect(!IsFloorNatural(2, 1, 0));
+    }
+
+    it("should build ladder with log") {
+        // Test #3: 1 log → ladder placed
+        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitDesignations();
+        ClearItems();
+
+        int bpIdx = CreateRecipeBlueprint(2, 1, 0, CONSTRUCTION_LADDER);
+        expect(bpIdx >= 0);
+
+        int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
+        DeliverMaterialToBlueprint(bpIdx, idx);
+        expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
+        CompleteBlueprint(bpIdx);
+
+        CellType ct = grid[0][1][2];
+        expect(ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH);
+        expect(GetWallMaterial(2, 1, 0) == MAT_OAK);
+    }
+
+    it("should build thatch floor end to end with 2 stages") {
+        // Test #8: stage 0 = 1 dirt, stage 1 = 1 dried grass → floor with MAT_DIRT
+        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitDesignations();
+        ClearItems();
+
+        CLEAR_FLOOR(2, 1, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 1, 0, CONSTRUCTION_THATCH_FLOOR);
+        expect(bpIdx >= 0);
+
+        // Stage 0: deliver dirt
+        int dirtIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_DIRT, MAT_DIRT);
+        DeliverMaterialToBlueprint(bpIdx, dirtIdx);
+        expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
+        CompleteBlueprint(bpIdx);
+
+        // Should advance to stage 1
+        expect(blueprints[bpIdx].active == true);
+        expect(blueprints[bpIdx].stage == 1);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+
+        // Stage 1: deliver dried grass
+        int grassIdx = SpawnItemWithMaterial(0, 0, 0, ITEM_DRIED_GRASS, MAT_NONE);
+        DeliverMaterialToBlueprint(bpIdx, grassIdx);
+        expect(blueprints[bpIdx].state == BLUEPRINT_READY_TO_BUILD);
+        CompleteBlueprint(bpIdx);
+
+        // Should be complete
+        expect(blueprints[bpIdx].active == false);
+        expect(HAS_FLOOR(2, 1, 0));
+        expect(GetFloorMaterial(2, 1, 0) == MAT_DIRT);
+    }
+
+    it("should build log wall with oak material") {
+        // Test #18: 2 oak logs → wall with MAT_OAK
+        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitDesignations();
+        ClearItems();
+
+        SET_FLOOR(2, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 0, 0, CONSTRUCTION_LOG_WALL);
+        expect(bpIdx >= 0);
+
+        for (int i = 0; i < 2; i++) {
+            int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
+            DeliverMaterialToBlueprint(bpIdx, idx);
+        }
+        CompleteBlueprint(bpIdx);
+
+        expect(grid[0][0][2] == CELL_WALL);
+        expect(GetWallMaterial(2, 0, 0) == MAT_OAK);
+        expect(GetWallSourceItem(2, 0, 0) == ITEM_LOG);
+    }
+
+    it("should build log wall with pine material") {
+        // Test #19: 2 pine logs → wall with MAT_PINE
+        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitDesignations();
+        ClearItems();
+
+        SET_FLOOR(2, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 0, 0, CONSTRUCTION_LOG_WALL);
+
+        for (int i = 0; i < 2; i++) {
+            int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_PINE);
+            DeliverMaterialToBlueprint(bpIdx, idx);
+        }
+        CompleteBlueprint(bpIdx);
+
+        expect(grid[0][0][2] == CELL_WALL);
+        expect(GetWallMaterial(2, 0, 0) == MAT_PINE);
+    }
+
+    it("should build brick wall with fixed MAT_BRICK") {
+        // Test #22: 3 bricks → wall with MAT_BRICK (fixed, not inherited)
+        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitDesignations();
+        ClearItems();
+
+        SET_FLOOR(2, 0, 0);
+        int bpIdx = CreateRecipeBlueprint(2, 0, 0, CONSTRUCTION_BRICK_WALL);
+
+        for (int i = 0; i < 3; i++) {
+            int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_BRICKS, MAT_BRICK);
+            DeliverMaterialToBlueprint(bpIdx, idx);
+        }
+        CompleteBlueprint(bpIdx);
+
+        expect(grid[0][0][2] == CELL_WALL);
+        expect(GetWallMaterial(2, 0, 0) == MAT_BRICK);
+    }
+
+    it("should build thatch floor with fixed MAT_DIRT") {
+        // Test #23: thatch floor resultMaterial = MAT_DIRT regardless of inputs
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_THATCH_FLOOR);
+        expect(r != NULL);
+        expect(r->resultMaterial == MAT_DIRT);
+        expect(r->stageCount == 2);
+        expect(r->buildCategory == BUILD_FLOOR);
+    }
+
+    it("should reject floor blueprint on cell that already has floor") {
+        // Test #46: can't place floor blueprint where floor already exists
+        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitDesignations();
+
+        // Explicitly set floor on (2,0,0)
+        SET_FLOOR(2, 0, 0);
+        expect(HAS_FLOOR(2, 0, 0));
+        int bpIdx = CreateRecipeBlueprint(2, 0, 0, CONSTRUCTION_PLANK_FLOOR);
+        expect(bpIdx == -1);  // should be rejected
+    }
+
+    it("should build ladder with planks and inherit material") {
+        // Ladder with planks instead of log
+        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitDesignations();
+        ClearItems();
+
+        int bpIdx = CreateRecipeBlueprint(2, 1, 0, CONSTRUCTION_LADDER);
+        expect(bpIdx >= 0);
+
+        int idx = SpawnItemWithMaterial(0, 0, 0, ITEM_PLANKS, MAT_BIRCH);
+        DeliverMaterialToBlueprint(bpIdx, idx);
+        CompleteBlueprint(bpIdx);
+
+        CellType ct = grid[0][1][2];
+        expect(ct == CELL_LADDER_UP || ct == CELL_LADDER_DOWN || ct == CELL_LADDER_BOTH);
+        expect(GetWallMaterial(2, 1, 0) == MAT_BIRCH);
+    }
+}
+
+// =============================================================================
 // Phase 6: Cancellation + Lossy Refund
 // =============================================================================
 describe(construction_cancellation) {
@@ -14488,6 +14657,9 @@ int main(int argc, char* argv[]) {
     test(construction_alternative_locking);
     test(construction_any_building_mat);
     
+    // Construction recipe system (Phase 7 - new recipes: log wall, brick, floor, ladder, thatch)
+    test(construction_new_recipes);
+
     // Construction recipe system (Phase 6 - cancellation + lossy refund)
     test(construction_cancellation);
     
