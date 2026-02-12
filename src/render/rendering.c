@@ -1403,6 +1403,7 @@ static void DrawGatherZones(void) {
 static void DrawStockpileTiles(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -1427,7 +1428,8 @@ static void DrawStockpileTiles(void) {
 
                 Rectangle src = SpriteGetRect(SPRITE_stockpile);
                 Rectangle dest = { sx, sy, size, size };
-                Color tint = WHITE;
+                Color lightTint = GetLightColor(gx, gy, sp->z, skyColor);
+                Color tint = MultiplyColor(WHITE, lightTint);
                 if (belowView) {
                     tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
                     tint = FloorDarkenTint(tint);

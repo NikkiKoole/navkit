@@ -873,7 +873,22 @@ int FindStockpileForOverfullItem(int itemIdx, int currentStockpileIdx, int* outS
     ItemType type = items[itemIdx].type;
     uint8_t material = items[itemIdx].material;
     
-    // Find any stockpile (other than current) that accepts this type and has room
+    // First: try to spread within the same stockpile (overfull slot → empty/partial slot)
+    {
+        int slotX, slotY;
+        if (FindFreeStockpileSlot(currentStockpileIdx, type, material, &slotX, &slotY)) {
+            // Make sure we're not targeting the same slot the item is already on
+            int itemTileX = (int)(items[itemIdx].x / CELL_SIZE);
+            int itemTileY = (int)(items[itemIdx].y / CELL_SIZE);
+            if (slotX != itemTileX || slotY != itemTileY) {
+                *outSlotX = slotX;
+                *outSlotY = slotY;
+                return currentStockpileIdx;
+            }
+        }
+    }
+    
+    // Then: find any other stockpile that accepts this type and has room
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         if (i == currentStockpileIdx) continue;

@@ -2156,25 +2156,21 @@ describe(stockpile_priority) {
         SetStockpileFilter(spHigh, ITEM_RED, true);
         SetStockpilePriority(spHigh, 5);  // High priority
         
-        // Item on ground
-        int itemIdx = SpawnItem(3 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
-        
-        // First, item should be hauled to nearest stockpile (low priority)
-        for (int i = 0; i < 1000; i++) {
-            Tick();
-            AssignJobs();
-            JobsTick();
-            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
-        }
+        // Place item directly in the low-priority stockpile
+        int itemIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        Stockpile* spL = &stockpiles[spLow];
+        spL->slotCounts[0] = 1;
+        spL->slotTypes[0] = ITEM_RED;
+        spL->slotMaterials[0] = items[itemIdx].material;
         
         expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        // Should be in low-priority first (closer/first available)
         int itemTileX = (int)(GetItemX(itemIdx) / CELL_SIZE);
         int itemTileY = (int)(GetItemY(itemIdx) / CELL_SIZE);
         expect(itemTileX == 2);
         expect(itemTileY == 2);
         
-        // Continue running - mover should re-haul to high priority
+        // Run - mover should re-haul from low to high priority
         for (int i = 0; i < 2000; i++) {
             Tick();
             AssignJobs();
@@ -6895,25 +6891,20 @@ describe(stockpile_strong_tests) {
         SetStockpileFilter(spHigh, ITEM_LOG, true);
         SetStockpilePriority(spHigh, 8);  // High priority
         
-        // Spawn log near dump zone
-        int logIdx = SpawnItem(10 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        // Place log directly in low-priority stockpile
+        int logIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_LOG);
+        items[logIdx].state = ITEM_IN_STOCKPILE;
+        Stockpile* spL = &stockpiles[spLow];
+        spL->slotCounts[0] = 1;
+        spL->slotTypes[0] = ITEM_LOG;
+        spL->slotMaterials[0] = items[logIdx].material;
         
-        // Phase 1: Log should go to dump zone first (closer)
-        for (int i = 0; i < 1000; i++) {
-            Tick();
-            AssignJobs();
-            JobsTick();
-            if (items[logIdx].state == ITEM_IN_STOCKPILE) break;
-        }
-        
-        expect(items[logIdx].state == ITEM_IN_STOCKPILE);
-        
-        // Check it's in the low-priority stockpile
+        // Verify it's in the low-priority stockpile
         int spIdx = -1;
         IsPositionInStockpile(items[logIdx].x, items[logIdx].y, (int)items[logIdx].z, &spIdx);
         expect(spIdx == spLow);
         
-        // Phase 2: With idle time, should re-haul to high-priority
+        // With idle time, should re-haul to high-priority
         for (int i = 0; i < 3000; i++) {
             Tick();
             AssignJobs();

@@ -3005,6 +3005,302 @@ static bool IsItemHaulable(Item* item, int itemIdx) {
     return true;
 }
 
+// Extracted priority sections as noinline functions so they appear
+// individually in Instruments / profiler call trees.
+
+__attribute__((noinline))
+static void AssignJobs_P1_StockpileMaintenance(void) {
+    while (idleMoverCount > 0) {
+        int spOnItem = -1;
+        bool absorb = false;
+        int itemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
+
+        if (itemIdx < 0 || items[itemIdx].unreachableCooldown > 0.0f) break;
+
+        int slotX, slotY, spIdx;
+        bool safeDrop = false;
+
+        if (absorb) {
+            spIdx = spOnItem;
+            slotX = (int)(items[itemIdx].x / CELL_SIZE);
+            slotY = (int)(items[itemIdx].y / CELL_SIZE);
+
+            Stockpile* sp = &stockpiles[spOnItem];
+            int lx = slotX - sp->x;
+            int ly = slotY - sp->y;
+            int idx = ly * sp->width + lx;
+            if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
+                absorb = false;
+                spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
+                if (spIdx < 0) safeDrop = true;
+            }
+        } else {
+            spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
+            if (spIdx < 0) safeDrop = true;
+        }
+
+        if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
+            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
+        } else if (!safeDrop) {
+            InvalidateStockpileSlotCache(items[itemIdx].type, items[itemIdx].material);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2_Crafting(void) {
+    int workshopsNeedingCrafters = 0;
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (ws->assignedCrafter >= 0) continue;
+        if (ws->billCount > 0) workshopsNeedingCrafters++;
+    }
+
+    if (workshopsNeedingCrafters > 0) {
+        int moversToCheck = workshopsNeedingCrafters;
+        if (moversToCheck > idleMoverCount) moversToCheck = idleMoverCount;
+
+        int* idleCopy = (int*)malloc(moversToCheck * sizeof(int));
+        if (idleCopy) {
+            memcpy(idleCopy, idleMoverList, moversToCheck * sizeof(int));
+
+            for (int i = 0; i < moversToCheck && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_Craft(moverIdx);
+            }
+            free(idleCopy);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2b_PassiveDelivery(void) {
+    bool anyPassiveNeedsInput = false;
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+        if (ws->billCount > 0) { anyPassiveNeedsInput = true; break; }
+    }
+
+    if (anyPassiveNeedsInput) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_DeliverToPassiveWorkshop(moverIdx);
+            }
+            free(idleCopy);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P2c_Ignition(void) {
+    bool anyNeedsIgnition = false;
+    for (int w = 0; w < MAX_WORKSHOPS; w++) {
+        Workshop* ws = &workshops[w];
+        if (!ws->active) continue;
+        if (!workshopDefs[ws->type].passive) continue;
+        if (ws->passiveReady) continue;
+        if (ws->assignedCrafter >= 0) continue;
+        if (ws->billCount > 0) { anyNeedsIgnition = true; break; }
+    }
+
+    if (anyNeedsIgnition) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (idleCopy) {
+            int idleCopyCount = idleMoverCount;
+            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+
+            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+                int moverIdx = idleCopy[i];
+                if (!moverIsInIdleList[moverIdx]) continue;
+                WorkGiver_IgniteWorkshop(moverIdx);
+            }
+            free(idleCopy);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P3_ItemHaul(bool typeMatHasStockpile[][MAT_COUNT]) {
+    if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
+        int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
+
+        for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
+            int itemIdx = itemGrid.itemIndices[t];
+            Item* item = &items[itemIdx];
+
+            if (!IsItemHaulable(item, itemIdx)) continue;
+            uint8_t mat = ResolveItemMaterialForJobs(item);
+            if (!typeMatHasStockpile[item->type][mat]) continue;
+
+            int slotX, slotY;
+            int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
+            if (spIdx < 0) continue;
+
+            TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
+            InvalidateStockpileSlotCache(item->type, item->material);
+        }
+    } else {
+        for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
+            Item* item = &items[j];
+
+            if (!IsItemHaulable(item, j)) continue;
+            uint8_t mat = ResolveItemMaterialForJobs(item);
+            if (!typeMatHasStockpile[item->type][mat]) continue;
+
+            int slotX, slotY;
+            int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
+            if (spIdx < 0) continue;
+
+            TryAssignItemToMover(j, spIdx, slotX, slotY, false);
+            InvalidateStockpileSlotCache(item->type, item->material);
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P3c_Rehaul(void) {
+    for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
+        if (!items[j].active) continue;
+        if (items[j].reservedBy != -1) continue;
+        if (items[j].state != ITEM_IN_STOCKPILE) continue;
+
+        int currentSp = -1;
+        if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
+        if (currentSp < 0) continue;
+
+        int itemSlotX = (int)(items[j].x / CELL_SIZE);
+        int itemSlotY = (int)(items[j].y / CELL_SIZE);
+
+        int destSlotX, destSlotY;
+        int destSp = -1;
+
+        bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
+
+        if (noLongerAllowed) {
+            destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
+        } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+            destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+        } else {
+            destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
+        }
+
+        if (destSp < 0) continue;
+
+        if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
+            if (noLongerAllowed) {
+                InvalidateStockpileSlotCache(items[j].type, items[j].material);
+            }
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P3d_Consolidate(void) {
+    for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+        if (!stockpiles[spIdx].active) continue;
+        
+        for (int j = 0; j < itemHighWaterMark; j++) {
+            if (!items[j].active) continue;
+            if (items[j].reservedBy != -1) continue;
+            if (items[j].state != ITEM_IN_STOCKPILE) continue;
+            
+            int itemSp = -1;
+            if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &itemSp)) continue;
+            if (itemSp != spIdx) continue;
+            
+            int itemSlotX = (int)(items[j].x / CELL_SIZE);
+            int itemSlotY = (int)(items[j].y / CELL_SIZE);
+            
+            int destSlotX, destSlotY;
+            if (FindConsolidationTarget(spIdx, itemSlotX, itemSlotY, &destSlotX, &destSlotY)) {
+                if (TryAssignItemToMover(j, spIdx, destSlotX, destSlotY, false)) {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+__attribute__((noinline))
+static void AssignJobs_P4_Designations(void) {
+    int designationSpecCount = sizeof(designationSpecs) / sizeof(designationSpecs[0]);
+    for (int i = 0; i < designationSpecCount; i++) {
+        if (*designationSpecs[i].cacheDirty) {
+            designationSpecs[i].RebuildCache();
+        }
+    }
+    
+    bool hasDesignationWork = false;
+    for (int i = 0; i < designationSpecCount; i++) {
+        if (*designationSpecs[i].cacheCount > 0) {
+            hasDesignationWork = true;
+            break;
+        }
+    }
+
+    bool hasBlueprintWork = false;
+    for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
+        Blueprint* bp = &blueprints[bpIdx];
+        if (!bp->active) continue;
+        if (bp->state == BLUEPRINT_CLEARING) {
+            hasBlueprintWork = true;
+        } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
+            const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+            if (recipe) {
+                const ConstructionStage* stage = &recipe->stages[bp->stage];
+                for (int s = 0; s < stage->inputCount; s++) {
+                    if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
+                        hasBlueprintWork = true;
+                        break;
+                    }
+                }
+            }
+        } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
+            hasBlueprintWork = true;
+        }
+    }
+
+    if (hasDesignationWork || hasBlueprintWork) {
+        int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
+        if (!idleCopy) return;
+        int idleCopyCount = idleMoverCount;
+        memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
+
+        for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
+            int moverIdx = idleCopy[i];
+
+            if (!moverIsInIdleList[moverIdx]) continue;
+
+            int jobId = -1;
+            for (int j = 0; j < designationSpecCount && jobId < 0; j++) {
+                if (*designationSpecs[j].cacheCount > 0) {
+                    jobId = designationSpecs[j].WorkGiver(moverIdx);
+                }
+            }
+
+            if (jobId < 0 && hasBlueprintWork) {
+                jobId = WorkGiver_BlueprintClear(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
+                if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
+            }
+
+            (void)jobId;
+        }
+
+        free(idleCopy);
+    }
+}
+
 void AssignJobs(void) {
     // Initialize job system if needed
     if (!moverIsInIdleList) {
@@ -3034,407 +3330,23 @@ void AssignJobs(void) {
         }
     }
 
-    // =========================================================================
-    // PRIORITY 1: Stockpile maintenance (absorb/clear) - ITEM-CENTRIC
-    // Items on stockpile tiles must be handled first
-    // =========================================================================
-    while (idleMoverCount > 0) {
-        int spOnItem = -1;
-        bool absorb = false;
-        int itemIdx = FindGroundItemOnStockpile(&spOnItem, &absorb);
-
-        if (itemIdx < 0 || items[itemIdx].unreachableCooldown > 0.0f) break;
-
-        int slotX, slotY, spIdx;
-        bool safeDrop = false;
-
-        if (absorb) {
-            // Try absorbing into the same slot (item matches stockpile filter)
-            spIdx = spOnItem;
-            slotX = (int)(items[itemIdx].x / CELL_SIZE);
-            slotY = (int)(items[itemIdx].y / CELL_SIZE);
-
-            // Check if slot is full — if so, treat as clear instead
-            Stockpile* sp = &stockpiles[spOnItem];
-            int lx = slotX - sp->x;
-            int ly = slotY - sp->y;
-            int idx = ly * sp->width + lx;
-            if (sp->slotCounts[idx] + sp->reservedBy[idx] >= sp->maxStackSize) {
-                // Slot full, find another stockpile
-                absorb = false;
-                spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
-                if (spIdx < 0) safeDrop = true;
-            }
-        } else {
-            spIdx = FindStockpileForItemCached(items[itemIdx].type, items[itemIdx].material, &slotX, &slotY);
-            if (spIdx < 0) safeDrop = true;
-        }
-
-        if (!TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, safeDrop)) {
-            SetItemUnreachableCooldown(itemIdx, UNREACHABLE_COOLDOWN);
-        } else if (!safeDrop) {
-            // Slot was reserved, invalidate cache for this type
-            InvalidateStockpileSlotCache(items[itemIdx].type, items[itemIdx].material);
-        }
+    AssignJobs_P1_StockpileMaintenance();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P2_Crafting();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P2b_PassiveDelivery();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P2c_Ignition();
+    if (idleMoverCount == 0) return;
+    if (anyTypeHasSlot) {
+        AssignJobs_P3_ItemHaul(typeMatHasStockpile);
+        if (idleMoverCount == 0) return;
     }
-
-    // =========================================================================
-    // PRIORITY 2: Crafting - before hauling so crafters can claim materials
-    // Optimization: Only check as many movers as we have workshops needing crafters
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        // Count workshops needing crafters
-        int workshopsNeedingCrafters = 0;
-        for (int w = 0; w < MAX_WORKSHOPS; w++) {
-            Workshop* ws = &workshops[w];
-            if (!ws->active) continue;
-            if (ws->assignedCrafter >= 0) continue;
-            if (ws->billCount > 0) workshopsNeedingCrafters++;
-        }
-
-        if (workshopsNeedingCrafters > 0) {
-            // Only check this many movers (no point checking more)
-            int moversToCheck = workshopsNeedingCrafters;
-            if (moversToCheck > idleMoverCount) moversToCheck = idleMoverCount;
-
-            // Copy idle list since WorkGiver modifies it
-            int* idleCopy = (int*)malloc(moversToCheck * sizeof(int));
-            if (idleCopy) {
-                memcpy(idleCopy, idleMoverList, moversToCheck * sizeof(int));
-
-                for (int i = 0; i < moversToCheck && idleMoverCount > 0; i++) {
-                    int moverIdx = idleCopy[i];
-                    if (!moverIsInIdleList[moverIdx]) continue;
-                    WorkGiver_Craft(moverIdx);
-                }
-                free(idleCopy);
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 2b: Passive workshop delivery - haulers deliver input items
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        // Check if any passive workshops need inputs
-        bool anyPassiveNeedsInput = false;
-        for (int w = 0; w < MAX_WORKSHOPS; w++) {
-            Workshop* ws = &workshops[w];
-            if (!ws->active) continue;
-            if (!workshopDefs[ws->type].passive) continue;
-            if (ws->billCount > 0) { anyPassiveNeedsInput = true; break; }
-        }
-
-        if (anyPassiveNeedsInput) {
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (idleCopy) {
-                int idleCopyCount = idleMoverCount;
-                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-
-                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                    int moverIdx = idleCopy[i];
-                    if (!moverIsInIdleList[moverIdx]) continue;
-                    WorkGiver_DeliverToPassiveWorkshop(moverIdx);
-                }
-                free(idleCopy);
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 2c: Semi-passive ignition - crafter activates workshops with inputs
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        bool anyNeedsIgnition = false;
-        for (int w = 0; w < MAX_WORKSHOPS; w++) {
-            Workshop* ws = &workshops[w];
-            if (!ws->active) continue;
-            if (!workshopDefs[ws->type].passive) continue;
-            if (ws->passiveReady) continue;
-            if (ws->assignedCrafter >= 0) continue;
-            if (ws->billCount > 0) { anyNeedsIgnition = true; break; }
-        }
-
-        if (anyNeedsIgnition) {
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (idleCopy) {
-                int idleCopyCount = idleMoverCount;
-                memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-
-                for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                    int moverIdx = idleCopy[i];
-                    if (!moverIsInIdleList[moverIdx]) continue;
-                    WorkGiver_IgniteWorkshop(moverIdx);
-                }
-                free(idleCopy);
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 3a: Stockpile-centric hauling - search items near each stockpile
-    // This is more efficient because items are assigned to nearby stockpiles
-    // =========================================================================
-    if (idleMoverCount > 0 && anyTypeHasSlot && itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-        for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
-            Stockpile* sp = &stockpiles[spIdx];
-            if (!sp->active) continue;
-
-            // Check each item type this stockpile accepts
-            for (int t = 0; t < ITEM_TYPE_COUNT && idleMoverCount > 0; t++) {
-                if (!sp->allowedTypes[t]) continue;
-
-                for (int m = 0; m < MAT_COUNT && idleMoverCount > 0; m++) {
-                    if (!typeMatHasStockpile[t][m]) continue;
-
-                    // Find a free slot for this type + material in this stockpile
-                    int slotX, slotY;
-                    if (!FindFreeStockpileSlot(spIdx, (ItemType)t, (uint8_t)m, &slotX, &slotY)) continue;
-
-                    // Search for items near the stockpile center
-                    int centerTileX = sp->x + sp->width / 2;
-                    int centerTileY = sp->y + sp->height / 2;
-
-                    // Use expanding radius to find closest items first
-                    int radii[] = {10, 25, 50, 100};
-                    int numRadii = sizeof(radii) / sizeof(radii[0]);
-
-                    for (int r = 0; r < numRadii && idleMoverCount > 0; r++) {
-                        int radius = radii[r];
-
-                        int minTx = centerTileX - radius;
-                        int maxTx = centerTileX + radius;
-                        int minTy = centerTileY - radius;
-                        int maxTy = centerTileY + radius;
-
-                        if (minTx < 0) minTx = 0;
-                        if (minTy < 0) minTy = 0;
-                        if (maxTx >= itemGrid.gridW) maxTx = itemGrid.gridW - 1;
-                        if (maxTy >= itemGrid.gridH) maxTy = itemGrid.gridH - 1;
-
-                        bool foundItem = false;
-                        for (int ty = minTy; ty <= maxTy && idleMoverCount > 0 && !foundItem; ty++) {
-                            for (int tx = minTx; tx <= maxTx && idleMoverCount > 0 && !foundItem; tx++) {
-                                int cellIdx = sp->z * (itemGrid.gridW * itemGrid.gridH) + ty * itemGrid.gridW + tx;
-                                int start = itemGrid.cellStarts[cellIdx];
-                                int end = itemGrid.cellStarts[cellIdx + 1];
-
-                                for (int i = start; i < end && idleMoverCount > 0; i++) {
-                                    int itemIdx = itemGrid.itemIndices[i];
-                                    Item* item = &items[itemIdx];
-
-                                    if (!IsItemHaulable(item, itemIdx)) continue;
-                                    if (item->type != (ItemType)t) continue;
-                                    if (ResolveItemMaterialForJobs(item) != (uint8_t)m) continue;
-
-                                    if (TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false)) {
-                                        foundItem = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (foundItem) break;
-                    }
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 2b: Item-centric fallback - for items not near any stockpile
-    // =========================================================================
-    if (idleMoverCount > 0 && anyTypeHasSlot) {
-        if (itemGrid.cellCounts && itemGrid.groundItemCount > 0) {
-            int totalIndexed = itemGrid.cellStarts[itemGrid.cellCount];
-
-            for (int t = 0; t < totalIndexed && idleMoverCount > 0; t++) {
-                int itemIdx = itemGrid.itemIndices[t];
-                Item* item = &items[itemIdx];
-
-                if (!IsItemHaulable(item, itemIdx)) continue;
-                uint8_t mat = ResolveItemMaterialForJobs(item);
-                if (!typeMatHasStockpile[item->type][mat]) continue;
-
-                int slotX, slotY;
-                int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
-                if (spIdx < 0) continue;
-
-                TryAssignItemToMover(itemIdx, spIdx, slotX, slotY, false);
-                InvalidateStockpileSlotCache(item->type, item->material);
-            }
-        } else {
-            // Fallback: linear scan
-            for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
-                Item* item = &items[j];
-
-                if (!IsItemHaulable(item, j)) continue;
-                uint8_t mat = ResolveItemMaterialForJobs(item);
-                if (!typeMatHasStockpile[item->type][mat]) continue;
-
-                int slotX, slotY;
-                int spIdx = FindStockpileForItemCached(item->type, item->material, &slotX, &slotY);
-                if (spIdx < 0) continue;
-
-                TryAssignItemToMover(j, spIdx, slotX, slotY, false);
-                InvalidateStockpileSlotCache(item->type, item->material);
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 3: Re-haul from overfull/low-priority stockpiles - ITEM-CENTRIC
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
-            if (!items[j].active) continue;
-            if (items[j].reservedBy != -1) continue;
-            if (items[j].state != ITEM_IN_STOCKPILE) continue;
-
-            int currentSp = -1;
-            if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &currentSp)) continue;
-            if (currentSp < 0) continue;
-
-            int itemSlotX = (int)(items[j].x / CELL_SIZE);
-            int itemSlotY = (int)(items[j].y / CELL_SIZE);
-
-            int destSlotX, destSlotY;
-            int destSp = -1;
-
-            bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
-
-            if (noLongerAllowed) {
-                destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
-            } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
-                destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
-            } else {
-                destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
-            }
-
-            if (destSp < 0) continue;
-
-            if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
-                if (noLongerAllowed) {
-                    InvalidateStockpileSlotCache(items[j].type, items[j].material);
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 3b: Consolidate fragmented stacks - ITEM-CENTRIC
-    // Move items from small partial stacks into larger ones of same type.
-    // Limited to one consolidation per stockpile to avoid congestion.
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
-            if (!stockpiles[spIdx].active) continue;
-            
-            // Find one item to consolidate in this stockpile
-            for (int j = 0; j < itemHighWaterMark; j++) {
-                if (!items[j].active) continue;
-                if (items[j].reservedBy != -1) continue;
-                if (items[j].state != ITEM_IN_STOCKPILE) continue;
-                
-                int itemSp = -1;
-                if (!IsPositionInStockpile(items[j].x, items[j].y, (int)items[j].z, &itemSp)) continue;
-                if (itemSp != spIdx) continue;
-                
-                int itemSlotX = (int)(items[j].x / CELL_SIZE);
-                int itemSlotY = (int)(items[j].y / CELL_SIZE);
-                
-                int destSlotX, destSlotY;
-                if (FindConsolidationTarget(spIdx, itemSlotX, itemSlotY, &destSlotX, &destSlotY)) {
-                    if (TryAssignItemToMover(j, spIdx, destSlotX, destSlotY, false)) {
-                        break;  // One consolidation per stockpile
-                    }
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // PRIORITY 4-6: Mining, BlueprintHaul, Build - MOVER-CENTRIC
-    // These have sparse targets so mover-centric is acceptable
-    // Skip entirely if no sparse targets exist (performance optimization)
-    // =========================================================================
-    if (idleMoverCount > 0) {
-        // Rebuild all dirty designation caches (table-driven)
-        int designationSpecCount = sizeof(designationSpecs) / sizeof(designationSpecs[0]);
-        for (int i = 0; i < designationSpecCount; i++) {
-            if (*designationSpecs[i].cacheDirty) {
-                designationSpecs[i].RebuildCache();
-            }
-        }
-        
-        // Check if any designation work exists
-        bool hasDesignationWork = false;
-        for (int i = 0; i < designationSpecCount; i++) {
-            if (*designationSpecs[i].cacheCount > 0) {
-                hasDesignationWork = true;
-                break;
-            }
-        }
-
-        // Quick check: any blueprints needing materials or building?
-        bool hasBlueprintWork = false;
-        for (int bpIdx = 0; bpIdx < MAX_BLUEPRINTS && !hasBlueprintWork; bpIdx++) {
-            Blueprint* bp = &blueprints[bpIdx];
-            if (!bp->active) continue;
-            if (bp->state == BLUEPRINT_CLEARING) {
-                hasBlueprintWork = true;
-            } else if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-                const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
-                if (recipe) {
-                    const ConstructionStage* stage = &recipe->stages[bp->stage];
-                    for (int s = 0; s < stage->inputCount; s++) {
-                        if (bp->stageDeliveries[s].deliveredCount + bp->stageDeliveries[s].reservedCount < stage->inputs[s].count) {
-                            hasBlueprintWork = true;
-                            break;
-                        }
-                    }
-                }
-            } else if (bp->state == BLUEPRINT_READY_TO_BUILD && bp->assignedBuilder < 0) {
-                hasBlueprintWork = true;
-            }
-        }
-
-        // Only iterate movers if there's sparse work to do
-        if (hasDesignationWork || hasBlueprintWork) {
-            // Copy idle list since WorkGivers modify it
-            int* idleCopy = (int*)malloc(idleMoverCount * sizeof(int));
-            if (!idleCopy) return;
-            int idleCopyCount = idleMoverCount;
-            memcpy(idleCopy, idleMoverList, idleMoverCount * sizeof(int));
-
-            for (int i = 0; i < idleCopyCount && idleMoverCount > 0; i++) {
-                int moverIdx = idleCopy[i];
-
-                // Skip if already assigned by hauling above
-                if (!moverIsInIdleList[moverIdx]) continue;
-
-                // Try designation WorkGivers in priority order (table order = priority)
-                int jobId = -1;
-                for (int j = 0; j < designationSpecCount && jobId < 0; j++) {
-                    if (*designationSpecs[j].cacheCount > 0) {
-                        jobId = designationSpecs[j].WorkGiver(moverIdx);
-                    }
-                }
-
-                // Try blueprint work (clear site, haul materials, or build)
-                if (jobId < 0 && hasBlueprintWork) {
-                    jobId = WorkGiver_BlueprintClear(moverIdx);
-                    if (jobId < 0) jobId = WorkGiver_BlueprintHaul(moverIdx);
-                    if (jobId < 0) jobId = WorkGiver_Build(moverIdx);
-                }
-
-                (void)jobId;
-            }
-
-            free(idleCopy);
-        }
-    }
+    AssignJobs_P3c_Rehaul();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P3d_Consolidate();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P4_Designations();
 }
 
 
