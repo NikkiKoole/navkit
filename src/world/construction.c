@@ -21,6 +21,32 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_WATTLE_FRAME] = {
+        .name = "Wattle Frame",
+        .buildCategory = BUILD_WALL,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {
+                {   // Slot 0: sticks
+                    .alternatives = {{ .itemType = ITEM_STICKS }},
+                    .altCount = 1,
+                    .count = 2,
+                    .anyBuildingMat = false,
+                },
+                {   // Slot 1: cordage
+                    .alternatives = {{ .itemType = ITEM_CORDAGE }},
+                    .altCount = 1,
+                    .count = 1,
+                    .anyBuildingMat = false,
+                },
+            },
+            .inputCount = 2,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // inherited from sticks
+        .materialFromStage = 0,
+        .materialFromSlot = 0,         // material from sticks (wood type)
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {

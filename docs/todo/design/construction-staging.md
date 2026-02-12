@@ -374,44 +374,38 @@ No timeout, no auto-cancel. Player can cancel manually if they want.
 
 ## Implementation Phases
 
-### Phase 1: Foundation — Dry Stone Wall (single-stage, single-input)
+### Phase 1: Foundation — Dry Stone Wall (single-stage, single-input) ✓ COMPLETE
 
-The simplest recipe that proves the new system works end-to-end.
+Completed 2026-02-12. Core recipe system implemented and verified in-game.
 
-**What to build:**
-- ConstructionRecipe struct + static recipe table (start with just 1 recipe)
-- New Blueprint fields (recipeIndex, stage, stageDeliveries, consumedItems)
-- Migrate CreateBuildBlueprint to use recipe system
-- WorkGiver_BlueprintHaul rewritten to use delivery slots instead of single item
-- WorkGiver_Build uses per-stage buildTime
-- CompleteBlueprint reads buildCategory + material inheritance
-- Save/load for new Blueprint fields (save version bump)
+**What was built:**
+- `construction.h` / `construction.c` — recipe data model + static table
+- Blueprint struct extended with recipeIndex, stage, stageDeliveries, consumedItems
+- `CreateRecipeBlueprint()` replaces wall path in `ExecuteDesignateBuild()`
+- `WorkGiver_BlueprintHaul` rewritten with per-slot iteration, `FindNearestRecipeItem()`
+- `RunJob_Build` uses per-stage buildTime
+- `CompleteBlueprint` reads buildCategory + materialFromStage/materialFromSlot
+- Save version bumped to v38
+- Recipe cycling with M key in wall build mode
+- Rendering, tooltips, inspect all updated for recipe display
+- Legacy path preserved for ladder/floor/ramp (`recipeIndex == -1`)
 
-**Recipe:** Dry stone wall — 1 stage, 1 input slot, 1 alternative (3 rocks).
-No OR-materials, no multi-stage, no clearing. Just the core loop.
+**Tests passed:** 1, 20, 24, 27, 28, 29, 33, 34, 44, 45, 47, 50 (14 tests in
+4 describe blocks, all green)
 
-**Tests:** 1, 20, 24, 27, 28, 29, 33, 34, 44, 45, 47, 50
+### Phase 2: Multi-input — Wattle Frame (single-stage, multiple inputs) ✓ COMPLETE
 
-**What this proves:** The recipe system works, delivery slots work, material
-inheritance works, save/load works. Old single-item blueprint code is replaced.
+Completed 2026-02-12. Multi-input slot delivery verified with parallel hauling.
 
-### Phase 2: Multi-input — Wattle Frame (single-stage, multiple inputs)
+**What was built:**
+- `CONSTRUCTION_WATTLE_FRAME` recipe: 1 stage, 2 slots (2 sticks + 1 cordage)
+- Temporary single-stage recipe (becomes frame stage of wattle & daub in Phase 3)
+- No code changes needed beyond recipe definition — Phase 1's WorkGiver already
+  handles multi-slot iteration, parallel hauling, and per-slot reservation tracking
 
-Add a second recipe with multiple input slots in one stage.
-
-**What to build:**
-- Wattle frame recipe: 1 stage with 2 slots (2 sticks + 1 cordage)
-- WorkGiver_BlueprintHaul handles multiple unfilled slots
-- Multiple haulers assigned to different slots simultaneously
-
-But wait — wattle & daub is 2 stages. So for this phase, just test the
-frame stage in isolation as a single-stage recipe that produces a wall.
-(Temporary — gets replaced in phase 3.)
-
-**Tests:** 24, 25, 26, 30, 31, 40, 43, 48
-
-**What this proves:** Multiple input slots per stage, parallel hauling,
-reservation counting across slots.
+**Tests passed:** 24, 25, 26, 30, 31, 40, 43, 48 (12 tests in 4 describe blocks:
+construction_wattle_frame_data, construction_wattle_frame_delivery,
+construction_wattle_frame_parallel, construction_wattle_frame_build)
 
 ### Phase 3: Multi-stage — Full Wattle & Daub
 

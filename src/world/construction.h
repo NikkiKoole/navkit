@@ -53,6 +53,7 @@ typedef struct {
 // Recipe indices (enum for type-safe indexing)
 typedef enum {
     CONSTRUCTION_DRY_STONE_WALL,
+    CONSTRUCTION_WATTLE_FRAME,  // Temporary single-stage; becomes stage 0 of wattle & daub in Phase 3
     // Future: CONSTRUCTION_WATTLE_DAUB_WALL, CONSTRUCTION_LOG_WALL, etc.
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
