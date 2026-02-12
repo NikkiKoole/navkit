@@ -5,7 +5,10 @@ export MACOSX_DEPLOYMENT_TARGET
 # Set to 1 to generate 16x16 atlas, 0 for 8x8 only
 GENERATE_16X16 ?= 0
 
-CFLAGS  := -std=c11 -O2 -g -I. -Ivendor -Wall -Wextra
+CFLAGS  := -std=c11 -pedantic -O2 -g -I. -Ivendor -Wall -Wextra \
+           -Wcast-qual -Wcast-align -Wwrite-strings -Wundef -Wformat=2 \
+           -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wnested-externs \
+           -Wno-shadow
 
 BINDIR := build/bin
 
@@ -98,7 +101,7 @@ $(BINDIR)/soundsystem-demo: $(soundsystem-demo_SRC) | $(BINDIR)
 # Pathing test - links raylib for GetTime() etc used in pathfinding.c
 test_pathing: $(TEST_UNITY_OBJ)
 	@echo "Running pathfinding tests..."
-	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wno-overlength-strings -o $(BINDIR)/$@ $(test_pathing_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_pathing -q
 
 # Mover test

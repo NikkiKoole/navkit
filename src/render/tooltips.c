@@ -713,7 +713,7 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
 
     // Get recipes for this workshop type
     int recipeCount;
-    Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
 
     // Active bills
     if (ws->billCount > 0) {
@@ -724,7 +724,7 @@ void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
         for (int b = 0; b < ws->billCount && lineCount < 24; b++) {
             Bill* bill = &ws->bills[b];
             const char* recipeName = "Unknown";
-            Recipe* recipe = NULL;
+            const Recipe* recipe = NULL;
             if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
                 recipe = &recipes[bill->recipeIdx];
                 recipeName = recipe->name;

@@ -158,7 +158,7 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
 _Static_assert(sizeof(workshopDefs) / sizeof(workshopDefs[0]) == WORKSHOP_TYPE_COUNT,
                "workshopDefs[] must have an entry for every WorkshopType");
 
-static bool WorkshopHasInputForRecipe(Workshop* ws, Recipe* recipe, int searchRadius) {
+static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int searchRadius) {
     if (searchRadius == 0) searchRadius = 100;  // Large default
     int bestDistSq = searchRadius * searchRadius;
 
@@ -382,14 +382,14 @@ void DeleteWorkshop(int index) {
     }
 }
 
-Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount) {
+const Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount) {
     if (type < 0 || type >= WORKSHOP_TYPE_COUNT) {
         *outCount = 0;
         return NULL;
     }
-    
+
     *outCount = workshopDefs[type].recipeCount;
-    return (Recipe*)workshopDefs[type].recipes;
+    return workshopDefs[type].recipes;
 }
 
 int AddBill(int workshopIdx, int recipeIdx, BillMode mode, int targetCount) {
@@ -472,9 +472,9 @@ static int CountItemsInStockpiles(ItemType type) {
 
 bool ShouldBillRun(Workshop* ws, Bill* bill) {
     int recipeCount;
-    Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
     if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) return false;
-    Recipe* recipe = &recipes[bill->recipeIdx];
+    const Recipe* recipe = &recipes[bill->recipeIdx];
     
     switch (bill->mode) {
         case BILL_DO_X_TIMES:
@@ -584,9 +584,9 @@ void PassiveWorkshopsTick(float dt) {
 
         Bill* bill = &ws->bills[activeBillIdx];
         int recipeCount;
-        Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+        const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
         if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
-        Recipe* recipe = &recipes[bill->recipeIdx];
+        const Recipe* recipe = &recipes[bill->recipeIdx];
 
         // Check: are required inputs present on the work tile?
         int inputCount = 0;
@@ -703,7 +703,7 @@ void UpdateWorkshopDiagnostics(float dt) {
         bool anyInput = false;
 
         int recipeCount;
-        Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+        const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
 
         for (int b = 0; b < ws->billCount; b++) {
             Bill* bill = &ws->bills[b];
@@ -716,7 +716,7 @@ void UpdateWorkshopDiagnostics(float dt) {
             if (!ShouldBillRun(ws, bill)) continue;
 
             if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
-            Recipe* recipe = &recipes[bill->recipeIdx];
+            const Recipe* recipe = &recipes[bill->recipeIdx];
 
             anyRunnable = true;
 

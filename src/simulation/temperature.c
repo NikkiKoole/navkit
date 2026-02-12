@@ -207,12 +207,12 @@ void SetHeatSource(int x, int y, int z, bool isSource) {
     bool isNowSource = cell->isHeatSource || cell->isColdSource;
     
     if (!wasSource && isNowSource) {
-#if USE_PRESENCE_GRID
+#ifdef USE_PRESENCE_GRID
         SetSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
 #endif
         tempSourceCount++;
     } else if (wasSource && !isNowSource) {
-#if USE_PRESENCE_GRID
+#ifdef USE_PRESENCE_GRID
         ClearSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
 #endif
         tempSourceCount--;
@@ -239,12 +239,12 @@ void SetColdSource(int x, int y, int z, bool isSource) {
     bool isNowSource = cell->isHeatSource || cell->isColdSource;
     
     if (!wasSource && isNowSource) {
-#if USE_PRESENCE_GRID
+#ifdef USE_PRESENCE_GRID
         SetSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
 #endif
         tempSourceCount++;
     } else if (wasSource && !isNowSource) {
-#if USE_PRESENCE_GRID
+#ifdef USE_PRESENCE_GRID
         ClearSimPresenceFlag(x, y, z, SIM_HAS_TEMP_SOURCE);
 #endif
         tempSourceCount--;

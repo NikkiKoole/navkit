@@ -171,7 +171,7 @@ void UpdateWorkshopDiagnostics(float dt);
 void PassiveWorkshopsTick(float dt);
 
 // Recipe lookup
-Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);
+const Recipe* GetRecipesForWorkshop(WorkshopType type, int* outCount);
 bool RecipeInputMatches(const Recipe* recipe, const Item* item);
 
 // Bill management

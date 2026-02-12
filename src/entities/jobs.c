@@ -1896,11 +1896,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
     // Get recipe
     int recipeCount;
-    Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+    const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
     if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) {
         return JOBRUN_FAIL;
     }
-    Recipe* recipe = &recipes[bill->recipeIdx];
+    const Recipe* recipe = &recipes[bill->recipeIdx];
 
     switch (job->step) {
         case CRAFT_STEP_MOVING_TO_INPUT: {
@@ -4252,9 +4252,9 @@ int WorkGiver_Craft(int moverIdx) {
             if (bill->suspended && bill->suspendedNoStorage) {
                 // Check if storage is now available for any available input material
                 int resumeRecipeCount;
-                Recipe* resumeRecipes = GetRecipesForWorkshop(ws->type, &resumeRecipeCount);
+                const Recipe* resumeRecipes = GetRecipesForWorkshop(ws->type, &resumeRecipeCount);
                 if (bill->recipeIdx >= 0 && bill->recipeIdx < resumeRecipeCount) {
-                    Recipe* resumeRecipe = &resumeRecipes[bill->recipeIdx];
+                    const Recipe* resumeRecipe = &resumeRecipes[bill->recipeIdx];
                     for (int i = 0; i < itemHighWaterMark; i++) {
                         if (!items[i].active) continue;
                         if (!RecipeInputMatches(resumeRecipe, &items[i])) continue;
@@ -4280,9 +4280,9 @@ int WorkGiver_Craft(int moverIdx) {
 
             // Get recipe for this bill
             int recipeCount;
-            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
             if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
-            Recipe* recipe = &recipes[bill->recipeIdx];
+            const Recipe* recipe = &recipes[bill->recipeIdx];
 
             // Find an input item first (search nearby or all if radius = 0)
             int searchRadius = bill->ingredientSearchRadius;

@@ -1563,7 +1563,7 @@ void HandleInput(void) {
         // 1-9 = Add bill for specific recipe
         {
             int recipeCount;
-            Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+            const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
             for (int r = 0; r < recipeCount && r < 9; r++) {
                 if (IsKeyPressed(KEY_ONE + r)) {
                     if (ws->billCount < MAX_BILLS_PER_WORKSHOP) {
