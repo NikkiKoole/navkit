@@ -99,7 +99,7 @@ void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
         snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     }
     const char* cellText = cellBuf;
-    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter, 1-4 wood mats";
+    const char* helpText = "+/- priority, [/] stack, R/G/B/O/S/W/T/D filter, X all, 1-4 wood mats";
 
     // Measure text
     int w0 = MeasureText(titleText, 14);

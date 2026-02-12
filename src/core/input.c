@@ -1560,6 +1560,20 @@ void HandleInput(void) {
                 AddMessage(TextFormat("Saplings: %s", !current ? "ON" : "OFF"), GREEN);
                 return;
             }
+            if (IsKeyPressed(KEY_X)) {
+                // Check if any filter is on
+                bool anyOn = false;
+                for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
+                    if (sp->allowedTypes[i]) { anyOn = true; break; }
+                }
+                // Toggle: if any on -> all off, if all off -> all on
+                bool newVal = !anyOn;
+                for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
+                    sp->allowedTypes[i] = newVal;
+                }
+                AddMessage(newVal ? "All filters ON" : "All filters OFF", WHITE);
+                return;
+            }
         }
     }
 
