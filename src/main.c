@@ -892,6 +892,7 @@ int main(int argc, char** argv) {
     Font comicFont = LoadEmbeddedFont();
     ui_init(&comicFont);
     Console_Init();
+    Console_RegisterGameVars();  // Register variables for console access
     SetTraceLogCallback(Console_LogCallback);
     SetTargetFPS(60);
     use8Dir = true;
@@ -978,10 +979,10 @@ int main(int argc, char** argv) {
             HandleInput();
         }
 
-        // Cutscene test key
-        if (IsKeyPressed(KEY_I)) {
-            PlayTestCutscene();
-        }
+        // Cutscene test key (disabled - annoying)
+        // if (IsKeyPressed(KEY_I)) {
+        //     PlayTestCutscene();
+        // }
 
         // Sound debug toggles (independent from input modes)
         if (IsKeyPressed(KEY_KP_1)) {

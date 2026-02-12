@@ -1,6 +1,6 @@
 # Developer Console Design
 
-Status: Phase 1 (shell) implemented, Phase 2+ planned
+Status: **Complete** (all phases implemented)
 
 ## Overview
 
@@ -55,7 +55,7 @@ void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help);
 void Console_LogCallback(int logLevel, const char* text, va_list args);
 ```
 
-## Planned Commands
+## Available Commands
 
 | Command | Example | Description |
 |---------|---------|-------------|
@@ -63,10 +63,8 @@ void Console_LogCallback(int logLevel, const char* text, va_list args);
 | `list` | `list` | List all registered variables with values |
 | `get` | `get showItems` | Print variable value |
 | `set` | `set showItems false` | Set variable value |
-| `spawn` | `spawn 10 rock` | Spawn items (matches itemDefs[].name) |
+| `spawn` | `spawn 10 rock` | Spawn items at mouse position (substring match) |
 | `clear` | `clear items` / `clear movers` | Clear items or movers |
-| `tp` | `tp 100 200 2` | Teleport camera to grid cell |
-| `pause` | `pause` | Toggle pause |
 
 ## Variable Registration
 
@@ -91,16 +89,7 @@ currentViewZ
 Uses existing `itemDefs[]` table from `item_defs.h`:
 - Iterates ITEM_TYPE_COUNT, case-insensitive substring match on itemDefs[i].name
 - Uses SpawnItemWithMaterial + DefaultMaterialForItemType
-- Spawns on random walkable cells at currentViewZ
-
-## Teleport Command Design
-
-Sets `offset` and `currentViewZ` from `game_state.h`:
-```c
-offset.x = GetScreenWidth()/2.0f - cellX * CELL_SIZE * zoom;
-offset.y = GetScreenHeight()/2.0f - cellY * CELL_SIZE * zoom;
-currentViewZ = z;
-```
+- Spawns at mouse cursor position (searches 5x5 area for walkable cell)
 
 ## Integration Points (main.c)
 
@@ -118,7 +107,16 @@ currentViewZ = z;
 ## Implementation Phases
 
 - [x] Phase 1: Basic shell (toggle, text input, cursor, scrollback, history, TraceLog)
-- [ ] Phase 2: Command parser + registry + built-in commands (help, list)
-- [ ] Phase 3: Variable registry + get/set/list
-- [ ] Phase 4: Game commands (spawn, clear, tp, pause)
-- [ ] Phase 5: Polish (autocomplete, persistent history, scroll indicator)
+- [x] Phase 2: Command parser + registry + built-in commands (help, list)
+- [x] Phase 3: Variable registry + get/set/list (35+ variables registered)
+- [x] Phase 4: Game commands (spawn, clear)
+- [x] Phase 5: Polish (autocomplete, scroll indicator, paste support)
+
+## Autocomplete Features
+
+- **Tab completion**: Context-aware matching for commands, variables, and item names
+- **Fuzzy search**: Substring matching with prefix priority
+- **Floating UI**: Separate right-aligned autocomplete box (like modern IDEs)
+- **Visual feedback**: Green arrow indicates current selection
+- **Cycling**: Multiple Tab presses cycle through matches with context window
+- **History preservation**: Up/Down arrows preserve autocomplete state
