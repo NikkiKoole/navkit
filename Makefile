@@ -91,7 +91,7 @@ $(RAYLIB_BUILDDIR):
 
 # Pattern rule: build executable targets from their corresponding _SRC
 # (only matches direct children of BINDIR, not subdirectories or .o files)
-$(BINDIR)/%: $(RAYLIB_LIB)
+$(BINDIR)/%: $(RAYLIB_LIB) | $(BINDIR)
 	@if [ -n "$($*_SRC)" ]; then $(CC) $(CFLAGS) -o $@ $($*_SRC) $(LDFLAGS); fi
 
 # Soundsystem demo needs -Wno-unused-function for header-only library functions

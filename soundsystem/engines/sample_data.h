@@ -8044,7 +8044,7 @@ static int loadEmbeddedSamples(void) {
         Sample* s = &samplerCtx->samples[i];
         
         // Point to embedded data (no copy needed, it's const)
-        s->data = (float*)e->data;  // Cast away const - data is read-only
+        memcpy(&s->data, &e->data, sizeof(s->data));  // Assign const ptr to non-const field - data is read-only
         s->length = e->length;
         s->sampleRate = e->sampleRate;
         s->loaded = true;

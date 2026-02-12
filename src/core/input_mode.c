@@ -130,11 +130,15 @@ const char* InputMode_GetBarText(void) {
     if (inputAction == ACTION_DRAW_WALL || inputAction == ACTION_DRAW_FLOOR) {
         // Material selection with markers
         snprintf(barTextBuffer, sizeof(barTextBuffer), "%s: ", prefix);
+        // barText is a data-driven format string (e.g. "Stone%s Plank%s Clay%s")
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
         snprintf(barTextBuffer + strlen(barTextBuffer), sizeof(barTextBuffer) - strlen(barTextBuffer),
             def->barText,
             selectedMaterial == 1 ? "<" : "",
             selectedMaterial == 2 ? "<" : "",
             selectedMaterial == 3 ? "<" : "");
+#pragma clang diagnostic pop
     } else {
         // Standard action - just prepend prefix
         snprintf(barTextBuffer, sizeof(barTextBuffer), "%s: %s", prefix, def->barText);

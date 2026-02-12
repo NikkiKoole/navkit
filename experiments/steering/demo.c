@@ -1673,7 +1673,7 @@ static ScenarioUI scenarioUI[SCENARIO_COUNT] = {
     }, .count = 6 },
 
     [SCENARIO_FLOW_FIELD] = { .params = {
-        // Flow field has no draggable params, just keyboard controls
+        {0} // Flow field has no draggable params, just keyboard controls
     }, .count = 0 },
 };
 
