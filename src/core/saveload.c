@@ -6,6 +6,7 @@ bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
 void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
+#include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/trees.h"
@@ -460,6 +461,7 @@ bool LoadWorld(const char* filename) {
             fread(fireGrid[z][y], sizeof(FireCell), gridWidth, f);
         }
     }
+    SyncFireLighting();
     
     // Smoke grid
     for (int z = 0; z < gridDepth; z++) {

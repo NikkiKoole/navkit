@@ -60,6 +60,9 @@ bool HasFire(int x, int y, int z);
 int GetCellFuel(int x, int y, int z);  // Get remaining fuel
 bool IsFireSourceAt(int x, int y, int z);
 
+// Rebuild fire-based light sources from current fire grid (call after loading save)
+void SyncFireLighting(void);
+
 // Mark cell and neighbors as unstable
 void DestabilizeFire(int x, int y, int z);
 

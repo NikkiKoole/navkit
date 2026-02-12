@@ -35,11 +35,12 @@ Color GetSkyColorForTime(float hour) {
         { 4.0f,  (Color){ 25,  35,  65, 255} },  // Late night - slightly lighter
         { 5.0f,  (Color){ 70,  50,  80, 255} },  // Pre-dawn - purple hint
         { 6.0f,  (Color){180, 100,  80, 255} },  // Dawn - orange/pink
-        { 7.0f,  (Color){220, 160, 120, 255} },  // Early morning - warm
-        { 8.0f,  (Color){135, 180, 220, 255} },  // Morning - light blue
-        {12.0f,  (Color){100, 160, 220, 255} },  // Noon - bright blue
-        {16.0f,  (Color){130, 170, 210, 255} },  // Afternoon - slightly warmer blue
-        {17.0f,  (Color){200, 170, 130, 255} },  // Golden hour start
+        { 7.0f,  (Color){220, 190, 160, 255} },  // Early morning - warm
+        { 8.0f,  (Color){210, 220, 240, 255} },  // Morning - hint of blue
+        { 9.0f,  (Color){245, 245, 240, 255} },  // Late morning - near white
+        {12.0f,  (Color){255, 255, 250, 255} },  // Noon - neutral white
+        {16.0f,  (Color){250, 245, 235, 255} },  // Afternoon - barely warm
+        {17.0f,  (Color){220, 190, 150, 255} },  // Golden hour start
         {18.0f,  (Color){230, 140,  80, 255} },  // Golden hour - orange
         {19.0f,  (Color){180,  80,  70, 255} },  // Sunset - red/orange
         {20.0f,  (Color){ 80,  50,  90, 255} },  // Dusk - purple

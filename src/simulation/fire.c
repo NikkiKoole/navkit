@@ -3,6 +3,7 @@
 #include "smoke.h"
 #include "temperature.h"
 #include "groundwear.h"
+#include "lighting.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -175,6 +176,17 @@ void SetFireLevel(int x, int y, int z, int level) {
     
     if (oldLevel != level) {
         DestabilizeFire(x, y, z);
+        
+        // Sync fire → block light
+        if (level > 0) {
+            uint8_t r = 255;
+            uint8_t g = (uint8_t)(140 + level * 10);
+            uint8_t b = (uint8_t)(30 + level * 5);
+            uint8_t intensity = (uint8_t)(2 + level);
+            AddLightSource(x, y, z, r, g, b, intensity);
+        } else {
+            RemoveLightSource(x, y, z);
+        }
     }
 }
 
@@ -213,9 +225,14 @@ void SetFireSource(int x, int y, int z, bool isSource) {
         DestabilizeFire(x, y, z);
         // Fire sources also act as heat sources
         SetHeatSource(x, y, z, true);
+        // Fire sources emit max-intensity light
+        AddLightSource(x, y, z, 255, 210, 65, 2 + FIRE_MAX_LEVEL);
     } else {
         // Removing fire source also removes heat source
         SetHeatSource(x, y, z, false);
+        if (fireGrid[z][y][x].level == 0) {
+            RemoveLightSource(x, y, z);
+        }
     }
     
     bool isActive = FireCellIsActive(x, y, z);
@@ -483,6 +500,25 @@ void UpdateFire(void) {
                 // Cap updates per tick
                 if (fireUpdateCount >= FIRE_MAX_UPDATES_PER_TICK) {
                     return;
+                }
+            }
+        }
+    }
+}
+
+// Rebuild light sources from current fire state (call after loading save)
+void SyncFireLighting(void) {
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                FireCell* fc = &fireGrid[z][y][x];
+                if (fc->level > 0) {
+                    int lvl = fc->level;
+                    uint8_t r = 255;
+                    uint8_t g = (uint8_t)(140 + lvl * 10);
+                    uint8_t b = (uint8_t)(30 + lvl * 5);
+                    uint8_t intensity = (uint8_t)(2 + lvl);
+                    AddLightSource(x, y, z, r, g, b, intensity);
                 }
             }
         }

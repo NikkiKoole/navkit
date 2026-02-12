@@ -1505,6 +1505,7 @@ void HandleInput(void) {
                 int rayKey = KEY_A + (filter->key - 'a');  // Convert 'a'-'z' to KEY_A-KEY_Z
                 if (IsKeyPressed(rayKey)) {
                     sp->allowedTypes[filter->itemType] = !sp->allowedTypes[filter->itemType];
+                    InvalidateStockpileSlotCacheAll();
                     AddMessage(TextFormat("%s: %s", filter->displayName, sp->allowedTypes[filter->itemType] ? "ON" : "OFF"), filter->color);
                     return;
                 }
@@ -1517,6 +1518,7 @@ void HandleInput(void) {
                     bool newVal = !sp->allowedMaterials[mf->material];
                     sp->allowedMaterials[mf->material] = newVal;
                     if (newVal) sp->allowedTypes[mf->parentItem] = true;
+                    InvalidateStockpileSlotCacheAll();
                     AddMessage(TextFormat("%s: %s", mf->displayName, newVal ? "ON" : "OFF"), mf->color);
                     return;
                 }
@@ -1532,6 +1534,7 @@ void HandleInput(void) {
                 for (int i = 0; i < ITEM_TYPE_COUNT; i++) {
                     sp->allowedTypes[i] = newVal;
                 }
+                InvalidateStockpileSlotCacheAll();
                 AddMessage(newVal ? "All filters ON" : "All filters OFF", WHITE);
                 return;
             }

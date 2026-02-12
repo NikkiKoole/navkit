@@ -560,6 +560,7 @@ static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
@@ -577,7 +578,9 @@ static void DrawWater(void) {
                 int alpha = 80 + (level * 15);
                 if (alpha > 230) alpha = 230;
                 
-                Color waterColor = FloorDarkenTint((Color){30, 100, 200, alpha});
+                Color lightTint = GetLightColor(x, y, zDepth, skyColor);
+                Color waterColor = MultiplyColor((Color){30, 100, 200, alpha}, lightTint);
+                waterColor = FloorDarkenTint(waterColor);
                 
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
                 DrawRectangleRec(dest, waterColor);
@@ -607,7 +610,8 @@ static void DrawWater(void) {
             int alpha = 80 + (level * 15);  // 80-230 range
             if (alpha > 230) alpha = 230;
             
-            Color waterColor = (Color){30, 100, 200, alpha};
+            Color lightTint = GetLightColor(x, y, z, skyColor);
+            Color waterColor = MultiplyColor((Color){30, 100, 200, alpha}, lightTint);
             
             // Draw water overlay
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
