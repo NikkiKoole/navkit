@@ -2,6 +2,34 @@
 
 Date: 2026-02-07, updated 2026-02-12
 
+## Resolved Decisions (2026-02-12)
+
+**Recipe selection UI**: Cycle through available recipes the same way material
+selection works now (Work > Build > Wall, then cycle recipes with a key).
+When in build-wall mode, player cycles through wall recipes (dry stone, wattle
+& daub, log, plank, brick) instead of cycling item types. Same pattern for
+floors, ladders, ramps.
+
+**Item availability**: All items referenced by recipes already exist in the
+ItemType enum: ITEM_ROCK, ITEM_BLOCKS, ITEM_LOG, ITEM_PLANKS, ITEM_STICKS,
+ITEM_POLES, ITEM_CORDAGE, ITEM_DIRT, ITEM_CLAY, ITEM_SAND, ITEM_GRAVEL,
+ITEM_BRICKS, ITEM_DRIED_GRASS, ITEM_GRASS, ITEM_BARK, ITEM_STRIPPED_LOG.
+No new item types needed.
+
+**IF_BUILDING_MAT flag**: Already exists (`item_defs.h:10`), with
+`ItemIsBuildingMat()` macro. Currently set on: ITEM_BLOCKS, ITEM_LOG,
+ITEM_PLANKS, ITEM_POLES, ITEM_BRICKS, ITEM_STRIPPED_LOG. Items like ITEM_ROCK,
+ITEM_DIRT, ITEM_STICKS etc. do NOT have the flag — that's fine, because
+`anyBuildingMat` is only used for the ramp catch-all slot. Recipe alternatives
+arrays handle specific item matching regardless of the flag.
+
+**Coexistence during migration**: Phase 1 replaces wall blueprints with the
+recipe system. Ladder/floor/ramp keep the old code path temporarily. Each
+subsequent phase migrates more build categories. Phase 7 removes all old paths
+(BlueprintType, single-item fields, old Create*Blueprint functions). The game
+is always buildable and testable between phases — progressive replacement,
+not duplication.
+
 ## Core Idea
 
 Construction isn't a universal "frame → fill" pipeline. Different wall/floor types
@@ -223,9 +251,10 @@ CreateBuildBlueprint.)
 the blueprint position showing construction stage (e.g. "1/2"). Design a proper
 intermediate visual (frame sprite, scaffolding) later.
 
-**Recipe selection**: The player needs to choose what kind of wall to build.
-Exact UI TBD — but at minimum a sub-menu when placing walls. Design this
-properly later, for now even a simple list works.
+**Recipe selection**: Cycle through available recipes using the same UI pattern
+as current material selection (Work > Build > Wall, then cycle with a key).
+Player cycles wall recipes (dry stone, wattle & daub, log, plank, brick)
+instead of cycling item types. Same pattern for floors, ladders, ramps.
 
 **Auto-progression**: Yes. Player designates "build plank wall here" and it
 auto-advances through all stages. No per-stage designation.
