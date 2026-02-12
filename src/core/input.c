@@ -1905,10 +1905,10 @@ void HandleInput(void) {
     }
 
     // ========================================================================
-    // Build material cycling (M key when in build actions)
+    // Build recipe cycling (R key when in build actions)
     // ========================================================================
     if (inputAction == ACTION_WORK_CONSTRUCT) {
-        if (IsKeyPressed(KEY_M)) {
+        if (IsKeyPressed(KEY_R)) {
             // Cycle wall construction recipes
             int indices[16];
             int count = GetConstructionRecipeIndicesForCategory(BUILD_WALL, indices, 16);
@@ -1925,7 +1925,7 @@ void HandleInput(void) {
         }
     }
     if (inputAction == ACTION_WORK_FLOOR) {
-        if (IsKeyPressed(KEY_M)) {
+        if (IsKeyPressed(KEY_R)) {
             int indices[16];
             int count = GetConstructionRecipeIndicesForCategory(BUILD_FLOOR, indices, 16);
             if (count > 0) {
@@ -1941,7 +1941,7 @@ void HandleInput(void) {
         }
     }
     if (inputAction == ACTION_WORK_LADDER) {
-        if (IsKeyPressed(KEY_M)) {
+        if (IsKeyPressed(KEY_R)) {
             int indices[16];
             int count = GetConstructionRecipeIndicesForCategory(BUILD_LADDER, indices, 16);
             if (count > 1) {

@@ -452,104 +452,51 @@ void DrawUI(void) {
         y += 18;
         DraggableIntLog(x, y, "Count", &itemCountSetting, 1.0f, 1, MAX_ITEMS);
         y += 22;
-        if (PushButton(x, y, "Spawn Items")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                // Find a random walkable cell on current z-level
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        ItemType type = GetRandomValue(0, 2);  // ITEM_RED, ITEM_GREEN, or ITEM_BLUE
-                        SpawnItem(px, py, (float)currentViewZ, type);
-                        break;
+        // Spawn item buttons (packed in rows)
+        {
+            struct { const char* label; ItemType type; uint8_t mat; } spawnDefs[] = {
+                {"Red",     ITEM_RED,         MAT_NONE},
+                {"Green",   ITEM_GREEN,       MAT_NONE},
+                {"Blue",    ITEM_BLUE,        MAT_NONE},
+                {"Rocks",   ITEM_ROCK,        MAT_NONE},
+                {"Blocks",  ITEM_BLOCKS,      MAT_GRANITE},
+                {"Logs",    ITEM_LOG,         MAT_OAK},
+                {"Planks",  ITEM_PLANKS,      MAT_OAK},
+                {"Sticks",  ITEM_STICKS,      MAT_NONE},
+                {"Cordage", ITEM_CORDAGE,     MAT_NONE},
+                {"Dirt",    ITEM_DIRT,         MAT_NONE},
+                {"Bricks",  ITEM_BRICKS,      MAT_BRICK},
+                {"D.Grass", ITEM_DRIED_GRASS, MAT_NONE},
+            };
+            int spawnDefCount = sizeof(spawnDefs) / sizeof(spawnDefs[0]);
+            float bx = (float)x;
+            for (int d = 0; d < spawnDefCount; d++) {
+                bool clicked = false;
+                float w = PushButtonInline(bx, (float)y, spawnDefs[d].label, &clicked);
+                if (clicked) {
+                    for (int i = 0; i < itemCountSetting; i++) {
+                        int attempts = 100;
+                        while (attempts-- > 0) {
+                            int gx = GetRandomValue(0, gridWidth - 1);
+                            int gy = GetRandomValue(0, gridHeight - 1);
+                            if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                                float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                                float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                                if (spawnDefs[d].mat != MAT_NONE)
+                                    SpawnItemWithMaterial(px, py, (float)currentViewZ, spawnDefs[d].type, spawnDefs[d].mat);
+                                else
+                                    SpawnItem(px, py, (float)currentViewZ, spawnDefs[d].type);
+                                break;
+                            }
+                        }
                     }
                 }
+                bx += w;
+                if (bx > x + 180) { bx = (float)x; y += 22; }
             }
+            if (bx > (float)x) y += 22;
         }
-        y += 22;
-        if (PushButton(x, y, "Spawn Red")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItem(px, py, (float)currentViewZ, ITEM_RED);
-                        break;
-                    }
-                }
-            }
-        }
-        y += 22;
-        if (PushButton(x, y, "Spawn Green")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItem(px, py, (float)currentViewZ, ITEM_GREEN);
-                        break;
-                    }
-                }
-            }
-        }
-        y += 22;
-        if (PushButton(x, y, "Spawn Blue")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItem(px, py, (float)currentViewZ, ITEM_BLUE);
-                        break;
-                    }
-                }
-            }
-        }
-        y += 22;
-        if (PushButton(x, y, "Spawn Stone Blocks")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItemWithMaterial(px, py, (float)currentViewZ, ITEM_BLOCKS, MAT_GRANITE);
-                        break;
-                    }
-                }
-            }
-        }
-        y += 22;
-        if (PushButton(x, y, "Spawn Loose Rocks")) {
-            for (int i = 0; i < itemCountSetting; i++) {
-                int attempts = 100;
-                while (attempts-- > 0) {
-                    int gx = GetRandomValue(0, gridWidth - 1);
-                    int gy = GetRandomValue(0, gridHeight - 1);
-                    if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                        float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                        float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                        SpawnItem(px, py, (float)currentViewZ, ITEM_ROCK);
-                        break;
-                    }
-                }
-            }
-        }
-        y += 22;
+
         if (PushButton(x, y, "Clear Items")) {
             ClearItems();
         }
