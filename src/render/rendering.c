@@ -1815,7 +1815,9 @@ static void DrawBlueprints(void) {
         }
 
         if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-            const char* text = TextFormat("%d/%d", bp->deliveredMaterialCount, bp->requiredMaterials);
+            int delivered = BlueprintStageDeliveredCount(bp);
+            int required = BlueprintStageRequiredCount(bp);
+            const char* text = TextFormat("%d/%d", delivered, required);
             int textW = MeasureTextUI(text, 10);
             DrawTextShadow(text, (int)(sx + size/2 - textW/2), (int)(sy + 2), 10, WHITE);
         }

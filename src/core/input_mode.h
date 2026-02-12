@@ -137,6 +137,7 @@ int InputMode_GetBarItems(BarItem* items);  // Returns count of items
 
 // Build material selection (defined in input.c)
 const char* GetSelectedBuildMaterialName(void);
+const char* GetSelectedWallRecipeName(void);
 
 // Trigger a bar item action (called when button clicked)
 void InputMode_TriggerKey(int key);

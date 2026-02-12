@@ -20,6 +20,8 @@
 
 // From core/saveload.c
 void RebuildPostLoadState(void);
+bool SaveWorld(const char* filename);
+bool LoadWorld(const char* filename);
 
 // Global flag for verbose output in tests
 static bool test_verbose = false;
@@ -11923,6 +11925,377 @@ describe(chop_felled_transition) {
     }
 }
 
+// =============================================================================
+// Construction recipe system tests (Phase 1)
+// =============================================================================
+
+describe(construction_recipe_data) {
+    it("should have dry stone wall recipe with correct structure") {
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
+        expect(r != NULL);
+        expect(r->buildCategory == BUILD_WALL);
+        expect(r->stageCount == 1);
+        expect(r->stages[0].inputCount == 1);
+        expect(r->stages[0].inputs[0].count == 3);
+        expect(r->stages[0].inputs[0].altCount == 1);
+        expect(r->stages[0].inputs[0].alternatives[0].itemType == ITEM_ROCK);
+        expect(r->stages[0].buildTime == 3.0f);
+        expect(r->resultMaterial == MAT_NONE);  // inherited
+        expect(r->materialFromStage == 0);
+        expect(r->materialFromSlot == 0);
+    }
+
+    it("should accept ITEM_ROCK for dry stone wall input") {
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
+        expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_ROCK) == true);
+        expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_BLOCKS) == false);
+        expect(ConstructionInputAcceptsItem(&r->stages[0].inputs[0], ITEM_LOG) == false);
+    }
+
+    it("should return recipe count for BUILD_WALL category") {
+        int count = GetConstructionRecipeCountForCategory(BUILD_WALL);
+        expect(count >= 1);  // At least dry stone wall
+    }
+
+    it("should return invalid recipe as NULL") {
+        expect(GetConstructionRecipe(-1) == NULL);
+        expect(GetConstructionRecipe(999) == NULL);
+    }
+}
+
+describe(construction_recipe_blueprint) {
+    it("should create recipe blueprint on walkable cell") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bpIdx >= 0);
+        expect(HasBlueprint(2, 2, 0) == true);
+        expect(blueprints[bpIdx].recipeIndex == CONSTRUCTION_DRY_STONE_WALL);
+        expect(blueprints[bpIdx].stage == 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(BlueprintUsesRecipe(&blueprints[bpIdx]) == true);
+    }
+
+    it("should reject recipe blueprint on wall cell") {
+        // Test #45
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            ".#....\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(1, 1, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bpIdx == -1);
+    }
+
+    it("should reject duplicate blueprint at same cell") {
+        // Test #44
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bp1 = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bp1 >= 0);
+
+        int bp2 = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bp2 == -1);
+        expect(CountBlueprints() == 1);
+    }
+
+    it("should cancel recipe blueprint with no deliveries cleanly") {
+        // Test #34
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
+        expect(bpIdx >= 0);
+        expect(CountBlueprints() == 1);
+
+        CancelBlueprint(bpIdx);
+        expect(HasBlueprint(2, 2, 0) == false);
+        expect(CountBlueprints() == 0);
+    }
+
+    it("should initialize delivery slots to zero") {
+        InitGridFromAsciiWithChunkSize(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n", 6, 6);
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(2, 2, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->stageDeliveries[0].deliveredCount == 0);
+        expect(bp->stageDeliveries[0].reservedCount == 0);
+        expect(bp->stageDeliveries[0].chosenAlternative == -1);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_NONE);
+    }
+}
+
+describe(construction_recipe_delivery) {
+    it("should stay AWAITING_MATERIALS with partial delivery") {
+        // Tests #24, #27: deliver 1 or 2 of 3 rocks → still waiting
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+        Blueprint* bp = &blueprints[bpIdx];
+
+        // Spawn only 2 rocks (need 3)
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        // Create a hauler
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Run simulation — should deliver 2 rocks then stall
+        for (int i = 0; i < 5000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+        }
+
+        // Test #47: blueprint sits in AWAITING_MATERIALS, no crash
+        expect(bp->active == true);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+        expect(bp->stageDeliveries[0].deliveredCount == 2);
+        expect(BlueprintStageFilled(bp) == false);
+    }
+
+    it("should reserve item and track reservation count") {
+        // Test #28, #29
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        // Spawn 3 rocks
+        int rock1 = SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                          1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                          ITEM_ROCK, MAT_GRANITE);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+        SpawnItemWithMaterial(3 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        // Create a hauler
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // First job assignment should reserve one rock
+        AssignJobs();
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(items[rock1].reservedBy >= 0);
+
+        Blueprint* bp = &blueprints[bpIdx];
+        // After assignment, slot should track the reservation
+        expect(bp->stageDeliveries[0].reservedCount >= 1);
+    }
+}
+
+describe(construction_recipe_build) {
+    it("should build dry stone wall end to end with granite") {
+        // Tests #1, #20: deliver 3 granite rocks, build → wall with MAT_GRANITE
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Blueprint at (5,5)
+        int bpIdx = CreateRecipeBlueprint(5, 5, 0, CONSTRUCTION_DRY_STONE_WALL);
+        (void)bpIdx;
+
+        // Spawn 3 granite rocks near the mover
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+        SpawnItemWithMaterial(2 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+        SpawnItemWithMaterial(1 * CELL_SIZE + CELL_SIZE * 0.5f,
+                             2 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                             ITEM_ROCK, MAT_GRANITE);
+
+        // Create a mover with both haul and build capabilities
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f,
+                  0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Run simulation until wall is built
+        bool wallBuilt = false;
+        for (int i = 0; i < 15000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            if (grid[0][5][5] == CELL_WALL) {
+                wallBuilt = true;
+                break;
+            }
+        }
+
+        expect(wallBuilt == true);
+        expect(grid[0][5][5] == CELL_WALL);
+        expect(GetWallMaterial(5, 5, 0) == MAT_GRANITE);
+        expect(HasBlueprint(5, 5, 0) == false);
+        expect(CountBlueprints() == 0);
+    }
+
+    it("should use recipe build time not flat constant") {
+        // Test #33
+        const ConstructionRecipe* r = GetConstructionRecipe(CONSTRUCTION_DRY_STONE_WALL);
+        expect(r->stages[0].buildTime != BUILD_WORK_TIME);  // 3.0 != 2.0
+        expect(r->stages[0].buildTime == 3.0f);
+    }
+
+    it("should survive save and load mid delivery") {
+        // Test #50
+        InitGridFromAsciiWithChunkSize(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n", 8, 8);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        // Spawn 1 rock and deliver it manually
+        int rock = SpawnItemWithMaterial(4 * CELL_SIZE + CELL_SIZE * 0.5f,
+                                         4 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
+                                         ITEM_ROCK, MAT_GRANITE);
+        DeliverMaterialToBlueprint(bpIdx, rock);
+
+        Blueprint* bp = &blueprints[bpIdx];
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+
+        // Save
+        SaveWorld("/tmp/test_construction_save.bin");
+
+        // Corrupt state
+        InitDesignations();
+
+        // Load
+        LoadWorld("/tmp/test_construction_save.bin");
+        RebuildPostLoadState();
+
+        // Verify state restored
+        bpIdx = GetBlueprintAt(4, 4, 0);
+        expect(bpIdx >= 0);
+        bp = &blueprints[bpIdx];
+        expect(bp->recipeIndex == CONSTRUCTION_DRY_STONE_WALL);
+        expect(bp->stage == 0);
+        expect(bp->stageDeliveries[0].deliveredCount == 1);
+        expect(bp->stageDeliveries[0].deliveredMaterial == MAT_GRANITE);
+        expect(bp->state == BLUEPRINT_AWAITING_MATERIALS);
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Suppress logs by default, use -v for verbose
     bool verbose = false;
@@ -12066,6 +12439,12 @@ int main(int argc, char* argv[]) {
     
     // Chop → ChopFelled transition (stale cache bug)
     test(chop_felled_transition);
+    
+    // Construction recipe system (Phase 1 - dry stone wall)
+    test(construction_recipe_data);
+    test(construction_recipe_blueprint);
+    test(construction_recipe_delivery);
+    test(construction_recipe_build);
     
     return summary();
 }

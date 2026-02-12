@@ -347,6 +347,10 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "+Shift=pile mode", 0, -1, false, true, false);
                 break;
             case ACTION_WORK_CONSTRUCT:
+                n = AddItem(items, n, TextFormat("Recipe: %s", GetSelectedWallRecipeName()), KEY_M, 0, false, false, false);
+                n = AddItem(items, n, "L-drag designate", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag cancel", 0, -1, false, true, false);
+                break;
             case ACTION_WORK_LADDER:
             case ACTION_WORK_FLOOR:
             case ACTION_WORK_RAMP:

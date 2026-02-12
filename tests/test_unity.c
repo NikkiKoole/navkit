@@ -44,6 +44,7 @@ int hillsWaterConnectivitySmallThreshold = 50;
 #include "../src/world/terrain.c"
 #include "../src/world/pathfinding.c"
 #include "../src/world/designations.c"
+#include "../src/world/construction.c"
 
 // Simulation systems
 #include "../src/core/sim_manager.c"

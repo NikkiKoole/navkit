@@ -17,6 +17,7 @@
 #include "world/terrain.c"
 #include "world/pathfinding.c"
 #include "world/designations.c"
+#include "world/construction.c"
 
 // Simulation systems
 #include "core/sim_manager.c"

@@ -869,27 +869,41 @@ static void DrawBlueprintTooltip(int bpIdx, Vector2 mouse) {
 
     const char* stateNames[] = {"Awaiting materials", "Ready to build", "Building"};
 
-    char lines[9][64];
+    char lines[12][64];
     int lineCount = 0;
 
     // Header
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Construction (%d,%d,%d)", bp->x, bp->y, bp->z);
+    if (BlueprintUsesRecipe(bp)) {
+        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+        const char* name = recipe ? recipe->name : "?";
+        snprintf(lines[lineCount++], sizeof(lines[0]), "%s (%d,%d,%d)", name, bp->x, bp->y, bp->z);
+    } else {
+        snprintf(lines[lineCount++], sizeof(lines[0]), "Construction (%d,%d,%d)", bp->x, bp->y, bp->z);
+    }
 
     // State
     const char* stateName = (bp->state < 3) ? stateNames[bp->state] : "?";
     snprintf(lines[lineCount++], sizeof(lines[0]), "Status: %s", stateName);
 
     // Materials
-    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", bp->deliveredMaterialCount, bp->requiredMaterials);
+    int delivered = BlueprintStageDeliveredCount(bp);
+    int required = BlueprintStageRequiredCount(bp);
+    snprintf(lines[lineCount++], sizeof(lines[0]), "Materials: %d/%d", delivered, required);
 
-    // Required material type
-    if (bp->requiredItemType != ITEM_TYPE_COUNT) {
+    // Recipe-specific: show stage info
+    if (BlueprintUsesRecipe(bp)) {
+        const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+        if (recipe && recipe->stageCount > 1) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Stage: %d/%d", bp->stage + 1, recipe->stageCount);
+        }
+    } else if (bp->requiredItemType != ITEM_TYPE_COUNT) {
+        // Legacy: required material type
         snprintf(lines[lineCount++], sizeof(lines[0]), "Requires: %s", ItemName(bp->requiredItemType));
     }
 
     // What it's waiting for
     if (bp->state == BLUEPRINT_AWAITING_MATERIALS) {
-        if (bp->reservedItem >= 0) {
+        if (!BlueprintUsesRecipe(bp) && bp->reservedItem >= 0) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Item reserved: #%d", bp->reservedItem);
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Waiting for hauler");

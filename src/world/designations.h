@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "grid.h"
 #include "material.h"
+#include "construction.h"
 #include "../entities/items.h"
 
 // Designation types
@@ -89,9 +90,15 @@ typedef struct {
     int x, y, z;
     bool active;
     BlueprintState state;
-    BlueprintType type;         // What to build (wall, ladder, etc.)
-    
-    // Material requirements
+    BlueprintType type;         // What to build (wall, ladder, etc.) — legacy, used by non-wall types
+
+    // Recipe-based construction (walls use this; ladder/floor/ramp still use legacy fields)
+    int recipeIndex;            // ConstructionRecipeIndex, or -1 for legacy blueprints
+    int stage;                  // current recipe stage (0-indexed)
+    StageDelivery stageDeliveries[MAX_INPUTS_PER_STAGE];
+    ConsumedRecord consumedItems[MAX_CONSTRUCTION_STAGES][MAX_INPUTS_PER_STAGE];
+
+    // Legacy material requirements (used by ladder/floor/ramp until migrated)
     int requiredMaterials;      // How many items needed (1 for simple wall)
     int deliveredMaterialCount;     // How many items delivered so far
     int reservedItem;           // Item index reserved for this blueprint (-1 = none)
@@ -337,9 +344,26 @@ int CountCleanDesignations(void);
 // Blueprint functions
 // =============================================================================
 
-// Create a blueprint for building a wall at the given location
+// Create a blueprint for building a wall at the given location (recipe-based)
 // Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)
 int CreateBuildBlueprint(int x, int y, int z);
+
+// Create a blueprint using a specific construction recipe
+int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex);
+
+// Check if blueprint uses recipe system (vs legacy)
+static inline bool BlueprintUsesRecipe(const Blueprint* bp) {
+    return bp->recipeIndex >= 0;
+}
+
+// Check if all delivery slots for current stage are filled
+bool BlueprintStageFilled(const Blueprint* bp);
+
+// Get total required items across all slots for current stage
+int BlueprintStageRequiredCount(const Blueprint* bp);
+
+// Get total delivered items across all slots for current stage
+int BlueprintStageDeliveredCount(const Blueprint* bp);
 
 // Create a blueprint for building a ladder at the given location
 // Returns blueprint index, or -1 if failed (not floor, already has blueprint, etc.)

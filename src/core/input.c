@@ -27,6 +27,9 @@ float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
 // Build material selection (persists during session)
 static ItemType selectedBuildMaterial = ITEM_TYPE_COUNT;  // ITEM_TYPE_COUNT = any
 
+// Construction recipe selection for walls (persists during session)
+static int selectedWallRecipe = CONSTRUCTION_DRY_STONE_WALL;
+
 // Right-click tap detection for pie menu
 static Vector2 rightClickStart = {0};
 static double rightClickTime = 0.0;
@@ -69,6 +72,11 @@ static void CycleBuildMaterial(void) {
 
 const char* GetSelectedBuildMaterialName(void) {
     return (selectedBuildMaterial == ITEM_TYPE_COUNT) ? "Any" : ItemName(selectedBuildMaterial);
+}
+
+const char* GetSelectedWallRecipeName(void) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(selectedWallRecipe);
+    return recipe ? recipe->name : "?";
 }
 
 // ============================================================================
@@ -812,15 +820,16 @@ static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
         for (int dx = x1; dx <= x2; dx++) {
-            int bpIdx = CreateBuildBlueprint(dx, dy, z);
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, selectedWallRecipe);
             if (bpIdx >= 0) {
-                blueprints[bpIdx].requiredItemType = selectedBuildMaterial;
                 count++;
             }
         }
     }
     if (count > 0) {
-        AddMessage(TextFormat("Created %d blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+        const ConstructionRecipe* recipe = GetConstructionRecipe(selectedWallRecipe);
+        AddMessage(TextFormat("Created %d %s blueprint%s", count,
+                   recipe ? recipe->name : "wall", count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -1926,7 +1935,24 @@ void HandleInput(void) {
     // ========================================================================
     // Build material cycling (M key when in build actions)
     // ========================================================================
-    if (inputAction == ACTION_WORK_CONSTRUCT || inputAction == ACTION_WORK_FLOOR ||
+    if (inputAction == ACTION_WORK_CONSTRUCT) {
+        if (IsKeyPressed(KEY_M)) {
+            // Cycle wall construction recipes
+            int indices[16];
+            int count = GetConstructionRecipeIndicesForCategory(BUILD_WALL, indices, 16);
+            if (count > 0) {
+                int cur = -1;
+                for (int i = 0; i < count; i++) {
+                    if (indices[i] == selectedWallRecipe) { cur = i; break; }
+                }
+                selectedWallRecipe = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedWallRecipe);
+                AddMessage(TextFormat("Wall recipe: %s", recipe ? recipe->name : "?"), BLUE);
+            }
+            return;
+        }
+    }
+    if (inputAction == ACTION_WORK_FLOOR ||
         inputAction == ACTION_WORK_LADDER || inputAction == ACTION_WORK_RAMP) {
         if (IsKeyPressed(KEY_M)) {
             CycleBuildMaterial();
