@@ -111,7 +111,7 @@ static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
 
 static bool ItemUsesBorder(ItemType type) {
     return type == ITEM_DIRT || type == ITEM_CLAY || type == ITEM_GRAVEL ||
-           type == ITEM_SAND || type == ITEM_PEAT || type == ITEM_ROCK ||
+           type == ITEM_SAND || type == ITEM_PEAT ||
            type == ITEM_BRICKS || type == ITEM_BLOCKS || type == ITEM_LOG;
 }
 
