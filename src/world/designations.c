@@ -11,6 +11,7 @@
 #include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
+#include "../game_state.h"
 #include <string.h>
 #include <math.h>
 
@@ -1250,6 +1251,7 @@ void CompleteChopDesignation(int x, int y, int z, int moverIdx) {
     
     // Fell the entire tree (falls away from chopper)
     FellTree(x, y, z, chopperX, chopperY);
+    TriggerScreenShake(4.0f, 0.3f);
     
     // Designation already cleared in FellTree
 }

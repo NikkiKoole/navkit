@@ -689,6 +689,19 @@ void PassiveWorkshopsTick(float dt) {
                 RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
             }
 
+            // Auto-suspend bill if output storage is now full
+            {
+                int outSlotX, outSlotY;
+                uint8_t outMat = (inputMat != MAT_NONE) ? (uint8_t)inputMat
+                    : DefaultMaterialForItemType(recipe->outputType);
+                if (FindStockpileForItem(recipe->outputType, outMat, &outSlotX, &outSlotY) < 0 ||
+                    (recipe->outputType2 != ITEM_NONE &&
+                     FindStockpileForItem(recipe->outputType2, outMat, &outSlotX, &outSlotY) < 0)) {
+                    bill->suspended = true;
+                    bill->suspendedNoStorage = true;
+                }
+            }
+
             // Update bill and reset state
             bill->completedCount++;
             ws->passiveProgress = 0.0f;

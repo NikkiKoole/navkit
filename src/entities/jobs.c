@@ -2299,6 +2299,19 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                     }
                 }
 
+                // Auto-suspend bill if output storage is now full
+                {
+                    int outSlotX, outSlotY;
+                    uint8_t outMat = (inputMat != MAT_NONE) ? (uint8_t)inputMat
+                        : DefaultMaterialForItemType(recipe->outputType);
+                    if (FindStockpileForItem(recipe->outputType, outMat, &outSlotX, &outSlotY) < 0 ||
+                        (recipe->outputType2 != ITEM_NONE &&
+                         FindStockpileForItem(recipe->outputType2, outMat, &outSlotX, &outSlotY) < 0)) {
+                        bill->suspended = true;
+                        bill->suspendedNoStorage = true;
+                    }
+                }
+
                 // Update bill progress
                 bill->completedCount++;
 

@@ -13,6 +13,7 @@ void ProfileAccumEnd(const char* name);
 void ProfileFrameEnd(void);
 void ProfileReset(void);
 void AddMessage(const char* text, Color color);
+void TriggerScreenShake(float intensity, float duration);
 
 // Stub profiler functions - tests don't need real profiling
 void ProfileBegin(const char* name) { (void)name; }
@@ -24,6 +25,7 @@ void ProfileReset(void) {}
 
 // Stub UI functions - tests don't need real UI
 void AddMessage(const char* text, Color color) { (void)text; (void)color; }
+void TriggerScreenShake(float intensity, float duration) { (void)intensity; (void)duration; }
 
 // View state stubs (needed by saveload.c)
 float zoom = 1.0f;

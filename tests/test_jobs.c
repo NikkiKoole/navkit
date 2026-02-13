@@ -10939,6 +10939,10 @@ describe(passive_workshop) {
         ClearWorkshops();
         ClearJobs();
 
+        // Stockpile for output so bill doesn't auto-suspend
+        int spIdx = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(spIdx, ITEM_DRIED_GRASS, true);
+
         int wsIdx = CreateWorkshop(2, 1, 0, WORKSHOP_DRYING_RACK);
         AddBill(wsIdx, 0, BILL_DO_FOREVER, 0);
         Workshop* ws = &workshops[wsIdx];

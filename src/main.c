@@ -1256,10 +1256,30 @@ int main(int argc, char** argv) {
                 }
             }
             
-            Color fillColor = valid ? (Color){180, 140, 80, 80} : (Color){200, 50, 50, 80};
-            Color lineColor = valid ? (Color){200, 160, 100, 255} : RED;
-            DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
-            DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, lineColor);
+            if (!valid) {
+                Color fillColor = (Color){200, 50, 50, 80};
+                DrawRectangle((int)px, (int)py, (int)pw, (int)ph, fillColor);
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, RED);
+            } else {
+                const char* tmpl = workshopDefs[previewWorkshopType].template;
+                for (int dy = 0; dy < wsHeight; dy++) {
+                    for (int dx = 0; dx < wsWidth; dx++) {
+                        char tile = tmpl[dy * wsWidth + dx];
+                        Color fillColor;
+                        switch (tile) {
+                            case WT_BLOCK: fillColor = (Color){200, 80, 80, 100}; break;
+                            case WT_WORK:  fillColor = (Color){80, 200, 80, 100}; break;
+                            case WT_OUTPUT: fillColor = (Color){80, 150, 220, 100}; break;
+                            case WT_FUEL:  fillColor = (Color){220, 160, 50, 100}; break;
+                            default:       fillColor = (Color){180, 140, 80, 80}; break;
+                        }
+                        float tx = offset.x + (x + dx) * size;
+                        float ty = offset.y + (y + dy) * size;
+                        DrawRectangle((int)tx, (int)ty, (int)size, (int)size, fillColor);
+                    }
+                }
+                DrawRectangleLinesEx((Rectangle){px, py, pw, ph}, 2.0f, (Color){200, 160, 100, 255});
+            }
         }
         
         // Draw drag preview rectangle when dragging (but not for sculpt brush)

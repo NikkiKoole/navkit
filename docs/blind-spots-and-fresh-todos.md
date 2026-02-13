@@ -621,13 +621,13 @@ This document catalogs **features and systems that haven't been thought about ye
 
 ### Edge Case Fixes (Prevent Weird Bugs):
 26. ~~**Ramp placement validation**~~ ✅ DONE - CanPlaceRamp + AutoDetectRampDirection already validate
-27. **Mover rescue system** - Auto-teleport stuck movers instead of deactivating
-28. **Multi-output storage guarantee** - Suspend bill if EITHER output can't be stored
+27. ~~**Mover rescue system**~~ ❌ WON'T DO
+28. ~~**Multi-output storage guarantee**~~ ✅ DONE - Auto-suspend bill after craft if output storage full
 29. **Water displacement preview** - Show where water will go before placing walls
 30. **Path failure diagnostic** - "Why can't mover reach target?" tooltip
 
 ### Micro-Interactions (Add Polish):
-31. **Screen shake on tree fall** - Small camera shake + dust particles
+31. ~~**Screen shake on tree fall**~~ ✅ DONE - TriggerScreenShake(4.0, 0.3) on CompleteChopDesignation
 32. **Item bounce physics** - Items dropped from height bounce once before settling
 33. ~~**Smooth camera follow**~~ ✅ DONE - Lerp camera in main.c follow code
 34. ~~**Mover speed variance**~~ ✅ DONE - MOVER_SPEED + GetRandomValue(-30, 30) at spawn
@@ -638,11 +638,11 @@ This document catalogs **features and systems that haven't been thought about ye
 37. ~~**Ramp direction arrows**~~ ✅ DONE - Visual arrows on ramps showing up/down direction
 38. **Debug mode panel** - Single UI panel to toggle all visualization modes
 39. ~~**Sapling regrowth toggle**~~ ✅ DONE - UI option to enable forest regeneration (ui_panels.c line 765)
-40. **Workshop collision bounds** - Show invisible blocking area when placing workshop
+40. ~~**Workshop collision bounds**~~ ✅ DONE - Per-tile colored preview showing block/work/output/fuel tiles
 
 ### Emergent Gameplay (Enable Creativity):
 41. **Floodgates** - Toggleable water barriers for dam management
-42. **Firebreaks** - Designated cleared areas that stop fire spread
+42. ~~**Firebreaks**~~ ✅ DONE - Bare ground has no fuel, fire already can't spread to it
 43. **Intentional paths** - Flagstone paths resist wear, guide mover movement
 44. **Water wheels** - Generate power from water pressure/flow
 45. **Ice harvesting** - Mine frozen water for cold storage material
