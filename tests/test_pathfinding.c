@@ -2960,42 +2960,6 @@ describe(jps_plus_vs_astar_consistency) {
         expect(failures == 0);
     }
 
-    it("JPS+ should match A* on Towers terrain") {
-        // NOTE: Towers terrain generator creates isolated towers that are poorly
-        // connected. Skip this test until the terrain generator is updated.
-        expect(true);  // Skip - towers not well connected
-        return;
-        
-        InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-        gridDepth = 4;
-        GenerateTowers();
-        PrecomputeJpsPlus();
-        
-        SeedRandom(33333);
-        int failures = 0;
-        
-        for (int i = 0; i < 20; i++) {
-            Point start = GetRandomWalkableCell();
-            Point goal = GetRandomWalkableCellDifferentZ(start.z);
-            
-            if (start.x < 0 || goal.x < 0) continue;
-            
-            startPos = start;
-            goalPos = goal;
-            
-            RunAStar();
-            int astarLen = pathLength;
-            
-            RunJpsPlus();
-            int jpsPlusLen = pathLength;
-            
-            if ((astarLen > 0 && jpsPlusLen == 0) || (astarLen == 0 && jpsPlusLen > 0)) {
-                failures++;
-            }
-        }
-        
-        expect(failures == 0);
-    }
 
     it("JPS+ should match A* on Mixed terrain") {
         InitGridWithSizeAndChunkSize(64, 64, 8, 8);
