@@ -97,10 +97,22 @@ bool hillsWaterConnectivityReport = true;
 bool hillsWaterConnectivityFixSmall = false;
 int hillsWaterConnectivitySmallThreshold = 30;
 
-bool sectionView = false;
+// Super-groups
+bool sectionWorld = false;
+bool sectionEntities = false;
+bool sectionSimulation = false;
+bool sectionWeatherTime = false;
+bool sectionRenderDebug = false;
+
+// Advanced sub-toggles (hide expert sliders)
+bool sectionWaterAdvanced = false;
+bool sectionFireAdvanced = false;
+bool sectionTemperatureAdvanced = false;
+bool sectionEntropyAdvanced = false;
+bool sectionSteamAdvanced = false;
+
 bool sectionPathfinding = false;
 bool sectionMapEditing = false;
-bool sectionAgents = false;
 bool sectionMovers = false;
 bool sectionMoverAvoidance = false;
 bool sectionWater = false;
@@ -124,7 +136,6 @@ bool sectionMemGrid = false;
 bool sectionMemPath = false;
 bool sectionMemEntities = false;
 bool sectionMemSpatial = false;
-bool sectionAnimals = false;
 bool sectionJobs = false;
 bool sectionTime = false;
 bool sectionWeather = false;
@@ -1586,7 +1597,7 @@ int main(int argc, char** argv) {
         }
 
 #if PROFILER_ENABLED
-        DrawProfilerPanel(GetScreenWidth() - 50, 45);  // Below time widget
+        DrawProfilerPanel(GetScreenWidth() - 50, 95);  // Below time widget
 #endif
 
         PROFILE_BEGIN(DrawUI);

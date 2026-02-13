@@ -3,8 +3,21 @@
 #include "../../shared/ui.h"       // DrawTextShadow, MeasureTextUI
 #include "../entities/items.h"     // SpawnItem, ITEM_TYPE_COUNT
 #include "../entities/item_defs.h" // itemDefs[]
+#include "../entities/animals.h"   // ClearAnimals
+#include "../entities/stockpiles.h" // ClearStockpiles
 #include "../world/cell_defs.h"    // IsCellWalkableAt
-#include "../simulation/water.h"   // SpawnSkyWater
+#include "../simulation/water.h"   // SpawnSkyWater, ClearWater
+#include "../simulation/fire.h"    // ClearFire
+#include "../simulation/smoke.h"   // ClearSmoke
+#include "../simulation/steam.h"   // ClearSteam
+#include "../simulation/temperature.h" // ClearTemperature
+#include "../simulation/groundwear.h"  // ClearGroundWear
+#include "../simulation/lighting.h"    // ClearLightSources, InvalidateLighting
+#include "../simulation/weather.h"     // weatherState, WeatherType, seasons
+#include "../simulation/floordirt.h"   // InitFloorDirt
+#include "../core/time.h"              // timeOfDay, dayNumber, dayLength
+#include "../core/sim_manager.h"       // InitSimActivity
+#include "../world/designations.h"     // InitDesignations
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>                // atoi, atof
@@ -71,6 +84,10 @@ static void Cmd_Spawn(int argc, const char** argv);
 static void Cmd_Tp(int argc, const char** argv);
 static void Cmd_Clear(int argc, const char** argv);
 static void Cmd_Rain(int argc, const char** argv);
+static void Cmd_Weather(int argc, const char** argv);
+static void Cmd_Season(int argc, const char** argv);
+static void Cmd_Terrain(int argc, const char** argv);
+static void Cmd_Grid(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -101,9 +118,13 @@ void Console_Init(void) {
 
     // Game commands (Phase 4)
     Console_RegisterCmd("spawn", Cmd_Spawn, "Spawn items at mouse: spawn <count> <item>");
-    Console_RegisterCmd("clear", Cmd_Clear, "Clear entities: clear items|movers");
+    Console_RegisterCmd("clear", Cmd_Clear, "Clear entities: clear items|movers|fire|smoke|steam|water|temp|wear|lights|animals|stockpiles|all");
     Console_RegisterCmd("tp", Cmd_Tp, "Teleport camera: tp <x> <y> [z]");
     Console_RegisterCmd("rain", Cmd_Rain, "Start/stop rain: rain [light|medium|heavy|stop|1-100]");
+    Console_RegisterCmd("weather", Cmd_Weather, "Force weather: weather clear|cloudy|rain|heavy|thunder|snow|mist");
+    Console_RegisterCmd("season", Cmd_Season, "Jump to season: season spring|summer|autumn|winter");
+    Console_RegisterCmd("terrain", Cmd_Terrain, "Generate terrain: terrain <name> (use 'terrain list' to see options)");
+    Console_RegisterCmd("grid", Cmd_Grid, "Resize grid: grid 32|64|128|256");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -651,7 +672,7 @@ static void Cmd_Tp(int argc, const char** argv) {
 
 static void Cmd_Clear(int argc, const char** argv) {
     if (argc < 2) {
-        Console_Print("Usage: clear <items|movers>", YELLOW);
+        Console_Print("Usage: clear <items|movers|fire|smoke|steam|water|temp|wear|lights|animals|stockpiles|all>", YELLOW);
         return;
     }
 
@@ -663,8 +684,46 @@ static void Cmd_Clear(int argc, const char** argv) {
     } else if (strcmp(what, "movers") == 0) {
         ClearMovers();
         Console_Print("Cleared all movers", GREEN);
+    } else if (strcmp(what, "fire") == 0) {
+        ClearFire();
+        Console_Print("Cleared fire", GREEN);
+    } else if (strcmp(what, "smoke") == 0) {
+        ClearSmoke();
+        Console_Print("Cleared smoke", GREEN);
+    } else if (strcmp(what, "steam") == 0) {
+        ClearSteam();
+        Console_Print("Cleared steam", GREEN);
+    } else if (strcmp(what, "water") == 0) {
+        ClearWater();
+        Console_Print("Cleared water", GREEN);
+    } else if (strcmp(what, "temp") == 0) {
+        ClearTemperature();
+        Console_Print("Reset temperature to ambient", GREEN);
+    } else if (strcmp(what, "wear") == 0) {
+        ClearGroundWear();
+        Console_Print("Cleared ground wear", GREEN);
+    } else if (strcmp(what, "lights") == 0) {
+        ClearLightSources();
+        InvalidateLighting();
+        Console_Print("Cleared light sources", GREEN);
+    } else if (strcmp(what, "animals") == 0) {
+        ClearAnimals();
+        Console_Print("Cleared animals", GREEN);
+    } else if (strcmp(what, "stockpiles") == 0) {
+        ClearStockpiles();
+        Console_Print("Cleared stockpiles", GREEN);
+    } else if (strcmp(what, "all") == 0) {
+        ClearWater();
+        ClearFire();
+        ClearSmoke();
+        ClearSteam();
+        ClearTemperature();
+        ClearGroundWear();
+        ClearLightSources();
+        InvalidateLighting();
+        Console_Print("Cleared all simulation state", GREEN);
     } else {
-        Console_Printf(YELLOW, "Unknown type: %s (use items or movers)", what);
+        Console_Printf(YELLOW, "Unknown: %s (items movers fire smoke steam water temp wear lights animals stockpiles all)", what);
     }
 }
 
@@ -691,10 +750,169 @@ static void Cmd_Rain(int argc, const char** argv) {
     Console_Printf(GREEN, "Rain started (%d%% coverage, 30s)", coverage);
 }
 
+static void Cmd_Weather(int argc, const char** argv) {
+    if (argc < 2) {
+        Console_Print("Usage: weather clear|cloudy|rain|heavy|thunder|snow|mist", YELLOW);
+        Console_Printf(WHITE, "Current: %s (%.0f%%)", GetWeatherName(weatherState.current),
+                       weatherState.intensity * 100.0f);
+        return;
+    }
+
+    const char* w = argv[1];
+    WeatherType type = -1;
+    if (strcmp(w, "clear") == 0)        type = WEATHER_CLEAR;
+    else if (strcmp(w, "cloudy") == 0)   type = WEATHER_CLOUDY;
+    else if (strcmp(w, "rain") == 0)     type = WEATHER_RAIN;
+    else if (strcmp(w, "heavy") == 0)    type = WEATHER_HEAVY_RAIN;
+    else if (strcmp(w, "thunder") == 0)  type = WEATHER_THUNDERSTORM;
+    else if (strcmp(w, "snow") == 0)     type = WEATHER_SNOW;
+    else if (strcmp(w, "mist") == 0)     type = WEATHER_MIST;
+    else {
+        Console_Printf(YELLOW, "Unknown weather: %s (clear cloudy rain heavy thunder snow mist)", w);
+        return;
+    }
+
+    weatherState.current = type;
+    weatherState.intensity = 1.0f;
+    Console_Printf(GREEN, "Weather set to %s", GetWeatherName(type));
+}
+
+static void Cmd_Season(int argc, const char** argv) {
+    if (argc < 2) {
+        Console_Printf(WHITE, "Current: %s (day %d)", GetSeasonName(GetCurrentSeason()), dayNumber);
+        Console_Print("Usage: season spring|summer|autumn|winter", YELLOW);
+        return;
+    }
+
+    const char* s = argv[1];
+    if (strcmp(s, "spring") == 0) {
+        dayNumber = 1;
+    } else if (strcmp(s, "summer") == 0) {
+        dayNumber = daysPerSeason + 1;
+    } else if (strcmp(s, "autumn") == 0) {
+        dayNumber = daysPerSeason * 2 + 1;
+    } else if (strcmp(s, "winter") == 0) {
+        dayNumber = daysPerSeason * 3 + 1;
+    } else {
+        Console_Printf(YELLOW, "Unknown season: %s (spring summer autumn winter)", s);
+        return;
+    }
+
+    if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+    Console_Printf(GREEN, "Jumped to %s (day %d)", GetSeasonName(GetCurrentSeason()), dayNumber);
+}
+
+static void Cmd_Terrain(int argc, const char** argv) {
+    // Count terrains
+    int terrainCount = 21;
+
+    if (argc < 2 || strcmp(argv[1], "list") == 0) {
+        Console_Print("Available terrains:", WHITE);
+        for (int i = 0; i < terrainCount; i++) {
+            Console_Printf(GRAY, "  %s", terrainNames[i]);
+        }
+        if (argc < 2) Console_Print("Usage: terrain <name>", YELLOW);
+        return;
+    }
+
+    // Find matching terrain (case-insensitive)
+    int found = -1;
+    for (int i = 0; i < terrainCount; i++) {
+        if (strcasecmp(argv[1], terrainNames[i]) == 0) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) {
+        Console_Printf(YELLOW, "Unknown terrain: %s (use 'terrain list')", argv[1]);
+        return;
+    }
+
+    currentTerrain = found;
+    GenerateCurrentTerrain();
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitDesignations();
+    InitSimActivity();
+    InitWater();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InitLighting();
+    BuildEntrances();
+    BuildGraph();
+    Console_Printf(GREEN, "Generated terrain: %s", terrainNames[currentTerrain]);
+}
+
+static void Cmd_Grid(int argc, const char** argv) {
+    if (argc < 2) {
+        Console_Printf(WHITE, "Current grid: %dx%d (depth %d)", gridWidth, gridHeight, gridDepth);
+        Console_Print("Usage: grid 32|64|128|256", YELLOW);
+        return;
+    }
+
+    int size = atoi(argv[1]);
+    int chunkW = 8, chunkH = 8, depth = 6;
+    if (size == 128) { chunkW = 16; chunkH = 16; }
+    else if (size == 256) { chunkW = 16; chunkH = 16; depth = 3; }
+    else if (size != 32 && size != 64) {
+        Console_Printf(YELLOW, "Supported sizes: 32, 64, 128, 256 (got %d)", size);
+        return;
+    }
+
+    InitGridWithSizeAndChunkSize(size, size, chunkW, chunkH);
+    gridDepth = depth;
+    for (int z = 1; z < gridDepth; z++)
+        for (int gy = 0; gy < gridHeight; gy++)
+            for (int gx = 0; gx < gridWidth; gx++)
+                grid[z][gy][gx] = CELL_AIR;
+    FillGroundLevel();
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    InitDesignations();
+    InitSimActivity();
+    InitWater();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InitLighting();
+    BuildEntrances();
+    BuildGraph();
+    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+    Console_Printf(GREEN, "Grid resized to %dx%d (depth %d)", gridWidth, gridHeight, gridDepth);
+}
+
 // ---------------------------------------------------------------------------
 // Autocomplete
 // ---------------------------------------------------------------------------
-typedef enum { AC_COMMANDS, AC_VARIABLES, AC_ITEMS, AC_BOTH } AutocompleteMode;
+typedef enum { AC_COMMANDS, AC_VARIABLES, AC_ITEMS, AC_STRINGS, AC_BOTH } AutocompleteMode;
+
+// Static string lists for autocomplete
+static const char* acClearTargets[] = {
+    "items", "movers", "fire", "smoke", "steam", "water", "temp", "wear",
+    "lights", "animals", "stockpiles", "all"
+};
+static const int acClearTargetCount = 12;
+
+static const char* acWeatherTypes[] = {
+    "clear", "cloudy", "rain", "heavy", "thunder", "snow", "mist"
+};
+static const int acWeatherTypeCount = 7;
+
+static const char* acSeasons[] = { "spring", "summer", "autumn", "winter" };
+static const int acSeasonCount = 4;
+
+// Pointer + count set by HandleTab for AC_STRINGS mode
+static const char** acStringList = NULL;
+static int acStringListCount = 0;
 
 // Case-insensitive substring search
 static bool ContainsSubstring(const char* haystack, const char* needle) {
@@ -759,6 +977,28 @@ static void FindMatches(const char* prefix, AutocompleteMode mode) {
                 if (strncmp(cvars[i].name, prefix, prefixLen) != 0 &&
                     ContainsSubstring(cvars[i].name, prefix)) {
                     strncpy(con.acMatches[con.acMatchCount], cvars[i].name, 63);
+                    con.acMatches[con.acMatchCount][63] = '\0';
+                    con.acMatchCount++;
+                }
+            }
+        }
+    }
+
+    // Match from a static string list (for clear targets, weather types, seasons, terrains)
+    if (mode == AC_STRINGS && acStringList) {
+        for (int i = 0; i < acStringListCount && con.acMatchCount < (CON_MAX_COMMANDS + CON_MAX_VARS); i++) {
+            if (prefixLen == 0 || strncasecmp(acStringList[i], prefix, prefixLen) == 0) {
+                strncpy(con.acMatches[con.acMatchCount], acStringList[i], 63);
+                con.acMatches[con.acMatchCount][63] = '\0';
+                con.acMatchCount++;
+            }
+        }
+        // Second pass: substring matches
+        if (prefixLen > 0) {
+            for (int i = 0; i < acStringListCount && con.acMatchCount < (CON_MAX_COMMANDS + CON_MAX_VARS); i++) {
+                if (strncasecmp(acStringList[i], prefix, prefixLen) != 0 &&
+                    ContainsSubstring(acStringList[i], prefix)) {
+                    strncpy(con.acMatches[con.acMatchCount], acStringList[i], 63);
                     con.acMatches[con.acMatchCount][63] = '\0';
                     con.acMatchCount++;
                 }
@@ -835,6 +1075,30 @@ static void HandleTab(void) {
             searchPrefix = spaceAfterCount + 1;
             prefixStart = (int)(spaceAfterCount - con.input) + 1;
         }
+    } else if (strncmp(con.input, "clear ", 6) == 0) {
+        mode = AC_STRINGS;
+        acStringList = acClearTargets;
+        acStringListCount = acClearTargetCount;
+        searchPrefix = con.input + 6;
+        prefixStart = 6;
+    } else if (strncmp(con.input, "weather ", 8) == 0) {
+        mode = AC_STRINGS;
+        acStringList = acWeatherTypes;
+        acStringListCount = acWeatherTypeCount;
+        searchPrefix = con.input + 8;
+        prefixStart = 8;
+    } else if (strncmp(con.input, "season ", 7) == 0) {
+        mode = AC_STRINGS;
+        acStringList = acSeasons;
+        acStringListCount = acSeasonCount;
+        searchPrefix = con.input + 7;
+        prefixStart = 7;
+    } else if (strncmp(con.input, "terrain ", 8) == 0) {
+        mode = AC_STRINGS;
+        acStringList = terrainNames;
+        acStringListCount = 21;
+        searchPrefix = con.input + 8;
+        prefixStart = 8;
     }
 
     // First Tab press - find matches and save prefix
@@ -975,6 +1239,30 @@ void Console_RegisterGameVars(void) {
     Console_RegisterVar("fixedTime", &useFixedTimestep, CVAR_BOOL);
     Console_RegisterVar("time", &timeOfDay, CVAR_FLOAT);
     Console_RegisterVar("speed", &gameSpeed, CVAR_FLOAT);
+    Console_RegisterVar("dayLen", &dayLength, CVAR_FLOAT);
+
+    // Simulation toggles
+    Console_RegisterVar("water", &waterEnabled, CVAR_BOOL);
+    Console_RegisterVar("fire", &fireEnabled, CVAR_BOOL);
+    Console_RegisterVar("smoke", &smokeEnabled, CVAR_BOOL);
+    Console_RegisterVar("steam", &steamEnabled, CVAR_BOOL);
+    Console_RegisterVar("temp", &temperatureEnabled, CVAR_BOOL);
+    Console_RegisterVar("wear", &groundWearEnabled, CVAR_BOOL);
+    Console_RegisterVar("weather", &weatherEnabled, CVAR_BOOL);
+    Console_RegisterVar("lighting", &lightingEnabled, CVAR_BOOL);
+    Console_RegisterVar("skyLight", &skyLightEnabled, CVAR_BOOL);
+    Console_RegisterVar("blockLight", &blockLightEnabled, CVAR_BOOL);
+
+    // Simulation params
+    Console_RegisterVar("fireSpread", &fireSpreadInterval, CVAR_FLOAT);
+    Console_RegisterVar("fireFuel", &fireFuelInterval, CVAR_FLOAT);
+    Console_RegisterVar("surfTemp", &ambientSurfaceTemp, CVAR_INT);
+    Console_RegisterVar("daysPerSzn", &daysPerSeason, CVAR_INT);
+    Console_RegisterVar("sznAmp", &seasonalAmplitude, CVAR_INT);
+    Console_RegisterVar("baseTemp", &baseSurfaceTemp, CVAR_INT);
+
+    // Overlays
+    Console_RegisterVar("tempOverlay", &showTemperatureOverlay, CVAR_BOOL);
 }
 
 // ---------------------------------------------------------------------------

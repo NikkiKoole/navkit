@@ -241,15 +241,18 @@ static void DrawCutsceneText(Font font, const char* text,
                     float advance = (glyph.advanceX == 0) ? font.recs[index].width : glyph.advanceX;
                     float capW = (advance * dropCapSize / font.baseSize);
 
+                    // Align baselines: shift drop cap up so bottom matches regular text
+                    float capY = y - (dropCapSize - fontSize);
+
                     // Background block
-                    DrawRectangle((int)x - dropCapPad, (int)y - dropCapPad,
+                    DrawRectangle((int)x - dropCapPad, (int)capY - dropCapPad,
                                   (int)capW + dropCapPad * 2, (int)dropCapSize + dropCapPad * 2,
                                   COLOR_INK);
                     // Letter in inverted color
-                    DrawTextCodepoint(font, codepoint, (Vector2){x, y}, dropCapSize, COLOR_PARCHMENT);
+                    DrawTextCodepoint(font, codepoint, (Vector2){x, capY}, dropCapSize, COLOR_PARCHMENT);
 
-                    dropCapRight = x + capW + dropCapPad * 2 + 4;
-                    dropCapBottom = y + dropCapSize + dropCapPad;
+                    dropCapRight = x + capW + dropCapPad + 2;
+                    dropCapBottom = capY + dropCapSize + dropCapPad;
                     x = dropCapRight;
                 }
                 continue;

@@ -625,8 +625,8 @@ static void DrawSnow(void) {
                 if (snowLevel == 0) continue;
                 if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
 
-                // Snow opacity based on level: light=60, moderate=120, heavy=180
-                unsigned char alpha = snowLevel * 60;
+                // Snow opacity based on level: light=80, moderate=170, heavy=240
+                unsigned char alpha = (unsigned char)(snowLevel == 1 ? 80 : snowLevel == 2 ? 170 : 240);
                 Color snowColor = {255, 255, 255, alpha};
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 snowColor = MultiplyColor(snowColor, tint);
@@ -648,7 +648,8 @@ static void DrawSnow(void) {
             if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
             if (HAS_FLOOR(x, y, z)) continue;
 
-            unsigned char alpha = snowLevel * 60;
+            // Snow opacity based on level: light=80, moderate=170, heavy=240
+            unsigned char alpha = (unsigned char)(snowLevel == 1 ? 80 : snowLevel == 2 ? 170 : 240);
             Color snowColor = {255, 255, 255, alpha};
             Color lightTint = GetLightColor(x, y, z, skyColor);
             snowColor = MultiplyColor(snowColor, lightTint);
@@ -2365,37 +2366,38 @@ static void DrawLightningFlash(void) {
 static void DrawMist(void) {
     float mistIntensity = GetMistIntensity();
     if (mistIntensity <= 0.01f) return;
-    
-    // Distance-based fog effect
+
+    // Uniform fog overlay with subtle per-cell variation
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
-    
+
     int minX, minY, maxX, maxY;
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
-    
-    // Camera center in grid coords
-    float camCenterX = (GetScreenWidth() / 2.0f - offset.x) / size;
-    float camCenterY = (GetScreenHeight() / 2.0f - offset.y) / size;
-    
+
+    // Slow drift over time for subtle animation
+    float t = (float)GetTime() * 0.3f;
+
     for (int y = minY; y < maxY; y++) {
         for (int x = minX; x < maxX; x++) {
-            // Skip cells that aren't visible
             if (!IsCellVisibleFromAbove(x, y, z, z + 1)) continue;
-            
-            // Distance from camera center
-            float dx = (float)x - camCenterX;
-            float dy = (float)y - camCenterY;
-            float dist = sqrtf(dx * dx + dy * dy);
-            
-            // Fog strength increases with distance
-            float fogStrength = (dist / 15.0f) * mistIntensity;  // Max fog at ~15 cells distance
-            if (fogStrength > mistIntensity) fogStrength = mistIntensity;
-            
-            int alpha = (int)(fogStrength * 180.0f);  // Max 180 alpha
-            if (alpha < 10) continue;  // Skip very light fog
-            if (alpha > 255) alpha = 255;
-            
-            // Grey-white mist overlay
+
+            // Per-cell hash for spatial variation (no radial pattern)
+            unsigned int h = (unsigned int)(x * 7919 + y * 6271);
+            h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15;
+            float cellNoise = (float)(h & 0xFF) / 255.0f;  // 0..1
+
+            // Subtle variation: ±20% around base intensity
+            float variation = 0.8f + cellNoise * 0.4f;
+            float fogStrength = mistIntensity * variation;
+
+            // Slight temporal shimmer using cell position + time
+            float shimmer = sinf((float)x * 0.4f + t) * cosf((float)y * 0.3f + t * 0.7f);
+            fogStrength += shimmer * 0.03f * mistIntensity;
+
+            int alpha = (int)(fogStrength * 160.0f);
+            if (alpha < 5) continue;
+            if (alpha > 200) alpha = 200;
+
             Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
             DrawRectangleRec(dest, (Color){200, 200, 210, (unsigned char)alpha});
         }

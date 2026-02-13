@@ -17,8 +17,8 @@
 // =============================================================================
 
 int daysPerSeason = 7;
-int baseSurfaceTemp = TEMP_AMBIENT_DEFAULT;  // 20, matching temperature system default
-int seasonalAmplitude = 0;                   // 0 by default (flat temp, no seasons)
+int baseSurfaceTemp = 15;  // Center of seasonal range: 15 ± 25 = -10C to 40C
+int seasonalAmplitude = 25;                  // Temp swing ±25 from base (winter ~-5C, summer ~45C)
 
 // =============================================================================
 // Weather State
@@ -127,8 +127,8 @@ static float GetTargetWindStrength(WeatherType type) {
 
 void InitWeather(void) {
     daysPerSeason = 7;
-    baseSurfaceTemp = TEMP_AMBIENT_DEFAULT;
-    seasonalAmplitude = 0;
+    baseSurfaceTemp = 15;
+    seasonalAmplitude = 25;
 
     memset(&weatherState, 0, sizeof(weatherState));
     weatherState.current = WEATHER_CLEAR;
@@ -199,7 +199,7 @@ static float GetYearPhase(void) {
 int GetSeasonalSurfaceTemp(void) {
     if (seasonalAmplitude == 0) return ambientSurfaceTemp;
     float yearPhase = GetYearPhase();
-    float offset = sinf((yearPhase - 0.25f) * 2.0f * (float)M_PI) * (float)seasonalAmplitude;
+    float offset = sinf(yearPhase * 2.0f * (float)M_PI) * (float)seasonalAmplitude;
     return baseSurfaceTemp + (int)offset;
 }
 
@@ -522,36 +522,30 @@ float GetSnowSpeedMultiplier(int x, int y, int z) {
 // CLOUD SHADOWS (Phase 4)
 // =============================================================================
 
-// Hash function for noise
-static float Hash2D(int a, int b) {
-    unsigned int h = (unsigned int)(a * 374761393 + b * 668265263);
-    h = (h ^ (h >> 13)) * 1274126177;
-    return ((float)(h & 0x7fffffff)) / 2147483648.0f;
-}
+// Simple drifting rectangular shadow patches.
+// Placeholder approach: a handful of fixed-size rectangles that scroll with
+// the wind.  Looks intentionally placeholder but reads clearly as "clouds".
 
-// Simple noise function for cloud shadows
-static float SimpleNoise2D(float x, float y) {
-    // Hash-based noise (deterministic)
-    int xi = (int)floorf(x);
-    int yi = (int)floorf(y);
-    float xf = x - (float)xi;
-    float yf = y - (float)yi;
-    
-    // Bilinear interpolation
-    float v00 = Hash2D(xi, yi);
-    float v10 = Hash2D(xi + 1, yi);
-    float v01 = Hash2D(xi, yi + 1);
-    float v11 = Hash2D(xi + 1, yi + 1);
-    
-    float v0 = v00 * (1.0f - xf) + v10 * xf;
-    float v1 = v01 * (1.0f - xf) + v11 * xf;
-    
-    return v0 * (1.0f - yf) + v1 * yf;
-}
+#define CLOUD_PATCH_COUNT 6
+
+typedef struct {
+    float cx, cy;   // base center in world-cell coords
+    float hw, hh;   // half-width / half-height in cells
+} CloudPatch;
+
+// Deterministic patches seeded from grid size
+static const CloudPatch cloudPatches[CLOUD_PATCH_COUNT] = {
+    {  20.0f,  15.0f, 12.0f,  8.0f },
+    {  70.0f,  45.0f, 10.0f, 14.0f },
+    {  40.0f,  80.0f, 15.0f,  9.0f },
+    { 110.0f,  25.0f,  8.0f, 11.0f },
+    {  85.0f,  90.0f, 13.0f,  7.0f },
+    {  55.0f,  55.0f,  9.0f, 12.0f },
+};
 
 float GetCloudShadow(int x, int y, float time) {
     WeatherType w = weatherState.current;
-    
+
     // Base intensity by weather type
     float baseIntensity = 0.0f;
     switch (w) {
@@ -564,25 +558,37 @@ float GetCloudShadow(int x, int y, float time) {
         case WEATHER_MIST:          baseIntensity = 0.2f; break;
         default:                    baseIntensity = 0.0f; break;
     }
-    
+
     if (baseIntensity < 0.01f) return 0.0f;
-    
-    // Scroll clouds with wind
+
+    // Scroll with wind
     float scrollX = time * weatherState.windDirX * weatherState.windStrength * 0.5f;
     float scrollY = time * weatherState.windDirY * weatherState.windStrength * 0.5f;
-    
-    // Sample noise at multiple scales for cloud-like appearance
-    float scale1 = 0.05f;
-    float scale2 = 0.1f;
-    float nx1 = SimpleNoise2D((float)x * scale1 + scrollX, (float)y * scale1 + scrollY);
-    float nx2 = SimpleNoise2D((float)x * scale2 + scrollX * 0.7f, (float)y * scale2 + scrollY * 0.7f);
-    
-    float noise = nx1 * 0.6f + nx2 * 0.4f;  // Combine scales, range [0, 1]
-    
-    // Scale by base intensity - noise modulates the shadow strength
-    float shadow = noise * baseIntensity;
-    
-    return shadow;
+
+    float maxShadow = 0.0f;
+    float fx = (float)x;
+    float fy = (float)y;
+
+    for (int i = 0; i < CLOUD_PATCH_COUNT; i++) {
+        const CloudPatch* p = &cloudPatches[i];
+
+        // Each patch drifts at a slightly different rate for variety
+        float rate = 1.0f + (float)i * 0.15f;
+        float pcx = fmodf(p->cx + scrollX * rate, (float)gridWidth  + p->hw * 4.0f) - p->hw * 2.0f;
+        float pcy = fmodf(p->cy + scrollY * rate, (float)gridHeight + p->hh * 4.0f) - p->hh * 2.0f;
+
+        // Soft-edged rectangle: full shadow inside, linear falloff at edges
+        float dx = fabsf(fx - pcx) - p->hw;
+        float dy = fabsf(fy - pcy) - p->hh;
+        if (dx > 4.0f || dy > 4.0f) continue;  // 4-cell soft edge
+
+        float sx = dx < 0.0f ? 1.0f : 1.0f - dx / 4.0f;
+        float sy = dy < 0.0f ? 1.0f : 1.0f - dy / 4.0f;
+        float s = sx * sy;
+        if (s > maxShadow) maxShadow = s;
+    }
+
+    return maxShadow * baseIntensity;
 }
 
 // =============================================================================
@@ -722,16 +728,13 @@ void UpdateLightning(float dt) {
 float GetMistIntensity(void) {
     WeatherType w = weatherState.current;
     
-    // Base mist by weather type
     float baseMist = 0.0f;
     switch (w) {
-        case WEATHER_CLEAR:         baseMist = 0.0f; break;
-        case WEATHER_CLOUDY:        baseMist = 0.0f; break;
-        case WEATHER_RAIN:          baseMist = 0.2f; break;
-        case WEATHER_HEAVY_RAIN:    baseMist = 0.3f; break;
+        case WEATHER_MIST:          baseMist = 0.9f; break;
+        case WEATHER_RAIN:          baseMist = 0.15f; break;
+        case WEATHER_HEAVY_RAIN:    baseMist = 0.25f; break;
         case WEATHER_THUNDERSTORM:  baseMist = 0.2f; break;
         case WEATHER_SNOW:          baseMist = 0.1f; break;
-        case WEATHER_MIST:          baseMist = 0.9f; break;
         default:                    baseMist = 0.0f; break;
     }
     

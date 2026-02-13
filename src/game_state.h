@@ -129,11 +129,23 @@ extern int hillsWaterConnectivitySmallThreshold;
 extern MaterialType currentTreeType;
 extern const char* treeTypeNames[];
 
-// UI section collapse state
-extern bool sectionView;
+// UI section collapse state — super-groups
+extern bool sectionWorld;
+extern bool sectionEntities;
+extern bool sectionSimulation;
+extern bool sectionWeatherTime;
+extern bool sectionRenderDebug;
+
+// Advanced sub-toggles
+extern bool sectionWaterAdvanced;
+extern bool sectionFireAdvanced;
+extern bool sectionTemperatureAdvanced;
+extern bool sectionEntropyAdvanced;
+extern bool sectionSteamAdvanced;
+
+// Existing sub-sections
 extern bool sectionPathfinding;
 extern bool sectionMapEditing;
-extern bool sectionAgents;
 extern bool sectionMovers;
 extern bool sectionMoverAvoidance;
 extern bool sectionWater;
@@ -157,7 +169,6 @@ extern bool sectionMemGrid;
 extern bool sectionMemPath;
 extern bool sectionMemEntities;
 extern bool sectionMemSpatial;
-extern bool sectionAnimals;
 extern bool sectionJobs;
 extern bool sectionTime;
 extern bool sectionWeather;

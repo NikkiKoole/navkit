@@ -6,6 +6,14 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
+#include "../simulation/water.h"
+#include "../simulation/fire.h"
+#include "../simulation/smoke.h"
+#include "../simulation/steam.h"
+#include "../simulation/temperature.h"
+#include "../simulation/floordirt.h"
+#include "../core/sim_manager.h"
+#include "../world/designations.h"
 #include "../ui/cutscene.h"
 #include <time.h>
 
@@ -81,31 +89,68 @@ void DrawTimeOfDayWidget(float x, float y) {
     int hours = (int)timeOfDay;
     int minutes = (int)((timeOfDay - hours) * 60);
 
-    // Line 1: Season + Day, Line 2: Time + Weather
+    // Line 1: Season + Day, Line 2: Time + Weather, Line 3: Temp + Wind
     char line1[32];
     char line2[32];
+    char line3[32];
     snprintf(line1, sizeof(line1), "%s Day %d", GetSeasonName(GetCurrentSeason()), dayNumber);
     snprintf(line2, sizeof(line2), "%02d:%02d %s", hours, minutes, GetWeatherName(weatherState.current));
 
+    // Wind direction arrow from vector
+    int temp = GetSeasonalSurfaceTemp();
+    float ws = weatherState.windStrength;
+    const char* windArrow = "";
+    if (ws > 0.1f) {
+        float wx = weatherState.windDirX;
+        float wy = weatherState.windDirY;
+        float angle = atan2f(wy, wx);  // radians
+        // 8 compass directions
+        if      (angle < -2.75f || angle > 2.75f)  windArrow = "W";
+        else if (angle < -1.96f) windArrow = "NW";
+        else if (angle < -1.18f) windArrow = "N";
+        else if (angle < -0.39f) windArrow = "NE";
+        else if (angle <  0.39f) windArrow = "E";
+        else if (angle <  1.18f) windArrow = "SE";
+        else if (angle <  1.96f) windArrow = "S";
+        else                     windArrow = "SW";
+    }
+    if (ws > 0.1f) {
+        snprintf(line3, sizeof(line3), "%dC  %s %.0f", temp, windArrow, ws);
+    } else {
+        snprintf(line3, sizeof(line3), "%dC  Calm", temp);
+    }
+
     int line1Width = MeasureTextUI(line1, fontSize);
     int line2Width = MeasureTextUI(line2, fontSize);
+    int line3Width = MeasureTextUI(line3, fontSize);
     int lineSpacing = 2;
-    int boxHeight = fontSize * 2 + lineSpacing + paddingY * 2;
+    int boxHeight = fontSize * 3 + lineSpacing * 2 + paddingY * 2;
+
+    // Widen box if needed
+    int maxTextWidth = line1Width;
+    if (line2Width > maxTextWidth) maxTextWidth = line2Width;
+    if (line3Width > maxTextWidth) maxTextWidth = line3Width;
+    if (maxTextWidth + 16 > boxWidth) boxWidth = maxTextWidth + 16;
 
     // Draw sky-colored background rectangle
     Color skyColor = GetSkyColorForTime(timeOfDay);
     DrawRectangle((int)x, (int)y, boxWidth, boxHeight, skyColor);
     DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, (Color){100, 100, 100, 255});
 
-    // Draw line 1 (season + day + time) centered
+    // Draw line 1 (season + day) centered
     int text1X = (int)x + (boxWidth - line1Width) / 2;
     int text1Y = (int)y + paddingY;
     DrawTextShadow(line1, text1X, text1Y, fontSize, WHITE);
 
-    // Draw line 2 (weather) centered
+    // Draw line 2 (time + weather) centered
     int text2X = (int)x + (boxWidth - line2Width) / 2;
     int text2Y = text1Y + fontSize + lineSpacing;
     DrawTextShadow(line2, text2X, text2Y, fontSize, (Color){200, 200, 220, 255});
+
+    // Draw line 3 (temp + wind) centered
+    int text3X = (int)x + (boxWidth - line3Width) / 2;
+    int text3Y = text2Y + fontSize + lineSpacing;
+    DrawTextShadow(line3, text3X, text3Y, fontSize, (Color){180, 200, 180, 255});
 
     // Block mouse clicks on widget area
     Vector2 mouse = GetMousePosition();
@@ -127,30 +172,11 @@ void DrawUI(void) {
     ui_begin_frame();
     float y = 30.0f;
     float x = 10.0f;
+    float ix = x + 10;  // indented x for sub-sections
 
-    // === VIEW ===
-    if (SectionHeader(x, y, "View", &sectionView)) {
-        y += 18;
-        if (PushButton(x, y, "Cutscene")) {
-            PlayTestCutscene();
-        }
-        y += 22;
-        if (PushButton(x, y, "Shake: Small")) {
-            TriggerScreenShake(2.0f, 0.2f);
-        }
-        y += 22;
-        if (PushButton(x, y, "Shake: Medium")) {
-            TriggerScreenShake(4.0f, 0.4f);
-        }
-        y += 22;
-        if (PushButton(x, y, "Shake: Large")) {
-            TriggerScreenShake(8.0f, 0.6f);
-        }
-    }
-    y += 22;
-
-    // === PATHFINDING ===
-    y += 8;
+    // ========================================================================
+    // [+] Pathfinding  (standalone — small, 4 controls)
+    // ========================================================================
     if (SectionHeader(x, y, "Pathfinding", &sectionPathfinding)) {
         y += 18;
         int prevAlgo = pathAlgorithm;
@@ -158,7 +184,7 @@ void DrawUI(void) {
         if (pathAlgorithm != prevAlgo) ResetPathStats();
         y += 22;
         CycleOption(x, y, "Dir", directionNames, 2, &currentDirection);
-        use8Dir = (currentDirection == 1);  // Sync with pathfinding
+        use8Dir = (currentDirection == 1);
         y += 22;
         if (PushButton(x, y, "Build HPA Graph")) {
             BuildEntrances();
@@ -184,960 +210,1034 @@ void DrawUI(void) {
     }
     y += 22;
 
-    // === MAP EDITING ===
-    y += 8;
-    if (SectionHeader(x, y, "Map Editing", &sectionMapEditing)) {
+    // ========================================================================
+    // [+] World  (super-group: Map Editing, Trees, Entropy)
+    // ========================================================================
+    y += 4;
+    if (SectionHeader(x, y, "World", &sectionWorld)) {
         y += 18;
-        CycleOption(x, y, "Tool", toolNames, 6, &currentTool);
-        y += 22;
-        CycleOption(x, y, "Terrain", terrainNames, 21, &currentTerrain);
-        y += 22;
-        bool isHillsTerrain = (currentTerrain == 17 || currentTerrain == 18 || currentTerrain == 19);
-        bool isHillsWater = (currentTerrain == 19);
-        if (isHillsTerrain) {
-            DraggableFloatT(x, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
-                "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
-            y += 22;
-            DraggableFloatT(x, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
-                "Controls ramp cluster size for hills generators (higher = larger clusters).");
-            y += 22;
-        }
-        if (isHillsWater) {
-            DraggableIntT(x, y, "River Count", &hillsWaterRiverCount, 1.0f, 0, 6,
-                "HillsSoilsWater: number of rivers (0 disables rivers).");
-            y += 22;
-            DraggableIntT(x, y, "River Width", &hillsWaterRiverWidth, 1.0f, 1, 4,
-                "HillsSoilsWater: river width radius (1-4).");
-            y += 22;
-            DraggableIntT(x, y, "Lake Count", &hillsWaterLakeCount, 1.0f, 0, 6,
-                "HillsSoilsWater: number of lakes (0 disables lakes).");
-            y += 22;
-            DraggableIntT(x, y, "Lake Radius", &hillsWaterLakeRadius, 1.0f, 3, 12,
-                "HillsSoilsWater: lake radius (3-12).");
-            y += 22;
-            DraggableFloatT(x, y, "Wetness Bias", &hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
-                "HillsSoilsWater: wetness boost near water (peat/clay bias).");
-            y += 22;
-            ToggleBoolT(x, y, "Conn Report", &hillsWaterConnectivityReport,
-                "Logs walkability connectivity stats after generation.");
-            y += 22;
-            ToggleBoolT(x, y, "Fix Tiny Pockets", &hillsWaterConnectivityFixSmall,
-                "Fills tiny disconnected walkable pockets after generation.");
-            y += 22;
-            DraggableIntT(x, y, "Tiny Size", &hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
-                "Size threshold for tiny pocket fill (cells).");
-            y += 22;
-        }
-        if (PushButton(x, y, "Randomize Seed")) {
-            worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
-            AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);
-        }
-        y += 22;
-        if (PushButton(x, y, "Generate Terrain")) {
-            GenerateCurrentTerrain();
-            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-            InitSimActivity();
-            InitTemperature();
-            BuildEntrances();
-            BuildGraph();
-            AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
-        }
-        y += 22;
-        if (PushButton(x, y, "Small Grid (32x32)")) {
-            InitGridWithSizeAndChunkSize(32, 32, 8, 8);
-            gridDepth = 6;
-            // Set z>0 to air (z=0 already walkable from init)
-            for (int z = 1; z < gridDepth; z++)
-                for (int gy = 0; gy < gridHeight; gy++)
-                    for (int gx = 0; gx < gridWidth; gx++)
-                        grid[z][gy][gx] = CELL_AIR;
-            FillGroundLevel();
-            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-            InitSimActivity();
-            InitTemperature();
-            BuildEntrances();
-            BuildGraph();
-            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-        }
-        y += 22;
-        if (PushButton(x, y, "Medium Grid (64x64)")) {
-            InitGridWithSizeAndChunkSize(64, 64, 8, 8);
-            gridDepth = 6;
-            // Set z>0 to air (z=0 already walkable from init)
-            for (int z = 1; z < gridDepth; z++)
-                for (int gy = 0; gy < gridHeight; gy++)
-                    for (int gx = 0; gx < gridWidth; gx++)
-                        grid[z][gy][gx] = CELL_AIR;
-            FillGroundLevel();
-            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-            BuildEntrances();
-            BuildGraph();
-            InitSimActivity();
-            InitTemperature();
-            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-        }
-        y += 22;
-        if (PushButton(x, y, "Big Grid (256x256)")) {
-            InitGridWithSizeAndChunkSize(256, 256, 16, 16);
-            gridDepth = 3;
-            // Set z>0 to air (z=0 already walkable from init)
-            for (int z = 1; z < gridDepth; z++)
-                for (int gy = 0; gy < gridHeight; gy++)
-                    for (int gx = 0; gx < gridWidth; gx++)
-                        grid[z][gy][gx] = CELL_AIR;
-            FillGroundLevel();
-            InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
-            InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
-            InitSimActivity();
-            InitTemperature();
-            BuildEntrances();
-            BuildGraph();
-            offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
-            offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
-        }
-        y += 22;
-        if (PushButton(x, y, "Fill with Walls")) {
-            // Fill current z-level with walls (for mining testing)
-            for (int gy = 0; gy < gridHeight; gy++) {
-                for (int gx = 0; gx < gridWidth; gx++) {
-                    grid[currentViewZ][gy][gx] = CELL_WALL;
-                    // Clear water in filled cells
-                    SetWaterLevel(gx, gy, currentViewZ, 0);
-                    SetWaterSource(gx, gy, currentViewZ, false);
-                    SetWaterDrain(gx, gy, currentViewZ, false);
-                }
-            }
-            // Mark all chunks dirty
-            for (int cy = 0; cy < chunksY; cy++) {
-                for (int cx = 0; cx < chunksX; cx++) {
-                    MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
-                }
-            }
-            BuildEntrances();
-            BuildGraph();
-            InitDesignations();  // Clear any existing designations
-            AddMessage(TextFormat("Filled z=%d with walls", currentViewZ), GREEN);
-        }
-        y += 22;
-        if (PushButton(x, y, "Copy Map ASCII")) {
-            // Copy map to clipboard as ASCII (supports multiple floors)
-            // Calculate buffer size: for each floor, "floor:N\n" + grid data + newlines
-            // "floor:" = 6, max digits for floor number ~3, "\n" = 1, so ~10 chars per floor header
-            int floorDataSize = gridWidth * gridHeight + gridHeight;  // grid + newlines per floor
-            int bufferSize = gridDepth * (16 + floorDataSize) + 1;  // 16 for "floor:XXX\n" with margin
-            char* buffer = malloc(bufferSize);
-            if (!buffer) {
-                AddMessage("Failed to allocate clipboard buffer", RED);
-            } else {
-            int idx = 0;
 
-            for (int z = 0; z < gridDepth; z++) {
-                // Write floor marker
-                idx += snprintf(buffer + idx, bufferSize - idx, "floor:%d\n", z);
-
-                // Write grid data for this floor
-                for (int row = 0; row < gridHeight; row++) {
-                    for (int col = 0; col < gridWidth; col++) {
-                        char c;
-                        switch (grid[z][row][col]) {
-                            case CELL_WALL:        c = '#'; break;
-                            case CELL_LADDER_UP:   c = '<'; break;
-                            case CELL_LADDER_DOWN: c = '>'; break;
-                            case CELL_LADDER_BOTH: c = 'X'; break;
-                            default:               c = '.'; break;
-                        }
-                        buffer[idx++] = c;
-                    }
-                    buffer[idx++] = '\n';
-                }
+        // --- Map Editing ---
+        if (SectionHeader(ix, y, "Map Editing", &sectionMapEditing)) {
+            y += 18;
+            CycleOption(ix, y, "Tool", toolNames, 6, &currentTool);
+            y += 22;
+            CycleOption(ix, y, "Terrain", terrainNames, 21, &currentTerrain);
+            y += 22;
+            bool isHillsTerrain = (currentTerrain == 17 || currentTerrain == 18 || currentTerrain == 19);
+            bool isHillsWater = (currentTerrain == 19);
+            if (isHillsTerrain) {
+                DraggableFloatT(ix, y, "Ramp Density", &rampDensity, 0.02f, 0.0f, 1.0f,
+                    "Hills ramp placement density (0=none, 1=all). Lower reduces HPA* graph size.");
+                y += 22;
+                DraggableFloatT(ix, y, "Ramp Noise Scale", &rampNoiseScale, 0.005f, 0.005f, 0.2f,
+                    "Controls ramp cluster size for hills generators (higher = larger clusters).");
+                y += 22;
             }
-            buffer[idx] = '\0';
-            SetClipboardText(buffer);
-            free(buffer);
-
-            AddMessage(TextFormat("Map copied to clipboard (%d floors)", gridDepth), ORANGE);
+            if (isHillsWater) {
+                DraggableIntT(ix, y, "River Count", &hillsWaterRiverCount, 1.0f, 0, 6,
+                    "HillsSoilsWater: number of rivers (0 disables rivers).");
+                y += 22;
+                DraggableIntT(ix, y, "River Width", &hillsWaterRiverWidth, 1.0f, 1, 4,
+                    "HillsSoilsWater: river width radius (1-4).");
+                y += 22;
+                DraggableIntT(ix, y, "Lake Count", &hillsWaterLakeCount, 1.0f, 0, 6,
+                    "HillsSoilsWater: number of lakes (0 disables lakes).");
+                y += 22;
+                DraggableIntT(ix, y, "Lake Radius", &hillsWaterLakeRadius, 1.0f, 3, 12,
+                    "HillsSoilsWater: lake radius (3-12).");
+                y += 22;
+                DraggableFloatT(ix, y, "Wetness Bias", &hillsWaterWetnessBias, 0.05f, 0.0f, 1.0f,
+                    "HillsSoilsWater: wetness boost near water (peat/clay bias).");
+                y += 22;
+                ToggleBoolT(ix, y, "Conn Report", &hillsWaterConnectivityReport,
+                    "Logs walkability connectivity stats after generation.");
+                y += 22;
+                ToggleBoolT(ix, y, "Fix Tiny Pockets", &hillsWaterConnectivityFixSmall,
+                    "Fills tiny disconnected walkable pockets after generation.");
+                y += 22;
+                DraggableIntT(ix, y, "Tiny Size", &hillsWaterConnectivitySmallThreshold, 1.0f, 5, 200,
+                    "Size threshold for tiny pocket fill (cells).");
+                y += 22;
             }
-        }
-    }
-    y += 22;
-
-    // === AGENTS ===
-    y += 8;
-    if (SectionHeader(x, y, "Agents", &sectionAgents)) {
-        y += 18;
-        DraggableInt(x, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
-        y += 22;
-        if (PushButton(x, y, "Spawn Agents")) {
-            if (graphEdgeCount == 0) {
+            if (PushButton(ix, y, "Randomize Seed")) {
+                worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+                AddMessage(TextFormat("New seed: %llu", (unsigned long long)worldSeed), GREEN);
+            }
+            y += 22;
+            if (PushButton(ix, y, "Generate Terrain")) {
+                GenerateCurrentTerrain();
+                InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                InitDesignations();
+                InitSimActivity();
+                InitWater();
+                InitFire();
+                InitSmoke();
+                InitSteam();
+                InitTemperature();
+                InitGroundWear();
+                InitFloorDirt();
+                InitSnow();
+                InitLighting();
                 BuildEntrances();
                 BuildGraph();
+                AddMessage(TextFormat("Generated terrain: %s", terrainNames[currentTerrain]), GREEN);
             }
-            SpawnAgents(agentCountSetting);
-        }
-        y += 22;
-        if (PushButton(x, y, "Repath Agents")) {
-            if (pathAlgorithm == 1 && graphEdgeCount == 0) {
-                BuildEntrances();
-                BuildGraph();
-            }
-            RepathAgents();
-        }
-    }
-    y += 22;
-
-    // === MOVERS ===
-    y += 8;
-    if (PushButton(x + 150, y, "+")) {
-        AddMoversDemo(moverCountSetting);
-    }
-    if (SectionHeader(x, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
-        y += 18;
-        DraggableIntLog(x, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
-        y += 22;
-        if (PushButton(x, y, "Spawn Movers")) {
-            SpawnMoversDemo(moverCountSetting);
-        }
-        y += 22;
-        if (PushButton(x, y, "Clear Movers")) {
-            ClearMovers();
-        }
-        y += 22;
-        ToggleBool(x, y, "String Pulling", &useStringPulling);
-        y += 22;
-        ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
-        y += 22;
-        ToggleBool(x, y, "Prefer Diff Z", &preferDifferentZ);
-        y += 22;
-        ToggleBool(x, y, "Allow Falling", &allowFallingFromAvoidance);
-
-        // Avoidance subsection
-        y += 22;
-        if (SectionHeader(x + 10, y, "Avoidance", &sectionMoverAvoidance)) {
-            y += 18;
-            ToggleBool(x + 10, y, "Enabled", &useMoverAvoidance);
             y += 22;
-            ToggleBool(x + 10, y, "Directional", &useDirectionalAvoidance);
-            y += 22;
-            DraggableFloat(x + 10, y, "Open Strength", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
-            y += 22;
-            DraggableFloat(x + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
-        }
-
-        // Walls subsection
-        y += 22;
-        if (SectionHeader(x + 10, y, "Walls", &sectionMoverWalls)) {
-            y += 18;
-            ToggleBool(x + 10, y, "Repulsion", &useWallRepulsion);
-            y += 22;
-            DraggableFloat(x + 10, y, "Repel Strength", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
-            y += 22;
-            ToggleBool(x + 10, y, "Sliding", &useWallSliding);
-            y += 22;
-            ToggleBool(x + 10, y, "Knot Fix", &useKnotFix);
-        }
-
-    }
-    y += 22;
-
-    // === ANIMALS ===
-    y += 8;
-    if (PushButton(x + 130, y, "+")) {
-        SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER);
-    }
-    if (PushButton(x + 150, y, "+S")) {
-        SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER);
-    }
-    if (PushButton(x + 180, y, "+W")) {
-        SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR);
-    }
-    if (SectionHeader(x, y, TextFormat("Animals (%d/%d)", CountActiveAnimals(), MAX_ANIMALS), &sectionAnimals)) {
-        y += 18;
-        if (PushButton(x, y, "Clear Animals")) {
-            ClearAnimals();
-        }
-    }
-    y += 22;
-
-    // === JOBS ===
-    y += 8;
-    if (SectionHeader(x, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
-        y += 18;
-        DraggableIntLog(x, y, "Count", &itemCountSetting, 1.0f, 1, MAX_ITEMS);
-        y += 22;
-        // Spawn item buttons (packed in rows)
-        {
-            struct { const char* label; ItemType type; uint8_t mat; } spawnDefs[] = {
-                {"Red",     ITEM_RED,         MAT_NONE},
-                {"Green",   ITEM_GREEN,       MAT_NONE},
-                {"Blue",    ITEM_BLUE,        MAT_NONE},
-                {"Rocks",   ITEM_ROCK,        MAT_NONE},
-                {"Blocks",  ITEM_BLOCKS,      MAT_GRANITE},
-                {"Logs",    ITEM_LOG,         MAT_OAK},
-                {"Planks",  ITEM_PLANKS,      MAT_OAK},
-                {"Sticks",  ITEM_STICKS,      MAT_NONE},
-                {"Cordage", ITEM_CORDAGE,     MAT_NONE},
-                {"Dirt",    ITEM_DIRT,         MAT_NONE},
-                {"Bricks",  ITEM_BRICKS,      MAT_BRICK},
-                {"D.Grass", ITEM_DRIED_GRASS, MAT_NONE},
-            };
-            int spawnDefCount = sizeof(spawnDefs) / sizeof(spawnDefs[0]);
-            float bx = (float)x;
-            for (int d = 0; d < spawnDefCount; d++) {
+            // Grid size buttons — inline row
+            DrawTextShadow("Grid:", ix, y, 14, GRAY);
+            {
+                float bx = ix + 34;
                 bool clicked = false;
-                float w = PushButtonInline(bx, (float)y, spawnDefs[d].label, &clicked);
+                bx += PushButtonInline(bx, y, "32x32", &clicked);
                 if (clicked) {
-                    for (int i = 0; i < itemCountSetting; i++) {
-                        int attempts = 100;
-                        while (attempts-- > 0) {
-                            int gx = GetRandomValue(0, gridWidth - 1);
-                            int gy = GetRandomValue(0, gridHeight - 1);
-                            if (IsCellWalkableAt(currentViewZ, gy, gx)) {
-                                float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
-                                float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
-                                if (spawnDefs[d].mat != MAT_NONE)
-                                    SpawnItemWithMaterial(px, py, (float)currentViewZ, spawnDefs[d].type, spawnDefs[d].mat);
-                                else
-                                    SpawnItem(px, py, (float)currentViewZ, spawnDefs[d].type);
-                                break;
+                    InitGridWithSizeAndChunkSize(32, 32, 8, 8);
+                    gridDepth = 6;
+                    for (int z = 1; z < gridDepth; z++)
+                        for (int gy = 0; gy < gridHeight; gy++)
+                            for (int gx = 0; gx < gridWidth; gx++)
+                                grid[z][gy][gx] = CELL_AIR;
+                    FillGroundLevel();
+                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+                    InitDesignations();
+                    InitSimActivity();
+                    InitWater();
+                    InitFire();
+                    InitSmoke();
+                    InitSteam();
+                    InitTemperature();
+                    InitGroundWear();
+                    InitFloorDirt();
+                    InitSnow();
+                    InitLighting();
+                    BuildEntrances();
+                    BuildGraph();
+                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+                }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "64x64", &clicked);
+                if (clicked) {
+                    InitGridWithSizeAndChunkSize(64, 64, 8, 8);
+                    gridDepth = 6;
+                    for (int z = 1; z < gridDepth; z++)
+                        for (int gy = 0; gy < gridHeight; gy++)
+                            for (int gx = 0; gx < gridWidth; gx++)
+                                grid[z][gy][gx] = CELL_AIR;
+                    FillGroundLevel();
+                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+                    InitDesignations();
+                    InitSimActivity();
+                    InitWater();
+                    InitFire();
+                    InitSmoke();
+                    InitSteam();
+                    InitTemperature();
+                    InitGroundWear();
+                    InitFloorDirt();
+                    InitSnow();
+                    InitLighting();
+                    BuildEntrances();
+                    BuildGraph();
+                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+                }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "128x128", &clicked);
+                if (clicked) {
+                    InitGridWithSizeAndChunkSize(128, 128, 16, 16);
+                    gridDepth = 6;
+                    for (int z = 1; z < gridDepth; z++)
+                        for (int gy = 0; gy < gridHeight; gy++)
+                            for (int gx = 0; gx < gridWidth; gx++)
+                                grid[z][gy][gx] = CELL_AIR;
+                    FillGroundLevel();
+                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+                    InitDesignations();
+                    InitSimActivity();
+                    InitWater();
+                    InitFire();
+                    InitSmoke();
+                    InitSteam();
+                    InitTemperature();
+                    InitGroundWear();
+                    InitFloorDirt();
+                    InitSnow();
+                    InitLighting();
+                    BuildEntrances();
+                    BuildGraph();
+                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+                }
+                clicked = false;
+                PushButtonInline(bx, y, "256x256", &clicked);
+                if (clicked) {
+                    InitGridWithSizeAndChunkSize(256, 256, 16, 16);
+                    gridDepth = 3;
+                    for (int z = 1; z < gridDepth; z++)
+                        for (int gy = 0; gy < gridHeight; gy++)
+                            for (int gx = 0; gx < gridWidth; gx++)
+                                grid[z][gy][gx] = CELL_AIR;
+                    FillGroundLevel();
+                    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+                    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+                    InitDesignations();
+                    InitSimActivity();
+                    InitWater();
+                    InitFire();
+                    InitSmoke();
+                    InitSteam();
+                    InitTemperature();
+                    InitGroundWear();
+                    InitFloorDirt();
+                    InitSnow();
+                    InitLighting();
+                    BuildEntrances();
+                    BuildGraph();
+                    offset.x = (1280 - gridWidth * CELL_SIZE * zoom) / 2.0f;
+                    offset.y = (800 - gridHeight * CELL_SIZE * zoom) / 2.0f;
+                }
+            }
+            y += 22;
+            if (PushButton(ix, y, "Fill with Walls")) {
+                for (int gy = 0; gy < gridHeight; gy++) {
+                    for (int gx = 0; gx < gridWidth; gx++) {
+                        grid[currentViewZ][gy][gx] = CELL_WALL;
+                        SetWaterLevel(gx, gy, currentViewZ, 0);
+                        SetWaterSource(gx, gy, currentViewZ, false);
+                        SetWaterDrain(gx, gy, currentViewZ, false);
+                    }
+                }
+                for (int cy = 0; cy < chunksY; cy++) {
+                    for (int cx = 0; cx < chunksX; cx++) {
+                        MarkChunkDirty(cx * chunkWidth, cy * chunkHeight, currentViewZ);
+                    }
+                }
+                BuildEntrances();
+                BuildGraph();
+                InitDesignations();
+                AddMessage(TextFormat("Filled z=%d with walls", currentViewZ), GREEN);
+            }
+            y += 22;
+            if (PushButton(ix, y, "Copy Map ASCII")) {
+                int floorDataSize = gridWidth * gridHeight + gridHeight;
+                int bufferSize = gridDepth * (16 + floorDataSize) + 1;
+                char* buffer = malloc(bufferSize);
+                if (!buffer) {
+                    AddMessage("Failed to allocate clipboard buffer", RED);
+                } else {
+                    int idx = 0;
+                    for (int z = 0; z < gridDepth; z++) {
+                        idx += snprintf(buffer + idx, bufferSize - idx, "floor:%d\n", z);
+                        for (int row = 0; row < gridHeight; row++) {
+                            for (int col = 0; col < gridWidth; col++) {
+                                char c;
+                                switch (grid[z][row][col]) {
+                                    case CELL_WALL:        c = '#'; break;
+                                    case CELL_LADDER_UP:   c = '<'; break;
+                                    case CELL_LADDER_DOWN: c = '>'; break;
+                                    case CELL_LADDER_BOTH: c = 'X'; break;
+                                    default:               c = '.'; break;
+                                }
+                                buffer[idx++] = c;
+                            }
+                            buffer[idx++] = '\n';
+                        }
+                    }
+                    buffer[idx] = '\0';
+                    SetClipboardText(buffer);
+                    free(buffer);
+                    AddMessage(TextFormat("Map copied to clipboard (%d floors)", gridDepth), ORANGE);
+                }
+            }
+        }
+        y += 22;
+
+        // --- Trees ---
+        if (SectionHeader(ix, y, "Trees", &sectionTrees)) {
+            y += 18;
+            DraggableIntT(ix, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 36000,
+                TextFormat("Time for sapling to become trunk: %.1f seconds (%d ticks)", saplingGrowTicks / 60.0f, saplingGrowTicks));
+            y += 22;
+            DraggableIntT(ix, y, "Trunk Grow", &trunkGrowTicks, 5.0f, 5, 500,
+                TextFormat("Time between trunk growth stages: %.1f seconds (%d ticks)", trunkGrowTicks / 60.0f, trunkGrowTicks));
+            y += 22;
+            ToggleBoolT(ix, y, "Sapling Regrowth", &saplingRegrowthEnabled,
+                "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");
+            y += 22;
+            DraggableIntT(ix, y, "Regrowth Chance", &saplingRegrowthChance, 1.0f, 0, 100,
+                TextFormat("Chance per 10000 per interval for sapling to spawn on tall grass. At %d, roughly %.2f%% chance.",
+                           saplingRegrowthChance, saplingRegrowthChance / 100.0f));
+            y += 22;
+            DraggableIntT(ix, y, "Min Tree Distance", &saplingMinTreeDistance, 1.0f, 1, 10,
+                TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
+            y += 22;
+            DrawTextShadow(TextFormat("Sandbox Tree Type: %s", TreeTypeName(currentTreeType)), ix, y, 14, GRAY);
+        }
+        y += 22;
+
+        // --- Entropy (Ground Wear) ---
+        if (SectionHeader(ix, y, "Entropy", &sectionEntropy)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &groundWearEnabled,
+                "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone.");
+            y += 22;
+            if (PushButton(ix, y, "Clear Wear")) {
+                ClearGroundWear();
+            }
+            y += 22;
+
+            // Advanced sub-section
+            if (SectionHeader(ix + 10, y, "Advanced", &sectionEntropyAdvanced)) {
+                y += 18;
+                DraggableIntT(ix + 10, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
+                    "Wear added each time a mover steps on a tile. Higher = paths form faster.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
+                    "Wear level at which grass becomes dirt. At 1000 with trample=1, it takes 1000 mover steps to wear a path.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
+                    "Wear level below which dirt recovers to grass. Should be lower than Grass->Dirt to create hysteresis.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
+                    "Wear removed per decay tick. Higher = faster path recovery.");
+                y += 22;
+                DraggableFloatT(ix + 10, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
+                    TextFormat("Game-seconds between wear decay ticks. At %.1fs, wear decays %.1f times per second.",
+                               wearRecoveryInterval, 1.0f / wearRecoveryInterval));
+                y += 22;
+                int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
+                float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
+                if (gameSecondsToRegrow < 60) {
+                    DrawTextShadow(TextFormat("Regrow time: %.1fs game-time", gameSecondsToRegrow), ix + 10, y, 14, GRAY);
+                } else {
+                    DrawTextShadow(TextFormat("Regrow time: %.1fm game-time", gameSecondsToRegrow / 60.0f), ix + 10, y, 14, GRAY);
+                }
+            }
+        }
+    }
+    y += 22;
+
+    // ========================================================================
+    // [+] Entities  (super-group: Movers, Animals inline, Agents inline, Jobs)
+    // ========================================================================
+    y += 4;
+    if (SectionHeader(x, y, "Entities", &sectionEntities)) {
+        y += 18;
+
+        // --- Movers ---
+        if (PushButton(ix + 140, y, "+")) {
+            AddMoversDemo(moverCountSetting);
+        }
+        if (SectionHeader(ix, y, TextFormat("Movers (%d/%d)", CountActiveMovers(), moverCount), &sectionMovers)) {
+            y += 18;
+            DraggableIntLog(ix, y, "Count", &moverCountSetting, 1.0f, 1, MAX_MOVERS);
+            y += 22;
+            if (PushButton(ix, y, "Spawn Movers")) {
+                SpawnMoversDemo(moverCountSetting);
+            }
+            y += 22;
+            if (PushButton(ix, y, "Clear Movers")) {
+                ClearMovers();
+            }
+            y += 22;
+            ToggleBool(ix, y, "String Pulling", &useStringPulling);
+            y += 22;
+            ToggleBool(ix, y, "Endless Mode", &endlessMoverMode);
+            y += 22;
+            ToggleBool(ix, y, "Prefer Diff Z", &preferDifferentZ);
+            y += 22;
+            ToggleBool(ix, y, "Allow Falling", &allowFallingFromAvoidance);
+
+            // Avoidance subsection
+            y += 22;
+            if (SectionHeader(ix + 10, y, "Avoidance", &sectionMoverAvoidance)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Enabled", &useMoverAvoidance);
+                y += 22;
+                ToggleBool(ix + 10, y, "Directional", &useDirectionalAvoidance);
+                y += 22;
+                DraggableFloat(ix + 10, y, "Open Strength", &avoidStrengthOpen, 0.01f, 0.0f, 2.0f);
+                y += 22;
+                DraggableFloat(ix + 10, y, "Closed Strength", &avoidStrengthClosed, 0.01f, 0.0f, 2.0f);
+            }
+
+            // Walls subsection
+            y += 22;
+            if (SectionHeader(ix + 10, y, "Walls", &sectionMoverWalls)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Repulsion", &useWallRepulsion);
+                y += 22;
+                DraggableFloat(ix + 10, y, "Repel Strength", &wallRepulsionStrength, 0.01f, 0.0f, 2.0f);
+                y += 22;
+                ToggleBool(ix + 10, y, "Sliding", &useWallSliding);
+                y += 22;
+                ToggleBool(ix + 10, y, "Knot Fix", &useKnotFix);
+            }
+        }
+        y += 22;
+
+        // --- Animals (inline — no own accordion) ---
+        DrawTextShadow(TextFormat("Animals (%d)", CountActiveAnimals()), ix, y, 14, GRAY);
+        {
+            float bx = ix + 80;
+            bool clicked = false;
+            bx += PushButtonInline(bx, y, "+", &clicked);
+            if (clicked) SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER);
+            clicked = false;
+            bx += PushButtonInline(bx, y, "+S", &clicked);
+            if (clicked) SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER);
+            clicked = false;
+            bx += PushButtonInline(bx, y, "+W", &clicked);
+            if (clicked) SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR);
+            clicked = false;
+            PushButtonInline(bx, y, "Clear", &clicked);
+            if (clicked) ClearAnimals();
+        }
+        y += 22;
+
+        // --- Agents (inline — no own accordion) ---
+        DrawTextShadow("Agents:", ix, y, 14, GRAY);
+        y += 18;
+        DraggableInt(ix, y, "Count", &agentCountSetting, 1.0f, 1, MAX_AGENTS);
+        y += 22;
+        {
+            float bx = ix;
+            bool clicked = false;
+            bx += PushButtonInline(bx, y, "Spawn", &clicked);
+            if (clicked) {
+                if (graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
+                SpawnAgents(agentCountSetting);
+            }
+            clicked = false;
+            PushButtonInline(bx, y, "Repath", &clicked);
+            if (clicked) {
+                if (pathAlgorithm == 1 && graphEdgeCount == 0) { BuildEntrances(); BuildGraph(); }
+                RepathAgents();
+            }
+        }
+        y += 22;
+
+        // --- Jobs ---
+        if (SectionHeader(ix, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
+            y += 18;
+            DraggableIntLog(ix, y, "Count", &itemCountSetting, 1.0f, 1, MAX_ITEMS);
+            y += 22;
+            // Spawn item buttons (packed in rows)
+            {
+                struct { const char* label; ItemType type; uint8_t mat; } spawnDefs[] = {
+                    {"Red",     ITEM_RED,         MAT_NONE},
+                    {"Green",   ITEM_GREEN,       MAT_NONE},
+                    {"Blue",    ITEM_BLUE,        MAT_NONE},
+                    {"Rocks",   ITEM_ROCK,        MAT_NONE},
+                    {"Blocks",  ITEM_BLOCKS,      MAT_GRANITE},
+                    {"Logs",    ITEM_LOG,         MAT_OAK},
+                    {"Planks",  ITEM_PLANKS,      MAT_OAK},
+                    {"Sticks",  ITEM_STICKS,      MAT_NONE},
+                    {"Cordage", ITEM_CORDAGE,     MAT_NONE},
+                    {"Dirt",    ITEM_DIRT,         MAT_NONE},
+                    {"Bricks",  ITEM_BRICKS,      MAT_BRICK},
+                    {"D.Grass", ITEM_DRIED_GRASS, MAT_NONE},
+                };
+                int spawnDefCount = sizeof(spawnDefs) / sizeof(spawnDefs[0]);
+                float bx = (float)ix;
+                for (int d = 0; d < spawnDefCount; d++) {
+                    bool clicked = false;
+                    float w = PushButtonInline(bx, (float)y, spawnDefs[d].label, &clicked);
+                    if (clicked) {
+                        for (int i = 0; i < itemCountSetting; i++) {
+                            int attempts = 100;
+                            while (attempts-- > 0) {
+                                int gx = GetRandomValue(0, gridWidth - 1);
+                                int gy = GetRandomValue(0, gridHeight - 1);
+                                if (IsCellWalkableAt(currentViewZ, gy, gx)) {
+                                    float px = gx * CELL_SIZE + CELL_SIZE * 0.5f;
+                                    float py = gy * CELL_SIZE + CELL_SIZE * 0.5f;
+                                    if (spawnDefs[d].mat != MAT_NONE)
+                                        SpawnItemWithMaterial(px, py, (float)currentViewZ, spawnDefs[d].type, spawnDefs[d].mat);
+                                    else
+                                        SpawnItem(px, py, (float)currentViewZ, spawnDefs[d].type);
+                                    break;
+                                }
                             }
                         }
                     }
+                    bx += w;
+                    if (bx > ix + 170) { bx = (float)ix; y += 22; }
                 }
-                bx += w;
-                if (bx > x + 180) { bx = (float)x; y += 22; }
+                if (bx > (float)ix) y += 22;
             }
-            if (bx > (float)x) y += 22;
-        }
 
-        if (PushButton(x, y, "Clear Items")) {
-            ClearItems();
-        }
-        y += 22;
-        if (PushButton(x, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
-        y += 22;
-        if (PushButton(x, y, "Stockpile: Red"))   SpawnStockpileWithFilters(true, false, false);
-        y += 22;
-        if (PushButton(x, y, "Stockpile: Green")) SpawnStockpileWithFilters(false, true, false);
-        y += 22;
-        if (PushButton(x, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
-        y += 22;
-        if (PushButton(x, y, "Clear Stockpiles")) {
-            ClearStockpiles();
+            if (PushButton(ix, y, "Clear Items")) {
+                ClearItems();
+            }
+            y += 22;
+            if (PushButton(ix, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
+            y += 22;
+            if (PushButton(ix, y, "Stockpile: Red"))   SpawnStockpileWithFilters(true, false, false);
+            y += 22;
+            if (PushButton(ix, y, "Stockpile: Green")) SpawnStockpileWithFilters(false, true, false);
+            y += 22;
+            if (PushButton(ix, y, "Stockpile: Blue"))  SpawnStockpileWithFilters(false, false, true);
+            y += 22;
+            if (PushButton(ix, y, "Clear Stockpiles")) {
+                ClearStockpiles();
+            }
         }
     }
     y += 22;
 
-    // === WATER ===
-    y += 8;
-    if (SectionHeader(x, y, "Water", &sectionWater)) {
+    // ========================================================================
+    // [+] Simulation  (super-group: Water, Fire, Smoke, Steam, Temperature)
+    // ========================================================================
+    y += 4;
+    if (SectionHeader(x, y, "Simulation", &sectionSimulation)) {
         y += 18;
-        ToggleBoolT(x, y, "Enabled", &waterEnabled,
-            "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends.");
-        y += 22;
-        ToggleBoolT(x, y, "Evaporation", &waterEvaporationEnabled,
-            "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
-        y += 22;
-        DraggableFloatT(x, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
-            TextFormat("Game-seconds between evaporation attempts for shallow water. At %.0fs, puddles last ~%.0f seconds.",
-                       waterEvapInterval, waterEvapInterval));
-        y += 22;
 
-        // Speed multipliers subsection
-        DrawTextShadow("Mover Speed in Water:", x, y, 14, GRAY);
-        y += 18;
-        DraggableFloatT(x, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
-            "Speed multiplier in shallow water (levels 1-2). At 0.85, movers move at 85% speed. Lower = slower movement.");
-        y += 22;
-        DraggableFloatT(x, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
-            "Speed multiplier in medium water (levels 3-4). At 0.6, movers move at 60% speed. Lower = slower movement.");
-        y += 22;
-        DraggableFloatT(x, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
-            "Speed multiplier in deep water (levels 5-7). At 0.35, movers move at 35% speed. Lower = slower movement.");
-        y += 22;
-        DraggableFloatT(x, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
-            "Speed multiplier on muddy terrain (soil with wetness >= 2). At 0.6, movers move at 60% speed.");
-        y += 22;
-        DraggableFloatT(x, y, "Wetness Sync", &wetnessSyncInterval, 0.5f, 0.5f, 30.0f,
-            "Game-seconds between water-to-wetness sync. Lower = soil gets wet faster from water. Default: 2.0s.");
-        y += 22;
-
-        if (PushButton(x, y, "Clear Water")) {
+        // Clear All Sim — consolidated button at top
+        if (PushButton(ix, y, "Clear All Sim")) {
             ClearWater();
-        }
-        y += 22;
-        DrawTextShadow(IsRaining() ? "Rain (active):" : "Rain:", x, y, 14, IsRaining() ? BLUE : GRAY);
-        y += 18;
-        {
-            float bx = (float)x;
-            bool clicked = false;
-            bx += PushButtonInline(bx, (float)y, "Light", &clicked);
-            if (clicked) { SpawnSkyWater(5); AddMessage("Light rain started", BLUE); }
-            clicked = false;
-            bx += PushButtonInline(bx, (float)y, "Medium", &clicked);
-            if (clicked) { SpawnSkyWater(20); AddMessage("Medium rain started", BLUE); }
-            clicked = false;
-            bx += PushButtonInline(bx, (float)y, "Heavy", &clicked);
-            if (clicked) { SpawnSkyWater(50); AddMessage("Heavy rain started", BLUE); }
-            if (IsRaining()) {
-                clicked = false;
-                PushButtonInline(bx, (float)y, "Stop", &clicked);
-                if (clicked) { StopRain(); AddMessage("Rain stopped", GRAY); }
-            }
-        }
-    }
-    y += 22;
-
-    // === FIRE ===
-    y += 8;
-    if (SectionHeader(x, y, "Fire", &sectionFire)) {
-        y += 18;
-        ToggleBoolT(x, y, "Enabled", &fireEnabled,
-            "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
-        y += 22;
-        DraggableFloatT(x, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
-            TextFormat("Game-seconds between fire spread attempts. At %.1fs, fire tries to spread %.1f times per second.",
-                       fireSpreadInterval, 1.0f / fireSpreadInterval));
-        y += 22;
-        DraggableFloatT(x, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
-            TextFormat("Game-seconds between fuel consumption ticks. At %.1fs, fuel depletes %.1f times per second.",
-                       fireFuelInterval, 1.0f / fireFuelInterval));
-        y += 22;
-        DraggableIntT(x, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
-            "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water. Lower = water is more effective.");
-        y += 22;
-
-        // Spread chance formula subsection
-        DrawTextShadow("Spread Chance Formula:", x, y, 14, GRAY);
-        y += 18;
-        DraggableIntT(x, y, "Base Chance %", &fireSpreadBase, 1.0f, 0, 50,
-            "Base spread chance before fire level bonus. Formula: base + (level * perLevel). At 10%, even weak fires have some spread chance.");
-        y += 22;
-        DraggableIntT(x, y, "Per Level %", &fireSpreadPerLevel, 1.0f, 0, 30,
-            "Additional spread chance per fire level. At 10%, level 2 fire has +20%, level 7 has +70%. Higher = intense fires spread much faster.");
-        y += 22;
-
-        // Show calculated spread chances
-        int minSpread = fireSpreadBase + (FIRE_MIN_SPREAD_LEVEL * fireSpreadPerLevel);
-        int maxSpread = fireSpreadBase + (FIRE_MAX_LEVEL * fireSpreadPerLevel);
-        DrawTextShadow(TextFormat("Level 2: %d%%, Level 7: %d%%", minSpread, maxSpread), x, y, 14, GRAY);
-        y += 18;
-
-        if (PushButton(x, y, "Clear Fire")) {
             ClearFire();
-        }
-    }
-    y += 22;
-
-    // === SMOKE ===
-    y += 8;
-    if (SectionHeader(x, y, "Smoke", &sectionSmoke)) {
-        y += 18;
-        ToggleBoolT(x, y, "Enabled", &smokeEnabled,
-            "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
-        y += 22;
-        DraggableFloatT(x, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
-            TextFormat("Game-seconds between smoke rise attempts. At %.2fs, smoke rises %.1f times per game-second.",
-                       smokeRiseInterval, 1.0f / smokeRiseInterval));
-        y += 22;
-        DraggableFloatT(x, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
-            TextFormat("Game-seconds for smoke to fully dissipate (all 7 levels). At %.1fs, each level fades in ~%.2fs.",
-                       smokeDissipationTime, smokeDissipationTime / 7.0f));
-        y += 22;
-        DraggableIntT(x, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
-            "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke.");
-        y += 22;
-        if (PushButton(x, y, "Clear Smoke")) {
             ClearSmoke();
-        }
-    }
-    y += 22;
-
-    // === STEAM ===
-    y += 8;
-    if (SectionHeader(x, y, "Steam", &sectionSteam)) {
-        y += 18;
-        ToggleBoolT(x, y, "Enabled", &steamEnabled,
-            "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
-        y += 22;
-        DraggableFloatT(x, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
-            TextFormat("Game-seconds between steam rise attempts. At %.2fs, steam rises %.1f times per game-second.",
-                       steamRiseInterval, 1.0f / steamRiseInterval));
-        y += 22;
-        DraggableIntT(x, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
-            TextFormat("Temperature below which steam condenses to water: %d C. Steam lingers longer at higher values.", steamCondensationTemp));
-        y += 22;
-        DraggableIntT(x, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
-            TextFormat("Temperature at which water boils to steam: %d C. Standard is 100C (boiling point).", steamGenerationTemp));
-        y += 22;
-        DraggableIntT(x, y, "Condensation Chance", &steamCondensationChance, 1.0f, 1, 600,
-            TextFormat("1 in %d ticks attempts condensation. Higher = slower condensation.", steamCondensationChance));
-        y += 22;
-        DraggableIntT(x, y, "Rise Flow", &steamRiseFlow, 1.0f, 1, STEAM_MAX_LEVEL,
-            TextFormat("Units of steam that rise per attempt: %d. Higher = faster rising.", steamRiseFlow));
-        y += 22;
-        if (PushButton(x, y, "Clear Steam")) {
             ClearSteam();
-        }
-    }
-    y += 22;
-
-    // === TEMPERATURE ===
-    y += 8;
-    // NOTE: When adding tweakable values here, also update save/load logic in saveload.c
-    if (SectionHeader(x, y, "Temperature", &sectionTemperature)) {
-        y += 18;
-        ToggleBoolT(x, y, "Enabled", &temperatureEnabled,
-            "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
-        y += 22;
-        DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
-            TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.",
-                       ambientSurfaceTemp));
-        y += 22;
-        DraggableIntT(x, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
-            "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
-        y += 22;
-        DraggableFloatT(x, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between heat transfer steps. At %.1fs, heat transfers %.1f times per second.",
-                       heatTransferInterval, 1.0f / heatTransferInterval));
-        y += 22;
-        DraggableFloatT(x, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between temperature decay steps. At %.1fs, decay happens %.1f times per second.",
-                       tempDecayInterval, 1.0f / tempDecayInterval));
-        y += 22;
-        DraggableIntT(x, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
-            "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
-        y += 22;
-        DraggableIntT(x, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
-            "Heat transfer rate through stone walls. Lower = better insulation. At 5%, stone blocks 95% of heat.");
-        y += 22;
-        DraggableIntT(x, y, "Heat Source Temp", &heatSourceTemp, 5.0f, 100, 1000,
-            TextFormat("Temperature of heat sources (fire/furnace): %d C. Water boils at 100C.", heatSourceTemp));
-        y += 22;
-        DraggableIntT(x, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
-            TextFormat("Temperature of cold sources (ice/freezer): %d C. Water freezes at 0C.", coldSourceTemp));
-        y += 22;
-
-        // Heat physics subsection
-        DrawTextShadow("Heat Physics:", x, y, 14, GRAY);
-        y += 18;
-        DraggableIntT(x, y, "Heat Rise Boost %", &heatRiseBoost, 5.0f, 50, 300,
-            "Heat transfer boost when rising (hot air rises). At 150%, heat moves 50% faster upward. Higher = stronger convection.");
-        y += 22;
-        DraggableIntT(x, y, "Heat Sink Reduction %", &heatSinkReduction, 5.0f, 10, 100,
-            "Heat transfer reduction when sinking. At 50%, heat moves 50% slower downward. Lower = heat stays up longer.");
-        y += 22;
-        DraggableIntT(x, y, "Decay Rate %", &heatDecayPercent, 1.0f, 1, 50,
-            "Percentage of temperature difference that decays toward ambient each interval. Higher = faster return to ambient.");
-        y += 22;
-        DraggableIntT(x, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
-            "Diagonal heat transfer as percentage of orthogonal. At 70%, diagonal neighbors receive 70% as much heat. Due to ~1.4x distance.");
-        y += 22;
-
-        if (PushButton(x, y, "Reset to Ambient")) {
             ClearTemperature();
-        }
-    }
-    y += 22;
-
-    // === ENTROPY (Ground Wear) ===
-    y += 8;
-    if (SectionHeader(x, y, "Entropy", &sectionEntropy)) {
-        y += 18;
-        ToggleBoolT(x, y, "Enabled", &groundWearEnabled,
-            "Creates emergent paths: grass becomes dirt when trampled, dirt recovers to grass when left alone.");
-        y += 22;
-        DraggableIntT(x, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
-            "Wear added each time a mover steps on a tile. Higher = paths form faster. Combined with thresholds, controls how many passes to create a path.");
-        y += 22;
-        DraggableIntT(x, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
-            "Wear level at which grass becomes dirt. At 1000 with trample=1, it takes 1000 mover steps to wear a path.");
-        y += 22;
-        DraggableIntT(x, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
-            "Wear level below which dirt recovers to grass. Should be lower than Grass->Dirt to create hysteresis and stable paths.");
-        y += 22;
-        DraggableIntT(x, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
-            "Wear removed per decay tick. Higher = faster path recovery. Natural regrowth that competes with trampling.");
-        y += 22;
-        DraggableFloatT(x, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
-            TextFormat("Game-seconds between wear decay ticks. At %.1fs, wear decays %.1f times per second.",
-                       wearRecoveryInterval, 1.0f / wearRecoveryInterval));
-        y += 22;
-
-        // Calculate and display regrow time in game-seconds
-        int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
-        float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
-        if (gameSecondsToRegrow < 60) {
-            DrawTextShadow(TextFormat("Regrow time: %.1fs game-time", gameSecondsToRegrow), x, y, 14, GRAY);
-        } else {
-            DrawTextShadow(TextFormat("Regrow time: %.1fm game-time", gameSecondsToRegrow / 60.0f), x, y, 14, GRAY);
-        }
-        y += 18;
-
-        if (PushButton(x, y, "Clear Wear")) {
             ClearGroundWear();
         }
-    }
-    y += 22;
-
-    // === TREES ===
-    y += 8;
-    if (SectionHeader(x, y, "Trees", &sectionTrees)) {
-        y += 18;
-        DraggableIntT(x, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 36000,
-            TextFormat("Time for sapling to become trunk: %.1f seconds (%d ticks)", saplingGrowTicks / 60.0f, saplingGrowTicks));
-        y += 22;
-        DraggableIntT(x, y, "Trunk Grow", &trunkGrowTicks, 5.0f, 5, 500,
-            TextFormat("Time between trunk growth stages: %.1f seconds (%d ticks)", trunkGrowTicks / 60.0f, trunkGrowTicks));
-        y += 22;
-        ToggleBoolT(x, y, "Sapling Regrowth", &saplingRegrowthEnabled,
-            "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");
-        y += 22;
-        DraggableIntT(x, y, "Regrowth Chance", &saplingRegrowthChance, 1.0f, 0, 100,
-            TextFormat("Chance per 10000 per interval for sapling to spawn on tall grass. At %d, roughly %.2f%% chance.", 
-                       saplingRegrowthChance, saplingRegrowthChance / 100.0f));
-        y += 22;
-        DraggableIntT(x, y, "Min Tree Distance", &saplingMinTreeDistance, 1.0f, 1, 10,
-            TextFormat("Minimum tiles from existing trees/saplings for new sapling to spawn. At %d, trees spread more slowly.", saplingMinTreeDistance));
-        y += 22;
-        DrawTextShadow(TextFormat("Sandbox Tree Type: %s", TreeTypeName(currentTreeType)), x, y, 14, GRAY);
-    }
-    y += 22;
-
-    // === LIGHTING ===
-    y += 8;
-    if (SectionHeader(x, y, TextFormat("Lighting (%d src)", lightSourceCount), &sectionLighting)) {
-        y += 18;
-        {
-            bool wasEnabled = lightingEnabled;
-            ToggleBoolT(x, y, "Enabled", &lightingEnabled,
-                "Master toggle for lighting system. When off, all tiles render at full brightness (no light/dark cycle).");
-            if (wasEnabled != lightingEnabled) InvalidateLighting();
-        }
-        y += 22;
-        {
-            bool was = skyLightEnabled;
-            ToggleBoolT(x, y, "Sky Light", &skyLightEnabled,
-                "Compute sky light from open columns. Sky light intensity follows time-of-day sky color.");
-            if (was != skyLightEnabled) InvalidateLighting();
-        }
-        y += 22;
-        {
-            bool was = blockLightEnabled;
-            ToggleBoolT(x, y, "Block Light", &blockLightEnabled,
-                "Compute light from placed sources (torches). Colored BFS flood fill through open cells.");
-            if (was != blockLightEnabled) InvalidateLighting();
-        }
         y += 22;
 
-        // Ambient minimum
-        DrawTextShadow("Ambient Minimum:", x, y, 14, GRAY);
-        y += 18;
-        DraggableIntT(x, y, "Red", &lightAmbientR, 1.0f, 0, 255,
-            "Minimum red component. Prevents completely black tiles. Higher = brighter in total darkness.");
-        y += 22;
-        DraggableIntT(x, y, "Green", &lightAmbientG, 1.0f, 0, 255,
-            "Minimum green component. Prevents completely black tiles.");
-        y += 22;
-        DraggableIntT(x, y, "Blue", &lightAmbientB, 1.0f, 0, 255,
-            "Minimum blue component. Slightly higher default gives a cool moonlight feel in darkness.");
-        y += 22;
-
-        // Torch defaults (for sandbox placement)
-        DrawTextShadow("Torch Defaults:", x, y, 14, GRAY);
-        y += 18;
-        DraggableIntT(x, y, "Intensity", &lightDefaultIntensity, 1.0f, 1, 15,
-            TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.", lightDefaultIntensity, lightDefaultIntensity));
-        y += 22;
-        DraggableIntT(x, y, "R", &lightDefaultR, 1.0f, 0, 255, "Red component of new torches.");
-        y += 22;
-        DraggableIntT(x, y, "G", &lightDefaultG, 1.0f, 0, 255, "Green component of new torches.");
-        y += 22;
-        DraggableIntT(x, y, "B", &lightDefaultB, 1.0f, 0, 255, "Blue component of new torches.");
-        y += 22;
-
-        // Color preview
-        {
-            Color preview = { (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB, 255 };
-            DrawRectangle((int)x, (int)y, 60, 14, preview);
-            DrawRectangleLinesEx((Rectangle){x, y, 60, 14}, 1, GRAY);
-            DrawTextShadow("Preview", x + 65, y, 14, GRAY);
-        }
-        y += 18;
-
-        if (PushButton(x, y, "Clear Lights")) {
-            ClearLightSources();
-            InvalidateLighting();
-        }
-    }
-    y += 22;
-
-    // === WEATHER ===
-    y += 8;
-    if (SectionHeader(x, y, "Weather", &sectionWeather)) {
-        y += 18;
-        
-        // Current weather status
-        DrawTextShadow(TextFormat("Current: %s (%.0f%%)", GetWeatherName(weatherState.current),
-                       weatherState.intensity * 100.0f), x, y, 14, WHITE);
-        y += 16;
-        DrawTextShadow(TextFormat("Wind: %.1f @ (%.1f, %.1f)", weatherState.windStrength,
-                       weatherState.windDirX, weatherState.windDirY), x, y, 12, GRAY);
-        y += 16;
-        DrawTextShadow(TextFormat("Timer: %.0fs / %.0fs", weatherState.transitionTimer,
-                       weatherState.transitionDuration), x, y, 12, GRAY);
-        y += 20;
-        
-        // Weather trigger buttons
-        DrawTextShadow("Force Weather:", x, y, 14, GRAY);
-        y += 18;
-        
-        // Row 1: Clear, Cloudy, Mist
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "Clear", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_CLEAR; weatherState.intensity = 1.0f; }
-            clicked = false;
-            bx += PushButtonInline(bx, y, "Cloudy", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_CLOUDY; weatherState.intensity = 1.0f; }
-            clicked = false;
-            PushButtonInline(bx, y, "Mist", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_MIST; weatherState.intensity = 1.0f; }
-        }
-        y += 22;
-        
-        // Row 2: Rain, Heavy Rain
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "Rain", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_RAIN; weatherState.intensity = 1.0f; }
-            clicked = false;
-            PushButtonInline(bx, y, "Heavy", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_HEAVY_RAIN; weatherState.intensity = 1.0f; }
-        }
-        y += 22;
-        
-        // Row 3: Thunderstorm, Snow
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "Thunder", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_THUNDERSTORM; weatherState.intensity = 1.0f; }
-            clicked = false;
-            PushButtonInline(bx, y, "Snow", &clicked); 
-            if (clicked) { weatherState.current = WEATHER_SNOW; weatherState.intensity = 1.0f; }
-        }
-        y += 22;
-        
-        // Settings
-        y += 8;
-        ToggleBool(x, y, "Weather Enabled", &weatherEnabled);
-        y += 22;
-        DraggableFloatT(x, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
-            "Minimum game-seconds per weather state.");
-        y += 22;
-        DraggableFloatT(x, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
-            "Maximum game-seconds per weather state.");
-        y += 22;
-        DraggableFloatT(x, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-            "Seconds between wetness increments during rain.");
-        y += 22;
-        DraggableFloatT(x, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-            "Seconds between wetness increments during heavy rain.");
-        y += 22;
-        DraggableFloatT(x, y, "Lightning Interval", &lightningInterval, 1.0f, 0.5f, 30.0f,
-            "Seconds between lightning strikes during thunderstorms.");
-        y += 22;
-        DraggableFloatT(x, y, "Snow Accumulation", &snowAccumulationRate, 0.01f, 0.01f, 1.0f,
-            "Snow level increase rate. 0.1 = 10 seconds per level.");
-        y += 22;
-        DraggableFloatT(x, y, "Snow Melting", &snowMeltingRate, 0.01f, 0.01f, 0.5f,
-            "Snow level decrease rate. 0.05 = 20 seconds per level.");
-        y += 22;
-    }
-    y += 22;
-
-    // === TIME ===
-    y += 8;
-    if (SectionHeader(x, y, "Time", &sectionTime)) {
-        y += 18;
-
-        // Display current time
-        int hours = (int)timeOfDay;
-        int minutes = (int)((timeOfDay - hours) * 60);
-        DrawTextShadow(TextFormat("%s - Day %d, %02d:%02d", GetSeasonName(GetCurrentSeason()), dayNumber, hours, minutes), x, y, 14, WHITE);
-        y += 18;
-        DrawTextShadow(TextFormat("Game time: %.1fs  |  Temp: %dC", (float)gameTime, GetSeasonalSurfaceTemp()), x, y, 14, GRAY);
-        y += 22;
-
-        // Game speed control
-        DraggableFloatT(x, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f,
-            TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s",
-                       gameSpeed, gameSpeed, gameSpeed == 0.0f ? " (PAUSED)" : ""));
-        y += 22;
-
-        // Speed presets
-        if (PushButton(x, y, "Pause")) gameSpeed = 0.0f;
-        y += 22;
-
-        // Inline speed buttons: 1x 2x 3x
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) gameSpeed = 1.0f;
-            clicked = false;
-            bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) gameSpeed = 2.0f;
-            clicked = false;
-            PushButtonInline(bx, y, "3x", &clicked); if (clicked) gameSpeed = 3.0f;
-        }
-        y += 22;
-
-        // Inline speed buttons: 5x 10x 50x
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "5x", &clicked); if (clicked) gameSpeed = 5.0f;
-            clicked = false;
-            bx += PushButtonInline(bx, y, "10x", &clicked); if (clicked) gameSpeed = 10.0f;
-            clicked = false;
-            PushButtonInline(bx, y, "50x", &clicked); if (clicked) gameSpeed = 50.0f;
-        }
-        y += 22;
-
-        // Day length
-        float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
-        DraggableFloatT(x, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
-            TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
-                       dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
-                       gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f, realDuration < 60 ? "seconds" : "minutes"));
-        y += 22;
-
-        // Day length presets
-        DrawTextShadow("Presets:", x, y, 14, GRAY);
-        y += 18;
-        if (PushButton(x, y, "Fast (24s)")) dayLength = 24.0f;
-        y += 22;
-        if (PushButton(x, y, "Normal (60s)")) dayLength = 60.0f;
-        y += 22;
-        if (PushButton(x, y, "Slow (12m)")) dayLength = 720.0f;
-        y += 22;
-        
-        // Timestep mode
-        ToggleBool(x, y, "Fixed Timestep", &useFixedTimestep);
-        y += 22;
-
-        // Seasons
-        DrawTextShadow("Seasons:", x, y, 14, GRAY);
-        y += 18;
-        
-        // Season trigger buttons
-        DrawTextShadow("Jump to Season:", x, y, 12, GRAY);
-        y += 16;
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "Spring", &clicked);
-            if (clicked) {
-                dayNumber = 1;  // First day of spring
-                if (seasonalAmplitude == 0) seasonalAmplitude = 20;  // Enable seasons if disabled
+        // --- Water ---
+        if (SectionHeader(ix, y, "Water", &sectionWater)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &waterEnabled,
+                "Master toggle for water simulation. Water flows down, spreads horizontally, and uses pressure to rise through U-bends.");
+            y += 22;
+            ToggleBoolT(ix, y, "Evaporation", &waterEvaporationEnabled,
+                "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
+            y += 22;
+            DraggableFloatT(ix, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
+                TextFormat("Game-seconds between evaporation attempts for shallow water. At %.0fs, puddles last ~%.0f seconds.",
+                           waterEvapInterval, waterEvapInterval));
+            y += 22;
+            if (PushButton(ix, y, "Clear Water")) {
+                ClearWater();
             }
-            clicked = false;
-            bx += PushButtonInline(bx, y, "Summer", &clicked);
-            if (clicked) {
-                dayNumber = daysPerSeason + 1;  // First day of summer
-                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+            y += 22;
+            DrawTextShadow(IsRaining() ? "Rain (active):" : "Rain:", ix, y, 14, IsRaining() ? BLUE : GRAY);
+            y += 18;
+            {
+                float bx = (float)ix;
+                bool clicked = false;
+                bx += PushButtonInline(bx, (float)y, "Light", &clicked);
+                if (clicked) { SpawnSkyWater(5); AddMessage("Light rain started", BLUE); }
+                clicked = false;
+                bx += PushButtonInline(bx, (float)y, "Medium", &clicked);
+                if (clicked) { SpawnSkyWater(20); AddMessage("Medium rain started", BLUE); }
+                clicked = false;
+                bx += PushButtonInline(bx, (float)y, "Heavy", &clicked);
+                if (clicked) { SpawnSkyWater(50); AddMessage("Heavy rain started", BLUE); }
+                if (IsRaining()) {
+                    clicked = false;
+                    PushButtonInline(bx, (float)y, "Stop", &clicked);
+                    if (clicked) { StopRain(); AddMessage("Rain stopped", GRAY); }
+                }
+            }
+            y += 22;
+
+            // Advanced: speed multipliers
+            if (SectionHeader(ix + 10, y, "Advanced", &sectionWaterAdvanced)) {
+                y += 18;
+                DrawTextShadow("Mover Speed in Water:", ix + 10, y, 14, GRAY);
+                y += 18;
+                DraggableFloatT(ix + 10, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
+                    "Speed multiplier in shallow water (levels 1-2). Lower = slower movement.");
+                y += 22;
+                DraggableFloatT(ix + 10, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
+                    "Speed multiplier in medium water (levels 3-4). Lower = slower movement.");
+                y += 22;
+                DraggableFloatT(ix + 10, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
+                    "Speed multiplier in deep water (levels 5-7). Lower = slower movement.");
+                y += 22;
+                DraggableFloatT(ix + 10, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
+                    "Speed multiplier on muddy terrain (soil with wetness >= 2).");
+                y += 22;
+                DraggableFloatT(ix + 10, y, "Wetness Sync", &wetnessSyncInterval, 0.5f, 0.5f, 30.0f,
+                    "Game-seconds between water-to-wetness sync. Lower = soil gets wet faster from water.");
             }
         }
         y += 22;
-        {
-            bool clicked = false;
-            float bx = x;
-            bx += PushButtonInline(bx, y, "Autumn", &clicked);
-            if (clicked) {
-                dayNumber = daysPerSeason * 2 + 1;  // First day of autumn
-                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+
+        // --- Fire ---
+        if (SectionHeader(ix, y, "Fire", &sectionFire)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &fireEnabled,
+                "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
+            y += 22;
+            DraggableFloatT(ix, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
+                TextFormat("Game-seconds between fire spread attempts. At %.1fs, fire tries to spread %.1f times per second.",
+                           fireSpreadInterval, 1.0f / fireSpreadInterval));
+            y += 22;
+            DraggableFloatT(ix, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
+                TextFormat("Game-seconds between fuel consumption ticks. At %.1fs, fuel depletes %.1f times per second.",
+                           fireFuelInterval, 1.0f / fireFuelInterval));
+            y += 22;
+            DraggableIntT(ix, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
+                "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water.");
+            y += 22;
+            if (PushButton(ix, y, "Clear Fire")) {
+                ClearFire();
             }
-            clicked = false;
-            bx += PushButtonInline(bx, y, "Winter", &clicked);
-            if (clicked) {
-                dayNumber = daysPerSeason * 3 + 1;  // First day of winter
-                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+            y += 22;
+
+            // Advanced: spread chance formula
+            if (SectionHeader(ix + 10, y, "Advanced", &sectionFireAdvanced)) {
+                y += 18;
+                DrawTextShadow("Spread Chance Formula:", ix + 10, y, 14, GRAY);
+                y += 18;
+                DraggableIntT(ix + 10, y, "Base Chance %", &fireSpreadBase, 1.0f, 0, 50,
+                    "Base spread chance before fire level bonus. Formula: base + (level * perLevel).");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Per Level %", &fireSpreadPerLevel, 1.0f, 0, 30,
+                    "Additional spread chance per fire level.");
+                y += 22;
+                int minSpread = fireSpreadBase + (FIRE_MIN_SPREAD_LEVEL * fireSpreadPerLevel);
+                int maxSpread = fireSpreadBase + (FIRE_MAX_LEVEL * fireSpreadPerLevel);
+                DrawTextShadow(TextFormat("Level 2: %d%%, Level 7: %d%%", minSpread, maxSpread), ix + 10, y, 14, GRAY);
             }
         }
         y += 22;
-        
-        y += 8;
-        DraggableIntT(x, y, "Days per Season", &daysPerSeason, 1.0f, 1, 30,
-            TextFormat("Days per season. Year = %d days (4 seasons). Current: %s (day %d of season).",
-                       daysPerSeason * SEASON_COUNT, GetSeasonName(GetCurrentSeason()), (GetYearDay() % daysPerSeason) + 1));
+
+        // --- Smoke ---
+        if (SectionHeader(ix, y, "Smoke", &sectionSmoke)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &smokeEnabled,
+                "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
+            y += 22;
+            DraggableFloatT(ix, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
+                TextFormat("Game-seconds between smoke rise attempts. At %.2fs, smoke rises %.1f times per game-second.",
+                           smokeRiseInterval, 1.0f / smokeRiseInterval));
+            y += 22;
+            DraggableFloatT(ix, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
+                TextFormat("Game-seconds for smoke to fully dissipate (all 7 levels). At %.1fs, each level fades in ~%.2fs.",
+                           smokeDissipationTime, smokeDissipationTime / 7.0f));
+            y += 22;
+            DraggableIntT(ix, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
+                "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke.");
+            y += 22;
+            if (PushButton(ix, y, "Clear Smoke")) {
+                ClearSmoke();
+            }
+        }
         y += 22;
-        DraggableIntT(x, y, "Base Temp (C)", &baseSurfaceTemp, 1.0f, -20, 40,
-            TextFormat("Base surface temperature before seasonal modulation. Current seasonal temp: %dC.", GetSeasonalSurfaceTemp()));
+
+        // --- Steam ---
+        if (SectionHeader(ix, y, "Steam", &sectionSteam)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &steamEnabled,
+                "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
+            y += 22;
+            DraggableFloatT(ix, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
+                TextFormat("Game-seconds between steam rise attempts. At %.2fs, steam rises %.1f times per game-second.",
+                           steamRiseInterval, 1.0f / steamRiseInterval));
+            y += 22;
+            if (PushButton(ix, y, "Clear Steam")) {
+                ClearSteam();
+            }
+            y += 22;
+
+            // Advanced: condensation/generation parameters
+            if (SectionHeader(ix + 10, y, "Advanced", &sectionSteamAdvanced)) {
+                y += 18;
+                DraggableIntT(ix + 10, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
+                    TextFormat("Temperature below which steam condenses to water: %d C.", steamCondensationTemp));
+                y += 22;
+                DraggableIntT(ix + 10, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
+                    TextFormat("Temperature at which water boils to steam: %d C.", steamGenerationTemp));
+                y += 22;
+                DraggableIntT(ix + 10, y, "Condensation Chance", &steamCondensationChance, 1.0f, 1, 600,
+                    TextFormat("1 in %d ticks attempts condensation. Higher = slower condensation.", steamCondensationChance));
+                y += 22;
+                DraggableIntT(ix + 10, y, "Rise Flow", &steamRiseFlow, 1.0f, 1, STEAM_MAX_LEVEL,
+                    TextFormat("Units of steam that rise per attempt: %d. Higher = faster rising.", steamRiseFlow));
+            }
+        }
         y += 22;
-        DraggableIntT(x, y, "Seasonal Amplitude", &seasonalAmplitude, 1.0f, 0, 40,
-            TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
-                       baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
-        y += 22;
+
+        // --- Temperature ---
+        // NOTE: When adding tweakable values here, also update save/load logic in saveload.c
+        if (SectionHeader(ix, y, "Temperature", &sectionTemperature)) {
+            y += 18;
+            ToggleBoolT(ix, y, "Enabled", &temperatureEnabled,
+                "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
+            y += 22;
+            DraggableIntT(ix, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
+                TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.",
+                           ambientSurfaceTemp));
+            y += 22;
+            DraggableIntT(ix, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
+                "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
+            y += 22;
+            DraggableFloatT(ix, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
+                TextFormat("Game-seconds between heat transfer steps. At %.1fs, heat transfers %.1f times per second.",
+                           heatTransferInterval, 1.0f / heatTransferInterval));
+            y += 22;
+            DraggableFloatT(ix, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
+                TextFormat("Game-seconds between temperature decay steps. At %.1fs, decay happens %.1f times per second.",
+                           tempDecayInterval, 1.0f / tempDecayInterval));
+            y += 22;
+            if (PushButton(ix, y, "Reset to Ambient")) {
+                ClearTemperature();
+            }
+            y += 22;
+
+            // Advanced: insulation, heat sources, physics
+            if (SectionHeader(ix + 10, y, "Advanced", &sectionTemperatureAdvanced)) {
+                y += 18;
+                DraggableIntT(ix + 10, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
+                    "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
+                    "Heat transfer rate through stone walls. Lower = better insulation. At 5%, stone blocks 95% of heat.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Heat Source Temp", &heatSourceTemp, 5.0f, 100, 1000,
+                    TextFormat("Temperature of heat sources (fire/furnace): %d C.", heatSourceTemp));
+                y += 22;
+                DraggableIntT(ix + 10, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
+                    TextFormat("Temperature of cold sources (ice/freezer): %d C.", coldSourceTemp));
+                y += 22;
+                DrawTextShadow("Heat Physics:", ix + 10, y, 14, GRAY);
+                y += 18;
+                DraggableIntT(ix + 10, y, "Heat Rise Boost %", &heatRiseBoost, 5.0f, 50, 300,
+                    "Heat transfer boost when rising (hot air rises). Higher = stronger convection.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Heat Sink Reduction %", &heatSinkReduction, 5.0f, 10, 100,
+                    "Heat transfer reduction when sinking. Lower = heat stays up longer.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Decay Rate %", &heatDecayPercent, 1.0f, 1, 50,
+                    "Percentage of temperature difference that decays toward ambient each interval.");
+                y += 22;
+                DraggableIntT(ix + 10, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
+                    "Diagonal heat transfer as percentage of orthogonal. Due to ~1.4x distance.");
+            }
+        }
     }
     y += 22;
 
-    // === DEBUG VISUALIZATION ===
-    y += 8;
-    if (SectionHeader(x, y, "Debug", &sectionDebug)) {
+    // ========================================================================
+    // [+] Weather & Time  (super-group)
+    // ========================================================================
+    y += 4;
+    if (SectionHeader(x, y, "Weather & Time", &sectionWeatherTime)) {
         y += 18;
 
-        // Rendering
-        if (SectionHeader(x + 10, y, "Rendering", &sectionDebugRendering)) {
+        // --- Weather ---
+        if (SectionHeader(ix, y, TextFormat("Weather: %s %.0f%%", GetWeatherName(weatherState.current),
+                          weatherState.intensity * 100.0f), &sectionWeather)) {
             y += 18;
-            ToggleBool(x + 10, y, "Show Movers", &showMovers);
+
+            // Compact status (2 lines instead of 3)
+            DrawTextShadow(TextFormat("Wind: %.1f @ (%.1f, %.1f)  Timer: %.0f/%.0fs",
+                           weatherState.windStrength, weatherState.windDirX, weatherState.windDirY,
+                           weatherState.transitionTimer, weatherState.transitionDuration), ix, y, 12, GRAY);
+            y += 18;
+
+            // Weather trigger buttons — 2 rows instead of 3
+            DrawTextShadow("Force:", ix, y, 14, GRAY);
+            {
+                float bx = ix + 40;
+                bool clicked = false;
+                bx += PushButtonInline(bx, y, "Clear", &clicked);
+                if (clicked) { weatherState.current = WEATHER_CLEAR; weatherState.intensity = 1.0f; }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Cloudy", &clicked);
+                if (clicked) { weatherState.current = WEATHER_CLOUDY; weatherState.intensity = 1.0f; }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Mist", &clicked);
+                if (clicked) { weatherState.current = WEATHER_MIST; weatherState.intensity = 1.0f; }
+                clicked = false;
+                PushButtonInline(bx, y, "Rain", &clicked);
+                if (clicked) { weatherState.current = WEATHER_RAIN; weatherState.intensity = 1.0f; }
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Pixel Perfect", &usePixelPerfectMovers);
+            {
+                float bx = ix;
+                bool clicked = false;
+                bx += PushButtonInline(bx, y, "Heavy", &clicked);
+                if (clicked) { weatherState.current = WEATHER_HEAVY_RAIN; weatherState.intensity = 1.0f; }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Thunder", &clicked);
+                if (clicked) { weatherState.current = WEATHER_THUNDERSTORM; weatherState.intensity = 1.0f; }
+                clicked = false;
+                PushButtonInline(bx, y, "Snow", &clicked);
+                if (clicked) { weatherState.current = WEATHER_SNOW; weatherState.intensity = 1.0f; }
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Items", &showItems);
+
+            // Settings
+            ToggleBool(ix, y, "Weather Enabled", &weatherEnabled);
             y += 22;
-            ToggleBool(x + 10, y, "Cull Drawing", &cullDrawing);
+            DraggableFloatT(ix, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
+                "Minimum game-seconds per weather state.");
+            y += 22;
+            DraggableFloatT(ix, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
+                "Maximum game-seconds per weather state.");
+            y += 22;
+            DraggableFloatT(ix, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
+                "Seconds between wetness increments during rain.");
+            y += 22;
+            DraggableFloatT(ix, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
+                "Seconds between wetness increments during heavy rain.");
+            y += 22;
+            DraggableFloatT(ix, y, "Lightning Interval", &lightningInterval, 1.0f, 0.5f, 30.0f,
+                "Seconds between lightning strikes during thunderstorms.");
+            y += 22;
+            DraggableFloatT(ix, y, "Snow Accumulation", &snowAccumulationRate, 0.01f, 0.01f, 1.0f,
+                "Snow level increase rate. 0.1 = 10 seconds per level.");
+            y += 22;
+            DraggableFloatT(ix, y, "Snow Melting", &snowMeltingRate, 0.01f, 0.01f, 0.5f,
+                "Snow level decrease rate. 0.05 = 20 seconds per level.");
         }
         y += 22;
 
-        // Pathfinding
-        if (SectionHeader(x + 10, y, "Pathfinding", &sectionDebugPathfinding)) {
+        // --- Time ---
+        if (SectionHeader(ix, y, "Time", &sectionTime)) {
             y += 18;
-            ToggleBool(x + 10, y, "Show Graph", &showGraph);
+
+            // Game time status (compact — widget already shows season/day/time)
+            DrawTextShadow(TextFormat("Game time: %.1fs  |  Temp: %dC", (float)gameTime, GetSeasonalSurfaceTemp()), ix, y, 14, GRAY);
             y += 22;
-            ToggleBool(x + 10, y, "Show Entrances", &showEntrances);
+
+            // Game speed control
+            DraggableFloatT(ix, y, "Game Speed", &gameSpeed, 0.1f, 0.0f, 100.0f,
+                TextFormat("Simulation speed multiplier. At %.1fx, 1 real-second = %.1f game-seconds.%s",
+                           gameSpeed, gameSpeed, gameSpeed == 0.0f ? " (PAUSED)" : ""));
             y += 22;
-            ToggleBool(x + 10, y, "Show Chunks", &showChunkBoundaries);
+
+            // Speed presets — compact: Pause + speeds on 2 rows
+            {
+                bool clicked = false;
+                float bx = ix;
+                bx += PushButtonInline(bx, y, "Pause", &clicked); if (clicked) gameSpeed = 0.0f;
+                clicked = false;
+                bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) gameSpeed = 1.0f;
+                clicked = false;
+                bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) gameSpeed = 2.0f;
+                clicked = false;
+                PushButtonInline(bx, y, "3x", &clicked); if (clicked) gameSpeed = 3.0f;
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Paths", &showMoverPaths);
+            {
+                bool clicked = false;
+                float bx = ix;
+                bx += PushButtonInline(bx, y, "5x", &clicked); if (clicked) gameSpeed = 5.0f;
+                clicked = false;
+                bx += PushButtonInline(bx, y, "10x", &clicked); if (clicked) gameSpeed = 10.0f;
+                clicked = false;
+                PushButtonInline(bx, y, "50x", &clicked); if (clicked) gameSpeed = 50.0f;
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Job Lines", &showJobLines);
+
+            // Day length
+            float realDuration = gameSpeed > 0 ? dayLength / gameSpeed : 0;
+            DraggableFloatT(ix, y, "Day Length", &dayLength, 10.0f, 10.0f, 3600.0f,
+                TextFormat("Game-seconds per full day.\nAt 1x speed: %.1f real-%s per day.\nAt current %.1fx: %.1f real-%s per day.",
+                           dayLength < 60 ? dayLength : dayLength / 60.0f, dayLength < 60 ? "seconds" : "minutes",
+                           gameSpeed, realDuration < 60 ? realDuration : realDuration / 60.0f, realDuration < 60 ? "seconds" : "minutes"));
+            y += 22;
+
+            // Day length presets — inline
+            DrawTextShadow("Day presets:", ix, y, 14, GRAY);
+            {
+                float bx = ix + 76;
+                bool clicked = false;
+                bx += PushButtonInline(bx, y, "Fast", &clicked); if (clicked) dayLength = 24.0f;
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Normal", &clicked); if (clicked) dayLength = 60.0f;
+                clicked = false;
+                PushButtonInline(bx, y, "Slow", &clicked); if (clicked) dayLength = 720.0f;
+            }
+            y += 22;
+
+            ToggleBool(ix, y, "Fixed Timestep", &useFixedTimestep);
+            y += 22;
+
+            // Seasons
+            DrawTextShadow("Jump to Season:", ix, y, 14, GRAY);
+            y += 18;
+            {
+                bool clicked = false;
+                float bx = ix;
+                bx += PushButtonInline(bx, y, "Spring", &clicked);
+                if (clicked) { dayNumber = 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Summer", &clicked);
+                if (clicked) { dayNumber = daysPerSeason + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
+                clicked = false;
+                bx += PushButtonInline(bx, y, "Autumn", &clicked);
+                if (clicked) { dayNumber = daysPerSeason * 2 + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
+                clicked = false;
+                PushButtonInline(bx, y, "Winter", &clicked);
+                if (clicked) { dayNumber = daysPerSeason * 3 + 1; if (seasonalAmplitude == 0) seasonalAmplitude = 20; }
+            }
+            y += 22;
+
+            DraggableIntT(ix, y, "Days per Season", &daysPerSeason, 1.0f, 1, 30,
+                TextFormat("Days per season. Year = %d days (4 seasons). Current: %s (day %d of season).",
+                           daysPerSeason * SEASON_COUNT, GetSeasonName(GetCurrentSeason()), (GetYearDay() % daysPerSeason) + 1));
+            y += 22;
+            DraggableIntT(ix, y, "Base Temp (C)", &baseSurfaceTemp, 1.0f, -20, 40,
+                TextFormat("Base surface temperature before seasonal modulation. Current seasonal temp: %dC.", GetSeasonalSurfaceTemp()));
+            y += 22;
+            DraggableIntT(ix, y, "Seasonal Amplitude", &seasonalAmplitude, 1.0f, 0, 40,
+                TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
+                           baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
+        }
+    }
+    y += 22;
+
+    // ========================================================================
+    // [+] Rendering & Debug  (super-group: View inline, Lighting, Debug)
+    // ========================================================================
+    y += 4;
+    if (SectionHeader(x, y, "Rendering & Debug", &sectionRenderDebug)) {
+        y += 18;
+
+        // View — inline buttons, no accordion
+        DrawTextShadow("View:", ix, y, 14, GRAY);
+        {
+            float bx = ix + 34;
+            bool clicked = false;
+            bx += PushButtonInline(bx, y, "Cutscene", &clicked); if (clicked) PlayTestCutscene();
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Shk S", &clicked); if (clicked) TriggerScreenShake(2.0f, 0.2f);
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Shk M", &clicked); if (clicked) TriggerScreenShake(4.0f, 0.4f);
+            clicked = false;
+            PushButtonInline(bx, y, "Shk L", &clicked); if (clicked) TriggerScreenShake(8.0f, 0.6f);
         }
         y += 22;
 
-        // Mover Diagnostics
-        if (SectionHeader(x + 10, y, "Mover Diagnostics", &sectionDebugMovers)) {
+        // --- Lighting ---
+        if (SectionHeader(ix, y, TextFormat("Lighting (%d src)", lightSourceCount), &sectionLighting)) {
             y += 18;
-            ToggleBool(x + 10, y, "Show Neighbors", &showNeighborCounts);
+            {
+                bool wasEnabled = lightingEnabled;
+                ToggleBoolT(ix, y, "Enabled", &lightingEnabled,
+                    "Master toggle for lighting system. When off, all tiles render at full brightness (no light/dark cycle).");
+                if (wasEnabled != lightingEnabled) InvalidateLighting();
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Open Area", &showOpenArea);
+            {
+                bool was = skyLightEnabled;
+                ToggleBoolT(ix, y, "Sky Light", &skyLightEnabled,
+                    "Compute sky light from open columns. Sky light intensity follows time-of-day sky color.");
+                if (was != skyLightEnabled) InvalidateLighting();
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Knots", &showKnotDetection);
+            {
+                bool was = blockLightEnabled;
+                ToggleBoolT(ix, y, "Block Light", &blockLightEnabled,
+                    "Compute light from placed sources (torches). Colored BFS flood fill through open cells.");
+                if (was != blockLightEnabled) InvalidateLighting();
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Show Stuck", &showStuckDetection);
+
+            // Ambient minimum
+            DrawTextShadow("Ambient Minimum:", ix, y, 14, GRAY);
+            y += 18;
+            DraggableIntT(ix, y, "Red", &lightAmbientR, 1.0f, 0, 255,
+                "Minimum red component. Prevents completely black tiles.");
+            y += 22;
+            DraggableIntT(ix, y, "Green", &lightAmbientG, 1.0f, 0, 255,
+                "Minimum green component. Prevents completely black tiles.");
+            y += 22;
+            DraggableIntT(ix, y, "Blue", &lightAmbientB, 1.0f, 0, 255,
+                "Minimum blue component. Slightly higher default gives a cool moonlight feel in darkness.");
+            y += 22;
+
+            // Torch defaults
+            DrawTextShadow("Torch Defaults:", ix, y, 14, GRAY);
+            y += 18;
+            DraggableIntT(ix, y, "Intensity", &lightDefaultIntensity, 1.0f, 1, 15,
+                TextFormat("Propagation radius for new torches. At %d, light reaches %d tiles away.", lightDefaultIntensity, lightDefaultIntensity));
+            y += 22;
+            DraggableIntT(ix, y, "R", &lightDefaultR, 1.0f, 0, 255, "Red component of new torches.");
+            y += 22;
+            DraggableIntT(ix, y, "G", &lightDefaultG, 1.0f, 0, 255, "Green component of new torches.");
+            y += 22;
+            DraggableIntT(ix, y, "B", &lightDefaultB, 1.0f, 0, 255, "Blue component of new torches.");
+            y += 22;
+
+            // Color preview
+            {
+                Color preview = { (uint8_t)lightDefaultR, (uint8_t)lightDefaultG, (uint8_t)lightDefaultB, 255 };
+                DrawRectangle((int)ix, (int)y, 60, 14, preview);
+                DrawRectangleLinesEx((Rectangle){ix, y, 60, 14}, 1, GRAY);
+                DrawTextShadow("Preview", ix + 65, y, 14, GRAY);
+            }
+            y += 18;
+
+            if (PushButton(ix, y, "Clear Lights")) {
+                ClearLightSources();
+                InvalidateLighting();
+            }
         }
         y += 22;
 
-        // Overlays
-        if (SectionHeader(x + 10, y, "Overlays", &sectionDebugOverlays)) {
+        // --- Debug ---
+        if (SectionHeader(ix, y, "Debug", &sectionDebug)) {
             y += 18;
-            ToggleBool(x + 10, y, "Sim Sources", &showSimSources);
+
+            // Rendering
+            if (SectionHeader(ix + 10, y, "Rendering", &sectionDebugRendering)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Show Movers", &showMovers);
+                y += 22;
+                ToggleBool(ix + 10, y, "Pixel Perfect", &usePixelPerfectMovers);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Items", &showItems);
+                y += 22;
+                ToggleBool(ix + 10, y, "Cull Drawing", &cullDrawing);
+            }
             y += 22;
-            ToggleBool(x + 10, y, "Temperature", &showTemperatureOverlay);
+
+            // Pathfinding
+            if (SectionHeader(ix + 10, y, "Pathfinding", &sectionDebugPathfinding)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Show Graph", &showGraph);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Entrances", &showEntrances);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Chunks", &showChunkBoundaries);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Paths", &showMoverPaths);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Job Lines", &showJobLines);
+            }
+            y += 22;
+
+            // Mover Diagnostics
+            if (SectionHeader(ix + 10, y, "Mover Diagnostics", &sectionDebugMovers)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Show Neighbors", &showNeighborCounts);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Open Area", &showOpenArea);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Knots", &showKnotDetection);
+                y += 22;
+                ToggleBool(ix + 10, y, "Show Stuck", &showStuckDetection);
+            }
+            y += 22;
+
+            // Overlays
+            if (SectionHeader(ix + 10, y, "Overlays", &sectionDebugOverlays)) {
+                y += 18;
+                ToggleBool(ix + 10, y, "Sim Sources", &showSimSources);
+                y += 22;
+                ToggleBool(ix + 10, y, "Temperature", &showTemperatureOverlay);
+            }
         }
     }
     y += 22;
