@@ -49,6 +49,7 @@ typedef struct Mover {
     float lastX, lastY, lastZ;  // Position at last progress check
     float timeWithoutProgress;  // Time since significant movement
     float fallTimer;            // Time since last fall (for visual feedback)
+    float workAnimPhase;        // Accumulates real time for work sway/bob animation
     // Cached avoidance vector (recomputed every N frames)
     float avoidX, avoidY;
     // Job system

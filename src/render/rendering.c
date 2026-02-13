@@ -1063,6 +1063,58 @@ static void DrawMovers(void) {
             sy = roundf(sy);
         }
 
+        // Work animation: sway toward target (adjacent work) or bob in place (on-tile work)
+        {
+            Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+            bool isWorking = job && (job->step == STEP_WORKING || job->step == CRAFT_STEP_WORKING);
+            if (isWorking) {
+                if (gameSpeed > 0.0f) m->workAnimPhase += GetFrameTime();
+                bool isOnTile = (job->type == JOBTYPE_CHANNEL ||
+                                 job->type == JOBTYPE_REMOVE_FLOOR ||
+                                 job->type == JOBTYPE_PLANT_SAPLING ||
+                                 job->type == JOBTYPE_GATHER_GRASS ||
+                                 job->type == JOBTYPE_CLEAN);
+                if (isOnTile) {
+                    float wave = sinf(m->workAnimPhase * WORK_BOB_FREQ * 2.0f * PI);
+                    sy -= fabsf(wave) * WORK_BOB_AMPLITUDE * CELL_SIZE * zoom;
+                } else {
+                    // Determine work target position based on job type
+                    float workTargetX = -1, workTargetY = -1;
+                    if (job->type == JOBTYPE_CRAFT || job->type == JOBTYPE_IGNITE_WORKSHOP) {
+                        if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS &&
+                            workshops[job->targetWorkshop].active) {
+                            Workshop* ws = &workshops[job->targetWorkshop];
+                            workTargetX = (ws->workTileX + 0.5f) * CELL_SIZE;
+                            workTargetY = (ws->workTileY + 0.5f) * CELL_SIZE;
+                        }
+                    } else if (job->type == JOBTYPE_BUILD) {
+                        if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS &&
+                            blueprints[job->targetBlueprint].active) {
+                            workTargetX = (blueprints[job->targetBlueprint].x + 0.5f) * CELL_SIZE;
+                            workTargetY = (blueprints[job->targetBlueprint].y + 0.5f) * CELL_SIZE;
+                        }
+                    } else {
+                        // Mining, chopping, dig ramp, etc. — use targetMineX/Y
+                        workTargetX = (job->targetMineX + 0.5f) * CELL_SIZE;
+                        workTargetY = (job->targetMineY + 0.5f) * CELL_SIZE;
+                    }
+
+                    if (workTargetX >= 0) {
+                        float wave = sinf(m->workAnimPhase * WORK_SWAY_FREQ * 2.0f * PI);
+                        float ddx = workTargetX - m->x;
+                        float ddy = workTargetY - m->y;
+                        float dist = sqrtf(ddx * ddx + ddy * ddy);
+                        if (dist > 0.01f) { ddx /= dist; ddy /= dist; }
+                        float swayAmount = wave * WORK_SWAY_AMPLITUDE * CELL_SIZE * zoom;
+                        sx += ddx * swayAmount;
+                        sy += ddy * swayAmount;
+                    }
+                }
+            } else {
+                m->workAnimPhase = 0.0f;
+            }
+        }
+
         // Choose color based on mover state or debug mode
         Color moverColor;
         if (showStuckDetection) {

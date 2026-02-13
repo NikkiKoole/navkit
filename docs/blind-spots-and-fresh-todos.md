@@ -650,9 +650,9 @@ This document catalogs **features and systems that haven't been thought about ye
 ### Quality of Life Micro-Features:
 46. **Shift+click select all of type** - Select all trees in radius for batch operations
 47. **Drag-select designations** - Multi-select for batch cancel/modify
-48. **Ghost preview** - Show transparent result before confirming construction
+48. ~~**Ghost preview**~~ ✅ DONE - Semi-transparent sprite preview during draw-mode drag (wall/floor/ladder/ramp)
 49. **Chain placement mode** - Hold shift to auto-continue placing after each building
-50. **Auto-rotate ramps** - Ramps automatically face placement direction
+50. ~~**Auto-rotate ramps**~~ ✅ DONE - AutoDetectRampDirection used in construction, dig-ramp, sandbox, and soil piles
 
 ---
 

@@ -40,6 +40,10 @@
 
 // Mover rendering
 #define MOVER_SIZE          0.75f
+#define WORK_SWAY_FREQ      3.0f    // Hz — back/forth cycles per second (adjacent work)
+#define WORK_SWAY_AMPLITUDE 0.08f   // fraction of CELL_SIZE
+#define WORK_BOB_FREQ       4.0f    // Hz — bounce cycles per second (on-tile work)
+#define WORK_BOB_AMPLITUDE  0.10f   // fraction of CELL_SIZE
 
 // ============================================================================
 // Types
