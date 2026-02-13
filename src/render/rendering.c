@@ -1700,10 +1700,8 @@ static void DrawWorkshopStatusOverlay(void) {
         
         switch (ws->visualState) {
             case WORKSHOP_VISUAL_WORKING:
-                spriteIdx = SPRITE_middle_dot;        // dot as simple "working" indicator
-                tint = (Color){100, 255, 100, 255};   // bright green
-                pulse = true;
-                break;
+                // No icon when working - silence is golden
+                continue;
                 
             case WORKSHOP_VISUAL_OUTPUT_FULL:
                 spriteIdx = SPRITE_full_block;        // full block for "blocked"
