@@ -1,7 +1,42 @@
 # Weather, Seasons & Wind
 
 Date: 2026-02-13
-Status: In Progress (Phase 0 complete, implementing Phase 1)
+Status: Phases 0-3 Complete (Mud, Seasons, Weather, Wind Effects)
+
+## Implementation Progress
+
+✅ **Phase 0: Mud** - Complete (20 tests)
+- Mud system with wetness tracking, movement penalties, dirt tracking, visual overlay
+- test_mud.c with comprehensive coverage
+
+✅ **Phase 1: Seasons + Temperature Curve** - Complete (34 tests)  
+- Four seasons with configurable day length, seasonal temperature sine curve
+- Dawn/dusk times vary by season, vegetation growth rate modulation
+- test_seasons.c validates all season calculations
+
+✅ **Phase 2: Weather State Machine + Rain** - Complete (31 tests)
+- 7 weather types with season-modulated transition probabilities
+- Rain increases wetness on exposed cells, spawns sky water
+- Roof detection (IsExposedToSky), wind vector with smooth transitions
+- test_weather.c validates state machine and rain effects
+
+✅ **Phase 3: Wind Effects** - Complete (15 tests)
+- Wind bias for smoke/steam/fire spread (downwind neighbors prioritized)
+- Fire spread gets +15% downwind bonus, -10% upwind penalty
+- Wind accelerates drying on exposed cells
+- Wind chill for temperature calculations
+- test_wind.c with statistical validation of directional bias
+
+🔲 **Phase 4: Snow + Cloud Shadows** - Not started
+- Snow accumulation/melting, movement penalties, fire extinguishing
+- Cloud shadow visual overlay
+
+🔲 **Phase 5: Thunderstorms + Mist** - Not started
+- Lightning strikes on exposed flammable cells
+- Mist visual effects
+
+**Test Coverage**: 100 tests across 4 test suites (test_mud, test_seasons, test_weather, test_wind)
+**Save Version**: v44 (includes all weather state and tunables)
 
 ## Overview
 
@@ -473,9 +508,9 @@ Strict TDD: tests written FIRST per phase, then implementation to make them pass
 
 All implemented: CELL_WETNESS macros, IsMuddy(), IsSoilMaterial(), DrawMud(), mudSpeedMultiplier, water-to-wetness sync, drying, 3x dirt tracking, test_mud.c.
 
-### Phase 1: Seasons + Temperature Curve
+### Phase 1: Seasons + Temperature Curve -- COMPLETE
 
-**Tests first** (`tests/test_seasons.c`):
+**Tests** (`tests/test_seasons.c` - 34 tests, all passing):
 
 | describe | test cases |
 |----------|-----------|
@@ -502,9 +537,9 @@ All implemented: CELL_WETNESS macros, IsMuddy(), IsSoilMaterial(), DrawMud(), mu
 
 **Risk mitigation**: `InitWeather()` sets `seasonalAmplitude=0`, so existing tests get flat temp -- no breakage.
 
-### Phase 2: Weather State Machine + Rain
+### Phase 2: Weather State Machine + Rain -- COMPLETE
 
-**Tests first** (`tests/test_weather.c`):
+**Tests** (`tests/test_weather.c` - 31 tests, all passing):
 
 | describe | test cases |
 |----------|-----------|
@@ -532,9 +567,9 @@ All implemented: CELL_WETNESS macros, IsMuddy(), IsSoilMaterial(), DrawMud(), mu
 | `src/core/save_migrations.h` | Bump to v44 |
 | `Makefile` | Add `test_weather` target |
 
-### Phase 3: Wind Effects
+### Phase 3: Wind Effects -- COMPLETE
 
-**Tests first** (`tests/test_wind.c`):
+**Tests** (`tests/test_wind.c` - 15 tests, all passing):
 
 | describe | test cases |
 |----------|-----------|

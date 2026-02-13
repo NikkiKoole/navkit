@@ -100,7 +100,13 @@ void RebuildPostLoadState(void);
     X(float, weatherMaxDuration) \
     X(float, rainWetnessInterval) \
     X(float, heavyRainWetnessInterval) \
-    X(float, intensityRampSpeed)
+    X(float, intensityRampSpeed) \
+    X(float, windDryingMultiplier) \
+    /* Snow */ \
+    X(float, snowAccumulationRate) \
+    X(float, snowMeltingRate) \
+    /* Lightning */ \
+    X(float, lightningInterval)
 
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -231,6 +237,13 @@ bool SaveWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fwrite(vegetationGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Snow grid (V45)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            fwrite(snowGrid[z][y], sizeof(uint8_t), gridWidth, f);
         }
     }
     
@@ -567,6 +580,22 @@ bool LoadWorld(const char* filename) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             fread(vegetationGrid[z][y], sizeof(uint8_t), gridWidth, f);
+        }
+    }
+    
+    // Snow grid (V45)
+    if (version >= 45) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(snowGrid[z][y], sizeof(uint8_t), gridWidth, f);
+            }
+        }
+    } else {
+        // Initialize to zero for old saves
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                memset(snowGrid[z][y], 0, gridWidth);
+            }
         }
     }
     

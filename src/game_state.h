@@ -160,6 +160,7 @@ extern bool sectionMemSpatial;
 extern bool sectionAnimals;
 extern bool sectionJobs;
 extern bool sectionTime;
+extern bool sectionWeather;
 extern bool sectionLighting;
 
 // Hover state

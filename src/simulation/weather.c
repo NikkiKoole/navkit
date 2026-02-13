@@ -41,6 +41,10 @@ static float weatherWindAccum = 0.0f;
 // Target wind values (wind smoothly approaches these)
 static float targetWindStrength = 0.0f;
 
+// Lightning state (Phase 5)
+static float lightningTimer = 5.0f;
+static float lightningFlashTimer = 0.0f;
+
 // =============================================================================
 // Transition Probability Tables
 // =============================================================================
@@ -141,6 +145,10 @@ void InitWeather(void) {
     rainWetnessAccum = 0.0f;
     weatherWindAccum = 0.0f;
     targetWindStrength = 0.0f;
+    
+    // Initialize lightning (Phase 5)
+    lightningTimer = lightningInterval;
+    lightningFlashTimer = 0.0f;
 }
 
 // =============================================================================
@@ -398,3 +406,354 @@ float GetRainWetnessAccum(void) { return rainWetnessAccum; }
 float GetWeatherWindAccum(void) { return weatherWindAccum; }
 void SetRainWetnessAccum(float v) { rainWetnessAccum = v; }
 void SetWeatherWindAccum(float v) { weatherWindAccum = v; }
+
+// =============================================================================
+// SNOW SYSTEM (Phase 4)
+// =============================================================================
+
+// Snow grid: 0=none, 1=light, 2=moderate, 3=heavy
+// Same layout as vegetationGrid
+uint8_t snowGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+// Snow tunables
+float snowAccumulationRate = 0.1f;    // Seconds per snow level increase (default 0.1 = 10s per level)
+float snowMeltingRate = 0.05f;        // Seconds per snow level decrease (default 0.05 = 20s per level)
+
+// Internal accumulator for snow changes
+static float snowAccum = 0.0f;
+
+// Per-cell accumulators for deterministic snow changes
+static float snowAccumGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
+void InitSnow(void) {
+    memset(snowGrid, 0, sizeof(snowGrid));
+    memset(snowAccumGrid, 0, sizeof(snowAccumGrid));
+    snowAccum = 0.0f;
+}
+
+uint8_t GetSnowLevel(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return 0;
+    }
+    return snowGrid[z][y][x];
+}
+
+void SetSnowLevel(int x, int y, int z, uint8_t level) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+    if (level > 3) level = 3;  // Clamp to max level
+    snowGrid[z][y][x] = level;
+}
+
+void UpdateSnow(void) {
+    if (gameDeltaTime <= 0.0f) return;
+    
+    snowAccum += gameDeltaTime;
+    if (snowAccum < 0.1f) return;  // Update every 0.1 seconds
+    float elapsedTime = snowAccum;
+    snowAccum = 0.0f;
+    
+    WeatherType w = weatherState.current;
+    bool isSnowing = (w == WEATHER_SNOW);
+    int ambientTemp = GetAmbientTemperature(0);  // Surface temperature
+    bool isFreezing = (ambientTemp <= 0);
+    
+    // Iterate surface cells
+    for (int y = 0; y < gridHeight; y++) {
+        for (int x = 0; x < gridWidth; x++) {
+            // Find topmost solid cell
+            for (int z = gridDepth - 1; z >= 0; z--) {
+                CellType cell = grid[z][y][x];
+                if (cell == CELL_AIR) continue;
+                
+                // Found ground at z
+                bool exposed = IsExposedToSky(x, y, z);
+                uint8_t currentSnow = GetSnowLevel(x, y, z);
+                
+                // Snow accumulation
+                if (isSnowing && exposed && isFreezing && currentSnow < 3) {
+                    snowAccumGrid[z][y][x] += elapsedTime * weatherState.intensity;
+                    float threshold = 1.0f / snowAccumulationRate;  // e.g., 0.1 -> 10 seconds per level
+                    if (snowAccumGrid[z][y][x] >= threshold) {
+                        snowAccumGrid[z][y][x] = 0.0f;
+                        SetSnowLevel(x, y, z, currentSnow + 1);
+                    }
+                }
+                
+                // Snow melting
+                if (!isFreezing && currentSnow > 0) {
+                    snowAccumGrid[z][y][x] += elapsedTime;
+                    float threshold = 1.0f / snowMeltingRate;  // e.g., 0.05 -> 20 seconds per level
+                    if (snowAccumGrid[z][y][x] >= threshold) {
+                        snowAccumGrid[z][y][x] = 0.0f;
+                        SetSnowLevel(x, y, z, currentSnow - 1);
+                        // Add wetness from melted snow
+                        int wetness = GET_CELL_WETNESS(x, y, z);
+                        if (wetness < 3) {
+                            SET_CELL_WETNESS(x, y, z, wetness + 1);
+                        }
+                    }
+                }
+                
+                // Reset accumulator if conditions don't match
+                if ((!isSnowing || !exposed || !isFreezing) && isFreezing) {
+                    snowAccumGrid[z][y][x] = 0.0f;
+                }
+                
+                break;  // Only process topmost solid cell
+            }
+        }
+    }
+}
+
+float GetSnowSpeedMultiplier(int x, int y, int z) {
+    uint8_t snow = GetSnowLevel(x, y, z);
+    switch (snow) {
+        case 0: return 1.0f;   // No snow
+        case 1: return 0.85f;  // Light snow
+        case 2: return 0.75f;  // Moderate snow
+        case 3: return 0.6f;   // Heavy snow
+        default: return 1.0f;
+    }
+}
+
+// =============================================================================
+// CLOUD SHADOWS (Phase 4)
+// =============================================================================
+
+// Hash function for noise
+static float Hash2D(int a, int b) {
+    unsigned int h = (unsigned int)(a * 374761393 + b * 668265263);
+    h = (h ^ (h >> 13)) * 1274126177;
+    return ((float)(h & 0x7fffffff)) / 2147483648.0f;
+}
+
+// Simple noise function for cloud shadows
+static float SimpleNoise2D(float x, float y) {
+    // Hash-based noise (deterministic)
+    int xi = (int)floorf(x);
+    int yi = (int)floorf(y);
+    float xf = x - (float)xi;
+    float yf = y - (float)yi;
+    
+    // Bilinear interpolation
+    float v00 = Hash2D(xi, yi);
+    float v10 = Hash2D(xi + 1, yi);
+    float v01 = Hash2D(xi, yi + 1);
+    float v11 = Hash2D(xi + 1, yi + 1);
+    
+    float v0 = v00 * (1.0f - xf) + v10 * xf;
+    float v1 = v01 * (1.0f - xf) + v11 * xf;
+    
+    return v0 * (1.0f - yf) + v1 * yf;
+}
+
+float GetCloudShadow(int x, int y, float time) {
+    WeatherType w = weatherState.current;
+    
+    // Base intensity by weather type
+    float baseIntensity = 0.0f;
+    switch (w) {
+        case WEATHER_CLEAR:         baseIntensity = 0.0f; break;
+        case WEATHER_CLOUDY:        baseIntensity = 0.3f; break;
+        case WEATHER_RAIN:          baseIntensity = 0.5f; break;
+        case WEATHER_HEAVY_RAIN:    baseIntensity = 0.6f; break;
+        case WEATHER_THUNDERSTORM:  baseIntensity = 0.7f; break;
+        case WEATHER_SNOW:          baseIntensity = 0.4f; break;
+        case WEATHER_MIST:          baseIntensity = 0.2f; break;
+        default:                    baseIntensity = 0.0f; break;
+    }
+    
+    if (baseIntensity < 0.01f) return 0.0f;
+    
+    // Scroll clouds with wind
+    float scrollX = time * weatherState.windDirX * weatherState.windStrength * 0.5f;
+    float scrollY = time * weatherState.windDirY * weatherState.windStrength * 0.5f;
+    
+    // Sample noise at multiple scales for cloud-like appearance
+    float scale1 = 0.05f;
+    float scale2 = 0.1f;
+    float nx1 = SimpleNoise2D((float)x * scale1 + scrollX, (float)y * scale1 + scrollY);
+    float nx2 = SimpleNoise2D((float)x * scale2 + scrollX * 0.7f, (float)y * scale2 + scrollY * 0.7f);
+    
+    float noise = nx1 * 0.6f + nx2 * 0.4f;  // Combine scales, range [0, 1]
+    
+    // Scale by base intensity - noise modulates the shadow strength
+    float shadow = noise * baseIntensity;
+    
+    return shadow;
+}
+
+// =============================================================================
+// LIGHTNING SYSTEM (Phase 5)
+// =============================================================================
+
+float lightningInterval = 5.0f;  // Default 5 seconds between strikes
+
+void SetLightningInterval(float seconds) {
+    lightningInterval = seconds;
+}
+
+void ResetLightningTimer(void) {
+    lightningTimer = lightningInterval;
+}
+
+void TriggerLightningFlash(void) {
+    lightningFlashTimer = 1.0f;  // Start at max intensity
+}
+
+float GetLightningFlashIntensity(void) {
+    return lightningFlashTimer;
+}
+
+void UpdateLightningFlash(float dt) {
+    if (lightningFlashTimer > 0.0f) {
+        lightningFlashTimer -= dt * 5.0f;  // Decay fast (5x speed)
+        if (lightningFlashTimer < 0.0f) {
+            lightningFlashTimer = 0.0f;
+        }
+    }
+}
+
+// Check if a cell is flammable (wood, vegetation, etc.)
+static bool IsFlammableMaterial(MaterialType mat) {
+    switch (mat) {
+        case MAT_OAK:
+        case MAT_PINE:
+        case MAT_BIRCH:
+        case MAT_WILLOW:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Attempt to strike lightning at a random exposed flammable cell
+static void TryLightningStrike(void) {
+    // Build list of valid strike targets (exposed + flammable)
+    typedef struct { int x, y, z; } Pos;
+    static Pos candidates[1024];  // Max candidates
+    int candidateCount = 0;
+    
+    for (int y = 0; y < gridHeight && candidateCount < 1024; y++) {
+        for (int x = 0; x < gridWidth && candidateCount < 1024; x++) {
+            // Scan from top down to find the highest flammable surface
+            for (int z = gridDepth - 1; z >= 0; z--) {
+                CellType cell = grid[z][y][x];
+                
+                // Check if exposed to sky
+                if (!IsExposedToSky(x, y, z)) {
+                    // If not exposed at this level, nothing below will be exposed either
+                    break;
+                }
+                
+                // Check for flammable materials at this level
+                bool flammable = false;
+                
+                // Check solid cell material
+                if (cell == CELL_WALL || cell >= CELL_TREE_TRUNK) {
+                    MaterialType wallMat = GetWallMaterial(x, y, z);
+                    flammable = IsFlammableMaterial(wallMat);
+                }
+                
+                // Check floor on AIR or solid cells
+                if (!flammable && HAS_FLOOR(x, y, z)) {
+                    MaterialType floorMat = GetFloorMaterial(x, y, z);
+                    flammable = IsFlammableMaterial(floorMat);
+                }
+                
+                // If this level is flammable and exposed, add it as candidate
+                if (flammable) {
+                    candidates[candidateCount].x = x;
+                    candidates[candidateCount].y = y;
+                    candidates[candidateCount].z = z;
+                    candidateCount++;
+                    break;  // Found the topmost flammable surface for this column
+                }
+                
+                // If we hit a solid cell, stop scanning down (can't strike through it)
+                if (cell != CELL_AIR) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (candidateCount == 0) return;  // No valid targets
+    
+    // Pick random candidate and ignite
+    int idx = rand() % candidateCount;
+    int x = candidates[idx].x;
+    int y = candidates[idx].y;
+    int z = candidates[idx].z;
+    
+    // Ignite via fire system
+    extern void SetFireLevel(int x, int y, int z, int level);
+    SetFireLevel(x, y, z, 5);  // Start with level 5 fire
+    
+    // Trigger flash
+    TriggerLightningFlash();
+}
+
+void UpdateLightning(float dt) {
+    if (dt <= 0.0f) return;
+    
+    // Update flash decay first (before potentially creating a new flash)
+    UpdateLightningFlash(dt);
+    
+    // Only strike during thunderstorms
+    if (weatherState.current != WEATHER_THUNDERSTORM) {
+        lightningTimer = lightningInterval;  // Reset timer when not storming
+        return;
+    }
+    
+    lightningTimer -= dt;
+    if (lightningTimer <= 0.0f) {
+        lightningTimer = lightningInterval;  // Reset for next strike
+        TryLightningStrike();  // This triggers a new flash
+    }
+}
+
+// =============================================================================
+// MIST SYSTEM (Phase 5)
+// =============================================================================
+
+float GetMistIntensity(void) {
+    WeatherType w = weatherState.current;
+    
+    // Base mist by weather type
+    float baseMist = 0.0f;
+    switch (w) {
+        case WEATHER_CLEAR:         baseMist = 0.0f; break;
+        case WEATHER_CLOUDY:        baseMist = 0.0f; break;
+        case WEATHER_RAIN:          baseMist = 0.2f; break;
+        case WEATHER_HEAVY_RAIN:    baseMist = 0.3f; break;
+        case WEATHER_THUNDERSTORM:  baseMist = 0.2f; break;
+        case WEATHER_SNOW:          baseMist = 0.1f; break;
+        case WEATHER_MIST:          baseMist = 0.9f; break;
+        default:                    baseMist = 0.0f; break;
+    }
+    
+    // Modulate by time of day (more mist at dawn/dusk)
+    float hour = timeOfDay;
+    float dawn = GetSeasonalDawn();
+    float dusk = GetSeasonalDusk();
+    float timeModulator = 1.0f;
+    
+    // More mist near dawn/dusk
+    if (hour >= dawn - 1.0f && hour <= dawn + 1.0f) {
+        // Near dawn: ramp up then down
+        float t = (hour - (dawn - 1.0f)) / 2.0f;  // 0.0 to 1.0
+        timeModulator = 1.0f + 0.5f * sinf(t * (float)M_PI);  // Peak at dawn
+    } else if (hour >= dusk - 1.0f && hour <= dusk + 1.0f) {
+        // Near dusk: ramp up then down
+        float t = (hour - (dusk - 1.0f)) / 2.0f;
+        timeModulator = 1.0f + 0.5f * sinf(t * (float)M_PI);  // Peak at dusk
+    } else if (hour < dawn || hour > dusk) {
+        // Night time: slight reduction
+        timeModulator = 0.8f;
+    }
+    
+    return baseMist * timeModulator * weatherState.intensity;
+}

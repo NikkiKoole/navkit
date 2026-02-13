@@ -1394,6 +1394,12 @@ void TickWithDt(float dt) {
     
     // Weather state machine (drives rain, wetness, wind)
     UpdateWeather();
+    
+    // Snow accumulation and melting
+    UpdateSnow();
+    
+    // Lightning strikes during thunderstorms
+    UpdateLightning(gameDeltaTime);
 
     // Water simulation
     PROFILE_BEGIN(Water);

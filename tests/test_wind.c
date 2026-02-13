@@ -115,34 +115,52 @@ describe(wind_smoke_bias) {
             srand(trial * 17 + 42);
             SetWind(1.0f, 0.0f, 3.0f);  // Strong east wind
 
-            // Place smoke at center
+            // Continuously add smoke at center to maintain spreading
             int cx = 8, cy = 8;
-            SetSmokeLevel(cx, cy, 0, SMOKE_MAX_LEVEL);
-
-            // Run smoke spread for a few ticks
-            for (int i = 0; i < 10; i++) {
+            int cz = 1;  // Use z=1 (above ground) so smoke can spread
+            
+            // Run smoke spread for multiple ticks, adding smoke each tick
+            for (int i = 0; i < 20; i++) {
+                SetSmokeLevel(cx, cy, cz, 3);  // Keep replenishing center
                 gameDeltaTime = TICK_DT;
                 smokeRiseInterval = 999.0f;  // Disable rising
                 smokeDissipationTime = 999.0f;  // Disable dissipation
+                if (test_verbose && trial == 0 && i == 0) {
+                    printf("Before UpdateSmoke: center=%d\n",
+                           GetSmokeLevel(cx, cy, cz));
+                }
                 UpdateSmoke();
+                if (test_verbose && trial == 0 && i == 0) {
+                    printf("After UpdateSmoke: center=%d, east=%d, west=%d\n",
+                           GetSmokeLevel(cx, cy, cz),
+                           GetSmokeLevel(cx+1, cy, cz),
+                           GetSmokeLevel(cx-1, cy, cz));
+                }
             }
 
             // Count smoke east vs west of center
             int east = 0, west = 0;
             for (int x = 0; x < gridWidth; x++) {
                 for (int y = 0; y < gridHeight; y++) {
-                    int level = GetSmokeLevel(x, y, 0);
+                    int level = GetSmokeLevel(x, y, cz);
                     if (level > 0 && x != cx) {
                         if (x > cx) east += level;
                         else west += level;
                     }
                 }
             }
+            if (test_verbose && trial == 0) {
+                printf("Trial 0: east=%d, west=%d, center=%d\n", 
+                       east, west, GetSmokeLevel(cx, cy, cz));
+            }
             if (east > west) eastCount++;
             else if (west > east) westCount++;
         }
 
         // With east wind, smoke should drift east more often
+        if (test_verbose) {
+            printf("Smoke bias test: eastCount=%d, westCount=%d\n", eastCount, westCount);
+        }
         expect(eastCount > westCount);
     }
 
@@ -211,13 +229,13 @@ describe(wind_fire_spread) {
                 }
             }
 
-            // Ignite center at high level
-            SetFireLevel(cx, cy, 0, 5);
+            // Ignite center at LOW level so spread is marginal
+            SetFireLevel(cx, cy, 0, 2);  // Low fire level = low spread chance
             fireGrid[0][cy][cx].fuel = 100;
 
-            // Run fire spread
+            // Run fire spread for fewer ticks
             fireSpreadInterval = TICK_DT;  // Spread every tick
-            for (int i = 0; i < 30; i++) {
+            for (int i = 0; i < 5; i++) {  // Only 5 ticks, not 30
                 gameDeltaTime = TICK_DT;
                 UpdateFire();
             }
@@ -228,6 +246,10 @@ describe(wind_fire_spread) {
         }
 
         // Downwind should have more ignitions
+        if (test_verbose) {
+            printf("Fire spread test: downwindIgnitions=%d, upwindIgnitions=%d\n", 
+                   downwindIgnitions, upwindIgnitions);
+        }
         expect(downwindIgnitions > upwindIgnitions);
     }
 

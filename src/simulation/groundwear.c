@@ -214,14 +214,26 @@ void UpdateGroundWear(void) {
                     }
                 }
                 
-                // Wetness drying: decrease wetness on all natural soil cells
+                // Wetness drying: decrease wetness on natural soil cells
                 // Only dry if no water is sitting on or above this cell
+                // Random chance per cell prevents all mud vanishing in the same tick
                 int wetness = GET_CELL_WETNESS(x, y, z);
                 if (wetness > 0 && IsSoilMaterial(GetWallMaterial(x, y, z))) {
                     bool waterPresent = (z + 1 < gridDepth && GetWaterLevel(x, y, z + 1) > 0)
                                      || GetWaterLevel(x, y, z) > 0;
                     if (!waterPresent) {
-                        SET_CELL_WETNESS(x, y, z, wetness - 1);
+                        // 50% chance to dry — desynchronizes cells so mud fades gradually
+                        if (rand() % 100 < 50) {
+                            SET_CELL_WETNESS(x, y, z, wetness - 1);
+                        }
+
+                        // Wind drying: exposed cells with wind have additional chance to dry
+                        if (weatherState.windStrength > 0.5f && IsExposedToSky(x, y, z)) {
+                            int currentWetness = GET_CELL_WETNESS(x, y, z);
+                            if (currentWetness > 0 && (rand() % 100) < (int)(windDryingMultiplier * 10.0f)) {
+                                SET_CELL_WETNESS(x, y, z, currentWetness - 1);
+                            }
+                        }
                     }
                 }
             }

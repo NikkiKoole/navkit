@@ -875,6 +875,93 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === WEATHER ===
+    y += 8;
+    if (SectionHeader(x, y, "Weather", &sectionWeather)) {
+        y += 18;
+        
+        // Current weather status
+        DrawTextShadow(TextFormat("Current: %s (%.0f%%)", GetWeatherName(weatherState.current),
+                       weatherState.intensity * 100.0f), x, y, 14, WHITE);
+        y += 16;
+        DrawTextShadow(TextFormat("Wind: %.1f @ (%.1f, %.1f)", weatherState.windStrength,
+                       weatherState.windDirX, weatherState.windDirY), x, y, 12, GRAY);
+        y += 16;
+        DrawTextShadow(TextFormat("Timer: %.0fs / %.0fs", weatherState.transitionTimer,
+                       weatherState.transitionDuration), x, y, 12, GRAY);
+        y += 20;
+        
+        // Weather trigger buttons
+        DrawTextShadow("Force Weather:", x, y, 14, GRAY);
+        y += 18;
+        
+        // Row 1: Clear, Cloudy, Mist
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Clear", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_CLEAR; weatherState.intensity = 1.0f; }
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Cloudy", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_CLOUDY; weatherState.intensity = 1.0f; }
+            clicked = false;
+            PushButtonInline(bx, y, "Mist", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_MIST; weatherState.intensity = 1.0f; }
+        }
+        y += 22;
+        
+        // Row 2: Rain, Heavy Rain
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Rain", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_RAIN; weatherState.intensity = 1.0f; }
+            clicked = false;
+            PushButtonInline(bx, y, "Heavy", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_HEAVY_RAIN; weatherState.intensity = 1.0f; }
+        }
+        y += 22;
+        
+        // Row 3: Thunderstorm, Snow
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Thunder", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_THUNDERSTORM; weatherState.intensity = 1.0f; }
+            clicked = false;
+            PushButtonInline(bx, y, "Snow", &clicked); 
+            if (clicked) { weatherState.current = WEATHER_SNOW; weatherState.intensity = 1.0f; }
+        }
+        y += 22;
+        
+        // Settings
+        y += 8;
+        ToggleBool(x, y, "Weather Enabled", &weatherEnabled);
+        y += 22;
+        DraggableFloatT(x, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
+            "Minimum game-seconds per weather state.");
+        y += 22;
+        DraggableFloatT(x, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
+            "Maximum game-seconds per weather state.");
+        y += 22;
+        DraggableFloatT(x, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
+            "Seconds between wetness increments during rain.");
+        y += 22;
+        DraggableFloatT(x, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
+            "Seconds between wetness increments during heavy rain.");
+        y += 22;
+        DraggableFloatT(x, y, "Lightning Interval", &lightningInterval, 1.0f, 0.5f, 30.0f,
+            "Seconds between lightning strikes during thunderstorms.");
+        y += 22;
+        DraggableFloatT(x, y, "Snow Accumulation", &snowAccumulationRate, 0.01f, 0.01f, 1.0f,
+            "Snow level increase rate. 0.1 = 10 seconds per level.");
+        y += 22;
+        DraggableFloatT(x, y, "Snow Melting", &snowMeltingRate, 0.01f, 0.01f, 0.5f,
+            "Snow level decrease rate. 0.05 = 20 seconds per level.");
+        y += 22;
+    }
+    y += 22;
+
     // === TIME ===
     y += 8;
     if (SectionHeader(x, y, "Time", &sectionTime)) {
@@ -947,6 +1034,44 @@ void DrawUI(void) {
         // Seasons
         DrawTextShadow("Seasons:", x, y, 14, GRAY);
         y += 18;
+        
+        // Season trigger buttons
+        DrawTextShadow("Jump to Season:", x, y, 12, GRAY);
+        y += 16;
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Spring", &clicked);
+            if (clicked) {
+                dayNumber = 1;  // First day of spring
+                if (seasonalAmplitude == 0) seasonalAmplitude = 20;  // Enable seasons if disabled
+            }
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Summer", &clicked);
+            if (clicked) {
+                dayNumber = daysPerSeason + 1;  // First day of summer
+                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+            }
+        }
+        y += 22;
+        {
+            bool clicked = false;
+            float bx = x;
+            bx += PushButtonInline(bx, y, "Autumn", &clicked);
+            if (clicked) {
+                dayNumber = daysPerSeason * 2 + 1;  // First day of autumn
+                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+            }
+            clicked = false;
+            bx += PushButtonInline(bx, y, "Winter", &clicked);
+            if (clicked) {
+                dayNumber = daysPerSeason * 3 + 1;  // First day of winter
+                if (seasonalAmplitude == 0) seasonalAmplitude = 20;
+            }
+        }
+        y += 22;
+        
+        y += 8;
         DraggableIntT(x, y, "Days per Season", &daysPerSeason, 1.0f, 1, 30,
             TextFormat("Days per season. Year = %d days (4 seasons). Current: %s (day %d of season).",
                        daysPerSeason * SEASON_COUNT, GetSeasonName(GetCurrentSeason()), (GetYearDay() % daysPerSeason) + 1));
@@ -958,32 +1083,6 @@ void DrawUI(void) {
             TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
                        baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
         y += 22;
-
-        // Weather
-        DrawTextShadow("Weather:", x, y, 14, GRAY);
-        y += 18;
-        DrawTextShadow(TextFormat("Current: %s (%.0f%%)", GetWeatherName(weatherState.current),
-                       weatherState.intensity * 100.0f), x + 10, y, 12, WHITE);
-        y += 16;
-        DrawTextShadow(TextFormat("Wind: %.1f (%.1f, %.1f)", weatherState.windStrength,
-                       weatherState.windDirX, weatherState.windDirY), x + 10, y, 12, WHITE);
-        y += 16;
-        DrawTextShadow(TextFormat("Timer: %.0fs / %.0fs", weatherState.transitionTimer,
-                       weatherState.transitionDuration), x + 10, y, 12, WHITE);
-        y += 20;
-        ToggleBool(x, y, "Weather Enabled", &weatherEnabled);
-        y += 22;
-        DraggableFloatT(x, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
-            "Minimum game-seconds per weather state.");
-        y += 22;
-        DraggableFloatT(x, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
-            "Maximum game-seconds per weather state.");
-        y += 22;
-        DraggableFloatT(x, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-            "Seconds between wetness increments during rain.");
-        y += 22;
-        DraggableFloatT(x, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-            "Seconds between wetness increments during heavy rain.");
     }
     y += 22;
 

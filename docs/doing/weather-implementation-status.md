@@ -1,6 +1,6 @@
 # Weather & Seasons Implementation Status
 
-Last updated: 2026-02-13
+Last updated: 2026-02-13 (Phase 5 complete - ALL PHASES DONE ✅)
 
 ## Completed
 
@@ -30,93 +30,86 @@ Key design: `seasonalAmplitude=0` (default) returns `ambientSurfaceTemp` unchang
 
 Key design: `weatherEnabled=false` by default (set to `true` by `InitWeather()`). Tests that don't call `InitWeather()` are unaffected.
 
-## In Progress
-
 ### Phase 3: Wind Effects
+- **test_wind.c**: 15 tests, all passing (5 dot product, 2 smoke bias, 2 fire spread, 2 wind drying, 4 wind chill)
+- **smoke.c**: Wind bias in `SmokeTrySpread()` — Fisher-Yates shuffle followed by wind-based sort
+- **steam.c**: Wind bias in `SteamTrySpread()` — same pattern as smoke
+- **fire.c**: Wind bias in `FireTrySpread()` — neighbor sorting + spread % modifier (+15% downwind, -10% upwind)
+- **groundwear.c**: Wind drying — extra wetness reduction on exposed cells with `windStrength > 0.5`
+- **saveload.c**: Added `windDryingMultiplier` to SETTINGS_TABLE
+- **Makefile**: Added `test_wind` target, integrated into main `test` suite
 
-**Tests written** (tests/test_wind.c - NOT YET COMPILED):
-- `wind_dot_product`: 5 tests (positive downwind, negative upwind, zero perpendicular, scales with strength, zero when no wind)
-- `wind_smoke_bias`: 2 statistical tests (drift downwind, even spread with no wind)
-- `wind_fire_spread`: 2 statistical tests (more ignitions downwind, equal with no wind)
-- `wind_drying`: 2 tests (faster drying with wind, no acceleration on sheltered cells)
-- `wind_chill`: 4 tests (lowers temp, no effect sheltered, scales with strength, zero with no wind)
+Key implementation: Wind bias affects neighbor order (downwind neighbors checked first) when `windStrength > 0.5`. Fire gets additional spread % bonus/penalty based on `GetWindDotProduct()`. Save version still v44 (no new grids, just one new tunable).
 
-**API added to weather.h** (already written):
-- `GetWindDotProduct(dx, dy)` — dot product of (dx,dy) with wind vector * strength
-- `GetWindChillTemp(baseTemp, windStrength, exposed)` — effective temp with wind chill
-- `windDryingMultiplier` — tunable for wind drying rate
-
-**API implemented in weather.c** (already written):
-- `GetWindDotProduct()` — returns 0 when windStrength < 0.01
-- `GetWindChillTemp()` — -2C per unit of wind strength when exposed
-
-**Still TODO for Phase 3:**
-
-1. **Add wind bias to smoke spread** (smoke.c)
-   - `#include "weather.h"` — DONE
-   - In `SmokeTrySpread()` (line ~225): After Fisher-Yates shuffle of `order[]`, sort by wind dot product so downwind neighbors come first
-   - Pattern: compute `GetWindDotProduct(dx[i], dy[i])` for each neighbor, bubble sort `order[]` by descending dot product when `windStrength > 0.5`
-
-2. **Add wind bias to steam spread** (steam.c)
-   - `#include "weather.h"`
-   - In `SteamTrySpread()` (line ~162): Same pattern as smoke
-
-3. **Add wind bias to fire spread** (fire.c)
-   - `#include "weather.h"`
-   - In `FireTrySpread()` (line ~280): TWO modifications:
-     a. Sort `order[]` by wind dot product (same as smoke)
-     b. Modify `spreadPercent`: add `+15% * windDot` for downwind bonus, `-10% * windDot` for upwind penalty
-   - Only apply to horizontal neighbors (not upward dz=1)
-
-4. **Add wind drying to groundwear.c**
-   - Already includes `weather.h`
-   - In wetness drying section (line ~217-226): After `!waterPresent` check, multiply drying by wind factor
-   - If `IsExposedToSky(x, y, z) && weatherState.windStrength > 0.5`: chance to dry extra unit
-   - Pattern: `if (exposed && windStrength > 0.5) { extra dry chance }`
-
-5. **Add `windDryingMultiplier` to saveload.c SETTINGS_TABLE**
-
-6. **Add `test_wind` target to Makefile** (test_wind_SRC, rule, add to test: list, .PHONY)
-
-7. **`make clean && make test_wind`** — fix any failures
-
-8. **`make test`** — full regression check
-
-9. **`make path`** — verify game builds
-
-## Not Started
+Test fix note: Smoke tests must use z=1 (above ground) since ground level (z=0) contains solid floor that blocks fluids. Fire test uses low fire level (2) and few ticks (5) so wind bonus is statistically significant.
 
 ### Phase 4: Snow + Cloud Shadows
-Per plan: separate `snowGrid` (uint8_t 3D), accumulation during WEATHER_SNOW below freezing, melting above freezing adds wetness, snow speed penalty, fire extinguish on snowy cells, cloud shadow noise function. Version bump to v45.
+- **test_snow.c**: 19 tests, all passing (7 test suites: grid basics, accumulation, melting, movement, fire interaction, cloud shadows)
+- **weather.h**: Snow functions (`InitSnow`, `GetSnowLevel`, `SetSnowLevel`, `UpdateSnow`, `GetSnowSpeedMultiplier`), cloud shadow function (`GetCloudShadow`), snow tunables
+- **weather.c**: Separate `snowGrid` (uint8_t 3D array, 4 levels: 0=none, 1=light, 2=moderate, 3=heavy), per-cell accumulation timers for deterministic behavior, snow accumulation during WEATHER_SNOW below freezing (checks `IsExposedToSky`), melting above freezing (increases wetness → can create mud), cloud shadow noise function with wind-based scrolling
+- **fire.c**: Snow extinguishing — moderate+ snow (level >= 2) instantly extinguishes fire
+- **rendering.c**: `DrawSnow()` — white overlay with alpha based on snow level (60/120/180), `DrawCloudShadows()` — black overlay darkening based on weather type
+- **main.c**: Rendering calls added (DrawCloudShadows before mud, DrawSnow after mud)
+- **mover.c**: `UpdateSnow()` call added after `UpdateWeather()` in main sim loop
+- **saveload.c**: snowGrid save/load with v45 backward compatibility, `snowAccumulationRate` and `snowMeltingRate` in SETTINGS_TABLE
+- **save_migrations.h**: v45
+- **Makefile**: Added `test_snow` target
+
+Key implementation: Snow uses deterministic per-cell accumulators (not probabilistic). Accumulation rate: 0.1 = 10 seconds per level at full intensity. Melting rate: 0.05 = 20 seconds per level. Snow extinguishes fire at level 2+. Cloud shadows use multi-scale noise (0.05 + 0.1 scales) scrolling with wind vector, max 80 alpha darkening.
+
+Test patterns: 19 tests total (grid ops, accumulation with 100+ ticks, melting with 250-700 ticks, movement multipliers, fire with fuel, cloud shadows). All tests use proper grid setup (CELL_WALL + MAT_DIRT + wallNatural for natural soil). Fire tests require `fireGrid[z][y][x].fuel = 100` to prevent natural decay.
 
 ### Phase 5: Thunderstorms + Mist
-Per plan: lightning strikes on exposed flammable cells during THUNDERSTORM, flash timer, mist intensity by weather type/time, distance-based grey overlay.
+- **test_thunderstorm.c**: 12 tests, all passing (5 lightning strike tests, 2 flash tests, 4 mist tests, 1 full year cycle)
+- **weather.h**: Lightning API (`UpdateLightning`, `GetLightningFlashIntensity`, `TriggerLightningFlash`, `ResetLightningTimer`, `SetLightningInterval`), mist API (`GetMistIntensity`), tunable `lightningInterval`
+- **weather.c**: Lightning strike system — scans for exposed flammable cells (wood floors/walls), random candidate selection, ignites via `SetFireLevel`, triggers white flash. Flash decays at 5x speed. Mist intensity based on weather type + time of day (higher at dawn/dusk)
+- **mover.c**: `UpdateLightning(gameDeltaTime)` call after `UpdateSnow()` in main sim loop
+- **rendering.c**: `DrawLightningFlash()` — full-screen white overlay scaled by flash intensity (max 180 alpha). `DrawMist()` — distance-based fog effect, grey-white overlay increasing with distance from camera center (max at ~15 cells)
+- **main.c**: `DrawMist()` called after `DrawJobLines()` (before UI), `DrawLightningFlash()` called after cutscenes (last visual effect)
+- **saveload.c**: Added `lightningInterval` to SETTINGS_TABLE
+- **Makefile**: Added `test_thunderstorm` target, integrated into main `test` suite
+
+Key implementation: Lightning only strikes during WEATHER_THUNDERSTORM weather. Scans all exposed cells (via `IsExposedToSky`), checks for flammable materials (wood types), builds candidate list, picks random target. Flash timer set to 1.0 on strike, decays first in `UpdateLightning` (before potential new strike), prevents instant decay. Mist uses `GetMistIntensity()` which returns 0.9 for WEATHER_MIST, 0.2-0.3 for rain/thunderstorm, 0.0 for clear, modulated by time of day (1.5x at dawn/dusk).
+
+Test patterns: Lightning tests use 16x16 grid with wooden floors at z=1 (exposed). Sheltered area created with stone roof to verify strike exclusion. Flash test checks intensity after `UpdateLightning(1.0f)` with interval 0.5s. Mist tests verify intensity by weather type and time modulation. Full year test cycles through 28 days verifying seasonal weather restrictions (snow only winter, thunderstorms only summer).
+
+## All Phases Complete! 🎉
+
+**Total test coverage**: 120+ tests across 5 test files (test_mud, test_seasons, test_weather, test_wind, test_snow, test_thunderstorm)
+**Save version**: v45 (includes full weather/seasons system + snow grid + lightning tunables)
+**All 24 test suites passing**: Full integration with existing systems (fire, water, temperature, smoke, steam, vegetation)
 
 ## File Change Summary
 
-| File | Phase 1 | Phase 2 | Phase 3 (remaining) |
-|------|---------|---------|---------------------|
-| src/simulation/weather.h | Created | Rewritten | Wind API added |
-| src/simulation/weather.c | Created | Rewritten | Wind funcs added |
-| src/simulation/smoke.c | — | — | Wind bias TODO |
-| src/simulation/steam.c | — | — | Wind bias TODO |
-| src/simulation/fire.c | — | — | Wind bias TODO |
-| src/simulation/groundwear.c | Modified | — | Wind drying TODO |
-| src/simulation/temperature.c | Modified | — | — |
-| src/entities/mover.c | — | Modified | — |
-| src/render/ui_panels.c | Modified | Modified | — |
-| src/core/saveload.c | Modified | Modified | windDryingMultiplier TODO |
-| src/core/save_migrations.h | v43 | v44 | — |
-| src/unity.c | Modified | — | — |
-| tests/test_unity.c | Modified | — | — |
-| tests/test_seasons.c | Created | — | — |
-| tests/test_weather.c | — | Created | — |
-| tests/test_wind.c | — | — | Created (not compiled) |
-| Makefile | Modified | Modified | test_wind target TODO |
+| File | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
+|------|---------|---------|---------|---------|---------|
+| src/simulation/weather.h | Created | Rewritten | Wind API added | Snow/cloud API added | Lightning + mist API |
+| src/simulation/weather.c | Created | Rewritten | Wind funcs added | Snow grid + cloud shadows | Lightning strikes + mist |
+| src/simulation/smoke.c | — | — | Wind bias added | — | — |
+| src/simulation/steam.c | — | — | Wind bias added | — | — |
+| src/simulation/fire.c | — | — | Wind bias added | Snow extinguish added | — |
+| src/simulation/groundwear.c | Modified | — | Wind drying added | — | — |
+| src/simulation/temperature.c | Modified | — | — | — | — |
+| src/entities/mover.c | — | Modified | — | UpdateSnow() call | UpdateLightning() call |
+| src/render/rendering.c | — | — | — | DrawSnow + DrawCloudShadows | DrawLightningFlash + DrawMist |
+| src/render/ui_panels.c | Modified | Modified | — | — | — |
+| src/main.c | — | — | — | Render calls added | Mist + flash render calls |
+| src/core/saveload.c | Modified | Modified | windDryingMultiplier | Snow grid + tunables, v45 | lightningInterval |
+| src/core/save_migrations.h | v43 | v44 | — | v45 | — |
+| src/unity.c | Modified | — | — | — | — |
+| tests/test_unity.c | Modified | — | — | — | — |
+| tests/test_seasons.c | Created | — | — | — | — |
+| tests/test_weather.c | — | Created | — | — | — |
+| tests/test_wind.c | — | — | Created | — | — |
+| tests/test_snow.c | — | — | — | Created | — |
+| tests/test_thunderstorm.c | — | — | — | — | Created |
+| Makefile | Modified | Modified | test_wind added | test_snow added | test_thunderstorm added |
 
 ## Key Patterns to Remember
-- **Backward compat**: `seasonalAmplitude=0` → flat temp, `weatherEnabled=false` → no weather ticks, `windStrength=0` → no wind bias
+- **Backward compat**: `seasonalAmplitude=0` → flat temp, `weatherEnabled=false` → no weather ticks, `windStrength=0` → no wind bias, old saves (< v45) initialize snowGrid to zero
 - **Test setup**: `SetupWindGrid()` calls `InitWeather()` which enables weather; tests that don't call it get `weatherEnabled=false`
 - **Fisher-Yates wind bias**: After shuffle, sort `order[]` by descending `GetWindDotProduct(dx[dir], dy[dir])` — only when `windStrength > 0.5`
 - **Statistical tests**: Run 50-200 trials with seeded RNG, compare directional counts
-- **Save version**: Don't bump for Phase 3 unless adding new grids (just adding `windDryingMultiplier` to existing SETTINGS_TABLE is fine at v44)
+- **Save version**: Bump when adding new grids or changing struct layouts (v43=seasons, v44=weather state, v45=snow grid)
+- **Snow accumulation**: Deterministic per-cell timers, not probabilistic — ensures tests are reproducible
+- **Fire + snow tests**: Must set `fireGrid[z][y][x].fuel = 100` to prevent natural decay during testing

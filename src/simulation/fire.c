@@ -4,6 +4,7 @@
 #include "temperature.h"
 #include "groundwear.h"
 #include "lighting.h"
+#include "weather.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -292,6 +293,24 @@ static bool FireTrySpread(int x, int y, int z) {
         order[j] = tmp;
     }
     
+    // Wind bias: sort horizontal neighbors by descending wind dot product
+    if (weatherState.windStrength > 0.5f) {
+        // Only sort horizontal neighbors (first 4 indices), leave upward alone
+        for (int i = 0; i < 3; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                if (dz[order[i]] == 0 && dz[order[j]] == 0) {
+                    float dotI = GetWindDotProduct(dx[order[i]], dy[order[i]]);
+                    float dotJ = GetWindDotProduct(dx[order[j]], dy[order[j]]);
+                    if (dotJ > dotI) {
+                        int tmp = order[i];
+                        order[i] = order[j];
+                        order[j] = tmp;
+                    }
+                }
+            }
+        }
+    }
+    
     bool spread = false;
     
     for (int i = 0; i < 5; i++) {
@@ -309,6 +328,18 @@ static bool FireTrySpread(int x, int y, int z) {
         // Formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel) - targetResistance
         int spreadPercent = fireSpreadBase + (cell->level * fireSpreadPerLevel);
         spreadPercent -= GetIgnitionResistanceAt(nx, ny, nz);
+        
+        // Wind modifier: +15% downwind, -10% upwind (only for horizontal spread)
+        if (weatherState.windStrength > 0.5f && dz[dir] == 0) {
+            float windDot = GetWindDotProduct(dx[dir], dy[dir]);
+            if (windDot > 0.0f) {
+                // Downwind bonus: +15% at full alignment
+                spreadPercent += (int)(15.0f * windDot / weatherState.windStrength);
+            } else if (windDot < 0.0f) {
+                // Upwind penalty: -10% at full opposition
+                spreadPercent -= (int)(10.0f * (-windDot) / weatherState.windStrength);
+            }
+        }
         if (spreadPercent < 2) spreadPercent = 2;  // Always a tiny chance
         
         // Reduce chance if neighbor is near water
@@ -354,6 +385,13 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     
     // Water extinguishes fire immediately
     if (HasWater(x, y, z)) {
+        SetFireLevel(x, y, z, 0);
+        cell->fuel = 0;
+        return true;
+    }
+    
+    // Snow extinguishes fire (moderate or heavy snow)
+    if (GetSnowLevel(x, y, z) >= 2) {
         SetFireLevel(x, y, z, 0);
         cell->fuel = 0;
         return true;

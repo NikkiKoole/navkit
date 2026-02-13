@@ -1,6 +1,7 @@
 #include "steam.h"
 #include "water.h"
 #include "temperature.h"
+#include "weather.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -235,6 +236,21 @@ static bool SteamTrySpread(int x, int y, int z) {
         int tmp = order[i];
         order[i] = order[j];
         order[j] = tmp;
+    }
+    
+    // Wind bias: sort by descending wind dot product (downwind neighbors first)
+    if (weatherState.windStrength > 0.5f) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                float dotI = GetWindDotProduct(dx[order[i]], dy[order[i]]);
+                float dotJ = GetWindDotProduct(dx[order[j]], dy[order[j]]);
+                if (dotJ > dotI) {
+                    int tmp = order[i];
+                    order[i] = order[j];
+                    order[j] = tmp;
+                }
+            }
+        }
     }
     
     bool moved = false;

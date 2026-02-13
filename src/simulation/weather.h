@@ -2,6 +2,7 @@
 #define WEATHER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "../core/time.h"
 
 // =============================================================================
@@ -98,5 +99,49 @@ float GetRainWetnessAccum(void);
 float GetWeatherWindAccum(void);
 void SetRainWetnessAccum(float v);
 void SetWeatherWindAccum(float v);
+
+// =============================================================================
+// SNOW SYSTEM (Phase 4)
+// =============================================================================
+
+// Snow levels: 0=none, 1=light, 2=moderate, 3=heavy
+// Stored in separate snowGrid (uint8_t 3D array, like vegetationGrid)
+
+void InitSnow(void);                    // Initialize snow grid to zero
+uint8_t GetSnowLevel(int x, int y, int z);
+void SetSnowLevel(int x, int y, int z, uint8_t level);
+void UpdateSnow(void);                  // Accumulation + melting logic
+float GetSnowSpeedMultiplier(int x, int y, int z);  // Movement penalty: 1.0 (none) to 0.6 (heavy)
+
+// Snow tunables (saved via SETTINGS_TABLE)
+extern float snowAccumulationRate;      // How fast snow accumulates during WEATHER_SNOW (default 0.01)
+extern float snowMeltingRate;           // How fast snow melts above freezing (default 0.005)
+
+// =============================================================================
+// CLOUD SHADOWS (Phase 4)
+// =============================================================================
+
+// Returns shadow intensity [0.0, 1.0] for a given cell and time
+// 0.0 = no shadow (full brightness), 1.0 = maximum shadow (darkest)
+// time parameter is game time (gameTime) for scrolling effect
+float GetCloudShadow(int x, int y, float time);
+
+// =============================================================================
+// THUNDERSTORMS + MIST (Phase 5)
+// =============================================================================
+
+// Lightning tunables (saved via SETTINGS_TABLE)
+extern float lightningInterval;         // Game-seconds between lightning strikes (default 5.0)
+
+// Lightning API
+void UpdateLightning(float dt);         // Call from UpdateWeather or separately
+void ResetLightningTimer(void);         // Force immediate strike check (for tests)
+void SetLightningInterval(float seconds);
+float GetLightningFlashIntensity(void);  // 0.0-1.0, for visual flash effect
+void UpdateLightningFlash(float dt);     // Decay flash over time
+void TriggerLightningFlash(void);        // Manually trigger flash (for tests)
+
+// Mist API
+float GetMistIntensity(void);            // 0.0-1.0 based on weather + time of day
 
 #endif // WEATHER_H

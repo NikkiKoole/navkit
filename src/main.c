@@ -127,6 +127,7 @@ bool sectionMemSpatial = false;
 bool sectionAnimals = false;
 bool sectionJobs = false;
 bool sectionTime = false;
+bool sectionWeather = false;
 bool sectionLighting = false;
 
 int hoveredStockpile = -1;
@@ -1218,7 +1219,9 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawGrassOverlay();
+        DrawCloudShadows();  // Draw cloud shadows first (under everything)
         DrawMud();
+        DrawSnow();          // Draw snow after mud
         DrawWater();
         DrawFrozenWater();
         DrawFire();
@@ -1263,6 +1266,9 @@ int main(int argc, char** argv) {
         }
         DrawAnimals();
         DrawJobLines();
+        
+        // Phase 5: Mist overlay (after all world elements, before UI)
+        DrawMist();
 
         // Draw workshop preview when in workshop placement mode
         // Workshop actions and WorkshopType enums are in the same order, so derive directly
@@ -1731,6 +1737,9 @@ int main(int argc, char** argv) {
         if (IsCutsceneActive()) {
             RenderCutscene();
         }
+        
+        // Phase 5: Lightning flash (full-screen overlay, after everything including UI)
+        DrawLightningFlash();
 
         // Restore offset after screen shake
         offset.x -= shakeOffset.x;

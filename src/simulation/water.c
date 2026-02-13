@@ -553,11 +553,14 @@ static bool ProcessWaterCell(int x, int y, int z, bool doEvap) {
         return true;
     }
     
-    // Evaporation: level 1 water evaporates when interval elapses
+    // Evaporation: level 1 water has a chance to evaporate each interval
+    // Random chance prevents all puddles vanishing simultaneously
     if (doEvap && waterEvaporationEnabled && cell->level == 1 && !cell->isSource) {
-        SetWaterLevel(x, y, z, 0);
-        cell->hasPressure = false;
-        moved = true;
+        if (rand() % 100 < 50) {
+            SetWaterLevel(x, y, z, 0);
+            cell->hasPressure = false;
+            moved = true;
+        }
     }
     
     // Clear pressure if we're no longer full

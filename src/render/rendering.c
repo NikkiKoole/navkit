@@ -607,6 +607,83 @@ static void DrawMud(void) {
     }
 }
 
+static void DrawSnow(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    // Draw snow at deeper levels (z-9 through z-2) with depth darkening
+    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+        if (zDepth < 0) continue;
+        Color depthTint = GetDepthTint(zDepth, z);
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                uint8_t snowLevel = GetSnowLevel(x, y, zDepth);
+                if (snowLevel == 0) continue;
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
+
+                // Snow opacity based on level: light=60, moderate=120, heavy=180
+                unsigned char alpha = snowLevel * 60;
+                Color snowColor = {255, 255, 255, alpha};
+                Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
+                snowColor = MultiplyColor(snowColor, tint);
+
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, snowColor);
+            }
+        }
+    }
+
+    // Current view z: check z-1 (the ground you're standing on)
+    if (z <= 0) return;
+    int zBelow = z - 1;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            uint8_t snowLevel = GetSnowLevel(x, y, zBelow);
+            if (snowLevel == 0) continue;
+            CellType cellHere = grid[z][y][x];
+            if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
+            if (HAS_FLOOR(x, y, z)) continue;
+
+            unsigned char alpha = snowLevel * 60;
+            Color snowColor = {255, 255, 255, alpha};
+            Color lightTint = GetLightColor(x, y, z, skyColor);
+            snowColor = MultiplyColor(snowColor, lightTint);
+
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, snowColor);
+        }
+    }
+}
+
+static void DrawCloudShadows(void) {
+    // Only draw cloud shadows for weather types that have clouds
+    if (weatherState.current == WEATHER_CLEAR) return;
+    
+    float size = CELL_SIZE * zoom;
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    // Draw cloud shadows on current view z only (surface level)
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            float shadow = GetCloudShadow(x, y, gameTime);
+            if (shadow < 0.01f) continue;
+
+            // Darken the cell based on shadow intensity
+            unsigned char alpha = (unsigned char)(shadow * 80);  // Max 80 alpha for darkening
+            Color shadowColor = {0, 0, 0, alpha};
+
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, shadowColor);
+        }
+    }
+}
+
 static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
@@ -2268,6 +2345,61 @@ static void DrawTerrainBrushPreview(void) {
     float centerY = offset.y + (mouseY + 0.5f) * size;
     float circleRadius = (radius + 0.5f) * size;
     DrawCircleLines((int)centerX, (int)centerY, circleRadius, lineColor);
+}
+
+// =============================================================================
+// Phase 5: Lightning Flash & Mist Rendering
+// =============================================================================
+
+static void DrawLightningFlash(void) {
+    float intensity = GetLightningFlashIntensity();
+    if (intensity <= 0.0f) return;
+    
+    // Full-screen white flash
+    int alpha = (int)(intensity * 180.0f);  // Max 180 alpha for a bright flash
+    if (alpha > 255) alpha = 255;
+    
+    DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), (Color){255, 255, 255, (unsigned char)alpha});
+}
+
+static void DrawMist(void) {
+    float mistIntensity = GetMistIntensity();
+    if (mistIntensity <= 0.01f) return;
+    
+    // Distance-based fog effect
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+    
+    // Camera center in grid coords
+    float camCenterX = (GetScreenWidth() / 2.0f - offset.x) / size;
+    float camCenterY = (GetScreenHeight() / 2.0f - offset.y) / size;
+    
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            // Skip cells that aren't visible
+            if (!IsCellVisibleFromAbove(x, y, z, z + 1)) continue;
+            
+            // Distance from camera center
+            float dx = (float)x - camCenterX;
+            float dy = (float)y - camCenterY;
+            float dist = sqrtf(dx * dx + dy * dy);
+            
+            // Fog strength increases with distance
+            float fogStrength = (dist / 15.0f) * mistIntensity;  // Max fog at ~15 cells distance
+            if (fogStrength > mistIntensity) fogStrength = mistIntensity;
+            
+            int alpha = (int)(fogStrength * 180.0f);  // Max 180 alpha
+            if (alpha < 10) continue;  // Skip very light fog
+            if (alpha > 255) alpha = 255;
+            
+            // Grey-white mist overlay
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, (Color){200, 200, 210, (unsigned char)alpha});
+        }
+    }
 }
 
 static void DrawMaterialHelp(void) {
