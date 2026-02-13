@@ -300,27 +300,44 @@ static void DrawCellGrid(void) {
     // Draw deeper levels first (z-9 through z-2) with earthy brown depth tint
     for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
-        
+
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                CellType cellAtDepth = grid[zDepth][y][x];
-                if (cellAtDepth == CELL_AIR) continue;
-                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z)) continue;
-                
                 Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
-                Rectangle src = SpriteGetRect(sprite);
-                // Light the top surface from the air above (zDepth+1), not inside the solid
-                Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
-                Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
-                if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
-                    tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
-                }
-                if (CellIsRamp(cellAtDepth)) tint.a = 64;
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
-                if (cellAtDepth == CELL_WALL) {
-                    SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
+                // Wall tops
+                CellType cellAtDepth = grid[zDepth][y][x];
+                if (cellAtDepth != CELL_AIR) {
+                    if (IsCellVisibleFromAbove(x, y, zDepth + 1, z)) {
+                        int sprite = GetWallSpriteAt(x, y, zDepth, cellAtDepth);
+                        Rectangle src = SpriteGetRect(sprite);
+                        Color lightTint = GetLightColor(x, y, zDepth + 1, skyColor);
+                        Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
+                        if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
+                            tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
+                        }
+                        if (CellIsRamp(cellAtDepth)) tint.a = 64;
+                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+
+                        if (cellAtDepth == CELL_WALL) {
+                            SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
+                            int finishSprite = FinishSprite(finish);
+                            Rectangle finishSrc = SpriteGetRect(finishSprite);
+                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+                        }
+                    }
+                }
+
+                // Constructed floors (rendered after walls, visibility checked from above the floor)
+                if (HAS_FLOOR(x, y, zDepth) && IsCellVisibleFromAbove(x, y, zDepth + 1, z)) {
+                    MaterialType mat = GetFloorMaterial(x, y, zDepth);
+                    int floorSprite = GetFloorSpriteAt(x, y, zDepth);
+                    Color lightTint = GetLightColor(x, y, zDepth, skyColor);
+                    Color tint = MultiplyColor(GetDepthTintDarkened(zDepth, z), lightTint);
+                    tint = MultiplyColor(tint, MaterialTint(mat));
+                    DrawInsetSprite(floorSprite, dest, 0.0f, tint);
+
+                    SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, zDepth);
                     int finishSprite = FinishSprite(finish);
                     Rectangle finishSrc = SpriteGetRect(finishSprite);
                     DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
@@ -366,6 +383,21 @@ static void DrawCellGrid(void) {
                         Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
                         if (CellIsRamp(cellBelow)) tint.a = 64;
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                    }
+
+                    // Constructed floors at z-1
+                    if (HAS_FLOOR(x, y, zBelow)) {
+                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                        MaterialType mat = GetFloorMaterial(x, y, zBelow);
+                        int floorSprite = GetFloorSpriteAt(x, y, zBelow);
+                        Color lightTint = GetLightColor(x, y, zBelow, skyColor);
+                        Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
+                        DrawInsetSprite(floorSprite, dest, 0.0f, tint);
+
+                        SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, zBelow);
+                        int finishSprite = FinishSprite(finish);
+                        Rectangle finishSrc = SpriteGetRect(finishSprite);
+                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
                     }
                 }
             }
@@ -1178,7 +1210,7 @@ static void DrawMovers(void) {
         if (moverZ < viewZ) {
             int cellX = (int)(m->x / CELL_SIZE);
             int cellY = (int)(m->y / CELL_SIZE);
-            if (!IsCellVisibleFromAbove(cellX, cellY, moverZ, viewZ)) continue;
+            if (!IsCellVisibleFromAbove(cellX, cellY, moverZ + 1, viewZ)) continue;
         }
 
         // Screen position
@@ -1435,7 +1467,7 @@ static void DrawAnimals(void) {
         if (az < viewZ) {
             int cellX = (int)(a->x / CELL_SIZE);
             int cellY = (int)(a->y / CELL_SIZE);
-            if (!IsCellVisibleFromAbove(cellX, cellY, az, viewZ)) continue;
+            if (!IsCellVisibleFromAbove(cellX, cellY, az + 1, viewZ)) continue;
         }
 
         // Screen position
@@ -1607,7 +1639,7 @@ static void DrawItems(void) {
 
         // Visibility check for items below current view
         if (itemZ < viewZ) {
-            if (!IsCellVisibleFromAbove(cellX, cellY, itemZ, viewZ)) continue;
+            if (!IsCellVisibleFromAbove(cellX, cellY, itemZ + 1, viewZ)) continue;
         }
 
         float sx = offset.x + item->x * zoom;
@@ -1654,7 +1686,7 @@ static void DrawLightSources(void) {
 
         // Visibility check for light sources below current view
         if (srcZ < viewZ) {
-            if (!IsCellVisibleFromAbove(src->x, src->y, srcZ, viewZ)) continue;
+            if (!IsCellVisibleFromAbove(src->x, src->y, srcZ + 1, viewZ)) continue;
         }
 
         // Convert cell position to screen position (center of cell)
@@ -1691,7 +1723,7 @@ static void DrawGatherZones(void) {
 
         // Simple visibility: skip if any cell in the zone is blocked
         bool belowView = gz->z < viewZ;
-        if (belowView && !IsCellVisibleFromAbove(gz->x, gz->y, gz->z, viewZ)) continue;
+        if (belowView && !IsCellVisibleFromAbove(gz->x, gz->y, gz->z + 1, viewZ)) continue;
 
         float sx = offset.x + gz->x * size;
         float sy = offset.y + gz->y * size;
@@ -1731,7 +1763,7 @@ static void DrawStockpileTiles(void) {
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
 
-                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z, viewZ)) continue;
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z + 1, viewZ)) continue;
 
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
@@ -1787,7 +1819,7 @@ static void DrawStockpileItems(void) {
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
 
-                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z, viewZ)) continue;
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z + 1, viewZ)) continue;
 
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
@@ -1841,7 +1873,7 @@ static void DrawWorkshops(void) {
                 int gx = ws->x + dx;
                 int gy = ws->y + dy;
 
-                if (belowView && !IsCellVisibleFromAbove(gx, gy, ws->z, viewZ)) continue;
+                if (belowView && !IsCellVisibleFromAbove(gx, gy, ws->z + 1, viewZ)) continue;
 
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
