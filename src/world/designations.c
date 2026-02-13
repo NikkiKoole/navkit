@@ -615,19 +615,7 @@ void CompleteDigRampDesignation(int x, int y, int z, int moverIdx) {
         ClearWallNatural(x, y, z);
     }
     SetWallFinish(x, y, z, DefaultFinishForNatural(isWallNatural));
-    
-    // Create floor on top (z+1) if there's space
-    if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
-        SET_FLOOR(x, y, z + 1);
-        SetFloorMaterial(x, y, z + 1, mat);
-        if (isWallNatural) {
-            SetFloorNatural(x, y, z + 1);
-        } else {
-            ClearFloorNatural(x, y, z + 1);
-        }
-        SetFloorFinish(x, y, z + 1, DefaultFinishForNatural(isWallNatural));
-    }
-    
+
     rampCount++;
     
     MarkChunkDirty(x, y, z);
@@ -1751,8 +1739,11 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         CellType ct = grid[z][y][x];
         if (HAS_FLOOR(x, y, z) || CellIsSolid(ct)) return -1;
     } else if (recipe->buildCategory == BUILD_RAMP) {
-        if (grid[z][y][x] != CELL_AIR) return -1;
-        if (!HAS_FLOOR(x, y, z)) return -1;
+        // Must be walkable (matches sandbox ramp validation)
+        if (!IsCellWalkableAt(z, y, x)) return -1;
+        // Can't replace existing ramps or ladders
+        CellType ct = grid[z][y][x];
+        if (CellIsDirectionalRamp(ct) || CellIsLadder(ct)) return -1;
     }
 
     // Already has a blueprint?
@@ -2118,15 +2109,10 @@ void CompleteBlueprint(int blueprintIdx) {
         PushItemsOutOfCell(x, y, z);
         DisplaceWater(x, y, z);
 
-        CellType rampType = CELL_RAMP_N;
-        if (y > 0 && IsWallCell(grid[z][y-1][x])) {
-            rampType = CELL_RAMP_S;
-        } else if (x < gridWidth - 1 && IsWallCell(grid[z][y][x+1])) {
-            rampType = CELL_RAMP_W;
-        } else if (y < gridHeight - 1 && IsWallCell(grid[z][y+1][x])) {
-            rampType = CELL_RAMP_N;
-        } else if (x > 0 && IsWallCell(grid[z][y][x-1])) {
-            rampType = CELL_RAMP_E;
+        // Use same auto-detect logic as dig ramp (points toward wall)
+        CellType rampType = AutoDetectRampDirection(x, y, z);
+        if (rampType == CELL_AIR) {
+            rampType = CELL_RAMP_N;  // Fallback if no valid direction
         }
 
         grid[z][y][x] = rampType;
@@ -2136,14 +2122,6 @@ void CompleteBlueprint(int blueprintIdx) {
         SetWallSourceItem(x, y, z, finalSource);
         ClearWallNatural(x, y, z);
         SetWallFinish(x, y, z, FINISH_SMOOTH);
-
-        if (z + 1 < gridDepth && grid[z+1][y][x] == CELL_AIR) {
-            SET_FLOOR(x, y, z + 1);
-            SetFloorMaterial(x, y, z + 1, finalMat);
-            SetFloorSourceItem(x, y, z + 1, finalSource);
-            ClearFloorNatural(x, y, z + 1);
-            SetFloorFinish(x, y, z + 1, FINISH_SMOOTH);
-        }
 
         MarkChunkDirty(x, y, z);
         if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);

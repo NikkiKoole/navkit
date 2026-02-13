@@ -8,21 +8,31 @@ Ramps are **fully implemented** in the codebase with 4 directional types: `CELL_
 
 ### Three Ways to Create Ramps
 
-#### 1. DIG RAMP (Designation)
-**Command:** `ACTION_WORK_DIG_RAMP` via designation system
+#### 1. DIG RAMP (Designation) - ✅ WORKS
+**Command:** `ACTION_WORK_DIG_RAMP` via Work menu (W→D)
 - **Function:** `CompleteDigRampDesignation()` in designations.c:589
 - **What it does:** Carves a ramp out of existing wall/dirt/rock
 - **Material:** Inherits from the wall being carved (dirt, stone, clay, etc.)
 - **Outputs:**
   - Ramp at z (with wallMaterial set to source material)
-  - Floor at z+1 (with floorMaterial set to source material)
+  - **Auto-creates floor at z+1** (with floorMaterial set to source material) ⚠️ **USER DISLIKES THIS**
   - Item drop based on material (rock, dirt chunk, etc.)
 - **Natural flag:** Preserves IsWallNatural status
 - **Direction:** Auto-detected via `AutoDetectDigRampDirection()`
+- **Status:** Works, user confirmed
 
-#### 2. BUILD RAMP (Construction Blueprint)
-**Command:** `ACTION_DRAW_RAMP` creates blueprints via `CreateRecipeBlueprint(CONSTRUCTION_RAMP)`
-- **Recipe:** `CONSTRUCTION_RAMP` in construction.c:106-123
+#### 2. SANDBOX RAMP PLACEMENT - ✅ WORKS
+**Command:** `ACTION_DRAW_RAMP` (Draw menu → R key)
+- **Function:** `ExecuteBuildRamp()` → `PlaceRamp()` in grid.c:381
+- **What it does:** **Instant sandbox placement** (no materials, no blueprints, no workers)
+- **Material:** None - just places bare ramp cell
+- **Outputs:** Just the ramp cell at z (no materials, no floor at z+1)
+- **Validation:** `CanPlaceRamp()` checks exit is walkable
+- **Direction:** Uses `selectedRampDirection` (arrow keys) or auto-detect
+- **Status:** ✅ **User confirmed this works**
+
+#### 3. BUILD RAMP (Construction Blueprint) - ❌ BROKEN/NOT WIRED UP
+**Recipe exists:** `CONSTRUCTION_RAMP` in construction.c:106-123
 - **Requirements:**
   - 1 any-building-mat item (rock, planks, logs, bricks)
   - Must have floor to build on (`HAS_FLOOR` check at line 1755)
@@ -30,16 +40,14 @@ Ramps are **fully implemented** in the codebase with 4 directional types: `CELL_
 - **Build time:** 2.0s
 - **Material:** Inherited from delivered item
 - **Completion:** `CompleteBlueprint()` at designations.c:2117-2143
-- **Outputs:**
-  - Ramp at z (with wallMaterial from delivered item)
-  - Floor at z+1 (with floorMaterial from delivered item)
+  - Creates ramp at z with wallMaterial from item
+  - **Auto-creates floor at z+1** ⚠️
   - WallSourceItem tracked for refunds
-- **Natural flag:** Cleared (constructed ramp)
 - **Direction:** Auto-detected based on adjacent walls (lines 2121-2130)
-- **Finish:** FINISH_SMOOTH
+- **Status:** ❌ **NO UI TO CREATE THESE BLUEPRINTS** - recipe exists but unused
 
-#### 3. REMOVE RAMP (Designation)
-**Command:** `ACTION_WORK_REMOVE_RAMP` via designation system
+#### 4. REMOVE RAMP (Designation) - ✅ WORKS
+**Command:** `ACTION_WORK_REMOVE_RAMP` via Work menu (W→V)
 - **What it does:** Removes any ramp (natural or constructed)
 - **Outputs:** Spawns item based on ramp's material and natural status
 
@@ -70,6 +78,75 @@ Two different algorithms exist:
 - **Opposite logic from dig ramp!**
 
 ## Issues & Inconsistencies
+
+### 0. **AUTO-FLOOR CREATION IS UNWANTED** ⚠️ HIGH PRIORITY
+**User feedback:** "I see the weird generic cell_floor tiles pop up after digging ramps, i dont like that"
+
+**The problem:**
+- Both dig ramp and build ramp automatically create floor at z+1 (if space exists)
+- User didn't ask for this floor
+- Creates visual clutter with generic floor sprites
+- May interfere with multi-level designs
+- Can't be prevented currently
+
+**Location:**
+- `CompleteDigRampDesignation()` lines 620-629: creates floor + material at z+1
+- `CompleteBlueprint()` BUILD_RAMP lines 2140-2145: creates floor + material at z+1
+
+**Solution options:**
+1. **Remove auto-floor entirely** - ramps don't create floors (simplest)
+2. **Only for constructed ramps** - dug ramps don't auto-floor (half measure)
+3. **Make it optional** - global toggle or per-ramp choice (complex)
+
+**Recommendation:** Option 1 (remove entirely)
+- Simpler code
+- Fewer surprises
+- User can manually place floor if they want it
+- Matches user expectation: "dig a ramp" ≠ "also build a floor"
+
+### 0b. **BUILD RAMP BLUEPRINT VALIDATION TOO STRICT** ⚠️
+**User feedback:** "the draw ramp works!, its the work-> build-> ramp one that doesnt"
+
+**The situation:**
+- Sandbox placement (ACTION_DRAW_RAMP) works fine ✅
+- Work → Build → Ramp (ACTION_WORK_RAMP) is wired up ✅
+- `ExecuteDesignateRamp()` calls `CreateRecipeBlueprint(CONSTRUCTION_RAMP)` ✅
+- BUT: User tried it and "nothing happened" ❌
+
+**The problem - VALIDATION IS TOO STRICT:**
+
+`CreateRecipeBlueprint()` for BUILD_RAMP requires (designations.c:1753-1756):
+```c
+if (grid[z][y][x] != CELL_AIR) return -1;  // Must be empty
+if (!HAS_FLOOR(x, y, z)) return -1;        // Must have floor flag ❌ THIS IS THE ISSUE
+```
+
+**Why this fails:**
+- Most walkable ground doesn't have `HAS_FLOOR` flag set
+- In DF-style walkability, you stand on top of solid cells (z-1), not on floors at your z-level
+- Sandbox `PlaceRamp()` only requires `IsCellWalkableAt()` (much more lenient)
+- User can place sandbox ramps but not blueprint ramps on the same terrain!
+
+**Inconsistency:**
+- Sandbox ramp: `IsCellWalkableAt(z, y, x)` ✅ (works anywhere walkable)
+- Blueprint ramp: `HAS_FLOOR(x, y, z)` ❌ (only works on constructed floors)
+
+**This means blueprint ramps only work on:**
+- Constructed floors (wooden/stone/brick floors)
+- Natural floors (dug out areas with floor flag)
+- NOT on top of solid ground (which is 90% of walkable terrain!)
+
+**Solution:**
+Change BUILD_RAMP validation to match sandbox validation:
+```c
+} else if (recipe->buildCategory == BUILD_RAMP) {
+    if (!IsCellWalkableAt(z, y, x)) return -1;  // Must be walkable
+    if (CellIsDirectionalRamp(grid[z][y][x])) return -1;  // Can't replace existing ramp
+    if (CellIsLadder(grid[z][y][x])) return -1;  // Can't replace ladder
+}
+```
+
+This matches how sandbox ramps work and makes blueprint ramps placeable anywhere walkable.
 
 ### 1. **Confusing Direction Auto-Detection**
 The two auto-detect systems use opposite logic:
@@ -290,14 +367,35 @@ if (CellIsDirectionalRamp(cell)) {
 
 ## Implementation Roadmap
 
+### Phase 0: Critical Fixes (URGENT - User Reported)
+
+#### 0a. Remove Auto-Floor Creation
+- [ ] Remove floor creation from `CompleteDigRampDesignation()` (lines 620-629)
+- [ ] Remove floor creation from `CompleteBlueprint()` BUILD_RAMP (lines 2140-2145)
+- [ ] Test that ramps still work without auto-floor
+- [ ] Update any tests that expect auto-floor
+
+**Effort:** ~20 lines (deletions)
+**Impact:** ⭐⭐⭐ Directly addresses user complaint
+
+#### 0b. Fix Blueprint Ramp Validation
+- [ ] Change `CreateRecipeBlueprint()` BUILD_RAMP validation from `HAS_FLOOR` to `IsCellWalkableAt()`
+- [ ] Remove `CELL_AIR` requirement (allow placement on walkable terrain)
+- [ ] Add checks to prevent replacing existing ramps/ladders
+- [ ] Test blueprint ramps can now be placed on normal ground
+- [ ] Test they still work on constructed floors
+
+**Effort:** ~10 lines (change validation)
+**Impact:** ⭐⭐⭐ Makes blueprint ramps actually usable!
+
 ### Phase 1: Core Fixes (High Priority)
 - [ ] Extract `AutoDetectRampDirection()` common function
-- [ ] Fix BUILD_RAMP direction logic to match DIG_RAMP
+- [ ] Fix BUILD_RAMP blueprint direction logic to match DIG_RAMP
 - [ ] Add manual direction support to blueprint system
 - [ ] Improve placement validation
 
 **Effort:** ~150 lines
-**Impact:** Fixes broken behavior, better UX
+**Impact:** ⭐⭐ Fixes inconsistencies, better UX
 
 ### Phase 2: Visual Clarity (Medium Priority)
 - [ ] Add material color tinting to ramp rendering
@@ -334,13 +432,43 @@ After implementing improvements:
 - [ ] Floor auto-creation respects toggle (if implemented)
 - [ ] All pathfinding still works (A*, HPA*, JPS+)
 
-## Questions for User
+## Summary & Questions for User
 
-1. **Direction logic:** Should ramps point toward wall or away from wall?
-2. **Floor auto-creation:** Always create? Never create? User toggle?
-3. **Visual priority:** Material color more important, or natural/constructed distinction?
-4. **Manual direction:** Should it be required, or auto-detect with override?
-5. **Invalid placement:** Hard block, or allow with warning?
+### What We Found:
+
+1. **✅ Dig ramp works** - but auto-creates unwanted floor at z+1
+2. **✅ Sandbox ramp (Draw menu) works** - instant placement, no materials
+3. **❌ Blueprint ramp (Work → Build menu) broken** - validation requires `HAS_FLOOR` which most terrain doesn't have
+
+### Critical Fixes (Phase 0):
+
+**0a. Remove Auto-Floor Creation** (~20 lines)
+- Delete floor creation code from dig ramp + blueprint ramp
+- You said you don't like the generic floor tiles ✅
+
+**0b. Fix Blueprint Ramp Validation** (~10 lines)
+- Change requirement from `HAS_FLOOR` to `IsCellWalkableAt()`
+- Makes blueprint ramps work on normal ground (like sandbox ramps do)
+
+### Questions:
+
+1. **Auto-floor removal:** Should I remove it from BOTH dig ramp and blueprint ramp? Or just one?
+   - My recommendation: Remove from both (simplest, most consistent)
+
+2. **Direction logic inconsistency:**
+   - Dig ramp points **toward** wall (climb up toward wall)
+   - Blueprint ramp points **away from** wall (opposite!)
+   - Should I unify these? Which direction makes more sense to you?
+
+3. **Material visibility:**
+   - Stone ramps vs wood ramps look identical
+   - Should I add color tinting based on material? (stone=grey, wood=brown, etc.)
+   - Or is this low priority?
+
+4. **What should I work on first?**
+   - Option A: Just fix the two Phase 0 bugs (auto-floor + validation)
+   - Option B: Also unify direction logic while I'm in there
+   - Option C: Also add material color tinting
 
 ## Related Files
 

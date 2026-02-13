@@ -1716,7 +1716,7 @@ static void DrawWorkshopStatusOverlay(void) {
                 break;
                 
             case WORKSHOP_VISUAL_NO_WORKER:
-                spriteIdx = SPRITE_head;              // head icon for "no worker"
+                spriteIdx = SPRITE_light_shade;       // light shade for "idle/no worker"
                 tint = (Color){150, 150, 150, 200};   // gray, semi-transparent
                 break;
         }
