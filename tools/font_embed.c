@@ -37,12 +37,14 @@ static unsigned char *read_file(const char *path, long *size) {
 
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <font.fnt> <output.h>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <font.fnt> <output.h> [PREFIX] [FUNC_NAME]\n", argv[0]);
         return 1;
     }
-    
+
     const char *fntPath = argv[1];
     const char *outputPath = argv[2];
+    const char *prefix = (argc > 3) ? argv[3] : "EMBEDDED_FONT";
+    const char *funcName = (argc > 4) ? argv[4] : "LoadEmbeddedFont";
     
     // Derive PNG path from FNT path (same name, .png extension)
     char pngPath[256];
@@ -84,28 +86,32 @@ int main(int argc, char *argv[]) {
     
     fprintf(out, "// Auto-generated embedded font data\n");
     fprintf(out, "// Do not edit manually - regenerate with: make embed_font\n\n");
-    fprintf(out, "#ifndef EMBEDDED_FONT_H\n");
-    fprintf(out, "#define EMBEDDED_FONT_H\n\n");
+    fprintf(out, "#ifndef %s_H\n", prefix);
+    fprintf(out, "#define %s_H\n\n", prefix);
     fprintf(out, "#include \"vendor/raylib.h\"\n");
     fprintf(out, "#include <string.h>\n");
     fprintf(out, "#include <stdlib.h>\n");
     fprintf(out, "#include <stdio.h>\n\n");
-    
+
     // Add null terminator to FNT data so strstr works correctly
     unsigned char *fntDataNullTerm = malloc(fntSize + 1);
     memcpy(fntDataNullTerm, fntData, fntSize);
     fntDataNullTerm[fntSize] = '\0';
-    
-    write_byte_array(out, "EMBEDDED_FONT_FNT", fntDataNullTerm, fntSize + 1);
-    write_byte_array(out, "EMBEDDED_FONT_PNG", pngData, pngSize);
+
+    char fntArrayName[256], pngArrayName[256];
+    snprintf(fntArrayName, sizeof(fntArrayName), "%s_FNT", prefix);
+    snprintf(pngArrayName, sizeof(pngArrayName), "%s_PNG", prefix);
+
+    write_byte_array(out, fntArrayName, fntDataNullTerm, fntSize + 1);
+    write_byte_array(out, pngArrayName, pngData, pngSize);
     
     free(fntDataNullTerm);
     
     // Write helper function to load font from embedded data
     fprintf(out, "// Load font from embedded data\n");
-    fprintf(out, "static inline Font LoadEmbeddedFont(void) {\n");
+    fprintf(out, "static inline Font %s(void) {\n", funcName);
     fprintf(out, "    // Load the font texture from embedded PNG\n");
-    fprintf(out, "    Image img = LoadImageFromMemory(\".png\", EMBEDDED_FONT_PNG, EMBEDDED_FONT_PNG_SIZE);\n");
+    fprintf(out, "    Image img = LoadImageFromMemory(\".png\", %s_PNG, %s_PNG_SIZE);\n", prefix, prefix);
     fprintf(out, "    Texture2D texture = LoadTextureFromImage(img);\n");
     fprintf(out, "    UnloadImage(img);\n");
     fprintf(out, "    \n");
@@ -115,7 +121,7 @@ int main(int argc, char *argv[]) {
     fprintf(out, "    font.texture = texture;\n");
     fprintf(out, "    \n");
     fprintf(out, "    // Parse FNT data (text format)\n");
-    fprintf(out, "    const char *fntText = (const char *)EMBEDDED_FONT_FNT;\n");
+    fprintf(out, "    const char *fntText = (const char *)%s_FNT;\n", prefix);
     fprintf(out, "    \n");
     fprintf(out, "    // Count glyphs first\n");
     fprintf(out, "    int glyphCount = 0;\n");
@@ -157,7 +163,7 @@ int main(int argc, char *argv[]) {
     fprintf(out, "    return font;\n");
     fprintf(out, "}\n\n");
     
-    fprintf(out, "#endif // EMBEDDED_FONT_H\n");
+    fprintf(out, "#endif // %s_H\n", prefix);
     
     fclose(out);
     free(fntData);

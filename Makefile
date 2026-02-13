@@ -274,7 +274,8 @@ atlas: slices $(RAYLIB_LIB) | $(BINDIR)
 font_embed_SRC := tools/font_embed.c
 embed_font: $(BINDIR)
 	$(CC) $(CFLAGS) -o $(BINDIR)/font_embed $(font_embed_SRC)
-	./$(BINDIR)/font_embed assets/fonts/comic.fnt assets/fonts/comic_embedded.h
+	./$(BINDIR)/font_embed assets/fonts/comic.fnt assets/fonts/comic_embedded.h EMBEDDED_FONT LoadEmbeddedFont
+	./$(BINDIR)/font_embed assets/fonts/times-roman-bold.fnt assets/fonts/times_roman_embedded.h EMBEDDED_TIMES_ROMAN LoadEmbeddedTimesRomanFont
 
 # SCW (Single Cycle Waveform) embedder for soundsystem
 scw_embed_SRC := soundsystem/tools/scw_embed.c

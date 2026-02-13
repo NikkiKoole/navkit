@@ -24,6 +24,7 @@
 extern SoundSynth* soundDebugSynth;
 
 CutsceneState cutsceneState = {0};
+Font* g_cutscene_font = NULL;
 
 // Ensure audio is initialized for cutscene sounds
 static void EnsureCutsceneAudio(void) {
@@ -167,53 +168,96 @@ static int GetSpriteForCodepoint(uint32_t codepoint) {
     return -1;  // Not a special character
 }
 
-// Draw text with mixed UTF-8 sprite rendering and regular font
-// Sprites are drawn at 8x8, font characters are drawn with specified fontSize
-static void DrawTextMixedUTF8(Texture2D atlas, Font font, const char* text,
-                              Vector2 position, float fontSize, float spacing, Color tint) {
+// Draw ASCII art sprites on a fixed grid (pass 1)
+// Each cell is spriteSize x spriteSize, spaces advance by one cell
+static void DrawAsciiArt(Texture2D atlasTexture, const char* text,
+                         Vector2 position, int spriteSize, Color tint) {
     float x = position.x;
     float y = position.y;
     const char* p = text;
 
-    // For perfect ASCII art tiling, sprite size must equal line height
-    int spriteSize = (int)fontSize;
-    float lineHeight = fontSize;  // No extra spacing for vertical tiling
+    while (*p) {
+        uint32_t codepoint = DecodeUTF8(&p);
+        if (codepoint == 0) break;
+
+        if (codepoint == '\n') {
+            x = position.x;
+            y += spriteSize;
+        } else {
+            int spriteId = GetSpriteForCodepoint(codepoint);
+            if (spriteId >= 0) {
+                Rectangle srcRect = SPRITE8X8GetRect(spriteId);
+                Rectangle destRect = { x, y, (float)spriteSize, (float)spriteSize };
+                DrawTexturePro(atlasTexture, srcRect, destRect, (Vector2){0, 0}, 0, tint);
+            }
+            // All characters (sprite, space, or other) advance by one cell
+            x += spriteSize;
+        }
+    }
+}
+
+// Draw font text (pass 2)
+// If dropCap is true, the first printable character is drawn large with a background block.
+static void DrawCutsceneText(Font font, const char* text,
+                             Vector2 position, float fontSize, float spacing,
+                             Color tint, bool dropCap) {
+    float x = position.x;
+    float y = position.y;
+    float lineHeight = fontSize * 1.2f;
+    const char* p = text;
+
+    // Drop cap state
+    float dropCapSize = fontSize * 1.5f;
+    float dropCapRight = position.x;  // Right edge of drop cap area
+    float dropCapBottom = position.y; // Bottom edge of drop cap area
+    bool dropCapDrawn = false;
+    int dropCapPad = 6;
 
     while (*p) {
         uint32_t codepoint = DecodeUTF8(&p);
+        if (codepoint == 0) break;
 
-        if (codepoint == 0) break;  // End of string or error
-
-        // Check if this is a special sprite character
-        int spriteId = GetSpriteForCodepoint(codepoint);
-
-        if (spriteId >= 0) {
-            // Draw sprite - tiles must align perfectly for ASCII art
-            // Use rust color for ASCII art characters
-            Rectangle srcRect = SPRITE8X8GetRect(spriteId);
-            Rectangle destRect = { x, y, (float)spriteSize, (float)spriteSize };
-            DrawTexturePro(atlas, srcRect, destRect, (Vector2){0, 0}, 0, COLOR_RUST);
-            x += spriteSize;  // No spacing between sprites - they must tile seamlessly
-        } else {
-            // Draw regular character using font
-            if (codepoint == '\n') {
-                // Newline - use lineHeight for perfect vertical tiling of sprites
-                x = position.x;
-                y += lineHeight;
-            } else if (codepoint == ' ') {
-                // Space - just advance without drawing
-                x += fontSize * 0.5f;  // Half the font size for space width
-            } else if (codepoint >= 32) {  // Printable character
-                // Use raylib's DrawTextCodepoint for proper glyph rendering
+        if (codepoint == '\n') {
+            y += lineHeight;
+            // If still beside the drop cap, indent; otherwise normal margin
+            x = (dropCapDrawn && y < dropCapBottom) ? dropCapRight : position.x;
+        } else if (codepoint == ' ') {
+            int spaceIdx = GetGlyphIndex(font, ' ');
+            if (font.glyphs && spaceIdx >= 0 && spaceIdx < font.glyphCount && font.glyphs[spaceIdx].advanceX > 0) {
+                x += font.glyphs[spaceIdx].advanceX * fontSize / font.baseSize;
+            } else {
+                x += fontSize * 0.5f;
+            }
+        } else if (codepoint >= 32) {
+            // Drop cap: first printable character
+            if (dropCap && !dropCapDrawn) {
+                dropCapDrawn = true;
                 int index = GetGlyphIndex(font, codepoint);
-                if (font.glyphs != NULL && index >= 0 && index < font.glyphCount) {
-                    DrawTextCodepoint(font, codepoint, (Vector2){x, y}, fontSize, tint);
-
-                    // Advance by glyph width
+                if (font.glyphs && index >= 0 && index < font.glyphCount) {
                     GlyphInfo glyph = font.glyphs[index];
                     float advance = (glyph.advanceX == 0) ? font.recs[index].width : glyph.advanceX;
-                    x += (advance * fontSize / font.baseSize) + spacing;
+                    float capW = (advance * dropCapSize / font.baseSize);
+
+                    // Background block
+                    DrawRectangle((int)x - dropCapPad, (int)y - dropCapPad,
+                                  (int)capW + dropCapPad * 2, (int)dropCapSize + dropCapPad * 2,
+                                  COLOR_INK);
+                    // Letter in inverted color
+                    DrawTextCodepoint(font, codepoint, (Vector2){x, y}, dropCapSize, COLOR_PARCHMENT);
+
+                    dropCapRight = x + capW + dropCapPad * 2 + 4;
+                    dropCapBottom = y + dropCapSize + dropCapPad;
+                    x = dropCapRight;
                 }
+                continue;
+            }
+
+            int index = GetGlyphIndex(font, codepoint);
+            if (font.glyphs && index >= 0 && index < font.glyphCount) {
+                DrawTextCodepoint(font, codepoint, (Vector2){x, y}, fontSize, tint);
+                GlyphInfo glyph = font.glyphs[index];
+                float advance = (glyph.advanceX == 0) ? font.recs[index].width : glyph.advanceX;
+                x += (advance * fontSize / font.baseSize) + spacing;
             }
         }
     }
@@ -222,28 +266,38 @@ static void DrawTextMixedUTF8(Texture2D atlas, Font font, const char* text,
 // Hardcoded test panels (intro sequence)
 static Panel testPanels[] = {
     {
+        .asciiArt =
+            "      ·÷·÷·\n"
+            "       ▲▲▼▼▼\n"
+            "   ░░▒▒▓▓█▓▓▒▒░░\n"
+            " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░",
         .text =
-        "      ·÷·÷·\n"
-        "       ▲▲▼▼▼\n"
-        "   ░░▒▒▓▓█▓▓▒▒░░\n"
-        " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░\n\n"
+         "\n"
+          "\n"
+           "\n"
             "One awakes in the wild.\n"
+             "\n"
             "No tools. No shelter.\n"
             "Only hands, hunger and coldness.",
         .typewriterSpeed = 30.0f,
     },
     {
-        .text =
+        .asciiArt =
             "    ▄▄▄▄▄▄▄\n"
             "   █░·░░·░█\n"
             "   █░░░░░░█░░░▒▒▒▓▓▓███\n"
             "   █░░÷÷÷░░█\n"
-            "   ▀▀▀▀▀▀▀\n\n"
-            "Are you waiting?\n\n"
-            "░▒▓█ ",
+            "   ▀▀▀▀▀▀▀",
+        .text =
+        "\n"
+         "\n"
+          "\n"
+           "\n"
+            "Are you waiting?",
         .typewriterSpeed = 40.0f,
     },
     {
+        .asciiArt = NULL,
         .text =
             "Gather grass. Gather sticks.\n"
             "Gather stones from the river.\n\n"
@@ -254,93 +308,85 @@ static Panel testPanels[] = {
     }
 };
 
+// Count lines in a string (1 if no newlines, 0 if NULL)
+static int CountLines(const char* s) {
+    if (!s) return 0;
+    int lines = 1;
+    for (; *s; s++) {
+        if (*s == '\n') lines++;
+    }
+    return lines;
+}
+
 void InitCutscene(const Panel* panels, int count) {
     cutsceneState.active = true;
     cutsceneState.panels = panels;
     cutsceneState.panelCount = count;
     cutsceneState.currentPanel = 0;
+    cutsceneState.revealedArtLines = 0;
+    cutsceneState.artLineCount = CountLines(panels[0].asciiArt);
     cutsceneState.revealedChars = 0;
     cutsceneState.timer = 0.0f;
     cutsceneState.skipTypewriter = false;
     cutsceneState.charSoundDuration = 0.0f;
 }
 
+// Find byte offset of the end of the next word from position pos in text.
+// Skips leading whitespace, then advances past the word.
+static int NextWordEnd(const char* text, int pos) {
+    int len = (int)strlen(text);
+    int i = pos;
+    // Skip whitespace/newlines (but include them in the reveal)
+    while (i < len && (text[i] == ' ' || text[i] == '\n' || text[i] == '\t')) i++;
+    // Advance through word characters
+    while (i < len && text[i] != ' ' && text[i] != '\n' && text[i] != '\t') i++;
+    return i;
+}
+
 void UpdateCutscene(float dt) {
     if (!cutsceneState.active) return;
 
     const Panel* panel = &cutsceneState.panels[cutsceneState.currentPanel];
-    int textLen = (int)strlen(panel->text);
+    int textLen = panel->text ? (int)strlen(panel->text) : 0;
+    bool artDone = cutsceneState.revealedArtLines >= cutsceneState.artLineCount;
+    bool textDone = cutsceneState.revealedChars >= textLen;
+    bool allDone = artDone && textDone;
 
-    // Typewriter effect (sound-synced: each char waits for its sound to finish)
-    if (!cutsceneState.skipTypewriter && cutsceneState.revealedChars < textLen) {
+    if (!cutsceneState.skipTypewriter && !allDone) {
         cutsceneState.timer += dt;
 
-        // Wait for current character's sound to finish before revealing next
         if (cutsceneState.timer >= cutsceneState.charSoundDuration) {
-            // Reveal next character
-            cutsceneState.revealedChars++;
-            if (cutsceneState.revealedChars > textLen) {
-                cutsceneState.revealedChars = textLen;
-            }
+            if (!artDone) {
+                // Reveal next ASCII art line
+                cutsceneState.revealedArtLines++;
+                cutsceneState.charSoundDuration = 0.06f;  // Short delay per line
+            } else if (!textDone) {
+                // Reveal next word
+                int nextEnd = NextWordEnd(panel->text, cutsceneState.revealedChars);
+                cutsceneState.revealedChars = nextEnd;
 
-            // Play sound for this character and get its duration
-            if (cutsceneState.revealedChars <= textLen) {
-                // Look backwards to find the start of the current UTF-8 character
-                int bytePos = cutsceneState.revealedChars - 1;
-                const unsigned char* s = (const unsigned char*)panel->text;
-
-                // Scan back to find UTF-8 character start
-                while (bytePos > 0 && (s[bytePos] & 0xC0) == 0x80) {
-                    bytePos--;
-                }
-
-                // Decode current character
-                const char* charStart = panel->text + bytePos;
-                const char* tempPos = charStart;
-                uint32_t codepoint = DecodeUTF8(&tempPos);
-                bool isSpriteChar = (GetSpriteForCodepoint(codepoint) >= 0);
-
-                if (isSpriteChar) {
-                    // ASCII ART MODE: Reveal entire line of sprites at once!
-                    // Scan forward from current position until we hit a non-sprite or newline
-                    const char* scanPos = panel->text + cutsceneState.revealedChars;
-                    const char* lineEnd = scanPos;
-
-                    while (*lineEnd && *lineEnd != '\n') {
-                        const char* checkPos = lineEnd;
-                        uint32_t nextCodepoint = DecodeUTF8(&checkPos);
-                        if (nextCodepoint == 0) break;
-
-                        // If we hit a regular text character, stop here
-                        if (GetSpriteForCodepoint(nextCodepoint) < 0 && nextCodepoint != ' ' && nextCodepoint != '\t') {
-                            break;
-                        }
-                        lineEnd = checkPos;
+                // Play sound for the first vowel in the revealed word
+                for (int i = cutsceneState.revealedChars - 1; i >= 0 && panel->text[i] != ' ' && panel->text[i] != '\n'; i--) {
+                    char c = panel->text[i];
+                    if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' ||
+                        c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U') {
+                        cutsceneState.charSoundDuration = PlayCharacterSound(c);
+                        break;
                     }
-
-                    // Advance to end of sprite section (or end of line)
-                    int chunkSize = (int)(lineEnd - (panel->text + cutsceneState.revealedChars));
-                    if (chunkSize > 0) {
-                        cutsceneState.revealedChars += chunkSize;
-                    }
-
-                    // Tiny delay per line of ASCII art
-                    cutsceneState.charSoundDuration = 0.02f;
-                } else {
-                    // Regular text gets normal sound-based timing
-                    char c = panel->text[cutsceneState.revealedChars - 1];
-                    cutsceneState.charSoundDuration = PlayCharacterSound(c);
                 }
-
-                cutsceneState.timer = 0.0f;
+                if (cutsceneState.charSoundDuration < 0.15f) {
+                    cutsceneState.charSoundDuration = 0.15f;
+                }
             }
+            cutsceneState.timer = 0.0f;
         }
     }
 
     // Input: SPACE advances or skips typewriter
     if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
-        if (cutsceneState.revealedChars < textLen) {
-            // Skip typewriter, reveal all
+        if (!allDone) {
+            // Skip typewriter, reveal everything
+            cutsceneState.revealedArtLines = cutsceneState.artLineCount;
             cutsceneState.revealedChars = textLen;
             cutsceneState.skipTypewriter = true;
         } else {
@@ -349,6 +395,9 @@ void UpdateCutscene(float dt) {
             if (cutsceneState.currentPanel >= cutsceneState.panelCount) {
                 CloseCutscene();
             } else {
+                const Panel* next = &cutsceneState.panels[cutsceneState.currentPanel];
+                cutsceneState.revealedArtLines = 0;
+                cutsceneState.artLineCount = CountLines(next->asciiArt);
                 cutsceneState.revealedChars = 0;
                 cutsceneState.timer = 0.0f;
                 cutsceneState.skipTypewriter = false;
@@ -365,6 +414,9 @@ void UpdateCutscene(float dt) {
 
 void RenderCutscene(void) {
     if (!cutsceneState.active) return;
+
+    Font cutFont = (g_cutscene_font && g_cutscene_font->texture.id > 0)
+        ? *g_cutscene_font : *g_ui_font;
 
     const Panel* panel = &cutsceneState.panels[cutsceneState.currentPanel];
 
@@ -389,37 +441,57 @@ void RenderCutscene(void) {
     DrawRectangleLinesEx((Rectangle){panelX, panelY, panelW, panelH}, 3, COLOR_CLAY);
     DrawRectangleLinesEx((Rectangle){panelX + 8, panelY + 8, panelW - 16, panelH - 16}, 2, COLOR_RUST);
 
-    // Text with typewriter effect
-    char buffer[2048];
-    int len = cutsceneState.revealedChars;
-    if (len > 2047) len = 2047;
-    strncpy(buffer, panel->text, len);
-    buffer[len] = '\0';
-
-    // Draw text (centered in panel)
-    int textX = panelX + 40;
-    int textY = panelY + panelH / 2 - 60;  // Centered vertically in panel
-    int fontSize = 24;
+    // Content area: inside inner border + padding
+    int contentX = panelX + 24;
+    int contentY = panelY + 24;
+    int artSpriteSize = 24;
+    int fontSize = 32;
     int spacing = 2;
 
-    // Use mixed UTF-8 sprite + font rendering with warm ink color
-    DrawTextMixedUTF8(atlas, *g_ui_font, buffer, (Vector2){textX, textY}, fontSize, spacing, COLOR_INK);
+    // Pass 1: ASCII art (line-by-line reveal)
+    int textStartY = contentY;
+    if (panel->asciiArt && cutsceneState.revealedArtLines > 0) {
+        // Build a buffer with only the revealed lines
+        char artBuffer[2048];
+        const char* src = panel->asciiArt;
+        int linesIncluded = 0;
+        int pos = 0;
+        while (*src && linesIncluded < cutsceneState.revealedArtLines && pos < 2046) {
+            if (*src == '\n') linesIncluded++;
+            artBuffer[pos++] = *src++;
+        }
+        artBuffer[pos] = '\0';
+        DrawAsciiArt(atlas, artBuffer, (Vector2){contentX, contentY}, artSpriteSize, COLOR_RUST);
+    }
+    // Text starts from the same origin — overlaps art (that's the point of two passes)
 
-    // Show prompt when text fully revealed
-    bool textFullyRevealed = cutsceneState.revealedChars >= (int)strlen(panel->text);
+    // Pass 2: Font text with typewriter effect
+    if (panel->text) {
+        char buffer[2048];
+        int len = cutsceneState.revealedChars;
+        if (len > 2047) len = 2047;
+        strncpy(buffer, panel->text, len);
+        buffer[len] = '\0';
+        DrawCutsceneText(cutFont, buffer, (Vector2){contentX, textStartY}, fontSize, spacing, COLOR_INK, panel->dropCap);
+    }
+
+    // Show prompt when everything is fully revealed
+    int textLen = panel->text ? (int)strlen(panel->text) : 0;
+    bool textFullyRevealed = cutsceneState.revealedArtLines >= cutsceneState.artLineCount
+                          && cutsceneState.revealedChars >= textLen;
     if (textFullyRevealed) {
         const char* prompt = "[SPACE] to continue";
-        Vector2 promptSize = MeasureTextEx(*g_ui_font, prompt, 20, 2);
+        Vector2 promptSize = MeasureTextEx(cutFont, prompt, 20, 2);
         int promptX = panelX + panelW - (int)promptSize.x - 20;
         int promptY = panelY + panelH - 35;
-        DrawTextEx(*g_ui_font, prompt, (Vector2){promptX, promptY}, 20, 2, COLOR_INK);
+        DrawTextEx(cutFont, prompt, (Vector2){promptX, promptY}, 20, 2, COLOR_INK);
     }
 
     // Panel counter (bottom left of panel)
     char counter[32];
     snprintf(counter, sizeof(counter), "%d / %d",
              cutsceneState.currentPanel + 1, cutsceneState.panelCount);
-    DrawTextEx(*g_ui_font, counter, (Vector2){panelX + 20, panelY + panelH - 35}, 20, 2, COLOR_RUST);
+    DrawTextEx(cutFont, counter, (Vector2){panelX + 20, panelY + panelH - 35}, 20, 2, COLOR_RUST);
 }
 
 void CloseCutscene(void) {
