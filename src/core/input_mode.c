@@ -52,6 +52,7 @@ void InputMode_ExitToNormal(void) {
     workSubMode = SUBMODE_NONE;
     inputAction = ACTION_NONE;
     selectedMaterial = 1;
+    linkingWorkshopIdx = -1;  // Reset linking state
 }
 
 const char* InputMode_GetModeName(void) {
