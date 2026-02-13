@@ -720,32 +720,48 @@ void UpdateWorkshopDiagnostics(float dt) {
 
             anyRunnable = true;
 
-            // Check output storage using actual available input material
+            // Check if input exists first
+            bool hasInput = WorkshopHasInputForRecipe(ws, recipe, bill->ingredientSearchRadius);
+            
+            // Check output storage - if input exists, use actual material; otherwise check generically
             bool hasStorage = false;
-            for (int i = 0; i < itemHighWaterMark; i++) {
-                if (!items[i].active) continue;
-                if (!RecipeInputMatches(recipe, &items[i])) continue;
-                if (items[i].reservedBy != -1) continue;
-                if ((int)items[i].z != ws->z) continue;
-                uint8_t mat = items[i].material;
-                if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
+            if (hasInput) {
+                // Check storage with actual input material
+                for (int i = 0; i < itemHighWaterMark; i++) {
+                    if (!items[i].active) continue;
+                    if (!RecipeInputMatches(recipe, &items[i])) continue;
+                    if (items[i].reservedBy != -1) continue;
+                    if ((int)items[i].z != ws->z) continue;
+                    uint8_t mat = items[i].material;
+                    if (mat == MAT_NONE) mat = DefaultMaterialForItemType(items[i].type);
+                    int outSlotX, outSlotY;
+                    if (FindStockpileForItem(recipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
+                        if (recipe->outputType2 == ITEM_NONE ||
+                            FindStockpileForItem(recipe->outputType2, mat, &outSlotX, &outSlotY) >= 0) {
+                            hasStorage = true;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // No input exists - check if ANY stockpile could accept output (assume default material)
+                uint8_t defaultMat = DefaultMaterialForItemType(recipe->inputType);
                 int outSlotX, outSlotY;
-                if (FindStockpileForItem(recipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
+                if (FindStockpileForItem(recipe->outputType, defaultMat, &outSlotX, &outSlotY) >= 0) {
                     if (recipe->outputType2 == ITEM_NONE ||
-                        FindStockpileForItem(recipe->outputType2, mat, &outSlotX, &outSlotY) >= 0) {
+                        FindStockpileForItem(recipe->outputType2, defaultMat, &outSlotX, &outSlotY) >= 0) {
                         hasStorage = true;
-                        break;
                     }
                 }
             }
-            if (!hasStorage) {
-                continue;
+            
+            if (hasStorage) {
+                anyOutputSpace = true;
             }
-            anyOutputSpace = true;
-
-            if (WorkshopHasInputForRecipe(ws, recipe, bill->ingredientSearchRadius)) {
+            
+            if (hasInput) {
                 anyInput = true;
-                break;
+                if (hasStorage) break;  // Only break if both conditions met
             }
         }
 
