@@ -610,7 +610,7 @@ describe(lighting_get_light_color) {
         lightAmbientB = 20;
     }
 
-    it("should take max of sky and block per channel") {
+    it("should use dominant source to preserve color character") {
         InitGridWithSizeAndChunkSize(16, 16, 16, 16);
         InitLighting();
         lightingEnabled = true;
@@ -620,17 +620,26 @@ describe(lighting_get_light_color) {
         lightAmbientG = 0;
         lightAmbientB = 0;
 
-        // Torch at source cell with full sky light
+        // Bright red torch at source cell with full sky light
+        // Block brightness: 255+0+0 = 255, Sky brightness: 200+200+200 = 600
+        // Sky dominates, so sky color is used (preserves color identity)
         AddLightSource(8, 8, 1, 255, 0, 0, 10);
         RecomputeLighting();
 
         Color skyWhite = {200, 200, 200, 255};
         Color c = GetLightColor(8, 8, 1, skyWhite);
-
-        // Red channel: max(sky=200, block=255) = 255
-        expect(c.r == 255);
-        // Green channel: max(sky=200, block=0) = 200
+        expect(c.r == 200);
         expect(c.g == 200);
+        expect(c.b == 200);
+
+        // Now test with dim sky — block light should dominate
+        Color skyDim = {30, 30, 30, 255};
+        Color c2 = GetLightColor(8, 8, 1, skyDim);
+        // Block brightness: 255 > Sky brightness: 30+30+30 = 90
+        // Block dominates, so torch red color is used
+        expect(c2.r == 255);
+        expect(c2.g == 0);
+        expect(c2.b == 0);
 
         // Restore
         lightAmbientR = 15;

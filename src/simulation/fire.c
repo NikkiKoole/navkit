@@ -336,8 +336,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     // Handle sources - always burn at max, never consume fuel
     if (cell->isSource) {
         if (cell->level < FIRE_MAX_LEVEL) {
-            cell->level = FIRE_MAX_LEVEL;
-            DestabilizeFire(x, y, z);
+            SetFireLevel(x, y, z, FIRE_MAX_LEVEL);
             changed = true;
         }
         // Sources still spread, generate smoke, and heat
@@ -401,7 +400,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                 return true;
             } else if (cell->fuel <= 2 && cell->level > 3) {
                 // Low fuel - reduce intensity
-                cell->level = 3;
+                SetFireLevel(x, y, z, 3);
                 changed = true;
             }
         }
@@ -410,7 +409,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     // Fire intensity grows if there's fuel
     if (cell->fuel > 2 && cell->level < FIRE_MAX_LEVEL) {
         if ((rand() % 3) == 0) {
-            cell->level++;
+            SetFireLevel(x, y, z, cell->level + 1);
             changed = true;
         }
     }
