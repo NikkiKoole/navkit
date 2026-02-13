@@ -12,6 +12,10 @@
 #include "../core/sim_manager.h"
 #include <math.h>
 
+#define MAX_VISIBLE_DEPTH    9
+#define SOURCE_MARKER_INSET  0.3f
+#define RAMP_OVERLAY_ALPHA   64
+
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
     *minX = 0;
@@ -107,6 +111,18 @@ static Color FinishOverlayTint(SurfaceFinish finish, Color base) {
     }
     tint.a = (unsigned char)((tint.a * 20) / 100);
     return tint;
+}
+
+static void DrawFinishOverlay(Rectangle dest, SurfaceFinish finish, Color tint) {
+    int finishSprite = FinishSprite(finish);
+    Rectangle finishSrc = SpriteGetRect(finishSprite);
+    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+}
+
+static void DrawSourceMarker(Rectangle dest, float size, Color color) {
+    float inset = size * SOURCE_MARKER_INSET;
+    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
+    DrawRectangleRec(inner, color);
 }
 
 static bool ItemUsesBorder(ItemType type) {
@@ -253,7 +269,7 @@ static Color GetDepthTint(int itemZ, int viewZ) {
         {80, 60, 40, 255}      // index 8: z-9
     };
     int depthIndex = viewZ - itemZ - 1;
-    if (depthIndex >= 0 && depthIndex < 9) {
+    if (depthIndex >= 0 && depthIndex < MAX_VISIBLE_DEPTH) {
         return depthTints[depthIndex];
     }
     return WHITE;
@@ -273,7 +289,7 @@ static Color GetDepthTintDarkened(int itemZ, int viewZ) {
         { 60,  45,  30, 255}   // index 8: z-9
     };
     int depthIndex = viewZ - itemZ - 1;
-    if (depthIndex >= 0 && depthIndex < 9) {
+    if (depthIndex >= 0 && depthIndex < MAX_VISIBLE_DEPTH) {
         return depthTintsDarkened[depthIndex];
     }
     return WHITE;
@@ -289,16 +305,9 @@ static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
     return true;
 }
 
-static void DrawCellGrid(void) {
-    float size = CELL_SIZE * zoom;
-    int z = currentViewZ;
-    Color skyColor = GetSkyColorForTime(timeOfDay);
-
-    int minX, minY, maxX, maxY;
-    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
-
-    // Draw deeper levels first (z-9 through z-2) with earthy brown depth tint
-    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+// Draw deeper levels (z-9 through z-2) with earthy brown depth tint
+static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX, int maxY, Color skyColor) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
 
         for (int y = minY; y < maxY; y++) {
@@ -316,14 +325,11 @@ static void DrawCellGrid(void) {
                         if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                         }
-                        if (CellIsRamp(cellAtDepth)) tint.a = 64;
+                        if (CellIsRamp(cellAtDepth)) tint.a = RAMP_OVERLAY_ALPHA;
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
                         if (cellAtDepth == CELL_WALL) {
-                            SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zDepth);
-                            int finishSprite = FinishSprite(finish);
-                            Rectangle finishSrc = SpriteGetRect(finishSprite);
-                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+                            DrawFinishOverlay(dest, (SurfaceFinish)GetWallFinish(x, y, zDepth), tint);
                         }
                     }
                 }
@@ -337,189 +343,181 @@ static void DrawCellGrid(void) {
                     tint = MultiplyColor(tint, MaterialTint(mat));
                     DrawInsetSprite(floorSprite, dest, 0.0f, tint);
 
-                    SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, zDepth);
-                    int finishSprite = FinishSprite(finish);
-                    Rectangle finishSrc = SpriteGetRect(finishSprite);
-                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+                    DrawFinishOverlay(dest, (SurfaceFinish)GetFloorFinish(x, y, zDepth), tint);
                 }
             }
         }
     }
-        
-        // DF mode: draw floor from z-1 (the ground you're standing ON)
-        // At z=1, you see z=0's surface as the floor
-        // At z=0, you see implicit bedrock as the floor (for dug holes)
-        if (z > 0) {
-            int zBelow = z - 1;
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cellBelow = grid[zBelow][y][x];
-                    CellType cellHere = grid[z][y][x];
-                    
-                    // Draw floor from below if the cell below is solid and current is air/walkable
-                    if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
-                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
-                        Rectangle src = SpriteGetRect(sprite);
-                        // Wall tops - lit by the air above (z), where torches sit
-                        Color lightTint = GetLightColor(x, y, z, skyColor);
-                        Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
-                        
-                        // Apply finish overlay to z-1 floor (same as deeper levels)
-                        if (cellBelow == CELL_WALL) {
-                            SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, zBelow);
-                            int finishSprite = FinishSprite(finish);
-                            Rectangle finishSrc = SpriteGetRect(finishSprite);
-                            DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
-                        }
-                    }
-                    // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
-                    else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
-                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
-                        Rectangle src = SpriteGetRect(sprite);
-                        Color lightTint = GetLightColor(x, y, z, skyColor);
-                        Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
-                        if (CellIsRamp(cellBelow)) tint.a = 64;
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
-                    }
+}
 
-                    // Constructed floors at z-1
-                    if (HAS_FLOOR(x, y, zBelow)) {
-                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        MaterialType mat = GetFloorMaterial(x, y, zBelow);
-                        int floorSprite = GetFloorSpriteAt(x, y, zBelow);
-                        Color lightTint = GetLightColor(x, y, zBelow, skyColor);
-                        Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
-                        DrawInsetSprite(floorSprite, dest, 0.0f, tint);
-
-                        SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, zBelow);
-                        int finishSprite = FinishSprite(finish);
-                        Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
-                    }
-                }
-            }
-        } else {
-            // z=0: draw bedrock for air cells (implicit bedrock at z=-1)
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cellHere = grid[z][y][x];
-                    if (cellHere == CELL_AIR) {
-                        Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                        Rectangle src = SpriteGetRect(SPRITE_bedrock);
-                        Color lightTint = GetLightColor(x, y, z, skyColor);
-                        DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, MultiplyColor(FloorDarkenTint(WHITE), lightTint));
-                    }
-                }
-            }
-        }
-        
-        // Draw constructed floors (HAS_FLOOR flag - for balconies/bridges over empty space)
+// Draw the ground level: z-1 floor (what you're standing ON) or bedrock at z=0
+static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int maxY, Color skyColor) {
+    if (z > 0) {
+        int zBelow = z - 1;
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
-                if (HAS_FLOOR(x, y, z)) {
+                CellType cellBelow = grid[zBelow][y][x];
+                CellType cellHere = grid[z][y][x];
+
+                // Draw floor from below if the cell below is solid and current is air/walkable
+                if (CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
                     Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                    MaterialType mat = GetFloorMaterial(x, y, z);
-                    int sprite = GetFloorSpriteAt(x, y, z);
+                    int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
+                    Rectangle src = SpriteGetRect(sprite);
+                    // Wall tops - lit by the air above (z), where torches sit
                     Color lightTint = GetLightColor(x, y, z, skyColor);
-                    Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
-                    DrawInsetSprite(sprite, dest, 0.0f, tint);
+                    Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
-                    // Finish overlay
-                    {
-                        SurfaceFinish finish = (SurfaceFinish)GetFloorFinish(x, y, z);
-                        int finishSprite = FinishSprite(finish);
-                        Rectangle finishSrc = SpriteGetRect(finishSprite);
-                        DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, WHITE));
+                    // Apply finish overlay to z-1 floor (same as deeper levels)
+                    if (cellBelow == CELL_WALL) {
+                        DrawFinishOverlay(dest, (SurfaceFinish)GetWallFinish(x, y, zBelow), tint);
                     }
+                }
+                // Draw non-solid visible cells at z-1 (ramps, ladders, felled trees, saplings)
+                else if (cellBelow != CELL_AIR && !CellIsSolid(cellBelow) && !CellBlocksMovement(cellHere)) {
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    int sprite = GetWallSpriteAt(x, y, zBelow, cellBelow);
+                    Rectangle src = SpriteGetRect(sprite);
+                    Color lightTint = GetLightColor(x, y, z, skyColor);
+                    Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
+                    if (CellIsRamp(cellBelow)) tint.a = RAMP_OVERLAY_ALPHA;
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                }
 
-                    // Floor dirt overlay (tracked-in dirt from natural terrain)
-                    {
-                        uint8_t dirt = floorDirtGrid[z][y][x];
-                        if (dirt >= DIRT_VISIBLE_THRESHOLD) {
-                            Rectangle dirtSrc = SpriteGetRect(SPRITE_finish_messy);
-                            float t = (float)(dirt - DIRT_VISIBLE_THRESHOLD)
-                                    / (float)(DIRT_MAX - DIRT_VISIBLE_THRESHOLD);
-                            unsigned char alpha = (unsigned char)(t * 128);  // Max 50% opacity
-                            Color dirtTint = {80, 60, 40, alpha};
-                            DrawTexturePro(atlas, dirtSrc, dest, (Vector2){0,0}, 0, dirtTint);
-                        }
+                // Constructed floors at z-1
+                if (HAS_FLOOR(x, y, zBelow)) {
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    MaterialType mat = GetFloorMaterial(x, y, zBelow);
+                    int floorSprite = GetFloorSpriteAt(x, y, zBelow);
+                    Color lightTint = GetLightColor(x, y, zBelow, skyColor);
+                    Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
+                    DrawInsetSprite(floorSprite, dest, 0.0f, tint);
+
+                    DrawFinishOverlay(dest, (SurfaceFinish)GetFloorFinish(x, y, zBelow), tint);
+                }
+            }
+        }
+    } else {
+        // z=0: draw bedrock for air cells (implicit bedrock at z=-1)
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                CellType cellHere = grid[z][y][x];
+                if (cellHere == CELL_AIR) {
+                    Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                    Rectangle src = SpriteGetRect(SPRITE_bedrock);
+                    Color lightTint = GetLightColor(x, y, z, skyColor);
+                    DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, MultiplyColor(FloorDarkenTint(WHITE), lightTint));
+                }
+            }
+        }
+    }
+}
+
+static void DrawCellGrid(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    DrawDeeperLevelCells(size, z, minX, minY, maxX, maxY, skyColor);
+    DrawGroundLevel(size, z, minX, minY, maxX, maxY, skyColor);
+
+    // Draw constructed floors (HAS_FLOOR flag - for balconies/bridges over empty space)
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (HAS_FLOOR(x, y, z)) {
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                MaterialType mat = GetFloorMaterial(x, y, z);
+                int sprite = GetFloorSpriteAt(x, y, z);
+                Color lightTint = GetLightColor(x, y, z, skyColor);
+                Color tint = MultiplyColor(FloorDarkenTint(MaterialTint(mat)), lightTint);
+                DrawInsetSprite(sprite, dest, 0.0f, tint);
+
+                DrawFinishOverlay(dest, (SurfaceFinish)GetFloorFinish(x, y, z), WHITE);
+
+                // Floor dirt overlay (tracked-in dirt from natural terrain)
+                {
+                    uint8_t dirt = floorDirtGrid[z][y][x];
+                    if (dirt >= DIRT_VISIBLE_THRESHOLD) {
+                        Rectangle dirtSrc = SpriteGetRect(SPRITE_finish_messy);
+                        float t = (float)(dirt - DIRT_VISIBLE_THRESHOLD)
+                                / (float)(DIRT_MAX - DIRT_VISIBLE_THRESHOLD);
+                        unsigned char alpha = (unsigned char)(t * 128);  // Max 50% opacity
+                        Color dirtTint = {80, 60, 40, alpha};
+                        DrawTexturePro(atlas, dirtSrc, dest, (Vector2){0,0}, 0, dirtTint);
                     }
                 }
             }
         }
-        
-        // Draw current layer (walls, ladders, etc. - things that block or occupy the space)
-        // Ramps are drawn with 50% opacity so grass shows through
+    }
+
+    // Draw current layer (walls, ladders, etc. - things that block or occupy the space)
+    // Ramps are drawn with 50% opacity so grass shows through
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            CellType cell = grid[z][y][x];
+            // Skip air - floor was already drawn from z-1 or HAS_FLOOR
+            if (cell == CELL_AIR) continue;
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            int sprite = GetWallSpriteAt(x, y, z, cell);
+            Rectangle src = SpriteGetRect(sprite);
+            Color lightTint = GetLightColor(x, y, z, skyColor);
+            Color tint = lightTint;
+            if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
+                tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
+            }
+            if (CellIsRamp(cell)) tint.a = RAMP_OVERLAY_ALPHA;
+            DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+
+            if (cell == CELL_WALL) {
+                DrawFinishOverlay(dest, (SurfaceFinish)GetWallFinish(x, y, z), tint);
+            }
+        }
+    }
+
+    // Draw wall cutaway effect - dark top with real wall texture visible at edges
+    // This shows you're looking at the "cut" top of walls at eye level
+    {
+        Color cutawayColor = (Color){30, 30, 35, 255};  // Dark gray/black
+        float edgeWidth = size * 0.2f;  // 20% of cell size - wall texture visible at edges
+
         for (int y = minY; y < maxY; y++) {
             for (int x = minX; x < maxX; x++) {
                 CellType cell = grid[z][y][x];
-                // Skip air - floor was already drawn from z-1 or HAS_FLOOR
-                if (cell == CELL_AIR) continue;
-                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
-                int sprite = GetWallSpriteAt(x, y, z, cell);
-                Rectangle src = SpriteGetRect(sprite);
-                Color lightTint = GetLightColor(x, y, z, skyColor);
-                Color tint = lightTint;
-                if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
-                    tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
-                }
-                if (CellIsRamp(cell)) tint.a = 64;
-                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
+                if (!CellBlocksMovement(cell)) continue;  // Only walls
 
-                if (cell == CELL_WALL) {
-                    SurfaceFinish finish = (SurfaceFinish)GetWallFinish(x, y, z);
-                    int finishSprite = FinishSprite(finish);
-                    Rectangle finishSrc = SpriteGetRect(finishSprite);
-                    DrawTexturePro(atlas, finishSrc, dest, (Vector2){0,0}, 0, FinishOverlayTint(finish, tint));
+                float px = offset.x + x * size;
+                float py = offset.y + y * size;
+
+                // Check which sides border non-walls (those show the wall edge)
+                bool wallNorth = (y > 0) && CellBlocksMovement(grid[z][y-1][x]);
+                bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(grid[z][y+1][x]);
+                bool wallWest = (x > 0) && CellBlocksMovement(grid[z][y][x-1]);
+                bool wallEast = (x < gridWidth-1) && CellBlocksMovement(grid[z][y][x+1]);
+
+                // Calculate inset for dark fill - leave edge visible where no adjacent wall
+                float insetN = wallNorth ? 0 : edgeWidth;
+                float insetS = wallSouth ? 0 : edgeWidth;
+                float insetW = wallWest ? 0 : edgeWidth;
+                float insetE = wallEast ? 0 : edgeWidth;
+
+                // Draw dark fill inset from edges (wall texture already drawn shows through at edges)
+                // Add 1 pixel overlap to avoid gaps between adjacent tiles
+                float overlap = 1.0f;
+                float fillX = px + insetW;
+                float fillY = py + insetN;
+                float fillW = size - insetW - insetE + (wallEast ? overlap : 0);
+                float fillH = size - insetN - insetS + (wallSouth ? overlap : 0);
+
+                if (fillW > 0 && fillH > 0) {
+                    DrawRectangle((int)fillX, (int)fillY, (int)(fillW + 0.5f), (int)(fillH + 0.5f), cutawayColor);
                 }
             }
         }
-        
-        // Draw wall cutaway effect - dark top with real wall texture visible at edges
-        // This shows you're looking at the "cut" top of walls at eye level
-        {
-            Color cutawayColor = (Color){30, 30, 35, 255};  // Dark gray/black
-            float edgeWidth = size * 0.2f;  // 20% of cell size - wall texture visible at edges
-            
-            for (int y = minY; y < maxY; y++) {
-                for (int x = minX; x < maxX; x++) {
-                    CellType cell = grid[z][y][x];
-                    if (!CellBlocksMovement(cell)) continue;  // Only walls
-                    
-                    float px = offset.x + x * size;
-                    float py = offset.y + y * size;
-                    
-                    // Check which sides border non-walls (those show the wall edge)
-                    bool wallNorth = (y > 0) && CellBlocksMovement(grid[z][y-1][x]);
-                    bool wallSouth = (y < gridHeight-1) && CellBlocksMovement(grid[z][y+1][x]);
-                    bool wallWest = (x > 0) && CellBlocksMovement(grid[z][y][x-1]);
-                    bool wallEast = (x < gridWidth-1) && CellBlocksMovement(grid[z][y][x+1]);
-                    
-                    // Calculate inset for dark fill - leave edge visible where no adjacent wall
-                    float insetN = wallNorth ? 0 : edgeWidth;
-                    float insetS = wallSouth ? 0 : edgeWidth;
-                    float insetW = wallWest ? 0 : edgeWidth;
-                    float insetE = wallEast ? 0 : edgeWidth;
-                    
-                    // Draw dark fill inset from edges (wall texture already drawn shows through at edges)
-                    // Add 1 pixel overlap to avoid gaps between adjacent tiles
-                    float overlap = 1.0f;
-                    float fillX = px + insetW;
-                    float fillY = py + insetN;
-                    float fillW = size - insetW - insetE + (wallEast ? overlap : 0);
-                    float fillH = size - insetN - insetS + (wallSouth ? overlap : 0);
-                    
-                    if (fillW > 0 && fillH > 0) {
-                        DrawRectangle((int)fillX, (int)fillY, (int)(fillW + 0.5f), (int)(fillH + 0.5f), cutawayColor);
-                    }
-                }
-            }
-        }
-        
-        // Shadows from blocks above disabled (per user request)
+    }
 }
 
 static void DrawGrassOverlay(void) {
@@ -531,7 +529,7 @@ static void DrawGrassOverlay(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw grass for deeper levels (z-9 through z-2) with earthy brown tint
-    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
         
         Color depthTint = GetDepthTint(zDepth, z);
@@ -597,7 +595,7 @@ static void DrawMud(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw mud at deeper levels (z-9 through z-2) with depth darkening
-    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
         Color depthTint = GetDepthTint(zDepth, z);
         for (int y = minY; y < maxY; y++) {
@@ -639,6 +637,11 @@ static void DrawMud(void) {
     }
 }
 
+static unsigned char SnowAlpha(uint8_t level) {
+    static const unsigned char alphas[] = {0, 80, 170, 240};
+    return alphas[level < 4 ? level : 3];
+}
+
 static void DrawSnow(void) {
     float size = CELL_SIZE * zoom;
     int z = currentViewZ;
@@ -648,7 +651,7 @@ static void DrawSnow(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw snow at deeper levels (z-9 through z-2) with depth darkening
-    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
         Color depthTint = GetDepthTint(zDepth, z);
         for (int y = minY; y < maxY; y++) {
@@ -657,8 +660,7 @@ static void DrawSnow(void) {
                 if (snowLevel == 0) continue;
                 if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
 
-                // Snow opacity based on level: light=80, moderate=170, heavy=240
-                unsigned char alpha = (unsigned char)(snowLevel == 1 ? 80 : snowLevel == 2 ? 170 : 240);
+                unsigned char alpha = SnowAlpha(snowLevel);
                 Color snowColor = {255, 255, 255, alpha};
                 Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
                 snowColor = MultiplyColor(snowColor, tint);
@@ -727,7 +729,7 @@ static void DrawWater(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw water at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
         if (zDepth < 0) continue;
         
         for (int y = minY; y < maxY; y++) {
@@ -747,15 +749,11 @@ static void DrawWater(void) {
                 DrawRectangleRec(dest, waterColor);
                 
                 if (waterGrid[zDepth][y][x].isSource) {
-                    float inset = size * 0.3f;
-                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                    DrawRectangleRec(inner, (Color){75, 135, 191, 200});
+                    DrawSourceMarker(dest, size, (Color){75, 135, 191, 200});
                 }
-                
+
                 if (waterGrid[zDepth][y][x].isDrain) {
-                    float inset = size * 0.3f;
-                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                    DrawRectangleRec(inner, (Color){15, 30, 60, 200});
+                    DrawSourceMarker(dest, size, (Color){15, 30, 60, 200});
                 }
             }
         }
@@ -780,16 +778,12 @@ static void DrawWater(void) {
             
             // Mark sources with a brighter center
             if (waterGrid[z][y][x].isSource) {
-                float inset = size * 0.3f;
-                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                DrawRectangleRec(inner, (Color){100, 180, 255, 200});
+                DrawSourceMarker(dest, size, (Color){100, 180, 255, 200});
             }
-            
+
             // Mark drains with a dark center
             if (waterGrid[z][y][x].isDrain) {
-                float inset = size * 0.3f;
-                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                DrawRectangleRec(inner, (Color){20, 40, 80, 200});
+                DrawSourceMarker(dest, size, (Color){20, 40, 80, 200});
             }
         }
     }
@@ -804,7 +798,7 @@ static void DrawFire(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw fire at deeper levels (z-9 through z-2)
-    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 2; zDepth++) {
         if (zDepth < 0) continue;
         
         for (int y = minY; y < maxY; y++) {
@@ -828,9 +822,7 @@ static void DrawFire(void) {
                 DrawRectangleRec(dest, fireColor);
                 
                 if (cell->isSource) {
-                    float inset = size * 0.3f;
-                    Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                    DrawRectangleRec(inner, (Color){191, 165, 75, 200});
+                    DrawSourceMarker(dest, size, (Color){191, 165, 75, 200});
                 }
             }
         }
@@ -862,10 +854,8 @@ static void DrawFire(void) {
             DrawRectangleRec(dest, fireColor);
             
             if (cell->isSource) {
-                float inset = size * 0.3f;
-                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
                 Color srcColor = fireZ < z ? (Color){191, 165, 75, 200} : (Color){255, 220, 100, 200};
-                DrawRectangleRec(inner, srcColor);
+                DrawSourceMarker(dest, size, srcColor);
             }
         }
     }
@@ -880,7 +870,7 @@ static void DrawSmoke(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw smoke at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
         if (zDepth < 0) continue;
         
         for (int y = minY; y < maxY; y++) {
@@ -925,7 +915,7 @@ static void DrawSteam(void) {
     GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
 
     // Draw steam at deeper levels (z-9 through z-1) with depth darkening
-    for (int zDepth = z - 9; zDepth <= z - 1; zDepth++) {
+    for (int zDepth = z - MAX_VISIBLE_DEPTH; zDepth <= z - 1; zDepth++) {
         if (zDepth < 0) continue;
         
         for (int y = minY; y < maxY; y++) {
@@ -1012,16 +1002,12 @@ static void DrawTemperature(void) {
             
             // Mark heat sources with a bright center
             if (IsHeatSource(x, y, z)) {
-                float inset = size * 0.3f;
-                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                DrawRectangleRec(inner, (Color){255, 200, 100, 200});
+                DrawSourceMarker(dest, size, (Color){255, 200, 100, 200});
             }
-            
+
             // Mark cold sources with a cyan center
             if (IsColdSource(x, y, z)) {
-                float inset = size * 0.3f;
-                Rectangle inner = {dest.x + inset, dest.y + inset, size - inset*2, size - inset*2};
-                DrawRectangleRec(inner, (Color){100, 200, 255, 200});
+                DrawSourceMarker(dest, size, (Color){100, 200, 255, 200});
             }
         }
     }
@@ -1185,6 +1171,115 @@ static void DrawAgents(void) {
     }
 }
 
+static void DrawMoverPath(const Mover* m, float sx, float sy, int viewZ,
+                          Color color, float lineWidth, float segmentWidth, float segmentFade) {
+    Point next = m->path[m->pathIndex];
+    if (next.z == viewZ) {
+        float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, lineWidth, color);
+    }
+    for (int j = m->pathIndex; j > 0; j--) {
+        if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
+        float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+        DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, segmentWidth, Fade(color, segmentFade));
+    }
+}
+
+static Vector2 CalcWorkAnimOffset(Mover* m) {
+    Vector2 off = {0, 0};
+    Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+    bool isWorking = job && (job->step == STEP_WORKING || job->step == CRAFT_STEP_WORKING);
+    if (!isWorking) {
+        m->workAnimPhase = 0.0f;
+        return off;
+    }
+    if (gameSpeed > 0.0f) m->workAnimPhase += GetFrameTime();
+    bool isOnTile = (job->type == JOBTYPE_CHANNEL ||
+                     job->type == JOBTYPE_REMOVE_FLOOR ||
+                     job->type == JOBTYPE_PLANT_SAPLING ||
+                     job->type == JOBTYPE_GATHER_GRASS ||
+                     job->type == JOBTYPE_CLEAN);
+    if (isOnTile) {
+        float wave = sinf(m->workAnimPhase * WORK_BOB_FREQ * 2.0f * PI);
+        off.y = -fabsf(wave) * WORK_BOB_AMPLITUDE * CELL_SIZE * zoom;
+    } else {
+        // Determine work target position based on job type
+        float workTargetX = -1, workTargetY = -1;
+        if (job->type == JOBTYPE_CRAFT || job->type == JOBTYPE_IGNITE_WORKSHOP) {
+            if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS &&
+                workshops[job->targetWorkshop].active) {
+                Workshop* ws = &workshops[job->targetWorkshop];
+                workTargetX = (ws->workTileX + 0.5f) * CELL_SIZE;
+                workTargetY = (ws->workTileY + 0.5f) * CELL_SIZE;
+            }
+        } else if (job->type == JOBTYPE_BUILD) {
+            if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS &&
+                blueprints[job->targetBlueprint].active) {
+                workTargetX = (blueprints[job->targetBlueprint].x + 0.5f) * CELL_SIZE;
+                workTargetY = (blueprints[job->targetBlueprint].y + 0.5f) * CELL_SIZE;
+            }
+        } else {
+            // Mining, chopping, dig ramp, etc. — use targetMineX/Y
+            workTargetX = (job->targetMineX + 0.5f) * CELL_SIZE;
+            workTargetY = (job->targetMineY + 0.5f) * CELL_SIZE;
+        }
+
+        if (workTargetX >= 0) {
+            float wave = sinf(m->workAnimPhase * WORK_SWAY_FREQ * 2.0f * PI);
+            float ddx = workTargetX - m->x;
+            float ddy = workTargetY - m->y;
+            float dist = sqrtf(ddx * ddx + ddy * ddy);
+            if (dist > 0.01f) { ddx /= dist; ddy /= dist; }
+            float swayAmount = wave * WORK_SWAY_AMPLITUDE * CELL_SIZE * zoom;
+            off.x = ddx * swayAmount;
+            off.y = ddy * swayAmount;
+        }
+    }
+    return off;
+}
+
+static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color skyColor) {
+    Job* moverJob = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+    int carryingItem = moverJob ? moverJob->carryingItem : -1;
+    if (carryingItem < 0 && moverJob && moverJob->step == CRAFT_STEP_CARRYING_FUEL) {
+        carryingItem = moverJob->fuelItem;
+    }
+    if (carryingItem < 0 || !items[carryingItem].active) return;
+
+    float size = CELL_SIZE * zoom;
+    float moverSize = size * MOVER_SIZE;
+    int moverZ = (int)m->z;
+
+    Item* item = &items[carryingItem];
+    int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
+    float itemSize = size * ITEM_SIZE_CARRIED;
+    float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
+    Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
+
+    // Apply depth tinting, darkening, and lighting to carried items
+    int cellX = (int)(m->x / CELL_SIZE);
+    int cellY = (int)(m->y / CELL_SIZE);
+    Color lightTint = GetLightColor(cellX, cellY, moverZ, skyColor);
+    Color itemTint = lightTint;
+    Color borderTint = MultiplyColor(ItemBorderTint(item->type), lightTint);
+    if (moverZ < viewZ) {
+        Color depthTint = GetDepthTint(moverZ, viewZ);
+        itemTint = FloorDarkenTint(MultiplyColor(itemTint, depthTint));
+        borderTint = FloorDarkenTint(MultiplyColor(borderTint, depthTint));
+    }
+
+    if (ItemUsesBorder(item->type)) {
+        DrawItemWithBorder(sprite, itemDest, itemTint, borderTint);
+    } else {
+        Rectangle itemSrc = SpriteGetRect(sprite);
+        DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, itemTint);
+    }
+}
+
 static void DrawMovers(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -1204,7 +1299,7 @@ static void DrawMovers(void) {
         int moverZ = (int)m->z;
         
         // Only draw movers within visible depth range (current z and up to 9 levels below)
-        if (moverZ > viewZ || moverZ < viewZ - 9) continue;
+        if (moverZ > viewZ || moverZ < viewZ - MAX_VISIBLE_DEPTH) continue;
         
         // Check if mover is visible (clear line of sight from above)
         if (moverZ < viewZ) {
@@ -1226,54 +1321,9 @@ static void DrawMovers(void) {
 
         // Work animation: sway toward target (adjacent work) or bob in place (on-tile work)
         {
-            Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
-            bool isWorking = job && (job->step == STEP_WORKING || job->step == CRAFT_STEP_WORKING);
-            if (isWorking) {
-                if (gameSpeed > 0.0f) m->workAnimPhase += GetFrameTime();
-                bool isOnTile = (job->type == JOBTYPE_CHANNEL ||
-                                 job->type == JOBTYPE_REMOVE_FLOOR ||
-                                 job->type == JOBTYPE_PLANT_SAPLING ||
-                                 job->type == JOBTYPE_GATHER_GRASS ||
-                                 job->type == JOBTYPE_CLEAN);
-                if (isOnTile) {
-                    float wave = sinf(m->workAnimPhase * WORK_BOB_FREQ * 2.0f * PI);
-                    sy -= fabsf(wave) * WORK_BOB_AMPLITUDE * CELL_SIZE * zoom;
-                } else {
-                    // Determine work target position based on job type
-                    float workTargetX = -1, workTargetY = -1;
-                    if (job->type == JOBTYPE_CRAFT || job->type == JOBTYPE_IGNITE_WORKSHOP) {
-                        if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS &&
-                            workshops[job->targetWorkshop].active) {
-                            Workshop* ws = &workshops[job->targetWorkshop];
-                            workTargetX = (ws->workTileX + 0.5f) * CELL_SIZE;
-                            workTargetY = (ws->workTileY + 0.5f) * CELL_SIZE;
-                        }
-                    } else if (job->type == JOBTYPE_BUILD) {
-                        if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS &&
-                            blueprints[job->targetBlueprint].active) {
-                            workTargetX = (blueprints[job->targetBlueprint].x + 0.5f) * CELL_SIZE;
-                            workTargetY = (blueprints[job->targetBlueprint].y + 0.5f) * CELL_SIZE;
-                        }
-                    } else {
-                        // Mining, chopping, dig ramp, etc. — use targetMineX/Y
-                        workTargetX = (job->targetMineX + 0.5f) * CELL_SIZE;
-                        workTargetY = (job->targetMineY + 0.5f) * CELL_SIZE;
-                    }
-
-                    if (workTargetX >= 0) {
-                        float wave = sinf(m->workAnimPhase * WORK_SWAY_FREQ * 2.0f * PI);
-                        float ddx = workTargetX - m->x;
-                        float ddy = workTargetY - m->y;
-                        float dist = sqrtf(ddx * ddx + ddy * ddy);
-                        if (dist > 0.01f) { ddx /= dist; ddy /= dist; }
-                        float swayAmount = wave * WORK_SWAY_AMPLITUDE * CELL_SIZE * zoom;
-                        sx += ddx * swayAmount;
-                        sy += ddy * swayAmount;
-                    }
-                }
-            } else {
-                m->workAnimPhase = 0.0f;
-            }
+            Vector2 workOff = CalcWorkAnimOffset(m);
+            sx += workOff.x;
+            sy += workOff.y;
         }
 
         // Choose color based on mover state or debug mode
@@ -1348,38 +1398,7 @@ static void DrawMovers(void) {
         Rectangle dest = { sx - moverSize/2, sy - moverSize/2, moverSize, moverSize };
         DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, moverColor);
 
-        // Draw carried item above mover's head (includes fuel being carried to workshop)
-        Job* moverJob = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
-        int carryingItem = moverJob ? moverJob->carryingItem : -1;
-        if (carryingItem < 0 && moverJob && moverJob->step == CRAFT_STEP_CARRYING_FUEL) {
-            carryingItem = moverJob->fuelItem;
-        }
-        if (carryingItem >= 0 && items[carryingItem].active) {
-            Item* item = &items[carryingItem];
-            int sprite = ItemSpriteForTypeMaterial(item->type, item->material);
-            float itemSize = size * ITEM_SIZE_CARRIED;
-            float itemY = sy - moverSize/2 - itemSize + moverSize * 0.2f;
-            Rectangle itemDest = { sx - itemSize/2, itemY, itemSize, itemSize };
-            
-            // Apply depth tinting, darkening, and lighting to carried items
-            int cellX = (int)(m->x / CELL_SIZE);
-            int cellY = (int)(m->y / CELL_SIZE);
-            Color lightTint = GetLightColor(cellX, cellY, moverZ, skyColor);
-            Color itemTint = lightTint;
-            Color borderTint = MultiplyColor(ItemBorderTint(item->type), lightTint);
-            if (moverZ < viewZ) {
-                Color depthTint = GetDepthTint(moverZ, viewZ);
-                itemTint = FloorDarkenTint(MultiplyColor(itemTint, depthTint));
-                borderTint = FloorDarkenTint(MultiplyColor(borderTint, depthTint));
-            }
-            
-            if (ItemUsesBorder(item->type)) {
-                DrawItemWithBorder(sprite, itemDest, itemTint, borderTint);
-            } else {
-                Rectangle itemSrc = SpriteGetRect(sprite);
-                DrawTexturePro(atlas, itemSrc, itemDest, (Vector2){0, 0}, 0, itemTint);
-            }
-        }
+        DrawCarriedItem(m, sx, sy, viewZ, skyColor);
     }
 
     // Draw mover paths in separate loop for profiling
@@ -1392,25 +1411,7 @@ static void DrawMovers(void) {
 
             float sx = offset.x + m->x * zoom;
             float sy = offset.y + m->y * zoom;
-            Color color = moverRenderData[i].color;
-
-            // Line to next waypoint (if on same z)
-            Point next = m->path[m->pathIndex];
-            if (next.z == viewZ) {
-                float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, color);
-            }
-
-            // Rest of path
-            for (int j = m->pathIndex; j > 0; j--) {
-                if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
-                float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 1.0f, Fade(color, 0.4f));
-            }
+            DrawMoverPath(m, sx, sy, viewZ, moverRenderData[i].color, 2.0f, 1.0f, 0.4f);
         }
         PROFILE_END(MoverPaths);
     }
@@ -1421,23 +1422,7 @@ static void DrawMovers(void) {
         if (m->active && m->pathIndex >= 0) {
             float sx = offset.x + m->x * zoom;
             float sy = offset.y + m->y * zoom;
-            Color pathColor = YELLOW;
-
-            Point next = m->path[m->pathIndex];
-            if (next.z == viewZ) {
-                float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                DrawLineEx((Vector2){sx, sy}, (Vector2){tx, ty}, 2.0f, pathColor);
-            }
-
-            for (int j = m->pathIndex; j > 0; j--) {
-                if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
-                float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
-            }
+            DrawMoverPath(m, sx, sy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
         }
     }
 }
@@ -1461,7 +1446,7 @@ static void DrawAnimals(void) {
         int az = (int)a->z;
 
         // Depth range check
-        if (az > viewZ || az < viewZ - 9) continue;
+        if (az > viewZ || az < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         // Visibility from above
         if (az < viewZ) {
@@ -1632,7 +1617,7 @@ static void DrawItems(void) {
         if (item->state == ITEM_IN_STOCKPILE) continue;
 
         int itemZ = (int)item->z;
-        if (itemZ > viewZ || itemZ < viewZ - 9) continue;
+        if (itemZ > viewZ || itemZ < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         int cellX = (int)(item->x / CELL_SIZE);
         int cellY = (int)(item->y / CELL_SIZE);
@@ -1682,7 +1667,7 @@ static void DrawLightSources(void) {
         if (!src->active) continue;
 
         int srcZ = src->z;
-        if (srcZ > viewZ || srcZ < viewZ - 9) continue;
+        if (srcZ > viewZ || srcZ < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         // Visibility check for light sources below current view
         if (srcZ < viewZ) {
@@ -1719,7 +1704,7 @@ static void DrawGatherZones(void) {
     for (int i = 0; i < MAX_GATHER_ZONES; i++) {
         GatherZone* gz = &gatherZones[i];
         if (!gz->active) continue;
-        if (gz->z > viewZ || gz->z < viewZ - 9) continue;
+        if (gz->z > viewZ || gz->z < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         // Simple visibility: skip if any cell in the zone is blocked
         bool belowView = gz->z < viewZ;
@@ -1750,7 +1735,7 @@ static void DrawStockpileTiles(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
-        if (sp->z > viewZ || sp->z < viewZ - 9) continue;
+        if (sp->z > viewZ || sp->z < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         // Visibility check for stockpiles below current view
         bool belowView = sp->z < viewZ;
@@ -1804,7 +1789,7 @@ static void DrawStockpileItems(void) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
         if (!sp->active) continue;
-        if (sp->z > viewZ || sp->z < viewZ - 9) continue;
+        if (sp->z > viewZ || sp->z < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         bool belowView = sp->z < viewZ;
 
@@ -1863,7 +1848,7 @@ static void DrawWorkshops(void) {
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         Workshop* ws = &workshops[i];
         if (!ws->active) continue;
-        if (ws->z > viewZ || ws->z < viewZ - 9) continue;
+        if (ws->z > viewZ || ws->z < viewZ - MAX_VISIBLE_DEPTH) continue;
 
         bool belowView = ws->z < viewZ;
 
@@ -1945,30 +1930,10 @@ static void DrawWorkshops(void) {
         if (ws->active && ws->assignedCrafter >= 0) {
             Mover* m = &movers[ws->assignedCrafter];
             if (m->active && m->pathIndex >= 0) {
-                Color pathColor = YELLOW;
-                
-                // Draw line from mover to next waypoint
                 float msx = offset.x + m->x * zoom;
                 float msy = offset.y + m->y * zoom;
-                Point next = m->path[m->pathIndex];
-                if (next.z == viewZ) {
-                    float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    DrawLineEx((Vector2){msx, msy}, (Vector2){tx, ty}, 2.0f, pathColor);
-                }
-                
-                // Draw rest of path
-                for (int j = m->pathIndex; j > 0; j--) {
-                    if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
-                    float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
-                }
-                
-                // Draw mover position marker
-                DrawCircle((int)msx, (int)msy, 4.0f * zoom, pathColor);
+                DrawMoverPath(m, msx, msy, viewZ, YELLOW, 2.0f, 2.0f, 0.6f);
+                DrawCircle((int)msx, (int)msy, 4.0f * zoom, YELLOW);
             }
         }
     }
@@ -2217,30 +2182,10 @@ static void DrawMiningDesignations(void) {
         if (d && d->assignedMover >= 0) {
             Mover* m = &movers[d->assignedMover];
             if (m->active && m->pathIndex >= 0) {
-                Color pathColor = ORANGE;
-                
-                // Draw line from mover to next waypoint
                 float msx = offset.x + m->x * zoom;
                 float msy = offset.y + m->y * zoom;
-                Point next = m->path[m->pathIndex];
-                if (next.z == viewZ) {
-                    float tx = offset.x + (next.x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float ty = offset.y + (next.y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    DrawLineEx((Vector2){msx, msy}, (Vector2){tx, ty}, 2.0f, pathColor);
-                }
-                
-                // Draw rest of path
-                for (int j = m->pathIndex; j > 0; j--) {
-                    if (m->path[j].z != viewZ || m->path[j-1].z != viewZ) continue;
-                    float px1 = offset.x + (m->path[j].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float py1 = offset.y + (m->path[j].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float px2 = offset.x + (m->path[j-1].x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    float py2 = offset.y + (m->path[j-1].y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
-                    DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
-                }
-                
-                // Draw mover position marker
-                DrawCircle((int)msx, (int)msy, 4.0f * zoom, pathColor);
+                DrawMoverPath(m, msx, msy, viewZ, ORANGE, 2.0f, 2.0f, 0.6f);
+                DrawCircle((int)msx, (int)msy, 4.0f * zoom, ORANGE);
             }
         }
     }
@@ -2436,12 +2381,3 @@ static void DrawMist(void) {
     }
 }
 
-static void DrawMaterialHelp(void) {
-    // Material selection is now shown in the action bar, no need for top-right help text
-    return;
-}
-
-static void DrawLightPreview(void) {
-    // Torch color selection is now shown in the action bar, no need for top-right indicator
-    return;
-}

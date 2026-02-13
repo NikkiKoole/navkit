@@ -1253,8 +1253,6 @@ int main(int argc, char** argv) {
         DrawMiningDesignations();
         DrawBlueprints();
         DrawTerrainBrushPreview();
-        DrawMaterialHelp();
-        DrawLightPreview();
         if (showChunkBoundaries) {
             DrawChunkBoundaries();
         }
