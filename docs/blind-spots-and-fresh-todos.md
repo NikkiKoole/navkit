@@ -636,7 +636,7 @@ This document catalogs **features and systems that haven't been thought about ye
 ### Hidden Features Exposed (Make Discoverable):
 36. ~~**Material properties tooltip**~~ ✅ DONE - Stone floor 50% dirt rate shown in tooltip
 37. ~~**Ramp direction arrows**~~ ✅ DONE - Visual arrows on ramps showing up/down direction
-38. **Debug mode panel** - Single UI panel to toggle all visualization modes
+38. ~~**Debug mode panel**~~ ✅ DONE - Consolidated all debug toggles into single "Debug" section with Rendering/Pathfinding/Mover Diagnostics/Overlays subsections
 39. ~~**Sapling regrowth toggle**~~ ✅ DONE - UI option to enable forest regeneration (ui_panels.c line 765)
 40. ~~**Workshop collision bounds**~~ ✅ DONE - Per-tile colored preview showing block/work/output/fuel tiles
 

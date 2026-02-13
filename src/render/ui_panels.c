@@ -122,18 +122,6 @@ void DrawUI(void) {
     // === VIEW ===
     if (SectionHeader(x, y, "View", &sectionView)) {
         y += 18;
-        ToggleBool(x, y, "Show Graph", &showGraph);
-        y += 22;
-        ToggleBool(x, y, "Show Entrances", &showEntrances);
-        y += 22;
-        ToggleBool(x, y, "Show Chunks", &showChunkBoundaries);
-        y += 22;
-        ToggleBool(x, y, "Show Job Lines", &showJobLines);
-        y += 22;
-        ToggleBool(x, y, "Show Sim Sources", &showSimSources);
-        y += 22;
-        ToggleBool(x, y, "Cull Drawing", &cullDrawing);
-        y += 22;
         if (PushButton(x, y, "Cutscene")) {
             PlayTestCutscene();
         }
@@ -409,12 +397,6 @@ void DrawUI(void) {
             ClearMovers();
         }
         y += 22;
-        ToggleBool(x, y, "Show Movers", &showMovers);
-        y += 22;
-        ToggleBool(x, y, "Pixel Perfect", &usePixelPerfectMovers);
-        y += 22;
-        ToggleBool(x, y, "Show Paths", &showMoverPaths);
-        y += 22;
         ToggleBool(x, y, "String Pulling", &useStringPulling);
         y += 22;
         ToggleBool(x, y, "Endless Mode", &endlessMoverMode);
@@ -449,18 +431,6 @@ void DrawUI(void) {
             ToggleBool(x + 10, y, "Knot Fix", &useKnotFix);
         }
 
-        // Debug views subsection
-        y += 22;
-        if (SectionHeader(x + 10, y, "Debug Views", &sectionMoverDebug)) {
-            y += 18;
-            ToggleBool(x + 10, y, "Show Neighbors", &showNeighborCounts);
-            y += 22;
-            ToggleBool(x + 10, y, "Show Open Area", &showOpenArea);
-            y += 22;
-            ToggleBool(x + 10, y, "Show Knots", &showKnotDetection);
-            y += 22;
-            ToggleBool(x + 10, y, "Show Stuck", &showStuckDetection);
-        }
     }
     y += 22;
 
@@ -518,8 +488,6 @@ void DrawUI(void) {
         if (PushButton(x, y, "Clear Items")) {
             ClearItems();
         }
-        y += 22;
-        ToggleBool(x, y, "Show Items", &showItems);
         y += 22;
         if (PushButton(x, y, "Stockpile: All"))   SpawnStockpileWithFilters(true, true, true);
         y += 22;
@@ -670,9 +638,6 @@ void DrawUI(void) {
         y += 18;
         ToggleBoolT(x, y, "Enabled", &temperatureEnabled,
             "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
-        y += 22;
-        ToggleBoolT(x, y, "Show Overlay", &showTemperatureOverlay,
-            "Show temperature overlay: blue=cold, red=hot. Neutral temperatures are transparent.");
         y += 22;
         DraggableIntT(x, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
             TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.",
@@ -923,6 +888,62 @@ void DrawUI(void) {
         
         // Timestep mode
         ToggleBool(x, y, "Fixed Timestep", &useFixedTimestep);
+    }
+    y += 22;
+
+    // === DEBUG VISUALIZATION ===
+    y += 8;
+    if (SectionHeader(x, y, "Debug", &sectionDebug)) {
+        y += 18;
+
+        // Rendering
+        if (SectionHeader(x + 10, y, "Rendering", &sectionDebugRendering)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Show Movers", &showMovers);
+            y += 22;
+            ToggleBool(x + 10, y, "Pixel Perfect", &usePixelPerfectMovers);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Items", &showItems);
+            y += 22;
+            ToggleBool(x + 10, y, "Cull Drawing", &cullDrawing);
+        }
+        y += 22;
+
+        // Pathfinding
+        if (SectionHeader(x + 10, y, "Pathfinding", &sectionDebugPathfinding)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Show Graph", &showGraph);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Entrances", &showEntrances);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Chunks", &showChunkBoundaries);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Paths", &showMoverPaths);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Job Lines", &showJobLines);
+        }
+        y += 22;
+
+        // Mover Diagnostics
+        if (SectionHeader(x + 10, y, "Mover Diagnostics", &sectionDebugMovers)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Show Neighbors", &showNeighborCounts);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Open Area", &showOpenArea);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Knots", &showKnotDetection);
+            y += 22;
+            ToggleBool(x + 10, y, "Show Stuck", &showStuckDetection);
+        }
+        y += 22;
+
+        // Overlays
+        if (SectionHeader(x + 10, y, "Overlays", &sectionDebugOverlays)) {
+            y += 18;
+            ToggleBool(x + 10, y, "Sim Sources", &showSimSources);
+            y += 22;
+            ToggleBool(x + 10, y, "Temperature", &showTemperatureOverlay);
+        }
     }
     y += 22;
 
