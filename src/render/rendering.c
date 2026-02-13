@@ -1630,6 +1630,59 @@ static void DrawWorkshops(void) {
     }
 }
 
+// Draw highlighting when in stockpile linking mode
+static void DrawLinkingModeHighlights(void) {
+    if (workSubMode != SUBMODE_LINKING_STOCKPILES || linkingWorkshopIdx < 0) return;
+    if (linkingWorkshopIdx >= workshopCount) return;
+    
+    Workshop* ws = &workshops[linkingWorkshopIdx];
+    if (!ws->active) return;
+    
+    float size = CELL_SIZE * zoom;
+    
+    // Highlight workshop being linked (yellow pulsing outline)
+    float pulse = sinf((float)GetTime() * 3.0f) * 0.3f + 0.7f;  // 0.7-1.0
+    Color highlightColor = ColorAlpha(YELLOW, pulse);
+    
+    for (int dy = 0; dy < ws->height; dy++) {
+        for (int dx = 0; dx < ws->width; dx++) {
+            int wx = ws->x + dx;
+            int wy = ws->y + dy;
+            
+            if ((int)ws->z != currentViewZ) continue;  // Only highlight on current z-level
+            
+            float sx = offset.x + wx * size;
+            float sy = offset.y + wy * size;
+            
+            DrawRectangleLines((int)sx, (int)sy, (int)size, (int)size, highlightColor);
+        }
+    }
+    
+    // Highlight hovered stockpile (green if linkable, red if not)
+    if (hoveredStockpile >= 0 && hoveredStockpile < stockpileCount) {
+        Stockpile* sp = &stockpiles[hoveredStockpile];
+        if (sp->active && (int)sp->z == currentViewZ) {
+            bool alreadyLinked = IsStockpileLinked(linkingWorkshopIdx, hoveredStockpile);
+            bool slotsFull = ws->linkedInputCount >= MAX_LINKED_STOCKPILES;
+            
+            Color stockpileHighlight = GREEN;
+            if (alreadyLinked || slotsFull) {
+                stockpileHighlight = RED;
+            }
+            stockpileHighlight = ColorAlpha(stockpileHighlight, 0.8f);
+            
+            // Draw outline around stockpile
+            for (int dy = 0; dy < sp->height; dy++) {
+                for (int dx = 0; dx < sp->width; dx++) {
+                    int sx = (int)(offset.x + (sp->x + dx) * size);
+                    int sy = (int)(offset.y + (sp->y + dy) * size);
+                    DrawRectangleLines(sx, sy, (int)size, (int)size, stockpileHighlight);
+                }
+            }
+        }
+    }
+}
+
 static void DrawHaulDestinations(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;

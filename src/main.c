@@ -555,6 +555,7 @@ void DrawGatherZones(void);
 void DrawStockpileTiles(void);
 void DrawStockpileItems(void);
 void DrawWorkshops(void);
+void DrawLinkingModeHighlights(void);
 void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
@@ -1140,6 +1141,7 @@ int main(int argc, char** argv) {
         }
         DrawStockpileTiles();
         DrawWorkshops();
+        DrawLinkingModeHighlights();  // Highlight workshop and stockpile during linking
         DrawHaulDestinations();
         DrawStockpileItems();
         DrawMiningDesignations();
