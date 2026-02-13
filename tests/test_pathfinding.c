@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/terrain.h"
@@ -1195,7 +1196,7 @@ describe(diagonal_corner_cutting) {
             "........",
         };
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
@@ -1228,7 +1229,7 @@ describe(diagonal_corner_cutting) {
             "........",
         };
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
@@ -1270,7 +1271,7 @@ describe(diagonal_corner_cutting) {
             "........",
         };
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
@@ -1316,7 +1317,7 @@ describe(diagonal_corner_cutting) {
             "........",
         };
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         CellType walkable = CELL_AIR;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
@@ -1398,7 +1399,7 @@ static void TestStringPullPath(Point* pathArr, int* pathLen) {
 describe(string_pulling) {
     it("should reduce path to 2 points on open grid") {
         // Open 16x16 grid, path from corner to corner
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         
         startPos = (Point){0, 0, 0};
         goalPos = (Point){15, 15, 0};
@@ -1426,7 +1427,7 @@ describe(string_pulling) {
         // 3 ...#......
         // 4 ..........
         // 5 .........G
-        InitGridWithSizeAndChunkSize(10, 6, 10, 6);
+        InitTestGrid(10, 6);
         
         grid[0][1][1] = CELL_WALL;
         grid[0][1][2] = CELL_WALL;
@@ -1455,7 +1456,7 @@ describe(string_pulling) {
         // 1 .#..
         // 2 ..#.
         // 3 ...G
-        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        InitTestGrid(4, 4);
         
         grid[0][1][1] = CELL_WALL;
         grid[0][2][2] = CELL_WALL;
@@ -3036,7 +3037,7 @@ describe(ladder_placement) {
     it("place_basic - Place ladder on empty ground creates UP and DOWN") {
         // z=1:  .            D
         // z=0:  .  <- place  U
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 3;
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3054,7 +3055,7 @@ describe(ladder_placement) {
         // Start with: z=0 UP, z=1 DOWN
         // Click on z=1 (the DOWN/top piece) to extend upward
         // Result: z=0 UP, z=1 BOTH, z=2 DOWN
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3081,7 +3082,7 @@ describe(ladder_placement) {
     it("place_wall_above - Wall blocks auto-placement (orphan UP)") {
         // z=1:  #            #
         // z=0:  .  <- place  U
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 2;
         grid[1][2][2] = CELL_WALL;  // Wall above
         
@@ -3094,7 +3095,7 @@ describe(ladder_placement) {
     it("place_connect_two_shafts - Placing connects to existing shaft above") {
         // When placing at z=2 where z=1 has DOWN, we connect by becoming DOWN
         // (entry point from below into the shaft above)
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3139,7 +3140,7 @@ describe(ladder_placement) {
         // Start with ladder at z=1 going up to z=2
         // Then add ladder at z=0 to extend downward
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3177,7 +3178,7 @@ describe(ladder_erase) {
         // z=2:  B  <- erase  D
         // z=1:  B            B
         // z=0:  U            U
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 5;
         for (int z = 0; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3210,7 +3211,7 @@ describe(ladder_erase) {
     it("erase_up - Erase UP cascades up, removes orphan DOWN") {
         // z=1:  D            .
         // z=0:  U  <- erase  .
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 2;
         grid[1][2][2] = CELL_AIR;  // Make sure z=1 starts as air
         
@@ -3231,7 +3232,7 @@ describe(ladder_erase) {
     it("erase_down - Erase DOWN cascades down, removes orphan UP") {
         // z=1:  D  <- erase  .
         // z=0:  U            .
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 2;
         grid[1][2][2] = CELL_AIR;
         
@@ -3253,7 +3254,7 @@ describe(ladder_erase) {
         // z=2:  D            .  (removed - orphan DOWN)
         // z=1:  B  <- erase  D
         // z=0:  U            U
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 3;
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3277,7 +3278,7 @@ describe(ladder_erase) {
         // z=2:  D            D
         // z=1:  B  <- erase  U
         // z=0:  B            D
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 3;
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)
@@ -3314,7 +3315,7 @@ describe(ladder_erase) {
         // 
         // + means add at that level, - means delete
         
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 5;
         for (int z = 1; z < gridDepth; z++)
             for (int y = 0; y < gridHeight; y++)

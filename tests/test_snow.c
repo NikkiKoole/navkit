@@ -7,6 +7,7 @@
 #include "../src/simulation/fire.h"
 #include "../src/simulation/groundwear.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/entities/mover.h"
@@ -25,7 +26,7 @@ static void SetTestTemperature(int celsius) {
 // ========== Snow Grid Basics ==========
 describe(snow_grid_basics) {
     it("initializes to zero") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         for (int z = 0; z < gridDepth; z++) {
@@ -38,7 +39,7 @@ describe(snow_grid_basics) {
     }
     
     it("sets and gets snow levels") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         SetSnowLevel(5, 5, 2, 1);
@@ -52,7 +53,7 @@ describe(snow_grid_basics) {
     }
     
     it("clamps snow levels to 0-3") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         SetSnowLevel(5, 5, 2, 5);  // Should clamp to 3
@@ -63,7 +64,7 @@ describe(snow_grid_basics) {
     }
     
     it("handles out-of-bounds safely") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         // Should not crash
@@ -79,9 +80,10 @@ describe(snow_grid_basics) {
 // ========== Snow Accumulation ==========
 describe(snow_accumulation) {
     it("accumulates during WEATHER_SNOW on exposed cells") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
+        seasonalAmplitude = 0;
         
         // Set up exposed dirt cell (CELL_WALL with dirt material)
         grid[0][5][5] = CELL_WALL;
@@ -105,7 +107,7 @@ describe(snow_accumulation) {
     }
     
     it("does not accumulate on sheltered cells") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         
@@ -127,7 +129,7 @@ describe(snow_accumulation) {
     }
     
     it("accumulates faster during high intensity snow") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         
@@ -163,7 +165,7 @@ describe(snow_accumulation) {
     }
     
     it("only accumulates below freezing temperature") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         
@@ -186,7 +188,7 @@ describe(snow_accumulation) {
 // ========== Snow Melting ==========
 describe(snow_melting) {
     it("melts above freezing and increases wetness") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         
@@ -213,7 +215,7 @@ describe(snow_melting) {
     }
     
     it("creates mud on dirt when snow melts") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         InitGroundWear();  // Need this for IsMuddy to work
@@ -239,7 +241,7 @@ describe(snow_melting) {
     }
     
     it("persists at or below freezing") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitWeather();
         
@@ -261,7 +263,7 @@ describe(snow_melting) {
 // ========== Snow Movement Penalty ==========
 describe(snow_movement) {
     it("applies light snow penalty (0.85x speed)") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
@@ -272,7 +274,7 @@ describe(snow_movement) {
     }
     
     it("applies heavy snow penalty (0.6x speed)") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
@@ -283,7 +285,7 @@ describe(snow_movement) {
     }
     
     it("no penalty without snow") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         
         grid[0][5][5] = CELL_WALL; SetWallMaterial(5, 5, 0, MAT_DIRT);
@@ -297,7 +299,7 @@ describe(snow_movement) {
 // ========== Snow Fire Interaction ==========
 describe(snow_fire_interaction) {
     it("extinguishes fire on snowy cells") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitFire();
         
@@ -317,7 +319,7 @@ describe(snow_fire_interaction) {
     }
     
     it("does not extinguish fire with light snow") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitSnow();
         InitFire();
         
@@ -337,7 +339,7 @@ describe(snow_fire_interaction) {
 // ========== Cloud Shadows ==========
 describe(cloud_shadow) {
     it("varies intensity by weather type") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(10, 10);
         InitWeather();
         
         // Clear weather - no shadows
@@ -357,22 +359,22 @@ describe(cloud_shadow) {
     }
     
     it("varies by position") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(128, 128);
         InitWeather();
         
         weatherState.current = WEATHER_CLOUDY;
         
         float shadow1 = GetCloudShadow(0, 0, 0.0f);
-        float shadow2 = GetCloudShadow(5, 5, 0.0f);
-        float shadow3 = GetCloudShadow(9, 9, 0.0f);
+        float shadow2 = GetCloudShadow(50, 50, 0.0f);
+        float shadow3 = GetCloudShadow(100, 100, 0.0f);
         
-        // At least some should differ (noise-based)
+        // At least some should differ (patch-based shadows)
         int allSame = (shadow1 == shadow2 && shadow2 == shadow3);
         expect(!allSame);
     }
     
     it("moves with wind over time") {
-        InitGridWithSizeAndChunkSize(10, 10, 10, 10);
+        InitTestGrid(128, 128);
         InitWeather();
         
         weatherState.current = WEATHER_CLOUDY;
@@ -380,11 +382,18 @@ describe(cloud_shadow) {
         weatherState.windDirY = 0.0f;
         weatherState.windStrength = 2.0f;
         
-        float shadow1 = GetCloudShadow(5, 5, 0.0f);
-        float shadow2 = GetCloudShadow(5, 5, 10.0f);  // 10 seconds later
-        
-        // Should differ due to wind movement
-        expect(shadow1 != shadow2);
+        // Sample many points — at least one should see shadow change
+        // as patches drift with wind over a large time delta
+        int anyDiffers = 0;
+        for (int x = 0; x < 128; x += 8) {
+            for (int y = 0; y < 128; y += 8) {
+                float s1 = GetCloudShadow(x, y, 0.0f);
+                float s2 = GetCloudShadow(x, y, 100.0f);
+                if (s1 != s2) { anyDiffers = 1; break; }
+            }
+            if (anyDiffers) break;
+        }
+        expect(anyDiffers);
     }
 }
 

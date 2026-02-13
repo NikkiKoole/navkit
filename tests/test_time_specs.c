@@ -8,6 +8,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/fire.h"
@@ -29,7 +30,7 @@ static bool test_verbose = false;
 // =============================================================================
 
 static void SetupTestGrid(void) {
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "................\n"
         "................\n"
         "................\n"
@@ -37,7 +38,7 @@ static void SetupTestGrid(void) {
         "................\n"
         "................\n"
         "................\n"
-        "................\n", 16, 8);
+        "................\n");
     gridDepth = 4;
     
     // Make all cells floor at z=0, air above
@@ -352,6 +353,8 @@ describe(spec_heat_physics) {
     it("heat should rise faster than it sinks (heatRiseBoost)") {
         SetupTestGrid();
         ResetTestState(12345);
+        seasonalAmplitude = 0;
+        InitTemperature();  // Re-init so cells start at correct ambient (20)
         
         SetAmbientSurfaceTemp(20);
         heatTransferInterval = 0.1f;

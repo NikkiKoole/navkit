@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/fire.h"
@@ -55,11 +56,11 @@ static int GetAverageTemp(int x1, int y1, int x2, int y2, int z) {
 
 describe(temperature_initialization) {
     it("should initialize temperature grid to ambient values") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitTemperature();
         
@@ -74,9 +75,9 @@ describe(temperature_initialization) {
     }
     
     it("should clear temperature when ClearTemperature is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitTemperature();
         SetTemperature(2, 0, 0, 100);
@@ -96,9 +97,9 @@ describe(temperature_initialization) {
 
 describe(temperature_level_operations) {
     it("should set temperature within bounds") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         InitTemperature();
         
         SetTemperature(1, 0, 0, 50);   // 50C
@@ -109,8 +110,8 @@ describe(temperature_level_operations) {
     }
     
     it("should clamp temperature to max 2000") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         SetTemperature(0, 0, 0, 5000);
@@ -118,8 +119,8 @@ describe(temperature_level_operations) {
     }
     
     it("should clamp temperature to min -100") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         SetTemperature(0, 0, 0, -500);
@@ -127,8 +128,8 @@ describe(temperature_level_operations) {
     }
     
     it("should report IsFreezing correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         SetTemperature(0, 0, 0, 0);   // At freeze threshold (0C)
@@ -142,8 +143,8 @@ describe(temperature_level_operations) {
     }
     
     it("should report IsHot correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         SetTemperature(0, 0, 0, 40);  // At hot threshold (40C)
@@ -154,8 +155,8 @@ describe(temperature_level_operations) {
     }
     
     it("should report IsComfortable correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         SetTemperature(0, 0, 0, 20);  // In comfortable range (20C)
@@ -175,12 +176,12 @@ describe(temperature_level_operations) {
 
 describe(temperature_heat_spread) {
     it("should spread heat outward from hot cell") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitTemperature();
         
@@ -203,14 +204,14 @@ describe(temperature_heat_spread) {
     }
     
     it("should spread heat in circular pattern (orthogonal first)") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".......\n"
             ".......\n"
             ".......\n"
             ".......\n"
             ".......\n"
             ".......\n"
-            ".......\n", 7, 7);
+            ".......\n");
         
         InitTemperature();
         
@@ -236,13 +237,13 @@ describe(temperature_heat_spread) {
 describe(temperature_stone_insulation) {
     it("should keep heat mostly contained inside stone room") {
         // Create stone room with heat source inside
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".......\n"
             ".#####.\n"
             ".#...#.\n"
             ".#...#.\n"
             ".#####.\n"
-            ".......\n", 7, 6);
+            ".......\n");
         
         InitTemperature();
         
@@ -273,8 +274,8 @@ describe(temperature_stone_insulation) {
 describe(temperature_insulation_comparison) {
     it("should transfer heat slower through higher insulation tiers") {
         // Test insulation tier system
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         // Air should be tier 0
@@ -294,8 +295,8 @@ describe(temperature_insulation_comparison) {
 
 describe(temperature_freezing_conditions) {
     it("should correctly identify freezing temperatures") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitTemperature();
         
         // Set various temperatures and check freezing state (Celsius)
@@ -317,8 +318,9 @@ describe(temperature_freezing_conditions) {
 
 describe(temperature_underground_ambient) {
     it("should have consistent ambient when depth decay is 0") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 16;  // Multiple z-levels
+        seasonalAmplitude = 0;  // Flat ambient for predictable tests
         
         // Initialize all as walkable
         for (int z = 0; z < gridDepth; z++) {
@@ -343,8 +345,9 @@ describe(temperature_underground_ambient) {
     }
     
     it("should create cold storage when temperature is set low") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 16;
+        seasonalAmplitude = 0;
         
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
@@ -372,8 +375,9 @@ describe(temperature_underground_ambient) {
 
 describe(temperature_heated_room) {
     it("should warm up room with heat source") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 16;
+        seasonalAmplitude = 0;
         
         // Create room at z=0
         for (int z = 0; z < gridDepth; z++) {
@@ -420,10 +424,10 @@ describe(temperature_heated_room) {
 
 describe(temperature_fire_heating) {
     it("should heat cells when ApplyFireHeat is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...\n"
             "...\n"
-            "...\n", 3, 3);
+            "...\n");
         
         InitTemperature();
         
@@ -443,8 +447,8 @@ describe(temperature_fire_heating) {
     }
     
     it("should not lower temperature with fire heat") {
-        InitGridFromAsciiWithChunkSize(
-            "...\n", 3, 1);
+        InitTestGridFromAscii(
+            "...\n");
         
         InitTemperature();
         
@@ -466,13 +470,13 @@ describe(temperature_fire_heating) {
 describe(temperature_room_size_heating) {
     it("should heat small room faster than large room") {
         // This is somewhat implicit in the simulation - we verify the concept
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "................\n"
             ".####..########.\n"
             ".#..#..#......#.\n"
             ".####..#......#.\n"
             ".......#......#.\n"
-            ".......########.\n", 16, 6);
+            ".......########.\n");
         
         InitTemperature();
         
@@ -502,10 +506,10 @@ describe(temperature_room_size_heating) {
 
 describe(temperature_decay) {
     it("should decay hot temperature toward ambient") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...\n"
             "...\n"
-            "...\n", 3, 3);
+            "...\n");
         
         InitTemperature();
         
@@ -528,10 +532,10 @@ describe(temperature_decay) {
     }
     
     it("should decay cold temperature toward ambient") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...\n"
             "...\n"
-            "...\n", 3, 3);
+            "...\n");
         
         InitTemperature();
         
@@ -560,8 +564,9 @@ describe(temperature_decay) {
 
 describe(temperature_depth_gradient) {
     it("should have correct ambient temperatures at each depth") {
-        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        InitTestGrid(4, 4);
         gridDepth = 16;
+        seasonalAmplitude = 0;
         
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
@@ -601,12 +606,12 @@ describe(temperature_depth_gradient) {
 
 describe(temperature_cold_source) {
     it("should cool surrounding cells") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitTemperature();
         
@@ -631,8 +636,8 @@ describe(temperature_cold_source) {
     }
     
     it("should maintain freezing temperature") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitTemperature();
         
@@ -654,8 +659,8 @@ describe(temperature_cold_source) {
 
 describe(temperature_sources) {
     it("should maintain heat source temperature") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitTemperature();
         
@@ -670,8 +675,8 @@ describe(temperature_sources) {
     }
     
     it("should maintain cold source temperature") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitTemperature();
         
@@ -686,8 +691,8 @@ describe(temperature_sources) {
     }
     
     it("should stop being source when removed") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitTemperature();
         
@@ -711,8 +716,8 @@ describe(temperature_sources) {
 
 describe(temperature_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitTemperature();
         
@@ -729,9 +734,9 @@ describe(temperature_edge_cases) {
     }
     
     it("should handle temperature at grid edges") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         
         InitTemperature();
         
@@ -750,10 +755,10 @@ describe(temperature_edge_cases) {
     }
     
     it("should handle both heat and cold sources nearby") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".......\n"
             ".......\n"
-            ".......\n", 7, 3);
+            ".......\n");
         
         InitTemperature();
         
@@ -782,11 +787,11 @@ describe(temperature_edge_cases) {
 
 describe(temperature_stability) {
     it("should mark cells as stable when temperature settles") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitTemperature();
         
@@ -806,10 +811,10 @@ describe(temperature_stability) {
     }
     
     it("should destabilize neighbors when temperature changes") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
-            ".....\n", 5, 3);
+            ".....\n");
         
         InitTemperature();
         

@@ -10,6 +10,7 @@
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/fire.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include <stdlib.h>
@@ -20,7 +21,7 @@ static bool test_verbose = false;
 
 // Helper: set up a 16x16 grid with wood floors for lightning testing
 static void SetupThunderstormGrid(void) {
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "################\n"
         "################\n"
         "################\n"
@@ -36,7 +37,7 @@ static void SetupThunderstormGrid(void) {
         "################\n"
         "################\n"
         "################\n"
-        "################\n", 16, 16);
+        "################\n");
     
     FillGroundLevel();
     InitWater();

@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/designations.h"
@@ -39,7 +40,7 @@ static bool test_verbose = false;
 
 describe(grid_audit_finding_1_placecell_ramp_cleanup) {
     it("player places ramp, then draws wall over it - rampCount should decrement") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         rampCount = 0;
         
         // Player draws a ramp manually
@@ -60,7 +61,7 @@ describe(grid_audit_finding_1_placecell_ramp_cleanup) {
     }
     
     it("player places wall over single ladder - ladder should be cleaned up") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         
         // Build a single ladder
         PlaceLadder(5, 5, 0);
@@ -85,7 +86,7 @@ describe(grid_audit_finding_1_placecell_ramp_cleanup) {
 
 describe(grid_audit_finding_2_erase_ramp_cleanup) {
     it("player right-click erases ramp in quick-edit mode - rampCount should decrement") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         rampCount = 0;
         
         // Set up solid ground for ramp support
@@ -129,7 +130,7 @@ describe(grid_audit_finding_2_erase_ramp_cleanup) {
 
 describe(grid_audit_finding_5_fire_burns_ramp_support) {
     it("player has ramp exit on tree trunk - fire burns trunk - ramp should be removed") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         rampCount = 0;
         InitFire();
         InitTrees();
@@ -178,7 +179,7 @@ describe(grid_audit_finding_5_fire_burns_ramp_support) {
 
 describe(grid_audit_finding_7_placeladder_on_ramp) {
     it("player places ladder on existing ramp - rampCount should decrement") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         rampCount = 0;
         
         for (int y = 0; y < gridHeight; y++)
@@ -209,7 +210,7 @@ describe(grid_audit_finding_7_placeladder_on_ramp) {
 describe(grid_audit_finding_8_eraseramp_chunk_dirty) {
     it("player erases ramp at chunk boundary - exit chunk should be dirtied") {
         // 16x16 grid with 16x16 chunks
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "................\n"
             "................\n"
             "................\n"
@@ -225,7 +226,7 @@ describe(grid_audit_finding_8_eraseramp_chunk_dirty) {
             "................\n"
             "................\n"
             "................\n"
-            "................\n", 16, 16);
+            "................\n");
         rampCount = 0;
         
         // Set up solid ground
@@ -253,7 +254,7 @@ describe(grid_audit_finding_8_eraseramp_chunk_dirty) {
 
 describe(grid_audit_finding_9_ramp_map_edge) {
     it("player tries to place ramp at x=0 facing west - should fail (no entry)") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
@@ -267,7 +268,7 @@ describe(grid_audit_finding_9_ramp_map_edge) {
     }
     
     it("player tries to place ramp at y=0 facing south - should fail (no entry)") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++) {
@@ -286,7 +287,7 @@ describe(grid_audit_finding_9_ramp_map_edge) {
 
 describe(grid_audit_finding_10_ramp_lowside_validity) {
     it("player walls off low-side entry - ramp still structurally valid") {
-        InitGridFromAsciiWithChunkSize(GRID_10X10, 10, 10);
+        InitTestGridFromAscii(GRID_10X10);
         rampCount = 0;
         
         // Set up solid ground at z=0

@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/water.h"
@@ -16,11 +17,11 @@ static bool test_verbose = false;
 
 // Helper: set up a simple 8x4 grid with dirt ground at z=0, air at z=1
 static void SetupDirtGrid(void) {
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "........\n"
         "........\n"
         "........\n"
-        "........\n", 8, 4);
+        "........\n");
     FillGroundLevel();
     InitWater();
     InitGroundWear();

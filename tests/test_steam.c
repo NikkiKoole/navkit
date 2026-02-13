@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/simulation/steam.h"
 #include "../src/simulation/water.h"
@@ -42,30 +43,17 @@ static int CountTotalSteam(void) {
     return total;
 }
 
-// Helper to count total water in the grid
-static int CountTotalWater(void) {
-    int total = 0;
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                total += GetWaterLevel(x, y, z);
-            }
-        }
-    }
-    return total;
-}
-
 // =============================================================================
 // Basic Steam Operations
 // =============================================================================
 
 describe(steam_initialization) {
     it("should initialize steam grid with all zeros") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitSteam();
         
@@ -77,9 +65,9 @@ describe(steam_initialization) {
     }
     
     it("should clear all steam when ClearSteam is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitSteam();
         SetSteamLevel(2, 0, 0, 5);
@@ -97,9 +85,9 @@ describe(steam_initialization) {
 
 describe(steam_level_operations) {
     it("should set steam level within bounds") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         InitSteam();
         
         SetSteamLevel(1, 0, 0, 5);
@@ -110,8 +98,8 @@ describe(steam_level_operations) {
     }
     
     it("should clamp steam level to max 7") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitSteam();
         
         SetSteamLevel(0, 0, 0, 10);
@@ -119,8 +107,8 @@ describe(steam_level_operations) {
     }
     
     it("should clamp steam level to min 0") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitSteam();
         
         SetSteamLevel(0, 0, 0, 5);
@@ -129,8 +117,8 @@ describe(steam_level_operations) {
     }
     
     it("should add steam correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitSteam();
         
         SetSteamLevel(0, 0, 0, 2);
@@ -145,9 +133,9 @@ describe(steam_level_operations) {
 
 describe(steam_rising) {
     it("should rise to level above when space is available") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         gridDepth = 3;
         for (int z = 1; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
@@ -193,9 +181,9 @@ describe(steam_rising) {
     }
     
     it("should not rise through walls") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         gridDepth = 2;
         // Make z=1 all walls (ceiling)
         for (int y = 0; y < gridHeight; y++) {
@@ -225,9 +213,9 @@ describe(steam_rising) {
 
 describe(steam_from_boiling) {
     it("should generate steam when water reaches boiling temperature") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         gridDepth = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -270,9 +258,9 @@ describe(steam_from_boiling) {
 
 describe(steam_condensation) {
     it("should condense back to water when temperature drops") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         gridDepth = 2;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
@@ -323,11 +311,11 @@ describe(water_cycle) {
     
     it("should complete water cycle: boil -> rise -> condense -> fall") {
         // Create a 4-level grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "####\n"
             "#..#\n"
             "#..#\n"
-            "####\n", 4, 4);
+            "####\n");
         gridDepth = 4;
         
         // Set up all levels with walls around edges, air inside
@@ -399,10 +387,10 @@ describe(water_cycle) {
 
 describe(steam_spreading) {
     it("should spread horizontally when blocked above") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
-            "......\n", 6, 3);
+            "......\n");
         gridDepth = 2;
         // Ceiling at z=1
         for (int y = 0; y < gridHeight; y++) {
@@ -412,6 +400,7 @@ describe(steam_spreading) {
         }
         
         InitSteam();
+        seasonalAmplitude = 0;
         InitTemperature();
         
         // Set ambient hot so steam doesn't condense (need >= 96C / index 73)
@@ -446,7 +435,7 @@ describe(steam_spreading) {
 describe(heaters_evaporate_water) {
     it("should eventually evaporate all water with heaters in center") {
         // Small 8x8 grid, 1 z-level
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -454,7 +443,7 @@ describe(heaters_evaporate_water) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
         gridDepth = 2;
         
         // Make z=1 all walls (ceiling)

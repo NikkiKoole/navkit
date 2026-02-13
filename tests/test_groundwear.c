@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/groundwear.h"
@@ -17,9 +18,9 @@ static bool test_verbose = false;
 
 describe(groundwear_initialization) {
     it("should initialize wear grid with all zeros") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitGroundWear();
         
@@ -33,9 +34,9 @@ describe(groundwear_initialization) {
     }
     
     it("should clear all wear when ClearGroundWear is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitGroundWear();
         
@@ -62,9 +63,9 @@ describe(groundwear_initialization) {
 
 describe(groundwear_trampling) {
     it("should increase wear when dirt is trampled") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "dddd\n"
-            "dddd\n", 4, 2);
+            "dddd\n");
         
         // Set up dirt tiles
         for (int y = 0; y < gridHeight; y++) {
@@ -84,8 +85,8 @@ describe(groundwear_trampling) {
     }
     
     it("should accumulate wear over multiple tramplings") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -103,8 +104,8 @@ describe(groundwear_trampling) {
     }
     
     it("should cap wear at wearMax") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -133,8 +134,8 @@ describe(groundwear_trampling) {
     }
     
     it("should not trample wall cells") {
-        InitGridFromAsciiWithChunkSize(
-            "d#dd\n", 4, 1);
+        InitTestGridFromAscii(
+            "d#dd\n");
         
         grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
         grid[0][0][1] = CELL_WALL;
@@ -150,8 +151,8 @@ describe(groundwear_trampling) {
     }
     
     it("should not trample when disabled") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -168,8 +169,8 @@ describe(groundwear_trampling) {
     }
     
     it("should work on any z-level") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         // Set up dirt at z=0 and z=1
         for (int x = 0; x < gridWidth; x++) {
@@ -197,8 +198,8 @@ describe(groundwear_trampling) {
 
 describe(surface_overlay_updates) {
     it("should update surface overlay based on wear level") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -247,8 +248,8 @@ describe(surface_overlay_updates) {
     }
     
     it("should recover grass overlay as wear decays") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -298,8 +299,8 @@ describe(surface_overlay_updates) {
 
 describe(wear_decay) {
     it("should decay wear over time") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -326,8 +327,8 @@ describe(wear_decay) {
     }
     
     it("should only decay every N ticks based on decay interval") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -361,8 +362,8 @@ describe(wear_decay) {
     }
     
     it("should clamp wear to 0 on decay") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -386,8 +387,9 @@ describe(wear_decay) {
     }
     
     it("should decay wear at all z-levels") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
+        seasonalAmplitude = 0;
         
         // Set up dirt at multiple z-levels
         for (int x = 0; x < gridWidth; x++) {
@@ -425,8 +427,9 @@ describe(wear_decay) {
 
 describe(groundwear_full_cycle) {
     it("should complete tall grass->bare->tall grass cycle via surface overlay") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
+        seasonalAmplitude = 0;
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -480,8 +483,8 @@ describe(groundwear_full_cycle) {
     }
     
     it("should create worn path on heavily trafficked area") {
-        InitGridFromAsciiWithChunkSize(
-            "dddddddddd\n", 10, 1);
+        InitTestGridFromAscii(
+            "dddddddddd\n");
         
         for (int x = 0; x < gridWidth; x++) {
             grid[0][0][x] = CELL_WALL; SetWallMaterial(x, 0, 0, MAT_DIRT); SetWallNatural(x, 0, 0);
@@ -528,8 +531,8 @@ describe(groundwear_full_cycle) {
 
 describe(groundwear_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         InitGroundWear();
         
@@ -542,8 +545,8 @@ describe(groundwear_edge_cases) {
     }
     
     it("should handle out-of-bounds trampling gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "dddd\n", 4, 1);
+        InitTestGridFromAscii(
+            "dddd\n");
         
         InitGroundWear();
         groundWearEnabled = true;
@@ -560,8 +563,8 @@ describe(groundwear_edge_cases) {
     }
     
     it("should not trample non-dirt cells (grass, floor, etc)") {
-        InitGridFromAsciiWithChunkSize(
-            "dfgw\n", 4, 1);
+        InitTestGridFromAscii(
+            "dfgw\n");
         
         grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_DIRT); SetWallNatural(0, 0, 0);
         grid[0][0][1] = CELL_AIR;
@@ -586,7 +589,7 @@ describe(groundwear_edge_cases) {
     
     it("should trample dirt below when walking on floor above (DF mode)") {
         // DF mode: z=0 is dirt with grass, z=1 is where movers walk (air/floor above dirt)
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         
         // Set up z=0 as dirt ground with tall grass
         for (int y = 0; y < 4; y++) {
@@ -614,7 +617,7 @@ describe(groundwear_edge_cases) {
     }
     
     it("should not trample when no dirt below floor") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         
         // z=0 is stone/wall, z=1 is floor - no dirt to trample
         grid[0][1][2] = CELL_WALL;

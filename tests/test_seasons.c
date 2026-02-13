@@ -4,6 +4,7 @@
 #include "../src/simulation/weather.h"
 #include "../src/simulation/temperature.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -12,11 +13,11 @@ static bool test_verbose = false;
 
 // Helper: set up grid and initialize systems for season testing
 static void SetupSeasonTest(void) {
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "........\n"
         "........\n"
         "........\n"
-        "........\n", 8, 4);
+        "........\n");
     FillGroundLevel();
     InitTime();
     InitWeather();

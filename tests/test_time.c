@@ -3,6 +3,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include <stdlib.h>
 #include <string.h>
@@ -151,9 +152,9 @@ describe(time_day_cycle) {
 
 describe(time_RunGameSeconds) {
     it("should advance exactly the requested game time") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitTime();
         gameSpeed = 1.0f;
         double startTime = gameTime;
@@ -165,9 +166,9 @@ describe(time_RunGameSeconds) {
     }
     
     it("should work at high game speeds") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitTime();
         gameSpeed = 100.0f;
         double startTime = gameTime;
@@ -209,9 +210,9 @@ describe(time_ResetTestState) {
 
 describe(time_tick_integration) {
     it("should update game time through Tick()") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitTime();
         gameSpeed = 1.0f;
         
@@ -225,9 +226,9 @@ describe(time_tick_integration) {
     }
     
     it("should skip simulation when paused") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitTime();
         gameSpeed = 0.0f;
         unsigned long tickBefore = currentTick;
@@ -249,9 +250,9 @@ describe(time_tick_integration) {
 
 describe(time_large_scales) {
     it("should handle 10 days of game time") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitTime();
         dayLength = 3600.0f;  // 1 hour = 1 day
         gameSpeed = 600.0f;   // 600 game-sec per real-sec

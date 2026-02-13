@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
@@ -19,20 +20,6 @@ static void RunWaterTicks(int n) {
     }
 }
 
-// Helper to count total water in the grid
-static int CountTotalWater(void) {
-    int total = 0;
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            for (int x = 0; x < gridWidth; x++) {
-                total += GetWaterLevel(x, y, z);
-            }
-        }
-    }
-    return total;
-}
-
-
 
 // =============================================================================
 // Basic Water Operations
@@ -40,11 +27,11 @@ static int CountTotalWater(void) {
 
 describe(water_initialization) {
     it("should initialize water grid with all zeros") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitWater();
         
@@ -56,9 +43,9 @@ describe(water_initialization) {
     }
     
     it("should clear all water when ClearWater is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitWater();
         SetWaterLevel(2, 0, 0, 5);
@@ -76,9 +63,9 @@ describe(water_initialization) {
 
 describe(water_level_operations) {
     it("should set water level within bounds") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         InitWater();
         
         SetWaterLevel(1, 0, 0, 5);
@@ -89,8 +76,8 @@ describe(water_level_operations) {
     }
     
     it("should clamp water level to max 7") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 10);
@@ -98,8 +85,8 @@ describe(water_level_operations) {
     }
     
     it("should clamp water level to min 0") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, -5);
@@ -107,8 +94,8 @@ describe(water_level_operations) {
     }
     
     it("should add water correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 3);
@@ -117,8 +104,8 @@ describe(water_level_operations) {
     }
     
     it("should remove water correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 5);
@@ -127,8 +114,8 @@ describe(water_level_operations) {
     }
     
     it("should report HasWater correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         expect(HasWater(0, 0, 0) == false);
@@ -138,8 +125,8 @@ describe(water_level_operations) {
     }
     
     it("should report IsFull correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 6);
@@ -157,7 +144,7 @@ describe(water_level_operations) {
 describe(water_basic_flow) {
     it("should spread water outward from source") {
         // Create flat terrain
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -165,7 +152,7 @@ describe(water_basic_flow) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
         
         InitWater();
         
@@ -187,9 +174,9 @@ describe(water_basic_flow) {
     }
     
     it("should equalize water levels between neighbors") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
-            "......\n", 6, 2);
+            "......\n");
         
         InitWater();
         waterEvaporationEnabled = false;  // Disable evaporation for this test
@@ -219,10 +206,10 @@ describe(water_basic_flow) {
     it("should equalize in narrow horizontal channel") {
         // 10-wide channel, 1 cell high interior (walls on top and bottom)
         // This is the "room 10 wide, 3 high, 1 cell interior" case
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "############\n"
             "#..........#\n"
-            "############\n", 12, 3);
+            "############\n");
         
         InitWater();
         waterEvaporationEnabled = false;
@@ -272,10 +259,10 @@ describe(water_basic_flow) {
         // This tests the specific bug: water placed on left side of channel
         // should NOT stabilize as 7 7 6 5 4 3 2 1 (staircase)
         // It SHOULD equalize to roughly equal levels
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "############\n"
             "#..........#\n"
-            "############\n", 12, 3);
+            "############\n");
         
         InitWater();
         waterEvaporationEnabled = false;
@@ -327,10 +314,10 @@ describe(water_basic_flow) {
     }
     
     it("should not spread diagonally") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...\n"
             "...\n"
-            "...\n", 3, 3);
+            "...\n");
         
         InitWater();
         
@@ -468,12 +455,12 @@ describe(water_falling) {
 describe(water_pool_filling) {
     it("should spread when wall is removed from 1x1 pool") {
         // Create a 1x1 "room" surrounded by walls
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".#.#.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitWater();
         waterEvaporationEnabled = false;  // Disable evaporation to test conservation
@@ -507,7 +494,7 @@ describe(water_pool_filling) {
     }
     
     it("should fill enclosed room to level 7") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "########\n"
             "#......#\n"
             "#......#\n"
@@ -515,7 +502,7 @@ describe(water_pool_filling) {
             "#......#\n"
             "#......#\n"
             "#......#\n"
-            "########\n", 8, 8);
+            "########\n");
         
         InitWater();
         
@@ -541,14 +528,14 @@ describe(water_pool_filling) {
     
     it("should spill through opening when room overflows") {
         // Room with opening on right side
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "########.....\n"
             "#......#.....\n"
             "#......#.....\n"
             "#...........\n"   // Opening at y=3
             "#......#.....\n"
             "#......#.....\n"
-            "########.....\n", 13, 7);
+            "########.....\n");
         
         InitWater();
         
@@ -574,7 +561,7 @@ describe(water_pressure) {
         // z=1: walls on sides, open in middle
         // z=0: open channel
         
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         gridDepth = 3;
         
         // Initialize all as air (allows water flow)
@@ -624,7 +611,7 @@ describe(water_pressure) {
         // limit, but once water arrives somewhere it can spread normally. We only check
         // that z=3 isn't FULL, since pressure alone can't push it there.
         
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         gridDepth = 4;
         
         // Initialize all as air (allows water flow)
@@ -674,7 +661,7 @@ describe(water_pressure) {
     }
     
     it("should create pressure when water falls onto full water") {
-        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        InitTestGrid(4, 4);
         gridDepth = 2;
         
         // Both levels air (allows water flow)
@@ -712,11 +699,11 @@ describe(water_pressure) {
 
 describe(water_drains) {
     it("should remove water at drain location") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitWater();
         
@@ -738,9 +725,9 @@ describe(water_drains) {
     }
     
     it("should continuously drain water") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitWater();
         
@@ -762,9 +749,9 @@ describe(water_drains) {
     }
     
     it("should reduce total water when drain active") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         
         InitWater();
         
@@ -796,11 +783,11 @@ describe(water_drains) {
 
 describe(water_evaporation) {
     it("should eventually evaporate level-1 water") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "................\n"
             "................\n"
             "................\n"
-            "................\n", 16, 4);
+            "................\n");
         
         InitWater();
         waterEvaporationEnabled = true;  // Ensure evaporation is enabled
@@ -824,8 +811,8 @@ describe(water_evaporation) {
     }
     
     it("should not evaporate water from sources") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         
@@ -841,8 +828,8 @@ describe(water_evaporation) {
     }
     
     it("should not evaporate water above level 1") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         waterEvaporationEnabled = false;  // Disable evaporation to test pure spreading
@@ -873,8 +860,8 @@ describe(water_evaporation) {
 
 describe(water_speed_multiplier) {
     it("should return 1.0 for no water") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         float speed = GetWaterSpeedMultiplier(2, 0, 0);
@@ -882,8 +869,8 @@ describe(water_speed_multiplier) {
     }
     
     it("should return 0.85 for shallow water (1-2)") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 1);
@@ -894,8 +881,8 @@ describe(water_speed_multiplier) {
     }
     
     it("should return 0.6 for medium water (3-4)") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 3);
@@ -906,8 +893,8 @@ describe(water_speed_multiplier) {
     }
     
     it("should return 0.35 for deep water (5-7)") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitWater();
         
         SetWaterLevel(0, 0, 0, 5);
@@ -926,11 +913,11 @@ describe(water_speed_multiplier) {
 
 describe(water_stability) {
     it("should mark cells as stable when water settles") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitWater();
         
@@ -958,10 +945,10 @@ describe(water_stability) {
     }
     
     it("should destabilize neighbors when water changes") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
-            ".....\n", 5, 3);
+            ".....\n");
         
         InitWater();
         
@@ -986,10 +973,10 @@ describe(water_stability) {
 
 describe(water_wall_interaction) {
     it("should not place water in walls") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".#.#.\n"
             "#...#\n"
-            ".#.#.\n", 5, 3);
+            ".#.#.\n");
         
         InitWater();
         
@@ -1012,10 +999,10 @@ describe(water_wall_interaction) {
     
     it("should not spread water through walls") {
         // Two chambers separated by wall
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...#...\n"
             "...#...\n"
-            "...#...\n", 7, 3);
+            "...#...\n");
         
         InitWater();
         
@@ -1040,9 +1027,9 @@ describe(water_wall_interaction) {
 
 describe(water_edge_cases) {
     it("should handle water at grid edges") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         
         InitWater();
         
@@ -1061,8 +1048,8 @@ describe(water_edge_cases) {
     }
     
     it("should handle out-of-bounds queries gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         
@@ -1080,8 +1067,8 @@ describe(water_edge_cases) {
     }
     
     it("should handle source and drain at same location") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         
@@ -1105,9 +1092,9 @@ describe(water_edge_cases) {
 
 describe(water_freezing) {
     it("should freeze full water at freezing temperature") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         
         InitWater();
         InitTemperature();
@@ -1126,8 +1113,8 @@ describe(water_freezing) {
     }
     
     it("should freeze partial water") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         InitTemperature();
@@ -1146,8 +1133,8 @@ describe(water_freezing) {
     }
     
     it("should thaw frozen water when temperature rises") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         InitTemperature();
@@ -1169,8 +1156,8 @@ describe(water_freezing) {
     }
     
     it("should block water flow when frozen") {
-        InitGridFromAsciiWithChunkSize(
-            "......\n", 6, 1);
+        InitTestGridFromAscii(
+            "......\n");
         
         InitWater();
         InitTemperature();
@@ -1195,8 +1182,8 @@ describe(water_freezing) {
     }
     
     it("should preserve water level when frozen") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitWater();
         InitTemperature();
@@ -1214,8 +1201,9 @@ describe(water_freezing) {
     }
     
     it("should freeze water when ambient temperature drops below freezing") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
+        seasonalAmplitude = 0;
         
         InitWater();
         InitTemperature();

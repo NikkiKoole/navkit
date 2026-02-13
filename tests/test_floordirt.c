@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/floordirt.h"
@@ -17,9 +18,9 @@ static bool test_verbose = false;
 
 describe(floordirt_initialization) {
     it("should initialize dirt grid with all zeros") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitFloorDirt();
 
         for (int z = 0; z < gridDepth; z++) {
@@ -32,9 +33,9 @@ describe(floordirt_initialization) {
     }
 
     it("should clear all dirt when ClearFloorDirt is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         InitFloorDirt();
 
         floorDirtGrid[0][0][2] = 100;
@@ -59,7 +60,7 @@ describe(floordirt_initialization) {
 
 describe(floordirt_dirt_source) {
     it("should detect natural dirt as dirt source") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[0][1][2] = CELL_WALL;
@@ -70,7 +71,7 @@ describe(floordirt_dirt_source) {
     }
 
     it("should detect soil types as dirt source") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[0][0][0] = CELL_WALL; SetWallMaterial(0, 0, 0, MAT_CLAY); SetWallNatural(0, 0, 0);
@@ -85,7 +86,7 @@ describe(floordirt_dirt_source) {
     }
 
     it("should detect dirt at z-1 as source when walking at z") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         // Dirt at z=0, air at z=1 (movers walk at z=1)
@@ -98,7 +99,7 @@ describe(floordirt_dirt_source) {
     }
 
     it("should not detect stone as dirt source") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[0][1][2] = CELL_WALL;
@@ -109,7 +110,7 @@ describe(floordirt_dirt_source) {
     }
 
     it("should not detect constructed wall as dirt source") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[0][1][2] = CELL_WALL;
@@ -120,7 +121,7 @@ describe(floordirt_dirt_source) {
     }
 
     it("should not detect air as dirt source") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[0][1][2] = CELL_AIR;
@@ -135,7 +136,7 @@ describe(floordirt_dirt_source) {
 
 describe(floordirt_dirt_target) {
     it("should detect constructed floor as dirt target") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[1][1][2] = CELL_AIR;
@@ -145,7 +146,7 @@ describe(floordirt_dirt_target) {
     }
 
     it("should detect constructed wall top as dirt target") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         // Constructed (non-natural) wall at z=0, air at z=1
@@ -158,7 +159,7 @@ describe(floordirt_dirt_target) {
     }
 
     it("should not detect natural wall top as dirt target") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         // Natural wall at z=0
@@ -171,7 +172,7 @@ describe(floordirt_dirt_target) {
     }
 
     it("should not detect air as dirt target") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
 
         grid[1][1][2] = CELL_AIR;
@@ -186,7 +187,7 @@ describe(floordirt_dirt_target) {
 
 describe(floordirt_tracking) {
     it("should track dirt from dirt to floor") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         InitGroundWear();
         floorDirtEnabled = true;
@@ -209,7 +210,7 @@ describe(floordirt_tracking) {
     }
 
     it("should not track dirt from floor to floor") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -228,7 +229,7 @@ describe(floordirt_tracking) {
     }
 
     it("should not track dirt from air to floor") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -244,7 +245,7 @@ describe(floordirt_tracking) {
     }
 
     it("should accumulate dirt over multiple steps") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -266,7 +267,7 @@ describe(floordirt_tracking) {
     }
 
     it("should cap dirt at DIRT_MAX") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -286,7 +287,7 @@ describe(floordirt_tracking) {
     }
 
     it("should not track when disabled") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = false;
         dirtActiveCells = 0;
@@ -305,7 +306,7 @@ describe(floordirt_tracking) {
     }
 
     it("should track with HAS_FLOOR target") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -324,7 +325,7 @@ describe(floordirt_tracking) {
     }
 
     it("should apply stone floor multiplier") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -352,7 +353,7 @@ describe(floordirt_tracking) {
 
 describe(floordirt_cleaning) {
     it("should reduce dirt when CleanFloorDirt called") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -365,7 +366,7 @@ describe(floordirt_cleaning) {
     }
 
     it("should clamp dirt to zero when overcleaning") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -377,7 +378,7 @@ describe(floordirt_cleaning) {
     }
 
     it("should update dirtActiveCells when cleaning to zero") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -395,7 +396,7 @@ describe(floordirt_cleaning) {
 
 describe(floordirt_active_cells) {
     it("should increment when dirt goes from 0 to positive") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -407,7 +408,7 @@ describe(floordirt_active_cells) {
     }
 
     it("should decrement when dirt goes to zero") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -423,7 +424,7 @@ describe(floordirt_active_cells) {
     }
 
     it("should not change when overwriting nonzero with nonzero") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -441,8 +442,8 @@ describe(floordirt_active_cells) {
 
 describe(floordirt_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFloorDirt();
 
         expect(GetFloorDirt(-1, 0, 0) == 0);
@@ -454,8 +455,8 @@ describe(floordirt_edge_cases) {
     }
 
     it("should handle out-of-bounds MoverTrackDirt gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFloorDirt();
         floorDirtEnabled = true;
 
@@ -468,8 +469,8 @@ describe(floordirt_edge_cases) {
     }
 
     it("should handle MoverTrackDirt with invalid mover index") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFloorDirt();
         floorDirtEnabled = true;
 
@@ -481,7 +482,7 @@ describe(floordirt_edge_cases) {
     }
 
     it("should work at different z-levels") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         dirtActiveCells = 0;
 
@@ -502,7 +503,7 @@ describe(floordirt_edge_cases) {
 
 describe(floordirt_per_mover) {
     it("should track previous cell per mover independently") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -530,7 +531,7 @@ describe(floordirt_per_mover) {
     }
 
     it("should not track on first call (no previous cell)") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;
@@ -545,7 +546,7 @@ describe(floordirt_per_mover) {
     }
 
     it("should not track when staying in same cell") {
-        InitGridWithSizeAndChunkSize(8, 4, 8, 4);
+        InitTestGrid(8, 4);
         InitFloorDirt();
         floorDirtEnabled = true;
         dirtActiveCells = 0;

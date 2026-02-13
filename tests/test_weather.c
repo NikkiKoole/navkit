@@ -6,6 +6,7 @@
 #include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include <stdlib.h>
@@ -18,11 +19,11 @@ static bool test_verbose = false;
 // gridDepth=3 so we have room for roofs
 static void SetupWeatherGrid(void) {
     // 8x4 grid, 3 levels deep
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "........\n"
         "........\n"
         "........\n"
-        "........\n", 8, 4);
+        "........\n");
     FillGroundLevel();
     InitWater();
     InitTemperature();

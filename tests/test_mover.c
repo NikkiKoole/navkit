@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
@@ -64,11 +65,11 @@ describe(mover_initialization) {
 describe(fixed_timestep_movement) {
     it("should move mover toward goal after one tick") {
         // 8x4 grid, mover walks right
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
 
         ClearMovers();
         Mover* m = &movers[0];
@@ -91,11 +92,11 @@ describe(fixed_timestep_movement) {
     }
 
     it("should produce same result for same number of ticks") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
 
         // First run
         ClearMovers();
@@ -126,11 +127,11 @@ describe(fixed_timestep_movement) {
     }
 
     it("should deactivate mover when reaching goal") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             "....\n"
             "....\n"
-            "....\n", 4, 4);
+            "....\n");
 
         // Disable endless mode so mover deactivates at goal instead of getting new goal
         endlessMoverMode = false;
@@ -157,11 +158,11 @@ describe(fixed_timestep_movement) {
 describe(wall_collision) {
     it("should push mover out when wall placed on it") {
         // Mover at (1,1), we place a wall there
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             "....\n"
             "....\n"
-            "....\n", 4, 4);
+            "....\n");
         BuildEntrances();
         BuildGraph();
 
@@ -188,11 +189,11 @@ describe(wall_collision) {
     }
 
     it("should deactivate mover when fully surrounded by walls") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".#..\n"
             "#.#.\n"
             ".#..\n"
-            "....\n", 4, 4);
+            "....\n");
         BuildEntrances();
         BuildGraph();
 
@@ -217,11 +218,11 @@ describe(wall_collision) {
 
 describe(line_of_sight_repath) {
     it("should trigger repath when wall blocks path to next waypoint") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         BuildEntrances();
         BuildGraph();
 
@@ -251,9 +252,9 @@ describe(line_of_sight_repath) {
 
 describe(tick_counter) {
     it("should increment tick counter each tick") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
 
         ClearMovers();
         unsigned long startTick = currentTick;
@@ -264,9 +265,9 @@ describe(tick_counter) {
     }
 
     it("should reset tick counter on ClearMovers") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
 
         RunTicks(50);
         ClearMovers();
@@ -277,11 +278,11 @@ describe(tick_counter) {
 
 describe(count_active_movers) {
     it("should count only active movers") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             "....\n"
             "....\n"
-            "....\n", 4, 4);
+            "....\n");
 
         ClearMovers();
 

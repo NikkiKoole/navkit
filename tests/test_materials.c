@@ -4,6 +4,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/designations.h"
@@ -49,22 +50,15 @@ static int CountItemsOfTypeWithMaterial(ItemType type, MaterialType mat) {
     return count;
 }
 
-// Helper to run fire ticks
-static UNUSED void RunFireTicks(int n) {
-    for (int i = 0; i < n; i++) {
-        UpdateFire();
-    }
-}
-
 // =============================================================================
 // Stage A: Material Grid Initialization
 // =============================================================================
 
 describe(material_grid_initialization) {
     it("should initialize air cells with MAT_NONE and wall cells with MAT_GRANITE") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".#..\n"
-            "....\n", 4, 2);
+            "....\n");
         
         // Air cells should have MAT_NONE (no wall material for empty space)
         expect(GetWallMaterial(0, 0, 0) == MAT_NONE);
@@ -78,8 +72,8 @@ describe(material_grid_initialization) {
     }
     
     it("should allow setting and getting wall material") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         SetWallMaterial(1, 0, 0, MAT_OAK);
         expect(GetWallMaterial(1, 0, 0) == MAT_OAK);
@@ -93,8 +87,8 @@ describe(material_grid_initialization) {
     }
     
     it("should allow setting and getting floor material") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         SetFloorMaterial(1, 0, 0, MAT_OAK);
         expect(GetFloorMaterial(1, 0, 0) == MAT_OAK);
@@ -108,8 +102,8 @@ describe(material_grid_initialization) {
     }
     
     it("should identify constructed walls correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
@@ -211,8 +205,8 @@ describe(material_def_properties) {
 
 describe(blueprint_material_tracking) {
     it("should initialize blueprint with MAT_NONE deliveries") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -224,8 +218,8 @@ describe(blueprint_material_tracking) {
     }
     
     it("should set wood material when delivering wood item") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -242,8 +236,8 @@ describe(blueprint_material_tracking) {
     }
     
     it("should set stone material when delivering stone blocks") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -260,8 +254,8 @@ describe(blueprint_material_tracking) {
     }
     
     it("should set wall material when completing log wall blueprint with pine") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -284,8 +278,8 @@ describe(blueprint_material_tracking) {
     }
     
     it("should set wall material when completing dry stone wall with granite") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -314,8 +308,8 @@ describe(blueprint_material_tracking) {
 
 describe(mining_material_drops) {
     it("should drop based on natural cell type for natural granite wall") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);  // # = wall
+        InitTestGridFromAscii(
+            "#...\n");  // # = wall
         InitDesignations();
         ClearItems();
         
@@ -333,8 +327,8 @@ describe(mining_material_drops) {
     }
     
     it("should drop ITEM_LOG when mining constructed wood wall") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
         InitDesignations();
         ClearItems();
         
@@ -353,8 +347,8 @@ describe(mining_material_drops) {
     }
     
     it("should drop ITEM_BLOCKS when mining constructed granite wall") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
         InitDesignations();
         ClearItems();
         
@@ -369,8 +363,8 @@ describe(mining_material_drops) {
     }
     
     it("should reset wall material to MAT_NONE after mining") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
         InitDesignations();
         ClearItems();
         
@@ -384,8 +378,8 @@ describe(mining_material_drops) {
     }
     
     it("should create natural granite floor when mining natural rock") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
         InitDesignations();
         ClearItems();
         
@@ -404,8 +398,8 @@ describe(mining_material_drops) {
     }
     
     it("should use GetWallDropItem for correct material-based drops") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
         
         // Natural granite wall - drops based on material (no source item)
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
@@ -424,8 +418,8 @@ describe(mining_material_drops) {
     }
 
     it("should use GetWallDropItem for CELL_WALL material-based drops") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_CLAY);
@@ -447,8 +441,8 @@ describe(mining_material_drops) {
 
 describe(floor_removal_material_drops) {
     it("should drop based on floor material when removing") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -464,8 +458,8 @@ describe(floor_removal_material_drops) {
     }
     
     it("should reset floor material after floor removal") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -485,10 +479,10 @@ describe(floor_removal_material_drops) {
 
 describe(material_flammability) {
     it("should allow CELL_WALL with MAT_OAK to burn") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             ".#..\n"
-            "....\n", 4, 3);
+            "....\n");
         InitFire();
         
         // Set the wall to wood material
@@ -504,10 +498,10 @@ describe(material_flammability) {
     }
     
     it("should NOT allow CELL_WALL with MAT_GRANITE to burn") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             ".#..\n"
-            "....\n", 4, 3);
+            "....\n");
         InitFire();
         
         // Set the wall to stone material
@@ -523,10 +517,10 @@ describe(material_flammability) {
     }
     
     it("should NOT allow natural granite wall to burn") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             ".#..\n"
-            "....\n", 4, 3);
+            "....\n");
         InitFire();
         
         // Natural granite wall
@@ -543,10 +537,10 @@ describe(material_flammability) {
     }
     
     it("should allow constructed wood wall (CELL_WALL + MAT_OAK) to burn") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
             "....\n"
-            "....\n", 4, 3);
+            "....\n");
         InitFire();
         
         // Place wall with wood material
@@ -575,8 +569,8 @@ describe(material_flammability) {
 
 describe(build_mine_cycle) {
     it("should complete full cycle: build wood wall then mine it") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -607,8 +601,8 @@ describe(build_mine_cycle) {
     }
     
     it("should complete full cycle: build stone wall then mine it") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitDesignations();
         ClearItems();
         
@@ -764,8 +758,8 @@ describe(material_dirt_fuel_fix) {
 
 describe(get_cell_sprite_at) {
     it("should return material sprite for terrain cells") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
@@ -781,16 +775,16 @@ describe(get_cell_sprite_at) {
     }
 
     it("should return rock sprite for natural walls") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
 
         // SyncMaterialsToTerrain sets MAT_GRANITE + natural
         expect(GetCellSpriteAt(0, 0, 0) == SPRITE_granite);
     }
 
     it("should return tree sprites via wallMaterial") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_PINE);
@@ -806,8 +800,8 @@ describe(get_cell_sprite_at) {
     }
 
     it("should use wallMaterial for tree cell sprites") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_OAK);
@@ -817,8 +811,8 @@ describe(get_cell_sprite_at) {
 
 describe(get_insulation_at) {
     it("should return material insulation when material is set") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_OAK);
@@ -829,16 +823,16 @@ describe(get_insulation_at) {
     }
 
     it("should fall back to cell insulation when no material") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         // Air cell with no material
         expect(GetInsulationAt(0, 0, 0) == INSULATION_TIER_AIR);
     }
 
     it("should return STONE for out-of-bounds") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         expect(GetInsulationAt(-1, 0, 0) == INSULATION_TIER_STONE);
         expect(GetInsulationAt(100, 0, 0) == INSULATION_TIER_STONE);
@@ -847,8 +841,8 @@ describe(get_insulation_at) {
 
 describe(get_cell_name_at) {
     it("should return material name for walls") {
-        InitGridFromAsciiWithChunkSize(
-            "#...\n", 4, 1);
+        InitTestGridFromAscii(
+            "#...\n");
 
         SetWallMaterial(0, 0, 0, MAT_OAK);
         expect(strcmp(GetCellNameAt(0, 0, 0), "Oak") == 0);
@@ -858,8 +852,8 @@ describe(get_cell_name_at) {
     }
 
     it("should return combined name for tree cells") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_TREE_TRUNK;
         SetWallMaterial(0, 0, 0, MAT_OAK);
@@ -871,8 +865,8 @@ describe(get_cell_name_at) {
     }
 
     it("should return material name for terrain cells") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
@@ -945,8 +939,8 @@ describe(wall_flags) {
 
 describe(cell_terrain_with_materials) {
     it("should return material sprite from GetCellSpriteAt") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
@@ -962,8 +956,8 @@ describe(cell_terrain_with_materials) {
     }
 
     it("should fall back to cellDef sprite when no material") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         // No SetWallMaterial — MAT_NONE
@@ -971,8 +965,8 @@ describe(cell_terrain_with_materials) {
     }
 
     it("should return material name from GetCellNameAt") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_DIRT);
@@ -984,16 +978,16 @@ describe(cell_terrain_with_materials) {
     }
 
     it("should fall back to cellDef name when no material") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         expect(strcmp(GetCellNameAt(0, 0, 0), "wall") == 0);
     }
 
     it("should return material insulation from GetInsulationAt") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_GRANITE);
@@ -1005,8 +999,8 @@ describe(cell_terrain_with_materials) {
     }
 
     it("should work with MAT_BEDROCK for unmineable terrain") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
 
         grid[0][0][0] = CELL_WALL;
         SetWallMaterial(0, 0, 0, MAT_BEDROCK);

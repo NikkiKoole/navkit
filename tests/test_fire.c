@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/fire.h"
@@ -13,13 +14,6 @@
 
 // Global flag for verbose output in tests
 static bool test_verbose = false;
-
-// Helper to run fire simulation for N ticks
-static void RunFireTicks(int n) {
-    for (int i = 0; i < n; i++) {
-        UpdateFire();
-    }
-}
 
 // Helper to run smoke simulation for N ticks
 static void RunSmokeTicks(int n) {
@@ -96,11 +90,11 @@ static int CountBurnedCells(void) {
 
 describe(fire_initialization) {
     it("should initialize fire grid with all zeros") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitFire();
         
@@ -112,9 +106,9 @@ describe(fire_initialization) {
     }
     
     it("should clear all fire when ClearFire is called") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
-            "........\n", 8, 2);
+            "........\n");
         
         InitFire();
         SetFireLevel(2, 0, 0, 5);
@@ -132,9 +126,9 @@ describe(fire_initialization) {
 
 describe(fire_level_operations) {
     it("should set fire level within bounds") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         InitFire();
         
         SetFireLevel(1, 0, 0, 5);
@@ -145,8 +139,8 @@ describe(fire_level_operations) {
     }
     
     it("should clamp fire level to max 7") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFire();
         
         SetFireLevel(0, 0, 0, 10);
@@ -154,8 +148,8 @@ describe(fire_level_operations) {
     }
     
     it("should clamp fire level to min 0") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFire();
         
         SetFireLevel(0, 0, 0, -5);
@@ -163,8 +157,8 @@ describe(fire_level_operations) {
     }
     
     it("should report HasFire correctly") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         InitFire();
         
         expect(HasFire(0, 0, 0) == false);
@@ -180,9 +174,9 @@ describe(fire_level_operations) {
 
 describe(fire_basic_burning) {
     it("should burn and consume fuel on grass cells") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
         
         InitFire();
@@ -212,8 +206,8 @@ describe(fire_basic_burning) {
     }
     
     it("should show burned tint after fire dies") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         FillGroundLevel();
         
         InitFire();
@@ -241,11 +235,11 @@ describe(fire_basic_burning) {
 describe(fire_spreading) {
     it("should spread to adjacent flammable cells") {
         // Create a patch of grass
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         FillGroundLevel();
         
         InitFire();
@@ -274,10 +268,10 @@ describe(fire_spreading) {
     }
     
     it("should spread orthogonally not diagonally") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...\n"
             "...\n"
-            "...\n", 3, 3);
+            "...\n");
         
         InitFire();
         
@@ -315,7 +309,7 @@ describe(fire_spreading) {
 
 describe(smoke_rising) {
     it("should generate smoke from fire") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         
         // Initialize all levels as walkable
@@ -342,7 +336,7 @@ describe(smoke_rising) {
     }
     
     it("should rise through multiple z-levels") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         
         // Initialize all levels as walkable (open air)
@@ -386,9 +380,9 @@ describe(smoke_rising) {
 
 describe(fire_water_extinguishing) {
     it("should extinguish fire immediately when water is placed") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         FillGroundLevel();
         
         InitFire();
@@ -409,7 +403,7 @@ describe(fire_water_extinguishing) {
     }
     
     it("should leave smoke after extinguishing") {
-        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        InitTestGrid(4, 4);
         gridDepth = 2;
         
         // Initialize as walkable
@@ -457,10 +451,10 @@ describe(fire_water_extinguishing) {
 
 describe(fire_water_barrier) {
     it("should not spread fire across water") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
-            "........\n", 8, 3);
+            "........\n");
         
         InitFire();
         InitWater();
@@ -500,10 +494,10 @@ describe(fire_water_barrier) {
 
 describe(fire_non_flammable) {
     it("should not ignite stone walls") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".#.#.\n"
             "#...#\n"
-            ".#.#.\n", 5, 3);
+            ".#.#.\n");
         
         InitFire();
         
@@ -519,8 +513,8 @@ describe(fire_non_flammable) {
     }
     
     it("should return zero fuel for walls") {
-        InitGridFromAsciiWithChunkSize(
-            ".#.\n", 3, 1);
+        InitTestGridFromAscii(
+            ".#.\n");
         
         InitFire();
         
@@ -542,10 +536,10 @@ describe(fire_non_flammable) {
         // Left side: grass with fire source
         // Middle: wall barrier
         // Right side: grass that should NOT catch fire
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "...#...\n"
             "...#...\n"
-            "...#...\n", 7, 3);
+            "...#...\n");
         
         // Fill with flammable grass (but preserve walls)
         for (int y = 0; y < 3; y++) {
@@ -592,7 +586,7 @@ describe(fire_non_flammable) {
         // z=0: dirt with grass (flammable ground)
         // z=1: walls forming a barrier, air elsewhere
         // Fire should NOT spread under the wall from one side to the other
-        InitGridWithSizeAndChunkSize(7, 3, 7, 3);
+        InitTestGrid(7, 3);
         gridDepth = 2;
         
         // z=0: all dirt with grass surface
@@ -673,8 +667,8 @@ describe(fire_non_flammable) {
 
 describe(fire_burned_cells) {
     it("should not reignite burned cells") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         FillGroundLevel();
         
         InitFire();
@@ -699,8 +693,8 @@ describe(fire_burned_cells) {
     }
 
     it("should clear vegetation when fire burns out on grass") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         FillGroundLevel();  // Sets VEG_GRASS_TALLER on all cells
 
         InitFire();
@@ -733,8 +727,8 @@ describe(fire_burned_cells) {
 
 describe(fire_permanent_source) {
     it("should burn indefinitely as fire source") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitFire();
         
@@ -753,7 +747,7 @@ describe(fire_permanent_source) {
     }
     
     it("should continue producing smoke") {
-        InitGridWithSizeAndChunkSize(4, 4, 4, 4);
+        InitTestGrid(4, 4);
         gridDepth = 2;
         
         for (int z = 0; z < gridDepth; z++) {
@@ -787,8 +781,8 @@ describe(fire_permanent_source) {
 // For now, we just verify the concept that fire should be treated as impassable
 describe(fire_pathfinding_concept) {
     it("should have fire cells that movers should avoid") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitFire();
         
@@ -809,7 +803,7 @@ describe(fire_pathfinding_concept) {
 
 describe(smoke_multi_z_rising) {
     it("should rise through multiple z-levels and spread horizontally") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         
         // Initialize all levels as walkable
@@ -857,7 +851,7 @@ describe(smoke_multi_z_rising) {
     it("should have smoke at ALL intermediate z-levels simultaneously") {
         // This test catches the "cascading" bug where smoke passes through
         // intermediate levels without accumulating there
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 6;  // More levels to make the bug obvious
         FillGroundLevel();  // DF mode: z=0 = dirt with grass surface
         
@@ -913,7 +907,7 @@ describe(smoke_multi_z_rising) {
 
 describe(smoke_closed_room_filling) {
     it("should fill enclosed room from top to bottom") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 4;
         
         // Create enclosed room: walls all around at each level, ceiling at z=3
@@ -973,7 +967,7 @@ describe(smoke_closed_room_filling) {
 
 describe(smoke_chimney_ventilation) {
     it("should allow smoke to escape through chimney hole") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         gridDepth = 5;
         
         // Create enclosed room with chimney hole
@@ -1029,11 +1023,11 @@ describe(smoke_chimney_ventilation) {
 
 describe(smoke_dissipation) {
     it("should dissipate over time in open air") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         InitSmoke();
         
@@ -1058,8 +1052,8 @@ describe(smoke_dissipation) {
 
 describe(fire_edge_cases) {
     it("should handle out-of-bounds queries gracefully") {
-        InitGridFromAsciiWithChunkSize(
-            "....\n", 4, 1);
+        InitTestGridFromAscii(
+            "....\n");
         
         InitFire();
         
@@ -1077,9 +1071,9 @@ describe(fire_edge_cases) {
     }
     
     it("should handle fire at grid edges") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....\n"
-            "....\n", 4, 2);
+            "....\n");
         
         InitFire();
         

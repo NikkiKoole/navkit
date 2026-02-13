@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
@@ -308,11 +309,11 @@ describe(mover_job_state) {
     }
 
     it("should assign item to idle mover") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         // Use A* for tests (doesn't require HPA graph building)
         moverPathAlgorithm = PATH_ALGO_ASTAR;
@@ -344,7 +345,7 @@ describe(mover_job_state) {
 
 describe(pickup_behavior) {
     it("should pick up item and deliver to stockpile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -352,7 +353,7 @@ describe(pickup_behavior) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 8);
+            "..........\n");
         
         // Use A* for tests (doesn't require HPA graph building)
         moverPathAlgorithm = PATH_ALGO_ASTAR;
@@ -400,11 +401,11 @@ describe(pickup_behavior) {
 
 describe(reservation_safety) {
     it("should not allow two movers to claim the same item") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 4);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -440,11 +441,11 @@ describe(reservation_safety) {
     }
 
     it("should release reservation when item is deleted externally") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 4);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -482,7 +483,7 @@ describe(reservation_safety) {
 
 describe(post_job_behavior) {
     it("should pick up next item if available after completing a job") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -490,7 +491,7 @@ describe(post_job_behavior) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 8);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -551,7 +552,7 @@ describe(post_job_behavior) {
     }
 
     it("should resume wandering when no more items exist") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -559,7 +560,7 @@ describe(post_job_behavior) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 8);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         endlessMoverMode = true;
@@ -681,7 +682,7 @@ describe(stockpile_system) {
 describe(haul_happy_path) {
     it("should haul single item to matching stockpile") {
         // Test 1 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -691,7 +692,7 @@ describe(haul_happy_path) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -739,7 +740,7 @@ describe(haul_happy_path) {
 
     it("should respect stockpile type filters") {
         // Test 2 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -749,7 +750,7 @@ describe(haul_happy_path) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -804,7 +805,7 @@ describe(stockpile_capacity) {
     it("should stop hauling when stockpile is full") {
         // Test 3 from convo-jobs.md
         // With stacking, we need to pre-fill the slot to 9/10 so only 1 more item fits
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -814,7 +815,7 @@ describe(stockpile_capacity) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -865,7 +866,7 @@ describe(stockpile_capacity) {
 describe(multi_agent_hauling) {
     it("should not have two movers deliver to same stockpile slot") {
         // Test 4 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -875,7 +876,7 @@ describe(multi_agent_hauling) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -928,7 +929,7 @@ describe(multi_agent_hauling) {
 describe(haul_cancellation) {
     it("should release stockpile reservation when item deleted mid-haul") {
         // Test 5 from convo-jobs.md (extended for stockpiles)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -938,7 +939,7 @@ describe(haul_cancellation) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -990,7 +991,7 @@ describe(haul_cancellation) {
 
     it("should safe-drop item when stockpile deleted while carrying") {
         // Test 7 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1000,7 +1001,7 @@ describe(haul_cancellation) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1056,7 +1057,7 @@ describe(haul_cancellation) {
 describe(filter_change_mid_haul) {
     it("should re-haul stored item when stockpile filter changes to disallow its type") {
         // Bug: Items already in stockpile should be moved when filter changes
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1066,7 +1067,7 @@ describe(filter_change_mid_haul) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1137,7 +1138,7 @@ describe(filter_change_mid_haul) {
     
     it("should safe-drop when stockpile filter changes to disallow item while carrying") {
         // Test 6 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1147,7 +1148,7 @@ describe(filter_change_mid_haul) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1202,7 +1203,7 @@ describe(filter_change_mid_haul) {
 describe(dynamic_obstacles) {
     it("should cancel job when path becomes blocked mid-haul") {
         // Test 9 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1212,7 +1213,7 @@ describe(dynamic_obstacles) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1277,12 +1278,12 @@ describe(dynamic_obstacles) {
     it("should cancel job immediately when wall placed on item") {
         // Scenario: mover assigned to pick up item, wall drawn on item's cell
         // Expected: job cancels immediately (not wait 3 seconds)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1321,12 +1322,12 @@ describe(dynamic_obstacles) {
 
     it("should not assign job to item on wall") {
         // Scenario: item exists on a wall cell, should not be assigned
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1360,7 +1361,7 @@ describe(dynamic_obstacles) {
 describe(stockpile_expansion) {
     it("should haul second item after stockpile is expanded") {
         // Test 11 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1370,7 +1371,7 @@ describe(stockpile_expansion) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1436,7 +1437,7 @@ describe(stress_test) {
     it("should handle many items and agents without deadlock") {
         // Test 12 from convo-jobs.md (smaller scale for unit test)
         // 20x20 grid to ensure plenty of room
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "....................\n"
             "....................\n"
             "....................\n"
@@ -1456,7 +1457,7 @@ describe(stress_test) {
             "....................\n"
             "....................\n"
             "....................\n"
-            "....................\n", 20, 20);
+            "....................\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1535,7 +1536,7 @@ describe(unreachable_item_cooldown) {
     it("should not spam-retry unreachable items every tick") {
         // Test 8 from convo-jobs.md
         // Setup: walled pocket with item inside, agent outside
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..####....\n"
@@ -1545,7 +1546,7 @@ describe(unreachable_item_cooldown) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1599,7 +1600,7 @@ describe(unreachable_item_cooldown) {
     
     it("should retry unreachable item after cooldown expires") {
         // Standard mode: z=0 with CELL_AIR is walkable (implicit bedrock below)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..####....\n"
@@ -1609,7 +1610,7 @@ describe(unreachable_item_cooldown) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1667,7 +1668,7 @@ describe(unreachable_item_cooldown) {
 describe(gather_zones) {
     it("should only haul items from within gather zones") {
         // Test 10 from convo-jobs.md
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1677,7 +1678,7 @@ describe(gather_zones) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1717,7 +1718,7 @@ describe(gather_zones) {
     }
     
     it("should haul all items when no gather zones exist") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1727,7 +1728,7 @@ describe(gather_zones) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1766,7 +1767,7 @@ describe(gather_zones) {
 
 describe(stacking_merging) {
     it("should merge items into existing partial stacks") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1776,7 +1777,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1814,7 +1815,7 @@ describe(stacking_merging) {
     }
     
     it("should not merge different item types into same stack") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1824,7 +1825,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1864,7 +1865,7 @@ describe(stacking_merging) {
     }
     
     it("should use new slot when stack is full") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1874,7 +1875,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1916,7 +1917,7 @@ describe(stacking_merging) {
         // Test: multiple movers hauling the same item type should stack into
         // partial stacks rather than each getting a separate empty slot.
         // Pre-fill a slot to create a partial stack so the first pass can match.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1926,7 +1927,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -1986,7 +1987,7 @@ describe(stacking_merging) {
     }
     
     it("should consolidate fragmented stacks when idle") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -1996,7 +1997,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2046,7 +2047,7 @@ describe(stacking_merging) {
     }
     
     it("should not ping-pong items between equal-sized stacks") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2056,7 +2057,7 @@ describe(stacking_merging) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2130,7 +2131,7 @@ describe(stacking_merging) {
 
 describe(stockpile_priority) {
     it("should re-haul items from low to high priority stockpile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2140,7 +2141,7 @@ describe(stockpile_priority) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2192,7 +2193,7 @@ describe(stockpile_priority) {
     }
     
     it("should not re-haul if already in highest priority stockpile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2202,7 +2203,7 @@ describe(stockpile_priority) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2259,7 +2260,7 @@ describe(stockpile_priority) {
     }
     
     it("should not re-haul between equal priority stockpiles") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2269,7 +2270,7 @@ describe(stockpile_priority) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2327,11 +2328,11 @@ describe(stockpile_max_stack_size) {
     it("should not let endless mover mode hijack mover carrying item") {
         // Bug: mover in JOB_MOVING_TO_STOCKPILE loses path, endless mover mode
         // assigns random goal but mover keeps carrying item and wanders aimlessly
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2446,11 +2447,11 @@ describe(stockpile_max_stack_size) {
     
     it("should re-acquire slot after path blocked while carrying") {
         // Bug: mover carrying item, wall drawn, can't find slot even with space
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2519,7 +2520,7 @@ describe(stockpile_max_stack_size) {
     it("should stack items in partially filled slots") {
         // Reproduce bug: mover can't find slot even though there's stack space
         // 8x8 grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -2527,7 +2528,7 @@ describe(stockpile_max_stack_size) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2583,11 +2584,11 @@ describe(stockpile_max_stack_size) {
     
     it("should respect per-stockpile max stack size") {
         // 8x4 grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2626,11 +2627,11 @@ describe(stockpile_max_stack_size) {
     
     it("should re-haul excess items from overfull slots to other stockpiles") {
         // 8x4 grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2684,11 +2685,11 @@ describe(stockpile_max_stack_size) {
     
     it("should allow overfull slots when max stack size is reduced") {
         // 8x4 grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2726,11 +2727,11 @@ describe(stockpile_max_stack_size) {
     
     it("should not eject items when max stack size is increased") {
         // 8x4 grid
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -2769,7 +2770,7 @@ describe(stockpile_max_stack_size) {
 describe(stockpile_ground_item_blocking) {
     it("should not use slot with foreign ground item on it") {
         // A green item on a red-only stockpile tile should block that slot
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2779,7 +2780,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2808,7 +2809,7 @@ describe(stockpile_ground_item_blocking) {
     it("should not use slot with matching ground item on it until absorbed") {
         // A red item on ground at a red stockpile tile should also block
         // (it needs to be "absorbed" first via the absorb job)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2818,7 +2819,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2845,7 +2846,7 @@ describe(stockpile_ground_item_blocking) {
     
     it("should absorb matching ground item on stockpile tile") {
         // Mover should pick up a red item on a red stockpile and place it "properly"
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2855,7 +2856,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2897,7 +2898,7 @@ describe(stockpile_ground_item_blocking) {
     
     it("should clear foreign ground item from stockpile tile to another stockpile") {
         // Green item on red stockpile should be hauled to green stockpile
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2907,7 +2908,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -2950,7 +2951,7 @@ describe(stockpile_ground_item_blocking) {
     
     it("should safe-drop foreign item outside stockpile when no valid destination") {
         // Green item on red stockpile, but no green stockpile exists
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -2960,7 +2961,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3008,7 +3009,7 @@ describe(stockpile_ground_item_blocking) {
     it("should prioritize clearing stockpile tiles over regular hauling") {
         // With both a foreign item on stockpile AND a regular ground item,
         // the clearing job should be done first
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3018,7 +3019,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3057,7 +3058,7 @@ describe(stockpile_ground_item_blocking) {
     
     it("should not haul matching item away from its stockpile") {
         // Red item on red stockpile should be absorbed, not hauled to a different red stockpile
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3067,7 +3068,7 @@ describe(stockpile_ground_item_blocking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3119,7 +3120,7 @@ describe(clear_job_state) {
     it("should use JOB_MOVING_TO_DROP when clearing foreign item with no destination") {
         // Green item on red stockpile, no green stockpile exists
         // Mover should enter JOB_MOVING_TO_DROP state (not JOB_MOVING_TO_STOCKPILE)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3129,7 +3130,7 @@ describe(clear_job_state) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3171,7 +3172,7 @@ describe(clear_job_state) {
     it("should use JOB_MOVING_TO_STOCKPILE when clearing to another stockpile") {
         // Green item on red stockpile, green stockpile exists
         // Mover should use JOB_MOVING_TO_STOCKPILE (has a destination)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3181,7 +3182,7 @@ describe(clear_job_state) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3224,7 +3225,7 @@ describe(clear_job_state) {
     
     it("should complete JOB_MOVING_TO_DROP and drop item on ground") {
         // Full cycle: pick up foreign item, drop outside stockpile
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3234,7 +3235,7 @@ describe(clear_job_state) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3280,7 +3281,7 @@ describe(clear_job_state) {
     }
     
     it("should cancel JOB_MOVING_TO_DROP if item disappears") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -3290,7 +3291,7 @@ describe(clear_job_state) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3348,12 +3349,12 @@ describe(clear_job_state) {
 
 describe(item_spatial_grid) {
     it("should find item at correct tile after build") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3372,12 +3373,12 @@ describe(item_spatial_grid) {
     }
     
     it("should return -1 for empty tile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3391,12 +3392,12 @@ describe(item_spatial_grid) {
     }
     
     it("should not index carried items") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3415,12 +3416,12 @@ describe(item_spatial_grid) {
     }
     
     it("should not index stockpiled items") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3439,12 +3440,12 @@ describe(item_spatial_grid) {
     }
     
     it("should handle multiple items at same tile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3463,12 +3464,12 @@ describe(item_spatial_grid) {
     }
     
     it("should handle items on different z-levels") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3491,12 +3492,12 @@ describe(item_spatial_grid) {
     }
     
     it("should track groundItemCount correctly") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -3596,7 +3597,7 @@ describe(stockpile_cell_operations) {
     
     it("should not find free slot in removed cell") {
         // Need grid for walkability check in FindFreeStockpileSlot
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -3604,7 +3605,7 @@ describe(stockpile_cell_operations) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
         
         ClearStockpiles();
         
@@ -3702,12 +3703,12 @@ describe(stockpile_cell_operations) {
 
 describe(mining_designation) {
     it("should designate a wall for digging") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".###.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitDesignations();
         
@@ -3719,12 +3720,12 @@ describe(mining_designation) {
     }
     
     it("should not designate floor for digging") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".###.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitDesignations();
         
@@ -3735,12 +3736,12 @@ describe(mining_designation) {
     }
     
     it("should cancel a designation") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".###.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitDesignations();
         
@@ -3756,12 +3757,12 @@ describe(mining_designation) {
 describe(mining_job_assignment) {
     it("should assign mine job to mover when adjacent floor exists") {
         // Wall with floor below it
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".###.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3796,12 +3797,12 @@ describe(mining_job_assignment) {
     
     it("should not assign mine job when no adjacent floor") {
         // Completely surrounded wall
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "#####\n"
             "#####\n"
             "#####\n"
             "#####\n"
-            "#####\n", 5, 5);
+            "#####\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3833,12 +3834,12 @@ describe(mining_job_assignment) {
 
 describe(mining_job_execution) {
     it("should complete mine job and convert wall to walkable") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".#...\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3882,12 +3883,12 @@ describe(mining_job_execution) {
     }
     
     it("should spawn orange block when mine completes") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".#...\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3942,12 +3943,12 @@ describe(mining_job_execution) {
     }
     
     it("should cancel mine job if designation is removed") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".#...\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -3981,12 +3982,12 @@ describe(mining_job_execution) {
     }
     
     it("should cancel mine job if wall is removed by other means") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".#...\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -4025,13 +4026,13 @@ describe(mining_multiple_designations) {
     it("should process multiple mine designations sequentially") {
         // Layout with walls that each have at least one adjacent floor
         // So they can all be dug from the start
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             ".#.#..\n"
             "......\n"
             ".#....\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -4079,12 +4080,12 @@ describe(mining_multiple_designations) {
 describe(channel_designation) {
     it("should designate a floor tile for channeling") {
         // Two-level setup: floor at z=1, wall at z=0
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // Add a second level - walls at z=0
         for (int x = 0; x < 5; x++) {
@@ -4105,12 +4106,12 @@ describe(channel_designation) {
     }
     
     it("should not designate at z=0 (no level below)") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         InitDesignations();
         
@@ -4121,12 +4122,12 @@ describe(channel_designation) {
     }
     
     it("should not designate a wall tile for channeling") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".###.\n"
             ".###.\n"
             ".###.\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // Add second level
         for (int x = 0; x < 5; x++) {
@@ -4144,12 +4145,12 @@ describe(channel_designation) {
     }
     
     it("should not designate tile without floor") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // Two levels. At (2,2): z=0 is air (not solid), z=1 is air with no floor flag
         // This means there's no floor to channel at (2,2,1)
@@ -4173,12 +4174,12 @@ describe(channel_designation) {
     }
     
     it("should cancel a channel designation") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -4201,12 +4202,12 @@ describe(channel_designation) {
 
 describe(channel_ramp_detection) {
     it("should detect ramp direction when wall is adjacent at z-1") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // Setup: z=0 has wall to the north of (2,2), floor elsewhere
         // z=1 is all floor
@@ -4231,12 +4232,12 @@ describe(channel_ramp_detection) {
     }
     
     it("should return CELL_AIR when no walkable exit at z+1") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0: solid ground, z=1: floor above + walls blocking exits
         for (int x = 0; x < 5; x++) {
@@ -4272,12 +4273,12 @@ describe(channel_job_execution) {
         // Setup: solid ground below, walkable floor above
         // Legacy: z=0 walls, z=1 floor
         // Standard: z=0 walls, z=1 air above walls (walkable), z=2 air + SET_FLOOR
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 walls, z=1 air (walkable above walls), z=2 air + floor flag
         int channelZ = 2;  // Z-level where channeling happens
@@ -4335,12 +4336,12 @@ describe(channel_job_execution) {
     
     it("should complete channel job - floor removed after execution") {
         // Setup: solid ground below, walkable floor above to channel
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 walls, z=1 walls (solid to mine), z=2 air + floor flag
         int channelZ = 2;   // Z-level where channeling happens
@@ -4391,12 +4392,12 @@ describe(channel_job_execution) {
     
     it("should create ramp when wall adjacent at z-1") {
         // Setup: walls below that provide ramp high-side, floor above to channel
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
         int channelZ = 2;  // Z-level where channeling happens
@@ -4448,12 +4449,12 @@ describe(channel_job_execution) {
     
     it("should channel into open air - floor removed") {
         // Setup: open air below, floor above to channel into open air
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 dirt (solid), z=1 air (walkable), z=2 air + floor flag
         // We channel at z=2, z=1 should remain open air
@@ -4500,12 +4501,12 @@ describe(channel_job_execution) {
     
     it("should move channeler down to z-1 after completion") {
         // Setup: solid ground below, floor above - mover should descend after channeling
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 walls, z=1 walls, z=2 air + floor flag
         // Mover descends from z=2 to z=1
@@ -4555,12 +4556,12 @@ describe(channel_job_execution) {
 
 describe(channel_workgiver) {
     it("should not assign channel job to mover without canMine") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -4600,12 +4601,12 @@ describe(channel_hpa_ramp_links) {
     it("should update HPA ramp links after channeling creates ramp") {
         // Same setup as "should create ramp when wall adjacent at z-1"
         // We use A* for pathfinding but verify that HPA graph (rampLinkCount) updates
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         // z=0 walls, z=1 walls (ramp high-side), z=2 air + floor flag
         int channelZ = 2;
@@ -4672,7 +4673,7 @@ describe(channel_rectangle_ramps) {
         // Channel a 4x4 rectangle (cells 3-6, 3-6) at z1
         // Expected: all 12 border cells at z0 should become ramps
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -4682,7 +4683,7 @@ describe(channel_rectangle_ramps) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         // Set up z0 as solid dirt, z1 as walkable air
         for (int x = 0; x < 10; x++) {
@@ -4774,13 +4775,13 @@ describe(channel_rectangle_ramps) {
 
 describe(building_blueprint) {
     it("should create blueprint on floor tile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         ClearMovers();
         ClearItems();
@@ -4796,13 +4797,13 @@ describe(building_blueprint) {
     }
     
     it("should not create blueprint on wall tile") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             ".#....\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         ClearMovers();
         ClearItems();
@@ -4817,13 +4818,13 @@ describe(building_blueprint) {
     }
     
     it("should cancel blueprint") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         ClearMovers();
         ClearItems();
@@ -4841,13 +4842,13 @@ describe(building_blueprint) {
 
 describe(building_haul_job) {
     it("should assign haul job to blueprint needing materials") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -4880,13 +4881,13 @@ describe(building_haul_job) {
     }
     
     it("should not assign haul job when no items available") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -4914,13 +4915,13 @@ describe(building_haul_job) {
 
 describe(building_job_execution) {
     it("should deliver material and complete build") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -4964,13 +4965,13 @@ describe(building_job_execution) {
     }
     
     it("should cancel haul job when blueprint is cancelled") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -5027,7 +5028,7 @@ describe(building_job_execution) {
 
 describe(building_two_movers) {
     it("should use separate hauler and builder when both idle") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -5035,7 +5036,7 @@ describe(building_two_movers) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6345,13 +6346,13 @@ describe(workgivers) {
 
 describe(blueprint_material_selection) {
     it("should only haul recipe-matching item type to blueprint") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -6382,13 +6383,13 @@ describe(blueprint_material_selection) {
     }
 
     it("should haul rock or blocks to dry stone wall blueprint") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -6416,13 +6417,13 @@ describe(blueprint_material_selection) {
     }
 
     it("should not assign haul job when only wrong material available") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -6448,13 +6449,13 @@ describe(blueprint_material_selection) {
     }
 
     it("should pick nearest matching item not nearest overall") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -6483,13 +6484,13 @@ describe(blueprint_material_selection) {
     }
 
     it("should match different items to different recipe blueprints") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -6545,7 +6546,7 @@ describe(final_approach) {
     it("should complete haul job when path exhausted but close to item") {
         // Scenario: mover's path ends one step away from item
         // The final approach code should micro-move the mover to pickup range
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -6555,7 +6556,7 @@ describe(final_approach) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6594,12 +6595,12 @@ describe(final_approach) {
     it("should complete mine job when path exhausted but adjacent to wall") {
         // Scenario: mover paths to adjacent tile but ends slightly off
         // Final approach should move mover into working range
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".#...\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6640,7 +6641,7 @@ describe(final_approach) {
     it("should handle pathIndex < 0 as path exhausted") {
         // This tests the specific bug fix: pathLength > 0 but pathIndex < 0
         // means the path was traversed and exhausted
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -6650,7 +6651,7 @@ describe(final_approach) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6692,12 +6693,12 @@ describe(final_approach) {
     
     it("should not move mover when already in pickup range") {
         // Final approach should not apply if mover is already close enough
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6740,7 +6741,7 @@ describe(final_approach) {
     it("should complete delivery when path exhausted but close to stockpile") {
         // Scenario: mover carrying item, path ends near stockpile
         // Final approach should complete the delivery
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -6750,7 +6751,7 @@ describe(final_approach) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6791,7 +6792,7 @@ describe(final_approach) {
     it("should not final approach when mover is far from target") {
         // Final approach only activates when mover is in same or adjacent cell
         // When far away, mover should rely on normal pathfinding
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -6801,7 +6802,7 @@ describe(final_approach) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6854,7 +6855,7 @@ describe(final_approach) {
 
 describe(stockpile_strong_tests) {
     it("items should flow from low-priority to high-priority stockpiles naturally") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..............................\n"
             "..............................\n"
             "..............................\n"
@@ -6874,7 +6875,7 @@ describe(stockpile_strong_tests) {
             "..............................\n"
             "..............................\n"
             "..............................\n"
-            "..............................\n", 30, 20);
+            "..............................\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6928,7 +6929,7 @@ describe(stockpile_strong_tests) {
     }
     
     it("overfull stockpiles should drain, not grow") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -6938,7 +6939,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -6993,7 +6994,7 @@ describe(stockpile_strong_tests) {
     }
     
     it("filter changes mid-operation should be respected immediately") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7003,7 +7004,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -7079,7 +7080,7 @@ describe(stockpile_strong_tests) {
     }
     
     it("stockpiles should never mix incompatible materials in the same slot") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7089,7 +7090,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -7182,7 +7183,7 @@ describe(stockpile_strong_tests) {
         // via ReserveStockpileSlot, but subsequent types fail the reservation because
         // of a type mismatch. If the cache is only invalidated on SUCCESS, these
         // failed types never get a fresh cache lookup and are never hauled.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7192,7 +7193,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7244,7 +7245,7 @@ describe(stockpile_strong_tests) {
     it("same item type with different materials should never share a slot") {
         // Oak logs and pine logs are both ITEM_LOG but with different materials.
         // A player expects them in separate slots, never stacked together.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7254,7 +7255,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7323,7 +7324,7 @@ describe(stockpile_strong_tests) {
     it("material filter should block items of disallowed materials") {
         // If a stockpile allows ITEM_LOG but disallows MAT_PINE,
         // pine logs should NOT enter. Only oak logs should.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7333,7 +7334,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7370,7 +7371,7 @@ describe(stockpile_strong_tests) {
     it("consolidation should never merge different materials of same type") {
         // Two partial stacks: 3 oak logs in slot A, 3 pine logs in slot B.
         // Consolidation should NOT try to merge them even though both are ITEM_LOG.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7380,7 +7381,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7429,7 +7430,7 @@ describe(stockpile_strong_tests) {
     it("changing material filter should cause existing items to be re-hauled out") {
         // Place oak logs in a stockpile, then disable MAT_OAK.
         // The system should re-haul them to another stockpile.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -7439,7 +7440,7 @@ describe(stockpile_strong_tests) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7491,7 +7492,7 @@ describe(stockpile_strong_tests) {
     it("material-specific stockpiles should attract the right materials") {
         // Two stockpiles: one for oak only, one for pine only.
         // Oak logs should go to the oak stockpile, pine logs to the pine one.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..............................\n"
             "..............................\n"
             "..............................\n"
@@ -7501,7 +7502,7 @@ describe(stockpile_strong_tests) {
             "..............................\n"
             "..............................\n"
             "..............................\n"
-            "..............................\n", 30, 10);
+            "..............................\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
 
@@ -7569,7 +7570,7 @@ describe(stockpile_strong_tests) {
     }
 
     it("distance matters: closest available stockpile should win") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..............................\n"
             "..............................\n"
             "..............................\n"
@@ -7589,7 +7590,7 @@ describe(stockpile_strong_tests) {
             "..............................\n"
             "..............................\n"
             "..............................\n"
-            "..............................\n", 30, 20);
+            "..............................\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -7647,12 +7648,12 @@ describe(item_lifecycle) {
     it("deleting a stockpiled item should free the stockpile slot") {
         // Story: I have items in a stockpile. Something consumes one (crafting, etc).
         // The stockpile slot should become available for new items.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -7690,12 +7691,12 @@ describe(item_lifecycle) {
         // Story: I build a wall on a stockpile tile that has items.
         // The items should be pushed to a neighbor and become regular ground items,
         // and the stockpile slot should be freed.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -7734,12 +7735,12 @@ describe(item_lifecycle) {
     it("dropping items through a channeled floor should free the stockpile slot") {
         // Story: I channel the floor under a stockpile. Items fall to the level below.
         // The stockpile slot above should be freed, items should be ground items below.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         // Set up z0 as solid, z1 as walkable floor
         for (int x = 0; x < 10; x++) {
@@ -7829,12 +7830,12 @@ describe(mover_lifecycle) {
         // Story: A crafter finishes a job at a workshop. Later, a hauler gets a job
         // in the same slot. If that hauler's job is cancelled, the stale fuelItem
         // from the old craft job should NOT cause reservation theft.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -7863,12 +7864,12 @@ describe(mover_lifecycle) {
     it("ClearMovers should release workshop crafter assignments") {
         // Story: I load a save while a crafter is working at a workshop.
         // After loading, the workshop should be available for new crafters.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearItems();
@@ -7899,12 +7900,12 @@ describe(mover_lifecycle) {
     it("mover avoidance should not repel movers on different z-levels") {
         // Story: A mover on z=0 walks near a ladder. A mover on z=1 is directly
         // above. They should NOT push each other sideways.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -7937,12 +7938,12 @@ describe(mover_lifecycle) {
     it("stuck detection should count z-movement as progress") {
         // Story: A mover descends a ladder (z changes, x/y barely moves).
         // It should NOT be marked as stuck.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -7983,12 +7984,12 @@ describe(mover_lifecycle) {
     it("deactivated mover should not leave carried items in unwalkable cells") {
         // Story: A mover carrying an item gets walled in on all sides.
         // The item should NOT vanish into the wall — it should end up somewhere reachable.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 5);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8380,7 +8381,7 @@ describe(stockpile_lifecycle) {
         // Expected: Items become regular ground items (visible, can be picked up).
         // Bug: Items remain in ITEM_IN_STOCKPILE state, become invisible/inaccessible.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8390,7 +8391,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8439,7 +8440,7 @@ describe(stockpile_lifecycle) {
         // Expected: Item placement fails gracefully or item goes to ground.
         // Bug: Item placed in inactive cell, enters "phantom" state (in stockpile that doesn't exist).
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8449,7 +8450,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8505,7 +8506,7 @@ describe(stockpile_lifecycle) {
         // Expected: Reservation released, slot can be reused if cell is re-added.
         // Bug: Reservation leaks, phantom reservation blocks future use.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8515,7 +8516,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8566,7 +8567,7 @@ describe(stockpile_lifecycle) {
         // Expected: Item drops to ground and reservation is cleared.
         // Bug: Item on ground but still marked reserved, blocking other movers.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8576,7 +8577,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -8610,7 +8611,7 @@ describe(stockpile_lifecycle) {
         // Expected: Placement rejected or error logged (defensive programming).
         // Bug: Slot type overwritten, stacking invariant breaks, mixed types in one slot.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8620,7 +8621,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         ClearItems();
         ClearStockpiles();
@@ -8658,7 +8659,7 @@ describe(stockpile_lifecycle) {
         // Expected: Removal fails gracefully or validates item actually belongs there.
         // Bug: Wrong slot count decremented, ghost items or negative counts.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8668,7 +8669,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         ClearItems();
         ClearStockpiles();
@@ -8707,7 +8708,7 @@ describe(stockpile_lifecycle) {
         // Expected: Items hauled to high-priority stockpile first.
         // Bug: Items go to first stockpile with space (by index), ignoring priority.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8717,7 +8718,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8768,7 +8769,7 @@ describe(stockpile_lifecycle) {
         // Expected: All items end up on ground, all reservations cleared, no leaks.
         // Bug: Items vanish, reservations leak, counts corrupted.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8778,7 +8779,7 @@ describe(stockpile_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8838,7 +8839,7 @@ describe(workshop_lifecycle) {
         // Expected: Movers immediately recalculate paths through the now-walkable space.
         // Actual (bug): Movers continue avoiding the area until they repath for other reasons.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -8848,7 +8849,7 @@ describe(workshop_lifecycle) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -8992,12 +8993,12 @@ describe(designation_lifecycle) {
     // Finding 1 (HIGH): CompleteDigRampDesignation missing rampCount++
     it("digging a ramp should increment the global ramp count") {
         // Player digs a ramp from a wall. rampCount should go up by 1.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         // Make z=0 solid walls, z=1 walkable
         for (int x = 0; x < 5; x++) {
@@ -9026,12 +9027,12 @@ describe(designation_lifecycle) {
     it("digging a ramp should mark the chunk dirty for rendering") {
         // Player digs a ramp. The rendering chunk should be marked dirty
         // so the mesh rebuilds and the player sees the new ramp.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -9060,12 +9061,12 @@ describe(designation_lifecycle) {
     it("removing a floor should drop the floor material item to the level below") {
         // Player removes a constructed floor at z=2. The resulting material item
         // should appear at z=1 (where it would physically fall), not float at z=2.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         // z=0: solid ground, z=1: air+floor (walkable), z=2: air+constructed floor
         for (int x = 0; x < 5; x++) {
@@ -9148,12 +9149,12 @@ describe(designation_lifecycle) {
 
     // Finding 5 (MEDIUM): CompleteBlueprint (RAMP) missing rampCount++
     it("building a ramp blueprint should increment the global ramp count") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         // z=0: walls (for ramp direction), z=1: walkable
         for (int x = 0; x < 5; x++) {
@@ -9186,12 +9187,12 @@ describe(designation_lifecycle) {
     it("canceling a blueprint with delivered materials should drop them on the ground") {
         // Player places a wall blueprint, a mover delivers stone, then player
         // cancels. The stone should appear on the ground, not vanish.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         InitDesignations();
         ClearItems();
@@ -9245,12 +9246,12 @@ describe(designation_lifecycle) {
     it("building a ramp should push items out of the cell") {
         // Items sitting on a cell where a ramp is built should be pushed
         // to an adjacent cell, just like wall blueprints do.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -9290,12 +9291,12 @@ describe(designation_lifecycle) {
         // DestabilizeWater, ClearUnreachableCooldowns, ValidateAndCleanupRamps,
         // InvalidateDesignationCache. CompleteDigRampDesignation should do the same
         // relevant subset. This test checks unreachable cooldown clearing.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             ".....\n"
             ".....\n"
             ".....\n"
             ".....\n"
-            ".....\n", 5, 5);
+            ".....\n");
 
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -9336,7 +9337,7 @@ describe(unreachable_cooldown_poisoning) {
         // prevent hauling by poisoning items with unreachable cooldowns.
 
         // z=0: walls (solid ground), z=1: air+floor (walkable), z=3: air+floor (walkable but disconnected)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -9344,7 +9345,7 @@ describe(unreachable_cooldown_poisoning) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         // Make z=1 walkable: z=0 is walls, z=1 is air with floor
         for (int x = 0; x < 8; x++) {
@@ -9410,7 +9411,7 @@ describe(unreachable_cooldown_poisoning) {
         // Story: If an item is truly unreachable from every mover (e.g. walled off),
         // it should still get an unreachable cooldown to avoid spam-retrying.
 
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "..####..\n"
             "..#..#..\n"
@@ -9418,7 +9419,7 @@ describe(unreachable_cooldown_poisoning) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -9452,7 +9453,7 @@ describe(unreachable_cooldown_poisoning) {
         // After one AssignJobs call, ideally at most 1 item gets tried by
         // the stranded mover (not all 5). The z=1 mover should handle the rest.
 
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -9460,7 +9461,7 @@ describe(unreachable_cooldown_poisoning) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         for (int x = 0; x < 8; x++) {
             for (int y = 0; y < 8; y++) {
@@ -9543,11 +9544,11 @@ describe(saveload_state_restoration) {
     it("should have correct itemCount after simulated load") {
         // Setup: Create items normally, verify count, then simulate post-load
         // state where itemHighWaterMark is set but itemCount is zero.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         ClearMovers();
         ClearItems();
@@ -9588,11 +9589,11 @@ describe(saveload_state_restoration) {
     }
     
     it("should have correct stockpileCount after simulated load") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         ClearMovers();
         ClearItems();
@@ -9623,7 +9624,7 @@ describe(saveload_state_restoration) {
     }
     
     it("should have correct workshopCount after simulated load") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -9633,7 +9634,7 @@ describe(saveload_state_restoration) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -9665,11 +9666,11 @@ describe(saveload_state_restoration) {
     it("should have correct itemCount with holes in the array after simulated load") {
         // Scenario: Player creates 5 items, deletes items 1 and 3 (leaving holes),
         // saves and loads. itemCount should be 3, not 0 or 5.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         ClearMovers();
         ClearItems();
@@ -9714,11 +9715,11 @@ describe(saveload_state_restoration) {
     // even if most are unused.
     
     it("should reuse freed job slots after simulated load") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         ClearMovers();
         ClearItems();
@@ -9763,11 +9764,11 @@ describe(saveload_state_restoration) {
     }
     
     it("should be able to create jobs up to capacity after simulated load with many holes") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 4);
+            "........\n");
         
         ClearMovers();
         ClearItems();
@@ -9813,7 +9814,7 @@ describe(saveload_state_restoration) {
     // for hauling -- not stuck with stale reservations from the previous session.
     
     it("should not have stale item reservations after simulated load") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -9823,7 +9824,7 @@ describe(saveload_state_restoration) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -9865,7 +9866,7 @@ describe(saveload_state_restoration) {
     it("should allow hauling items that had stale reservations after simulated load") {
         // Full integration test: items with stale reservations should be
         // haulable after a simulated load
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -9875,7 +9876,7 @@ describe(saveload_state_restoration) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -9932,13 +9933,13 @@ describe(grid_audit_blueprint_integration) {
         // 2. rampCount is decremented
         // 3. No phantom ramps in pathfinding
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -9989,13 +9990,13 @@ describe(grid_audit_blueprint_integration) {
         // ladder cell. When construction completes, the ladder should be
         // properly cleaned up (not silently overwritten).
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10038,13 +10039,13 @@ describe(grid_audit_blueprint_integration) {
         // 2. rampCount decrements
         // Same as first test but also verifies rampCount with solid support setup
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         
@@ -10099,13 +10100,13 @@ describe(grid_audit_tree_chopping_integration) {
         // 1. The ramp is removed (no longer structurally valid)
         // 2. rampCount is decremented
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10147,13 +10148,13 @@ describe(grid_audit_tree_chopping_integration) {
         // Control test: Chopping a trunk that doesn't support any ramps
         // should NOT remove unrelated ramps
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10217,13 +10218,13 @@ describe(input_audit_material_consistency) {
         // Story: Player shift-drags to pile clay. Each placed cell should have
         // MAT_CLAY as its wall material, not MAT_DIRT.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10237,13 +10238,13 @@ describe(input_audit_material_consistency) {
     }
     
     it("piling gravel should set wall material to MAT_GRAVEL (Finding 1)") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10256,13 +10257,13 @@ describe(input_audit_material_consistency) {
     }
     
     it("piling sand should set wall material to MAT_SAND (Finding 1)") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10275,13 +10276,13 @@ describe(input_audit_material_consistency) {
     }
     
     it("piling peat should set wall material to MAT_PEAT (Finding 1)") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10301,13 +10302,13 @@ describe(input_audit_erase_ramp) {
         // Story: Player draws a ramp, then right-click erases over it.
         // rampCount should decrement.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10335,13 +10336,13 @@ describe(input_audit_soil_repath) {
         // Story: Player places a dirt block on a cell where a mover is pathing.
         // The mover should get needsRepath=true.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -10379,13 +10380,13 @@ describe(input_audit_grass_placement) {
         // Story: Player uses grass tool on an air cell. It becomes CELL_DIRT.
         // The wall material should be MAT_DIRT, not MAT_NONE.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10407,13 +10408,13 @@ describe(input_audit_grass_placement) {
         // Story: Player places grass on a cell where a mover is pathing.
         // Air becomes solid dirt. Mover should repath.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -10451,13 +10452,13 @@ describe(input_audit_erase_designations) {
         // Story: Player designates a wall for mining, then erases the cell.
         // The mining designation should be cancelled.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10486,13 +10487,13 @@ describe(input_audit_erase_designations) {
         // Story: Player erases terrain that has a stockpile on it.
         // The stockpile cells over erased terrain should be removed.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10518,13 +10519,13 @@ describe(input_audit_erase_designations) {
         // Story: Player designates tree for chopping, then removes it with sandbox tool.
         // The chop designation should be cancelled.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10559,13 +10560,13 @@ describe(input_audit_quick_erase_metadata) {
         // Story: Player quick-erases (right-click hold) a dirt cell with grass.
         // The cell becomes air. All metadata should be cleared.
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -10596,13 +10597,13 @@ describe(input_audit_quick_erase_metadata) {
         // Story: Player quick-erases a ramp cell.
         // rampCount should decrement (same issue as Finding 2 but for quick-edit).
         
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 6);
+            "..........\n");
         
         ClearMovers();
         ClearItems();
@@ -11828,7 +11829,7 @@ describe(chop_felled_transition) {
         // The CHOP job immediately fails (wrong type), but the designation is now
         // permanently claimed by a mover that doesn't have a job for it.
 
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -11838,7 +11839,7 @@ describe(chop_felled_transition) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         ClearMovers();
         ClearItems();
@@ -11957,13 +11958,13 @@ describe(construction_recipe_data) {
 
 describe(construction_recipe_blueprint) {
     it("should create recipe blueprint on walkable cell") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         ClearMovers();
         ClearItems();
@@ -11981,13 +11982,13 @@ describe(construction_recipe_blueprint) {
 
     it("should reject recipe blueprint on wall cell") {
         // Test #45
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             ".#....\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         ClearMovers();
         ClearItems();
@@ -12000,13 +12001,13 @@ describe(construction_recipe_blueprint) {
 
     it("should reject duplicate blueprint at same cell") {
         // Test #44
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         ClearMovers();
         ClearItems();
@@ -12023,13 +12024,13 @@ describe(construction_recipe_blueprint) {
 
     it("should cancel recipe blueprint with no deliveries cleanly") {
         // Test #34
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         ClearMovers();
         ClearItems();
@@ -12046,13 +12047,13 @@ describe(construction_recipe_blueprint) {
     }
 
     it("should initialize delivery slots to zero") {
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         ClearMovers();
         ClearItems();
@@ -12071,7 +12072,7 @@ describe(construction_recipe_blueprint) {
 describe(construction_recipe_delivery) {
     it("should stay AWAITING_MATERIALS with partial delivery") {
         // Tests #24, #27: deliver 1 or 2 of 3 rocks → still waiting
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12079,7 +12080,7 @@ describe(construction_recipe_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12121,7 +12122,7 @@ describe(construction_recipe_delivery) {
 
     it("should reserve item and track reservation count") {
         // Test #28, #29
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12129,7 +12130,7 @@ describe(construction_recipe_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12171,7 +12172,7 @@ describe(construction_recipe_delivery) {
 describe(construction_recipe_build) {
     it("should build dry stone wall end to end with granite") {
         // Tests #1, #20: deliver 3 granite rocks, build → wall with MAT_GRANITE
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12179,7 +12180,7 @@ describe(construction_recipe_build) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12238,7 +12239,7 @@ describe(construction_recipe_build) {
 
     it("should survive save and load mid delivery") {
         // Test #50
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12246,7 +12247,7 @@ describe(construction_recipe_build) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12332,7 +12333,7 @@ describe(construction_wattle_data) {
 describe(construction_wattle_delivery) {
     it("should stay AWAITING after delivering 1 stick of 2 in stage 0") {
         // Test #24: deliver 1 stick → still AWAITING
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12340,7 +12341,7 @@ describe(construction_wattle_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12366,7 +12367,7 @@ describe(construction_wattle_delivery) {
 
     it("should stay AWAITING after delivering 2 sticks but no cordage") {
         // Test #25: deliver both sticks → still AWAITING (cordage missing)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12374,7 +12375,7 @@ describe(construction_wattle_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12403,7 +12404,7 @@ describe(construction_wattle_delivery) {
 
     it("should become READY_TO_BUILD when stage 0 inputs delivered") {
         // Test #26: deliver 2 sticks + 1 cordage → READY_TO_BUILD for stage 0
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12411,7 +12412,7 @@ describe(construction_wattle_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12443,7 +12444,7 @@ describe(construction_wattle_delivery) {
 
     it("should not assign wrong item type to a slot") {
         // Test #48: hauler carrying wrong type → not assigned
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12451,7 +12452,7 @@ describe(construction_wattle_delivery) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12482,7 +12483,7 @@ describe(construction_wattle_delivery) {
 describe(construction_wattle_parallel) {
     it("should assign two haulers to different slots simultaneously") {
         // Test #30: two haulers, one for sticks, one for cordage
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -12492,7 +12493,7 @@ describe(construction_wattle_parallel) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12534,7 +12535,7 @@ describe(construction_wattle_parallel) {
 
     it("should not over-reserve a filled slot") {
         // Test #31 variant: two blueprints, limited items — only one gets reserved
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -12544,7 +12545,7 @@ describe(construction_wattle_parallel) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12581,7 +12582,7 @@ describe(construction_wattle_parallel) {
 
     it("should assign builder independently after stage 0 materials delivered") {
         // Test #43: builder is not necessarily the last hauler
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -12591,7 +12592,7 @@ describe(construction_wattle_parallel) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12635,7 +12636,7 @@ describe(construction_wattle_parallel) {
 describe(construction_multi_stage) {
     it("should advance to stage 1 after stage 0 build completes") {
         // Test #5: stage 0 build → advances to stage 1, state resets to AWAITING_MATERIALS
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12643,7 +12644,7 @@ describe(construction_multi_stage) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12695,7 +12696,7 @@ describe(construction_multi_stage) {
 
     it("should reset chosenAlternative when stage advances") {
         // Test #16: stage advance resets locks for new stage
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12703,7 +12704,7 @@ describe(construction_multi_stage) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12739,7 +12740,7 @@ describe(construction_multi_stage) {
 
     it("should complete wattle & daub wall after both stages") {
         // Test #6: stage 1 fill (2 dirt) + build → wall with MAT_DIRT
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12747,7 +12748,7 @@ describe(construction_multi_stage) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12797,7 +12798,7 @@ describe(construction_multi_stage) {
 
     it("should create new haul jobs after stage advances") {
         // Test #42: after stage 0 build, WorkGiver creates haul jobs for stage 1
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -12807,7 +12808,7 @@ describe(construction_multi_stage) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12853,7 +12854,7 @@ describe(construction_multi_stage) {
 
     it("should cancel mid-stage-1 and refund both stages") {
         // Test #36: cancel after stage 0 complete, during stage 1
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12861,7 +12862,7 @@ describe(construction_multi_stage) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12920,7 +12921,7 @@ describe(construction_multi_stage) {
 
     it("should save and load between stages") {
         // Test #51: save after stage 0 done, during stage 1 awaiting
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -12928,7 +12929,7 @@ describe(construction_multi_stage) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -12995,7 +12996,7 @@ describe(construction_multi_stage_edge_cases) {
     it("should not haul stage 1 items during stage 0") {
         // Edge case: dirt is available but blueprint is in stage 0 (needs sticks+cordage).
         // WorkGiver should NOT assign dirt hauling.
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13005,7 +13006,7 @@ describe(construction_multi_stage_edge_cases) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13042,7 +13043,7 @@ describe(construction_multi_stage_edge_cases) {
     it("should not over-deliver to same slot with two haulers") {
         // Edge case: slot 0 needs 2 sticks, 2 haulers both assigned — reservedCount
         // should prevent a 3rd reservation
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13052,7 +13053,7 @@ describe(construction_multi_stage_edge_cases) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13105,7 +13106,7 @@ describe(construction_multi_stage_edge_cases) {
 
     it("should not haul sticks to blueprint that already has enough sticks reserved") {
         // Verify that once slot 0 has reservedCount == count, no more sticks are reserved
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13115,7 +13116,7 @@ describe(construction_multi_stage_edge_cases) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13159,7 +13160,7 @@ describe(construction_multi_stage_edge_cases) {
 
     it("should deliver to correct slot when item type differs between slots") {
         // Verify that cordage goes to slot 1, not slot 0 (sticks)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -13167,7 +13168,7 @@ describe(construction_multi_stage_edge_cases) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13193,7 +13194,7 @@ describe(construction_multi_stage_edge_cases) {
 describe(construction_plank_wall) {
     it("should build plank wall end to end through both stages") {
         // Test #7: plank wall: sticks+cordage → build → planks → build → final wall
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13203,7 +13204,7 @@ describe(construction_plank_wall) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13259,7 +13260,7 @@ describe(construction_plank_wall) {
 
     it("should build wattle & daub wall end to end through both stages") {
         // Full sim: 2 sticks + 1 cordage → build stage 0 → 2 dirt → build stage 1 → wall
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13269,7 +13270,7 @@ describe(construction_plank_wall) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13328,13 +13329,13 @@ describe(construction_plank_wall) {
 describe(construction_site_clearing) {
     it("should start in CLEARING state when items exist at cell") {
         // Test #0a: blueprint on cell with items → state = CLEARING
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13354,13 +13355,13 @@ describe(construction_site_clearing) {
 
     it("should start in AWAITING_MATERIALS when cell is empty") {
         // Test #0c: blueprint on empty cell → skips CLEARING
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13375,13 +13376,13 @@ describe(construction_site_clearing) {
 
     it("should transition to AWAITING_MATERIALS when items are removed") {
         // Test #0b: all items removed → advances to AWAITING_MATERIALS
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13414,7 +13415,7 @@ describe(construction_site_clearing) {
 
     it("should create haul job for items at CLEARING blueprint") {
         // Test #0e: WorkGiver_BlueprintClear creates haul-away jobs
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13424,7 +13425,7 @@ describe(construction_site_clearing) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13462,7 +13463,7 @@ describe(construction_site_clearing) {
 
     it("should clear site then build wall end to end") {
         // Full sim: item at cell → clear → deliver materials → build → wall
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13472,7 +13473,7 @@ describe(construction_site_clearing) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13525,7 +13526,7 @@ describe(construction_site_clearing) {
 
     it("should not haul construction materials while still clearing") {
         // While in CLEARING state, BlueprintHaul should not pick up materials
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13535,7 +13536,7 @@ describe(construction_site_clearing) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13592,7 +13593,7 @@ describe(construction_or_materials) {
 
     it("should build wattle wall with clay instead of dirt") {
         // Test #10: only clay available → hauler picks clay → MAT_CLAY
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13602,7 +13603,7 @@ describe(construction_or_materials) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13650,7 +13651,7 @@ describe(construction_or_materials) {
 
     it("should build dry stone wall with blocks instead of rocks") {
         // Test #11 end-to-end: only blocks available → wall with block material
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13660,7 +13661,7 @@ describe(construction_or_materials) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13699,7 +13700,7 @@ describe(construction_or_materials) {
 describe(construction_alternative_locking) {
     it("should lock chosenAlternative on first reservation") {
         // Test #13: first reservation locks the slot's chosenAlternative
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13709,7 +13710,7 @@ describe(construction_alternative_locking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13742,7 +13743,7 @@ describe(construction_alternative_locking) {
 
     it("should not reserve wrong alternative after slot is locked") {
         // Test #14: once slot locked to rock, blocks should be rejected
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13752,7 +13753,7 @@ describe(construction_alternative_locking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13790,7 +13791,7 @@ describe(construction_alternative_locking) {
 
     it("should lock material on first reservation preventing mixed materials") {
         // Test #15: first reservation locks material — won't mix oak and pine rocks
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13800,7 +13801,7 @@ describe(construction_alternative_locking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13835,13 +13836,13 @@ describe(construction_alternative_locking) {
 
     it("should reset locking when stage advances") {
         // Test #16 (already covered in multi_stage tests, but verify explicitly for OR-inputs)
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13884,7 +13885,7 @@ describe(construction_alternative_locking) {
 
     it("should stall when locked alternative runs out") {
         // Test #17: if locked to rock but no more rocks exist, slot stalls
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -13894,7 +13895,7 @@ describe(construction_alternative_locking) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -13975,13 +13976,13 @@ describe(construction_any_building_mat) {
         // anyBuildingMat slots skip alternative locking — different building mats can mix
         // Ramp needs CELL_AIR + HAS_FLOOR — use a wall recipe with anyBuildingMat to test
         // the locking behavior directly via delivery, bypassing placement preconditions
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "......\n"
             "......\n"
             "......\n"
             "......\n"
             "......\n"
-            "......\n", 6, 6);
+            "......\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -14012,7 +14013,7 @@ describe(construction_any_building_mat) {
 describe(construction_new_recipes) {
     it("should build brick floor end to end") {
         // Test #2: 2 bricks → floor with MAT_BRICK
-        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitTestGridFromAscii("....\n....\n");
         InitDesignations();
         ClearItems();
 
@@ -14035,7 +14036,7 @@ describe(construction_new_recipes) {
 
     it("should build ladder with log") {
         // Test #3: 1 log → ladder placed
-        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitTestGridFromAscii("....\n....\n");
         InitDesignations();
         ClearItems();
 
@@ -14054,7 +14055,7 @@ describe(construction_new_recipes) {
 
     it("should build thatch floor end to end with 2 stages") {
         // Test #8: stage 0 = 1 dirt, stage 1 = 1 dried grass → floor with MAT_DIRT
-        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitTestGridFromAscii("....\n....\n");
         InitDesignations();
         ClearItems();
 
@@ -14087,7 +14088,7 @@ describe(construction_new_recipes) {
 
     it("should build log wall with oak material") {
         // Test #18: 2 oak logs → wall with MAT_OAK
-        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitTestGridFromAscii("....\n");
         InitDesignations();
         ClearItems();
 
@@ -14108,7 +14109,7 @@ describe(construction_new_recipes) {
 
     it("should build log wall with pine material") {
         // Test #19: 2 pine logs → wall with MAT_PINE
-        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitTestGridFromAscii("....\n");
         InitDesignations();
         ClearItems();
 
@@ -14127,7 +14128,7 @@ describe(construction_new_recipes) {
 
     it("should build brick wall with fixed MAT_BRICK") {
         // Test #22: 3 bricks → wall with MAT_BRICK (fixed, not inherited)
-        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitTestGridFromAscii("....\n");
         InitDesignations();
         ClearItems();
 
@@ -14155,7 +14156,7 @@ describe(construction_new_recipes) {
 
     it("should reject floor blueprint on cell that already has floor") {
         // Test #46: can't place floor blueprint where floor already exists
-        InitGridFromAsciiWithChunkSize("....\n", 4, 1);
+        InitTestGridFromAscii("....\n");
         InitDesignations();
 
         // Explicitly set floor on (2,0,0)
@@ -14167,7 +14168,7 @@ describe(construction_new_recipes) {
 
     it("should build ladder with planks and inherit material") {
         // Ladder with planks instead of log
-        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 2);
+        InitTestGridFromAscii("....\n....\n");
         InitDesignations();
         ClearItems();
 
@@ -14190,7 +14191,7 @@ describe(construction_new_recipes) {
 describe(construction_cancellation) {
     it("should refund delivered items at 100% when cancelled mid-stage") {
         // Test #35: cancel with delivered but not-yet-built items
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -14198,7 +14199,7 @@ describe(construction_cancellation) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -14247,7 +14248,7 @@ describe(construction_cancellation) {
 
     it("should lossy-refund consumed items from completed stages") {
         // Test #38: consumed items have recovery chance, not all returned
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -14255,7 +14256,7 @@ describe(construction_cancellation) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -14308,7 +14309,7 @@ describe(construction_cancellation) {
 
     it("should cancel during BUILDING and refund correctly") {
         // Test #37: cancel during build step
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "........\n"
             "........\n"
             "........\n"
@@ -14316,7 +14317,7 @@ describe(construction_cancellation) {
             "........\n"
             "........\n"
             "........\n"
-            "........\n", 8, 8);
+            "........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -14374,7 +14375,7 @@ describe(construction_cancellation) {
 
     it("should proactively cancel in-transit haul jobs and release reservations") {
         // Test #39: cancel releases all reservations on in-transit items
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -14384,7 +14385,7 @@ describe(construction_cancellation) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();
@@ -14432,7 +14433,7 @@ describe(construction_cancellation) {
 
     it("should cancel haul mid-walk and release reservation") {
         // Test #32: cancel haul mid-walk
-        InitGridFromAsciiWithChunkSize(
+        InitTestGridFromAscii(
             "..........\n"
             "..........\n"
             "..........\n"
@@ -14442,7 +14443,7 @@ describe(construction_cancellation) {
             "..........\n"
             "..........\n"
             "..........\n"
-            "..........\n", 10, 10);
+            "..........\n");
 
         moverPathAlgorithm = PATH_ALGO_ASTAR;
         ClearMovers();

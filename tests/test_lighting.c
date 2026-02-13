@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/lighting.h"
@@ -14,7 +15,7 @@ static bool test_verbose = false;
 
 describe(lighting_initialization) {
     it("should initialize light grid with all zeros") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         for (int z = 0; z < gridDepth; z++) {
@@ -30,14 +31,14 @@ describe(lighting_initialization) {
     }
 
     it("should have zero light sources after init") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         expect(lightSourceCount == 0);
     }
 
     it("should set dirty flag on init") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         expect(lightingDirty == true);
@@ -50,7 +51,7 @@ describe(lighting_initialization) {
 
 describe(lighting_sources) {
     it("should add a light source and return valid index") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         int idx = AddLightSource(3, 2, 1, 255, 180, 100, 10);
@@ -68,7 +69,7 @@ describe(lighting_sources) {
     }
 
     it("should update existing source at same position") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         int idx1 = AddLightSource(3, 2, 1, 255, 180, 100, 10);
@@ -83,7 +84,7 @@ describe(lighting_sources) {
     }
 
     it("should add multiple sources at different positions") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         int a = AddLightSource(1, 1, 0, 255, 0, 0, 10);
@@ -96,7 +97,7 @@ describe(lighting_sources) {
     }
 
     it("should remove a light source") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         AddLightSource(3, 2, 1, 255, 180, 100, 10);
@@ -107,7 +108,7 @@ describe(lighting_sources) {
     }
 
     it("should shrink high water mark on remove") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         AddLightSource(1, 1, 0, 255, 0, 0, 10);
@@ -123,7 +124,7 @@ describe(lighting_sources) {
     }
 
     it("should reuse removed slots") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         int a = AddLightSource(1, 1, 0, 255, 0, 0, 10);
@@ -136,7 +137,7 @@ describe(lighting_sources) {
     }
 
     it("should clear all light sources") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         AddLightSource(1, 1, 0, 255, 0, 0, 10);
@@ -150,7 +151,7 @@ describe(lighting_sources) {
     }
 
     it("should mark dirty when adding a source") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingDirty = false;
 
@@ -160,7 +161,7 @@ describe(lighting_sources) {
     }
 
     it("should mark dirty when removing a source") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         AddLightSource(3, 2, 1, 255, 180, 100, 10);
@@ -178,7 +179,7 @@ describe(lighting_sources) {
 
 describe(lighting_sky_columns) {
     it("should give full sky light to open air cells") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -196,7 +197,7 @@ describe(lighting_sky_columns) {
     }
 
     it("should block sky light below solid ceiling") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -220,7 +221,7 @@ describe(lighting_sky_columns) {
     }
 
     it("should block sky light below full floor") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -241,7 +242,7 @@ describe(lighting_sky_columns) {
     }
 
     it("should not compute sky light when skyLightEnabled is false") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -266,7 +267,7 @@ describe(lighting_sky_columns) {
 
 describe(lighting_sky_spread) {
     it("should spread sky light into adjacent dark cells") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -296,7 +297,7 @@ describe(lighting_sky_spread) {
     }
 
     it("should not spread sky light through solid cells") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -329,7 +330,7 @@ describe(lighting_sky_spread) {
 
 describe(lighting_block_light) {
     it("should illuminate source cell at full brightness") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -344,7 +345,7 @@ describe(lighting_block_light) {
     }
 
     it("should attenuate block light with distance") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -361,7 +362,7 @@ describe(lighting_block_light) {
     }
 
     it("should produce circular light shape (Euclidean falloff)") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -379,7 +380,7 @@ describe(lighting_block_light) {
     }
 
     it("should not propagate block light through solid cells") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -403,7 +404,7 @@ describe(lighting_block_light) {
     }
 
     it("should write block light to solid cell surfaces") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -421,7 +422,7 @@ describe(lighting_block_light) {
     }
 
     it("should stay on same z-level (no vertical propagation)") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -435,7 +436,7 @@ describe(lighting_block_light) {
     }
 
     it("should not compute block light when blockLightEnabled is false") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = false;
@@ -451,7 +452,7 @@ describe(lighting_block_light) {
     }
 
     it("should not bleed into enclosed room") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -476,7 +477,7 @@ describe(lighting_block_light) {
     }
 
     it("should combine light from multiple sources") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -501,7 +502,7 @@ describe(lighting_block_light) {
     }
 
     it("should fall off to zero beyond light radius") {
-        InitGridWithSizeAndChunkSize(32, 32, 32, 32);
+        InitTestGrid(32, 32);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -522,7 +523,7 @@ describe(lighting_block_light) {
 
 describe(lighting_get_light_color) {
     it("should return WHITE when lighting is disabled") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = false;
 
@@ -537,7 +538,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should return WHITE for out-of-bounds coordinates") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
 
@@ -553,7 +554,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should apply sky color modulation") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -580,7 +581,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should apply ambient minimum") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -611,7 +612,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should use dominant source to preserve color character") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -648,7 +649,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should add z-1 block light bleed for air cells") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;  // Disable sky to isolate block light
@@ -678,7 +679,7 @@ describe(lighting_get_light_color) {
     }
 
     it("should not add z-1 bleed for solid cells") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -712,7 +713,7 @@ describe(lighting_get_light_color) {
 
 describe(lighting_update) {
     it("should not recompute when not dirty") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -730,7 +731,7 @@ describe(lighting_update) {
     }
 
     it("should recompute when dirty") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -756,7 +757,7 @@ describe(lighting_update) {
 
 describe(lighting_get_sky_light) {
     it("should return sky level for valid cells") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = true;
@@ -767,7 +768,7 @@ describe(lighting_get_sky_light) {
     }
 
     it("should return SKY_LIGHT_MAX for out-of-bounds") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         expect(GetSkyLight(-1, 0, 0) == SKY_LIGHT_MAX);
@@ -783,7 +784,7 @@ describe(lighting_get_sky_light) {
 
 describe(lighting_edge_cases) {
     it("should handle grid boundaries correctly for block light") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -797,7 +798,7 @@ describe(lighting_edge_cases) {
     }
 
     it("should handle torch at grid edge") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -811,7 +812,7 @@ describe(lighting_edge_cases) {
     }
 
     it("should handle removing nonexistent source gracefully") {
-        InitGridWithSizeAndChunkSize(8, 8, 8, 8);
+        InitTestGrid(8, 8);
         InitLighting();
 
         // Should not crash
@@ -821,7 +822,7 @@ describe(lighting_edge_cases) {
     }
 
     it("should handle intensity 1 (minimum radius)") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         blockLightEnabled = true;
@@ -842,7 +843,7 @@ describe(lighting_edge_cases) {
 
 describe(lighting_z1_visibility) {
     it("should have block light in air cells at z=1 where torch is") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -886,7 +887,7 @@ describe(lighting_z1_visibility) {
     }
 
     it("should bleed z=1 torch light into GetLightColor at z=2") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -926,7 +927,7 @@ describe(lighting_z1_visibility) {
     }
 
     it("should bleed z=1 torch light for nearby cells at z=2") {
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -973,7 +974,7 @@ describe(lighting_z1_visibility) {
         // Rendering from z=2 draws wall TOP at z=1 using GetLightColor(x,y,2).
         // The z-1 bleed reads lightGrid[1] - but IS the wall cell at z=1 lit?
 
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;
@@ -1037,7 +1038,7 @@ describe(lighting_z1_visibility) {
         // From z=1: zBelow=0. grid[0] is solid, so z-1 floor IS drawn.
         // GetLightColor(x,y,1) at z=1: lightGrid[1] has block light directly. Good.
 
-        InitGridWithSizeAndChunkSize(16, 16, 16, 16);
+        InitTestGrid(16, 16);
         InitLighting();
         lightingEnabled = true;
         skyLightEnabled = false;

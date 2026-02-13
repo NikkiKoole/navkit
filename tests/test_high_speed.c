@@ -14,6 +14,7 @@
 #include "../src/core/time.h"
 #include "../src/entities/mover.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/simulation/water.h"
@@ -37,7 +38,7 @@ static bool test_verbose = false;
 static void SetupCorridorGrid(void) {
     // Create a corridor: mover must go through narrow passage
     // DF mode: z=0 = ground (dirt), z=1 = walking level with walls
-    InitGridWithSizeAndChunkSize(16, 7, 16, 7);
+    InitTestGrid(16, 7);
     gridDepth = 2;
     
     // Fill z=0 with dirt (ground)
@@ -78,7 +79,7 @@ static void SetupCorridorGrid(void) {
 }
 
 static void SetupOpenGrid(void) {
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "................\n"
         "................\n"
         "................\n"
@@ -86,7 +87,7 @@ static void SetupOpenGrid(void) {
         "................\n"
         "................\n"
         "................\n"
-        "................\n", 16, 8);
+        "................\n");
     
     gridDepth = 1;
     
@@ -110,7 +111,7 @@ static void SetupOpenGrid(void) {
 static void SetupWalledGrid(void) {
     // Grid with walls on all sides and in the middle
     // DF mode: z=0 = ground (dirt), z=1 = walking level with walls
-    InitGridWithSizeAndChunkSize(16, 8, 16, 8);
+    InitTestGrid(16, 8);
     gridDepth = 2;
     
     // Fill z=0 with dirt, z=1 with air

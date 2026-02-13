@@ -1,6 +1,7 @@
 #include "../vendor/c89spec.h"
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
+#include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/pathfinding.h"
@@ -25,7 +26,7 @@ static bool test_verbose = false;
 
 static void SetupBasicGrid(void) {
     // Create a simple grid with dirt floor at z=0, air above
-    InitGridFromAsciiWithChunkSize(
+    InitTestGridFromAscii(
         "..........\n"
         "..........\n"
         "..........\n"
@@ -33,7 +34,7 @@ static void SetupBasicGrid(void) {
         "..........\n"
         "..........\n"
         "..........\n"
-        "..........\n", 10, 8);
+        "..........\n");
     
     // Set z=0 as dirt floor
     for (int y = 0; y < gridHeight; y++) {
