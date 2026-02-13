@@ -6,6 +6,7 @@
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../simulation/smoke.h"
+#include "../simulation/lighting.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -377,6 +378,11 @@ void DeleteWorkshop(int index) {
             }
         }
         
+        // Remove fire light if workshop was burning
+        if (ws->fuelTileX >= 0) {
+            RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+        }
+
         ws->active = false;
         workshopCount--;
     }
@@ -610,6 +616,9 @@ void PassiveWorkshopsTick(float dt) {
             if (ws->passiveProgress == 0.0f && ws->passiveReady) {
                 ws->passiveReady = false;
                 ws->assignedCrafter = -1;
+                if (ws->fuelTileX >= 0) {
+                    RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+                }
             }
             continue;
         }
@@ -622,9 +631,12 @@ void PassiveWorkshopsTick(float dt) {
         // Advance timer using passive work duration
         ws->passiveProgress += dt / recipe->passiveWorkRequired;
 
-        // Emit smoke while passively burning
-        if (ws->fuelTileX >= 0 && GetRandomValue(0, 3) == 0) {
-            AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 3);
+        // Emit smoke and light while passively burning
+        if (ws->fuelTileX >= 0) {
+            if (GetRandomValue(0, 3) == 0) {
+                AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 3);
+            }
+            AddLightSource(ws->fuelTileX, ws->fuelTileY, ws->z, 255, 140, 50, 8);
         }
 
         if (ws->passiveProgress >= 1.0f) {
@@ -670,6 +682,11 @@ void PassiveWorkshopsTick(float dt) {
                     }
                     SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
                 }
+            }
+
+            // Remove fire light
+            if (ws->fuelTileX >= 0) {
+                RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
             }
 
             // Update bill and reset state

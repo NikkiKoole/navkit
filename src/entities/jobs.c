@@ -14,6 +14,7 @@
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
+#include "../simulation/lighting.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2228,14 +2229,15 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             mover->timeWithoutProgress = 0.0f;
             ws->lastWorkTime = (float)gameTime;
 
-            // Fire-based workshops emit smoke while working
-            bool emitsSmoke = (ws->type == WORKSHOP_KILN ||
-                               ws->type == WORKSHOP_CHARCOAL_PIT ||
-                               ws->type == WORKSHOP_HEARTH);
-            if (emitsSmoke && ws->fuelTileX >= 0) {
+            // Fire-based workshops emit smoke and light while working
+            bool emitsFire = (ws->type == WORKSHOP_KILN ||
+                              ws->type == WORKSHOP_CHARCOAL_PIT ||
+                              ws->type == WORKSHOP_HEARTH);
+            if (emitsFire && ws->fuelTileX >= 0) {
                 if (GetRandomValue(0, 3) == 0) {
                     AddSmoke(ws->fuelTileX, ws->fuelTileY, ws->z, 5);
                 }
+                AddLightSource(ws->fuelTileX, ws->fuelTileY, ws->z, 255, 140, 50, 8);
             }
 
             if (job->progress >= 1.0f) {
@@ -2299,6 +2301,11 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
                 // Update bill progress
                 bill->completedCount++;
+
+                // Remove workshop fire light
+                if (emitsFire && ws->fuelTileX >= 0) {
+                    RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+                }
 
                 // Release workshop
                 ws->assignedCrafter = -1;
@@ -2856,8 +2863,17 @@ void CancelJob(void* moverPtr, int moverIdx) {
         // Release workshop reservation (for craft jobs)
         if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
             Workshop* ws = &workshops[job->targetWorkshop];
-            if (ws->active && ws->assignedCrafter == moverIdx) {
-                ws->assignedCrafter = -1;
+            if (ws->active) {
+                if (ws->assignedCrafter == moverIdx) {
+                    ws->assignedCrafter = -1;
+                }
+                // Remove fire light if workshop was actively burning
+                bool isFire = (ws->type == WORKSHOP_KILN ||
+                               ws->type == WORKSHOP_CHARCOAL_PIT ||
+                               ws->type == WORKSHOP_HEARTH);
+                if (isFire && ws->fuelTileX >= 0) {
+                    RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+                }
             }
         }
 
