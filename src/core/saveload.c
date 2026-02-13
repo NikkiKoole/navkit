@@ -13,6 +13,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
+#include "../simulation/weather.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 #include "save_migrations.h"
@@ -88,7 +89,18 @@ void RebuildPostLoadState(void);
     X(int, trunkGrowTicks) \
     X(bool, saplingRegrowthEnabled) \
     X(float, saplingRegrowthChance) \
-    X(int, saplingMinTreeDistance)
+    X(int, saplingMinTreeDistance) \
+    /* Seasons */ \
+    X(int, daysPerSeason) \
+    X(int, baseSurfaceTemp) \
+    X(int, seasonalAmplitude) \
+    /* Weather */ \
+    X(bool, weatherEnabled) \
+    X(float, weatherMinDuration) \
+    X(float, weatherMaxDuration) \
+    X(float, rainWetnessInterval) \
+    X(float, heavyRainWetnessInterval) \
+    X(float, intensityRampSpeed)
 
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -340,6 +352,11 @@ bool SaveWorld(const char* filename) {
     accum = GetHeatTransferAccum(); fwrite(&accum, sizeof(float), 1, f);
     accum = GetTempDecayAccum(); fwrite(&accum, sizeof(float), 1, f);
     accum = GetWearRecoveryAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetRainWetnessAccum(); fwrite(&accum, sizeof(float), 1, f);
+    accum = GetWeatherWindAccum(); fwrite(&accum, sizeof(float), 1, f);
+
+    // Weather state
+    fwrite(&weatherState, sizeof(WeatherState), 1, f);
     
     // === END MARKER ===
     marker = MARKER_END;
@@ -406,7 +423,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 38 && version != 39 && version != 40 && version != 41) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 38 && version != 39 && version != 40 && version != 41 && version != 42 && version != 43) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
@@ -829,6 +846,13 @@ bool LoadWorld(const char* filename) {
     fread(&accum, sizeof(float), 1, f); SetHeatTransferAccum(accum);
     fread(&accum, sizeof(float), 1, f); SetTempDecayAccum(accum);
     fread(&accum, sizeof(float), 1, f); SetWearRecoveryAccum(accum);
+    if (version >= 44) {
+        fread(&accum, sizeof(float), 1, f); SetRainWetnessAccum(accum);
+        fread(&accum, sizeof(float), 1, f); SetWeatherWindAccum(accum);
+
+        // Weather state
+        fread(&weatherState, sizeof(WeatherState), 1, f);
+    }
     
     // === END MARKER ===
     fread(&marker, sizeof(marker), 1, f);

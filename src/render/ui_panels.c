@@ -5,6 +5,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/lighting.h"
+#include "../simulation/weather.h"
 #include "../ui/cutscene.h"
 #include <time.h>
 
@@ -74,29 +75,37 @@ void DrawTimeOfDayWidget(float x, float y) {
     // Widget dimensions - fixed size to prevent resizing
     int paddingY = 4;
     int fontSize = 16;
-    int boxWidth = 140;  // Fixed width to accommodate "Day 999  23:59"
+    int boxWidth = 140;
 
     // Get current time info
     int hours = (int)timeOfDay;
     int minutes = (int)((timeOfDay - hours) * 60);
 
-    // Format time string
-    char timeStr[32];
-    snprintf(timeStr, sizeof(timeStr), "Day %d  %02d:%02d", dayNumber, hours, minutes);
+    // Line 1: Season + Day, Line 2: Time + Weather
+    char line1[32];
+    char line2[32];
+    snprintf(line1, sizeof(line1), "%s Day %d", GetSeasonName(GetCurrentSeason()), dayNumber);
+    snprintf(line2, sizeof(line2), "%02d:%02d %s", hours, minutes, GetWeatherName(weatherState.current));
 
-    // Measure text width (height is approximately fontSize for most fonts)
-    int textWidth = MeasureTextUI(timeStr, fontSize);
-    int boxHeight = fontSize + paddingY * 2;
+    int line1Width = MeasureTextUI(line1, fontSize);
+    int line2Width = MeasureTextUI(line2, fontSize);
+    int lineSpacing = 2;
+    int boxHeight = fontSize * 2 + lineSpacing + paddingY * 2;
 
     // Draw sky-colored background rectangle
     Color skyColor = GetSkyColorForTime(timeOfDay);
     DrawRectangle((int)x, (int)y, boxWidth, boxHeight, skyColor);
     DrawRectangleLines((int)x, (int)y, boxWidth, boxHeight, (Color){100, 100, 100, 255});
 
-    // Draw time text centered in box
-    int textX = (int)x + (boxWidth - textWidth) / 2;
-    int textY = (int)y + paddingY;
-    DrawTextShadow(timeStr, textX, textY, fontSize, WHITE);
+    // Draw line 1 (season + day + time) centered
+    int text1X = (int)x + (boxWidth - line1Width) / 2;
+    int text1Y = (int)y + paddingY;
+    DrawTextShadow(line1, text1X, text1Y, fontSize, WHITE);
+
+    // Draw line 2 (weather) centered
+    int text2X = (int)x + (boxWidth - line2Width) / 2;
+    int text2Y = text1Y + fontSize + lineSpacing;
+    DrawTextShadow(line2, text2X, text2Y, fontSize, (Color){200, 200, 220, 255});
 
     // Block mouse clicks on widget area
     Vector2 mouse = GetMousePosition();
@@ -874,9 +883,9 @@ void DrawUI(void) {
         // Display current time
         int hours = (int)timeOfDay;
         int minutes = (int)((timeOfDay - hours) * 60);
-        DrawTextShadow(TextFormat("Day %d, %02d:%02d", dayNumber, hours, minutes), x, y, 14, WHITE);
+        DrawTextShadow(TextFormat("%s - Day %d, %02d:%02d", GetSeasonName(GetCurrentSeason()), dayNumber, hours, minutes), x, y, 14, WHITE);
         y += 18;
-        DrawTextShadow(TextFormat("Game time: %.1fs", (float)gameTime), x, y, 14, GRAY);
+        DrawTextShadow(TextFormat("Game time: %.1fs  |  Temp: %dC", (float)gameTime, GetSeasonalSurfaceTemp()), x, y, 14, GRAY);
         y += 22;
 
         // Game speed control
@@ -933,6 +942,48 @@ void DrawUI(void) {
         
         // Timestep mode
         ToggleBool(x, y, "Fixed Timestep", &useFixedTimestep);
+        y += 22;
+
+        // Seasons
+        DrawTextShadow("Seasons:", x, y, 14, GRAY);
+        y += 18;
+        DraggableIntT(x, y, "Days per Season", &daysPerSeason, 1.0f, 1, 30,
+            TextFormat("Days per season. Year = %d days (4 seasons). Current: %s (day %d of season).",
+                       daysPerSeason * SEASON_COUNT, GetSeasonName(GetCurrentSeason()), (GetYearDay() % daysPerSeason) + 1));
+        y += 22;
+        DraggableIntT(x, y, "Base Temp (C)", &baseSurfaceTemp, 1.0f, -20, 40,
+            TextFormat("Base surface temperature before seasonal modulation. Current seasonal temp: %dC.", GetSeasonalSurfaceTemp()));
+        y += 22;
+        DraggableIntT(x, y, "Seasonal Amplitude", &seasonalAmplitude, 1.0f, 0, 40,
+            TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
+                       baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
+        y += 22;
+
+        // Weather
+        DrawTextShadow("Weather:", x, y, 14, GRAY);
+        y += 18;
+        DrawTextShadow(TextFormat("Current: %s (%.0f%%)", GetWeatherName(weatherState.current),
+                       weatherState.intensity * 100.0f), x + 10, y, 12, WHITE);
+        y += 16;
+        DrawTextShadow(TextFormat("Wind: %.1f (%.1f, %.1f)", weatherState.windStrength,
+                       weatherState.windDirX, weatherState.windDirY), x + 10, y, 12, WHITE);
+        y += 16;
+        DrawTextShadow(TextFormat("Timer: %.0fs / %.0fs", weatherState.transitionTimer,
+                       weatherState.transitionDuration), x + 10, y, 12, WHITE);
+        y += 20;
+        ToggleBool(x, y, "Weather Enabled", &weatherEnabled);
+        y += 22;
+        DraggableFloatT(x, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
+            "Minimum game-seconds per weather state.");
+        y += 22;
+        DraggableFloatT(x, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
+            "Maximum game-seconds per weather state.");
+        y += 22;
+        DraggableFloatT(x, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
+            "Seconds between wetness increments during rain.");
+        y += 22;
+        DraggableFloatT(x, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
+            "Seconds between wetness increments during heavy rain.");
     }
     y += 22;
 

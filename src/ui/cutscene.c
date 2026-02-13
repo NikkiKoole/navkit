@@ -221,6 +221,9 @@ static void DrawCutsceneText(Font font, const char* text,
             y += lineHeight;
             // If still beside the drop cap, indent; otherwise normal margin
             x = (dropCapDrawn && y < dropCapBottom) ? dropCapRight : position.x;
+        } else if (codepoint == '|') {
+            // Pause marker — invisible, skip rendering
+            continue;
         } else if (codepoint == ' ') {
             int spaceIdx = GetGlyphIndex(font, ' ');
             if (font.glyphs && spaceIdx >= 0 && spaceIdx < font.glyphCount && font.glyphs[spaceIdx].advanceX > 0) {
@@ -264,6 +267,61 @@ static void DrawCutsceneText(Font font, const char* text,
 }
 
 // Hardcoded test panels (intro sequence)
+static Panel testPanelsOLD[] = {
+    {
+        .asciiArt =
+            "      ·÷·÷·\n"
+            "       ▲▲▼▼▼\n"
+            "   ░░▒▒▓▓█▓▓▒▒░░\n"
+            " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░",
+        .text =
+         "\n"
+          "\n"
+           "\n"
+            "One awakes in the wild.|\n"
+             "\n"
+            "No tools, just bare hands.\n"
+            "You are hungry| and cold.",
+        .typewriterSpeed = 30.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "    ▄▄▄▄▄▄▄\n"
+            "   █░·░░·░█\n"
+            "   █░░░░░░█░░░▒▒▒▓▓▓███\n"
+            "   █░░÷÷÷░░█\n"
+            "   ▀▀▀▀▀▀▀",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+        "You are still waiting.|\n"
+        "For what?| someone helping you?\n"
+        "|\n"
+        "YOU Help you!",
+        .dropCap = true,
+        .typewriterSpeed = 40.0f,
+    },
+    {
+        .asciiArt =
+                   " ·░·  ·░·  ·░·\n"
+                   "  ▒▓▲░░▓▓░░▲▓▒\n"
+                   "   ░▓███████▓░\n"
+                   "    ·▒▓▓█▓▓▒·\n"
+                   "      ·÷▼÷·",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Gather what you can.\n"
+            "What is of use.\n\n"
+            "Survival begins|\n"
+            "And nothing will wait.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    }
+};
 static Panel testPanels[] = {
     {
         .asciiArt =
@@ -275,11 +333,12 @@ static Panel testPanels[] = {
          "\n"
           "\n"
            "\n"
-            "One awakes in the wild.\n"
+            "One awakes in the wild.|\n"
              "\n"
-            "No tools. No shelter.\n"
-            "Only hands, hunger and coldness.",
+            "No tools, just bare hands.\n"
+            "You are hungry| and cold.",
         .typewriterSpeed = 30.0f,
+        .dropCap = true
     },
     {
         .asciiArt =
@@ -290,24 +349,262 @@ static Panel testPanels[] = {
             "   ▀▀▀▀▀▀▀",
         .text =
         "\n"
-         "\n"
-          "\n"
-           "\n"
-            "Are you waiting?",
+        "\n"
+        "\n"
+        "You are still waiting.|\n"
+        "For what?| someone helping you?\n"
+        "|\n"
+        "YOU Help you!",
+        .dropCap = true,
         .typewriterSpeed = 40.0f,
     },
     {
-        .asciiArt = NULL,
+        .asciiArt =
+            " ·░·  ·░·  ·░·\n"
+            "  ▒▓▲░░▓▓░░▲▓▒\n"
+            "   ░▓███████▓░\n"
+            "    ·▒▓▓█▓▓▒·\n"
+            "      ·÷▼÷·",
         .text =
-            "Gather grass. Gather sticks.\n"
-            "Gather stones from the river.\n\n"
-            "Survival begins with\n"
-            "what the land offers.\n\n"
-            "[Press W to Work]",
+        "\n"
+        "\n"
+        "\n"
+            "Gather what you can.\n"
+            "What is of use.\n\n"
+            "Survival begins|\n"
+            "And nothing will wait.",
         .typewriterSpeed = 40.0f,
-    }
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ████▓▓▒░\n"
+            "   ▓▓▒▼  ·░\n"
+            "    ░·▼ ÷  ▼\n"
+            "   ·    ▼\n"
+            "  ÷",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Things fall away.|\n"
+            "Skin, comfort, certainty.\n\n"
+            "Let them go.\n"
+            "They were never yours to keep.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ▓██░\n"
+            "  ▓█▒·▼·\n"
+            "   ▒░÷·  ▼\n"
+            "    ·  ÷\n"
+            "     ▼  ·",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Something is leaking.|\n"
+            "Energy. Focus. Time.\n\n"
+            "Patch it| or bleed out slow.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ÷ ·▲ ▼ ÷▲·\n"
+            "   ▼░ ·░░▲\n"
+            "    ▒▒▓▒░\n"
+            "   ▒▓██▓▒\n"
+            "   ▓████▓",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Small things first.|\n"
+            "Twigs. Stones. Scraps.\n\n"
+            "They gather into something|\n"
+            "heavier than they were alone.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ▓▓▓▓▓▓▓▓\n"
+            "  ▓▓▒░÷·░▓\n"
+            "  ▓░· ▲▼▲ ·▒\n"
+            "  ▓▓▒▒░÷▓▓\n"
+            "  ▓▓▓▓▓▓▓▓",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "There is a wound.|\n"
+            "Don't look away from it.\n\n"
+            "It heals| only if you let air in.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "    ▒▓▲\n"
+            "  ▓█▒÷\n"
+            "    ▼░▓█▒\n"
+            "  ÷▒▓▲\n"
+            "     ▼▒▓÷",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "The body twitches.|\n"
+            "Restless. Unsure.\n\n"
+            "That is not weakness.|\n"
+            "That is the animal| learning.",
+        .typewriterSpeed = 30.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "         ░▒▓▲\n"
+            "       ░▒▓▓█\n"
+            "    ▲░▒▓██\n"
+            "  ·÷░▒▓█\n"
+            "  ▲░▒▓",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "It grows.|\n"
+            "Not because you forced it.\n\n"
+            "Because you kept going|\n"
+            "when stopping made more sense.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ▒▓██▓░\n"
+            "  ░÷  ··▒▓▓\n"
+            "  ▲▼▲▼▼▲▼▲\n"
+            "    ÷▒▓·░",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Hunger speaks| in a wrong mouth.|\n"
+            "All teeth, no tongue.\n\n"
+            "Feed it before| it feeds on you.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ▓▓█▒───▲─÷\n"
+            "  ▒▓░\n"
+            "  ░▒──▼· ▲\n"
+            "  ÷░\n"
+            "   ▼──÷",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Reach.|\n"
+            "Even when nothing reaches back.\n\n"
+            "The hand that extends|\n"
+            "is already stronger| than the one that hides.",
+        .typewriterSpeed = 30.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ░▒▲░▓·▒▼·▓\n"
+            "   ÷▓░ ▒▲█░\n"
+            "  ▒·░▓▒▼ ░\n"
+            "     ·▒ ░÷▓▲·",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "The noise is loud tonight.|\n"
+            "Every signal scrambled.\n\n"
+            "Sit still.| Wait.\n"
+            "Clarity comes to the quiet.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ██▓▓\n"
+            "  █▓▒░ ▼\n"
+            "   ▒░\n"
+            "   ▼÷     ░▲\n"
+            "           ÷",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Something was left behind.|\n"
+            "You can see it from here.\n\n"
+            "Too far to fetch.|\n"
+            "You build a new one.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ÷      ▲\n"
+            "  │   ·\n"
+            "  ▒░  │\n"
+            "  ▓▓▒░▒▼\n"
+            "   █▓▓▒░÷·",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "You built something.|\n"
+            "Ugly. Crooked. Barely standing.\n\n"
+            "It receives a signal anyway.|\n"
+            "That is enough.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "       ▲\n"
+            "    ÷░▒\n"
+            "  ▲░▒▓▓░\n"
+            "  ▒▓██▓▒░÷\n"
+            "  ▓███▓▒▒░▼·",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Layer by layer.|\n"
+            "Stone on stone. Day on day.\n\n"
+            "You did not plan this.|\n"
+            "You just| didn't stop.",
+        .typewriterSpeed = 30.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ░▒▓██▓▒░▼\n"
+            "   ░▒▓▓▒÷\n"
+            "     ▼▒·\n"
+            "      ÷       ▲",
+        .text =
+        "\n"
+        "\n"
+        "\n"
+            "Most of it is gone now.|\n"
+            "The mass. The weight.\n\n"
+            "But look|— far off—|\n"
+            "something still points up.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    },
 };
-
 // Count lines in a string (1 if no newlines, 0 if NULL)
 static int CountLines(const char* s) {
     if (!s) return 0;
@@ -333,13 +630,16 @@ void InitCutscene(const Panel* panels, int count) {
 
 // Find byte offset of the end of the next word from position pos in text.
 // Skips leading whitespace, then advances past the word.
+// '|' is a pause marker — treated as its own single-character "word".
 static int NextWordEnd(const char* text, int pos) {
     int len = (int)strlen(text);
     int i = pos;
     // Skip whitespace/newlines (but include them in the reveal)
     while (i < len && (text[i] == ' ' || text[i] == '\n' || text[i] == '\t')) i++;
-    // Advance through word characters
-    while (i < len && text[i] != ' ' && text[i] != '\n' && text[i] != '\t') i++;
+    // Pause marker is its own word
+    if (i < len && text[i] == '|') return i + 1;
+    // Advance through word characters (stop at whitespace or pause marker)
+    while (i < len && text[i] != ' ' && text[i] != '\n' && text[i] != '\t' && text[i] != '|') i++;
     return i;
 }
 
@@ -365,25 +665,30 @@ void UpdateCutscene(float dt) {
                 int nextEnd = NextWordEnd(panel->text, cutsceneState.revealedChars);
                 cutsceneState.revealedChars = nextEnd;
 
-                // Play sound for the first vowel in the revealed word
-                for (int i = cutsceneState.revealedChars - 1; i >= 0 && panel->text[i] != ' ' && panel->text[i] != '\n'; i--) {
-                    char c = panel->text[i];
-                    if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' ||
-                        c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U') {
-                        cutsceneState.charSoundDuration = PlayCharacterSound(c);
-                        break;
+                // Check if we just revealed a pause marker '|'
+                if (nextEnd > 0 && panel->text[nextEnd - 1] == '|') {
+                    cutsceneState.charSoundDuration = 1.0f;  // Long dramatic pause
+                } else {
+                    // Play sound for the first vowel in the revealed word
+                    for (int i = cutsceneState.revealedChars - 1; i >= 0 && panel->text[i] != ' ' && panel->text[i] != '\n'; i--) {
+                        char c = panel->text[i];
+                        if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' ||
+                            c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U') {
+                            cutsceneState.charSoundDuration = PlayCharacterSound(c);
+                            break;
+                        }
                     }
-                }
-                if (cutsceneState.charSoundDuration < 0.15f) {
-                    cutsceneState.charSoundDuration = 0.15f;
+                    if (cutsceneState.charSoundDuration < 0.15f) {
+                        cutsceneState.charSoundDuration = 0.15f;
+                    }
                 }
             }
             cutsceneState.timer = 0.0f;
         }
     }
 
-    // Input: SPACE advances or skips typewriter
-    if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
+    // Input: any key or mouse click advances or skips typewriter
+    if (GetKeyPressed() != 0 || IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         if (!allDone) {
             // Skip typewriter, reveal everything
             cutsceneState.revealedArtLines = cutsceneState.artLineCount;
@@ -475,18 +780,6 @@ void RenderCutscene(void) {
         DrawCutsceneText(cutFont, buffer, (Vector2){contentX, textStartY}, fontSize, spacing, COLOR_INK, panel->dropCap);
     }
 
-    // Show prompt when everything is fully revealed
-    int textLen = panel->text ? (int)strlen(panel->text) : 0;
-    bool textFullyRevealed = cutsceneState.revealedArtLines >= cutsceneState.artLineCount
-                          && cutsceneState.revealedChars >= textLen;
-    if (textFullyRevealed) {
-        const char* prompt = "[SPACE] to continue";
-        Vector2 promptSize = MeasureTextEx(cutFont, prompt, 20, 2);
-        int promptX = panelX + panelW - (int)promptSize.x - 20;
-        int promptY = panelY + panelH - 35;
-        DrawTextEx(cutFont, prompt, (Vector2){promptX, promptY}, 20, 2, COLOR_INK);
-    }
-
     // Panel counter (bottom left of panel)
     char counter[32];
     snprintf(counter, sizeof(counter), "%d / %d",
@@ -503,5 +796,5 @@ bool IsCutsceneActive(void) {
 }
 
 void PlayTestCutscene(void) {
-    InitCutscene(testPanels, 3);  // All 3 panels
+    InitCutscene(testPanels, 16);  // All 3 panels
 }

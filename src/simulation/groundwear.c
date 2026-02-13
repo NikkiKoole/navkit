@@ -1,4 +1,5 @@
 #include "groundwear.h"
+#include "weather.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/material.h"
@@ -181,11 +182,13 @@ void UpdateGroundWear(void) {
                 if (HasFire(x, y, z)) continue;
                 
                 if (isDirt) {
-                    // Decay wear
+                    // Decay wear (modulated by seasonal vegetation growth)
+                    float vegRate = GetVegetationGrowthRate();
+                    int effectiveDecay = (int)(wearDecayRate * vegRate);
                     int oldWear = wearGrid[z][y][x];
-                    if (oldWear > wearDecayRate) {
-                        wearGrid[z][y][x] = oldWear - wearDecayRate;
-                    } else if (oldWear > 0) {
+                    if (effectiveDecay > 0 && oldWear > effectiveDecay) {
+                        wearGrid[z][y][x] = oldWear - effectiveDecay;
+                    } else if (effectiveDecay > 0 && oldWear > 0) {
                         wearGrid[z][y][x] = 0;
                         wearActiveCells--;
                     }

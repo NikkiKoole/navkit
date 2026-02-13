@@ -1,4 +1,5 @@
 #include "temperature.h"
+#include "weather.h"
 #include "../core/sim_manager.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -81,7 +82,10 @@ int GetAmbientTemperature(int z) {
     int depth = (gridDepth - 1) - z;
     if (depth < 0) depth = 0;
     
-    int ambient = ambientSurfaceTemp - (depth * ambientDepthDecay);
+    // Use seasonal surface temp (sine curve modulated by season)
+    // When seasonalAmplitude == 0, this returns baseSurfaceTemp (flat)
+    int surfaceTemp = GetSeasonalSurfaceTemp();
+    int ambient = surfaceTemp - (depth * ambientDepthDecay);
     if (ambient < TEMP_MIN) ambient = TEMP_MIN;
     if (ambient > TEMP_MAX) ambient = TEMP_MAX;
     

@@ -73,6 +73,8 @@ test_terrain_SRC     := tests/test_terrain.c
 test_grid_audit_SRC  := tests/test_grid_audit.c
 test_floordirt_SRC   := tests/test_floordirt.c
 test_mud_SRC         := tests/test_mud.c
+test_seasons_SRC     := tests/test_seasons.c
+test_weather_SRC     := tests/test_weather.c
 test_lighting_SRC    := tests/test_lighting.c
 test_workshop_linking_SRC := tests/test_workshop_stockpile_linking.c
 test_workshop_diagnostics_SRC := tests/test_workshop_diagnostics.c
@@ -209,6 +211,18 @@ test_mud: $(TEST_UNITY_OBJ)
 	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mud_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_mud -q
 
+# Seasons test
+test_seasons: $(TEST_UNITY_OBJ)
+	@echo "Running season tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_seasons_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_seasons -q
+
+# Weather test
+test_weather: $(TEST_UNITY_OBJ)
+	@echo "Running weather tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_weather_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_weather -q
+
 # Lighting test
 test_lighting: $(TEST_UNITY_OBJ)
 	@echo "Running lighting tests..."
@@ -233,7 +247,7 @@ test_soundsystem: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_lighting test_workshop_linking test_workshop_diagnostics test_soundsystem
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_lighting test_workshop_linking test_workshop_diagnostics test_soundsystem
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -372,4 +386,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows

@@ -18,6 +18,7 @@
 #include "../simulation/temperature.h"
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
+#include "../simulation/weather.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -1391,6 +1392,9 @@ void TickWithDt(float dt) {
     }
     PROFILE_END(HPA);
     
+    // Weather state machine (drives rain, wetness, wind)
+    UpdateWeather();
+
     // Water simulation
     PROFILE_BEGIN(Water);
     UpdateRain();

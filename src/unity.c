@@ -28,6 +28,7 @@
 #include "simulation/groundwear.c"
 #include "simulation/floordirt.c"
 #include "simulation/temperature.c"
+#include "simulation/weather.c"
 #include "simulation/trees.c"
 #include "simulation/lighting.c"
 

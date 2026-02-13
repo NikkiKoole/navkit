@@ -1,4 +1,5 @@
 #include "smoke.h"
+#include "weather.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
