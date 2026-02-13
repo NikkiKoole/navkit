@@ -2,8 +2,8 @@
 
 **Completion Date:** 2026-02-13  
 **Estimated Effort:** 5-6 hours  
-**Actual Effort:** ~3 hours  
-**Commit:** 3a16956
+**Actual Effort:** ~4 hours (including bug fixes)  
+**Commits:** 3a16956, e91dbf9, 77d8021, 1b4fcea, 31359e2, 57df826, 8ba3bfd, f0e8e04
 
 ## Overview
 
@@ -190,3 +190,33 @@ Status: Waiting for Input
 - ✅ Code compiles without errors
 - ✅ Works with all workshop types
 - ✅ Respects z-level filtering
+
+## Bug Fixes During Implementation
+
+### 1. Tooltip Buffer Overflow (77d8021)
+- **Issue:** Garbled text in recipe section when showing all empty stockpile slots
+- **Fix:** Removed display of empty slots [2], [3], [4] - only show linked stockpiles that exist
+
+### 2. Working State Visual Clutter (1b4fcea)
+- **Issue:** Green pulsing icon when workshop working normally felt distracting
+- **Fix:** No icon for WORKING state - silence is golden, icons only for problems
+
+### 3. Persistent Yellow Workshop Outline (31359e2)
+- **Issue:** Yellow linking mode highlights persisted after exiting linking mode
+- **Fix:** Reset linkingWorkshopIdx = -1 in InputMode_ExitToNormal()
+
+### 4. Wrong Sprite for NO_WORKER (e91dbf9)
+- **Issue:** Head icon too figurative for idle state
+- **Fix:** Changed to SPRITE_light_shade for more abstract representation
+
+### 5. Workshop Diagnostic State Bug (8ba3bfd) ⭐ Major Fix
+- **Issue:** Workshop showed OUTPUT_FULL when it actually needed INPUT (e.g., no raw stone)
+- **Root Cause:** hasStorage check required input item to exist before checking storage
+- **Fix:** Separated input/storage checks - now checks storage independently using default material
+- **Test:** Added test_workshop_diagnostics.c documenting the bug
+- **Impact:** States now correctly distinguish "need materials" vs "need storage"
+
+### 6. Working State Tooltip Overflow (f0e8e04)
+- **Issue:** "Status: Working" line caused buffer overflow with linked stockpiles + recipes
+- **Fix:** Don't show status line for WORKING state - crafter line is enough info
+- **Result:** Tooltip stays within 30-line buffer even with full feature set
