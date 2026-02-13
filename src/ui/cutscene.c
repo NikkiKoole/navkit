@@ -224,23 +224,23 @@ static Panel testPanels[] = {
     {
         .text =
         "      ·÷·÷·\n"
+        "       ▲▲▼▼▼\n"
         "   ░░▒▒▓▓█▓▓▒▒░░\n"
-        "  ░▒▒▓▓███████▓▓▒▒░\n"
-        " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░\n\n\n"
-            "A mover awakens in the wild.\n"
+        " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░\n\n"
+            "One awakes in the wild.\n"
             "No tools. No shelter.\n"
-            "Only hands and hunger.",
+            "Only hands, hunger and coldness.",
         .typewriterSpeed = 30.0f,
     },
     {
         .text =
             "    ▄▄▄▄▄▄▄\n"
-            "   █░░░░░░█@@\n"
-            "   █░░░░░░█ ▲▲▼▼▼░░░▒▒▒▓▓▓███\n"
-            "   █░░░░░░█\n"
+            "   █░·░░·░█\n"
+            "   █░░░░░░█░░░▒▒▒▓▓▓███\n"
+            "   █░░÷÷÷░░█\n"
             "   ▀▀▀▀▀▀▀\n\n"
-            "Shading test · light to dark\n"
-            "░ ▒ ▓ █  ÷  blocks work!",
+            "Are you waiting?\n\n"
+            "░▒▓█ ",
         .typewriterSpeed = 40.0f,
     },
     {

@@ -5,6 +5,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/lighting.h"
+#include "../ui/cutscene.h"
 #include <time.h>
 
 // Forward declarations
@@ -132,6 +133,10 @@ void DrawUI(void) {
         ToggleBool(x, y, "Show Sim Sources", &showSimSources);
         y += 22;
         ToggleBool(x, y, "Cull Drawing", &cullDrawing);
+        y += 22;
+        if (PushButton(x, y, "Cutscene")) {
+            PlayTestCutscene();
+        }
     }
     y += 22;
 
