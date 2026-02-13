@@ -2,6 +2,7 @@
 #include "input_mode.h"
 #include "action_registry.h"
 #include "../game_state.h"  // Includes raylib.h
+#include "../simulation/lighting.h"
 #include <stdio.h>
 
 // State
@@ -388,6 +389,15 @@ int InputMode_GetBarItems(BarItem* items) {
                 n = AddItem(items, n, "4:7x7", KEY_FOUR, 0, false, false, terrainBrushRadius == 3);
                 n = AddItem(items, n, "L-drag raise", 0, -1, false, true, false);
                 n = AddItem(items, n, "R-drag lower", 0, -1, false, true, false);
+                break;
+            case ACTION_SANDBOX_LIGHT:
+                n = AddItem(items, n, "1:Warm", KEY_ONE, 0, false, false, currentTorchPreset == TORCH_PRESET_WARM);
+                n = AddItem(items, n, "2:Cool", KEY_TWO, 0, false, false, currentTorchPreset == TORCH_PRESET_COOL);
+                n = AddItem(items, n, "3:Fire", KEY_THREE, 0, false, false, currentTorchPreset == TORCH_PRESET_FIRE);
+                n = AddItem(items, n, "4:Green", KEY_FOUR, 0, false, false, currentTorchPreset == TORCH_PRESET_GREEN);
+                n = AddItem(items, n, "5:White", KEY_FIVE, 0, false, false, currentTorchPreset == TORCH_PRESET_WHITE);
+                n = AddItem(items, n, "L-drag place", 0, -1, false, true, false);
+                n = AddItem(items, n, "R-drag remove", 0, -1, false, true, false);
                 break;
             default:
                 // Generic: show drag/cancel hints based on registry canDrag/canErase

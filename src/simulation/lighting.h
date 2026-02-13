@@ -27,6 +27,21 @@ extern int  lightDefaultR;         // Default torch red (0-255)
 extern int  lightDefaultG;         // Default torch green (0-255)
 extern int  lightDefaultB;         // Default torch blue (0-255)
 
+// Torch color presets (selected via number keys 1-5)
+typedef enum {
+    TORCH_PRESET_WARM = 0,    // 1: Orange/yellow torch (default)
+    TORCH_PRESET_COOL = 1,    // 2: Blue crystal
+    TORCH_PRESET_FIRE = 2,    // 3: Red/orange fire
+    TORCH_PRESET_GREEN = 3,   // 4: Green torch
+    TORCH_PRESET_WHITE = 4,   // 5: White lantern
+    TORCH_PRESET_COUNT = 5
+} TorchPreset;
+
+extern int currentTorchPreset;  // Currently selected preset (0-4)
+
+// Helper to apply a preset to the default light color
+void SetTorchPreset(TorchPreset preset);
+
 // Per-cell computed light (what rendering reads)
 typedef struct {
     uint8_t skyLevel;   // 0-15: sky light intensity at this cell

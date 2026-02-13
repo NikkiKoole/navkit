@@ -551,6 +551,7 @@ void DrawAgents(void);
 void DrawMovers(void);
 void DrawJobLines(void);
 void DrawItems(void);
+void DrawLightSources(void);
 void DrawGatherZones(void);
 void DrawStockpileTiles(void);
 void DrawStockpileItems(void);
@@ -561,6 +562,8 @@ void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
 void DrawTerrainBrushPreview(void);
+void DrawMaterialHelp(void);
+void DrawLightPreview(void);
 
 // From render/tooltips.c
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid);
@@ -1149,6 +1152,8 @@ int main(int argc, char** argv) {
         DrawMiningDesignations();
         DrawBlueprints();
         DrawTerrainBrushPreview();
+        DrawMaterialHelp();
+        DrawLightPreview();
         if (showChunkBoundaries) {
             DrawChunkBoundaries();
         }
@@ -1163,6 +1168,7 @@ int main(int argc, char** argv) {
         if (showItems) {
             DrawItems();
         }
+        DrawLightSources();
         if (showMovers) {
             PROFILE_BEGIN(DrawMovers);
             DrawMovers();

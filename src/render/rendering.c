@@ -1374,6 +1374,45 @@ static void DrawItems(void) {
     }
 }
 
+static void DrawLightSources(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+
+    for (int i = 0; i < lightSourceCount; i++) {
+        LightSource* src = &lightSources[i];
+        if (!src->active) continue;
+
+        int srcZ = src->z;
+        if (srcZ > viewZ || srcZ < viewZ - 9) continue;
+
+        // Visibility check for light sources below current view
+        if (srcZ < viewZ) {
+            if (!IsCellVisibleFromAbove(src->x, src->y, srcZ, viewZ)) continue;
+        }
+
+        // Convert cell position to screen position (center of cell)
+        float sx = offset.x + (src->x + 0.5f) * size;
+        float sy = offset.y + (src->y + 0.5f) * size;
+
+        // Use middle-dot sprite
+        int sprite = SPRITE_middle_dot;
+        float torchSize = size * 0.6f;  // 60% of cell size for visibility
+        Rectangle spriteRect = SpriteGetRect(sprite);
+        Rectangle dest = { sx - torchSize/2, sy - torchSize/2, torchSize, torchSize };
+
+        // Tint the sprite with the light source's color
+        Color tint = {src->r, src->g, src->b, 255};
+        
+        // Apply depth tinting if below current view level
+        if (srcZ < viewZ) {
+            tint = MultiplyColor(tint, GetDepthTint(srcZ, viewZ));
+            tint = FloorDarkenTint(tint);
+        }
+
+        DrawTexturePro(atlas, spriteRect, dest, (Vector2){0, 0}, 0, tint);
+    }
+}
+
 static void DrawGatherZones(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
@@ -2034,4 +2073,14 @@ static void DrawTerrainBrushPreview(void) {
     float centerY = offset.y + (mouseY + 0.5f) * size;
     float circleRadius = (radius + 0.5f) * size;
     DrawCircleLines((int)centerX, (int)centerY, circleRadius, lineColor);
+}
+
+static void DrawMaterialHelp(void) {
+    // Material selection is now shown in the action bar, no need for top-right help text
+    return;
+}
+
+static void DrawLightPreview(void) {
+    // Torch color selection is now shown in the action bar, no need for top-right indicator
+    return;
 }

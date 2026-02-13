@@ -1987,6 +1987,18 @@ void HandleInput(void) {
     }
 
     // ========================================================================
+    // Torch color preset selection (when light action is selected)
+    // ========================================================================
+
+    if (inputAction == ACTION_SANDBOX_LIGHT) {
+        if (CheckKey(KEY_ONE))   { SetTorchPreset(TORCH_PRESET_WARM);  AddMessage("Torch: Warm (orange)", ORANGE); }
+        if (CheckKey(KEY_TWO))   { SetTorchPreset(TORCH_PRESET_COOL);  AddMessage("Torch: Cool (blue)", BLUE); }
+        if (CheckKey(KEY_THREE)) { SetTorchPreset(TORCH_PRESET_FIRE);  AddMessage("Torch: Fire (red)", RED); }
+        if (CheckKey(KEY_FOUR))  { SetTorchPreset(TORCH_PRESET_GREEN); AddMessage("Torch: Green", GREEN); }
+        if (CheckKey(KEY_FIVE))  { SetTorchPreset(TORCH_PRESET_WHITE); AddMessage("Torch: White", WHITE); }
+    }
+
+    // ========================================================================
     // Ramp direction selection (when ramp action is selected)
     // Arrow keys override auto-detect, 'A' resets to auto-detect
     // ========================================================================

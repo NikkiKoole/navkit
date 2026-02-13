@@ -22,6 +22,31 @@ int  lightDefaultR = 255;
 int  lightDefaultG = 180;
 int  lightDefaultB = 100;
 
+// Current torch preset
+int currentTorchPreset = TORCH_PRESET_WARM;
+
+// Torch color preset definitions
+typedef struct {
+    int r, g, b;
+    const char* name;
+} TorchPresetDef;
+
+static const TorchPresetDef torchPresets[TORCH_PRESET_COUNT] = {
+    {255, 180, 100, "Warm Torch"},    // TORCH_PRESET_WARM
+    {100, 150, 255, "Cool Crystal"},  // TORCH_PRESET_COOL
+    {255, 100, 50,  "Fire"},          // TORCH_PRESET_FIRE
+    {100, 255, 100, "Green Torch"},   // TORCH_PRESET_GREEN
+    {255, 255, 255, "White Lantern"}  // TORCH_PRESET_WHITE
+};
+
+void SetTorchPreset(TorchPreset preset) {
+    if (preset < 0 || preset >= TORCH_PRESET_COUNT) return;
+    currentTorchPreset = preset;
+    lightDefaultR = torchPresets[preset].r;
+    lightDefaultG = torchPresets[preset].g;
+    lightDefaultB = torchPresets[preset].b;
+}
+
 // Light grid (per-cell computed light)
 LightCell lightGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
@@ -145,18 +170,32 @@ static void ClearBlockLight(void) {
     }
 }
 
+// Per-source visited grid to prevent adding light to the same cell multiple times
+static bool blockVisited[MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+
 // Propagate a single block light source via BFS with Euclidean falloff
 static void PropagateBlockLight(LightSource* src) {
     int head = 0, tail = 0;
     float radius = (float)src->intensity;
+    int nz = src->z;
+
+    // Clear visited grid for the area this light can reach
+    int minX = src->x - src->intensity - 1; if (minX < 0) minX = 0;
+    int maxX = src->x + src->intensity + 1; if (maxX >= gridWidth) maxX = gridWidth - 1;
+    int minY = src->y - src->intensity - 1; if (minY < 0) minY = 0;
+    int maxY = src->y + src->intensity + 1; if (maxY >= gridHeight) maxY = gridHeight - 1;
+    for (int y = minY; y <= maxY; y++)
+        for (int x = minX; x <= maxX; x++)
+            blockVisited[y][x] = false;
 
     // Seed with the source cell
-    bfsQueue[0] = (LightBfsNode){ src->x, src->y, src->z, src->intensity };
+    bfsQueue[0] = (LightBfsNode){ src->x, src->y, nz, src->intensity };
     tail = 1;
+    blockVisited[src->y][src->x] = true;
 
     // Set source cell to full brightness
     {
-        LightCell* lc = &lightGrid[src->z][src->y][src->x];
+        LightCell* lc = &lightGrid[nz][src->y][src->x];
         int r = lc->blockR + src->r;
         int g = lc->blockG + src->g;
         int b = lc->blockB + src->b;
@@ -175,8 +214,8 @@ static void PropagateBlockLight(LightSource* src) {
         for (int d = 0; d < 4; d++) {
             int nx = node.x + dx[d];
             int ny = node.y + dy[d];
-            int nz = node.z;
             if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+            if (blockVisited[ny][nx]) continue;
 
             bool solid = CellIsSolid(grid[nz][ny][nx]);
 
@@ -186,33 +225,23 @@ static void PropagateBlockLight(LightSource* src) {
             float dist = sqrtf(ddx * ddx + ddy * ddy);
             if (dist >= radius) continue;  // Outside light radius
 
+            blockVisited[ny][nx] = true;
+
             // Scale color by (1 - dist/radius) for smooth circular falloff
             float falloff = 1.0f - (dist / radius);
             int scaledR = (int)(src->r * falloff);
             int scaledG = (int)(src->g * falloff);
             int scaledB = (int)(src->b * falloff);
-            if (scaledR < 0) scaledR = 0;
-            if (scaledG < 0) scaledG = 0;
-            if (scaledB < 0) scaledB = 0;
 
-            // Only update if we're adding more light than already there
+            // Additive blending — lights accumulate, creating color mixing
+            // Red torch + blue crystal = purple where they overlap
             LightCell* lc = &lightGrid[nz][ny][nx];
-            int existingMax = lc->blockR;
-            if (lc->blockG > existingMax) existingMax = lc->blockG;
-            if (lc->blockB > existingMax) existingMax = lc->blockB;
-            int newMax = scaledR;
-            if (scaledG > newMax) newMax = scaledG;
-            if (scaledB > newMax) newMax = scaledB;
-
-            if (newMax <= existingMax) continue;  // Already brighter from another source
-
-            // Max blending — write light to surface of solid cells too
-            int r = scaledR > lc->blockR ? scaledR : lc->blockR;
-            int g = scaledG > lc->blockG ? scaledG : lc->blockG;
-            int b = scaledB > lc->blockB ? scaledB : lc->blockB;
-            lc->blockR = (uint8_t)r;
-            lc->blockG = (uint8_t)g;
-            lc->blockB = (uint8_t)b;
+            int r = lc->blockR + scaledR;
+            int g = lc->blockG + scaledG;
+            int b = lc->blockB + scaledB;
+            lc->blockR = (uint8_t)(r > 255 ? 255 : r);
+            lc->blockG = (uint8_t)(g > 255 ? 255 : g);
+            lc->blockB = (uint8_t)(b > 255 ? 255 : b);
 
             // Only propagate through non-solid cells (light hits walls but stops)
             if (!solid && tail < LIGHT_BFS_MAX) {
@@ -333,10 +362,16 @@ Color GetLightColor(int x, int y, int z, Color skyColor) {
     int bg = lc->blockG;
     int bb = lc->blockB;
 
-    // Combined: max of sky and block per channel
-    int r = sr > br ? sr : br;
-    int g = sg > bg ? sg : bg;
-    int b = sb > bb ? sb : bb;
+    // Combined: use the dominant source to preserve color character
+    // Per-channel max destroys torch color (sky lifts the weak channels toward white)
+    int skyBrightness = sr + sg + sb;
+    int blockBrightness = br + bg + bb;
+    int r, g, b;
+    if (blockBrightness > skyBrightness) {
+        r = br; g = bg; b = bb;
+    } else {
+        r = sr; g = sg; b = sb;
+    }
 
     // Add block light from one level below (additive, so torches glow through)
     if (z > 0 && !CellIsSolid(grid[z][y][x])) {
