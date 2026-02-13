@@ -4,6 +4,7 @@
 #include "../entities/items.h"     // SpawnItem, ITEM_TYPE_COUNT
 #include "../entities/item_defs.h" // itemDefs[]
 #include "../world/cell_defs.h"    // IsCellWalkableAt
+#include "../simulation/water.h"   // SpawnSkyWater
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>                // atoi, atof
@@ -69,6 +70,7 @@ static void Cmd_Set(int argc, const char** argv);
 static void Cmd_Spawn(int argc, const char** argv);
 static void Cmd_Tp(int argc, const char** argv);
 static void Cmd_Clear(int argc, const char** argv);
+static void Cmd_Rain(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -101,6 +103,7 @@ void Console_Init(void) {
     Console_RegisterCmd("spawn", Cmd_Spawn, "Spawn items at mouse: spawn <count> <item>");
     Console_RegisterCmd("clear", Cmd_Clear, "Clear entities: clear items|movers");
     Console_RegisterCmd("tp", Cmd_Tp, "Teleport camera: tp <x> <y> [z]");
+    Console_RegisterCmd("rain", Cmd_Rain, "Start/stop rain: rain [light|medium|heavy|stop|1-100]");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -663,6 +666,29 @@ static void Cmd_Clear(int argc, const char** argv) {
     } else {
         Console_Printf(YELLOW, "Unknown type: %s (use items or movers)", what);
     }
+}
+
+static void Cmd_Rain(int argc, const char** argv) {
+    int coverage = 20;  // default: medium
+    if (argc >= 2) {
+        if (strcmp(argv[1], "stop") == 0) {
+            StopRain();
+            Console_Print("Rain stopped", GREEN);
+            return;
+        }
+        if (strcmp(argv[1], "light") == 0) coverage = 5;
+        else if (strcmp(argv[1], "medium") == 0) coverage = 20;
+        else if (strcmp(argv[1], "heavy") == 0) coverage = 50;
+        else {
+            coverage = atoi(argv[1]);
+            if (coverage <= 0 || coverage > 100) {
+                Console_Print("Usage: rain [light|medium|heavy|stop|1-100]", YELLOW);
+                return;
+            }
+        }
+    }
+    SpawnSkyWater(coverage);
+    Console_Printf(GREEN, "Rain started (%d%% coverage, 30s)", coverage);
 }
 
 // ---------------------------------------------------------------------------

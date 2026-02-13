@@ -7,6 +7,7 @@
 #include "world/pathfinding.h"
 #include "world/designations.h"
 #include "entities/mover.h"
+#include "entities/animals.h"
 #include "entities/items.h"
 #include "entities/jobs.h"
 #include "entities/stockpiles.h"
@@ -156,6 +157,7 @@ extern bool sectionMemGrid;
 extern bool sectionMemPath;
 extern bool sectionMemEntities;
 extern bool sectionMemSpatial;
+extern bool sectionAnimals;
 extern bool sectionJobs;
 extern bool sectionTime;
 extern bool sectionLighting;
@@ -166,6 +168,7 @@ extern int hoveredWorkshop;
 extern int workshopSelectedBillIdx;
 extern int linkingWorkshopIdx;
 extern int hoveredMover;
+extern int hoveredAnimal;
 extern int hoveredItemCell[16];
 extern int hoveredItemCount;
 extern int hoveredDesignationX;
@@ -201,6 +204,9 @@ int GetStockpileAtGrid(int gx, int gy, int gz);
 
 // Get mover at world position
 int GetMoverAtWorldPos(float wx, float wy, int wz);
+
+// Get animal at world position
+int GetAnimalAtWorldPos(float wx, float wy, int wz);
 
 // Get items at cell
 int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems);

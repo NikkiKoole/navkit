@@ -18,6 +18,7 @@
     #define SPRITE_block_wood SPRITE8X8_block_wood
     #define SPRITE_finish_engraved SPRITE8X8_finish_engraved
     #define SPRITE_tree_sapling_pine SPRITE8X8_tree_sapling_pine
+    #define SPRITE_head_inverse SPRITE8X8_head_inverse
     #define SPRITE_tree_trunk_willow SPRITE8X8_tree_trunk_willow
     #define SPRITE_sandstone SPRITE8X8_sandstone
     #define SPRITE_bedrock SPRITE8X8_bedrock
@@ -65,6 +66,7 @@
     #define SPRITE_grass_taller SPRITE8X8_grass_taller
     #define SPRITE_grass SPRITE8X8_grass
     #define SPRITE_slate SPRITE8X8_slate
+    #define SPRITE_small_triangle SPRITE8X8_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
     #define SPRITE_medium_shade SPRITE8X8_medium_shade
@@ -106,6 +108,7 @@
     #define SPRITE_block_wood SPRITE16X16_block_wood
     #define SPRITE_finish_engraved SPRITE16X16_finish_engraved
     #define SPRITE_tree_sapling_pine SPRITE16X16_tree_sapling_pine
+    #define SPRITE_head_inverse SPRITE16X16_head_inverse
     #define SPRITE_tree_trunk_willow SPRITE16X16_tree_trunk_willow
     #define SPRITE_sandstone SPRITE16X16_sandstone
     #define SPRITE_bedrock SPRITE16X16_bedrock
@@ -153,6 +156,7 @@
     #define SPRITE_grass_taller SPRITE16X16_grass_taller
     #define SPRITE_grass SPRITE16X16_grass
     #define SPRITE_slate SPRITE16X16_slate
+    #define SPRITE_small_triangle SPRITE16X16_small_triangle
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
     #define SPRITE_medium_shade SPRITE16X16_medium_shade

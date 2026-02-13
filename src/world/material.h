@@ -129,6 +129,10 @@ static inline bool IsStoneMaterial(MaterialType mat) {
 static inline bool IsMetalMaterial(MaterialType mat) {
     return mat == MAT_IRON;
 }
+static inline bool IsSoilMaterial(MaterialType mat) {
+    return mat == MAT_DIRT || mat == MAT_CLAY || mat == MAT_SAND
+        || mat == MAT_GRAVEL || mat == MAT_PEAT;
+}
 
 static inline SurfaceFinish DefaultFinishForNatural(bool natural) {
     return natural ? FINISH_ROUGH : FINISH_SMOOTH;

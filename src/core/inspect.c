@@ -15,6 +15,7 @@
 #include "../entities/stockpiles.h"
 #include "../world/designations.h"
 #include "../entities/mover.h"
+#include "../entities/animals.h"
 #include "../entities/jobs.h"
 #include "../entities/workshops.h"
 #include "../world/pathfinding.h"
@@ -83,6 +84,8 @@ static Blueprint* insp_blueprints = NULL;
 static Workshop* insp_workshops = NULL;
 static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
+static int insp_animalCount = 0;
+static Animal* insp_animals = NULL;
 static int insp_jobHWM = 0, insp_activeJobCnt = 0;
 static Job* insp_jobs = NULL;
 static int* insp_activeJobList = NULL;
@@ -1286,7 +1289,17 @@ int InspectSaveFile(int argc, char** argv) {
     for (int i = 0; i < insp_moverCount; i++) {
         insp_movers[i].capabilities.canPlant = true;
     }
-    
+
+    // Animals (v42+)
+    if (version >= 42) {
+        fread(&insp_animalCount, 4, 1, f);
+        insp_animals = malloc(insp_animalCount > 0 ? insp_animalCount * sizeof(Animal) : sizeof(Animal));
+        if (insp_animalCount > 0) fread(insp_animals, sizeof(Animal), insp_animalCount, f);
+    } else {
+        insp_animalCount = 0;
+        insp_animals = NULL;
+    }
+
     // Jobs
     fread(&insp_jobHWM, 4, 1, f);
     fread(&insp_activeJobCnt, 4, 1, f);
@@ -1332,6 +1345,9 @@ int InspectSaveFile(int argc, char** argv) {
         
         printf("Items: %d active (of %d)\n", activeItems, insp_itemHWM);
         printf("Movers: %d active (of %d)\n", activeMovers, insp_moverCount);
+        int activeAnimals = 0;
+        for (int i = 0; i < insp_animalCount; i++) if (insp_animals[i].active) activeAnimals++;
+        printf("Animals: %d active (of %d)\n", activeAnimals, insp_animalCount);
         printf("Stockpiles: %d active\n", activeStockpiles);
         printf("Blueprints: %d active\n", activeBP);
         printf("Workshops: %d active\n", activeWorkshops);

@@ -1402,6 +1402,7 @@ void HandleInput(void) {
     if (paused) {
         Vector2 mouseWorld = ScreenToWorld(GetMousePosition());
         hoveredMover = GetMoverAtWorldPos(mouseWorld.x, mouseWorld.y, z);
+        hoveredAnimal = GetAnimalAtWorldPos(mouseWorld.x, mouseWorld.y, z);
         hoveredItemCount = GetItemsAtCell((int)mouseGrid.x, (int)mouseGrid.y, z, hoveredItemCell, 16);
         // Check for designation hover (any type, not just mine)
         Designation* d = GetDesignation((int)mouseGrid.x, (int)mouseGrid.y, z);
@@ -1416,6 +1417,7 @@ void HandleInput(void) {
         }
     } else {
         hoveredMover = -1;
+        hoveredAnimal = -1;
         hoveredItemCount = 0;
         hoveredDesignationX = -1;
         hoveredDesignationY = -1;

@@ -327,4 +327,13 @@ static inline bool CanRampTransitionUp(int x, int y, int z) {
     return false;
 }
 
+// Check if a cell is muddy (natural soil with wetness >= 2)
+static inline bool IsMuddy(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return false;
+    if (GET_CELL_WETNESS(x, y, z) < 2) return false;
+    CellType cell = grid[z][y][x];
+    if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) return false;
+    return IsSoilMaterial(GetWallMaterial(x, y, z));
+}
+
 #endif // CELL_DEFS_H

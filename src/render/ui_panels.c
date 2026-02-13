@@ -434,6 +434,25 @@ void DrawUI(void) {
     }
     y += 22;
 
+    // === ANIMALS ===
+    y += 8;
+    if (PushButton(x + 130, y, "+")) {
+        SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_SIMPLE_GRAZER);
+    }
+    if (PushButton(x + 150, y, "+S")) {
+        SpawnAnimal(ANIMAL_GRAZER, currentViewZ, BEHAVIOR_STEERING_GRAZER);
+    }
+    if (PushButton(x + 180, y, "+W")) {
+        SpawnAnimal(ANIMAL_PREDATOR, currentViewZ, BEHAVIOR_PREDATOR);
+    }
+    if (SectionHeader(x, y, TextFormat("Animals (%d/%d)", CountActiveAnimals(), MAX_ANIMALS), &sectionAnimals)) {
+        y += 18;
+        if (PushButton(x, y, "Clear Animals")) {
+            ClearAnimals();
+        }
+    }
+    y += 22;
+
     // === JOBS ===
     y += 8;
     if (SectionHeader(x, y, TextFormat("Jobs (%d items)", itemCount), &sectionJobs)) {
@@ -530,9 +549,35 @@ void DrawUI(void) {
         DraggableFloatT(x, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
             "Speed multiplier in deep water (levels 5-7). At 0.35, movers move at 35% speed. Lower = slower movement.");
         y += 22;
+        DraggableFloatT(x, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
+            "Speed multiplier on muddy terrain (soil with wetness >= 2). At 0.6, movers move at 60% speed.");
+        y += 22;
+        DraggableFloatT(x, y, "Wetness Sync", &wetnessSyncInterval, 0.5f, 0.5f, 30.0f,
+            "Game-seconds between water-to-wetness sync. Lower = soil gets wet faster from water. Default: 2.0s.");
+        y += 22;
 
         if (PushButton(x, y, "Clear Water")) {
             ClearWater();
+        }
+        y += 22;
+        DrawTextShadow(IsRaining() ? "Rain (active):" : "Rain:", x, y, 14, IsRaining() ? BLUE : GRAY);
+        y += 18;
+        {
+            float bx = (float)x;
+            bool clicked = false;
+            bx += PushButtonInline(bx, (float)y, "Light", &clicked);
+            if (clicked) { SpawnSkyWater(5); AddMessage("Light rain started", BLUE); }
+            clicked = false;
+            bx += PushButtonInline(bx, (float)y, "Medium", &clicked);
+            if (clicked) { SpawnSkyWater(20); AddMessage("Medium rain started", BLUE); }
+            clicked = false;
+            bx += PushButtonInline(bx, (float)y, "Heavy", &clicked);
+            if (clicked) { SpawnSkyWater(50); AddMessage("Heavy rain started", BLUE); }
+            if (IsRaining()) {
+                clicked = false;
+                PushButtonInline(bx, (float)y, "Stop", &clicked);
+                if (clicked) { StopRain(); AddMessage("Rain stopped", GRAY); }
+            }
         }
     }
     y += 22;

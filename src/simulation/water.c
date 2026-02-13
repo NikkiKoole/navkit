@@ -22,8 +22,15 @@ float waterSpeedShallow = 0.85f;    // Level 1-2: slight slowdown (15%)
 float waterSpeedMedium = 0.6f;      // Level 3-4: noticeable slowdown (40%)
 float waterSpeedDeep = 0.35f;       // Level 5-7: major slowdown (65%)
 
-// Internal accumulator for evaporation
+// Mud speed multiplier
+float mudSpeedMultiplier = 0.6f;    // 40% slowdown on muddy terrain
+
+// Wetness sync interval (how often water sets cell wetness on soil)
+float wetnessSyncInterval = 2.0f;
+
+// Internal accumulators
 static float waterEvapAccum = 0.0f;
+static float wetnessSyncAccum = 0.0f;
 
 // BFS queue for pressure propagation
 typedef struct {
@@ -46,6 +53,7 @@ void ClearWater(void) {
     memset(waterGrid, 0, sizeof(waterGrid));
     waterUpdateCount = 0;
     waterEvapAccum = 0.0f;
+    wetnessSyncAccum = 0.0f;
     waterActiveCells = 0;
 }
 
@@ -637,6 +645,35 @@ void UpdateWater(void) {
             }
         }
     }
+    
+    // Sync water presence to cell wetness on soil (interval-based)
+    wetnessSyncAccum += gameDeltaTime;
+    if (wetnessSyncAccum >= wetnessSyncInterval) {
+        wetnessSyncAccum -= wetnessSyncInterval;
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                for (int x = 0; x < gridWidth; x++) {
+                    int level = waterGrid[z][y][x].level;
+                    if (level <= 0) continue;
+                    
+                    // Set wetness on the soil cell below the water
+                    // Water sits in the air cell; soil is at z-1
+                    int soilZ = z - 1;
+                    if (soilZ < 0) continue;
+                    if (!CellIsSolid(grid[soilZ][y][x])) continue;
+                    if (!IsWallNatural(x, y, soilZ)) continue;
+                    if (!IsSoilMaterial(GetWallMaterial(x, y, soilZ))) continue;
+                    
+                    // Map water level to wetness: 1→damp, 2-3→wet, 4+→soaked
+                    int wetness = (level <= 1) ? 1 : (level <= 3) ? 2 : 3;
+                    int current = GET_CELL_WETNESS(x, y, soilZ);
+                    if (wetness > current) {
+                        SET_CELL_WETNESS(x, y, soilZ, wetness);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -724,6 +761,77 @@ void UpdateWaterFreezing(void) {
             }
         }
     }
+}
+
+// =============================================================================
+// SKY WATER (rain simulation)
+// =============================================================================
+
+// Ongoing rain state
+static float rainTimeRemaining = 0.0f;
+static float rainSpawnAccum = 0.0f;
+static int rainIntensity = 0;         // cells per spawn wave
+static float rainSpawnInterval = 0.3f; // game-seconds between waves
+
+bool IsRaining(void) { return rainTimeRemaining > 0.0f; }
+
+// Spawn a single wave of rain drops at high z
+static void SpawnRainWave(int count) {
+    int skyZ = gridDepth - 1;
+    if (skyZ < 2) return;
+    
+    for (int i = 0; i < count; i++) {
+        int gx = GetRandomValue(0, gridWidth - 1);
+        int gy = GetRandomValue(0, gridHeight - 1);
+        
+        for (int z = skyZ; z >= skyZ - 1 && z >= 1; z--) {
+            if (grid[z][gy][gx] == CELL_AIR) {
+                int level = GetRandomValue(4, 7);
+                AddWater(gx, gy, z, level);
+                break;
+            }
+        }
+    }
+}
+
+void SpawnSkyWater(int coverage) {
+    if (coverage < 1) coverage = 1;
+    if (coverage > 100) coverage = 100;
+    
+    // Set up ongoing rain: spawns waves over 30 game-seconds
+    int totalCells = gridWidth * gridHeight;
+    // Cells per wave = coverage% of map / number of waves in duration
+    float duration = 30.0f;
+    int totalWaves = (int)(duration / rainSpawnInterval);
+    if (totalWaves < 1) totalWaves = 1;
+    int totalDrops = (totalCells * coverage) / 100;
+    
+    rainIntensity = totalDrops / totalWaves;
+    if (rainIntensity < 1) rainIntensity = 1;
+    rainTimeRemaining = duration;
+    rainSpawnAccum = 0.0f;
+}
+
+void UpdateRain(void) {
+    if (rainTimeRemaining <= 0.0f) return;
+    
+    rainTimeRemaining -= gameDeltaTime;
+    rainSpawnAccum += gameDeltaTime;
+    
+    if (rainSpawnAccum >= rainSpawnInterval) {
+        rainSpawnAccum -= rainSpawnInterval;
+        SpawnRainWave(rainIntensity);
+    }
+    
+    if (rainTimeRemaining <= 0.0f) {
+        rainTimeRemaining = 0.0f;
+        rainIntensity = 0;
+    }
+}
+
+void StopRain(void) {
+    rainTimeRemaining = 0.0f;
+    rainIntensity = 0;
 }
 
 float GetWaterEvapAccum(void) { return waterEvapAccum; }

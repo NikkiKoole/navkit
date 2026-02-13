@@ -1,4 +1,5 @@
 #include "mover.h"
+#include "animals.h"
 #include "../core/time.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -235,7 +236,7 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
                 float strength = u * u;
                 
                 // Add repulsion (direction * strength / distance)
-                float k = strength * invDist;
+                float k = strength * invDist * 2.0f;
                 avoidance.x += dx * k;
                 avoidance.y += dy * k;
                 
@@ -246,7 +247,28 @@ Vec2 ComputeMoverAvoidance(int moverIndex) {
             }
         }
     }
-    
+
+    // Also avoid animals (simple linear scan — small count)
+    for (int j = 0; j < animalCount && found < AVOID_MAX_NEIGHBORS; j++) {
+        if (!animals[j].active) continue;
+        if ((int)animals[j].z != (int)m->z) continue;
+
+        float dx = m->x - animals[j].x;
+        float dy = m->y - animals[j].y;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < 1e-10f || distSq >= radiusSq) continue;
+
+        float invDist = fastInvSqrt(distSq);
+        float dist = distSq * invDist;
+        float u = 1.0f - dist * invRadius;
+        float strength = u * u;
+        float k = strength * invDist * 4.0f;  // 4x stronger than mover-mover avoidance
+        avoidance.x += dx * k;
+        avoidance.y += dy * k;
+        found++;
+    }
+
     return avoidance;
 }
 
@@ -1073,6 +1095,15 @@ void UpdateMovers(void) {
             float waterSpeedMult = GetWaterSpeedMultiplier(currentX, currentY, currentZ);
             terrainSpeedMult *= waterSpeedMult;
             
+            // Mud slowdown (check the ground we're standing on)
+            {
+                int groundZ = currentZ;
+                if (groundZ > 0 && !CellIsSolid(grid[groundZ][currentY][currentX]))
+                    groundZ--;
+                if (IsMuddy(currentX, currentY, groundZ))
+                    terrainSpeedMult *= mudSpeedMultiplier;
+            }
+            
             // Weight slowdown when carrying items
             if (m->currentJobId >= 0) {
                 Job* job = GetJob(m->currentJobId);
@@ -1362,6 +1393,7 @@ void TickWithDt(float dt) {
     
     // Water simulation
     PROFILE_BEGIN(Water);
+    UpdateRain();
     UpdateWater();
     PROFILE_END(Water);
     

@@ -124,6 +124,7 @@ bool sectionMemGrid = false;
 bool sectionMemPath = false;
 bool sectionMemEntities = false;
 bool sectionMemSpatial = false;
+bool sectionAnimals = false;
 bool sectionJobs = false;
 bool sectionTime = false;
 bool sectionLighting = false;
@@ -133,6 +134,7 @@ int hoveredWorkshop = -1;
 int workshopSelectedBillIdx = 0;
 int linkingWorkshopIdx = -1;  // Which workshop is being linked (for SUBMODE_LINKING_STOCKPILES)
 int hoveredMover = -1;
+int hoveredAnimal = -1;
 int hoveredItemCell[16];
 int hoveredItemCount = 0;
 int hoveredDesignationX = -1;
@@ -297,6 +299,27 @@ int GetMoverAtWorldPos(float wx, float wy, int wz) {
 
         float dx = m->x - wx;
         float dy = m->y - wy;
+        float dist = sqrtf(dx*dx + dy*dy);
+        if (dist < radius && dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
+int GetAnimalAtWorldPos(float wx, float wy, int wz) {
+    float bestDist = 999999.0f;
+    int bestIdx = -1;
+    float radius = CELL_SIZE * 0.6f;
+
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active) continue;
+        if ((int)a->z != wz) continue;
+
+        float dx = a->x - wx;
+        float dy = a->y - wy;
         float dist = sqrtf(dx*dx + dy*dy);
         if (dist < radius && dist < bestDist) {
             bestDist = dist;
@@ -548,6 +571,7 @@ void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
 // From render/rendering.c
 void DrawCellGrid(void);
 void DrawGrassOverlay(void);
+void DrawMud(void);
 void DrawWater(void);
 void DrawFire(void);
 void DrawSmoke(void);
@@ -560,6 +584,7 @@ void DrawGraph(void);
 void DrawPath(void);
 void DrawAgents(void);
 void DrawMovers(void);
+void DrawAnimals(void);
 void DrawJobLines(void);
 void DrawItems(void);
 void DrawLightSources(void);
@@ -580,6 +605,7 @@ void DrawLightPreview(void);
 void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid);
 void DrawWorkshopTooltip(int wsIdx, Vector2 mouse);
 void DrawMoverTooltip(int moverIdx, Vector2 mouse);
+void DrawAnimalTooltip(int animalIdx, Vector2 mouse);
 void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY);
 void DrawWaterTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
 void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse);
@@ -673,6 +699,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         double tickStart = GetTime();
         TickWithDt(TICK_DT);
         ItemsTick(TICK_DT);
+        AnimalsTick(TICK_DT);
         DesignationsTick(TICK_DT);
         AssignJobs();
         JobsTick();
@@ -1135,6 +1162,9 @@ int main(int argc, char** argv) {
                 PROFILE_BEGIN(ItemsTick);
                 ItemsTick(tickDt);
                 PROFILE_END(ItemsTick);
+                PROFILE_BEGIN(AnimalsTick);
+                AnimalsTick(tickDt);
+                PROFILE_END(AnimalsTick);
                 DesignationsTick(tickDt);
                 PROFILE_BEGIN(AssignJobs);
                 AssignJobs();
@@ -1188,6 +1218,7 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawGrassOverlay();
+        DrawMud();
         DrawWater();
         DrawFrozenWater();
         DrawFire();
@@ -1230,6 +1261,7 @@ int main(int argc, char** argv) {
             DrawMovers();
             PROFILE_END(DrawMovers);
         }
+        DrawAnimals();
         DrawJobLines();
 
         // Draw workshop preview when in workshop placement mode
@@ -1655,6 +1687,10 @@ int main(int argc, char** argv) {
 
         if (hoveredMover >= 0) {
             DrawMoverTooltip(hoveredMover, GetMousePosition());
+        }
+
+        if (hoveredAnimal >= 0) {
+            DrawAnimalTooltip(hoveredAnimal, GetMousePosition());
         }
 
         if (hoveredItemCount > 0 && hoveredMover < 0 && hoveredStockpile < 0) {

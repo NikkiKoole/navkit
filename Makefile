@@ -72,6 +72,7 @@ test_trees_SRC       := tests/test_trees.c
 test_terrain_SRC     := tests/test_terrain.c
 test_grid_audit_SRC  := tests/test_grid_audit.c
 test_floordirt_SRC   := tests/test_floordirt.c
+test_mud_SRC         := tests/test_mud.c
 test_lighting_SRC    := tests/test_lighting.c
 test_workshop_linking_SRC := tests/test_workshop_stockpile_linking.c
 test_workshop_diagnostics_SRC := tests/test_workshop_diagnostics.c
@@ -202,6 +203,12 @@ test_floordirt: $(TEST_UNITY_OBJ)
 	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_floordirt_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_floordirt -q
 
+# Mud test
+test_mud: $(TEST_UNITY_OBJ)
+	@echo "Running mud tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mud_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_mud -q
+
 # Lighting test
 test_lighting: $(TEST_UNITY_OBJ)
 	@echo "Running lighting tests..."
@@ -226,7 +233,7 @@ test_soundsystem: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_lighting test_workshop_linking test_workshop_diagnostics test_soundsystem
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_lighting test_workshop_linking test_workshop_diagnostics test_soundsystem
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)

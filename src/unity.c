@@ -31,11 +31,15 @@
 #include "simulation/trees.c"
 #include "simulation/lighting.c"
 
+// Steering library (used by animals.c)
+#include "../experiments/steering/steering.c"
+
 // Entity systems
 #include "entities/items.c"
 #include "entities/item_defs.c"
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
+#include "entities/animals.c"
 #include "entities/mover.c"
 #include "entities/jobs.c"
 

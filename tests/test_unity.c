@@ -72,10 +72,14 @@ int hillsWaterConnectivitySmallThreshold = 50;
 // Core systems
 #include "../src/core/time.c"
 
+// Steering library (used by animals.c)
+#include "../experiments/steering/steering.c"
+
 // Entity systems
 #include "../src/entities/items.c"
 #include "../src/entities/item_defs.c"
 #include "../src/entities/stockpiles.c"
+#include "../src/entities/animals.c"
 #include "../src/entities/mover.c"
 #include "../src/entities/workshops.c"
 #include "../src/entities/jobs.c"

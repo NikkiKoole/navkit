@@ -366,6 +366,69 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     }
 }
 
+// Draw animal tooltip (only shown when paused)
+static void DrawAnimalTooltip(int animalIdx, Vector2 mouse) {
+    if (animalIdx < 0 || animalIdx >= animalCount) return;
+    Animal* a = &animals[animalIdx];
+    if (!a->active) return;
+
+    const char* stateNames[] = { "Idle", "Walking", "Grazing", "Hunting" };
+    const char* typeNames[] = { "Grazer", "Predator" };
+    const char* behaviorNames[] = { "Simple", "Steering", "Predator" };
+
+    char lines[8][80];
+    Color lineColors[8];
+    int lineCount = 0;
+
+    snprintf(lines[lineCount], sizeof(lines[0]), "Animal #%d (%s, %s)", animalIdx, typeNames[a->type], behaviorNames[a->behavior]);
+    lineColors[lineCount++] = YELLOW;
+
+    int cellX = (int)(a->x / CELL_SIZE);
+    int cellY = (int)(a->y / CELL_SIZE);
+    snprintf(lines[lineCount], sizeof(lines[0]), "Pos: cell (%d,%d) z%.0f", cellX, cellY, a->z);
+    lineColors[lineCount++] = WHITE;
+
+    snprintf(lines[lineCount], sizeof(lines[0]), "State: %s", stateNames[a->state]);
+    lineColors[lineCount++] = a->state == ANIMAL_GRAZING ? GREEN : (a->state == ANIMAL_WALKING ? SKYBLUE : GRAY);
+
+    if (a->state == ANIMAL_GRAZING) {
+        VegetationType veg = GetVegetation(cellX, cellY, (int)a->z);
+        snprintf(lines[lineCount], sizeof(lines[0]), "Grazing: veg=%d, timer=%.1f/%.1f", veg, a->grazeTimer, ANIMAL_GRAZE_TIME);
+        lineColors[lineCount++] = GREEN;
+    } else if (a->state == ANIMAL_WALKING) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Target: (%d,%d)", a->targetCellX, a->targetCellY);
+        lineColors[lineCount++] = SKYBLUE;
+    } else if (a->state == ANIMAL_HUNTING) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Prey: %s", a->targetAnimalIdx >= 0 ? TextFormat("#%d", a->targetAnimalIdx) : "none");
+        lineColors[lineCount++] = RED;
+    }
+
+    int maxW = 0;
+    for (int i = 0; i < lineCount; i++) {
+        int w = MeasureText(lines[i], 14);
+        if (w > maxW) maxW = w;
+    }
+
+    int padding = 6;
+    int lineH = 16;
+    int boxW = maxW + padding * 2;
+    int boxH = lineH * lineCount + padding * 2;
+
+    int tx = (int)mouse.x + 15;
+    int ty = (int)mouse.y + 15;
+    if (tx + boxW > GetScreenWidth()) tx = (int)mouse.x - boxW - 5;
+    if (ty + boxH > GetScreenHeight()) ty = (int)mouse.y - boxH - 5;
+
+    DrawRectangle(tx, ty, boxW, boxH, (Color){20, 20, 40, 220});
+    DrawRectangleLines(tx, ty, boxW, boxH, (Color){100, 100, 150, 255});
+
+    int y = ty + padding;
+    for (int i = 0; i < lineCount; i++) {
+        DrawTextShadow(lines[i], tx + padding, y, 14, lineColors[i]);
+        y += lineH;
+    }
+}
+
 // Draw item tooltip (only shown when paused)
 static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int cellX, int cellY) {
     if (itemCount <= 0) return;
@@ -499,6 +562,22 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d, stone: 50%% rate)", dirtDesc, dirtLevel);
         } else {
             snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
+        }
+    }
+
+    // Cell wetness / mud (check hovered cell and cell below)
+    {
+        int wetZ = cellZ;
+        int wetness = GET_CELL_WETNESS(cellX, cellY, wetZ);
+        if (wetness == 0 && wetZ > 0) {
+            wetZ = cellZ - 1;
+            wetness = GET_CELL_WETNESS(cellX, cellY, wetZ);
+        }
+        if (wetness > 0) {
+            bool muddy = IsMuddy(cellX, cellY, wetZ);
+            const char* wetDesc = wetness >= 3 ? (muddy ? "Soaked (muddy)" : "Soaked") :
+                                  wetness >= 2 ? (muddy ? "Wet (muddy)" : "Wet") : "Damp";
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Wetness: %s", wetDesc);
         }
     }
 

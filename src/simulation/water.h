@@ -53,6 +53,12 @@ extern float waterSpeedShallow;     // Speed in level 1-2 water (default: 0.85 =
 extern float waterSpeedMedium;      // Speed in level 3-4 water (default: 0.6 = 40% slowdown)
 extern float waterSpeedDeep;        // Speed in level 5-7 water (default: 0.35 = 65% slowdown)
 
+// Mud speed multiplier (soil cells with wetness >= 2)
+extern float mudSpeedMultiplier;    // Speed on muddy terrain (default: 0.6 = 40% slowdown)
+
+// Wetness sync interval (game-seconds between water→wetness updates)
+extern float wetnessSyncInterval;   // Default: 2.0s
+
 // Initialize water system (call after grid is initialized)
 void InitWater(void);
 
@@ -99,6 +105,14 @@ float GetWaterSpeedMultiplier(int x, int y, int z);
 // Water cell state getters (inline for zero overhead)
 static inline bool IsWaterStable(int x, int y, int z) { return waterGrid[z][y][x].stable; }
 static inline bool HasWaterPressure(int x, int y, int z) { return waterGrid[z][y][x].hasPressure; }
+
+// Sky water (rain simulation)
+// Starts continuous rain for ~30 game-seconds, spawning water in waves
+// coverage = 1-100 (percentage of map area, spread across the duration)
+void SpawnSkyWater(int coverage);
+void UpdateRain(void);   // Call from game tick
+void StopRain(void);
+bool IsRaining(void);
 
 // Accumulator getters/setters (for save/load)
 float GetWaterEvapAccum(void);

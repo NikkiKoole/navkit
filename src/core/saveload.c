@@ -44,6 +44,8 @@ void RebuildPostLoadState(void);
     X(float, waterSpeedShallow) \
     X(float, waterSpeedMedium) \
     X(float, waterSpeedDeep) \
+    X(float, mudSpeedMultiplier) \
+    X(float, wetnessSyncInterval) \
     /* Fire */ \
     X(bool, fireEnabled) \
     X(float, fireSpreadInterval) \
@@ -293,7 +295,11 @@ bool SaveWorld(const char* filename) {
     // Movers
     fwrite(&moverCount, sizeof(moverCount), 1, f);
     fwrite(movers, sizeof(Mover), moverCount, f);
-    
+
+    // Animals (v42+)
+    fwrite(&animalCount, sizeof(animalCount), 1, f);
+    fwrite(animals, sizeof(Animal), animalCount, f);
+
     // Jobs
     fwrite(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
     fwrite(&activeJobCount, sizeof(activeJobCount), 1, f);
@@ -400,7 +406,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 38) {
+    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 38 && version != 39 && version != 40 && version != 41) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
@@ -749,12 +755,22 @@ bool LoadWorld(const char* filename) {
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
     fread(movers, sizeof(Mover), moverCount, f);
-    
+
     // Initialize canPlant for old saves (field added later)
     for (int i = 0; i < moverCount; i++) {
         movers[i].capabilities.canPlant = true;
     }
-    
+
+    // Animals (v42+)
+    if (version >= 42) {
+        fread(&animalCount, sizeof(animalCount), 1, f);
+        if (animalCount > 0) {
+            fread(animals, sizeof(Animal), animalCount, f);
+        }
+    } else {
+        animalCount = 0;
+    }
+
     // Jobs
     fread(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
     fread(&activeJobCount, sizeof(activeJobCount), 1, f);

@@ -556,6 +556,57 @@ static void DrawGrassOverlay(void) {
         }
 }
 
+static void DrawMud(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    // Draw mud at deeper levels (z-9 through z-2) with depth darkening
+    for (int zDepth = z - 9; zDepth <= z - 2; zDepth++) {
+        if (zDepth < 0) continue;
+        Color depthTint = GetDepthTint(zDepth, z);
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                if (!IsMuddy(x, y, zDepth)) continue;
+                if (!IsCellVisibleFromAbove(x, y, zDepth + 1, z + 1)) continue;
+
+                int wetness = GET_CELL_WETNESS(x, y, zDepth);
+                unsigned char alpha = (wetness == 2) ? 80 : 120;
+                Color mudColor = {80, 60, 30, alpha};
+                Color tint = MultiplyColor(depthTint, GetLightColor(x, y, zDepth + 1, skyColor));
+                mudColor = MultiplyColor(mudColor, tint);
+
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                DrawRectangleRec(dest, mudColor);
+            }
+        }
+    }
+
+    // Current view z: check z-1 (the ground you're standing on)
+    if (z <= 0) return;
+    int zBelow = z - 1;
+    for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x < maxX; x++) {
+            if (!IsMuddy(x, y, zBelow)) continue;
+            CellType cellHere = grid[z][y][x];
+            if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
+            if (HAS_FLOOR(x, y, z)) continue;
+
+            int wetness = GET_CELL_WETNESS(x, y, zBelow);
+            unsigned char alpha = (wetness == 2) ? 80 : 120;
+            Color mudColor = {80, 60, 30, alpha};
+            Color lightTint = GetLightColor(x, y, z, skyColor);
+            mudColor = MultiplyColor(mudColor, lightTint);
+
+            Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+            DrawRectangleRec(dest, mudColor);
+        }
+    }
+}
+
 static void DrawWater(void) {
     if (waterActiveCells == 0) return;
     float size = CELL_SIZE * zoom;
@@ -1278,6 +1329,92 @@ static void DrawMovers(void) {
                 DrawLineEx((Vector2){px1, py1}, (Vector2){px2, py2}, 2.0f, Fade(pathColor, 0.6f));
             }
         }
+    }
+}
+
+static void DrawAnimals(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    // Frustum culling bounds
+    float margin = size;
+    float minScreenX = -margin;
+    float maxScreenX = GetScreenWidth() + margin;
+    float minScreenY = -margin;
+    float maxScreenY = GetScreenHeight() + margin;
+
+    for (int i = 0; i < animalCount; i++) {
+        Animal* a = &animals[i];
+        if (!a->active) continue;
+
+        int az = (int)a->z;
+
+        // Depth range check
+        if (az > viewZ || az < viewZ - 9) continue;
+
+        // Visibility from above
+        if (az < viewZ) {
+            int cellX = (int)(a->x / CELL_SIZE);
+            int cellY = (int)(a->y / CELL_SIZE);
+            if (!IsCellVisibleFromAbove(cellX, cellY, az, viewZ)) continue;
+        }
+
+        // Screen position
+        float sx = offset.x + a->x * zoom;
+        float sy = offset.y + a->y * zoom;
+
+        // Frustum cull
+        if (sx < minScreenX || sx > maxScreenX || sy < minScreenY || sy > maxScreenY) continue;
+
+        // Snap to pixel
+        sx = roundf(sx);
+        sy = roundf(sy);
+
+        // Base color depends on behavior type
+        Color animalColor;
+        if (a->behavior == BEHAVIOR_PREDATOR) {
+            animalColor = (Color){ 180, 180, 190, 255 };  // Light grey wolf
+        } else if (a->behavior == BEHAVIOR_STEERING_GRAZER) {
+            animalColor = (Color){ 60, 80, 140, 255 };    // Blue cow
+        } else {
+            animalColor = (Color){ 50, 120, 60, 255 };    // Green simple grazer
+        }
+
+        // Depth tinting
+        if (az < viewZ) {
+            animalColor = MultiplyColor(animalColor, GetDepthTint(az, viewZ));
+            animalColor = FloorDarkenTint(animalColor);
+        }
+
+        // Lighting
+        {
+            int cellX = (int)(a->x / CELL_SIZE);
+            int cellY = (int)(a->y / CELL_SIZE);
+            animalColor = MultiplyColor(animalColor, GetLightColor(cellX, cellY, az, skyColor));
+        }
+
+        // Advance animation phase
+        if (gameSpeed > 0.0f) a->animPhase += GetFrameTime();
+
+        float animalSize = size * 0.8f;
+
+        // Draw body (small triangle)
+        Rectangle bodySrc = SpriteGetRect(SPRITE_small_triangle);
+        Rectangle bodyDest = { sx - animalSize/2, sy - animalSize/2, animalSize, animalSize };
+        DrawTexturePro(atlas, bodySrc, bodyDest, (Vector2){0, 0}, 0, animalColor);
+
+        // Draw head with bobbing, low and overlapping body
+        float bobFreq = 2.5f;
+        float bobAmp = 0.08f;
+        float bob = sinf(a->animPhase * bobFreq * 2.0f * PI) * bobAmp * CELL_SIZE * zoom;
+        float headSize = animalSize * 0.7f;
+        float headX = sx - headSize/2;
+        float headY = sy - headSize * 0.3f + bob;
+        int headSprite = (a->behavior == BEHAVIOR_PREDATOR) ? SPRITE_head : SPRITE_head_inverse;
+        Rectangle headSrc = SpriteGetRect(headSprite);
+        Rectangle headDest = { headX, headY, headSize, headSize };
+        DrawTexturePro(atlas, headSrc, headDest, (Vector2){0, 0}, 0, animalColor);
     }
 }
 

@@ -1,8 +1,10 @@
 #include "groundwear.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
+#include "../world/material.h"
 #include "../core/time.h"
 #include "fire.h"
+#include "water.h"
 #include "trees.h"
 #include "../entities/items.h"
 #include <string.h>
@@ -153,8 +155,8 @@ void TrampleGround(int x, int y, int z) {
 void UpdateGroundWear(void) {
     if (!groundWearEnabled) return;
     
-    // Early exit: no worn cells and sapling regrowth disabled
-    if (wearActiveCells == 0 && !saplingRegrowthEnabled) {
+    // Early exit: nothing to process
+    if (wearActiveCells == 0 && !saplingRegrowthEnabled && waterActiveCells == 0) {
         return;
     }
     
@@ -206,6 +208,17 @@ void UpdateGroundWear(void) {
                                 }
                             }
                         }
+                    }
+                }
+                
+                // Wetness drying: decrease wetness on all natural soil cells
+                // Only dry if no water is sitting on or above this cell
+                int wetness = GET_CELL_WETNESS(x, y, z);
+                if (wetness > 0 && IsSoilMaterial(GetWallMaterial(x, y, z))) {
+                    bool waterPresent = (z + 1 < gridDepth && GetWaterLevel(x, y, z + 1) > 0)
+                                     || GetWaterLevel(x, y, z) > 0;
+                    if (!waterPresent) {
+                        SET_CELL_WETNESS(x, y, z, wetness - 1);
                     }
                 }
             }

@@ -73,6 +73,15 @@ static void TrackFloorDirt(int srcX, int srcY, int srcZ,
 
     int amount = DIRT_TRACK_AMOUNT;
 
+    // Muddy source tracks 3x more dirt
+    {
+        int groundZ = srcZ;
+        if (groundZ > 0 && !CellIsSolid(grid[groundZ][srcY][srcX]))
+            groundZ--;
+        if (IsMuddy(srcX, srcY, groundZ))
+            amount *= 3;
+    }
+
     // Stone floors accumulate dirt slower
     MaterialType floorMat = MAT_NONE;
     if (HAS_FLOOR(dstX, dstY, dstZ)) {
