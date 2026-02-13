@@ -1648,6 +1648,14 @@ void HandleInput(void) {
             return;
         }
         
+        // L = Link stockpiles (enter linking mode)
+        if (IsKeyPressed(KEY_L)) {
+            workSubMode = SUBMODE_LINKING_STOCKPILES;
+            linkingWorkshopIdx = hoveredWorkshop;
+            AddMessage("LINKING MODE: Click stockpile to link (ESC to cancel)", YELLOW);
+            return;
+        }
+        
         // D = Delete workshop
         if (IsKeyPressed(KEY_D)) {
             DeleteWorkshop(hoveredWorkshop);
@@ -1655,6 +1663,44 @@ void HandleInput(void) {
             hoveredWorkshop = -1;
             return;
         }
+    }
+
+    // ========================================================================
+    // Stockpile linking mode
+    // ========================================================================
+    if (workSubMode == SUBMODE_LINKING_STOCKPILES && linkingWorkshopIdx >= 0) {
+        // ESC or L again = exit linking mode
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_L)) {
+            workSubMode = SUBMODE_NONE;
+            linkingWorkshopIdx = -1;
+            AddMessage("Linking mode cancelled", GRAY);
+            return;
+        }
+        
+        // Left-click stockpile = link it
+        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && hoveredStockpile >= 0) {
+            bool success = LinkStockpileToWorkshop(linkingWorkshopIdx, hoveredStockpile);
+            if (success) {
+                AddMessage(TextFormat("Linked Stockpile #%d to Workshop #%d (slot %d/4)", 
+                    hoveredStockpile, linkingWorkshopIdx, 
+                    workshops[linkingWorkshopIdx].linkedInputCount), 
+                    GREEN);
+                // Stay in linking mode to allow linking more stockpiles
+            } else {
+                // Check why it failed
+                if (workshops[linkingWorkshopIdx].linkedInputCount >= MAX_LINKED_STOCKPILES) {
+                    AddMessage("Workshop slots full (4/4)", RED);
+                } else if (IsStockpileLinked(linkingWorkshopIdx, hoveredStockpile)) {
+                    AddMessage("Stockpile already linked to this workshop", RED);
+                } else {
+                    AddMessage("Failed to link stockpile", RED);
+                }
+            }
+            return;
+        }
+        
+        // Don't process other inputs while in linking mode
+        return;
     }
 
     // ========================================================================

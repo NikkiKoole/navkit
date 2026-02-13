@@ -150,6 +150,7 @@ extern bool sectionLighting;
 extern int hoveredStockpile;
 extern int hoveredWorkshop;
 extern int workshopSelectedBillIdx;
+extern int linkingWorkshopIdx;
 extern int hoveredMover;
 extern int hoveredItemCell[16];
 extern int hoveredItemCount;

@@ -192,4 +192,11 @@ char GetWorkshopTileAt(int wsIdx, int tileX, int tileY);  // returns template ch
 bool IsWorkshopBlocking(int tileX, int tileY, int z);     // true if any workshop blocks this tile
 bool IsPassiveWorkshopWorkTile(int tileX, int tileY, int z); // true if tile is work tile of an active passive workshop with a runnable bill
 
+// Stockpile linking
+bool LinkStockpileToWorkshop(int workshopIdx, int stockpileIdx);
+bool UnlinkStockpile(int workshopIdx, int stockpileIdx);
+void UnlinkStockpileSlot(int workshopIdx, int slotIdx);
+void ClearLinkedStockpiles(int workshopIdx);
+bool IsStockpileLinked(int workshopIdx, int stockpileIdx);
+
 #endif

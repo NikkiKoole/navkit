@@ -18,6 +18,7 @@ typedef enum {
     SUBMODE_DIG,      // Mine, Channel, Dig ramp, Remove floor/ramp
     SUBMODE_BUILD,    // Construct wall, Floor, Ladder, Ramp
     SUBMODE_HARVEST,  // Chop tree, Gather/Plant sapling
+    SUBMODE_LINKING_STOCKPILES,  // Link stockpiles to workshops
 } WorkSubMode;
 
 // Actions within modes

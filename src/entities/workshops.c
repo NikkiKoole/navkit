@@ -764,3 +764,83 @@ void UpdateWorkshopDiagnostics(float dt) {
         else ws->visualState = WORKSHOP_VISUAL_NO_WORKER;
     }
 }
+
+// =============================================================================
+// STOCKPILE LINKING
+// =============================================================================
+
+// Link stockpile to workshop (adds to next available slot)
+bool LinkStockpileToWorkshop(int workshopIdx, int stockpileIdx) {
+    if (workshopIdx < 0 || workshopIdx >= workshopCount) return false;
+    if (stockpileIdx < 0 || stockpileIdx >= stockpileCount) return false;
+    
+    Workshop* ws = &workshops[workshopIdx];
+    
+    // Check if slot available
+    if (ws->linkedInputCount >= MAX_LINKED_STOCKPILES) {
+        return false;  // All slots full
+    }
+    
+    // Check if stockpile already linked
+    for (int i = 0; i < ws->linkedInputCount; i++) {
+        if (ws->linkedInputStockpiles[i] == stockpileIdx) {
+            return false;  // Already linked
+        }
+    }
+    
+    // Add to next slot
+    ws->linkedInputStockpiles[ws->linkedInputCount] = stockpileIdx;
+    ws->linkedInputCount++;
+    return true;
+}
+
+// Unlink specific stockpile from workshop (by stockpile index)
+bool UnlinkStockpile(int workshopIdx, int stockpileIdx) {
+    if (workshopIdx < 0 || workshopIdx >= workshopCount) return false;
+    
+    Workshop* ws = &workshops[workshopIdx];
+    
+    // Find stockpile in linked list
+    for (int i = 0; i < ws->linkedInputCount; i++) {
+        if (ws->linkedInputStockpiles[i] == stockpileIdx) {
+            UnlinkStockpileSlot(workshopIdx, i);
+            return true;
+        }
+    }
+    
+    return false;  // Not linked
+}
+
+// Unlink stockpile by slot index (shifts remaining down)
+void UnlinkStockpileSlot(int workshopIdx, int slotIdx) {
+    if (workshopIdx < 0 || workshopIdx >= workshopCount) return;
+    
+    Workshop* ws = &workshops[workshopIdx];
+    
+    if (slotIdx < 0 || slotIdx >= ws->linkedInputCount) return;
+    
+    // Shift remaining links down
+    for (int i = slotIdx; i < ws->linkedInputCount - 1; i++) {
+        ws->linkedInputStockpiles[i] = ws->linkedInputStockpiles[i + 1];
+    }
+    ws->linkedInputCount--;
+}
+
+// Clear all linked stockpiles
+void ClearLinkedStockpiles(int workshopIdx) {
+    if (workshopIdx < 0 || workshopIdx >= workshopCount) return;
+    workshops[workshopIdx].linkedInputCount = 0;
+}
+
+// Check if stockpile is linked to workshop
+bool IsStockpileLinked(int workshopIdx, int stockpileIdx) {
+    if (workshopIdx < 0 || workshopIdx >= workshopCount) return false;
+    
+    Workshop* ws = &workshops[workshopIdx];
+    for (int i = 0; i < ws->linkedInputCount; i++) {
+        if (ws->linkedInputStockpiles[i] == stockpileIdx) {
+            return true;
+        }
+    }
+    return false;
+}

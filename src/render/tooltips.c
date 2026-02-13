@@ -800,6 +800,44 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
         }
     }
 
+    // Linked stockpiles section
+    if (lineCount < 26) {
+        snprintf(lines[lineCount], sizeof(lines[0]), "Linked Input Stockpiles:");
+        lineColors[lineCount] = WHITE;
+        lineCount++;
+        
+        if (ws->linkedInputCount == 0) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  (none) - Press L to link");
+            lineColors[lineCount] = GRAY;
+            lineCount++;
+        } else {
+            for (int i = 0; i < ws->linkedInputCount && lineCount < 26; i++) {
+                int spIdx = ws->linkedInputStockpiles[i];
+                if (spIdx >= 0 && spIdx < stockpileCount && stockpiles[spIdx].active) {
+                    Stockpile* sp = &stockpiles[spIdx];
+                    snprintf(lines[lineCount], sizeof(lines[0]), 
+                             "  [%d] Stockpile #%d (Pri:%d)", 
+                             i + 1, spIdx, sp->priority);
+                    lineColors[lineCount] = GREEN;
+                } else {
+                    snprintf(lines[lineCount], sizeof(lines[0]), 
+                             "  [%d] <invalid #%d>", i + 1, spIdx);
+                    lineColors[lineCount] = RED;
+                }
+                lineCount++;
+            }
+        }
+        
+        // Show empty slots
+        for (int i = ws->linkedInputCount; i < MAX_LINKED_STOCKPILES && lineCount < 26; i++) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  [%d] <empty>", i + 1);
+            lineColors[lineCount] = DARKGRAY;
+            lineCount++;
+        }
+        
+        lineCount++;  // Blank line before recipes
+    }
+
     // Available recipes (add with number keys)
     if (recipeCount > 0 && lineCount < 26) {
         snprintf(lines[lineCount], sizeof(lines[0]), "Add recipe:");
@@ -829,7 +867,7 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
 
     // Help text
-    snprintf(lines[lineCount], sizeof(lines[0]), "X:del P:pause M:mode +/-:count []:sel D:del ws");
+    snprintf(lines[lineCount], sizeof(lines[0]), "L:link X:del P:pause M:mode +/-:count []:sel D:del ws");
     lineColors[lineCount] = GRAY;
     lineCount++;
 
