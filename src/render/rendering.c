@@ -1557,6 +1557,7 @@ static void DrawStockpileItems(void) {
 static void DrawWorkshops(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     for (int i = 0; i < MAX_WORKSHOPS; i++) {
         Workshop* ws = &workshops[i];
@@ -1594,6 +1595,9 @@ static void DrawWorkshops(void) {
                         tint = (Color){200, 180, 140, 255};
                         break;
                 }
+
+                Color lightTint = GetLightColor(gx, gy, ws->z, skyColor);
+                tint = MultiplyColor(tint, lightTint);
 
                 if (belowView) {
                     tint = MultiplyColor(tint, GetDepthTint(ws->z, viewZ));
