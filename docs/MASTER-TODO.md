@@ -1,21 +1,25 @@
 # NavKit Master TODO List
 
-*Last Updated: 2026-02-12*  
+*Last Updated: 2026-02-13*  
 *Auto-generated from comprehensive docs scan*
 
 ---
 
 ## 🔥 ACTIVE WORK (docs/doing/)
 
-### Lighting System (PARTIAL - in progress)
+### Lighting System (COMPLETE - 10/10 steps)
 - **File**: [`docs/doing/lighting-system.md`](doing/lighting-system.md)
-- **Status**: Steps 1-5 complete (data structures, sky light, rendering integration)
-- **Remaining Steps**:
-  - Block light propagation
-  - Colored light mixing
-  - Torch placement UI
-  - Fire auto-light
+- **Status**: All 10 implementation steps complete. Ready to move to done/.
+- **Complete**:
+  - Sky light (column scan + horizontal BFS spread + time-of-day)
+  - Block light (Euclidean falloff BFS, additive color mixing)
+  - Torch placement with visible sprites (middle-dot, color-tinted)
+  - 5 color presets (Warm/Cool/Fire/Green/White, keys 1-5)
+  - Preset selection shown in action bar
+  - Dominant-brightness blending (preserves torch color against sky)
+  - Fire auto-light (all fire level changes sync to lighting system)
   - Dirty tracking optimization
+  - Save/load (v37), 48 tests / 5245 assertions
 - **Open Questions**:
   - Gameplay impact? (mover speed, enemy spawning, plant growth, or cosmetic only?)
   - Darkness level tuning (ambient minimum)
@@ -479,7 +483,7 @@
 
 | Category | Count |
 |----------|-------|
-| **Active Work Items** | 1 system (lighting - partial) |
+| **Active Work Items** | 1 system (lighting - COMPLETE, 10/10 steps, ready for done/) |
 | **Open Bugs** | 3 (1 deferred with solution, 2 active) |
 | **High Priority Gaps** | 5 major systems |
 | **Planned Features** | 100+ across vision docs |
@@ -495,7 +499,6 @@
 
 1. **Glass Kiln** - Highest priority gameplay gap, closes sand autarky loop
 2. **Stockpile Priority Fix** - Deferred bug with known solution (pre-sorted priority list, 5-6 hours)
-3. **Lighting System Completion** - Finish remaining 5 steps of active work
 4. **Composting** - Close leaves autarky loop (pairs well with glass kiln)
 5. **Documentation Cleanup** - Update stale docs, merge duplicates
 

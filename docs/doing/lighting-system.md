@@ -256,20 +256,56 @@ Active workshops (kilns, furnaces) could emit dim light when working. Check
 
 ## Implementation Order
 
-1. **Data structures**: LightCell grid, light source grid (or sparse list)
-2. **Sky light column scan**: precompute skyLevel per cell
-3. **Sky light horizontal spread**: BFS from sky-lit cells
-4. **Rendering integration**: multiply light into cell tint
-5. **Sandbox action**: ACTION_SANDBOX_LIGHT for testing
-6. **Block light propagation**: BFS from sources
-7. **Colored light mixing**: additive RGB from multiple sources
-8. **Torch placement**: ACTION_DRAW_TORCH with sprite
-9. **Fire auto-light**: fire cells emit proportional light
-10. **Dirty tracking**: only recompute when terrain/sources change
+1. ~~**Data structures**: LightCell grid, light source grid (or sparse list)~~ DONE
+2. ~~**Sky light column scan**: precompute skyLevel per cell~~ DONE
+3. ~~**Sky light horizontal spread**: BFS from sky-lit cells~~ DONE
+4. ~~**Rendering integration**: multiply light into cell tint~~ DONE
+5. ~~**Sandbox action**: ACTION_SANDBOX_LIGHT for testing~~ DONE
+6. ~~**Block light propagation**: BFS from sources~~ DONE
+7. ~~**Colored light mixing**: additive RGB from multiple sources~~ DONE
+8. ~~**Torch placement**: visible sprite + 5 color presets (1-5 keys)~~ DONE
+9. ~~**Fire auto-light**: fire cells emit proportional light~~ DONE
+10. ~~**Dirty tracking**: only recompute when terrain/sources change~~ DONE
 
 Steps 1-5 give a playable day/night cycle with underground darkness.
 Steps 6-8 add player-placed lighting.
 Steps 9-10 add polish and performance.
+
+### What's implemented (as of 2026-02-13)
+
+**Sky light**: Column scan + horizontal BFS spread. Time-of-day color applied
+at render time. Ambient minimum (15,15,20) prevents pitch black.
+
+**Block light**: Euclidean distance falloff, 4-cardinal BFS on same z-level.
+Writes to solid surfaces but doesn't propagate through them. Visited grid
+prevents duplicate BFS accumulation.
+
+**Color mixing**: Additive per-source (red + blue = purple). GetLightColor
+uses dominant-brightness selection (not per-channel max) to preserve torch
+color identity against sky light.
+
+**Torch presets** (1-5 keys in sandbox light mode):
+1. Warm Torch (255,180,100) — default
+2. Cool Crystal (100,150,255)
+3. Fire (255,100,50)
+4. Green Torch (100,255,100)
+5. White Lantern (255,255,255)
+
+**Rendering**: Torch sprite (middle-dot, 60% cell size, color-tinted) drawn
+at each light source position. GetLightColor called 20+ places in rendering.c
+for walls, floors, items, movers, workshops, etc.
+
+**Z-1 bleed**: Air cells get 50% of block light from the level below, so
+torches placed underground glow upward through openings.
+
+**Save/load**: Save version 37. Light sources serialized in ENTITIES section.
+
+**Fire auto-light**: All fire level changes go through `SetFireLevel()`, which
+syncs to `AddLightSource`/`RemoveLightSource`. Color scales warm with level:
+R=255, G=140+level*10, B=30+level*5, intensity=2+level. `SyncFireLighting()`
+rebuilds all fire lights on save load.
+
+**Tests**: 48 tests, 5245 assertions in tests/test_lighting.c.
 
 ## Open Questions
 
