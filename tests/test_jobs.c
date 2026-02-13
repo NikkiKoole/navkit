@@ -663,11 +663,18 @@ describe(stockpile_system) {
         bool reserved = ReserveStockpileSlot(spIdx, slotX, slotY, 0, ITEM_RED, MAT_NONE);  // mover 0
         expect(reserved == true);
         
-        // Should not find free slot (1 tile, reserved empty slots are skipped
-        // because we don't know what type they're reserved for)
+        // Should still find slot for same type (stacking into reserved slot)
         int slotX2, slotY2;
         bool found2 = FindFreeStockpileSlot(spIdx, ITEM_RED, MAT_NONE, &slotX2, &slotY2);
-        expect(found2 == false);
+        expect(found2 == true);
+        expect(slotX2 == slotX);
+        expect(slotY2 == slotY);
+        
+        // Different type should NOT find the reserved slot
+        SetStockpileFilter(spIdx, ITEM_BLUE, true);
+        int slotX3, slotY3;
+        bool found3 = FindFreeStockpileSlot(spIdx, ITEM_BLUE, MAT_NONE, &slotX3, &slotY3);
+        expect(found3 == false);
     }
 }
 
@@ -13478,7 +13485,7 @@ describe(construction_site_clearing) {
         SetStockpileFilter(spIdx, ITEM_DIRT, true);
 
         // Pre-existing dirt at the construction site
-        int dirtIdx = SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
+        SpawnItemWithMaterial(5 * CELL_SIZE + CELL_SIZE * 0.5f,
                              5 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f,
                              ITEM_DIRT, MAT_DIRT);
 

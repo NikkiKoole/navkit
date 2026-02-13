@@ -350,11 +350,9 @@ fast: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O0  -fno-omit-frame-pointer  -g -I. -Wall -Wextra -o $(BINDIR)/path_fast $(path_SRC) $(LDFLAGS)
 	ln -sfn path_fast $(BINDIR)/path
 
-# Debug build - no optimization, all sanitizers
-debug: CFLAGS := -std=c11 -O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer -I. -Wall -Wextra
-debug: LDFLAGS += -fsanitize=address,undefined
+# Debug build - no optimization, debug symbols
 debug: $(RAYLIB_LIB) | $(BINDIR)
-	$(CC) $(CFLAGS) -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
+	$(CC) -std=c11 -O0 -g -fno-omit-frame-pointer -I. -Wall -Wextra -o $(BINDIR)/path_debug $(path_SRC) $(LDFLAGS)
 
 # AddressSanitizer build for memory debugging
 asan: CFLAGS := -std=c11 -O1 -g -fsanitize=address -fno-omit-frame-pointer -I. -Wall -Wextra

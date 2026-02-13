@@ -620,7 +620,7 @@ This document catalogs **features and systems that haven't been thought about ye
 ## NEW TODO IDEAS FROM NICHE ANALYSIS
 
 ### Edge Case Fixes (Prevent Weird Bugs):
-26. **Ramp placement validation** - Error when placing ramp into wall/wrong direction
+26. ~~**Ramp placement validation**~~ ✅ DONE - CanPlaceRamp + AutoDetectRampDirection already validate
 27. **Mover rescue system** - Auto-teleport stuck movers instead of deactivating
 28. **Multi-output storage guarantee** - Suspend bill if EITHER output can't be stored
 29. **Water displacement preview** - Show where water will go before placing walls
@@ -629,12 +629,12 @@ This document catalogs **features and systems that haven't been thought about ye
 ### Micro-Interactions (Add Polish):
 31. **Screen shake on tree fall** - Small camera shake + dust particles
 32. **Item bounce physics** - Items dropped from height bounce once before settling
-33. **Smooth camera follow** - Lerp camera position when following mover (0.3s ease)
-34. **Mover speed variance** - Randomize 0.9-1.1x speed per mover for personality
+33. ~~**Smooth camera follow**~~ ✅ DONE - Lerp camera in main.c follow code
+34. ~~**Mover speed variance**~~ ✅ DONE - MOVER_SPEED + GetRandomValue(-30, 30) at spawn
 35. **Idle animations** - Movers fidget/look around when waiting
 
 ### Hidden Features Exposed (Make Discoverable):
-36. **Material properties tooltip** - Show dirt resistance, wear resistance when hovering
+36. ~~**Material properties tooltip**~~ ✅ DONE - Stone floor 50% dirt rate shown in tooltip
 37. ~~**Ramp direction arrows**~~ ✅ DONE - Visual arrows on ramps showing up/down direction
 38. **Debug mode panel** - Single UI panel to toggle all visualization modes
 39. ~~**Sapling regrowth toggle**~~ ✅ DONE - UI option to enable forest regeneration (ui_panels.c line 765)

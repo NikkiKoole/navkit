@@ -5,6 +5,15 @@
 
 #include "../vendor/raylib.h"
 
+// Stub prototypes (satisfy -Wmissing-prototypes)
+void ProfileBegin(const char* name);
+void ProfileEnd(const char* name);
+void ProfileAccumBegin(const char* name);
+void ProfileAccumEnd(const char* name);
+void ProfileFrameEnd(void);
+void ProfileReset(void);
+void AddMessage(const char* text, Color color);
+
 // Stub profiler functions - tests don't need real profiling
 void ProfileBegin(const char* name) { (void)name; }
 void ProfileEnd(const char* name) { (void)name; }

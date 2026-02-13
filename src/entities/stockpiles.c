@@ -508,23 +508,42 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
         }
     }
     
-    // Second pass: find an empty unreserved slot
-    // (Don't reuse reserved empty slots — we don't know what type they're reserved for,
-    // which could lead to mixed-type stacks)
+    // Second pass: find a reserved-but-empty slot of matching type with room
+    // (ReserveStockpileSlot stamps type on first reservation, so we can safely stack)
     for (int ly = 0; ly < sp->height; ly++) {
         for (int lx = 0; lx < sp->width; lx++) {
             int idx = SlotIndex(sp, lx, ly);
-            if (!sp->cells[idx]) continue;            // skip inactive cells
-            if (sp->reservedBy[idx] > 0) continue;    // skip reserved empty slots
-            if (sp->groundItemIdx[idx] >= 0) continue; // skip if ground item blocking (O(1) check)
+            if (!sp->cells[idx]) continue;
+            if (sp->groundItemIdx[idx] >= 0) continue;
+            if (sp->reservedBy[idx] <= 0) continue;   // only reserved slots
             
-            // Skip cells that aren't walkable (e.g., above ramps)
+            int worldX = sp->x + lx;
+            int worldY = sp->y + ly;
+            if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
+            
+            if (sp->slotTypes[idx] == type &&
+                sp->slotMaterials[idx] == mat &&
+                sp->slotCounts[idx] + sp->reservedBy[idx] < sp->maxStackSize) {
+                *outX = worldX;
+                *outY = worldY;
+                return true;
+            }
+        }
+    }
+    
+    // Third pass: find an empty unreserved slot
+    for (int ly = 0; ly < sp->height; ly++) {
+        for (int lx = 0; lx < sp->width; lx++) {
+            int idx = SlotIndex(sp, lx, ly);
+            if (!sp->cells[idx]) continue;
+            if (sp->reservedBy[idx] > 0) continue;
+            if (sp->groundItemIdx[idx] >= 0) continue;
+            
             int worldX = sp->x + lx;
             int worldY = sp->y + ly;
             if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
             
             if (sp->slotCounts[idx] == 0 && sp->slots[idx] == -1) {
-                // Found empty slot
                 *outX = worldX;
                 *outY = worldY;
                 return true;

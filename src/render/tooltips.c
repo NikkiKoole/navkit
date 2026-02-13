@@ -495,7 +495,11 @@ static void DrawCellTooltip(int cellX, int cellY, int cellZ, Vector2 mouse) {
     if (dirtLevel > 0) {
         const char* dirtDesc = dirtLevel >= DIRT_CLEAN_THRESHOLD ? "Dirty" :
                                dirtLevel >= DIRT_VISIBLE_THRESHOLD ? "Slightly dirty" : "Trace dirt";
-        snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
+        if (IsStoneMaterial(floorMat)) {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d, stone: 50%% rate)", dirtDesc, dirtLevel);
+        } else {
+            snprintf(lines[lineCount++], sizeof(lines[0]), "Cleanliness: %s (%d)", dirtDesc, dirtLevel);
+        }
     }
 
     // Temperature info (all values are now Celsius directly)

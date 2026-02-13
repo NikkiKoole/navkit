@@ -1500,6 +1500,7 @@ static void DrawStockpileTiles(void) {
 static void DrawStockpileItems(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
 
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         Stockpile* sp = &stockpiles[i];
@@ -1529,8 +1530,9 @@ static void DrawStockpileItems(void) {
                 int visibleCount = count > 5 ? 5 : count;
                 float itemSize = size * ITEM_SIZE_STOCKPILE;
                 float stackOffset = size * 0.08f;
-                Color tint = MaterialTint((MaterialType)sp->slotMaterials[slotIdx]);
-                Color borderTint = ItemBorderTint(type);
+                Color lightTint = GetLightColor(gx, gy, sp->z, skyColor);
+                Color tint = MultiplyColor(MaterialTint((MaterialType)sp->slotMaterials[slotIdx]), lightTint);
+                Color borderTint = MultiplyColor(ItemBorderTint(type), lightTint);
                 if (belowView) {
                     tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
                     tint = FloorDarkenTint(tint);

@@ -1073,6 +1073,18 @@ void UpdateMovers(void) {
             float waterSpeedMult = GetWaterSpeedMultiplier(currentX, currentY, currentZ);
             terrainSpeedMult *= waterSpeedMult;
             
+            // Weight slowdown when carrying items
+            if (m->currentJobId >= 0) {
+                Job* job = GetJob(m->currentJobId);
+                if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
+                    Item* item = &items[job->carryingItem];
+                    if (item->active && item->state == ITEM_CARRIED) {
+                        float w = ItemWeight(item->type);
+                        terrainSpeedMult *= 1.0f / (1.0f + w * 0.02f);
+                    }
+                }
+            }
+            
             // Base velocity toward waypoint
             float effectiveSpeed = m->speed * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;

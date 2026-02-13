@@ -19,6 +19,7 @@ typedef struct {
     uint8_t flags;        // IF_* flags
     uint8_t maxStack;     // Max items per stockpile slot
     uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
+    float weight;         // Weight in kg (affects carry speed)
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -38,5 +39,6 @@ extern const ItemDef itemDefs[];
 #define ItemIsFuel(t)         (itemDefs[t].flags & IF_FUEL)
 #define ItemUsesMaterialName(t) (itemDefs[t].flags & IF_MATERIAL_NAME)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
+#define ItemWeight(t)           (itemDefs[t].weight)
 
 #endif

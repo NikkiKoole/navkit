@@ -1158,8 +1158,12 @@ int main(int argc, char** argv) {
             } else {
                 float centerX = GetScreenWidth() * 0.5f;
                 float centerY = GetScreenHeight() * 0.5f;
-                offset.x = centerX - movers[followMoverIdx].x * zoom;
-                offset.y = centerY - movers[followMoverIdx].y * zoom;
+                float targetX = centerX - movers[followMoverIdx].x * zoom;
+                float targetY = centerY - movers[followMoverIdx].y * zoom;
+                float t = 10.0f * frameTime;
+                if (t > 1.0f) t = 1.0f;
+                offset.x += (targetX - offset.x) * t;
+                offset.y += (targetY - offset.y) * t;
                 currentViewZ = (int)movers[followMoverIdx].z;
             }
         }
