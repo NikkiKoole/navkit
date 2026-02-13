@@ -950,13 +950,6 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             }
         }
         
-        // Show empty slots
-        for (int i = ws->linkedInputCount; i < MAX_LINKED_STOCKPILES && lineCount < 26; i++) {
-            snprintf(lines[lineCount], sizeof(lines[0]), "  [%d] <empty>", i + 1);
-            lineColors[lineCount] = DARKGRAY;
-            lineCount++;
-        }
-        
         lineCount++;  // Blank line before recipes
     }
 
