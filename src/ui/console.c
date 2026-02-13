@@ -67,6 +67,7 @@ static void Cmd_List(int argc, const char** argv);
 static void Cmd_Get(int argc, const char** argv);
 static void Cmd_Set(int argc, const char** argv);
 static void Cmd_Spawn(int argc, const char** argv);
+static void Cmd_Tp(int argc, const char** argv);
 static void Cmd_Clear(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
@@ -99,8 +100,7 @@ void Console_Init(void) {
     // Game commands (Phase 4)
     Console_RegisterCmd("spawn", Cmd_Spawn, "Spawn items at mouse: spawn <count> <item>");
     Console_RegisterCmd("clear", Cmd_Clear, "Clear entities: clear items|movers");
-    // Console_RegisterCmd("tp", Cmd_Tp, "Teleport camera: tp <x> <y> <z>");
-    // Console_RegisterCmd("pause", Cmd_Pause, "Toggle pause");
+    Console_RegisterCmd("tp", Cmd_Tp, "Teleport camera: tp <x> <y> [z]");
 }
 
 void Console_RegisterCmd(const char* name, ConsoleCmdFn fn, const char* help) {
@@ -621,6 +621,31 @@ static void Cmd_Spawn(int argc, const char** argv) {
     Console_Printf(GREEN, "Spawned %d %s at mouse position", spawned, itemDefs[foundType].name);
 }
 
+static void Cmd_Tp(int argc, const char** argv) {
+    if (argc < 3) {
+        Console_Print("Usage: tp <x> <y> [z]", YELLOW);
+        return;
+    }
+
+    int x = atoi(argv[1]);
+    int y = atoi(argv[2]);
+    int z = (argc >= 4) ? atoi(argv[3]) : currentViewZ;
+
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        Console_Printf(YELLOW, "Out of bounds: %d,%d,z%d (grid is %dx%dx%d)", x, y, z, gridWidth, gridHeight, gridDepth);
+        return;
+    }
+
+    // Center camera on the target cell
+    float centerX = GetScreenWidth() * 0.5f;
+    float centerY = GetScreenHeight() * 0.5f;
+    offset.x = centerX - (x * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+    offset.y = centerY - (y * CELL_SIZE + CELL_SIZE * 0.5f) * zoom;
+    currentViewZ = z;
+
+    Console_Printf(GREEN, "Teleported to %d, %d, z%d", x, y, z);
+}
+
 static void Cmd_Clear(int argc, const char** argv) {
     if (argc < 2) {
         Console_Print("Usage: clear <items|movers>", YELLOW);
@@ -922,6 +947,8 @@ void Console_RegisterGameVars(void) {
 
     // Time (from time.c)
     Console_RegisterVar("fixedTime", &useFixedTimestep, CVAR_BOOL);
+    Console_RegisterVar("time", &timeOfDay, CVAR_FLOAT);
+    Console_RegisterVar("speed", &gameSpeed, CVAR_FLOAT);
 }
 
 // ---------------------------------------------------------------------------
