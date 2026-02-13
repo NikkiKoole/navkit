@@ -635,9 +635,9 @@ This document catalogs **features and systems that haven't been thought about ye
 
 ### Hidden Features Exposed (Make Discoverable):
 36. **Material properties tooltip** - Show dirt resistance, wear resistance when hovering
-37. **Ramp direction arrows** - Visual arrows on ramps showing up/down direction
+37. ~~**Ramp direction arrows**~~ ✅ DONE - Visual arrows on ramps showing up/down direction
 38. **Debug mode panel** - Single UI panel to toggle all visualization modes
-39. **Sapling regrowth toggle** - UI option to enable forest regeneration
+39. ~~**Sapling regrowth toggle**~~ ✅ DONE - UI option to enable forest regeneration (ui_panels.c line 765)
 40. **Workshop collision bounds** - Show invisible blocking area when placing workshop
 
 ### Emergent Gameplay (Enable Creativity):

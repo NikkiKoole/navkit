@@ -74,6 +74,11 @@ extern Vector2 offset;
 extern Texture2D atlas;
 extern int currentViewZ;
 
+// Screen shake
+extern float screenShakeIntensity;
+extern float screenShakeDuration;
+extern float screenShakeTime;
+
 // Display toggles
 extern bool showGraph;
 extern bool showEntrances;
@@ -193,5 +198,10 @@ int GetItemsAtCell(int cellX, int cellY, int cellZ, int* outItems, int maxItems)
 
 // Generate terrain based on currentTerrain setting
 void GenerateCurrentTerrain(void);
+
+// Screen shake
+void TriggerScreenShake(float intensity, float duration);
+void UpdateScreenShake(float dt);
+Vector2 GetScreenShakeOffset(void);
 
 #endif // GAME_STATE_H

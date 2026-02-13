@@ -33,6 +33,11 @@ Vector2 offset = {0, 0};
 Texture2D atlas;
 int currentViewZ = 1;  // Default to z=1 for DF-style (walking level above ground)
 
+// Screen shake
+float screenShakeIntensity = 0.0f;
+float screenShakeDuration = 0.0f;
+float screenShakeTime = 0.0f;
+
 bool showGraph = false;
 bool showEntrances = false;
 bool showChunkBoundaries = false;
@@ -825,6 +830,38 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
 }
 
 // ============================================================================
+// Screen Shake
+// ============================================================================
+
+void TriggerScreenShake(float intensity, float duration) {
+    screenShakeIntensity = intensity;
+    screenShakeDuration = duration;
+    screenShakeTime = 0.0f;
+}
+
+void UpdateScreenShake(float dt) {
+    if (screenShakeTime < screenShakeDuration) {
+        screenShakeTime += dt;
+    }
+}
+
+Vector2 GetScreenShakeOffset(void) {
+    if (screenShakeTime >= screenShakeDuration) {
+        return (Vector2){0.0f, 0.0f};
+    }
+
+    // Decay shake over time
+    float progress = screenShakeTime / screenShakeDuration;
+    float decayFactor = 1.0f - progress;
+
+    // Random offset with decay
+    float offsetX = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * screenShakeIntensity * decayFactor;
+    float offsetY = ((float)rand() / RAND_MAX * 2.0f - 1.0f) * screenShakeIntensity * decayFactor;
+
+    return (Vector2){offsetX, offsetY};
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -1070,6 +1107,7 @@ int main(int argc, char** argv) {
             }
         }
         UpdateMessages(frameTime, paused);
+        UpdateScreenShake(frameTime);
         SoundDebugUpdate(frameTime);
         SoundDebugUpdateResponse(frameTime);
 
@@ -1129,6 +1167,12 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(Render);
         BeginDrawing();
         ClearBackground(BLACK);
+
+        // Apply screen shake offset
+        Vector2 shakeOffset = GetScreenShakeOffset();
+        offset.x += shakeOffset.x;
+        offset.y += shakeOffset.y;
+
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawGrassOverlay();
@@ -1543,6 +1587,10 @@ int main(int argc, char** argv) {
         if (IsCutsceneActive()) {
             RenderCutscene();
         }
+
+        // Restore offset after screen shake
+        offset.x -= shakeOffset.x;
+        offset.y -= shakeOffset.y;
 
         PROFILE_BEGIN(EndDraw);
         EndDrawing();

@@ -137,6 +137,18 @@ void DrawUI(void) {
         if (PushButton(x, y, "Cutscene")) {
             PlayTestCutscene();
         }
+        y += 22;
+        if (PushButton(x, y, "Shake: Small")) {
+            TriggerScreenShake(2.0f, 0.2f);
+        }
+        y += 22;
+        if (PushButton(x, y, "Shake: Medium")) {
+            TriggerScreenShake(4.0f, 0.4f);
+        }
+        y += 22;
+        if (PushButton(x, y, "Shake: Large")) {
+            TriggerScreenShake(8.0f, 0.6f);
+        }
     }
     y += 22;
 
