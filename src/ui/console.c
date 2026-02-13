@@ -68,8 +68,6 @@ static void Cmd_Get(int argc, const char** argv);
 static void Cmd_Set(int argc, const char** argv);
 static void Cmd_Spawn(int argc, const char** argv);
 static void Cmd_Clear(int argc, const char** argv);
-static void Cmd_Tp(int argc, const char** argv);
-static void Cmd_Pause(int argc, const char** argv);
 
 // ---------------------------------------------------------------------------
 // Variable Registry
@@ -168,7 +166,10 @@ void Console_Printf(Color color, const char* fmt, ...) {
     char buf[CON_MAX_LINE];
     va_list args;
     va_start(args, fmt);
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wformat-nonliteral"
     vsnprintf(buf, sizeof(buf), fmt, args);
+    #pragma clang diagnostic pop
     va_end(args);
     Console_Print(buf, color);
 }
@@ -178,7 +179,10 @@ void Console_Printf(Color color, const char* fmt, ...) {
 // ---------------------------------------------------------------------------
 void Console_LogCallback(int logLevel, const char* text, va_list args) {
     char buf[CON_MAX_LINE];
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wformat-nonliteral"
     vsnprintf(buf, sizeof(buf), text, args);
+    #pragma clang diagnostic pop
 
     // Filter out harmless macOS clipboard errors
     if (strstr(buf, "Failed to retrieve string from pasteboard") != NULL) {
@@ -634,36 +638,6 @@ static void Cmd_Clear(int argc, const char** argv) {
     } else {
         Console_Printf(YELLOW, "Unknown type: %s (use items or movers)", what);
     }
-}
-
-static void Cmd_Tp(int argc, const char** argv) {
-    if (argc < 4) {
-        Console_Print("Usage: tp <x> <y> <z>", YELLOW);
-        Console_Print("Example: tp 100 50 2", GRAY);
-        return;
-    }
-
-    int x = atoi(argv[1]);
-    int y = atoi(argv[2]);
-    int z = atoi(argv[3]);
-
-    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
-        Console_Print("Coordinates out of bounds", YELLOW);
-        return;
-    }
-
-    // Center camera on the target cell
-    offset.x = GetScreenWidth() / 2.0f - x * CELL_SIZE * zoom;
-    offset.y = GetScreenHeight() / 2.0f - y * CELL_SIZE * zoom;
-    currentViewZ = z;
-
-    Console_Printf(GREEN, "Teleported to (%d, %d, %d)", x, y, z);
-}
-
-static void Cmd_Pause(int argc, const char** argv) {
-    (void)argc; (void)argv; // unused
-    paused = !paused;
-    Console_Printf(GREEN, "Pause: %s", paused ? "ON" : "OFF");
 }
 
 // ---------------------------------------------------------------------------

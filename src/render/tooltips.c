@@ -699,16 +699,12 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
     lineCount++;
 
-    // Workshop status diagnostics
-    if (lineCount < 28) {
+    // Workshop status diagnostics (only show for problem states)
+    if (lineCount < 28 && ws->visualState != WORKSHOP_VISUAL_WORKING) {
         const char* statusText = NULL;
         Color statusColor = WHITE;
         
         switch (ws->visualState) {
-            case WORKSHOP_VISUAL_WORKING:
-                statusText = "Status: Working (producing items)";
-                statusColor = (Color){100, 255, 100, 255};
-                break;
             case WORKSHOP_VISUAL_OUTPUT_FULL:
                 statusText = "Status: Output Blocked";
                 statusColor = (Color){255, 100, 100, 255};
@@ -720,6 +716,9 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
             case WORKSHOP_VISUAL_NO_WORKER:
                 statusText = "Status: No Worker Assigned";
                 statusColor = (Color){150, 150, 150, 255};
+                break;
+            case WORKSHOP_VISUAL_WORKING:
+                // No status line when working - silence is golden
                 break;
         }
         
