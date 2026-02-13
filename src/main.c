@@ -556,6 +556,7 @@ void DrawStockpileTiles(void);
 void DrawStockpileItems(void);
 void DrawWorkshops(void);
 void DrawLinkingModeHighlights(void);
+void DrawWorkshopStatusOverlay(void);
 void DrawHaulDestinations(void);
 void DrawMiningDesignations(void);
 void DrawBlueprints(void);
@@ -1142,6 +1143,7 @@ int main(int argc, char** argv) {
         DrawStockpileTiles();
         DrawWorkshops();
         DrawLinkingModeHighlights();  // Highlight workshop and stockpile during linking
+        DrawWorkshopStatusOverlay();   // Status icons on workshops
         DrawHaulDestinations();
         DrawStockpileItems();
         DrawMiningDesignations();

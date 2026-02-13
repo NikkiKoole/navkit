@@ -1683,6 +1683,70 @@ static void DrawLinkingModeHighlights(void) {
     }
 }
 
+// Draw status icons on workshop tiles based on their current state
+static void DrawWorkshopStatusOverlay(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    
+    for (int i = 0; i < workshopCount; i++) {
+        Workshop* ws = &workshops[i];
+        if (!ws->active) continue;
+        if ((int)ws->z != viewZ) continue;
+        
+        // Determine icon and color based on visual state
+        int spriteIdx = -1;
+        Color tint = WHITE;
+        bool pulse = false;
+        
+        switch (ws->visualState) {
+            case WORKSHOP_VISUAL_WORKING:
+                spriteIdx = SPRITE_middle_dot;        // dot as simple "working" indicator
+                tint = (Color){100, 255, 100, 255};   // bright green
+                pulse = true;
+                break;
+                
+            case WORKSHOP_VISUAL_OUTPUT_FULL:
+                spriteIdx = SPRITE_full_block;        // full block for "blocked"
+                tint = (Color){255, 100, 100, 255};   // red
+                break;
+                
+            case WORKSHOP_VISUAL_INPUT_EMPTY:
+                spriteIdx = SPRITE_division;          // division sign as "waiting"
+                tint = (Color){255, 200, 50, 255};    // yellow
+                break;
+                
+            case WORKSHOP_VISUAL_NO_WORKER:
+                spriteIdx = SPRITE_head;              // head icon for "no worker"
+                tint = (Color){150, 150, 150, 200};   // gray, semi-transparent
+                break;
+        }
+        
+        if (spriteIdx < 0) continue;
+        
+        // Apply pulse effect for working state
+        if (pulse) {
+            float pulseVal = sinf((float)GetTime() * 4.0f) * 0.3f + 0.7f;  // 0.7-1.0
+            tint.a = (unsigned char)(255 * pulseVal);
+        }
+        
+        // Draw icon at center of workshop
+        float centerX = ws->x + ws->width * 0.5f;
+        float centerY = ws->y + ws->height * 0.5f;
+        
+        float sx = offset.x + centerX * size;
+        float sy = offset.y + centerY * size;
+        
+        // Icon is half the cell size, centered
+        float iconSize = size * 0.5f;
+        sx -= iconSize * 0.5f;
+        sy -= iconSize * 0.5f;
+        
+        Rectangle src = SpriteGetRect(spriteIdx);
+        Rectangle dest = { sx, sy, iconSize, iconSize };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
+    }
+}
+
 static void DrawHaulDestinations(void) {
     float size = CELL_SIZE * zoom;
     int viewZ = currentViewZ;

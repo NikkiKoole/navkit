@@ -699,6 +699,128 @@ static void DrawWorkshopTooltip(int wsIdx, Vector2 mouse) {
     }
     lineCount++;
 
+    // Workshop status diagnostics
+    if (lineCount < 28) {
+        const char* statusText = NULL;
+        Color statusColor = WHITE;
+        
+        switch (ws->visualState) {
+            case WORKSHOP_VISUAL_WORKING:
+                statusText = "Status: Working (producing items)";
+                statusColor = (Color){100, 255, 100, 255};
+                break;
+            case WORKSHOP_VISUAL_OUTPUT_FULL:
+                statusText = "Status: Output Blocked";
+                statusColor = (Color){255, 100, 100, 255};
+                break;
+            case WORKSHOP_VISUAL_INPUT_EMPTY:
+                statusText = "Status: Waiting for Input";
+                statusColor = (Color){255, 200, 50, 255};
+                break;
+            case WORKSHOP_VISUAL_NO_WORKER:
+                statusText = "Status: No Worker Assigned";
+                statusColor = (Color){150, 150, 150, 255};
+                break;
+        }
+        
+        if (statusText) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "%s", statusText);
+            lineColors[lineCount] = statusColor;
+            lineCount++;
+        }
+        
+        // Show specific details for blocked/waiting states
+        if (ws->visualState == WORKSHOP_VISUAL_OUTPUT_FULL && lineCount < 28) {
+            // Check which items are blocking output
+            if (ws->billCount > 0) {
+                int recipeCount;
+                const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+                Bill* bill = &ws->bills[0];  // Check first active bill
+                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
+                    const Recipe* recipe = &recipes[bill->recipeIdx];
+                    
+                    snprintf(lines[lineCount], sizeof(lines[0]), 
+                        "  Output blocked: %s (x%d)",
+                        ItemName(recipe->outputType), recipe->outputCount);
+                    lineColors[lineCount] = (Color){255, 150, 100, 255};
+                    lineCount++;
+                    
+                    if (lineCount < 28) {
+                        snprintf(lines[lineCount], sizeof(lines[0]), 
+                            "  Hint: Build stockpile accepting %s", ItemName(recipe->outputType));
+                        lineColors[lineCount] = (Color){200, 200, 100, 255};
+                        lineCount++;
+                    }
+                }
+            }
+        } else if (ws->visualState == WORKSHOP_VISUAL_INPUT_EMPTY && lineCount < 28) {
+            // Show specifically what materials are missing
+            if (ws->billCount > 0) {
+                int recipeCount;
+                const Recipe* recipes = GetRecipesForWorkshop(ws->type, &recipeCount);
+                Bill* bill = &ws->bills[0];  // Check first active bill
+                if (bill->recipeIdx >= 0 && bill->recipeIdx < recipeCount) {
+                    const Recipe* recipe = &recipes[bill->recipeIdx];
+                    
+                    // Check input 1
+                    bool hasInput1 = false;
+                    const char* input1Name = (recipe->inputItemMatch == ITEM_MATCH_ANY_FUEL)
+                        ? "Any Fuel" : ItemName(recipe->inputType);
+                    
+                    for (int i = 0; i < itemHighWaterMark; i++) {
+                        Item* item = &items[i];
+                        if (!item->active || item->reservedBy != -1) continue;
+                        if ((int)item->z != ws->z) continue;
+                        if (RecipeInputMatches(recipe, item)) {
+                            hasInput1 = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!hasInput1 && lineCount < 28) {
+                        snprintf(lines[lineCount], sizeof(lines[0]), 
+                            "  Waiting for: %s (x%d)", input1Name, recipe->inputCount);
+                        lineColors[lineCount] = (Color){255, 200, 100, 255};
+                        lineCount++;
+                    }
+                    
+                    // Check input 2 if needed
+                    if (recipe->inputType2 != ITEM_NONE) {
+                        bool hasInput2 = false;
+                        for (int i = 0; i < itemHighWaterMark; i++) {
+                            Item* item = &items[i];
+                            if (!item->active || item->reservedBy != -1) continue;
+                            if ((int)item->z != ws->z) continue;
+                            if (item->type == recipe->inputType2) {
+                                hasInput2 = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!hasInput2 && lineCount < 28) {
+                            snprintf(lines[lineCount], sizeof(lines[0]), 
+                                "  Waiting for: %s (x%d)", 
+                                ItemName(recipe->inputType2), recipe->inputCount2);
+                            lineColors[lineCount] = (Color){255, 200, 100, 255};
+                            lineCount++;
+                        }
+                    }
+                    
+                    // Check fuel if needed
+                    if (recipe->fuelRequired > 0) {
+                        bool hasFuel = WorkshopHasFuelForRecipe(ws, 100);
+                        if (!hasFuel && lineCount < 28) {
+                            snprintf(lines[lineCount], sizeof(lines[0]), 
+                                "  Waiting for: Fuel (any burnable item)");
+                            lineColors[lineCount] = (Color){255, 200, 100, 255};
+                            lineCount++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Passive workshop status
     if (workshopDefs[ws->type].passive) {
         if (ws->passiveReady) {
