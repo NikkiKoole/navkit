@@ -381,6 +381,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                     if (burnResult == CELL_WALL && IsWallNatural(x, y, z) && GetWallMaterial(x, y, z) == MAT_DIRT) {
                         wearGrid[z][y][x] = wearMax;
                         SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                        SetVegetation(x, y, z, VEG_NONE);
                     }
                     
                     // If a solid cell burned into a non-solid cell, validate nearby ramps
@@ -394,6 +395,7 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
                     // Dirt with grass surface burns away the grass
                     wearGrid[z][y][x] = wearMax;
                     SET_CELL_SURFACE(x, y, z, SURFACE_BARE);
+                    SetVegetation(x, y, z, VEG_NONE);
                 }
                 
                 SET_CELL_FLAG(x, y, z, CELL_FLAG_BURNED);

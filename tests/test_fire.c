@@ -697,6 +697,34 @@ describe(fire_burned_cells) {
         // Should not ignite (fuel exhausted, burned flag set)
         expect(HasFire(1, 0, 0) == false);
     }
+
+    it("should clear vegetation when fire burns out on grass") {
+        InitGridFromAsciiWithChunkSize(
+            "....\n", 4, 1);
+        FillGroundLevel();  // Sets VEG_GRASS_TALLER on all cells
+
+        InitFire();
+
+        // Verify grass is present before fire
+        expect(GetVegetation(1, 0, 0) == VEG_GRASS_TALLER);
+
+        // Ignite and let burn out completely
+        IgniteCell(1, 0, 0);
+        expect(HasFire(1, 0, 0) == true);
+
+        for (int i = 0; i < 500; i++) {
+            UpdateFire();
+            if (!HasFire(1, 0, 0)) break;
+        }
+
+        // Fire should be out
+        expect(HasFire(1, 0, 0) == false);
+        expect(HAS_CELL_FLAG(1, 0, 0, CELL_FLAG_BURNED) != 0);
+
+        // Vegetation must be cleared — grass should not render on burned ground
+        expect(GetVegetation(1, 0, 0) == VEG_NONE);
+        expect(GET_CELL_SURFACE(1, 0, 0) == SURFACE_BARE);
+    }
 }
 
 // =============================================================================
