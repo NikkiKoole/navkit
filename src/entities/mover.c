@@ -929,6 +929,8 @@ void UpdateMovers(void) {
                 if (!pushed) {
                     m->active = false;
                     TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in blocked cell with no escape", i);
+                    AddMessage(TextFormat("Mover %d lost: trapped in wall at (%d,%d,%d)",
+                                         i, currentX, currentY, currentZ), RED);
                 }
                 m->needsRepath = true;
                 continue;
