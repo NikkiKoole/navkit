@@ -49,7 +49,7 @@ Needs sit *above* the job system as interrupts:
 ## Mover Struct Additions
 
 ```c
-// Urges
+// Needs
 float hunger;           // 1.0 = full, 0.0 = starving (drains over time)
 float energy;           // 1.0 = rested, 0.0 = exhausted (drains while awake)
 float bowel;            // 1.0 = empty, 0.0 = desperate (fills after eating) [Phase 2]
@@ -445,7 +445,7 @@ When mover arrives at food:
 - Bed, chair, table entities
 - Eating at tables (comfort bonus)
 - Sleep quality from furniture type
-- Comfort/beauty urge (environment quality)
+- Comfort/beauty need (environment quality)
 
 ### Phase 4: Farming & Food Variety
 - Farm plots (designate area, till soil)
@@ -457,9 +457,9 @@ When mover arrives at food:
 - Hunting → meat from animals
 
 ### Phase 5: Full Survival (LATER)
-- Hygiene urge (wash at water source)
-- Social urge (stand near other movers)
-- Recreation urge (variety requirement)
+- Hygiene need (wash at water source)
+- Social need (stand near other movers)
+- Recreation need (variety requirement)
 - Mood as composite score
 - Personality variation (DF-inspired tolerance differences)
 - Starvation / exhaustion death
@@ -467,11 +467,11 @@ When mover arrives at food:
 
 ---
 
-## Future Needs — "Urges" (Same Architecture, Later)
+## Future Needs (Same Architecture, Later)
 
-We call these **urges** — personal, biological drives that override colony work. All follow the same pattern: float on Mover, drain rate, soft + hard threshold, fallback chain, personal state machine.
+Personal, biological drives that override colony work. All follow the same pattern: float on Mover, drain rate, soft + hard threshold, fallback chain, personal state machine.
 
-| Urge | Drain | Satisfier | Existing Hook |
+| Need | Drain | Satisfier | Existing Hook |
 |---|---|---|---|
 | **Hunger** | Constant | Food (stockpile → ground → bush) | Phase 1 |
 | **Energy** | While awake | Sleep (bed → chair → ground) | Phase 1 |
@@ -483,6 +483,8 @@ We call these **urges** — personal, biological drives that override colony wor
 | **Mood** | Composite score | Good food, nice room, met urges | Emerges from other urges |
 
 None beyond hunger/energy are Phase 1. Listed here so the architecture accounts for them — the `FreetimeState` enum and mover update loop should be extensible.
+
+*See also: "The Soul of The Sims" (Will Wright's internal design doc) — objects advertise what needs they satisfy, Sims pick the most urgent. Our fallback chains are a simpler version of this pattern.*
 
 ---
 
@@ -522,7 +524,7 @@ None beyond hunger/energy are Phase 1. Listed here so the architecture accounts 
 ### What We're Taking
 1. **Interactions between urges** (Sims-style cascades) — not just independent bars
 2. **Waste as a resource** (ONI-style closed loop) — not just a penalty
-3. **Personality variation later** (DF-inspired) — same urges, different tolerances
+3. **Personality variation later** (DF-inspired) — same needs, different tolerances
 4. **Keep it simple at first** — start with hunger + energy, add bowel next, then comfort/social
 
 ---
