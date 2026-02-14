@@ -398,4 +398,7 @@ static inline int GetCellMoveCost(int x, int y, int z) {
     return cost;
 }
 
+// Autotile: get the correct track sprite based on cardinal neighbors
+int GetTrackSpriteAt(int x, int y, int z);
+
 #endif // CELL_DEFS_H

@@ -240,6 +240,7 @@ static int PlankSpriteForMaterial(MaterialType mat) {
 }
 
 static int GetWallSpriteAt(int x, int y, int z, CellType cell) {
+    if (cell == CELL_TRACK) return GetTrackSpriteAt(x, y, z);
     MaterialType mat = GetWallMaterial(x, y, z);
     if (cell == CELL_WALL && GetWallSourceItem(x, y, z) == ITEM_PLANKS) {
         return PlankSpriteForMaterial(mat);
@@ -1197,7 +1198,8 @@ static Vector2 CalcWorkAnimOffset(Mover* m) {
         m->workAnimPhase = 0.0f;
         return off;
     }
-    if (gameSpeed > 0.0f) m->workAnimPhase += GetFrameTime();
+    if (paused) return off;
+    m->workAnimPhase += GetFrameTime();
     bool isOnTile = (job->type == JOBTYPE_CHANNEL ||
                      job->type == JOBTYPE_REMOVE_FLOOR ||
                      job->type == JOBTYPE_PLANT_SAPLING ||

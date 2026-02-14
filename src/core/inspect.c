@@ -550,6 +550,7 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
                 if (t == CELL_AIR) ct = "AIR";
                 else if (t == CELL_WALL) ct = "WALL";
                 else if (t == CELL_BUSH) ct = "BUSH";
+                else if (t == CELL_TRACK) ct = "TRACK";
                 else ct = "OTHER";
             }
             printf("  [%d] (%d,%d,z%d) %s cost=%d\n", i, px, py, pz, ct, mc);

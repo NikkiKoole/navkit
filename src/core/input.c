@@ -1252,6 +1252,46 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static bool TryPlaceTrackAt(int x, int y, int z) {
+    if (IsCellWalkableAt(z, y, x) && grid[z][y][x] == CELL_AIR) {
+        grid[z][y][x] = CELL_TRACK;
+        InvalidatePathsThroughCell(x, y, z);
+        return true;
+    }
+    return false;
+}
+
+static void ExecutePlaceTrack(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    // Outline mode: only place on the 4 edges of the rectangle
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (dy == y1 || dy == y2 || dx == x1 || dx == x2) {
+                if (TryPlaceTrackAt(dx, dy, z)) count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d track%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
+static void ExecuteRemoveTrack(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (grid[z][dy][dx] == CELL_TRACK) {
+                grid[z][dy][dx] = CELL_AIR;
+                InvalidatePathsThroughCell(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed %d track%s", count, count > 1 ? "s" : ""), ORANGE);
+    }
+}
+
 static void ExecutePlaceTree(int x, int y, int z) {
     // Check if we can place a tree here (need solid ground below or at z=0)
     CellType cell = grid[z][y][x];
@@ -2445,6 +2485,10 @@ void HandleInput(void) {
             case ACTION_SANDBOX_BUSH:
                 if (leftClick) ExecutePlaceBush(x1, y1, x2, y2, z);
                 else ExecuteRemoveBush(x1, y1, x2, y2, z);
+                break;
+            case ACTION_SANDBOX_TRACK:
+                if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);
+                else ExecuteRemoveTrack(x1, y1, x2, y2, z);
                 break;
             default:
                 break;

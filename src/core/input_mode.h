@@ -81,6 +81,7 @@ typedef enum {
     ACTION_SANDBOX_RAISE,       // Raise terrain (build up)
     ACTION_SANDBOX_LIGHT,       // Place/remove light sources
     ACTION_SANDBOX_BUSH,        // Place/remove bushes
+    ACTION_SANDBOX_TRACK,       // Place/remove train tracks
 } InputAction;
 
 // Current input state
