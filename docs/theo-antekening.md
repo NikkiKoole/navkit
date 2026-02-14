@@ -1,2 +1,1 @@
-1.ik vind dat vloeren TE snel vies worden 
-2.ik vind dat lichten lichter moeten zijn
+1.als je een treinspoor bouwt van twee blokjes dik krijg je allemaal kruispunten implaats van een normaal spoor
