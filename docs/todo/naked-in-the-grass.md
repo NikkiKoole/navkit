@@ -115,3 +115,36 @@ If I'm standing in that field, here's what I'd want most:
 The foundation is strong. The **material processing chains** (log -> planks -> wall, grass -> dried -> string -> cordage -> wattle wall) are the kind of satisfying logistics loops that make DF addictive. The **passive workshop system** is elegant. The **environmental simulation** (water, fire, temperature, light) is way ahead of where most projects at this stage would be. The **three-axis material system** is architecturally clean.
 
 The game has an excellent *industrial* simulation. What it's missing is *life* — biological needs, creatures, weather, and the things that give all that industry a *purpose*.
+
+---
+
+## Addendum: What's Changed Since This Was Written
+
+Several gaps identified above have since been addressed:
+
+### Weather & Seasons (Chapters 4 & 6) — DONE
+- **Full weather system**: rain, heavy rain, thunderstorms, snow, mist, cloud shadows
+- **Four seasons** with configurable day length, seasonal temperature curves, dawn/dusk shifts
+- **Wind** that biases fire/smoke spread and accelerates drying
+- **Snow** accumulates on exposed cells, melts into mud, extinguishes fire
+- **Mud** from rain/snowmelt with movement penalties
+- Rain now correctly stops at roofs and constructed floors
+
+### Animals (Chapters 2 & 6) — IN PROGRESS
+- **Three behavior types**: simple grazers, steering grazers (with flocking), and predators
+- **Context steering** with wall avoidance, separation, predator fleeing, herd cohesion
+- **Predator-prey dynamics**: wolves hunt grazers, grazers panic and flee
+- **World interaction**: grazers consume vegetation, all animals trample ground
+- Up to 256 animals, saved/loaded, rendered with tooltips
+- Still missing: species diversity, animal sprites, hunting, taming, livestock production
+
+### Lighting (Chapter 6) — DONE
+- **Sky light** with column scanning and BFS spread
+- **Block light** from torches (5 color presets) and active fires
+- Day/night cycle affects ambient light levels
+
+### Bushes (Chapter 6) — NEW
+- Walkable ground vegetation cell type (CELL_BUSH)
+
+### Remaining Big Gaps
+The core survival loop is still missing: **hunger, health, clothing, tools, doors, furniture, and skill progression**. These remain the highest-impact features for turning the simulation into a game.

@@ -169,10 +169,19 @@ Wire in `GetSnowSpeedMultiplier()` at the same time (currently missing).
 ### Cache note
 Compute on the fly — no separate cost grid. The data `GetCellMoveCost()` needs is already cached from the adjacent `IsCellWalkableAt()` call. If profiling ever shows this as a bottleneck, a precomputed `uint8_t costGrid[z][y][x]` (one byte per cell, rebuilt when chunks go dirty) is a straightforward upgrade.
 
-### Incremental rebuild cost
+### Incremental rebuild cost — BE PRAGMATIC
 - Mud/snow/water changes are spatially coherent (rain affects large areas)
 - Worst case: every chunk marked dirty → full rebuild. This already works (initial build)
 - Throttling by cost-bucket changes prevents unnecessary rebuilds
+
+**Key insight: uniform cost changes don't create useful gradients.** Rain making everything muddy doesn't change which path is *relatively* better — rebuilding the HPA* graph is wasted work. Variable cost only matters when cheap terrain exists next to expensive terrain (a road through mud, a dry patch in snow).
+
+**Pragmatic approach (implement in order of need):**
+1. **Start with no cost-dirty marking at all.** Movers still slow down via the movement layer. They just won't *route around* mud until the next structural rebuild. For widespread weather this is fine — there's no good detour anyway.
+2. **If local cost changes matter** (puddle, snow patch near a road): add periodic rolling refresh — rebuild N chunks per tick round-robin instead of event-driven spikes.
+3. **If event-driven is ever needed**: skip dirty-marking when the change is global (>50% of surface chunks affected). Only mark when cost changes are spatially local, creating actual gradients worth rerouting for.
+
+Don't over-engineer Phase 3 upfront. Start with option 1 and see if players even notice.
 
 ### String pulling overhead
 - `CorridorCostNotWorse()` adds one cost accumulation per shortcut attempt
