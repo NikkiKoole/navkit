@@ -268,9 +268,10 @@ describe(mud_dirt_tracking) {
     it("should track more dirt from muddy source") {
         SetupDirtGrid();
 
-        // Set up a constructed floor at z=1 position (4,2)
+        // Set up a constructed wood floor at z=1 position (4,2)
+        // (Use wood, not stone — stone's 50% reduction can mask the mud multiplier)
         grid[0][2][4] = CELL_WALL;
-        SetWallMaterial(4, 2, 0, MAT_GRANITE);
+        SetWallMaterial(4, 2, 0, MAT_OAK);
         wallNatural[0][2][4] = 0;  // constructed
 
         // Source cell (3,2) is muddy dirt
