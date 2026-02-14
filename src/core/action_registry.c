@@ -676,6 +676,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = false,
         .canErase = true
     },
+    {
+        .action = ACTION_SANDBOX_BUSH,
+        .name = "BUSH",
+        .barDisplayText = "Bush",
+        .barText = "L-drag place  R-drag remove  [ESC]Back",
+        .barKey = 'b',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_SANDBOX,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
 };
 
 const int ACTION_REGISTRY_COUNT = sizeof(ACTION_REGISTRY) / sizeof(ACTION_REGISTRY[0]);

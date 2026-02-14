@@ -1219,6 +1219,39 @@ static void ExecuteRemoveGrass(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecutePlaceBush(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            // Place bush on walkable ground (air above solid, or has floor)
+            if (IsCellWalkableAt(z, dy, dx) && grid[z][dy][dx] == CELL_AIR) {
+                grid[z][dy][dx] = CELL_BUSH;
+                InvalidatePathsThroughCell(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Placed %d bush%s", count, count > 1 ? "es" : ""), GREEN);
+    }
+}
+
+static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (grid[z][dy][dx] == CELL_BUSH) {
+                grid[z][dy][dx] = CELL_AIR;
+                InvalidatePathsThroughCell(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Removed %d bush%s", count, count > 1 ? "es" : ""), ORANGE);
+    }
+}
+
 static void ExecutePlaceTree(int x, int y, int z) {
     // Check if we can place a tree here (need solid ground below or at z=0)
     CellType cell = grid[z][y][x];
@@ -2408,6 +2441,10 @@ void HandleInput(void) {
                 } else {
                     RemoveLightSource(x1, y1, z);
                 }
+                break;
+            case ACTION_SANDBOX_BUSH:
+                if (leftClick) ExecutePlaceBush(x1, y1, x2, y2, z);
+                else ExecuteRemoveBush(x1, y1, x2, y2, z);
                 break;
             default:
                 break;

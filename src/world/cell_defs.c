@@ -26,4 +26,6 @@ CellDef cellDefs[] = {
     [CELL_TREE_ROOT]   = {"tree root",   SPRITE_tree_trunk_oak,  CF_BLOCKS_MOVEMENT | CF_SOLID, INSULATION_TIER_WOOD, 32, CELL_AIR,  ITEM_NONE, 0},    // Root - solid, darker sprite (rendering uses tree type)
     [CELL_TREE_FELLED] = {"felled log",  SPRITE_tree_trunk_oak,  0,                    INSULATION_TIER_WOOD,   64, CELL_AIR,         ITEM_LOG, 1},     // Felled - walkable, can be hauled (rendering uses tree type)
     [CELL_TREE_LEAVES] = {"tree leaves", SPRITE_tree_leaves_oak, 0,                    INSULATION_TIER_AIR,   32, CELL_AIR,         ITEM_NONE, 0},     // Canopy - doesn't block ground movement (rendering uses tree type)
+    // === GROUND VEGETATION ===
+    [CELL_BUSH]        = {"bush",        SPRITE_bush,            0,                    INSULATION_TIER_AIR,    0, CELL_AIR,         ITEM_NONE, 0},     // Walkable ground vegetation - slows movement (future: variable terrain cost)
 };
