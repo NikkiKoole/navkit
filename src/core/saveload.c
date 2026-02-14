@@ -436,7 +436,7 @@ bool LoadWorld(const char* filename) {
     }
     
     // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35 && version != 36 && version != 37 && version != 38 && version != 39 && version != 40 && version != 41 && version != 42 && version != 43) {
+    if (version != CURRENT_SAVE_VERSION) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);

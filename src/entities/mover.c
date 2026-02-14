@@ -1308,18 +1308,20 @@ void ProcessMoverRepaths(void) {
         int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
         double pathTime = (GetTime() - pathStart) * 1000.0;
         
-        // If HPA* failed but ramps exist, try A* as fallback
-        // This handles edge cases where HPA* chunking misses a valid path
-        if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
-            repathFallbackCount++;
-            double astarStart = GetTime();
-            len = FindPath(PATH_ALGO_ASTAR, start, m->goal, tempPath, MAX_PATH);
-            double astarTime = (GetTime() - astarStart) * 1000.0;
-            if (astarTime > 50.0) {
-                TraceLog(LOG_WARNING, "SLOW A* fallback: mover %d, %.1fms, start(%d,%d,z%d)->goal(%d,%d,z%d), len=%d",
-                    i, astarTime, start.x, start.y, start.z, m->goal.x, m->goal.y, m->goal.z, len);
-            }
-        } else if (len > 0) {
+        // A* fallback disabled: HPA* handles ramps correctly now.
+        // The fallback was burning 6-14s on large grids confirming unreachable paths.
+        // Re-enable if HPA* misses valid ramp paths (check test_pathfinding.c hpa_fallback).
+        // if (len == 0 && algo == PATH_ALGO_HPA && rampCount > 0) {
+        //     repathFallbackCount++;
+        //     double astarStart = GetTime();
+        //     len = FindPath(PATH_ALGO_ASTAR, start, m->goal, tempPath, MAX_PATH);
+        //     double astarTime = (GetTime() - astarStart) * 1000.0;
+        //     if (astarTime > 50.0) {
+        //         TraceLog(LOG_WARNING, "SLOW A* fallback: mover %d, %.1fms, start(%d,%d,z%d)->goal(%d,%d,z%d), len=%d",
+        //             i, astarTime, start.x, start.y, start.z, m->goal.x, m->goal.y, m->goal.z, len);
+        //     }
+        // } else
+        if (len > 0) {
             repathHpaSuccessCount++;
         }
         

@@ -264,6 +264,7 @@ float GetWaterSpeedMultiplier(int x, int y, int z) {
 // Returns amount of water that fell
 static int TryFall(int x, int y, int z) {
     if (z <= 0) return 0;  // Already at bottom
+    if (HAS_FLOOR(x, y, z)) return 0;  // Constructed floor blocks falling
     if (!CanHoldWater(x, y, z - 1)) return 0;  // Wall below
     
     WaterCell* src = &waterGrid[z][y][x];

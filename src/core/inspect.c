@@ -1078,7 +1078,7 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version != CURRENT_SAVE_VERSION && version != 31 && version != 32 && version != 33 && version != 34 && version != 35) {
+    if (version != CURRENT_SAVE_VERSION) {
         printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
         fclose(f);
         return 1;
@@ -1165,7 +1165,12 @@ int InspectSaveFile(int argc, char** argv) {
     if (version >= 36) {
         fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // floorDirtGrid
     }
-    
+
+    // Snow grid (v45+, skip - not inspected)
+    if (version >= 45) {
+        fseek(f, totalCells * sizeof(uint8_t), SEEK_CUR);  // snowGrid
+    }
+
     // === ENTITIES SECTION ===
     fread(&marker, 4, 1, f);
     if (marker != MARKER_ENTITIES) {

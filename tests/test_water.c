@@ -362,10 +362,13 @@ describe(water_falling) {
         InitMultiFloorGridFromAscii(map, 5, 5);
         InitWater();
         waterEvaporationEnabled = false;  // Disable evaporation for this test
-        
+
+        // Clear floor flag so water can fall (test is for open-air falling)
+        CLEAR_FLOOR(2, 1, 1);
+
         // Place water at z=1
         SetWaterLevel(2, 1, 1, 7);
-        
+
         // Make z=0 able to receive water (not a wall)
         expect(!CellBlocksMovement(grid[0][1][2]));
         
@@ -392,7 +395,10 @@ describe(water_falling) {
         InitMultiFloorGridFromAscii(map, 5, 5);
         InitWater();
         waterEvaporationEnabled = false;  // Disable evaporation for this test
-        
+
+        // Clear floor flag at water position (test is for wall blocking, not floor)
+        CLEAR_FLOOR(2, 1, 1);
+
         // Place water above the wall
         SetWaterLevel(2, 1, 1, 7);
         
@@ -427,7 +433,10 @@ describe(water_falling) {
         
         InitMultiFloorGridFromAscii(map, 8, 8);
         InitWater();
-        
+
+        // Clear floor flag at source so water can fall (open-air test)
+        CLEAR_FLOOR(4, 1, 1);
+
         // Place source at z=1
         SetWaterSource(4, 1, 1, true);
         
@@ -1022,6 +1031,95 @@ describe(water_wall_interaction) {
 }
 
 // =============================================================================
+// Floor Interaction — water should not pass through constructed floors
+// =============================================================================
+
+describe(water_floor_interaction) {
+    it("should not fall through constructed floors") {
+        // Setup: z=0 has walls (ground), z=1 is air with constructed floor, z=2 is air
+        // Water at z=2 should NOT fall through the floor at z=1 into z=0
+        const char* map =
+            "floor:0\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            "floor:2\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitWater();
+        waterEvaporationEnabled = false;
+
+        // Add a constructed floor at z=1 (air cell with floor flag)
+        grid[1][1][2] = CELL_AIR;
+        SET_FLOOR(2, 1, 1);
+
+        // Place water above the floor (at z=1, which has the floor)
+        // Water sits in air cells; floor at z=1 means surface is at z=1
+        // Water at z=1 should be blocked from falling to z=0
+        SetWaterLevel(2, 1, 1, 7);
+
+        // Run simulation
+        RunWaterTicks(20);
+
+        // Water should NOT have fallen through the floor to z=0
+        expect(GetWaterLevel(2, 1, 0) == 0);
+
+        waterEvaporationEnabled = true;
+    }
+
+    it("should not fall through constructed floor roof into room below") {
+        // Reproduces the rain-through-roof bug:
+        // A room at z=1 has a constructed floor ceiling at z=2
+        // Rain water spawned at z=2 should not leak into the room at z=1
+        const char* map =
+            "floor:0\n"
+            "#####\n"
+            "#...#\n"
+            "#####\n"
+            "floor:1\n"
+            ".....\n"
+            ".....\n"
+            ".....\n"
+            "floor:2\n"
+            ".....\n"
+            ".....\n"
+            ".....\n";
+
+        InitMultiFloorGridFromAscii(map, 5, 5);
+        InitWater();
+        waterEvaporationEnabled = false;
+
+        // Build a floor/ceiling at z=2 above the room interior
+        for (int y = 1; y <= 1; y++) {
+            for (int x = 1; x <= 3; x++) {
+                grid[2][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 2);
+            }
+        }
+
+        // Simulate rain: place water at z=2 above the floor
+        SetWaterLevel(2, 1, 2, 7);
+
+        // Run simulation
+        RunWaterTicks(50);
+
+        // Room interior at z=1 should remain dry — floor blocks rain
+        expect(GetWaterLevel(1, 1, 1) == 0);
+        expect(GetWaterLevel(2, 1, 1) == 0);
+        expect(GetWaterLevel(3, 1, 1) == 0);
+
+        waterEvaporationEnabled = true;
+    }
+}
+
+// =============================================================================
 // Edge Cases
 // =============================================================================
 
@@ -1267,6 +1365,7 @@ int main(int argc, char* argv[]) {
     test(water_speed_multiplier);
     test(water_stability);
     test(water_wall_interaction);
+    test(water_floor_interaction);
     test(water_edge_cases);
     
     // Freezing tests

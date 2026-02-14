@@ -2522,6 +2522,131 @@ describe(hpa_ladder_pathfinding) {
     }
 }
 
+// ============== HPA* FALLBACK TESTS ==============
+// Tests for the A* fallback behavior when HPA* returns 0 and ramps exist.
+// The fallback (mover.c:1313) fires when: len==0 && algo==HPA && rampCount>0
+// This can waste seconds on large grids confirming unreachable paths.
+
+describe(hpa_fallback) {
+    it("A* fallback is unnecessary for unreachable cross-z paths") {
+        // Reproduces real-world scenario: large hilly terrain with ramps elsewhere,
+        // mover on constructed floor at lower z, goal at higher z with no connection.
+        // HPA* correctly returns 0. A* fallback also returns 0 (wasteful).
+        //
+        // Setup (32x32, 8x8 chunks):
+        // - z0: filled ground (dirt walls) with ramps at one corner
+        // - z1: walkable above dirt, start and goal on this level
+        // - Carve a pit at z0 in the middle, add constructed floor at z0
+        // - Mover on constructed floor at z0, goal at z1 — no ramp connecting them
+        // - Ramps exist elsewhere so rampCount > 0 (triggers fallback)
+
+        InitGridWithSize(32, 32);
+        FillGroundLevel();  // z0 = dirt walls, z1 = walkable above
+
+        // Add ramps far away from start/goal to make rampCount > 0
+        // Ramp at (2,2,z0) going east, exit at (3,2,z1)
+        grid[0][2][2] = CELL_RAMP_E;
+
+        // Carve a pit at z0 where our mover will be (constructed floor)
+        grid[0][20][20] = CELL_AIR;
+        SET_FLOOR(20, 20, 0);
+
+        BuildEntrances();
+        BuildGraph();
+
+        // Verify ramps exist (this is what triggers the fallback)
+        expect(rampCount > 0);
+
+        // Mover at z0 constructed floor, goal at z1 — no ramp connection
+        Point start = {20, 20, 0};
+        Point goal = {20, 20, 1};
+        Point outPath[MAX_PATH];
+
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+
+        // Both should return 0 — path is genuinely unreachable
+        // The A* fallback adds nothing, just wastes time
+        expect(hpaLen == 0);
+        expect(astarLen == 0);
+
+        // Since both return 0, the fallback in mover.c is unnecessary for this case.
+        // HPA* should be trusted when it says "no path" — don't waste time on A* fallback.
+    }
+
+    it("A* fallback is unnecessary on large grid with distant ramps") {
+        // Closer to the real scenario: larger grid, ramps far from mover,
+        // mover trying to reach a different z-level with no local connection.
+        // This is what causes 6-14 second freezes in the actual game.
+
+        InitGridWithSize(64, 64);
+        FillGroundLevel();
+
+        // Ramps at corner — far from where the mover is
+        grid[0][5][5] = CELL_RAMP_N;
+        grid[0][5][10] = CELL_RAMP_S;
+
+        // Constructed floor area in the middle of the map (mover workspace)
+        for (int y = 28; y <= 35; y++) {
+            for (int x = 28; x <= 35; x++) {
+                grid[0][y][x] = CELL_AIR;
+                SET_FLOOR(x, y, 0);
+            }
+        }
+
+        BuildEntrances();
+        BuildGraph();
+
+        expect(rampCount > 0);
+
+        // Mover on constructed floor at z0, goal at z1 — no ramp nearby
+        Point start = {30, 30, 0};
+        Point goal = {32, 32, 1};
+        Point outPath[MAX_PATH];
+
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+
+        // Both return 0: path is unreachable, fallback is pure waste
+        expect(hpaLen == 0);
+        expect(astarLen == 0);
+    }
+
+    it("HPA* should not need A* fallback for reachable cross-z ramp paths") {
+        // When a valid ramp path exists, HPA* should find it without fallback.
+        // This is the positive case — verifying HPA* works for ramp paths.
+
+        InitGridWithSize(32, 32);
+        FillGroundLevel();
+
+        // Carve pit and add ramp connecting z0 to z1
+        for (int x = 14; x <= 17; x++) {
+            grid[0][16][x] = CELL_AIR;
+            SET_FLOOR(x, 16, 0);
+        }
+        // East ramp at (17,16,z0) -> exit at (18,16,z1)
+        grid[0][16][17] = CELL_RAMP_E;
+
+        BuildEntrances();
+        BuildGraph();
+
+        expect(rampCount > 0);
+        expect(rampLinkCount >= 1);
+
+        // Start at z0 constructed floor, goal at z1 via ramp
+        Point start = {14, 16, 0};
+        Point goal = {20, 16, 1};
+        Point outPath[MAX_PATH];
+
+        int hpaLen = FindPath(PATH_ALGO_HPA, start, goal, outPath, MAX_PATH);
+        int astarLen = FindPath(PATH_ALGO_ASTAR, start, goal, outPath, MAX_PATH);
+
+        // Both should find the path — HPA* doesn't need fallback
+        expect(astarLen > 0);
+        expect(hpaLen > 0);
+    }
+}
+
 // ============== HPA* RAMP BASIC TESTS ==============
 
 describe(hpa_ramp_pathfinding) {
@@ -4250,6 +4375,7 @@ static void run_all_tests(void) {
     test(string_pulling);
     test(ladder_pathfinding);
     test(hpa_ladder_pathfinding);
+    test(hpa_fallback);
     test(hpa_ramp_pathfinding);
     test(jps_plus_3d_pathfinding);
     test(jps_plus_vs_astar_consistency);
