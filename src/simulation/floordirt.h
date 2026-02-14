@@ -10,7 +10,7 @@
 #define DIRT_MAX               255   // uint8_t max
 
 // Dirt tracking amounts
-#define DIRT_TRACK_AMOUNT        2   // Base dirt per step from soil to floor
+#define DIRT_TRACK_AMOUNT        1   // Base dirt per step from soil to floor
 #define DIRT_STONE_MULTIPLIER   50   // Stone floors: 50% rate (value / 100)
 #define DIRT_CLEAN_AMOUNT       50   // Dirt removed per completed clean job
 
