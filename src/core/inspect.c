@@ -538,6 +538,23 @@ static void print_path(int x1, int y1, int z1, int x2, int y2, int z2, int algo)
         } else {
             printf("Path: FOUND (%d steps, z%d to z%d)\n", len, minZ, maxZ);
         }
+        // Print waypoints with cell type and move cost
+        int totalCost = 0;
+        for (int i = 0; i < len; i++) {
+            int px = outPath[i].x, py = outPath[i].y, pz = outPath[i].z;
+            int mc = GetCellMoveCost(px, py, pz);
+            totalCost += mc;
+            const char* ct = "?";
+            if (px >= 0 && px < gridWidth && py >= 0 && py < gridHeight && pz >= 0 && pz < gridDepth) {
+                CellType t = grid[pz][py][px];
+                if (t == CELL_AIR) ct = "AIR";
+                else if (t == CELL_WALL) ct = "WALL";
+                else if (t == CELL_BUSH) ct = "BUSH";
+                else ct = "OTHER";
+            }
+            printf("  [%d] (%d,%d,z%d) %s cost=%d\n", i, px, py, pz, ct, mc);
+        }
+        printf("Total move cost: %d\n", totalCost);
     } else {
         printf("Path: NOT FOUND\n");
     }

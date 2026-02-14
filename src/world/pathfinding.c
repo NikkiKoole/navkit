@@ -441,12 +441,14 @@ int Heuristic(int x1, int y1, int x2, int y2) {
 }
 
 // 8-directional heuristic (Chebyshev/diagonal distance)
+// Scaled by MIN_CELL_COST to stay admissible with variable terrain costs
+// Cardinal = MIN_CELL_COST(8), Diagonal = (14*8)/10 = 11, Extra = 11-8 = 3
 static int Heuristic8Dir(int x1, int y1, int x2, int y2) {
     int dx = abs(x1 - x2);
     int dy = abs(y1 - y2);
     int minD = dx < dy ? dx : dy;
     int maxD = dx > dy ? dx : dy;
-    return 10 * maxD + 4 * minD;
+    return MIN_CELL_COST * maxD + 3 * minD;
 }
 
 void MarkChunkDirty(int cellX, int cellY, int cellZ) {
@@ -586,7 +588,7 @@ void BuildEntrances(void) {
                                 .zHigh = z + 1,
                                 .entranceLow = entLow,
                                 .entranceHigh = entHigh,
-                                .cost = 10  // Same cost as one step
+                                .cost = GetCellMoveCost(x, y, z + 1)  // Cost of upper cell
                             };
                         }
                     }
@@ -618,7 +620,7 @@ void BuildEntrances(void) {
                                 .exitY = exitY,
                                 .entranceRamp = entRamp,
                                 .entranceExit = entExit,
-                                .cost = 14,  // Diagonal cost (XY + Z movement)
+                                .cost = (14 * GetCellMoveCost(exitX, exitY, z + 1)) / 10,
                                 .rampType = cell
                             };
                         }
@@ -664,7 +666,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
     if (use8Dir) {
         nodeData[sz][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
     } else {
-        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * MIN_CELL_COST;
     }
     nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
@@ -701,7 +703,8 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
                     continue;
             }
 
-            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int moveCost = (baseCost * GetCellMoveCost(nx, ny, sz)) / 10;
             int ng = nodeData[sz][bestY][bestX].g + moveCost;
             if (ng < nodeData[sz][ny][nx].g) {
                 bool wasOpen = nodeData[sz][ny][nx].open;
@@ -709,7 +712,7 @@ int AStarChunk(int sx, int sy, int sz, int gx, int gy, int minX, int minY, int m
                 if (use8Dir) {
                     nodeData[sz][ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
                 } else {
-                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * MIN_CELL_COST;
                 }
                 nodeData[sz][ny][nx].open = true;
                 if (wasOpen) {
@@ -794,7 +797,8 @@ int AStarChunkMultiTarget(int sx, int sy, int sz,
                     continue;
             }
 
-            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int moveCost = (baseCost * GetCellMoveCost(nx, ny, sz)) / 10;
             int ng = nodeData[sz][bestY][bestX].g + moveCost;
             if (ng < nodeData[sz][ny][nx].g) {
                 bool wasOpen = nodeData[sz][ny][nx].open;
@@ -1179,7 +1183,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                                 .zHigh = z + 1,
                                 .entranceLow = entLow,
                                 .entranceHigh = entHigh,
-                                .cost = 10
+                                .cost = GetCellMoveCost(x, y, z + 1)
                             };
                         }
                     } else {
@@ -1202,7 +1206,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                                 .zHigh = z + 1,
                                 .entranceLow = entLow,
                                 .entranceHigh = entHigh,
-                                .cost = 10
+                                .cost = GetCellMoveCost(x, y, z + 1)
                             };
                         }
                     }
@@ -1254,7 +1258,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                                 .exitY = exitY,
                                 .entranceRamp = entRamp,
                                 .entranceExit = entExit,
-                                .cost = 14,
+                                .cost = (14 * GetCellMoveCost(exitX, exitY, z + 1)) / 10,
                                 .rampType = cell
                             };
                         }
@@ -1281,7 +1285,7 @@ static void RebuildAffectedEntrances(bool affectedChunks[MAX_GRID_DEPTH][MAX_CHU
                                 .exitY = exitY,
                                 .entranceRamp = entRamp,
                                 .entranceExit = entExit,
-                                .cost = 14,
+                                .cost = (14 * GetCellMoveCost(exitX, exitY, z + 1)) / 10,
                                 .rampType = cell
                             };
                         }
@@ -1594,18 +1598,18 @@ void UpdateDirtyChunks(void) {
 }
 
 // 3D heuristic - includes z-level difference
+// Scaled by MIN_CELL_COST for admissibility with variable terrain costs
 static int Heuristic3D(int x0, int y0, int z0, int x1, int y1, int z1) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
     int dz = abs(z1 - z0);
-    // Manhattan on XY plane plus z-level cost
-    // Treat z-transition as equivalent to 10 (one step)
     if (use8Dir) {
         int maxXY = (dx > dy) ? dx : dy;
         int minXY = (dx < dy) ? dx : dy;
-        return (maxXY - minXY) * 10 + minXY * 14 + dz * 10;
+        // Cardinal = 8, Diagonal = 11, z-transition = 8
+        return (maxXY - minXY) * MIN_CELL_COST + minXY * 11 + dz * MIN_CELL_COST;
     } else {
-        return (dx + dy + dz) * 10;
+        return (dx + dy + dz) * MIN_CELL_COST;
     }
 }
 
@@ -1684,8 +1688,9 @@ void RunAStar(void) {
             // Block side entry to ramps (can only enter from low or high side)
             if (!CanEnterRampFromSide(nx, ny, nz, bestX, bestY)) continue;
 
-            // Cost: 10 for cardinal, 14 for diagonal
-            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            // Cost: base 10/14 scaled by terrain cost
+            int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int moveCost = (baseCost * GetCellMoveCost(nx, ny, nz)) / 10;
             int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
 
             if (ng < nodeData[nz][ny][nx].g) {
@@ -1703,7 +1708,7 @@ void RunAStar(void) {
         if (CanClimbUp(bestX, bestY, bestZ)) {
             int nz = bestZ + 1;
             if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = 10;  // Same cost as cardinal move
+                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
                 int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                 if (ng < nodeData[nz][bestY][bestX].g) {
                     nodeData[nz][bestY][bestX].g = ng;
@@ -1719,7 +1724,7 @@ void RunAStar(void) {
         if (CanClimbDown(bestX, bestY, bestZ)) {
             int nz = bestZ - 1;
             if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = 10;
+                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
                 int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                 if (ng < nodeData[nz][bestY][bestX].g) {
                     nodeData[nz][bestY][bestX].g = ng;
@@ -1742,7 +1747,7 @@ void RunAStar(void) {
             int exitZ = bestZ + 1;
             
             if (!nodeData[exitZ][exitY][exitX].closed) {
-                int moveCost = 14;  // Diagonal cost (XY + Z movement)
+                int moveCost = (14 * GetCellMoveCost(exitX, exitY, exitZ)) / 10;  // Diagonal + terrain
                 int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                 if (ng < nodeData[exitZ][exitY][exitX].g) {
                     nodeData[exitZ][exitY][exitX].g = ng;
@@ -1773,7 +1778,7 @@ void RunAStar(void) {
                 // Check if this ramp's high side points to our current position
                 if (below == matchingRamps[i]) {
                     if (!nodeData[rampZ][rampY][rampX].closed && IsCellWalkableAt(rampZ, rampY, rampX)) {
-                        int moveCost = 14;
+                        int moveCost = (14 * GetCellMoveCost(rampX, rampY, rampZ)) / 10;  // Diagonal + terrain
                         int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                         if (ng < nodeData[rampZ][rampY][rampX].g) {
                             nodeData[rampZ][rampY][rampX].g = ng;
@@ -1857,7 +1862,7 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
     if (use8Dir) {
         nodeData[sz][sy][sx].f = Heuristic8Dir(sx, sy, gx, gy);
     } else {
-        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * 10;
+        nodeData[sz][sy][sx].f = Heuristic(sx, sy, gx, gy) * MIN_CELL_COST;
     }
     nodeData[sz][sy][sx].open = true;
     ChunkHeapPush(sx, sy);
@@ -1903,7 +1908,8 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
                     continue;
             }
 
-            int moveCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int baseCost = (dx[i] != 0 && dy[i] != 0) ? 14 : 10;
+            int moveCost = (baseCost * GetCellMoveCost(nx, ny, sz)) / 10;
             int ng = nodeData[sz][bestY][bestX].g + moveCost;
             if (ng < nodeData[sz][ny][nx].g) {
                 bool wasOpen = nodeData[sz][ny][nx].open;
@@ -1911,7 +1917,7 @@ static int ReconstructLocalPathWithBounds(int sx, int sy, int sz, int gx, int gy
                 if (use8Dir) {
                     nodeData[sz][ny][nx].f = ng + Heuristic8Dir(nx, ny, gx, gy);
                 } else {
-                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * 10;
+                    nodeData[sz][ny][nx].f = ng + Heuristic(nx, ny, gx, gy) * MIN_CELL_COST;
                 }
                 nodeData[sz][ny][nx].parentX = bestX;
                 nodeData[sz][ny][nx].parentY = bestY;
@@ -2652,7 +2658,7 @@ void RunJPS(void) {
         if (CanClimbUp(bestX, bestY, bestZ)) {
             int nz = bestZ + 1;
             if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = 10;  // Same cost as cardinal move
+                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
                 int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                 if (ng < nodeData[nz][bestY][bestX].g) {
                     nodeData[nz][bestY][bestX].g = ng;
@@ -2668,7 +2674,7 @@ void RunJPS(void) {
         if (CanClimbDown(bestX, bestY, bestZ)) {
             int nz = bestZ - 1;
             if (!nodeData[nz][bestY][bestX].closed) {
-                int moveCost = 10;
+                int moveCost = GetCellMoveCost(bestX, bestY, nz);  // Cost of destination cell
                 int ng = nodeData[bestZ][bestY][bestX].g + moveCost;
                 if (ng < nodeData[nz][bestY][bestX].g) {
                     nodeData[nz][bestY][bestX].g = ng;

@@ -118,6 +118,8 @@ int InitGridFromAsciiWithChunkSize(const char* ascii, int chunkW, int chunkH) {
             if (x < gridWidth && y < gridHeight) {
                 if (*p == '#') {
                     grid[0][y][x] = CELL_WALL;
+                } else if (*p == 'B') {
+                    grid[0][y][x] = CELL_BUSH;
                 } else {
                     grid[0][y][x] = CELL_AIR;
                 }

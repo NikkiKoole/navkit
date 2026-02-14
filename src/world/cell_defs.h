@@ -4,7 +4,7 @@
 #include "grid.h"
 #include "material.h"             // For IsWallNatural
 #include "../simulation/temperature.h"
-#include "../simulation/water.h"      // For deep water walkability check
+#include "../simulation/water.h"      // For deep water walkability check + water speed
 #include "../entities/items.h"    // For ItemType
 
 // Cell definition - all properties for a cell type in one place
@@ -334,6 +334,68 @@ static inline bool IsMuddy(int x, int y, int z) {
     CellType cell = grid[z][y][x];
     if (!CellIsSolid(cell) || !IsWallNatural(x, y, z)) return false;
     return IsSoilMaterial(GetWallMaterial(x, y, z));
+}
+
+// =============================================================================
+// MOVEMENT COST (fixed-point: 10 = baseline 1.0x, higher = more expensive)
+// =============================================================================
+// Single source of truth for terrain expense. Used by both pathfinding (A*/HPA*)
+// and the movement layer (speed = 10.0f / cost).
+// Takes the max of all terrain penalties (doesn't stack multiplicatively).
+
+#define MIN_CELL_COST 8   // Constructed floor — cheapest possible cell
+
+// Forward declare to avoid circular include (weather.h -> time.h -> raylib)
+uint8_t GetSnowLevel(int x, int y, int z);
+
+static inline int GetCellMoveCost(int x, int y, int z) {
+    // Bounds check
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) return 10;
+    
+    int cost = 10;  // Baseline: normal ground
+    
+    // Water level (1-2: shallow, 3-4: medium, 5+: blocked by walkability)
+    int waterLevel = GetWaterLevel(x, y, z);
+    if (waterLevel >= 5) return 29;       // Very deep — nearly blocked (waterSpeedDeep=0.35)
+    if (waterLevel >= 3) cost = 17;       // Medium water (0.6x speed)
+    else if (waterLevel >= 1) cost = 12;  // Shallow water (0.85x speed)
+    
+    // Mud (check ground cell — mover stands on top of solid)
+    {
+        int groundZ = z;
+        if (groundZ > 0 && !CellIsSolid(grid[groundZ][y][x]))
+            groundZ--;
+        if (IsMuddy(x, y, groundZ)) {
+            int mudCost = 17;  // 0.6x speed
+            if (mudCost > cost) cost = mudCost;
+        }
+    }
+    
+    // Snow
+    {
+        uint8_t snow = GetSnowLevel(x, y, z);
+        int snowCost = 10;
+        switch (snow) {
+            case 1: snowCost = 12; break;  // 0.85x
+            case 2: snowCost = 13; break;  // 0.75x
+            case 3: snowCost = 17; break;  // 0.6x
+        }
+        if (snowCost > cost) cost = snowCost;
+    }
+    
+    // Bush — walkable vegetation, slows movement
+    if (grid[z][y][x] == CELL_BUSH) {
+        int bushCost = 20;  // 0.5x speed
+        if (bushCost > cost) cost = bushCost;
+    }
+    
+    // Constructed floor — bonus (cheaper than baseline)
+    // Only apply if nothing else made the cell expensive
+    if (cost == 10 && HAS_FLOOR(x, y, z)) {
+        cost = MIN_CELL_COST;  // 1.25x speed
+    }
+    
+    return cost;
 }
 
 #endif // CELL_DEFS_H

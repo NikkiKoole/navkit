@@ -2,12 +2,15 @@
 #include "../vendor/raylib.h"
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "../src/world/grid.h"
 #include "test_helpers.h"
 #include "../src/world/cell_defs.h"
 #include "../src/world/material.h"
 #include "../src/world/terrain.h"
 #include "../src/world/pathfinding.h"
+#include "../src/entities/mover.h"
+#include "../src/simulation/weather.h"
 
 // Global flag for verbose output in tests
 static bool test_verbose = false;
@@ -3878,23 +3881,26 @@ describe(pathfinding_multi_z_correctness) {
         if (z1_pair_e1 >= 0) {
             int dx = abs(GetEntranceX(z1_pair_e1) - GetEntranceX(z1_pair_e2));
             int dy = abs(GetEntranceY(z1_pair_e1) - GetEntranceY(z1_pair_e2));
+            // z=1 has HAS_FLOOR (constructed floor) so each cell costs MIN_CELL_COST(8)
+            // Diagonal cost = (14 * 8) / 10 = 11, Cardinal cost = (10 * 8) / 10 = 8
             int expectedOptimal;
             if (use8Dir) {
                 int minD = dx < dy ? dx : dy;
                 int maxD = dx > dy ? dx : dy;
-                expectedOptimal = maxD * 10 + minD * 4;
+                expectedOptimal = MIN_CELL_COST * maxD + 3 * minD;
             } else {
-                expectedOptimal = (dx + dy) * 10;
+                expectedOptimal = (dx + dy) * MIN_CELL_COST;
             }
             // z=1 is fully open, so cost should be exactly the optimal distance
             expect(z1_edge_cost == expectedOptimal);
         }
     }
 
-    it("AStarChunk on z=1 should return same cost as AStarChunk on z=0 for identical terrain") {
-        // Both z=0 and z=1 are fully open. AStarChunk should return the same
-        // cost for the same start/goal on both levels. If chunkHeapZ is broken,
-        // z=1 may return a different (wrong) cost.
+    it("AStarChunk on z=1 should return correct cost independent of z=0") {
+        // z=0 is walkable air (no floor, cost 10 per cell).
+        // z=1 has HAS_FLOOR (constructed floor, cost 8 per cell).
+        // AStarChunk should return the correct cost for each z-level independently.
+        // If chunkHeapZ is broken, z=1 may read stale z=0 data.
 
         const char* map =
             "floor:0\n"
@@ -3918,14 +3924,14 @@ describe(pathfinding_multi_z_correctness) {
 
         InitMultiFloorGridFromAscii(map, 8, 8);
 
-        // Both levels are fully open, identical terrain.
-        // AStarChunk from (0,0) to (7,7) should give the same cost on both.
         int costZ0 = AStarChunk(0, 0, 0, 7, 7, 0, 0, 8, 8);
         int costZ1 = AStarChunk(0, 0, 1, 7, 7, 0, 0, 8, 8);
 
         expect(costZ0 > 0);
         expect(costZ1 > 0);
-        expect(costZ0 == costZ1);
+        // z=1 has floor bonus (cost 8), z=0 has no floor (cost 10)
+        // z=1 should be cheaper. If chunkHeapZ is broken, they'd be wrong.
+        expect(costZ1 <= costZ0);
     }
 
     it("AStarChunkMultiTarget on z=1 should find all targets correctly") {
@@ -3978,17 +3984,19 @@ describe(pathfinding_multi_z_correctness) {
         int dx1 = abs(2 - targetX[1]);
         int dy1 = abs(0 - targetY[1]);
 
+        // z=1 has HAS_FLOOR (cost 8 per cell), so use MIN_CELL_COST scaling
+        // Diagonal cost = (14*8)/10 = 11, so extra = 11-8 = 3
         int expected0, expected1;
         if (use8Dir) {
             int minD0 = dx0 < dy0 ? dx0 : dy0;
             int maxD0 = dx0 > dy0 ? dx0 : dy0;
-            expected0 = maxD0 * 10 + minD0 * 4;
+            expected0 = maxD0 * MIN_CELL_COST + minD0 * 3;
             int minD1 = dx1 < dy1 ? dx1 : dy1;
             int maxD1 = dx1 > dy1 ? dx1 : dy1;
-            expected1 = maxD1 * 10 + minD1 * 4;
+            expected1 = maxD1 * MIN_CELL_COST + minD1 * 3;
         } else {
-            expected0 = (dx0 + dy0) * 10;
-            expected1 = (dx1 + dy1) * 10;
+            expected0 = (dx0 + dy0) * MIN_CELL_COST;
+            expected1 = (dx1 + dy1) * MIN_CELL_COST;
         }
 
         expect(costs[0] == expected0);
@@ -4361,6 +4369,568 @@ describe(pathfinding_multi_z_correctness) {
     }
 }
 
+// =============================================================================
+// Variable Terrain Cost Tests
+// =============================================================================
+
+describe(variable_terrain_cost) {
+
+    // --- GetCellMoveCost unit tests ---
+
+    it("baseline cost is 10 for normal ground") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        // z=0 is CELL_AIR above implicit bedrock, no floor flag
+        expect(GetCellMoveCost(1, 1, 0) == 10);
+    }
+
+    it("constructed floor cost is MIN_CELL_COST (8)") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SET_FLOOR(1, 1, 0);
+        expect(GetCellMoveCost(1, 1, 0) == MIN_CELL_COST);
+    }
+
+    it("bush cost is 20") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        grid[0][1][1] = CELL_BUSH;
+        expect(GetCellMoveCost(1, 1, 0) == 20);
+    }
+
+    it("shallow water cost is 12") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SetWaterLevel(1, 1, 0, 1);
+        expect(GetCellMoveCost(1, 1, 0) == 12);
+    }
+
+    it("medium water cost is 17") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SetWaterLevel(1, 1, 0, 3);
+        expect(GetCellMoveCost(1, 1, 0) == 17);
+    }
+
+    it("mud cost is 17") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        FillGroundLevel();
+        InitWater(); InitSnow();
+        // z=0 is now CELL_WALL+MAT_DIRT+natural. Mover walks at z=1.
+        // Mud check looks at groundZ, so set wetness on z=0 (the solid ground)
+        SET_CELL_WETNESS(1, 1, 0, 3);
+        // GetCellMoveCost at z=1 checks ground below
+        expect(GetCellMoveCost(1, 1, 1) == 17);
+    }
+
+    it("snow level 1 cost is 12") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SetSnowLevel(1, 1, 0, 1);
+        expect(GetCellMoveCost(1, 1, 0) == 12);
+    }
+
+    it("snow level 2 cost is 13") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SetSnowLevel(1, 1, 0, 2);
+        expect(GetCellMoveCost(1, 1, 0) == 13);
+    }
+
+    it("snow level 3 cost is 17") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater(); InitSnow();
+        SetSnowLevel(1, 1, 0, 3);
+        expect(GetCellMoveCost(1, 1, 0) == 17);
+    }
+
+    it("takes max cost, not stacked (mud + shallow water)") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        FillGroundLevel();
+        InitWater(); InitSnow();
+        SET_CELL_WETNESS(1, 1, 0, 3);  // mud on ground (cost 17)
+        SetWaterLevel(1, 1, 1, 1);      // shallow water at z=1 (cost 12)
+        // Max of mud(17) and water(12) = 17
+        expect(GetCellMoveCost(1, 1, 1) == 17);
+    }
+
+    it("floor bonus suppressed by expensive terrain") {
+        InitGridFromAsciiWithChunkSize("....\n....\n....\n....\n", 4, 4);
+        InitWater();
+        InitSnow();
+        SET_FLOOR(1, 1, 0);
+        SetWaterLevel(1, 1, 0, 1);  // shallow water
+        // Water cost 12 > baseline 10, so floor bonus (8) doesn't apply
+        expect(GetCellMoveCost(1, 1, 0) == 12);
+    }
+
+    it("out of bounds returns baseline 10") {
+        InitGridFromAsciiWithChunkSize("....\n....\n", 4, 4);
+        expect(GetCellMoveCost(-1, 0, 0) == 10);
+        expect(GetCellMoveCost(100, 0, 0) == 10);
+    }
+
+    // --- A* routing tests: movers prefer cheap terrain ---
+
+    it("A* prefers floor path over normal ground") {
+        // Grid: 16x4, floor corridor on row 0, normal ground on rows 1-3
+        // Path from (0,0) to (15,0) should use the floor corridor
+        const char* map =
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 4);
+        InitWater(); InitSnow();
+        // Place floor on row 0
+        for (int x = 0; x < 16; x++) SET_FLOOR(x, 0, 0);
+
+        // A* from (0,2) to (15,2) — should cost more than (0,0) to (15,0) on floor
+        int costNormal = AStarChunk(0, 2, 0, 15, 2, 0, 0, 16, 4);
+        int costFloor = AStarChunk(0, 0, 0, 15, 0, 0, 0, 16, 4);
+        expect(costFloor < costNormal);
+    }
+
+    it("A* routes around mud when cheaper path exists") {
+        // 16x8 grid. Mud patch across middle rows (2-5).
+        // Path from (0,0) to (15,0) on z=1 — direct path is cheap,
+        // path from (0,3) to (15,3) goes through mud (expensive).
+        const char* map =
+            "floor:0\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "floor:1\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+        InitMultiFloorGridFromAscii(map, 16, 8);
+        InitWater(); InitSnow();
+
+        // Make rows 2-5 on z=0 muddy (natural dirt + wetness)
+        // Movers walk on z=1. GetCellMoveCost checks ground at z-1.
+        for (int x = 0; x < 16; x++) {
+            for (int y = 2; y <= 5; y++) {
+                grid[0][y][x] = CELL_WALL;
+                SetWallMaterial(x, y, 0, MAT_DIRT);
+                SetWallNatural(x, y, 0);
+                SET_CELL_WETNESS(x, y, 0, 3);
+            }
+        }
+
+        // Path on z=1 through mud (row 3) vs along edge (row 0)
+        int costClean = AStarChunk(0, 0, 1, 15, 0, 0, 0, 16, 8);
+        int costMuddy = AStarChunk(0, 3, 1, 15, 3, 0, 0, 16, 8);
+        expect(costMuddy > costClean);
+    }
+
+    it("A* routes around bushes") {
+        const char* map =
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 4);
+        InitWater(); InitSnow();
+
+        // Bush corridor on row 1
+        for (int x = 2; x < 14; x++) grid[0][1][x] = CELL_BUSH;
+
+        int costClear = AStarChunk(0, 0, 0, 15, 0, 0, 0, 16, 4);
+        int costBush = AStarChunk(0, 1, 0, 15, 1, 0, 0, 16, 4);
+        expect(costBush > costClear);
+    }
+
+    it("A* routes around snow") {
+        const char* map =
+            "................\n"
+            "................\n"
+            "................\n"
+            "................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 4);
+        InitSnow();
+
+        // Heavy snow on row 1
+        for (int x = 0; x < 16; x++) SetSnowLevel(x, 1, 0, 3);
+
+        int costClear = AStarChunk(0, 0, 0, 15, 0, 0, 0, 16, 4);
+        int costSnow = AStarChunk(0, 1, 0, 15, 1, 0, 0, 16, 4);
+        expect(costSnow > costClear);
+    }
+
+    // --- String pulling cost awareness ---
+
+    it("string pull does not shortcut through expensive terrain") {
+        // 16x3 corridor. Row 0 = normal, row 1 = very expensive (deep water),
+        // row 2 = normal. Path goes east on row 0 then south to row 2 then east.
+        // String pulling should NOT cut diagonally through row 1.
+        const char* map =
+            "................\n"
+            "................\n"
+            "................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 3);
+        InitWater(); InitSnow();
+
+        // Make row 1 very expensive: deep-ish water (level 4, cost 17)
+        for (int x = 0; x < 16; x++) {
+            SetWaterLevel(x, 1, 0, 4);
+        }
+
+        // Path stored goal-to-start: path[0]=goal, path[n-1]=start
+        // Route: start (0,0) → east to (8,0) → south to (8,2) → east to (15,2)
+        // This avoids row 1 except for the single crossing at x=8
+        Point path[30];
+        int pathLen = 0;
+        // Goal end first
+        for (int x = 15; x >= 8; x--) path[pathLen++] = (Point){x, 2, 0};
+        path[pathLen++] = (Point){8, 1, 0};  // crossing point
+        for (int x = 8; x >= 0; x--) path[pathLen++] = (Point){x, 0, 0};
+
+        StringPullPath(path, &pathLen);
+
+        // Cost-blind string pulling would reduce to 2 points: (0,0)→(15,2),
+        // cutting diagonally through many expensive row-1 cells.
+        // Cost-aware should keep the corner waypoint to minimize water crossings.
+        expect(pathLen > 2);
+    }
+
+    // --- Path avoids bushes when a longer clear route exists ---
+
+    it("avoids bush wall, detours around the end") {
+        // Bush wall blocks direct path. Short detour around left end.
+        //   S.....G
+        //   .BBBBB.
+        //   .......
+        InitGridFromAsciiWithChunkSize(
+            ".......\n"
+            ".BBBBB.\n"
+            ".......\n", 7, 3);
+        InitWater(); InitSnow();
+
+        Point start = {0, 0, 0};
+        Point goal  = {6, 0, 0};
+        Point path[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+        expect(len > 0);
+
+        int bushCount = 0;
+        for (int i = 0; i < len; i++)
+            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+
+        if (test_verbose) {
+            printf("  path length: %d, bush cells: %d\n", len, bushCount);
+            for (int i = 0; i < len; i++)
+                printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
+                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+        }
+        // Detour south around bush wall is cheaper than cutting through
+        expect(bushCount == 0);
+    }
+
+    it("avoids bush corridor, goes through open hallway") {
+        // Two corridors: north filled with bushes, south clear.
+        // Path should detour through south corridor.
+        //   ##############
+        //   #..BBBBBBBB..#
+        //   #............#
+        //   ##############
+        InitGridFromAsciiWithChunkSize(
+            "##############\n"
+            "#.BBBBBBBBBB.#\n"
+            "#............#\n"
+            "##############\n", 14, 4);
+        InitWater(); InitSnow();
+
+        Point start = {1, 1, 0};
+        Point goal  = {12, 1, 0};
+
+        Point path[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+        expect(len > 0);
+
+        int bushCount = 0;
+        for (int i = 0; i < len; i++)
+            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+
+        if (test_verbose) {
+            printf("  path length: %d, bush cells: %d\n", len, bushCount);
+            for (int i = 0; i < len; i++)
+                printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
+                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+        }
+        // Should take the clear south corridor
+        expect(bushCount == 0);
+    }
+
+    it("goes through bushes when no alternative exists") {
+        // Walls completely block any detour. Only path is through bushes.
+        //   ########
+        //   S..BB..G
+        //   ########
+        InitGridFromAsciiWithChunkSize(
+            "########\n"
+            "...BB...\n"
+            "########\n", 8, 3);
+        InitWater(); InitSnow();
+
+        Point start = {0, 1, 0};
+        Point goal  = {7, 1, 0};
+        Point path[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+        expect(len > 0);
+
+        int bushCount = 0;
+        for (int i = 0; i < len; i++)
+            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+
+        if (test_verbose) {
+            printf("  path length: %d, bush cells: %d\n", len, bushCount);
+            for (int i = 0; i < len; i++)
+                printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
+                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+        }
+        // No choice — must go through the bushes
+        expect(bushCount == 2);
+    }
+
+    it("avoids large bush garden inside walled compound") {
+        // Compound with bush garden. Path from left to right corridor
+        // should go around the garden, not through it.
+        //   ################
+        //   #......########
+        //   #......#BBBBBB#
+        //   #..S...#BBBBBB#
+        //   #......#BBBBBB#
+        //   #......########
+        //   #..............G
+        //   ################
+        InitGridFromAsciiWithChunkSize(
+            "################\n"
+            "#......########\n"
+            "#......#BBBBBB#\n"
+            "#......#BBBBBB#\n"
+            "#......#BBBBBB#\n"
+            "#......########\n"
+            "#...............\n"
+            "################\n", 8, 8);
+        InitWater(); InitSnow();
+
+        Point start = {3, 3, 0};
+        Point goal  = {15, 6, 0};
+        Point path[MAX_PATH];
+        int len = FindPath(PATH_ALGO_ASTAR, start, goal, path, MAX_PATH);
+        expect(len > 0);
+
+        int bushCount = 0;
+        for (int i = 0; i < len; i++)
+            if (grid[0][path[i].y][path[i].x] == CELL_BUSH) bushCount++;
+
+        if (test_verbose) {
+            printf("  path length: %d, bush cells: %d\n", len, bushCount);
+            for (int i = 0; i < len; i++)
+                printf("    [%d] (%d,%d) %s\n", i, path[i].x, path[i].y,
+                       grid[0][path[i].y][path[i].x] == CELL_BUSH ? "BUSH" : "air");
+        }
+        // Should go south through the open corridor, not through the garden
+        expect(bushCount == 0);
+    }
+
+    // --- Performance benchmark ---
+
+    it("benchmark: variable cost A* vs uniform cost overhead") {
+        // Large grid with mixed terrain. Time many pathfinds.
+        // Just prints timing — doesn't assert (informational).
+        const char* map =
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n"
+            "................................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 16);
+        InitWater();
+        InitSnow();
+        BuildEntrances();
+        BuildGraph();
+
+        // Scatter some terrain variety
+        for (int y = 8; y < 24; y++)
+            for (int x = 8; x < 24; x++)
+                grid[0][y][x] = CELL_BUSH;
+        for (int x = 0; x < 32; x++) {
+            SetSnowLevel(x, 4, 0, 2);
+            SetSnowLevel(x, 5, 0, 2);
+        }
+
+        // Time A* pathfinds with variable terrain
+        int iters = 100000;
+        clock_t start = clock();
+        for (int i = 0; i < iters; i++) {
+            AStarChunk(0, 0, 0, 31, 31, 0, 0, 32, 32);
+        }
+        double elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
+
+        // Now time with uniform terrain (reset)
+        for (int y = 8; y < 24; y++)
+            for (int x = 8; x < 24; x++)
+                grid[0][y][x] = CELL_AIR;
+        for (int x = 0; x < 32; x++) {
+            SetSnowLevel(x, 4, 0, 0);
+            SetSnowLevel(x, 5, 0, 0);
+        }
+
+        clock_t startUniform = clock();
+        for (int i = 0; i < iters; i++) {
+            AStarChunk(0, 0, 0, 31, 31, 0, 0, 32, 32);
+        }
+        double elapsedUniform = (double)(clock() - startUniform) / CLOCKS_PER_SEC;
+
+        if (test_verbose) {
+            printf("  A* Variable cost: %.3f ms (%d iters, %.4f ms/iter)\n",
+                   elapsed * 1000.0, iters, elapsed * 1000.0 / iters);
+            printf("  A* Uniform cost:  %.3f ms (%d iters, %.4f ms/iter)\n",
+                   elapsedUniform * 1000.0, iters, elapsedUniform * 1000.0 / iters);
+            printf("  Overhead: %.1f%%\n",
+                   ((elapsed - elapsedUniform) / elapsedUniform) * 100.0);
+        }
+
+        // Sanity: both should complete in reasonable time
+        expect(elapsed < 30.0);
+        expect(elapsedUniform < 30.0);
+    }
+
+    it("benchmark: HPA* full pathfind with variable terrain") {
+        const char* map =
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n"
+            "................................................................\n";
+        InitGridFromAsciiWithChunkSize(map, 16, 16);
+        InitWater();
+        InitSnow();
+
+        // Mixed terrain: bushes in center, snow band, floor corridor
+        for (int y = 12; y < 20; y++)
+            for (int x = 12; x < 20; x++)
+                grid[0][y][x] = CELL_BUSH;
+        for (int x = 0; x < 64; x++) {
+            SetSnowLevel(x, 6, 0, 3);
+            SetSnowLevel(x, 7, 0, 3);
+        }
+        for (int x = 0; x < 64; x++) SET_FLOOR(x, 0, 0);
+
+        BuildEntrances();
+        BuildGraph();
+
+        Point tempPath[MAX_PATH];
+        int iters = 50000;
+
+        clock_t start = clock();
+        for (int i = 0; i < iters; i++) {
+            Point s = {0, 0, 0};
+            Point g = {63, 31, 0};
+            FindPath(PATH_ALGO_HPA, s, g, tempPath, MAX_PATH);
+        }
+        double elapsed = (double)(clock() - start) / CLOCKS_PER_SEC;
+
+        // Clear terrain for uniform comparison
+        for (int y = 12; y < 20; y++)
+            for (int x = 12; x < 20; x++)
+                grid[0][y][x] = CELL_AIR;
+        for (int x = 0; x < 64; x++) {
+            SetSnowLevel(x, 6, 0, 0);
+            SetSnowLevel(x, 7, 0, 0);
+            CLEAR_FLOOR(x, 0, 0);
+        }
+        BuildEntrances();
+        BuildGraph();
+
+        clock_t startUniform = clock();
+        for (int i = 0; i < iters; i++) {
+            Point s = {0, 0, 0};
+            Point g = {63, 31, 0};
+            FindPath(PATH_ALGO_HPA, s, g, tempPath, MAX_PATH);
+        }
+        double elapsedUniform = (double)(clock() - startUniform) / CLOCKS_PER_SEC;
+
+        if (test_verbose) {
+            printf("  HPA* variable: %.3f ms (%d iters, %.4f ms/iter)\n",
+                   elapsed * 1000.0, iters, elapsed * 1000.0 / iters);
+            printf("  HPA* uniform:  %.3f ms (%d iters, %.4f ms/iter)\n",
+                   elapsedUniform * 1000.0, iters, elapsedUniform * 1000.0 / iters);
+            printf("  Overhead: %.1f%%\n",
+                   ((elapsed - elapsedUniform) / elapsedUniform) * 100.0);
+        }
+
+        expect(elapsed < 30.0);
+        expect(elapsedUniform < 30.0);
+    }
+}
+
 static void run_all_tests(void) {
     test(grid_initialization);
     test(entrance_building);
@@ -4385,6 +4955,7 @@ static void run_all_tests(void) {
     test(df_ladder_pathfinding);
     test(df_basics);
     test(pathfinding_multi_z_correctness);
+    test(variable_terrain_cost);
 }
 
 int main(int argc, char* argv[]) {

@@ -557,6 +557,45 @@ static bool HasLineOfSightLenient(int x0, int y0, int x1, int y1, int z) {
     return false;
 }
 
+// Sum terrain cost along a Bresenham line (same trace as HasLineOfSight)
+static int LineCost(int x0, int y0, int x1, int y1, int z) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+    int cost = 0;
+    int x = x0, y = y0;
+    while (1) {
+        cost += GetCellMoveCost(x, y, z);
+        if (x == x1 && y == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+    }
+    return cost;
+}
+
+// Sum terrain cost along a path segment (indices from→to inclusive)
+static int PathSegmentCost(Point* pathArr, int from, int to) {
+    int cost = 0;
+    int step = (to > from) ? 1 : -1;
+    for (int i = from; i != to; i += step) {
+        cost += GetCellMoveCost(pathArr[i].x, pathArr[i].y, pathArr[i].z);
+    }
+    cost += GetCellMoveCost(pathArr[to].x, pathArr[to].y, pathArr[to].z);
+    return cost;
+}
+
+// Check that a straight-line shortcut isn't more expensive than the original path
+// Returns true if the shortcut cost is <= path segment cost * 1.1 (10% tolerance)
+static bool CorridorCostNotWorse(Point* pathArr, int from, int to, int z) {
+    int lineCostVal = LineCost(pathArr[from].x, pathArr[from].y,
+                               pathArr[to].x, pathArr[to].y, z);
+    int pathCostVal = PathSegmentCost(pathArr, from, to);
+    return lineCostVal <= (pathCostVal * 11) / 10;  // 10% tolerance
+}
+
 // String pulling: remove unnecessary waypoints from path
 // Uses HasClearCorridor instead of HasLineOfSight to avoid corner-grazing paths
 void StringPullPath(Point* pathArr, int* pathLen) {
@@ -575,7 +614,8 @@ void StringPullPath(Point* pathArr, int* pathLen) {
             if (pathArr[current].z != pathArr[i].z) continue;
             
             if (HasClearCorridor(pathArr[current].x, pathArr[current].y,
-                                 pathArr[i].x, pathArr[i].y, pathArr[current].z)) {
+                                 pathArr[i].x, pathArr[i].y, pathArr[current].z) &&
+                CorridorCostNotWorse(pathArr, current, i, pathArr[current].z)) {
                 furthest = i;
                 break;
             }
@@ -1085,25 +1125,10 @@ void UpdateMovers(void) {
             }
             float invDist = 1.0f / dist;
             
-            // Terrain speed modifier based on current cell type
-            float terrainSpeedMult = 1.0f;
-            if (HAS_FLOOR(currentX, currentY, currentZ)) {
-                terrainSpeedMult = 1.25f;  // Floor: 1.25x speed
-            }
-            // Grass/dirt uses default 1.0x
-            
-            // Water slowdown
-            float waterSpeedMult = GetWaterSpeedMultiplier(currentX, currentY, currentZ);
-            terrainSpeedMult *= waterSpeedMult;
-            
-            // Mud slowdown (check the ground we're standing on)
-            {
-                int groundZ = currentZ;
-                if (groundZ > 0 && !CellIsSolid(grid[groundZ][currentY][currentX]))
-                    groundZ--;
-                if (IsMuddy(currentX, currentY, groundZ))
-                    terrainSpeedMult *= mudSpeedMultiplier;
-            }
+            // Terrain speed derived from GetCellMoveCost (single source of truth)
+            // cost 10 = 1.0x, cost 8 = 1.25x (floor), cost 17 = 0.59x (mud/deep snow)
+            int terrainCost = GetCellMoveCost(currentX, currentY, currentZ);
+            float terrainSpeedMult = 10.0f / (float)terrainCost;
             
             // Weight slowdown when carrying items
             if (m->currentJobId >= 0) {
