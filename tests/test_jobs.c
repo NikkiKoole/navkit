@@ -9058,9 +9058,9 @@ describe(designation_lifecycle) {
     }
 
     // Finding 3 (HIGH): CompleteRemoveFloorDesignation spawns drop item at wrong z
-    it("removing a floor should drop the floor material item to the level below") {
+    it("removing a floor should drop the floor material item at the same level") {
         // Player removes a constructed floor at z=2. The resulting material item
-        // should appear at z=1 (where it would physically fall), not float at z=2.
+        // should appear at z=2 (where the mover is standing), so it's reachable.
         InitTestGridFromAscii(
             ".....\n"
             ".....\n"
@@ -9090,7 +9090,7 @@ describe(designation_lifecycle) {
         DesignateRemoveFloor(2, 2, 2);
         CompleteRemoveFloorDesignation(2, 2, 2, -1);
 
-        // Find the spawned item - it should be at z=1 (dropped down), not z=2
+        // Find the spawned item - it should be at z=2 (mover's level), not z=1
         bool foundAtCorrectZ = false;
         bool foundAtWrongZ = false;
         for (int i = 0; i < itemHighWaterMark; i++) {
@@ -9098,8 +9098,8 @@ describe(designation_lifecycle) {
             int ix = (int)(items[i].x / CELL_SIZE);
             int iy = (int)(items[i].y / CELL_SIZE);
             if (ix == 2 && iy == 2) {
-                if ((int)items[i].z == 1) foundAtCorrectZ = true;
-                if ((int)items[i].z == 2) foundAtWrongZ = true;
+                if ((int)items[i].z == 2) foundAtCorrectZ = true;
+                if ((int)items[i].z == 1) foundAtWrongZ = true;
             }
         }
         expect(foundAtCorrectZ == true);

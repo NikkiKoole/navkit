@@ -719,9 +719,9 @@ void CompleteRemoveFloorDesignation(int x, int y, int z, int moverIdx) {
     MarkChunkDirty(x, y, z);
     DestabilizeWater(x, y, z);
     
-    // Spawn an item from the removed floor (drops to z-1 since floor is gone)
+    // Spawn an item from the removed floor (at mover's level so it's reachable)
     if (dropItem != ITEM_NONE) {
-        int dropZ = (z > 0) ? z - 1 : 0;
+        int dropZ = z;
         uint8_t dropMat = (floorMat != MAT_NONE) ? (uint8_t)floorMat : DefaultMaterialForItemType(dropItem);
         SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE * 0.5f,
                               y * CELL_SIZE + CELL_SIZE * 0.5f,
