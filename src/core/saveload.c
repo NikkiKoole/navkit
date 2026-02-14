@@ -325,6 +325,10 @@ bool SaveWorld(const char* filename) {
     fwrite(&animalCount, sizeof(animalCount), 1, f);
     fwrite(animals, sizeof(Animal), animalCount, f);
 
+    // Trains (v46+)
+    fwrite(&trainCount, sizeof(trainCount), 1, f);
+    fwrite(trains, sizeof(Train), trainCount, f);
+
     // Jobs
     fwrite(&jobHighWaterMark, sizeof(jobHighWaterMark), 1, f);
     fwrite(&activeJobCount, sizeof(activeJobCount), 1, f);
@@ -815,6 +819,25 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         animalCount = 0;
+    }
+
+    // Trains (v47+, struct changed from v46)
+    if (version >= 47) {
+        fread(&trainCount, sizeof(trainCount), 1, f);
+        if (trainCount > 0) {
+            fread(trains, sizeof(Train), trainCount, f);
+        }
+    } else if (version == 46) {
+        // v46 had trains with smaller struct (no lightCellX/Y) — skip the data
+        int oldCount;
+        fread(&oldCount, sizeof(oldCount), 1, f);
+        if (oldCount > 0) {
+            // Old struct was 40 bytes (Train without lightCellX/lightCellY)
+            fseek(f, oldCount * (sizeof(Train) - 2 * sizeof(int)), SEEK_CUR);
+        }
+        trainCount = 0;
+    } else {
+        trainCount = 0;
     }
 
     // Jobs

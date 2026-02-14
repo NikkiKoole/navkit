@@ -2486,9 +2486,42 @@ void HandleInput(void) {
                 if (leftClick) ExecutePlaceBush(x1, y1, x2, y2, z);
                 else ExecuteRemoveBush(x1, y1, x2, y2, z);
                 break;
-            case ACTION_SANDBOX_TRACK:
+            case ACTION_DRAW_TRACK:
                 if (leftClick) ExecutePlaceTrack(x1, y1, x2, y2, z);
                 else ExecuteRemoveTrack(x1, y1, x2, y2, z);
+                break;
+            case ACTION_DRAW_TRAIN:
+                if (leftClick) {
+                    // Spawn train on track cell
+                    if (grid[z][(int)mouseGrid.y][(int)mouseGrid.x] == CELL_TRACK) {
+                        int idx = SpawnTrain((int)mouseGrid.x, (int)mouseGrid.y, z);
+                        if (idx >= 0) {
+                            AddMessage(TextFormat("Spawned train #%d", idx), GREEN);
+                        } else {
+                            AddMessage("Max trains reached!", RED);
+                        }
+                    } else {
+                        AddMessage("Must place train on track", RED);
+                    }
+                } else {
+                    // Remove nearest train at clicked cell
+                    int removeIdx = -1;
+                    for (int i = 0; i < MAX_TRAINS; i++) {
+                        if (!trains[i].active) continue;
+                        if (trains[i].cellX == (int)mouseGrid.x && trains[i].cellY == (int)mouseGrid.y && trains[i].z == z) {
+                            removeIdx = i;
+                            break;
+                        }
+                    }
+                    if (removeIdx >= 0) {
+                        if (trains[removeIdx].lightCellX >= 0) {
+                            RemoveLightSource(trains[removeIdx].lightCellX, trains[removeIdx].lightCellY, trains[removeIdx].z);
+                        }
+                        trains[removeIdx].active = false;
+                        trainCount--;
+                        AddMessage(TextFormat("Removed train #%d", removeIdx), ORANGE);
+                    }
+                }
                 break;
             default:
                 break;

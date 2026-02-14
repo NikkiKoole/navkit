@@ -16,6 +16,7 @@
 #include "../world/designations.h"
 #include "../entities/mover.h"
 #include "../entities/animals.h"
+#include "../entities/trains.h"
 #include "../entities/jobs.h"
 #include "../entities/workshops.h"
 #include "../world/pathfinding.h"
@@ -86,6 +87,8 @@ static int insp_moverCount = 0;
 static Mover* insp_movers = NULL;
 static int insp_animalCount = 0;
 static Animal* insp_animals = NULL;
+static int insp_trainCount = 0;
+static Train* insp_trains = NULL;
 static int insp_jobHWM = 0, insp_activeJobCnt = 0;
 static Job* insp_jobs = NULL;
 static int* insp_activeJobList = NULL;
@@ -976,6 +979,8 @@ static void cleanup(void) {
     free(insp_blueprints);
     free(insp_workshops);
     free(insp_movers);
+    free(insp_animals);
+    free(insp_trains);
     free(insp_jobs);
     free(insp_activeJobList);
 }
@@ -1323,6 +1328,24 @@ int InspectSaveFile(int argc, char** argv) {
         insp_animals = NULL;
     }
 
+    // Trains (v47+, struct changed from v46)
+    if (version >= 47) {
+        fread(&insp_trainCount, 4, 1, f);
+        insp_trains = malloc(insp_trainCount > 0 ? insp_trainCount * sizeof(Train) : sizeof(Train));
+        if (insp_trainCount > 0) fread(insp_trains, sizeof(Train), insp_trainCount, f);
+    } else if (version == 46) {
+        int oldCount;
+        fread(&oldCount, 4, 1, f);
+        if (oldCount > 0) {
+            fseek(f, oldCount * (sizeof(Train) - 2 * sizeof(int)), SEEK_CUR);
+        }
+        insp_trainCount = 0;
+        insp_trains = NULL;
+    } else {
+        insp_trainCount = 0;
+        insp_trains = NULL;
+    }
+
     // Jobs
     fread(&insp_jobHWM, 4, 1, f);
     fread(&insp_activeJobCnt, 4, 1, f);
@@ -1371,6 +1394,9 @@ int InspectSaveFile(int argc, char** argv) {
         int activeAnimals = 0;
         for (int i = 0; i < insp_animalCount; i++) if (insp_animals[i].active) activeAnimals++;
         printf("Animals: %d active (of %d)\n", activeAnimals, insp_animalCount);
+        int activeTrains = 0;
+        for (int i = 0; i < insp_trainCount; i++) if (insp_trains[i].active) activeTrains++;
+        printf("Trains: %d active (of %d)\n", activeTrains, insp_trainCount);
         printf("Stockpiles: %d active\n", activeStockpiles);
         printf("Blueprints: %d active\n", activeBP);
         printf("Workshops: %d active\n", activeWorkshops);

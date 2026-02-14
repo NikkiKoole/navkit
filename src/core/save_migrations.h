@@ -5,7 +5,7 @@
 #include "../world/material.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 45
+#define CURRENT_SAVE_VERSION 47
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)

@@ -873,13 +873,36 @@ bool DesignateChop(int x, int y, int z) {
         return false;
     }
     
-    // Already designated?
-    if (designations[z][y][x].type != DESIGNATION_NONE) {
-        return false;
+    // Accept trunk or branch — trace down to find trunk base
+    CellType cell = grid[z][y][x];
+    if (cell == CELL_TREE_BRANCH || cell == CELL_TREE_LEAVES) {
+        // Find trunk column: branches are always adjacent to trunk at same z
+        // Scan cardinal neighbors for trunk
+        int trunkX = -1, trunkY = -1;
+        static const int dx[] = {0, 1, 0, -1};
+        static const int dy[] = {-1, 0, 1, 0};
+        for (int d = 0; d < 4; d++) {
+            int nx = x + dx[d], ny = y + dy[d];
+            if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+            if (grid[z][ny][nx] == CELL_TREE_TRUNK) { trunkX = nx; trunkY = ny; break; }
+        }
+        if (trunkX < 0) return false;
+        x = trunkX;
+        y = trunkY;
     }
     
     // Must be a tree trunk cell (not felled)
     if (grid[z][y][x] != CELL_TREE_TRUNK) {
+        return false;
+    }
+    
+    // Trace down to trunk base (lowest trunk cell)
+    while (z > 0 && grid[z - 1][y][x] == CELL_TREE_TRUNK) {
+        z--;
+    }
+    
+    // Already designated?
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
     }
     

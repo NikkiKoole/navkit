@@ -1515,6 +1515,62 @@ static void DrawAnimals(void) {
     }
 }
 
+static void DrawTrains(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    float margin = size;
+    float minScreenX = -margin;
+    float maxScreenX = GetScreenWidth() + margin;
+    float minScreenY = -margin;
+    float maxScreenY = GetScreenHeight() + margin;
+
+    for (int i = 0; i < MAX_TRAINS; i++) {
+        Train* t = &trains[i];
+        if (!t->active) continue;
+
+        if (t->z > viewZ || t->z < viewZ - MAX_VISIBLE_DEPTH) continue;
+
+        if (t->z < viewZ) {
+            int cellX = (int)(t->x / CELL_SIZE);
+            int cellY = (int)(t->y / CELL_SIZE);
+            if (!IsCellVisibleFromAbove(cellX, cellY, t->z + 1, viewZ)) continue;
+        }
+
+        float sx = roundf(offset.x + t->x * zoom);
+        float sy = roundf(offset.y + t->y * zoom);
+
+        if (sx < minScreenX || sx > maxScreenX || sy < minScreenY || sy > maxScreenY) continue;
+
+        Color trainColor = WHITE;
+        if (t->z < viewZ) {
+            trainColor = MultiplyColor(trainColor, GetDepthTint(t->z, viewZ));
+            trainColor = FloorDarkenTint(trainColor);
+        }
+        {
+            int cellX = (int)(t->x / CELL_SIZE);
+            int cellY = (int)(t->y / CELL_SIZE);
+            trainColor = MultiplyColor(trainColor, GetLightColor(cellX, cellY, t->z, skyColor));
+        }
+
+        // Compute rotation from travel direction (sprite faces west by default)
+        float rotation = 0;
+        int dx = t->cellX - t->prevCellX;
+        int dy = t->cellY - t->prevCellY;
+        if (dx == 1 && dy == 0) rotation = 180;       // East
+        else if (dx == -1 && dy == 0) rotation = 0;   // West
+        else if (dx == 0 && dy == -1) rotation = 90;   // North
+        else if (dx == 0 && dy == 1) rotation = 270;  // South
+
+        float trainSize = size * 0.9f;
+        Rectangle src = SpriteGetRect(SPRITE_train_loc);
+        Rectangle dest = { sx, sy, trainSize, trainSize };
+        Vector2 origin = { trainSize / 2, trainSize / 2 };
+        DrawTexturePro(atlas, src, dest, origin, rotation, trainColor);
+    }
+}
+
 static void DrawJobLines(void) {
     if (!showJobLines) return;
 

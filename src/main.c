@@ -597,6 +597,7 @@ void DrawPath(void);
 void DrawAgents(void);
 void DrawMovers(void);
 void DrawAnimals(void);
+void DrawTrains(void);
 void DrawJobLines(void);
 void DrawItems(void);
 void DrawLightSources(void);
@@ -712,6 +713,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         TickWithDt(TICK_DT);
         ItemsTick(TICK_DT);
         AnimalsTick(TICK_DT);
+        TrainsTick(TICK_DT);
         DesignationsTick(TICK_DT);
         AssignJobs();
         JobsTick();
@@ -1177,6 +1179,7 @@ int main(int argc, char** argv) {
                 PROFILE_BEGIN(AnimalsTick);
                 AnimalsTick(tickDt);
                 PROFILE_END(AnimalsTick);
+                TrainsTick(tickDt);
                 DesignationsTick(tickDt);
                 PROFILE_BEGIN(AssignJobs);
                 AssignJobs();
@@ -1274,6 +1277,7 @@ int main(int argc, char** argv) {
             PROFILE_END(DrawMovers);
         }
         DrawAnimals();
+        DrawTrains();
         DrawJobLines();
         
         // Phase 5: Mist overlay (after all world elements, before UI)

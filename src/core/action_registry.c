@@ -107,6 +107,21 @@ const ActionDef ACTION_REGISTRY[] = {
         .canErase = false
     },
     
+    // DRAW > TRANSPORT (category)
+    {
+        .action = ACTION_DRAW_TRANSPORT,
+        .name = "TRANSPORT",
+        .barDisplayText = "traiN",
+        .barText = "[T]rack  trai[N]    [ESC]Back",
+        .barKey = 'n',
+        .barUnderlinePos = 4,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_NONE,
+        .canDrag = false,
+        .canErase = false
+    },
+    
     // DRAW > WORKSHOP (category)
     {
         .action = ACTION_DRAW_WORKSHOP,
@@ -299,6 +314,37 @@ const ActionDef ACTION_REGISTRY[] = {
         .parentAction = ACTION_DRAW_WORKSHOP,
         .canDrag = true,
         .canErase = false
+    },
+    
+    // ========================================================================
+    // MODE_DRAW > TRANSPORT children
+    // ========================================================================
+    
+    {
+        .action = ACTION_DRAW_TRACK,
+        .name = "TRACK",
+        .barDisplayText = "Track",
+        .barText = "L-drag place  R-drag remove  [ESC]Back",
+        .barKey = 't',
+        .barUnderlinePos = 0,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TRANSPORT,
+        .canDrag = true,
+        .canErase = true
+    },
+    {
+        .action = ACTION_DRAW_TRAIN,
+        .name = "TRAIN",
+        .barDisplayText = "traiN",
+        .barText = "L-click spawn  R-click remove  [ESC]Back",
+        .barKey = 'n',
+        .barUnderlinePos = 4,
+        .requiredMode = MODE_DRAW,
+        .requiredSubMode = SUBMODE_NONE,
+        .parentAction = ACTION_DRAW_TRANSPORT,
+        .canDrag = false,
+        .canErase = true
     },
     
     // ========================================================================
@@ -689,19 +735,7 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = true,
         .canErase = true
     },
-    {
-        .action = ACTION_SANDBOX_TRACK,
-        .name = "TRACK",
-        .barDisplayText = "Track",
-        .barText = "L-drag place  R-drag remove  [ESC]Back",
-        .barKey = 't',
-        .barUnderlinePos = 0,
-        .requiredMode = MODE_SANDBOX,
-        .requiredSubMode = SUBMODE_NONE,
-        .parentAction = ACTION_NONE,
-        .canDrag = true,
-        .canErase = true
-    },
+
 };
 
 const int ACTION_REGISTRY_COUNT = sizeof(ACTION_REGISTRY) / sizeof(ACTION_REGISTRY[0]);

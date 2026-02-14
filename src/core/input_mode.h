@@ -45,6 +45,9 @@ typedef enum {
     ACTION_DRAW_SOIL_SAND,
     ACTION_DRAW_SOIL_PEAT,
     ACTION_DRAW_SOIL_ROCK,
+    ACTION_DRAW_TRANSPORT,  // Transport category - sub-actions for track/train
+    ACTION_DRAW_TRACK,      // Place/remove train tracks
+    ACTION_DRAW_TRAIN,      // Place/remove trains on tracks
     // Work > Dig actions
     ACTION_WORK_MINE,
     ACTION_WORK_CHANNEL,
@@ -81,7 +84,6 @@ typedef enum {
     ACTION_SANDBOX_RAISE,       // Raise terrain (build up)
     ACTION_SANDBOX_LIGHT,       // Place/remove light sources
     ACTION_SANDBOX_BUSH,        // Place/remove bushes
-    ACTION_SANDBOX_TRACK,       // Place/remove train tracks
 } InputAction;
 
 // Current input state

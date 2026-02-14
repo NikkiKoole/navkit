@@ -8,6 +8,7 @@
 #include "world/designations.h"
 #include "entities/mover.h"
 #include "entities/animals.h"
+#include "entities/trains.h"
 #include "entities/items.h"
 #include "entities/jobs.h"
 #include "entities/stockpiles.h"

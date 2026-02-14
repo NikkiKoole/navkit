@@ -41,6 +41,7 @@
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
 #include "entities/animals.c"
+#include "entities/trains.c"
 #include "entities/mover.c"
 #include "entities/jobs.c"
 

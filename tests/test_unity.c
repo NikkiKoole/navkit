@@ -81,6 +81,7 @@ int hillsWaterConnectivitySmallThreshold = 50;
 #include "../src/entities/item_defs.c"
 #include "../src/entities/stockpiles.c"
 #include "../src/entities/animals.c"
+#include "../src/entities/trains.c"
 #include "../src/entities/mover.c"
 #include "../src/entities/workshops.c"
 #include "../src/entities/jobs.c"

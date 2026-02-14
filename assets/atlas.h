@@ -15,6 +15,7 @@
     #define ATLAS_DATA ATLAS8X8_PATH_DATA
     #define ATLAS_DATA_SIZE ATLAS8X8_PATH_DATA_SIZE
     #define AtlasLoadEmbedded SPRITE8X8LoadEmbedded
+    #define SPRITE_train_cart SPRITE8X8_train_cart
     #define SPRITE_track_new SPRITE8X8_track_new
     #define SPRITE_block_wood SPRITE8X8_block_wood
     #define SPRITE_finish_engraved SPRITE8X8_finish_engraved
@@ -77,6 +78,7 @@
     #define SPRITE_tree_trunk_oak SPRITE8X8_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE8X8_ladder_up
     #define SPRITE_medium_shade SPRITE8X8_medium_shade
+    #define SPRITE_train_loc SPRITE8X8_train_loc
     #define SPRITE_full_block SPRITE8X8_full_block
     #define SPRITE_head SPRITE8X8_head
     #define SPRITE_lower_half SPRITE8X8_lower_half
@@ -118,6 +120,7 @@
     #define ATLAS_DATA ATLAS16X16_PATH_DATA
     #define ATLAS_DATA_SIZE ATLAS16X16_PATH_DATA_SIZE
     #define AtlasLoadEmbedded SPRITE16X16LoadEmbedded
+    #define SPRITE_train_cart SPRITE16X16_train_cart
     #define SPRITE_track_new SPRITE16X16_track_new
     #define SPRITE_block_wood SPRITE16X16_block_wood
     #define SPRITE_finish_engraved SPRITE16X16_finish_engraved
@@ -180,6 +183,7 @@
     #define SPRITE_tree_trunk_oak SPRITE16X16_tree_trunk_oak
     #define SPRITE_ladder_up SPRITE16X16_ladder_up
     #define SPRITE_medium_shade SPRITE16X16_medium_shade
+    #define SPRITE_train_loc SPRITE16X16_train_loc
     #define SPRITE_full_block SPRITE16X16_full_block
     #define SPRITE_head SPRITE16X16_head
     #define SPRITE_lower_half SPRITE16X16_lower_half
