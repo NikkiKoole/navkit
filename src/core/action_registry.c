@@ -346,6 +346,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = false,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_HARVEST_BERRY,
+        .name = "HARVEST BERRY",
+        .barDisplayText = "harvest Berry",
+        .barText = "L-click designate  R-click cancel  [ESC]Back",
+        .barKey = 'b',
+        .barUnderlinePos = 8,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_HARVEST,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // ========================================================================
     // MODE_WORK > SUBMODE_DIG actions

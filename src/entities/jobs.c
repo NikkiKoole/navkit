@@ -131,6 +131,9 @@ static int gatherTreeCacheCount = 0;
 static OnTileDesignationEntry cleanCache[MAX_DESIGNATION_CACHE];
 static int cleanCacheCount = 0;
 
+static OnTileDesignationEntry harvestBerryCache[MAX_DESIGNATION_CACHE];
+static int harvestBerryCacheCount = 0;
+
 // Dirty flags - mark caches that need rebuilding
 static bool mineCacheDirty = true;
 static bool channelCacheDirty = true;
@@ -144,6 +147,7 @@ static bool plantSaplingCacheDirty = true;
 static bool gatherGrassCacheDirty = true;
 static bool gatherTreeCacheDirty = true;
 static bool cleanCacheDirty = true;
+static bool harvestBerryCacheDirty = true;
 
 // Forward declarations for designation cache rebuild functions
 static void RebuildChannelDesignationCache(void);
@@ -157,9 +161,12 @@ static void RebuildPlantSaplingDesignationCache(void);
 static void RebuildGatherGrassDesignationCache(void);
 static void RebuildGatherTreeDesignationCache(void);
 static void RebuildCleanDesignationCache(void);
+static void RebuildHarvestBerryDesignationCache(void);
 
-// Forward declaration for WorkGiver_Clean (needed for designationSpecs table)
+// Forward declarations for WorkGivers (needed for designationSpecs table)
 static int WorkGiver_CleanDesignation(int moverIdx);
+static int WorkGiver_HarvestBerry(int moverIdx);
+JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt);
 
 // Designation Job Specification - consolidates designation type with job handling
 typedef struct {
@@ -198,6 +205,8 @@ static DesignationJobSpec designationSpecs[] = {
      gatherTreeCache, &gatherTreeCacheCount, &gatherTreeCacheDirty},
     {DESIGNATION_CLEAN, JOBTYPE_CLEAN, RebuildCleanDesignationCache, WorkGiver_CleanDesignation,
      cleanCache, &cleanCacheCount, &cleanCacheDirty},
+    {DESIGNATION_HARVEST_BERRY, JOBTYPE_HARVEST_BERRY, RebuildHarvestBerryDesignationCache, WorkGiver_HarvestBerry,
+     harvestBerryCache, &harvestBerryCacheCount, &harvestBerryCacheDirty},
 };
 
 // Helper: Find first adjacent walkable tile. Returns true if found.
@@ -331,6 +340,12 @@ static void RebuildCleanDesignationCache(void) {
     if (!cleanCacheDirty) return;
     RebuildOnTileDesignationCache(DESIGNATION_CLEAN, cleanCache, &cleanCacheCount);
     cleanCacheDirty = false;
+}
+
+static void RebuildHarvestBerryDesignationCache(void) {
+    if (!harvestBerryCacheDirty) return;
+    RebuildOnTileDesignationCache(DESIGNATION_HARVEST_BERRY, harvestBerryCache, &harvestBerryCacheCount);
+    harvestBerryCacheDirty = false;
 }
 
 // Invalidate designation caches - call when designations are added/removed/completed
@@ -1593,6 +1608,61 @@ JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
     return JOBRUN_FAIL;
 }
 
+// Harvest berry job driver: walk to tile, work, harvest plant
+JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt) {
+    Mover* mover = (Mover*)moverPtr;
+
+    int tx = job->targetMineX;
+    int ty = job->targetMineY;
+    int tz = job->targetMineZ;
+
+    Designation* d = GetDesignation(tx, ty, tz);
+    if (!d || d->type != DESIGNATION_HARVEST_BERRY) {
+        return JOBRUN_FAIL;
+    }
+
+    if (job->step == STEP_MOVING_TO_WORK) {
+        if (mover->goal.x != tx || mover->goal.y != ty || mover->goal.z != tz) {
+            mover->goal = (Point){tx, ty, tz};
+            mover->needsRepath = true;
+        }
+
+        float goalX = tx * CELL_SIZE + CELL_SIZE * 0.5f;
+        float goalY = ty * CELL_SIZE + CELL_SIZE * 0.5f;
+        float dx = mover->x - goalX;
+        float dy = mover->y - goalY;
+        float distSq = dx*dx + dy*dy;
+
+        bool correctZ = (int)mover->z == tz;
+
+        if (correctZ) TryFinalApproach(mover, goalX, goalY, tx, ty, PICKUP_RADIUS);
+
+        if (IsPathExhausted(mover) && mover->timeWithoutProgress > JOB_STUCK_TIME) {
+            d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+            return JOBRUN_FAIL;
+        }
+
+        if (correctZ && distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            job->step = STEP_WORKING;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+    else if (job->step == STEP_WORKING) {
+        job->progress += dt / HARVEST_BERRY_WORK_TIME;
+        d->progress = job->progress;
+
+        if (job->progress >= 1.0f) {
+            CompleteHarvestBerryDesignation(tx, ty, tz);
+            return JOBRUN_DONE;
+        }
+
+        return JOBRUN_RUNNING;
+    }
+
+    return JOBRUN_FAIL;
+}
+
 // Gather tree job driver: walk to adjacent tile, work, spawn items
 JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     Mover* mover = (Mover*)moverPtr;
@@ -2572,10 +2642,11 @@ static JobDriver jobDrivers[] = {
     [JOBTYPE_DELIVER_TO_WORKSHOP] = RunJob_DeliverToWorkshop,
     [JOBTYPE_IGNITE_WORKSHOP] = RunJob_IgniteWorkshop,
     [JOBTYPE_CLEAN] = RunJob_Clean,
+    [JOBTYPE_HARVEST_BERRY] = RunJob_HarvestBerry,
 };
 
 // Compile-time check: ensure jobDrivers[] covers all job types
-_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_CLEAN,
+_Static_assert(sizeof(jobDrivers) / sizeof(jobDrivers[0]) > JOBTYPE_HARVEST_BERRY,
                "jobDrivers[] must have an entry for every JobType");
 
 // Tick function - runs job drivers for active jobs
@@ -2700,7 +2771,7 @@ void RebuildIdleMoverList(void) {
     memset(moverIsInIdleList, 0, idleMoverCapacity * sizeof(bool));
 
     for (int i = 0; i < moverCount; i++) {
-        if (movers[i].active && movers[i].currentJobId < 0) {
+        if (movers[i].active && movers[i].currentJobId < 0 && movers[i].freetimeState == FREETIME_NONE) {
             // Skip movers stuck in unwalkable cells (e.g. built themselves into a wall)
             int mx = (int)(movers[i].x / CELL_SIZE);
             int my = (int)(movers[i].y / CELL_SIZE);
@@ -4019,6 +4090,75 @@ int WorkGiver_GatherGrass(int moverIdx) {
     d->assignedMover = moverIdx;
 
     // Update mover
+    m->currentJobId = jobId;
+    m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
+    m->needsRepath = true;
+
+    RemoveMoverFromIdleList(moverIdx);
+
+    return jobId;
+}
+
+// WorkGiver_HarvestBerry: Find a harvest berry designation to work on
+int WorkGiver_HarvestBerry(int moverIdx) {
+    Mover* m = &movers[moverIdx];
+
+    if (!m->capabilities.canPlant) return -1;
+
+    int moverZ = (int)m->z;
+
+    int bestDesigX = -1, bestDesigY = -1, bestDesigZ = -1;
+    float bestDistSq = 1e30f;
+
+    for (int i = 0; i < harvestBerryCacheCount; i++) {
+        OnTileDesignationEntry* entry = &harvestBerryCache[i];
+
+        if (entry->z != moverZ) continue;
+
+        Designation* d = GetDesignation(entry->x, entry->y, entry->z);
+        if (!d || d->type != DESIGNATION_HARVEST_BERRY || d->assignedMover != -1) continue;
+        if (d->unreachableCooldown > 0.0f) continue;
+
+        float tileX = entry->x * CELL_SIZE + CELL_SIZE * 0.5f;
+        float tileY = entry->y * CELL_SIZE + CELL_SIZE * 0.5f;
+        float distX = tileX - m->x;
+        float distY = tileY - m->y;
+        float distSq = distX * distX + distY * distY;
+
+        if (distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestDesigX = entry->x;
+            bestDesigY = entry->y;
+            bestDesigZ = entry->z;
+        }
+    }
+
+    if (bestDesigX < 0) return -1;
+
+    Point moverCell = { (int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), (int)m->z };
+    Point desigCell = { bestDesigX, bestDesigY, bestDesigZ };
+    Point tempPath[MAX_PATH];
+    int tempLen = FindPath(moverPathAlgorithm, moverCell, desigCell, tempPath, MAX_PATH);
+    if (tempLen <= 0) {
+        Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+        if (d) d->unreachableCooldown = UNREACHABLE_COOLDOWN;
+        return -1;
+    }
+
+    int jobId = CreateJob(JOBTYPE_HARVEST_BERRY);
+    if (jobId < 0) return -1;
+
+    Job* job = GetJob(jobId);
+    job->assignedMover = moverIdx;
+    job->targetMineX = bestDesigX;
+    job->targetMineY = bestDesigY;
+    job->targetMineZ = bestDesigZ;
+    job->step = STEP_MOVING_TO_WORK;
+    job->progress = 0.0f;
+
+    Designation* d = GetDesignation(bestDesigX, bestDesigY, bestDesigZ);
+    d->assignedMover = moverIdx;
+
     m->currentJobId = jobId;
     m->goal = (Point){ bestDesigX, bestDesigY, bestDesigZ };
     m->needsRepath = true;

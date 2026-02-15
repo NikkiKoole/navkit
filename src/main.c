@@ -583,6 +583,7 @@ void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
 // From render/rendering.c
 void DrawCellGrid(void);
 void DrawGrassOverlay(void);
+void DrawPlantOverlay(void);
 void DrawMud(void);
 void DrawWater(void);
 void DrawFire(void);
@@ -664,6 +665,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     InitTemperature();
     InitSteam();
     InitLighting();
+    InitPlants();
     
     // Handle .gz decompression
     const char* actualFile = loadFile;
@@ -715,6 +717,8 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         AnimalsTick(TICK_DT);
         TrainsTick(TICK_DT);
         DesignationsTick(TICK_DT);
+        NeedsTick();
+        ProcessFreetimeNeeds();
         AssignJobs();
         JobsTick();
         PROFILE_FRAME_END();  // Store profiler data for this tick
@@ -1008,6 +1012,7 @@ int main(int argc, char** argv) {
     InitTemperature();
     InitSteam();
     InitLighting();
+    InitPlants();
     BuildEntrances();
     BuildGraph();
     offset.x = (GetScreenWidth() - gridWidth * CELL_SIZE * zoom) / 2.0f;
@@ -1181,6 +1186,8 @@ int main(int argc, char** argv) {
                 PROFILE_END(AnimalsTick);
                 TrainsTick(tickDt);
                 DesignationsTick(tickDt);
+                NeedsTick();
+                ProcessFreetimeNeeds();
                 PROFILE_BEGIN(AssignJobs);
                 AssignJobs();
                 PROFILE_END(AssignJobs);
@@ -1233,6 +1240,7 @@ int main(int argc, char** argv) {
         PROFILE_BEGIN(DrawCells);
         DrawCellGrid();
         DrawGrassOverlay();
+        DrawPlantOverlay();
         DrawCloudShadows();  // Draw cloud shadows first (under everything)
         DrawMud();
         DrawSnow();          // Draw snow after mud

@@ -25,6 +25,7 @@
 #include "../world/material.h"
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
+#include "../simulation/plants.h"
 #include "save_migrations.h"
 
 #define INSPECT_V21_MAT_COUNT 10
@@ -1290,8 +1291,27 @@ int InspectSaveFile(int argc, char** argv) {
             memcpy(insp_stockpiles[i].allowedMaterials, v34_sp.allowedMaterials,
                    sizeof(v34_sp.allowedMaterials));
         }
+    } else if (version < 48) {
+        // v35-v47: 26 item types, migrate to 28
+        StockpileV47 v47_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v47_sp, sizeof(StockpileV47), 1, f);
+            insp_stockpiles[i].x = v47_sp.x;
+            insp_stockpiles[i].y = v47_sp.y;
+            insp_stockpiles[i].z = v47_sp.z;
+            insp_stockpiles[i].width = v47_sp.width;
+            insp_stockpiles[i].height = v47_sp.height;
+            insp_stockpiles[i].active = v47_sp.active;
+            memcpy(insp_stockpiles[i].allowedTypes, v47_sp.allowedTypes,
+                   sizeof(v47_sp.allowedTypes));
+            insp_stockpiles[i].allowedTypes[ITEM_BERRIES] = false;
+            insp_stockpiles[i].allowedTypes[ITEM_DRIED_BERRIES] = false;
+            memcpy(insp_stockpiles[i].allowedMaterials, v47_sp.allowedMaterials,
+                   sizeof(v47_sp.allowedMaterials));
+            insp_stockpiles[i].maxStackSize = v47_sp.maxStackSize;
+        }
     } else {
-        // v35+ format - direct read
+        // v48+ format - direct read
         fread(insp_stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
     
@@ -1311,7 +1331,43 @@ int InspectSaveFile(int argc, char** argv) {
     // Movers
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
-    if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+    if (version >= 48) {
+        if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+    } else {
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV47 old;
+            fread(&old, sizeof(MoverV47), 1, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            m->hunger = 1.0f;
+            m->freetimeState = FREETIME_NONE;
+            m->needTarget = -1;
+            m->needProgress = 0.0f;
+            m->needSearchCooldown = 0.0f;
+        }
+    }
     
     // Initialize canPlant for old saves (field added later)
     for (int i = 0; i < insp_moverCount; i++) {
@@ -1363,6 +1419,15 @@ int InspectSaveFile(int argc, char** argv) {
         fread(&insp_lightSourceCount, sizeof(insp_lightSourceCount), 1, f);
         if (insp_lightSourceCount > 0) {
             fseek(f, insp_lightSourceCount * (int)sizeof(LightSource), SEEK_CUR);
+        }
+    }
+    
+    // Plants (v48+)
+    int insp_plantCount = 0;
+    if (version >= 48) {
+        fread(&insp_plantCount, sizeof(insp_plantCount), 1, f);
+        if (insp_plantCount > 0) {
+            fseek(f, insp_plantCount * (int)sizeof(Plant), SEEK_CUR);
         }
     }
     

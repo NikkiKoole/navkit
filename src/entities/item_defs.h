@@ -20,6 +20,7 @@ typedef struct {
     uint8_t maxStack;     // Max items per stockpile slot
     uint8_t defaultMaterial; // Default MaterialType when spawned without explicit material
     float weight;         // Weight in kg (affects carry speed)
+    float nutrition;      // Hunger restored when eaten (0=not food)
 } ItemDef;
 
 // Item definitions table (indexed by ItemType)
@@ -40,5 +41,6 @@ extern const ItemDef itemDefs[];
 #define ItemUsesMaterialName(t) (itemDefs[t].flags & IF_MATERIAL_NAME)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
+#define ItemNutrition(t)        (itemDefs[t].nutrition)
 
 #endif

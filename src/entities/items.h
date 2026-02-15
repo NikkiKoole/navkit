@@ -33,6 +33,8 @@ typedef enum {
     ITEM_STRIPPED_LOG,  // Log after bark removal (bonus planks)
     ITEM_SHORT_STRING,  // Twisted plant fiber string
     ITEM_CORDAGE,       // Braided rope from string
+    ITEM_BERRIES,       // Fresh berries (edible)
+    ITEM_DRIED_BERRIES, // Dried berries (edible, longer lasting)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

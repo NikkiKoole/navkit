@@ -263,6 +263,26 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
     snprintf(lines[lineCount], sizeof(lines[0]), "Pos: (%.1f, %.1f, z%.0f) cell (%d,%d)", m->x, m->y, m->z, cellX, cellY);
     lineColors[lineCount++] = WHITE;
 
+    // Hunger
+    {
+        const char* hungerLabel;
+        Color hungerColor;
+        if (m->hunger > 0.5f) { hungerLabel = "Full"; hungerColor = GREEN; }
+        else if (m->hunger > 0.3f) { hungerLabel = "Peckish"; hungerColor = YELLOW; }
+        else if (m->hunger > 0.1f) { hungerLabel = "Hungry"; hungerColor = ORANGE; }
+        else { hungerLabel = "Starving"; hungerColor = RED; }
+        snprintf(lines[lineCount], sizeof(lines[0]), "Hunger: %.0f%% (%s)", m->hunger * 100.0f, hungerLabel);
+        lineColors[lineCount++] = hungerColor;
+
+        if (m->freetimeState == FREETIME_SEEKING_FOOD) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking food...");
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_EATING) {
+            snprintf(lines[lineCount], sizeof(lines[0]), "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
+            lineColors[lineCount++] = GREEN;
+        }
+    }
+
     // Job info
     snprintf(lines[lineCount], sizeof(lines[0]), "Job: %s (step %d)", jobTypeName, jobStep);
     lineColors[lineCount++] = job ? GREEN : GRAY;

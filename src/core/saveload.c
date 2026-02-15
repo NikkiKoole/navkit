@@ -14,6 +14,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
+#include "../simulation/plants.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 #include "save_migrations.h"
@@ -339,6 +340,10 @@ bool SaveWorld(const char* filename) {
     // Light sources (v37+)
     fwrite(&lightSourceCount, sizeof(lightSourceCount), 1, f);
     fwrite(lightSources, sizeof(LightSource), lightSourceCount, f);
+    
+    // Plants (v48+)
+    fwrite(&plantCount, sizeof(plantCount), 1, f);
+    fwrite(plants, sizeof(Plant), plantCount, f);
     
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
@@ -781,8 +786,27 @@ bool LoadWorld(const char* filename) {
             memcpy(stockpiles[i].allowedMaterials, v34_sp.allowedMaterials,
                    sizeof(v34_sp.allowedMaterials));
         }
+    } else if (version < 48) {
+        // v35-v47: 26 item types, migrate to 28
+        StockpileV47 v47_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v47_sp, sizeof(StockpileV47), 1, f);
+            stockpiles[i].x = v47_sp.x;
+            stockpiles[i].y = v47_sp.y;
+            stockpiles[i].z = v47_sp.z;
+            stockpiles[i].width = v47_sp.width;
+            stockpiles[i].height = v47_sp.height;
+            stockpiles[i].active = v47_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v47_sp.allowedTypes,
+                   sizeof(v47_sp.allowedTypes));
+            stockpiles[i].allowedTypes[ITEM_BERRIES] = false;
+            stockpiles[i].allowedTypes[ITEM_DRIED_BERRIES] = false;
+            memcpy(stockpiles[i].allowedMaterials, v47_sp.allowedMaterials,
+                   sizeof(v47_sp.allowedMaterials));
+            stockpiles[i].maxStackSize = v47_sp.maxStackSize;
+        }
     } else {
-        // v35+ format - direct read
+        // v48+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 
@@ -804,7 +828,45 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    fread(movers, sizeof(Mover), moverCount, f);
+    if (version >= 48) {
+        fread(movers, sizeof(Mover), moverCount, f);
+    } else {
+        // V47 movers don't have hunger/needs fields — read with old struct, then copy
+        for (int i = 0; i < moverCount; i++) {
+            MoverV47 old;
+            fread(&old, sizeof(MoverV47), 1, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+            // Init new hunger/needs fields
+            m->hunger = 1.0f;
+            m->freetimeState = FREETIME_NONE;
+            m->needTarget = -1;
+            m->needProgress = 0.0f;
+            m->needSearchCooldown = 0.0f;
+        }
+    }
 
     // Initialize canPlant for old saves (field added later)
     for (int i = 0; i < moverCount; i++) {
@@ -858,6 +920,16 @@ bool LoadWorld(const char* filename) {
         memset(lightSources, 0, sizeof(lightSources));
     }
     InvalidateLighting();
+    
+    // Plants (v48+)
+    if (version >= 48) {
+        fread(&plantCount, sizeof(plantCount), 1, f);
+        if (plantCount > 0) {
+            fread(plants, sizeof(Plant), plantCount, f);
+        }
+    } else {
+        InitPlants();
+    }
     
     // === VIEW SECTION ===
     fread(&marker, sizeof(marker), 1, f);

@@ -31,6 +31,8 @@
 #include "simulation/weather.c"
 #include "simulation/trees.c"
 #include "simulation/lighting.c"
+#include "simulation/plants.c"
+#include "simulation/needs.c"
 
 // Steering library (used by animals.c)
 #include "../experiments/steering/steering.c"

@@ -56,6 +56,7 @@ int hearthRecipeCount = sizeof(hearthRecipes) / sizeof(hearthRecipes[0]);
 // Drying Rack recipes: pure passive (no crafter, only timer)
 Recipe dryingRackRecipes[] = {
     { "Dry Grass", ITEM_GRASS, 1, ITEM_NONE, 0, ITEM_DRIED_GRASS, 1, ITEM_NONE, 0, 0, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Dry Berries", ITEM_BERRIES, 3, ITEM_NONE, 0, ITEM_DRIED_BERRIES, 2, ITEM_NONE, 0, 0, 10.0f, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int dryingRackRecipeCount = sizeof(dryingRackRecipes) / sizeof(dryingRackRecipes[0]);
 

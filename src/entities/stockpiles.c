@@ -40,6 +40,8 @@ const StockpileFilterDef STOCKPILE_FILTERS[] = {
     {ITEM_SAND,         'z', "Sand",          "Z", YELLOW},
     {ITEM_PEAT,         'u', "Peat",          "U", BROWN},
     {ITEM_ASH,          'f', "Ash",           "F", GRAY},
+    {ITEM_BERRIES,      'x', "Berries",       "X", PURPLE},
+    {ITEM_DRIED_BERRIES,'1', "Dried Berries", "1", PURPLE},
 };
 const int STOCKPILE_FILTER_COUNT = sizeof(STOCKPILE_FILTERS) / sizeof(STOCKPILE_FILTERS[0]);
 

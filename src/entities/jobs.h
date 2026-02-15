@@ -31,6 +31,7 @@ typedef enum {
     JOBTYPE_DELIVER_TO_WORKSHOP, // Haul item to passive workshop work tile
     JOBTYPE_IGNITE_WORKSHOP,     // Walk to semi-passive workshop, do short active work, set passiveReady
     JOBTYPE_CLEAN,               // Clean a dirty floor tile
+    JOBTYPE_HARVEST_BERRY,       // Harvest ripe berry bush
     JOBTYPE_COUNT
 } JobType;
 
@@ -56,6 +57,7 @@ static inline const char* JobTypeName(int type) {
         [JOBTYPE_DELIVER_TO_WORKSHOP] = "DELIVER_TO_WS",
         [JOBTYPE_IGNITE_WORKSHOP]     = "IGNITE_WS",
         [JOBTYPE_CLEAN]               = "CLEAN",
+        [JOBTYPE_HARVEST_BERRY]       = "HARVEST_BERRY",
     };
     return (type >= 0 && type < JOBTYPE_COUNT) ? names[type] : "?";
 }

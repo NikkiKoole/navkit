@@ -9,6 +9,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/groundwear.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/plants.h"
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
 #include "../game_state.h"
@@ -1716,6 +1717,76 @@ int CountCleanDesignations(void) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 if (designations[z][y][x].type == DESIGNATION_CLEAN) {
+                    count++;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+// =============================================================================
+// Harvest berry designation functions
+// =============================================================================
+
+bool DesignateHarvestBerry(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        return false;
+    }
+
+    // Must have a ripe berry bush at this cell
+    if (!IsPlantRipe(x, y, z)) {
+        return false;
+    }
+
+    // Must be walkable (mover stands on tile to harvest)
+    if (!IsCellWalkableAt(z, y, x)) {
+        return false;
+    }
+
+    designations[z][y][x].type = DESIGNATION_HARVEST_BERRY;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    activeDesignationCount++;
+    InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
+
+    return true;
+}
+
+bool HasHarvestBerryDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return false;
+    }
+    return designations[z][y][x].type == DESIGNATION_HARVEST_BERRY;
+}
+
+void CompleteHarvestBerryDesignation(int x, int y, int z) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight || z < 0 || z >= gridDepth) {
+        return;
+    }
+
+    // Harvest the plant (resets to bare, spawns ITEM_BERRIES)
+    HarvestPlant(x, y, z);
+
+    if (designations[z][y][x].type != DESIGNATION_NONE) {
+        activeDesignationCount--;
+    }
+    designations[z][y][x].type = DESIGNATION_NONE;
+    designations[z][y][x].assignedMover = -1;
+    designations[z][y][x].progress = 0.0f;
+    InvalidateDesignationCache(DESIGNATION_HARVEST_BERRY);
+}
+
+int CountHarvestBerryDesignations(void) {
+    int count = 0;
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (designations[z][y][x].type == DESIGNATION_HARVEST_BERRY) {
                     count++;
                 }
             }

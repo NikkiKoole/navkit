@@ -10,6 +10,7 @@
 #include "../simulation/groundwear.h"
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
+#include "../simulation/plants.h"
 #include "input_mode.h"
 #include "action_registry.h"
 #include "pie_menu.h"
@@ -787,6 +788,33 @@ static void ExecuteCancelClean(int x1, int y1, int x2, int y2, int z) {
     }
 }
 
+static void ExecuteDesignateHarvestBerry(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (DesignateHarvestBerry(dx, dy, z)) count++;
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Designated %d bush%s for harvesting", count, count > 1 ? "es" : ""), GREEN);
+    }
+}
+
+static void ExecuteCancelHarvestBerry(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            if (HasHarvestBerryDesignation(dx, dy, z)) {
+                CancelDesignation(dx, dy, z);
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        AddMessage(TextFormat("Cancelled %d harvest designation%s", count, count > 1 ? "s" : ""), GREEN);
+    }
+}
+
 static void ExecuteDesignateBuild(int x1, int y1, int x2, int y2, int z) {
     int count = 0;
     for (int dy = y1; dy <= y2; dy++) {
@@ -1226,6 +1254,10 @@ static void ExecutePlaceBush(int x1, int y1, int x2, int y2, int z) {
             // Place bush on walkable ground (air above solid, or has floor)
             if (IsCellWalkableAt(z, dy, dx) && grid[z][dy][dx] == CELL_AIR) {
                 grid[z][dy][dx] = CELL_BUSH;
+                int pi = SpawnPlant(dx, dy, z, PLANT_BERRY_BUSH);
+                if (pi >= 0) {
+                    plants[pi].stage = PLANT_STAGE_RIPE;
+                }
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -1242,6 +1274,11 @@ static void ExecuteRemoveBush(int x1, int y1, int x2, int y2, int z) {
         for (int dx = x1; dx <= x2; dx++) {
             if (grid[z][dy][dx] == CELL_BUSH) {
                 grid[z][dy][dx] = CELL_AIR;
+                Plant* p = GetPlantAt(dx, dy, z);
+                if (p) {
+                    int pidx = (int)(p - plants);
+                    DeletePlant(pidx);
+                }
                 InvalidatePathsThroughCell(dx, dy, z);
                 count++;
             }
@@ -2434,6 +2471,10 @@ void HandleInput(void) {
             case ACTION_WORK_CLEAN:
                 if (leftClick) ExecuteDesignateClean(x1, y1, x2, y2, z);
                 else ExecuteCancelClean(x1, y1, x2, y2, z);
+                break;
+            case ACTION_WORK_HARVEST_BERRY:
+                if (leftClick) ExecuteDesignateHarvestBerry(x1, y1, x2, y2, z);
+                else ExecuteCancelHarvestBerry(x1, y1, x2, y2, z);
                 break;
             // Sandbox actions
             case ACTION_SANDBOX_WATER:

@@ -32,6 +32,18 @@ typedef struct {
     bool canPlant;      // Can plant saplings
 } MoverCapabilities;
 
+// Freetime state machine (for autonomous needs like eating)
+typedef enum {
+    FREETIME_NONE,           // No active need — available for jobs
+    FREETIME_SEEKING_FOOD,   // Walking to food item
+    FREETIME_EATING,         // Consuming food item
+} FreetimeState;
+
+// Hunger constants
+#define HUNGER_DRAIN_RATE (1.0f / (60.0f * 60.0f * 8.0f))  // Full→starving in 8 game-hours (480 ticks/hour)
+#define HUNGER_PENALTY_THRESHOLD 0.2f  // Below this, speed penalty kicks in
+#define HUNGER_PENALTY_MIN 0.5f        // Minimum speed multiplier when starving (50%)
+
 // Mover struct (no Color - that's raylib specific, for rendering only)
 typedef struct Mover {
     float x, y, z;              // z for future multi-level support (always 0 for now)
@@ -50,6 +62,12 @@ typedef struct Mover {
     float timeWithoutProgress;  // Time since significant movement
     float fallTimer;            // Time since last fall (for visual feedback)
     float workAnimPhase;        // Accumulates real time for work sway/bob animation
+    // Hunger / needs
+    float hunger;               // 1.0=full, 0.0=starving
+    int freetimeState;          // FreetimeState (int for save compat)
+    int needTarget;             // Item index for eating (-1=none)
+    float needProgress;         // Eating timer (seconds)
+    float needSearchCooldown;   // Cooldown between food searches (seconds)
     // Cached avoidance vector (recomputed every N frames)
     float avoidX, avoidY;
     // Job system
@@ -104,6 +122,9 @@ void Tick(void);
 void TickWithDt(float dt);  // Tick with custom delta time (for variable timestep)
 void RunTicks(int count);
 void ClearMovers(void);
+
+// Hunger/needs tick (drain hunger, tick cooldowns)
+void NeedsTick(void);
 
 // Utility
 int CountActiveMovers(void);

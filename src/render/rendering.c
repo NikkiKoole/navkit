@@ -9,6 +9,7 @@
 #include "../entities/item_defs.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
+#include "../simulation/plants.h"
 #include "../core/sim_manager.h"
 #include <math.h>
 
@@ -585,6 +586,29 @@ static void DrawGrassOverlay(void) {
                 DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, lightTint);
             }
         }
+}
+
+static void DrawPlantOverlay(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    for (int i = 0; i < plantCount; i++) {
+        Plant* p = &plants[i];
+        if (!p->active) continue;
+        if (p->z != z) continue;
+        if (p->x < minX || p->x >= maxX || p->y < minY || p->y >= maxY) continue;
+        if (p->stage != PLANT_STAGE_RIPE) continue;
+
+        Rectangle dest = {offset.x + p->x * size, offset.y + p->y * size, size, size};
+        Color lightTint = GetLightColor(p->x, p->y, z, skyColor);
+        Color berryTint = MultiplyColor(lightTint, (Color){220, 50, 50, 255});
+        float inset = size * 0.25f;
+        DrawInsetSprite(SPRITE_division, dest, inset, berryTint);
+    }
 }
 
 static void DrawMud(void) {

@@ -19,6 +19,7 @@
 #include "../simulation/trees.h"
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
+#include "../simulation/plants.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -646,6 +647,12 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->lastY = y;
     m->lastZ = z;
     m->timeWithoutProgress = 0.0f;
+    // Hunger / needs
+    m->hunger = 1.0f;
+    m->freetimeState = FREETIME_NONE;
+    m->needTarget = -1;
+    m->needProgress = 0.0f;
+    m->needSearchCooldown = 0.0f;
     // Job system
     m->currentJobId = -1;
     // Capabilities - default to all enabled
@@ -754,6 +761,24 @@ int CountActiveMovers(void) {
         if (movers[i].active) count++;
     }
     return count;
+}
+
+void NeedsTick(void) {
+    float dt = gameDeltaTime;
+    for (int i = 0; i < moverCount; i++) {
+        Mover* m = &movers[i];
+        if (!m->active) continue;
+
+        // Drain hunger
+        m->hunger -= HUNGER_DRAIN_RATE * dt;
+        if (m->hunger < 0.0f) m->hunger = 0.0f;
+
+        // Tick search cooldown
+        if (m->needSearchCooldown > 0.0f) {
+            m->needSearchCooldown -= dt;
+            if (m->needSearchCooldown < 0.0f) m->needSearchCooldown = 0.0f;
+        }
+    }
 }
 
 void PushMoversOutOfCell(int x, int y, int z) {
@@ -1142,6 +1167,13 @@ void UpdateMovers(void) {
                 }
             }
             
+            // Hunger speed penalty (linear 1.0→0.5 as hunger goes 0.2→0.0)
+            if (m->hunger < HUNGER_PENALTY_THRESHOLD) {
+                float t = m->hunger / HUNGER_PENALTY_THRESHOLD;  // 0..1
+                float hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+                terrainSpeedMult *= hungerMult;
+            }
+            
             // Base velocity toward waypoint
             float effectiveSpeed = m->speed * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;
@@ -1467,6 +1499,9 @@ void TickWithDt(float dt) {
     PROFILE_BEGIN(Trees);
     TreesTick(dt);
     PROFILE_END(Trees);
+    
+    // Plant growth (berry bushes, future crops)
+    PlantsTick(dt);
     
     PROFILE_BEGIN(Grid);
     BuildMoverSpatialGrid();

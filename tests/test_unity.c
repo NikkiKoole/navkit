@@ -69,6 +69,8 @@ int hillsWaterConnectivitySmallThreshold = 50;
 #include "../src/simulation/weather.c"
 #include "../src/simulation/trees.c"
 #include "../src/simulation/lighting.c"
+#include "../src/simulation/plants.c"
+#include "../src/simulation/needs.c"
 
 // Core systems
 #include "../src/core/time.c"

@@ -3,9 +3,10 @@
 
 #include <stdbool.h>
 #include "../world/material.h"
+#include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 47
+#define CURRENT_SAVE_VERSION 48
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -51,6 +52,47 @@ typedef struct {
     bool allowedMaterials[MAT_COUNT];
     int maxStackSize;
 } StockpileV32;
+
+// V47 Mover struct (before hunger/needs fields added in v48)
+// Must match the Mover struct layout from save version 47 exactly.
+typedef struct {
+    float x, y, z;
+    Point goal;
+    Point path[MAX_MOVER_PATH];
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    // No hunger/needs fields in V47
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+} MoverV47;
+
+// Version 47 constants (before berries items)
+#define V47_ITEM_TYPE_COUNT 26
+
+// V47 Stockpile struct (before berries addition)
+// v47 had 26 item types, v48 adds ITEM_BERRIES and ITEM_DRIED_BERRIES at end (indices 26-27)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V47_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    int maxStackSize;
+} StockpileV47;
 
 // Version 34 constants (before short string/cordage items)
 #define V34_ITEM_TYPE_COUNT 24

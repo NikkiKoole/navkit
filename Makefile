@@ -80,6 +80,7 @@ test_snow_SRC        := tests/test_snow.c
 test_thunderstorm_SRC := tests/test_thunderstorm.c
 test_lighting_SRC    := tests/test_lighting.c
 test_workshop_linking_SRC := tests/test_workshop_stockpile_linking.c
+test_hunger_SRC      := tests/test_hunger.c
 
 # Precompile test_unity.o once (the expensive part)
 $(TEST_UNITY_OBJ): tests/test_unity.c $(RAYLIB_LIB) | $(BINDIR)
@@ -254,6 +255,12 @@ test_workshop_linking: $(TEST_UNITY_OBJ)
 	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_workshop_linking_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_workshop_linking -q
 
+# Hunger test
+test_hunger: $(TEST_UNITY_OBJ)
+	@echo "Running hunger tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_hunger_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_hunger -q
+
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
@@ -262,7 +269,7 @@ test_soundsystem: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_soundsystem
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_soundsystem
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -401,4 +408,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
