@@ -1,16 +1,16 @@
-// bench_rehaul_mini.c - Minimal rehaul-only benchmark for bisecting regression
+// bench_rehaul_mini.c - Minimal rehaul-only benchmark
 // Build: make bench_rehaul_mini
 // Run: ./build/bin/bench_rehaul_mini
 //
-// Baseline (commit a91ef60, Phase 5, Feb 2026):
+// Baseline (HPA*, Phase 6, Feb 2026):
 //
 // | Scenario                 | Time (ms) |
 // |--------------------------|-----------|
-// | 10 movers steady         | 2.9       |
-// | 10 movers filter change  | 19956     |
+// | 10 movers steady         | 3.0       |
+// | 10 movers filter change  | 12.1      |
 //
-// Pre-containers (95a869b) was already ~35s — no regression from containers.
-// Phase 3 freeSlotCount early exit improved it to ~21s.
+// Previous A* numbers were ~20s for filter change — that was the benchmark
+// using A* instead of HPA*. The game default is HPA* which is ~1650x faster.
 
 #include "../vendor/raylib.h"
 #include "../src/world/grid.h"
@@ -37,7 +37,9 @@ int main(void) {
     ClearItems();
     ClearStockpiles();
     InitItemSpatialGrid(100, 100, 4);
-    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    BuildEntrances();
+    BuildGraph();
+    moverPathAlgorithm = PATH_ALGO_HPA;
 
     // Create 3 stockpiles
     int spRed = CreateStockpile(5, 5, 0, 10, 10);
@@ -136,6 +138,7 @@ int main(void) {
     SetStockpileFilter(spRed, ITEM_RED, false);
 
     // Benchmark: After filter change (10 rounds)
+    numIterations = 10;
     double rehaulStart = GetBenchTime();
     for (int iter = 0; iter < numIterations; iter++) {
         for (int m = 0; m < 10; m++) {
