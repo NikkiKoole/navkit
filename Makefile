@@ -282,14 +282,20 @@ test-quick: test_pathing test_steering test_jobs test_water test_groundwear test
 
 # Benchmark targets - link against precompiled test_unity.o
 bench_jobs_SRC := tests/bench_jobs.c
+bench_items_SRC := tests/bench_items.c
 
 # Job system benchmark
 bench_jobs: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_jobs_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_jobs
 
+# Item system benchmark (pre-containers baseline)
+bench_items: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_items_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/bench_items
+
 # Run all benchmarks
-bench: bench_jobs
+bench: bench_jobs bench_items
 
 # Aliases for convenience (make path, make steer, make crowd, make soundsystem-demo)
 path: $(BINDIR) $(BINDIR)/path
@@ -408,4 +414,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows

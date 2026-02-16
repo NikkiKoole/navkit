@@ -321,7 +321,7 @@ int SplitStack(int itemIdx, int count);
 bool IsContainerFull(int containerIdx);             // contentCount >= maxContents
 int GetContainerContentCount(int containerIdx);     // returns contentCount
 bool ContainerMightHaveType(int containerIdx, ItemType type);
-    // returns (contentTypeMask & (1 << type)) != 0  — bloom filter, fast reject
+    // returns (contentTypeMask & (1 << (type % 32))) != 0  — bloom filter, fast reject
 
 // === Recursive operations ===
 void MoveContainer(int containerIdx, float x, float y, float z);
@@ -757,7 +757,7 @@ Chest (3/20 stacks)
 5. Add pot recipe to kiln: CLAY × 2 + fuel → CLAY_POT × 1
 6. Chest recipe at sawmill: PLANKS × 4 → CHEST × 1 (moves to carpenter's bench in F2)
 7. Add stockpile filter entries for all three container types
-8. Update save migration: V_PREV_ITEM_TYPE_COUNT = 26, new count = 29
+8. Update save migration: V_PREV_ITEM_TYPE_COUNT = 28, new count = 31
 9. Update unity.c and test_unity.c if new .c files added
 
 **Tests (~15 assertions):**
@@ -1058,7 +1058,7 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 
 - **Phase 0 (v48→49):** Add `stackCount` to Item. Save migration consolidates stockpile stacks (delete extra Items, set representative's stackCount = old slotCounts).
 - **Phase 1 (v49→50):** Add `containedIn`, `contentCount`, `contentTypeMask` to Item. Add `ITEM_IN_CONTAINER` state. Old items get containedIn=-1, contentCount=0, contentTypeMask=0.
-- **Phase 2 (v50→51):** Add ITEM_BASKET, ITEM_CHEST, ITEM_CLAY_POT (item count 26 → 29). Legacy struct with V50_ITEM_TYPE_COUNT=26.
+- **Phase 2 (v50→51):** Add ITEM_BASKET, ITEM_CHEST, ITEM_CLAY_POT (item count 28 → 31). Legacy struct with V50_ITEM_TYPE_COUNT=28.
 - **Phase 3 (v51→52):** Add `maxContainers` to Stockpile (default 0).
 - Both saveload.c AND inspect.c need parallel migration code for each bump
 - All version constants go in save_migrations.h
