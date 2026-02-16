@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 48
+#define CURRENT_SAVE_VERSION 50
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -93,6 +93,31 @@ typedef struct {
     bool allowedMaterials[MAT_COUNT];
     int maxStackSize;
 } StockpileV47;
+
+// V48 Item struct (before stackCount field added in v49)
+typedef struct {
+    float x, y, z;
+    ItemType type;
+    ItemState state;
+    uint8_t material;
+    bool natural;
+    bool active;
+    int reservedBy;
+    float unreachableCooldown;
+} ItemV48;
+
+// V49 Item struct (before containedIn/contentCount/contentTypeMask fields added in v50)
+typedef struct {
+    float x, y, z;
+    ItemType type;
+    ItemState state;
+    uint8_t material;
+    bool natural;
+    bool active;
+    int reservedBy;
+    float unreachableCooldown;
+    int stackCount;
+} ItemV49;
 
 // Version 34 constants (before short string/cordage items)
 #define V34_ITEM_TYPE_COUNT 24

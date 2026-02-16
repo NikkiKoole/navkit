@@ -19,6 +19,9 @@
 #include <string.h>
 #include <math.h>
 
+// Helper: item was successfully stored (either merged into a stack and deleted, or placed as-is)
+#define ItemWasStored(idx) (!items[idx].active || items[idx].state == ITEM_IN_STOCKPILE)
+
 // From core/saveload.c
 void RebuildPostLoadState(void);
 bool SaveWorld(const char* filename);
@@ -845,17 +848,20 @@ describe(stockpile_capacity) {
             JobsTick();
         }
         
-        // Exactly 1 item should be stored
+        // Exactly 1 item should be stored (merged into slot, so deleted)
         int storedCount = 0;
-        if (items[item1].state == ITEM_IN_STOCKPILE) storedCount++;
-        if (items[item2].state == ITEM_IN_STOCKPILE) storedCount++;
+        if (ItemWasStored(item1)) storedCount++;
+        if (ItemWasStored(item2)) storedCount++;
         expect(storedCount == 1);
         
         // Other item should still be on ground
         int groundCount = 0;
-        if (items[item1].state == ITEM_ON_GROUND) groundCount++;
-        if (items[item2].state == ITEM_ON_GROUND) groundCount++;
+        if (items[item1].active && items[item1].state == ITEM_ON_GROUND) groundCount++;
+        if (items[item2].active && items[item2].state == ITEM_ON_GROUND) groundCount++;
         expect(groundCount == 1);
+        
+        // Slot should now be full (10/10)
+        expect(GetStockpileSlotCount(spIdx, 2, 2) == 10);
         
         // Mover should be idle (not stuck carrying)
         expect(MoverIsIdle(m));
@@ -908,21 +914,26 @@ describe(multi_agent_hauling) {
             AssignJobs();
             JobsTick();
             
-            // Check if all stored
+            // Check if all stored (merged items are deleted, so check both)
             int stored = 0;
             for (int j = 0; j < 3; j++) {
-                if (items[itemIdxs[j]].state == ITEM_IN_STOCKPILE) stored++;
+                if (ItemWasStored(itemIdxs[j])) stored++;
             }
             if (stored == 3) break;
         }
         
-        // All 3 items should be stored
+        // All 3 items should be stored (either merged into stack or as slot representative)
         for (int i = 0; i < 3; i++) {
-            expect(items[itemIdxs[i]].state == ITEM_IN_STOCKPILE);
+            expect(ItemWasStored(itemIdxs[i]));
         }
         
-        // With stacking enabled, items CAN be at the same position (stacked)
-        // Just verify all items are stored (checked above)
+        // Total slot counts across stockpile should equal 3
+        int totalStored = 0;
+        Stockpile* sp = &stockpiles[spIdx];
+        for (int s = 0; s < sp->width * sp->height; s++) {
+            totalStored += sp->slotCounts[s];
+        }
+        expect(totalStored == 3);
     }
 }
 
@@ -1389,9 +1400,10 @@ describe(stockpile_expansion) {
         int item1 = SpawnItem(7 * CELL_SIZE + CELL_SIZE * 0.5f, 7 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         int item2 = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 7 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
-        // Stockpile with only 1 tile initially
+        // Stockpile with only 1 tile, max stack 1 (only 1 item fits)
         int spIdx = CreateStockpile(2, 2, 0, 1, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
+        SetStockpileMaxStackSize(spIdx, 1);
         
         // Run until first item stored and mover idle
         for (int i = 0; i < 1000; i++) {
@@ -1399,15 +1411,15 @@ describe(stockpile_expansion) {
             AssignJobs();
             JobsTick();
             
-            if (items[item1].state == ITEM_IN_STOCKPILE || items[item2].state == ITEM_IN_STOCKPILE) {
+            if (ItemWasStored(item1) || ItemWasStored(item2)) {
                 if (MoverIsIdle(m)) break;
             }
         }
         
         // One item should be stored
         int storedCount = 0;
-        if (items[item1].state == ITEM_IN_STOCKPILE) storedCount++;
-        if (items[item2].state == ITEM_IN_STOCKPILE) storedCount++;
+        if (ItemWasStored(item1)) storedCount++;
+        if (ItemWasStored(item2)) storedCount++;
         expect(storedCount == 1);
         expect(MoverIsIdle(m));
         
@@ -1422,14 +1434,14 @@ describe(stockpile_expansion) {
             JobsTick();
             
             storedCount = 0;
-            if (items[item1].state == ITEM_IN_STOCKPILE) storedCount++;
-            if (items[item2].state == ITEM_IN_STOCKPILE) storedCount++;
+            if (ItemWasStored(item1)) storedCount++;
+            if (ItemWasStored(item2)) storedCount++;
             if (storedCount == 2) break;
         }
         
         // Both items should now be stored
-        expect(items[item1].state == ITEM_IN_STOCKPILE);
-        expect(items[item2].state == ITEM_IN_STOCKPILE);
+        expect(ItemWasStored(item1));
+        expect(ItemWasStored(item2));
     }
 }
 
@@ -1502,15 +1514,15 @@ describe(stress_test) {
             // Check if all stored
             int stored = 0;
             for (int j = 0; j < 9; j++) {
-                if (items[itemIdxs[j]].state == ITEM_IN_STOCKPILE) stored++;
+                if (ItemWasStored(itemIdxs[j])) stored++;
             }
             if (stored == 9) break;
         }
         
-        // All items should be stored
+        // All items should be stored (merged items are deleted)
         int stored = 0;
         for (int i = 0; i < 9; i++) {
-            if (items[itemIdxs[i]].state == ITEM_IN_STOCKPILE) stored++;
+            if (ItemWasStored(itemIdxs[i])) stored++;
         }
         expect(stored == 9);
         
@@ -1519,9 +1531,6 @@ describe(stress_test) {
             expect(MoverIsIdle(&movers[i]));
             expect(MoverGetCarryingItem(&movers[i]) == -1);
         }
-        
-        // With stacking enabled, items CAN be at the same position (stacked)
-        // Just verify all items are stored and movers are idle (checked above)
     }
 }
 
@@ -1756,12 +1765,12 @@ describe(gather_zones) {
             AssignJobs();
             JobsTick();
             
-            if (items[item1].state == ITEM_IN_STOCKPILE && items[item2].state == ITEM_IN_STOCKPILE) break;
+            if (ItemWasStored(item1) && ItemWasStored(item2)) break;
         }
         
         // Both items should be hauled (no gather zone restriction)
-        expect(items[item1].state == ITEM_IN_STOCKPILE);
-        expect(items[item2].state == ITEM_IN_STOCKPILE);
+        expect(ItemWasStored(item1));
+        expect(ItemWasStored(item2));
     }
 }
 
@@ -1796,20 +1805,17 @@ describe(stacking_merging) {
         SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 3);  // Pre-fill with 3 items
         
         // New red item to haul
-        int itemIdx = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+        SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
-        // Run simulation
+        // Run simulation until slot count increases
         for (int i = 0; i < 1000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (items[itemIdx].state == ITEM_IN_STOCKPILE) break;
+            if (GetStockpileSlotCount(spIdx, 5, 5) == 4) break;
         }
         
-        // Item should be merged into existing stack
-        expect(items[itemIdx].state == ITEM_IN_STOCKPILE);
-        
-        // Stack should now have 4 items
+        // Stack should now have 4 items (3 pre-filled + 1 hauled and merged)
         int stackCount = GetStockpileSlotCount(spIdx, 5, 5);
         expect(stackCount == 4);
     }
@@ -1950,31 +1956,18 @@ describe(stacking_merging) {
         SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 1);
         
         // Spawn 5 red items near each other
-        int itemIndices[5];
         for (int i = 0; i < 5; i++) {
-            itemIndices[i] = SpawnItem((8) * CELL_SIZE + CELL_SIZE * 0.5f, (2 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
+            SpawnItem((8) * CELL_SIZE + CELL_SIZE * 0.5f, (2 + i) * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         }
         
-        // Run simulation until all items are in stockpile
+        // Run simulation until all items are hauled (slot counts reach 6 total)
         for (int i = 0; i < 2000; i++) {
             Tick();
             AssignJobs();
             JobsTick();
             
-            // Check if all items are in stockpile
-            bool allDone = true;
-            for (int j = 0; j < 5; j++) {
-                if (items[itemIndices[j]].state != ITEM_IN_STOCKPILE) {
-                    allDone = false;
-                    break;
-                }
-            }
-            if (allDone) break;
-        }
-        
-        // All items should be in the stockpile
-        for (int i = 0; i < 5; i++) {
-            expect(items[itemIndices[i]].state == ITEM_IN_STOCKPILE);
+            int total = GetStockpileSlotCount(spIdx, 5, 5) + GetStockpileSlotCount(spIdx, 6, 5);
+            if (total == 6) break;
         }
         
         // With 2 slots and 6 total items (1 pre-filled + 5 hauled),
@@ -2015,22 +2008,10 @@ describe(stacking_merging) {
         int spIdx = CreateStockpile(5, 5, 0, 3, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
-        // Spawn actual items and place them in stockpile slots
-        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        float slot1X = 6 * CELL_SIZE + CELL_SIZE * 0.5f;
-        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        
-        // 1 item in slot 0
-        int idx0 = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
-        items[idx0].state = ITEM_IN_STOCKPILE;
-        PlaceItemInStockpile(spIdx, 5, 5, idx0);
-        
-        // 5 items in slot 1
-        for (int i = 0; i < 5; i++) {
-            int idx = SpawnItem(slot1X, slotY, 0.0f, ITEM_RED);
-            items[idx].state = ITEM_IN_STOCKPILE;
-            PlaceItemInStockpile(spIdx, 6, 5, idx);
-        }
+        // Set up fragmented stacks using SetStockpileSlotCount
+        // Slot 0: 1 item, Slot 1: 5 items
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 1);
+        SetStockpileSlotCount(spIdx, 1, 0, ITEM_RED, 5);
         
         // Run simulation — idle mover should consolidate slot 0 into slot 1
         for (int i = 0; i < 2000; i++) {
@@ -2074,23 +2055,9 @@ describe(stacking_merging) {
         int spIdx = CreateStockpile(5, 5, 0, 2, 1);
         SetStockpileFilter(spIdx, ITEM_RED, true);
         
-        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        float slot1X = 6 * CELL_SIZE + CELL_SIZE * 0.5f;
-        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        
-        // 4 items in slot 0
-        for (int i = 0; i < 4; i++) {
-            int idx = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
-            items[idx].state = ITEM_IN_STOCKPILE;
-            PlaceItemInStockpile(spIdx, 5, 5, idx);
-        }
-        
-        // 4 items in slot 1
-        for (int i = 0; i < 4; i++) {
-            int idx = SpawnItem(slot1X, slotY, 0.0f, ITEM_RED);
-            items[idx].state = ITEM_IN_STOCKPILE;
-            PlaceItemInStockpile(spIdx, 6, 5, idx);
-        }
+        // Set up equal stacks: Slot 0: 4 items, Slot 1: 4 items
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 4);
+        SetStockpileSlotCount(spIdx, 1, 0, ITEM_RED, 4);
         
         // Run simulation — mover should NOT move items between equal stacks
         int consolidationJobCount = 0;
@@ -2549,20 +2516,13 @@ describe(stockpile_max_stack_size) {
         SetStockpileFilter(sp, ITEM_BLUE, false);
         SetStockpileMaxStackSize(sp, 7);
         
-        // Pre-fill all 9 slots with 1-2 items each (partially filled)
+        // Pre-fill all 9 slots with 2 units each (partially filled)
         for (int ly = 0; ly < 3; ly++) {
             for (int lx = 0; lx < 3; lx++) {
                 SetStockpileSlotCount(sp, lx, ly, ITEM_RED, 2);
-                // Spawn actual items in the slots
-                float slotX = (3 + lx + 0.5f) * CELL_SIZE;
-                float slotY = (3 + ly + 0.5f) * CELL_SIZE;
-                for (int n = 0; n < 2; n++) {
-                    int id = SpawnItem(slotX, slotY, 0.0f, ITEM_RED);
-                    items[id].state = ITEM_IN_STOCKPILE;
-                }
             }
         }
-        // Total: 18 items in 9 slots, capacity is 63
+        // Total: 18 units in 9 slots, capacity is 63
         
         // Spawn one more RED item on the ground
         int newItem = SpawnItem(1.5f * CELL_SIZE, 1.5f * CELL_SIZE, 0.0f, ITEM_RED);
@@ -2574,11 +2534,11 @@ describe(stockpile_max_stack_size) {
             AssignJobs();
             JobsTick();
             
-            if (items[newItem].state == ITEM_IN_STOCKPILE) break;
+            if (ItemWasStored(newItem)) break;
         }
         
-        // Item should be in stockpile (stacked with existing items)
-        expect(items[newItem].state == ITEM_IN_STOCKPILE);
+        // Item should be in stockpile (merged into existing stack)
+        expect(ItemWasStored(newItem));
         expect(MoverIsIdle(m));
     }
     
@@ -2645,24 +2605,18 @@ describe(stockpile_max_stack_size) {
         InitMover(m, CELL_SIZE * 0.5f, CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
         moverCount = 1;
         
-        // Stockpile A with 5 items, will become overfull
+        // Stockpile A with 1 item (stackCount=5), will become overfull
         int spA = CreateStockpile(2, 2, 0, 1, 1);
         SetStockpileSlotCount(spA, 0, 0, ITEM_RED, 5);
-        float slotAx = (2 + 0.5f) * CELL_SIZE;
-        float slotAy = (2 + 0.5f) * CELL_SIZE;
-        int itemIds[5];
-        for (int i = 0; i < 5; i++) {
-            itemIds[i] = SpawnItem(slotAx, slotAy, 0.0f, ITEM_RED);
-            items[itemIds[i]].state = ITEM_IN_STOCKPILE;
-        }
         
         // Stockpile B - empty, destination for excess
-        (void)CreateStockpile(6, 2, 0, 1, 1);
+        int spB = CreateStockpile(6, 2, 0, 1, 1);
+        SetStockpileFilter(spB, ITEM_RED, true);
         
         // Reduce A's max stack to 2 - now overfull by 3
         SetStockpileMaxStackSize(spA, 2);
         
-        // Run simulation - movers should re-haul 3 excess items to B
+        // Run simulation - mover should split excess and re-haul to B
         for (int i = 0; i < 2000; i++) {
             Tick();
             ItemsTick(TICK_DT);
@@ -2670,14 +2624,9 @@ describe(stockpile_max_stack_size) {
             JobsTick();
         }
         
-        // Count items in each stockpile
-        int inA = 0, inB = 0;
-        for (int i = 0; i < 5; i++) {
-            int slotX = (int)(GetItemX(itemIds[i]) / CELL_SIZE);
-            if (slotX == 2) inA++;
-            if (slotX == 6) inB++;
-        }
-        
+        // A should have 2, B should have 3
+        int inA = GetStockpileSlotCount(spA, 2, 2);
+        int inB = GetStockpileSlotCount(spB, 6, 2);
         expect(inA == 2);  // only max stack size remains
         expect(inB == 3);  // excess moved here
         expect(GetStockpileSlotCount(spA, 2, 2) == 2);
@@ -2742,28 +2691,22 @@ describe(stockpile_max_stack_size) {
         int sp = CreateStockpile(3, 2, 0, 1, 1);
         SetStockpileMaxStackSize(sp, 3);
         
-        // Pre-fill slot with 3 items (at max)
+        // Pre-fill slot with 3 items (at max) — one item with stackCount=3
         SetStockpileSlotCount(sp, 0, 0, ITEM_RED, 3);
-        
-        // Spawn items in stockpile
-        float slotX = (3 + 0.5f) * CELL_SIZE;
-        float slotY = (2 + 0.5f) * CELL_SIZE;
-        for (int i = 0; i < 3; i++) {
-            int id = SpawnItem(slotX, slotY, 0.0f, ITEM_RED);
-            items[id].state = ITEM_IN_STOCKPILE;
-        }
         
         // Increase max stack size to 10 - no items should be ejected
         SetStockpileMaxStackSize(sp, 10);
         
-        // All items should still be in stockpile
-        int inStockpile = 0;
-        for (int i = 0; i < MAX_ITEMS; i++) {
-            if (IsItemActive(i) && items[i].state == ITEM_IN_STOCKPILE) inStockpile++;
-        }
-        
-        expect(inStockpile == 3);
+        // Slot should still have count 3
         expect(GetStockpileSlotCount(sp, 3, 2) == 3);
+        
+        // The representative item should still be in stockpile
+        Stockpile* spPtr = &stockpiles[sp];
+        int repIdx = spPtr->slots[0];
+        expect(repIdx >= 0);
+        expect(items[repIdx].active);
+        expect(items[repIdx].state == ITEM_IN_STOCKPILE);
+        expect(items[repIdx].stackCount == 3);
     }
 }
 
@@ -6957,19 +6900,13 @@ describe(stockpile_strong_tests) {
         SetStockpileFilter(spIdx, ITEM_RED, true);
         SetStockpileMaxStackSize(spIdx, 5);  // Current max is 5
         
-        // Manually create overfull slot (simulating legacy data)
-        float slot0X = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        float slotY = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
-        for (int i = 0; i < 8; i++) {
-            int idx = SpawnItem(slot0X, slotY, 0.0f, ITEM_RED);
-            items[idx].state = ITEM_IN_STOCKPILE;
-            PlaceItemInStockpile(spIdx, 5, 5, idx);
-        }
+        // Manually create overfull slot (simulating legacy data) — one item with stackCount=8
+        SetStockpileSlotCount(spIdx, 0, 0, ITEM_RED, 8);
         
         // Verify slot is overfull
         expect(IsSlotOverfull(spIdx, 5, 5));
         
-        // Spawn new red item
+        // Spawn new red item on the ground
         int newItem = SpawnItem(8 * CELL_SIZE + CELL_SIZE * 0.5f, 8 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_RED);
         
         // Run simulation
@@ -6977,16 +6914,13 @@ describe(stockpile_strong_tests) {
             Tick();
             AssignJobs();
             JobsTick();
-            if (items[newItem].state == ITEM_IN_STOCKPILE) break;
+            // Check if the new item got placed in stockpile (may have been merged)
+            if (!items[newItem].active || items[newItem].state == ITEM_IN_STOCKPILE) break;
         }
         
-        expect(items[newItem].state == ITEM_IN_STOCKPILE);
-        
-        // New item should go to slot 1 (6,5), NOT the overfull slot 0 (5,5)
-        int itemTileX = (int)(items[newItem].x / CELL_SIZE);
-        int itemTileY = (int)(items[newItem].y / CELL_SIZE);
-        expect(itemTileX == 6);  // Second slot
-        expect(itemTileY == 5);
+        // New item should have been placed in slot 1 (6,5) — either merged or as new slot item
+        int slot1Count = GetStockpileSlotCount(spIdx, 6, 5);
+        expect(slot1Count >= 1);  // Something went into slot 1
         
         // Overfull slot should still be overfull (not accepting more)
         int slot0Count = GetStockpileSlotCount(spIdx, 5, 5);
@@ -7284,41 +7218,31 @@ describe(stockpile_strong_tests) {
             AssignJobs();
             JobsTick();
 
-            bool allDone = (items[oak1].state == ITEM_IN_STOCKPILE &&
-                           items[oak2].state == ITEM_IN_STOCKPILE &&
-                           items[pine1].state == ITEM_IN_STOCKPILE &&
-                           items[pine2].state == ITEM_IN_STOCKPILE);
+            bool allDone = (ItemWasStored(oak1) && ItemWasStored(oak2) &&
+                           ItemWasStored(pine1) && ItemWasStored(pine2));
             if (allDone) break;
         }
 
-        expect(items[oak1].state == ITEM_IN_STOCKPILE);
-        expect(items[oak2].state == ITEM_IN_STOCKPILE);
-        expect(items[pine1].state == ITEM_IN_STOCKPILE);
-        expect(items[pine2].state == ITEM_IN_STOCKPILE);
+        expect(ItemWasStored(oak1));
+        expect(ItemWasStored(oak2));
+        expect(ItemWasStored(pine1));
+        expect(ItemWasStored(pine2));
 
         // Check every slot: each slot must contain only ONE material
+        // With stacking, oak stacks together and pine stacks together
         Stockpile* sp = &stockpiles[spIdx];
+        int oakSlots = 0, pineSlots = 0;
         for (int ly = 0; ly < sp->height; ly++) {
             for (int lx = 0; lx < sp->width; lx++) {
                 int idx = ly * sp->width + lx;
-                if (sp->slotCounts[idx] <= 1) continue;
-                // If multiple items in a slot, all must share the same material
-                // Check by counting materials of items at this tile
-                int worldX = sp->x + lx;
-                int worldY = sp->y + ly;
-                uint8_t slotMat = sp->slotMaterials[idx];
-                int itemsInSlot[4] = {oak1, oak2, pine1, pine2};
-                for (int j = 0; j < 4; j++) {
-                    int tileX = (int)(items[itemsInSlot[j]].x / CELL_SIZE);
-                    int tileY = (int)(items[itemsInSlot[j]].y / CELL_SIZE);
-                    if (tileX == worldX && tileY == worldY) {
-                        uint8_t itemMat = items[itemsInSlot[j]].material;
-                        if (itemMat == MAT_NONE) itemMat = MAT_OAK; // default for ITEM_LOG
-                        expect(itemMat == slotMat);
-                    }
-                }
+                if (sp->slotCounts[idx] == 0) continue;
+                if (sp->slotMaterials[idx] == MAT_OAK) oakSlots++;
+                else if (sp->slotMaterials[idx] == MAT_PINE) pineSlots++;
             }
         }
+        // Oak and pine should be in separate slots
+        expect(oakSlots >= 1);
+        expect(pineSlots >= 1);
     }
 
     it("material filter should block items of disallowed materials") {
@@ -7543,30 +7467,32 @@ describe(stockpile_strong_tests) {
             AssignJobs();
             JobsTick();
 
-            bool allDone = (items[oak1].state == ITEM_IN_STOCKPILE &&
-                           items[oak2].state == ITEM_IN_STOCKPILE &&
-                           items[pine1].state == ITEM_IN_STOCKPILE &&
-                           items[pine2].state == ITEM_IN_STOCKPILE);
+            bool allDone = (ItemWasStored(oak1) && ItemWasStored(oak2) &&
+                           ItemWasStored(pine1) && ItemWasStored(pine2));
             if (allDone) break;
         }
 
-        // All items should be in stockpiles
-        expect(items[oak1].state == ITEM_IN_STOCKPILE);
-        expect(items[oak2].state == ITEM_IN_STOCKPILE);
-        expect(items[pine1].state == ITEM_IN_STOCKPILE);
-        expect(items[pine2].state == ITEM_IN_STOCKPILE);
+        // All items should be stored (merged or as slot representative)
+        expect(ItemWasStored(oak1));
+        expect(ItemWasStored(oak2));
+        expect(ItemWasStored(pine1));
+        expect(ItemWasStored(pine2));
 
-        // Oak logs should be in the oak stockpile
-        int sp1 = -1, sp2 = -1, sp3 = -1, sp4 = -1;
-        IsPositionInStockpile(items[oak1].x, items[oak1].y, (int)items[oak1].z, &sp1);
-        IsPositionInStockpile(items[oak2].x, items[oak2].y, (int)items[oak2].z, &sp2);
-        IsPositionInStockpile(items[pine1].x, items[pine1].y, (int)items[pine1].z, &sp3);
-        IsPositionInStockpile(items[pine2].x, items[pine2].y, (int)items[pine2].z, &sp4);
+        // Oak stockpile should have 2 oak units total
+        int oakTotal = 0;
+        Stockpile* spOakPtr = &stockpiles[spOak];
+        for (int s = 0; s < spOakPtr->width * spOakPtr->height; s++) {
+            oakTotal += spOakPtr->slotCounts[s];
+        }
+        expect(oakTotal == 2);
 
-        expect(sp1 == spOak);
-        expect(sp2 == spOak);
-        expect(sp3 == spPine);
-        expect(sp4 == spPine);
+        // Pine stockpile should have 2 pine units total
+        int pineTotal = 0;
+        Stockpile* spPinePtr = &stockpiles[spPine];
+        for (int s = 0; s < spPinePtr->width * spPinePtr->height; s++) {
+            pineTotal += spPinePtr->slotCounts[s];
+        }
+        expect(pineTotal == 2);
     }
 
     it("distance matters: closest available stockpile should win") {
@@ -8365,9 +8291,9 @@ describe(job_lifecycle) {
 
         expect(craftDone == true);
 
-        // Sawmill "Saw Planks": 1 log -> 4 planks
-        // Net change = -1 (consumed) + 4 (spawned) = +3
-        expect(itemCount == countBefore + 3);
+        // Sawmill "Saw Planks": 1 log -> 1 plank item (stackCount=4)
+        // Net change = -1 (consumed) + 1 (spawned) = 0
+        expect(itemCount == countBefore);
     }
 }
 
@@ -11757,11 +11683,12 @@ describe(semi_passive_workshop) {
         }
         expect(completed == true);
 
-        // Count charcoal (2 burns * 2 output each = 4 charcoal)
+        // Count charcoal units (2 burns * 2 output each = 4 charcoal total)
+        // Each burn spawns 1 item with stackCount=2, so sum stackCounts
         charcoalCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].type == ITEM_CHARCOAL) {
-                charcoalCount++;
+                charcoalCount += items[i].stackCount;
             }
         }
         expect(charcoalCount == 4);

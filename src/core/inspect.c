@@ -1102,8 +1102,8 @@ int InspectSaveFile(int argc, char** argv) {
         fclose(f);
         return 1;
     }
-    if (version != CURRENT_SAVE_VERSION) {
-        printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
+    if (version < 48 || version > CURRENT_SAVE_VERSION) {
+        printf("ERROR: Save version mismatch (file: v%d, supported: v48-v%d)\n", version, CURRENT_SAVE_VERSION);
         fclose(f);
         return 1;
     }
@@ -1207,7 +1207,45 @@ int InspectSaveFile(int argc, char** argv) {
     fread(&insp_itemHWM, 4, 1, f);
     insp_items = malloc(insp_itemHWM > 0 ? insp_itemHWM * sizeof(Item) : sizeof(Item));
     if (insp_itemHWM > 0) {
-        fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        if (version >= 50) {
+            fread(insp_items, sizeof(Item), insp_itemHWM, f);
+        } else if (version == 49) {
+            // V49 items don't have containedIn/contentCount/contentTypeMask
+            for (int i = 0; i < insp_itemHWM; i++) {
+                ItemV49 old;
+                fread(&old, sizeof(ItemV49), 1, f);
+                insp_items[i].x = old.x; insp_items[i].y = old.y; insp_items[i].z = old.z;
+                insp_items[i].type = old.type;
+                insp_items[i].state = old.state;
+                insp_items[i].material = old.material;
+                insp_items[i].natural = old.natural;
+                insp_items[i].active = old.active;
+                insp_items[i].reservedBy = old.reservedBy;
+                insp_items[i].unreachableCooldown = old.unreachableCooldown;
+                insp_items[i].stackCount = old.stackCount;
+                insp_items[i].containedIn = -1;
+                insp_items[i].contentCount = 0;
+                insp_items[i].contentTypeMask = 0;
+            }
+        } else {
+            // V48 items don't have stackCount — read with old struct
+            for (int i = 0; i < insp_itemHWM; i++) {
+                ItemV48 old;
+                fread(&old, sizeof(ItemV48), 1, f);
+                insp_items[i].x = old.x; insp_items[i].y = old.y; insp_items[i].z = old.z;
+                insp_items[i].type = old.type;
+                insp_items[i].state = old.state;
+                insp_items[i].material = old.material;
+                insp_items[i].natural = old.natural;
+                insp_items[i].active = old.active;
+                insp_items[i].reservedBy = old.reservedBy;
+                insp_items[i].unreachableCooldown = old.unreachableCooldown;
+                insp_items[i].stackCount = old.active ? 1 : 0;
+                insp_items[i].containedIn = -1;
+                insp_items[i].contentCount = 0;
+                insp_items[i].contentTypeMask = 0;
+            }
+        }
     }
     
     // Stockpiles - migrate v31 → v32 if needed

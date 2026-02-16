@@ -40,6 +40,8 @@
 // Entity systems
 #include "entities/items.c"
 #include "entities/item_defs.c"
+#include "entities/stacking.c"
+#include "entities/containers.c"
 #include "entities/stockpiles.c"
 #include "entities/workshops.c"
 #include "entities/animals.c"

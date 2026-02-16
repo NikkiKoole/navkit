@@ -20,6 +20,10 @@ void ClearItems(void) {
         items[i].unreachableCooldown = 0.0f;
         items[i].material = MAT_NONE;
         items[i].natural = false;
+        items[i].stackCount = 1;
+        items[i].containedIn = -1;
+        items[i].contentCount = 0;
+        items[i].contentTypeMask = 0;
     }
     itemCount = 0;
     itemHighWaterMark = 0;
@@ -44,6 +48,10 @@ int SpawnItem(float x, float y, float z, ItemType type) {
             items[i].active = true;
             items[i].reservedBy = -1;
             items[i].unreachableCooldown = 0.0f;
+            items[i].stackCount = 1;
+            items[i].containedIn = -1;
+            items[i].contentCount = 0;
+            items[i].contentTypeMask = 0;
             itemCount++;
             if (i + 1 > itemHighWaterMark) {
                 itemHighWaterMark = i + 1;
@@ -71,8 +79,23 @@ uint8_t DefaultMaterialForItemType(ItemType type) {
     return MAT_NONE;
 }
 
+// Forward declaration — implemented in containers.c (included after items.c in unity build)
+void SpillContainerContents(int containerIdx);
+
 void DeleteItem(int index) {
     if (index >= 0 && index < MAX_ITEMS && items[index].active) {
+        // If this is a container with contents, spill them first
+        if (items[index].contentCount > 0) {
+            SpillContainerContents(index);
+        }
+        // If this item is inside a container, update parent's contentCount
+        if (items[index].containedIn != -1) {
+            int parentIdx = items[index].containedIn;
+            if (parentIdx >= 0 && parentIdx < MAX_ITEMS && items[parentIdx].active) {
+                items[parentIdx].contentCount--;
+            }
+            items[index].containedIn = -1;
+        }
         if (items[index].state == ITEM_IN_STOCKPILE) {
             RemoveItemFromStockpileSlot(items[index].x, items[index].y, (int)items[index].z);
         }
@@ -279,6 +302,43 @@ int FindGroundItemAtTile(int tileX, int tileY, int z) {
         }
     }
     return -1;
+}
+
+void SafeDropItem(int itemIdx, float x, float y, int z) {
+    if (itemIdx < 0 || !items[itemIdx].active) return;
+
+    Item* item = &items[itemIdx];
+    item->state = ITEM_ON_GROUND;
+    item->reservedBy = -1;
+
+    int cellX = (int)(x / CELL_SIZE);
+    int cellY = (int)(y / CELL_SIZE);
+
+    if (IsCellWalkableAt(z, cellY, cellX)) {
+        item->x = x;
+        item->y = y;
+        item->z = (float)z;
+    } else {
+        int dx[] = {0, 0, -1, 1, -1, 1, -1, 1};
+        int dy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
+        bool found = false;
+        for (int d = 0; d < 8; d++) {
+            int nx = cellX + dx[d];
+            int ny = cellY + dy[d];
+            if (IsCellWalkableAt(z, ny, nx)) {
+                item->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
+                item->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
+                item->z = (float)z;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            item->x = x;
+            item->y = y;
+            item->z = (float)z;
+        }
+    }
 }
 
 void PushItemsOutOfCell(int x, int y, int z) {

@@ -42,7 +42,8 @@ typedef enum {
 typedef enum {
     ITEM_ON_GROUND,
     ITEM_CARRIED,
-    ITEM_IN_STOCKPILE
+    ITEM_IN_STOCKPILE,
+    ITEM_IN_CONTAINER     // inside another item
 } ItemState;
 
 // Item struct
@@ -55,6 +56,10 @@ typedef struct {
     bool active;
     int reservedBy;           // mover index, -1 = none
     float unreachableCooldown; // seconds until retry (0 = can try now)
+    int stackCount;           // how many units this item represents (default 1)
+    int containedIn;          // item index of container (-1 = not contained)
+    int contentCount;         // items directly inside this container (0 if not container)
+    uint32_t contentTypeMask; // bitmask of ItemTypes inside (bloom filter, never cleared on remove)
 } Item;
 
 #define MAX_ITEMS 25000
@@ -87,6 +92,9 @@ void ClearUnreachableCooldownsNearCell(int x, int y, int z, int radius); // Clea
 // Ground item queries for stockpile blocking
 // Returns the index of a ground item at the given tile, or -1 if none
 int FindGroundItemAtTile(int tileX, int tileY, int z);
+
+// Drop an item at the given position, searching 8 neighbors for walkable cell if needed
+void SafeDropItem(int itemIdx, float x, float y, int z);
 
 // Push all items out of a cell to nearest walkable neighbor
 // Used when building walls on cells that contain items
@@ -138,6 +146,7 @@ static inline float GetItemY(int itemIdx) { return items[itemIdx].y; }
 static inline int GetItemZ(int itemIdx) { return (int)items[itemIdx].z; }
 static inline ItemType GetItemType(int itemIdx) { return items[itemIdx].type; }
 static inline int GetItemReservedBy(int itemIdx) { return items[itemIdx].reservedBy; }
+static inline int GetItemStackCount(int itemIdx) { return items[itemIdx].stackCount; }
 
 static inline bool IsSaplingItem(ItemType type) {
     return type == ITEM_SAPLING;

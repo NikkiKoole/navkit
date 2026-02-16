@@ -1,6 +1,7 @@
 #include "jobs.h"
 #include "items.h"
 #include "item_defs.h"
+#include "stacking.h"
 #include "mover.h"
 #include "workshops.h"
 #include "../core/time.h"
@@ -680,13 +681,12 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
 
-            // Place in stockpile
-            item->state = ITEM_IN_STOCKPILE;
+            // Release reservation before placing (PlaceItemInStockpile may merge/delete)
             item->x = targetX;
             item->y = targetY;
             item->reservedBy = -1;
 
-            // Mark slot as occupied
+            // Place in stockpile (handles merge into existing stack or new slot)
             PlaceItemInStockpile(job->targetStockpile, job->targetSlotX, job->targetSlotY, itemIdx);
 
             job->carryingItem = -1;
@@ -2345,28 +2345,26 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
                 // Spawn output items at workshop output tile
                 float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
                 float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
-                for (int i = 0; i < recipe->outputCount; i++) {
-                    // Preserve input material for items like planks/blocks (pine log -> pine planks)
-                    // Use default material for transformed items like bricks/charcoal
+                {
                     uint8_t outMat;
                     if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
                         outMat = (uint8_t)inputMat;
                     } else {
                         outMat = DefaultMaterialForItemType(recipe->outputType);
                     }
-                    SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                    int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                    if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
                 }
                 // Spawn second output if recipe has one (e.g., Strip Bark -> stripped log + bark)
                 if (recipe->outputType2 != ITEM_NONE) {
-                    for (int i = 0; i < recipe->outputCount2; i++) {
-                        uint8_t outMat2;
-                        if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
-                            outMat2 = (uint8_t)inputMat;
-                        } else {
-                            outMat2 = DefaultMaterialForItemType(recipe->outputType2);
-                        }
-                        SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                    uint8_t outMat2;
+                    if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
+                        outMat2 = (uint8_t)inputMat;
+                    } else {
+                        outMat2 = DefaultMaterialForItemType(recipe->outputType2);
                     }
+                    int outIdx2 = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                    if (outIdx2 >= 0) items[outIdx2].stackCount = recipe->outputCount2;
                 }
 
                 // Auto-suspend bill if output storage is now full
@@ -2825,45 +2823,9 @@ static void ClearSourceStockpileSlot(Item* item) {
 
 // Helper: safe-drop an item near a mover at a walkable cell
 // Searches 8 neighbors (cardinal + diagonal) if mover position is not walkable
-static void SafeDropItem(int itemIdx, Mover* m) {
-    if (itemIdx < 0 || !items[itemIdx].active) return;
-    
-    Item* item = &items[itemIdx];
-    item->state = ITEM_ON_GROUND;
-    item->reservedBy = -1;
-
-    int cellX = (int)(m->x / CELL_SIZE);
-    int cellY = (int)(m->y / CELL_SIZE);
-    int cellZ = (int)m->z;
-
-    if (IsCellWalkableAt(cellZ, cellY, cellX)) {
-        // Drop at mover position
-        item->x = m->x;
-        item->y = m->y;
-        item->z = m->z;
-    } else {
-        // Find nearest walkable neighbor (cardinal + diagonal)
-        int dx[] = {0, 0, -1, 1, -1, 1, -1, 1};
-        int dy[] = {-1, 1, 0, 0, -1, -1, 1, 1};
-        bool found = false;
-        for (int d = 0; d < 8; d++) {
-            int nx = cellX + dx[d];
-            int ny = cellY + dy[d];
-            if (IsCellWalkableAt(cellZ, ny, nx)) {
-                item->x = nx * CELL_SIZE + CELL_SIZE / 2.0f;
-                item->y = ny * CELL_SIZE + CELL_SIZE / 2.0f;
-                item->z = cellZ;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            // Last resort: drop at mover position anyway
-            item->x = m->x;
-            item->y = m->y;
-            item->z = m->z;
-        }
-    }
+// Wrapper: drop item near mover using shared SafeDropItem from items.c
+static void SafeDropItemNearMover(int itemIdx, Mover* m) {
+    SafeDropItem(itemIdx, m->x, m->y, (int)m->z);
 }
 
 // Cancel job and release all reservations (public, called from workshops.c and internally)
@@ -2884,7 +2846,7 @@ void CancelJob(void* moverPtr, int moverIdx) {
         }
 
         // If carrying, safe-drop the item at a walkable cell
-        SafeDropItem(job->carryingItem, m);
+        SafeDropItemNearMover(job->carryingItem, m);
 
         // Release mine designation reservation
         if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
@@ -2928,7 +2890,7 @@ void CancelJob(void* moverPtr, int moverIdx) {
         if (job->targetItem2 >= 0 && items[job->targetItem2].active) {
             // Only safe-drop if carried; otherwise just release reservation
             if (items[job->targetItem2].state == ITEM_CARRIED) {
-                SafeDropItem(job->targetItem2, m);
+                SafeDropItemNearMover(job->targetItem2, m);
             } else {
                 items[job->targetItem2].reservedBy = -1;
             }
@@ -2938,7 +2900,7 @@ void CancelJob(void* moverPtr, int moverIdx) {
         if (job->fuelItem >= 0 && items[job->fuelItem].active) {
             // Only safe-drop if carried; otherwise just release reservation
             if (items[job->fuelItem].state == ITEM_CARRIED) {
-                SafeDropItem(job->fuelItem, m);
+                SafeDropItemNearMover(job->fuelItem, m);
             } else {
                 items[job->fuelItem].reservedBy = -1;
             }
@@ -3285,18 +3247,36 @@ static void AssignJobs_P3c_Rehaul(void) {
         int destSp = -1;
 
         bool noLongerAllowed = !StockpileAcceptsItem(currentSp, items[j].type, items[j].material);
+        bool isOverfull = IsSlotOverfull(currentSp, itemSlotX, itemSlotY);
+        int haulItemIdx = j;
 
         if (noLongerAllowed) {
             destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
-        } else if (IsSlotOverfull(currentSp, itemSlotX, itemSlotY)) {
+        } else if (isOverfull) {
             destSp = FindStockpileForOverfullItem(j, currentSp, &destSlotX, &destSlotY);
+            // Split off the excess from the overfull stack
+            if (destSp >= 0) {
+                Stockpile* sp = &stockpiles[currentSp];
+                int lx = itemSlotX - sp->x;
+                int ly = itemSlotY - sp->y;
+                int slotIdx = ly * sp->width + lx;
+                int excess = items[j].stackCount - sp->maxStackSize;
+                if (excess > 0 && excess < items[j].stackCount) {
+                    haulItemIdx = SplitStack(j, excess);
+                    if (haulItemIdx < 0) continue;
+                    // Split item is separate from stockpile — mark as ground item
+                    items[haulItemIdx].state = ITEM_ON_GROUND;
+                    // Update source slot count after split
+                    sp->slotCounts[slotIdx] = items[j].stackCount;
+                }
+            }
         } else {
             destSp = FindHigherPriorityStockpile(j, currentSp, &destSlotX, &destSlotY);
         }
 
         if (destSp < 0) continue;
 
-        if (TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false)) {
+        if (TryAssignItemToMover(haulItemIdx, destSp, destSlotX, destSlotY, false)) {
             if (noLongerAllowed) {
                 InvalidateStockpileSlotCache(items[j].type, items[j].material);
             }

@@ -444,10 +444,10 @@ bool LoadWorld(const char* filename) {
         return false;
     }
     
-    // Support current version and v31 (with migration)
-    if (version != CURRENT_SAVE_VERSION) {
-        printf("ERROR: Save version mismatch (file: v%d, supported: v31-v%d)\n", version, CURRENT_SAVE_VERSION);
-        AddMessage(TextFormat("Save version mismatch: v%d (expected v31-v%d).", version, CURRENT_SAVE_VERSION), RED);
+    // Support v48+ (with migration to current)
+    if (version < 48 || version > CURRENT_SAVE_VERSION) {
+        printf("ERROR: Save version mismatch (file: v%d, supported: v48-v%d)\n", version, CURRENT_SAVE_VERSION);
+        AddMessage(TextFormat("Save version mismatch: v%d (expected v48-v%d).", version, CURRENT_SAVE_VERSION), RED);
         fclose(f);
         return false;
     }
@@ -696,8 +696,45 @@ bool LoadWorld(const char* filename) {
     
     // Items
     fread(&itemHighWaterMark, sizeof(itemHighWaterMark), 1, f);
-    // Items (V22 only)
-    fread(items, sizeof(Item), itemHighWaterMark, f);
+    if (version >= 50) {
+        fread(items, sizeof(Item), itemHighWaterMark, f);
+    } else if (version == 49) {
+        // V49 items don't have containedIn/contentCount/contentTypeMask
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            ItemV49 old;
+            fread(&old, sizeof(ItemV49), 1, f);
+            items[i].x = old.x; items[i].y = old.y; items[i].z = old.z;
+            items[i].type = old.type;
+            items[i].state = old.state;
+            items[i].material = old.material;
+            items[i].natural = old.natural;
+            items[i].active = old.active;
+            items[i].reservedBy = old.reservedBy;
+            items[i].unreachableCooldown = old.unreachableCooldown;
+            items[i].stackCount = old.stackCount;
+            items[i].containedIn = -1;
+            items[i].contentCount = 0;
+            items[i].contentTypeMask = 0;
+        }
+    } else {
+        // V48 items don't have stackCount — read with old struct, copy, set stackCount=1
+        for (int i = 0; i < itemHighWaterMark; i++) {
+            ItemV48 old;
+            fread(&old, sizeof(ItemV48), 1, f);
+            items[i].x = old.x; items[i].y = old.y; items[i].z = old.z;
+            items[i].type = old.type;
+            items[i].state = old.state;
+            items[i].material = old.material;
+            items[i].natural = old.natural;
+            items[i].active = old.active;
+            items[i].reservedBy = old.reservedBy;
+            items[i].unreachableCooldown = old.unreachableCooldown;
+            items[i].stackCount = old.active ? 1 : 0;
+            items[i].containedIn = -1;
+            items[i].contentCount = 0;
+            items[i].contentTypeMask = 0;
+        }
+    }
     // Ensure default materials for any missing entries
     for (int i = 0; i < itemHighWaterMark; i++) {
         if (!items[i].active) continue;
@@ -814,6 +851,51 @@ bool LoadWorld(const char* filename) {
     for (int i = 0; i < MAX_STOCKPILES; i++) {
         if (!stockpiles[i].active) continue;
         memset(stockpiles[i].reservedBy, 0, sizeof(stockpiles[i].reservedBy));
+    }
+
+    // v48→v49 migration: consolidate stockpile stacks
+    // Old model: slotCounts[s] items each with stackCount=1 at the same position
+    // New model: 1 representative item with stackCount = old slotCounts[s]
+    if (version == 48) {
+        for (int sp = 0; sp < MAX_STOCKPILES; sp++) {
+            if (!stockpiles[sp].active) continue;
+            Stockpile* s = &stockpiles[sp];
+            int totalSlots = s->width * s->height;
+            for (int slot = 0; slot < totalSlots; slot++) {
+                if (!s->cells[slot]) continue;
+                if (s->slotCounts[slot] <= 1) continue;  // 0 or 1 items, nothing to consolidate
+
+                int worldX = s->x + (slot % s->width);
+                int worldY = s->y + (slot / s->width);
+                int count = s->slotCounts[slot];
+
+                // Find representative item (first active item at this position)
+                int repIdx = -1;
+                for (int j = 0; j < itemHighWaterMark; j++) {
+                    if (!items[j].active) continue;
+                    if (items[j].state != ITEM_IN_STOCKPILE) continue;
+                    if ((int)(items[j].x / CELL_SIZE) != worldX) continue;
+                    if ((int)(items[j].y / CELL_SIZE) != worldY) continue;
+                    if ((int)items[j].z != s->z) continue;
+                    if (repIdx < 0) {
+                        repIdx = j;
+                    } else {
+                        // Delete duplicate — representative absorbs it
+                        items[j].active = false;
+                        itemCount--;
+                    }
+                }
+
+                if (repIdx >= 0) {
+                    items[repIdx].stackCount = count;
+                    s->slots[slot] = repIdx;
+                }
+            }
+        }
+        // Rebuild itemHighWaterMark after deletions
+        while (itemHighWaterMark > 0 && !items[itemHighWaterMark - 1].active) {
+            itemHighWaterMark--;
+        }
     }
     
     // Gather zones

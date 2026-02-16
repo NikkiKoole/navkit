@@ -664,25 +664,25 @@ void PassiveWorkshopsTick(float dt) {
             // Spawn output(s) at output tile
             float outX = ws->outputTileX * CELL_SIZE + CELL_SIZE * 0.5f;
             float outY = ws->outputTileY * CELL_SIZE + CELL_SIZE * 0.5f;
-            for (int i = 0; i < recipe->outputCount; i++) {
+            {
                 uint8_t outMat;
                 if (ItemTypeUsesMaterialName(recipe->outputType) && inputMat != MAT_NONE) {
                     outMat = (uint8_t)inputMat;
                 } else {
                     outMat = DefaultMaterialForItemType(recipe->outputType);
                 }
-                SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                int outIdx = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType, outMat);
+                if (outIdx >= 0) items[outIdx].stackCount = recipe->outputCount;
             }
             if (recipe->outputType2 != ITEM_NONE) {
-                for (int i = 0; i < recipe->outputCount2; i++) {
-                    uint8_t outMat2;
-                    if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
-                        outMat2 = (uint8_t)inputMat;
-                    } else {
-                        outMat2 = DefaultMaterialForItemType(recipe->outputType2);
-                    }
-                    SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                uint8_t outMat2;
+                if (ItemTypeUsesMaterialName(recipe->outputType2) && inputMat != MAT_NONE) {
+                    outMat2 = (uint8_t)inputMat;
+                } else {
+                    outMat2 = DefaultMaterialForItemType(recipe->outputType2);
                 }
+                int outIdx2 = SpawnItemWithMaterial(outX, outY, (float)ws->z, recipe->outputType2, outMat2);
+                if (outIdx2 >= 0) items[outIdx2].stackCount = recipe->outputCount2;
             }
 
             // Remove fire light

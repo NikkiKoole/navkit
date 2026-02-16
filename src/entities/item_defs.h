@@ -12,6 +12,7 @@
 #define IF_SPOILS         (1 << 3)  // Decays over time (future)
 #define IF_FUEL           (1 << 4)  // Can be burned for heat (future)
 #define IF_MATERIAL_NAME  (1 << 5)  // Display material name (e.g. "Oak Log" not just "Log")
+#define IF_CONTAINER      (1 << 6)  // Item can hold other items
 
 typedef struct {
     const char* name;     // Display name for tooltips
@@ -39,6 +40,7 @@ extern const ItemDef itemDefs[];
 #define ItemSpoils(t)         (itemDefs[t].flags & IF_SPOILS)
 #define ItemIsFuel(t)         (itemDefs[t].flags & IF_FUEL)
 #define ItemUsesMaterialName(t) (itemDefs[t].flags & IF_MATERIAL_NAME)
+#define ItemIsContainer(t)    (itemDefs[t].flags & IF_CONTAINER)
 #define ItemDefaultMaterial(t)  (itemDefs[t].defaultMaterial)
 #define ItemWeight(t)           (itemDefs[t].weight)
 #define ItemNutrition(t)        (itemDefs[t].nutrition)

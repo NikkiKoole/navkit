@@ -775,11 +775,11 @@ describe(drying_rack_berries) {
             PassiveWorkshopsTick(TICK_DT);
         }
 
-        // Check output: should be 2 separate ITEM_DRIED_BERRIES
+        // Check output: should be 2 units of ITEM_DRIED_BERRIES (1 item with stackCount=2)
         int driedCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (items[i].active && items[i].type == ITEM_DRIED_BERRIES) {
-                driedCount++;
+                driedCount += items[i].stackCount;
             }
         }
         expect(driedCount == 2);

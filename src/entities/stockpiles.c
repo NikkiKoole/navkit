@@ -1,6 +1,7 @@
 #include "stockpiles.h"
 #include "mover.h"
 #include "items.h"
+#include "stacking.h"
 #include "jobs.h"
 #include "../world/cell_defs.h"
 #include <string.h>
@@ -709,20 +710,31 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     // Validate cell is active before placing item
     if (!sp->cells[idx]) return;
     
-    // Validate slot types match if slot already has items
-    if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active) {
-        if (sp->slotTypes[idx] >= 0 && sp->slotTypes[idx] != items[itemIdx].type) {
-            // Type mismatch - don't place item
-            return;
-        }
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
+    
+    // Validate slot types and materials match if slot already has items
+    if (sp->slotTypes[idx] >= 0 && sp->slotTypes[idx] != items[itemIdx].type) {
+        return;
+    }
+    MaterialType incomingMat = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
+    if (sp->slotCounts[idx] > 0 && sp->slotMaterials[idx] != incomingMat) {
+        return;
     }
     
     if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
     
-    // Update stacking info using atomic helper
-    if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active) {
-        MaterialType mat = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
-        IncrementStockpileSlot(sp, idx, itemIdx, items[itemIdx].type, mat);
+    // If slot already has an item, merge stacks (incoming item may be deleted)
+    if (sp->slotCounts[idx] > 0 && sp->slots[idx] >= 0 && sp->slots[idx] < MAX_ITEMS
+        && items[sp->slots[idx]].active) {
+        MergeItemIntoStack(sp->slots[idx], itemIdx);
+        sp->slotCounts[idx] = items[sp->slots[idx]].stackCount;
+    } else {
+        // First item in slot
+        items[itemIdx].state = ITEM_IN_STOCKPILE;
+        sp->slots[idx] = itemIdx;
+        sp->slotTypes[idx] = items[itemIdx].type;
+        sp->slotMaterials[idx] = incomingMat;
+        sp->slotCounts[idx] = items[itemIdx].stackCount;
     }
 }
 
@@ -746,6 +758,7 @@ void DecrementStockpileSlot(Stockpile* sp, int slotIdx) {
     }
 }
 
+__attribute__((noinline))
 void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
     sp->slots[slotIdx] = -1;
     sp->slotTypes[slotIdx] = -1;
@@ -753,8 +766,9 @@ void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
     sp->slotCounts[slotIdx] = 0;
 }
 
-// Remove one item from a stockpile slot at world position (x, y, z)
+// Remove an item from a stockpile slot at world position (x, y, z)
 // Called when an item leaves a stockpile (DeleteItem, PushItemsOutOfCell, DropItemsInCell)
+// With stackCount model: one Item per slot, so removing it clears the slot.
 void RemoveItemFromStockpileSlot(float x, float y, int z) {
     int sourceSp = -1;
     if (!IsPositionInStockpile(x, y, z, &sourceSp) || sourceSp < 0) return;
@@ -764,7 +778,7 @@ void RemoveItemFromStockpileSlot(float x, float y, int z) {
     if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
 
     int idx = ly * stockpiles[sourceSp].width + lx;
-    DecrementStockpileSlot(&stockpiles[sourceSp], idx);
+    ClearStockpileSlot(&stockpiles[sourceSp], idx);
 }
 
 // =============================================================================
@@ -836,6 +850,27 @@ void SetStockpileSlotCount(int stockpileIdx, int localX, int localY, ItemType ty
     sp->slotTypes[idx] = type;
     sp->slotCounts[idx] = count;
     sp->slotMaterials[idx] = (count > 0) ? DefaultMaterialForItemType(type) : MAT_NONE;
+
+    // Create/update representative item to keep stackCount in sync
+    if (count > 0) {
+        int worldX = sp->x + localX;
+        int worldY = sp->y + localY;
+        float cx = worldX * CELL_SIZE + CELL_SIZE * 0.5f;
+        float cy = worldY * CELL_SIZE + CELL_SIZE * 0.5f;
+        if (sp->slots[idx] >= 0 && sp->slots[idx] < MAX_ITEMS && items[sp->slots[idx]].active) {
+            items[sp->slots[idx]].stackCount = count;
+        } else {
+            int itemIdx = SpawnItemWithMaterial(cx, cy, (float)sp->z, type,
+                                               DefaultMaterialForItemType(type));
+            if (itemIdx >= 0) {
+                items[itemIdx].state = ITEM_IN_STOCKPILE;
+                items[itemIdx].stackCount = count;
+                sp->slots[idx] = itemIdx;
+            }
+        }
+    } else {
+        ClearStockpileSlot(sp, idx);
+    }
 }
 
 int GetStockpileSlotCount(int stockpileIdx, int slotX, int slotY) {

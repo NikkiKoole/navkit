@@ -23,6 +23,25 @@
 // | Craft input search  100 items      | 0.05us each        |
 // | Craft input search  5000 items     | 2.7us each         |
 //
+// Phase 0 (stackCount on Item struct, save v49):
+//
+// | Benchmark                          | Value              |
+// |------------------------------------|--------------------|
+// | SpatialGrid rebuild  100 items     | 122us each         |
+// | SpatialGrid rebuild  10000 items   | 158us each         |
+// | Linear scan  100 items             | 0.08us each        |
+// | Linear scan  10000 items           | 7.98us each        |
+// | AssignJobs haul  50 items/10 mov   | 242ms per round    |
+// | AssignJobs haul  200 items/10 mov  | 560ms per round    |
+// | AssignJobs haul  500 items/10 mov  | 456ms per round    |
+// | Stockpile cache rebuild            | 493us each         |
+// | Stockpile cache lookup             | 2.4ns each         |
+// | Craft input search  100 items      | 0.06us each        |
+// | Craft input search  5000 items     | 2.7us each         |
+//
+// Result: No regressions. All values within run-to-run variance.
+// Real wins come from gameplay consolidation (fewer Item structs = faster scans).
+//
 // Key: linear scan and craft search scale linearly with highWaterMark.
 // After stacking, fewer Item structs = proportionally faster.
 

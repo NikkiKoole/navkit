@@ -620,14 +620,66 @@ Chest (3/20 stacks)
 
 ---
 
+## Current State (Handoff Notes)
+
+**Save version:** 50
+
+**Test suites:** 28 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
+
+**Phases 0-1 complete.** Next up is Phase 2.
+
+### Key Architecture (for continuing work)
+
+- **Item stacking (Phase 0):** `stackCount` on Item struct, one Item per stockpile slot
+  - `MergeItemIntoStack`/`SplitStack` in `stacking.c`, `PlaceItemInStockpile` auto-merges
+  - `slotCounts[s]` mirrors representative item's stackCount
+  - `__attribute__((noinline))` on `ClearStockpileSlot` — required to prevent -O2 misoptimization in unity build
+  - `ItemWasStored(idx)` test macro: `(!items[idx].active || items[idx].state == ITEM_IN_STOCKPILE)` — merged items get deleted
+
+- **Item containment (Phase 1):** `containedIn`, `contentCount`, `contentTypeMask` on Item struct
+  - `containers.c`/`containers.h`: Put/Remove/Spill/Move/ForEach/IsAccessible/GetWeight
+  - `containerDefs[ITEM_TYPE_COUNT]` table — zero-initialized, Phase 2 populates for basket/chest/pot
+  - `ITEM_IN_CONTAINER` state, `IF_CONTAINER` flag (bit 6)
+  - `contentTypeMask` is bloom filter — set on Put, never cleared on Remove, reset on Spill
+  - Forward decl of `SpillContainerContents` in items.c (containers.c included after in unity build)
+  - `DeleteItem` spills contents + decrements parent contentCount
+  - `SplitStack` inherits containedIn + increments parent contentCount
+  - Tests use `SetupContainerType(ITEM_RED, maxContents)` to temporarily make any type a container
+
+### Build Commands
+- `make path` to build, `make test` to run all 28 suites
+- `touch src/unity.c` forces rebuild (unity build includes all .c files)
+- Both `test_unity.c` AND `unity.c` need new `.c` includes for new modules
+- Both `saveload.c` AND `inspect.c` need parallel save migration updates
+
+### Files Modified by Phase 0+1
+| File | Purpose |
+|------|---------|
+| `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state |
+| `src/entities/item_defs.h` | IF_CONTAINER flag (bit 6), ItemIsContainer macro |
+| `src/entities/items.c` | SpawnItem init, DeleteItem spill/decrement, forward decl of SpillContainerContents |
+| `src/entities/stacking.c` | SplitStack inherits containedIn |
+| `src/entities/stacking.h` | MergeItemIntoStack, SplitStack declarations |
+| `src/entities/containers.c` | **NEW** — all container operations |
+| `src/entities/containers.h` | **NEW** — ContainerDef, container API |
+| `src/core/save_migrations.h` | v50, ItemV49 struct |
+| `src/core/saveload.c` | v49→v50 item migration |
+| `src/core/inspect.c` | Parallel v49→v50 migration |
+| `src/unity.c` | includes containers.c |
+| `tests/test_unity.c` | includes containers.c |
+| `tests/test_stacking.c` | 22 tests, 60 assertions |
+| `tests/test_containers.c` | **NEW** — 32 tests, 94 assertions |
+
+---
+
 ## Implementation Phases
 
-### Phase 0: Item-Level Stack Count (Prerequisite Refactor)
+### Phase 0: Item-Level Stack Count (Prerequisite Refactor) — COMPLETE ✅
 **Goal:** Move stacking source of truth from Stockpile to Item. Foundation for containers and multi-unit carrying.
 
 **New file:** `src/entities/stacking.c` / `stacking.h`
 
-**Save version:** 48 → 49
+**Save version:** 48 → 49 (done)
 
 1. Add `int stackCount` field to Item struct (default 1)
 2. Modify `SpawnItem` / `SpawnItemWithMaterial`: set `stackCount = 1`
@@ -669,7 +721,13 @@ Chest (3/20 stacks)
     - This consolidates e.g. 10 separate berry Items into 1 Item with stackCount=10
 12. Update `test_unity.c` and `unity.c` if new .c file added
 
-**Tests (~25 assertions):** New test file: `tests/test_stacking.c`
+**Implementation notes:**
+- `__attribute__((noinline))` required on `ClearStockpileSlot` to prevent -O2 misoptimization in unity build (same pattern as existing `ClearStockpileSlot` workaround)
+- `PlaceItemInStockpile` validates material match before merging (prevents cross-material stacking)
+- `SplitStack` in rehaul code must explicitly set split item state to `ITEM_ON_GROUND` (inherits parent's `ITEM_IN_STOCKPILE` state otherwise)
+- Test macro `ItemWasStored(idx)`: `(!items[idx].active || items[idx].state == ITEM_IN_STOCKPILE)` — accounts for merged items being deleted
+
+**Tests (22 tests, 60 assertions):** `tests/test_stacking.c` + updates to `test_jobs.c`, `test_hunger.c`
 - SpawnItem creates item with stackCount=1
 - MergeItemIntoStack: counts add up, incoming item deleted
 - MergeItemIntoStack: capped at maxStack, remainder kept
@@ -689,7 +747,7 @@ Chest (3/20 stacks)
 - Existing stockpile stacking tests pass (regression)
 - itemHighWaterMark correct after consolidation
 
-### Phase 1: Containment Data Model
+### Phase 1: Containment Data Model — COMPLETE ✅
 **Goal:** Items can be inside other items. No crafting, no stockpile integration yet.
 
 **New files:** `src/entities/containers.c` / `containers.h`
@@ -700,10 +758,10 @@ Chest (3/20 stacks)
 2. Add `int contentCount` field to Item struct (init to 0)
 3. Add `uint32_t contentTypeMask` field to Item struct (init to 0)
 4. Add `ITEM_IN_CONTAINER` to ItemState enum
-5. Add `IF_CONTAINER` flag to item_defs.h
+5. Add `IF_CONTAINER` flag (bit 6) to item_defs.h + `ItemIsContainer` macro
 6. Add `ContainerDef` struct and `GetContainerDef()` lookup
 7. Implement core operations:
-   - `CanPutItemInContainer(itemIdx, containerIdx)` — checks IF_CONTAINER, capacity, accessibility
+   - `CanPutItemInContainer(itemIdx, containerIdx)` — checks IF_CONTAINER, capacity, cycle detection, accessibility
    - `PutItemInContainer(itemIdx, containerIdx)` — merges if matching stack exists, else new entry. Sets containedIn, state, position. Increments contentCount, sets contentTypeMask bit.
    - `RemoveItemFromContainer(itemIdx)` — sets containedIn=-1, state=ITEM_ON_GROUND at safe-drop near outermost container. Decrements direct parent's contentCount.
    - `IsContainerFull(containerIdx)` — O(1) via contentCount
@@ -715,29 +773,22 @@ Chest (3/20 stacks)
    - `ForEachContainedItemRecursive(containerIdx, callback, data)` — all descendants
    - `IsItemAccessible(itemIdx)` — walks containedIn chain, false if any ancestor reserved/carried
    - `GetContainerTotalWeight(containerIdx)` — recursive weight sum (includes stackCount × weight)
-8. Modify `DeleteItem` — if deleting a container, spill contents first (safe-drop)
-9. Modify `BuildItemSpatialGrid` — skip items with state `ITEM_IN_CONTAINER`
-10. Modify `FindNearestUnreservedItem` — skip `ITEM_IN_CONTAINER` items
-11. Bump save version. Serialize `containedIn`, `contentCount`, `contentTypeMask` per item.
-12. Save migration: old items get `containedIn = -1`, `contentCount = 0`, `contentTypeMask = 0`
+8. Modify `DeleteItem` — if deleting a container, spill contents first; if contained, decrement parent contentCount
+9. Modify `SplitStack` — if source is inside a container, split-off item inherits containedIn and parent contentCount increments
+10. `BuildItemSpatialGrid` already skips non-ITEM_ON_GROUND — ITEM_IN_CONTAINER naturally excluded
+11. `IsItemHaulable`/`FindNearestUnreservedItem` already check state — no changes needed
+12. Save migration: ItemV49 struct, old items get containedIn=-1, contentCount=0, contentTypeMask=0
 
-**Tests (~30 assertions):**
-- Put item in container: containedIn set, state correct, contentCount incremented, typeMask set
-- Put same-type item: merges into existing stack (contentCount unchanged, stackCount grows)
-- Put different-type item: new entry (contentCount increments)
-- Remove item: containedIn cleared, contentCount decremented, position at safe-drop
-- Capacity enforced: full container rejects new items (contentCount == maxContents)
-- ContainerMightHaveType: true for present types, possibly true for removed types (bloom filter)
-- Move container: all contents recursively updated
-- Nested: item in bag, bag in chest, move chest → all positions updated
-- Nested extraction: remove seed from bag-in-chest → seed at chest position, bag stays in chest
-- Spill: direct children become ground items, sub-container keeps contents, contentCount=0, typeMask=0
-- Spill with blocked position: items safe-dropped to walkable neighbor
-- Delete container: contents spilled first
-- Spatial grid: contained items not indexed
-- IsItemAccessible: false when ancestor reserved, true otherwise
-- Save/load round-trip: containedIn, contentCount, contentTypeMask preserved
-- contentCount integrity: Put/Remove/Spill/Delete all maintain correct count
+**Implementation notes:**
+- `containerDefs[ITEM_TYPE_COUNT]` table is zero-initialized — `GetContainerDef` returns NULL when maxContents=0 (no container types defined yet, Phase 2 populates this)
+- Forward declaration of `SpillContainerContents` in items.c (containers.c included after items.c in unity build)
+- `CanPutItemInContainer` walks containedIn chain upward to detect cycles (prevents A→B→A)
+- `PutItemInContainer` searches for matching type+material stack inside container for merge; handles partial merge (remainder becomes new entry)
+- `contentTypeMask` is a bloom filter — bits set on Put, never cleared on Remove (stale positives OK, false negatives impossible). Reset to 0 only on SpillContainerContents.
+
+**Tests (32 tests, 94 assertions):** `tests/test_containers.c`
+- 12 describe blocks: container_def, put_item_in_container, remove_from_container, container_queries, accessibility, move_container, spill_contents, delete_container, split_in_container, iteration, weight, spatial_grid
+- All 28 test suites pass (26,590 total assertions, 0 failures)
 
 ### Phase 2: Container Items & Crafting
 **Goal:** Container items exist and can be crafted.
