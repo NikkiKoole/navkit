@@ -5,6 +5,7 @@
 #include "../world/cell_defs.h"
 #include "../world/pathfinding.h"
 #include "items.h"
+#include "containers.h"
 #include "jobs.h"
 #include "stockpiles.h"
 #include "workshops.h"
@@ -692,6 +693,9 @@ void ClearMovers(void) {
                     item->z = m->z;
                     item->state = ITEM_ON_GROUND;
                     item->reservedBy = -1;
+                    if (item->contentCount > 0) {
+                        MoveContainer(job->carryingItem, m->x, m->y, m->z);
+                    }
                 }
             }
         }
@@ -1161,7 +1165,9 @@ void UpdateMovers(void) {
                 if (job && job->carryingItem >= 0 && job->carryingItem < MAX_ITEMS) {
                     Item* item = &items[job->carryingItem];
                     if (item->active && item->state == ITEM_CARRIED) {
-                        float w = ItemWeight(item->type);
+                        float w = (item->contentCount > 0)
+                            ? GetContainerTotalWeight(job->carryingItem)
+                            : ItemWeight(item->type) * item->stackCount;
                         terrainSpeedMult *= 1.0f / (1.0f + w * 0.02f);
                     }
                 }

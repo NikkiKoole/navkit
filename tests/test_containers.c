@@ -1264,6 +1264,159 @@ describe(container_extraction) {
     }
 }
 
+// ===========================================================================
+// Phase 5: Container Hauling (carried containers)
+// ===========================================================================
+describe(container_hauling) {
+    it("should move contents when container position changes") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        int container = SpawnItem(16, 16, 0, ITEM_RED);
+        int a = SpawnItem(16, 16, 0, ITEM_LOG);
+        int b = SpawnItem(16, 16, 0, ITEM_ROCK);
+        PutItemInContainer(a, container);
+        PutItemInContainer(b, container);
+
+        // Simulate mover carrying: update container position, then MoveContainer
+        items[container].state = ITEM_CARRIED;
+        items[container].x = 48.0f;
+        items[container].y = 48.0f;
+        items[container].z = 0.0f;
+        MoveContainer(container, 48.0f, 48.0f, 0.0f);
+
+        expect(items[a].x > 47.9f && items[a].x < 48.1f);
+        expect(items[a].y > 47.9f && items[a].y < 48.1f);
+        expect(items[b].x > 47.9f && items[b].x < 48.1f);
+        expect(items[b].y > 47.9f && items[b].y < 48.1f);
+    }
+
+    it("should move nested container contents recursively") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        SetupContainerType(ITEM_GREEN, 15);
+        int outer = SpawnItem(16, 16, 0, ITEM_RED);
+        int inner = SpawnItem(16, 16, 0, ITEM_GREEN);
+        int seed = SpawnItem(16, 16, 0, ITEM_ROCK);
+        PutItemInContainer(inner, outer);
+        PutItemInContainer(seed, inner);
+
+        items[outer].state = ITEM_CARRIED;
+        items[outer].x = 48.0f;
+        items[outer].y = 48.0f;
+        MoveContainer(outer, 48.0f, 48.0f, 0.0f);
+
+        expect(items[inner].x > 47.9f && items[inner].x < 48.1f);
+        expect(items[seed].x > 47.9f && items[seed].x < 48.1f);
+    }
+
+    it("should use total weight for carried container") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        int container = SpawnItem(16, 16, 0, ITEM_RED);
+        int a = SpawnItem(16, 16, 0, ITEM_LOG);
+        items[a].stackCount = 5;
+        PutItemInContainer(a, container);
+
+        float totalW = GetContainerTotalWeight(container);
+        float expected = ItemWeight(ITEM_RED) + ItemWeight(ITEM_LOG) * 5;
+        expect(totalW > expected - 0.01f && totalW < expected + 0.01f);
+
+        // Non-container single item weight (for comparison)
+        float singleW = ItemWeight(ITEM_LOG);
+        expect(totalW > singleW);
+    }
+
+    it("should make contents inaccessible when container is carried") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        int container = SpawnItem(16, 16, 0, ITEM_RED);
+        int a = SpawnItem(16, 16, 0, ITEM_LOG);
+        PutItemInContainer(a, container);
+
+        // Before carrying — accessible
+        expect(IsItemAccessible(a));
+
+        // Mark as carried
+        items[container].state = ITEM_CARRIED;
+        expect(!IsItemAccessible(a));
+
+        // Drop — accessible again
+        items[container].state = ITEM_ON_GROUND;
+        expect(IsItemAccessible(a));
+    }
+
+    it("should make contents inaccessible when container is reserved") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        int container = SpawnItem(16, 16, 0, ITEM_RED);
+        int a = SpawnItem(16, 16, 0, ITEM_LOG);
+        PutItemInContainer(a, container);
+
+        items[container].reservedBy = 0;
+        expect(!IsItemAccessible(a));
+
+        items[container].reservedBy = -1;
+        expect(IsItemAccessible(a));
+    }
+
+    it("should keep contents intact when container is safe-dropped") {
+        Setup();
+        SetupContainerType(ITEM_RED, 15);
+        int container = SpawnItem(16, 16, 0, ITEM_RED);
+        int a = SpawnItem(16, 16, 0, ITEM_LOG);
+        int b = SpawnItem(16, 16, 0, ITEM_ROCK);
+        PutItemInContainer(a, container);
+        PutItemInContainer(b, container);
+
+        // Simulate carry
+        items[container].state = ITEM_CARRIED;
+        items[container].x = 48.0f;
+        items[container].y = 48.0f;
+        MoveContainer(container, 48.0f, 48.0f, 0.0f);
+
+        // Safe drop the container
+        SafeDropItem(container, 16.0f, 16.0f, 0);
+        MoveContainer(container, items[container].x, items[container].y, items[container].z);
+        items[container].state = ITEM_ON_GROUND;
+
+        // Contents still inside
+        expect(items[a].containedIn == container);
+        expect(items[b].containedIn == container);
+        expect(items[container].contentCount == 2);
+
+        // Contents moved to container's new position
+        expect(items[a].x == items[container].x);
+        expect(items[a].y == items[container].y);
+        expect(items[b].x == items[container].x);
+        expect(items[b].y == items[container].y);
+    }
+
+    it("should install full container in stockpile with contents intact") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        // Create basket with items inside
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        int log = SpawnItem(0, 0, 0, ITEM_LOG);
+        int rock = SpawnItem(0, 0, 0, ITEM_ROCK);
+        PutItemInContainer(log, basket);
+        PutItemInContainer(rock, basket);
+
+        // Place basket in stockpile — should install as container slot
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        // Basket installed as container slot
+        expect(items[basket].state == ITEM_IN_STOCKPILE);
+        expect(IsSlotContainer(sp, 0));
+
+        // Contents still inside
+        expect(items[log].containedIn == basket);
+        expect(items[rock].containedIn == basket);
+        expect(items[basket].contentCount == 2);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -1296,6 +1449,7 @@ int main(int argc, char* argv[]) {
     test(container_search);
     test(outermost_container);
     test(container_extraction);
+    test(container_hauling);
 
     return summary();
 }

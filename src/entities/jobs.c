@@ -675,10 +675,11 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Update carried item position
+        // Update carried item position (including container contents)
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
 
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
@@ -824,10 +825,11 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Update carried item position
+        // Update carried item position (including container contents)
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
 
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
@@ -1414,10 +1416,11 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Update carried item position
+        // Update carried item position (including container contents)
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
 
         // Check if arrived at designation
         int moverCellX = (int)(mover->x / CELL_SIZE);
@@ -1837,6 +1840,7 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
             items[itemIdx].y = mover->y;
             items[itemIdx].z = mover->z;
             items[itemIdx].reservedBy = -1;
+            if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
             job->carryingItem = -1;
             return JOBRUN_DONE;  // Job is "done" in the sense that we handled it gracefully
         }
@@ -1865,10 +1869,11 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Update carried item position
+        // Update carried item position (including container contents)
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
 
         if (onBlueprint || adjacentToBlueprint) {
             // Deliver material to blueprint
@@ -2503,10 +2508,11 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
             return JOBRUN_FAIL;
         }
 
-        // Update carried item position
+        // Update carried item position (including container contents)
         items[itemIdx].x = mover->x;
         items[itemIdx].y = mover->y;
         items[itemIdx].z = mover->z;
+        if (items[itemIdx].contentCount > 0) MoveContainer(itemIdx, mover->x, mover->y, mover->z);
 
         if (distSq < DROP_RADIUS * DROP_RADIUS) {
             Item* item = &items[itemIdx];
@@ -2856,6 +2862,10 @@ static void ExtractItemFromContainer(int itemIdx) {
 // Wrapper: drop item near mover using shared SafeDropItem from items.c
 static void SafeDropItemNearMover(int itemIdx, Mover* m) {
     SafeDropItem(itemIdx, m->x, m->y, (int)m->z);
+    // Move container contents to the drop position
+    if (itemIdx >= 0 && itemIdx < MAX_ITEMS && items[itemIdx].active && items[itemIdx].contentCount > 0) {
+        MoveContainer(itemIdx, items[itemIdx].x, items[itemIdx].y, items[itemIdx].z);
+    }
 }
 
 // Cancel job and release all reservations (public, called from workshops.c and internally)

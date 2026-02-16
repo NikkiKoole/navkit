@@ -626,7 +626,7 @@ Chest (3/20 stacks)
 
 **Test suites:** 29 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-4 complete.** Next up is Phase 5 (Container Hauling — Full Containers).
+**Phases 0-5 complete.** Next up is Phase 6 (Filter Change Cleanup).
 
 ### Key Architecture (for continuing work)
 
@@ -686,7 +686,7 @@ Chest (3/20 stacks)
 - Both `test_unity.c` AND `unity.c` need new `.c` includes for new modules
 - Both `saveload.c` AND `inspect.c` need parallel save migration updates
 
-### Files Modified by Phase 0-3
+### Files Modified by Phase 0-5
 | File | Purpose |
 |------|---------|
 | `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state, ITEM_BASKET/CLAY_POT/CHEST types |
@@ -700,7 +700,8 @@ Chest (3/20 stacks)
 | `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill), container search in fuel/input availability (Phase 4) |
 | `src/entities/stockpiles.h` | Stockpile struct: maxContainers, slotIsContainer[]; container slot API; SyncStockpileContainerSlotCount (Phase 4) |
 | `src/entities/stockpiles.c` | Container slot integration (PlaceItem, FindFreeSlot, Install, Fill ratio, Free count); SyncStockpileContainerSlotCount (Phase 4) |
-| `src/entities/jobs.c` | Container search fallbacks in WorkGiver_Craft/FindNearestRecipeItem/DeliverToPassiveWorkshop; ExtractItemFromContainer in all pickup steps (Phase 4) |
+| `src/entities/jobs.c` | Container search fallbacks (Phase 4); ExtractItemFromContainer (Phase 4); MoveContainer calls at 6 carry sites (Phase 5) |
+| `src/entities/mover.c` | Weight calc uses GetContainerTotalWeight; ClearMovers calls MoveContainer on drop (Phase 5) |
 | `src/render/rendering.c` | DrawStockpileItems: container slot rendering (1.2× sprite) |
 | `src/render/tooltips.c` | DrawStockpileTooltip: container info display |
 | `src/core/input.c` | Shift+[/] maxContainers controls |
@@ -710,7 +711,7 @@ Chest (3/20 stacks)
 | `src/unity.c` | includes containers.c |
 | `tests/test_unity.c` | includes containers.c |
 | `tests/test_stacking.c` | 22 tests, 60 assertions |
-| `tests/test_containers.c` | 74 tests, 241 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62, Phase 4: 14/40) |
+| `tests/test_containers.c` | 81 tests, 266 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62, Phase 4: 14/40, Phase 5: 7/25) |
 
 ---
 
@@ -967,33 +968,30 @@ Chest (3/20 stacks)
 - Extraction: RemoveItemFromContainer makes item ITEM_ON_GROUND, syncs stockpile slotCounts
 - Multiple extractions from same container, SplitStack + extraction
 
-### Phase 5: Container Hauling (Full Containers)
+### Phase 5: Container Hauling (Full Containers) — COMPLETE ✅
 **Goal:** Movers can carry full containers.
 
-1. Modify mover carry system:
-   - When mover picks up a container, all contents move with mover each tick
-   - `MoveContainer` called during mover movement
-2. Weight calculation:
-   - `GetContainerTotalWeight` cached on pickup (not per-tick)
-   - Includes stackCount × weight for all contents
-   - Affects mover speed via existing weight→speed system
-3. Container reservation locks contents:
-   - `IsItemAccessible` returns false for items inside a reserved container
-   - Individual items keep their own `reservedBy = -1` (the lock is implicit)
-4. Cancel/drop behavior:
-   - Dropping a container safe-drops at walkable location
-   - Contents stay inside the container
-5. Haul full container to new stockpile:
-   - If destination has maxContainers > 0 and room → install as container slot
-   - Contents remain inside
+**Save version:** 52 (unchanged — no data model changes)
 
-**Tests (~15 assertions):**
-- Mover carries container: all contents move with mover
-- Carried container weight includes contents (stackCount × weight)
-- Reserved container makes contents inaccessible via IsItemAccessible
-- Cancel job drops container with contents intact at safe-drop location
-- Container delivered to new stockpile, contents intact
-- Container installed in destination stockpile as container slot
+**Approach:** Added `MoveContainer()` calls at all 6 carried-item position sync sites in jobs.c, plus SafeDropItemNearMover and ClearMovers in mover.c. Updated weight calculation to use `GetContainerTotalWeight()` for containers. `IsItemAccessible()` and `PlaceItemInStockpile()` already handled carried/reserved checks and container installation from earlier phases.
+
+**Implementation notes:**
+- `MoveContainer(itemIdx, x, y, z)` called after setting carried item position at 6 sites: RunJob_Haul, RunJob_Clear, RunJob_DeliverToWorkshop (passive), RunJob_HaulToBlueprint (carry + cancel), RunJob_DeliverToPassiveWorkshop
+- `SafeDropItemNearMover` calls `MoveContainer` after SafeDropItem to sync contents to drop position
+- `ClearMovers` calls `MoveContainer` when dropping carried containers on world clear
+- Weight calculation in mover.c: `GetContainerTotalWeight()` for items with `contentCount > 0`, `ItemWeight() * stackCount` otherwise (also fixed missing stackCount multiplication for non-container carried items)
+- `IsItemAccessible()` already returned false for carried/reserved containers (Phase 1)
+- `PlaceItemInStockpile()` already installed containers with contents intact (Phase 3)
+- No weight caching — `GetContainerTotalWeight()` called per-tick during movement. Acceptable because it's bounded by contentCount (typically 5-20 items) and only runs for the one carried item.
+
+**Tests (7 tests, 25 assertions):** `tests/test_containers.c` — `describe(container_hauling)`
+- Contents move when container position changes
+- Nested container contents move recursively
+- Total weight includes container + all contents (with stackCount)
+- Carried container makes contents inaccessible
+- Reserved container makes contents inaccessible
+- Safe-dropped container keeps contents intact at new position
+- Full container installs in stockpile with contents intact
 
 ### Phase 6: Filter Change Cleanup
 **Goal:** Changing stockpile filters correctly handles items already inside containers.
@@ -1218,14 +1216,14 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 
 ## Test Expectations
 
-- **Actual (Phases 0-4):** 96 tests, 301 assertions (22/60 stacking + 74/241 containers)
+- **Actual (Phases 0-5):** 103 tests, 326 assertions (22/60 stacking + 81/266 containers)
 - Phase 0: 22 tests, 60 assertions (stackCount, merge, split, craft output, stockpile merge/split, SafeDrop, save migration, regression)
 - Phase 1: 32 tests, 94 assertions (containment model, nesting, move, spill, safe-drop, bitmask, save/load, contentCount integrity)
 - Phase 2: 13 tests, 45 assertions (container items, crafting, flags, defs)
 - Phase 3: 15 tests, 62 assertions (stockpile integration, slot cache, maxContainers, mixed types, race conditions)
 - Phase 4: 14 tests, 40 assertions (container-aware search, bitmask filtering, extraction, stockpile sync, nested search)
+- Phase 5: 7 tests, 25 assertions (carry contents movement, nested recursive, weight, accessibility, safe-drop, stockpile install)
 - **Estimated (remaining):**
-- Phase 5: ~15 (carry full containers, weight, reservation)
 - Phase 6: ~10 (filter change cleanup)
 - Phase 7: ~10 (spoilage, weather — deferred until F1)
 
