@@ -34,6 +34,53 @@ Seasoning/curring makes DF‑style stockpiles meaningful and supports the CDDA�
 
 These are intentionally **small sets**; they map cleanly to staged builds.
 
+### Food Spoilage States
+Food spoilage is the same system — an item condition that advances over time, affected by environment.
+
+- **Fresh**: just harvested/crafted, full nutrition.
+- **Stale**: still edible, maybe reduced nutrition or mood penalty later.
+- **Rotten**: inedible, must be hauled away (compost?).
+
+**Rates (game-hours):**
+- Fresh berries: ~48h (2 days) fresh → rotten
+- Dried berries: ~336h (2 seasons) — whole point of drying
+
+**Container modifiers** (already defined in containers.c):
+- Basket: 1.0× (open, no benefit)
+- Chest: 0.7× (enclosed)
+- Clay pot: 0.5× (sealed, best preservation)
+
+**Weather**: rain on exposed food = 1.5× spoilage. Containers with `weatherProtection` block this.
+
+This shares the exact same tick loop, environment modifiers, and stacking concerns as wood/clay conditioning. Implementing food spoilage as "just another condition type" in this system avoids building two parallel aging systems.
+
+---
+
+## Stacks and Condition State
+
+### The Problem
+Items have `stackCount` (e.g. 20 berries = 1 Item struct with stackCount=20). A stack shares a single condition state. But what happens when:
+- A mover delivers 10 fresh berries to a stockpile slot that already has 10 stale berries?
+- A stack of green logs is split — 5 go to a seasoning shed, 5 stay in the rain?
+
+### Solution: Discrete Condition Steps + Split on Mismatch
+
+Conditions are **discrete states** (enums), not continuous floats. A stack of berries is either Fresh, Stale, or Rotten — never "37% spoiled".
+
+**Progression**: each condition state has a **duration** (game-hours in that state before advancing to the next). A simple `conditionTimer` float tracks progress within the current state. When timer >= threshold, state advances and timer resets.
+
+**Merge rule: never merge different conditions.** When delivering an item to a stockpile slot:
+- If slot has matching type + material + condition → merge (MergeItemIntoStack, timers average or take worse)
+- If slot has matching type + material but **different condition** → treat as different item, find another slot
+
+This means a stockpile might have: slot 1 = "Fresh Berries ×15", slot 2 = "Stale Berries ×8". They're the same ItemType but different condition states, so they don't stack together.
+
+**Split rule: split inherits condition + timer.** When SplitStack is called, the new item gets the same condition state and conditionTimer as the original. Both halves continue aging independently from that point.
+
+**Stockpile slot cache impact**: the existing `stockpileSlotCache[ITEM_TYPE_COUNT][MAT_COUNT]` lookup needs a third dimension (condition), or the cache falls back to scanning. Since condition states are small enums (3-4 values), this is bounded.
+
+**Display**: stockpile tooltips and item names include condition: "Fresh Berries ×15", "Seasoned Oak Log ×4", "Bone-Dry Clay ×10".
+
 ---
 
 ## Integration with Current Systems

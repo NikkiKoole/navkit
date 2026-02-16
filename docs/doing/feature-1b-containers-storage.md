@@ -550,29 +550,11 @@ When a player changes a stockpile's type filter, items already inside containers
    - Drops it outside the stockpile (same as existing JOBTYPE_CLEAR behavior)
 3. This reuses the extract pre-step — no new job type needed, just a new trigger
 
-### Spoilage Interaction (depends on F1 food system)
+### Spoilage Interaction — DEFERRED
 
-Spoilage doesn't exist yet (IF_SPOILS flag defined but unused). When F1 adds food:
+Moved to `docs/todo/gameplay/seasoning-curing.md` as part of the unified item condition system (wood seasoning, clay curing, food spoilage all share the same mechanics).
 
-Items check their container chain for the best spoilage modifier:
-- Berry on ground: 1.0× spoilage
-- Berry in basket: 1.0× (open top, no benefit)
-- Berry in chest: 0.7× (enclosed)
-- Berry in clay pot: 0.5× (sealed, best)
-- Berry in bag in chest: 0.7× (outermost sealed container wins)
-
-Rain (weather system already exists):
-- Items on open ground in rain: 1.5× spoilage acceleration
-- Items in chest/pot: protected (weatherProtection = true)
-- Items in basket: NOT protected (open top)
-- Items in sheltered room (F3, later): protected regardless
-
-### Weather Protection
-
-When `IsExposedToSky(x, y, z)` is true and it's raining:
-- Walk up the `containedIn` chain looking for any container with `weatherProtection`
-- If found → item is protected from rain
-- If not → item gets rain spoilage penalty
+Container `spoilageModifier` and `weatherProtection` fields are already defined and ready. The containedIn chain walk, rain check via `IsExposedToSky()`, and best-modifier logic are all designed — just not implemented here.
 
 ### Visual
 
@@ -626,7 +608,7 @@ Chest (3/20 stacks)
 
 **Test suites:** 29 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-6 complete.** Next up is Phase 7 (Spoilage & Weather Modification, deferred until F1 food).
+**Phases 0-6 complete. Feature 1B is done.** Phase 7 (Spoilage & Weather Modification) moved to the seasoning-curing system (`docs/todo/gameplay/seasoning-curing.md`) — food spoilage shares the same item condition/timer mechanics as wood seasoning and clay curing, so they'll be implemented together.
 
 ### Key Architecture (for continuing work)
 
@@ -1009,25 +991,12 @@ Chest (3/20 stacks)
 - No false extractions when filters unchanged
 - Container remains as installed slot after all contents cleared
 
-### Phase 7: Spoilage & Weather Modification (requires F1 food)
-**Goal:** Containers affect item preservation.
+### Phase 7: Spoilage & Weather Modification — MOVED
+**Moved to**: `docs/todo/gameplay/seasoning-curing.md`
 
-*This phase can be deferred until F1 (Hunger) adds food items with IF_SPOILS.*
+Food spoilage shares the same mechanics as wood seasoning and clay curing: item condition timers, environment-dependent rates, discrete state transitions, and stack merge/split concerns. Implementing them as one unified "item condition" system avoids building two parallel aging systems.
 
-1. Spoilage tick walks `containedIn` chain for each spoiling item
-2. Find best (lowest) spoilage modifier in the chain
-3. Apply modifier to spoilage rate
-4. Rain check: walk `containedIn` chain for `weatherProtection`
-5. If no protection found and `IsExposedToSky()` + raining → 1.5× spoilage
-6. Tooltip: show effective spoilage rate ("Spoilage: 0.5× (sealed pot)")
-
-**Tests (~10 assertions):**
-- Food in pot spoils at 0.5× rate
-- Food in chest spoils at 0.7× rate
-- Food in bag in chest spoils at 0.7× (chest's modifier)
-- Food on bare ground in rain spoils at 1.5×
-- Container weather protection blocks rain penalty
-- Nested weather protection (bag in chest → protected)
+Container `spoilageModifier` and `weatherProtection` fields are already defined and ready to use when that system is built.
 
 ---
 
@@ -1224,8 +1193,7 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 - Phase 4: 14 tests, 40 assertions (container-aware search, bitmask filtering, extraction, stockpile sync, nested search)
 - Phase 5: 7 tests, 25 assertions (carry contents movement, nested recursive, weight, accessibility, safe-drop, stockpile install)
 - Phase 6: 4 tests, 16 assertions (filter change extraction, legal items untouched, no false extraction, empty container stays)
-- **Estimated (remaining):**
-- Phase 7: ~10 (spoilage, weather — deferred until F1)
+- Phase 7: moved to seasoning-curing system (`docs/todo/gameplay/seasoning-curing.md`)
 
 ---
 
