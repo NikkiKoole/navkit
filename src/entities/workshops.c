@@ -28,6 +28,7 @@ Recipe sawmillRecipes[] = {
     { "Cut Sticks",    ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STICKS, 8, ITEM_NONE, 0, 2.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
     { "Strip Bark",    ITEM_LOG, 1, ITEM_NONE, 0, ITEM_STRIPPED_LOG, 1, ITEM_BARK, 2, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
     { "Saw Stripped",  ITEM_STRIPPED_LOG, 1, ITEM_NONE, 0, ITEM_PLANKS, 5, ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Build Chest",   ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_CHEST, 1, ITEM_NONE, 0, 6.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int sawmillRecipeCount = sizeof(sawmillRecipes) / sizeof(sawmillRecipes[0]);
 
@@ -36,6 +37,7 @@ Recipe kilnRecipes[] = {
     { "Fire Bricks",   ITEM_CLAY, 1, ITEM_NONE, 0, ITEM_BRICKS,   2, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT },
     { "Make Charcoal", ITEM_LOG,  1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 6.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
     { "Burn Peat",     ITEM_PEAT, 1, ITEM_NONE, 0, ITEM_CHARCOAL, 3, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Fire Pot",      ITEM_CLAY, 2, ITEM_NONE, 0, ITEM_CLAY_POT, 1, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 1, ITEM_MATCH_EXACT },
 };
 int kilnRecipeCount = sizeof(kilnRecipes) / sizeof(kilnRecipes[0]);
 
@@ -65,6 +67,7 @@ Recipe ropeMakerRecipes[] = {
     { "Twist Bark",    ITEM_BARK, 2,         ITEM_NONE, 0, ITEM_SHORT_STRING, 3, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
     { "Twist Grass",   ITEM_DRIED_GRASS, 4,  ITEM_NONE, 0, ITEM_SHORT_STRING, 2, ITEM_NONE, 0, 3.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
     { "Braid Cordage", ITEM_SHORT_STRING, 3, ITEM_NONE, 0, ITEM_CORDAGE, 1,     ITEM_NONE, 0, 4.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Weave Basket",  ITEM_CORDAGE, 2,      ITEM_NONE, 0, ITEM_BASKET, 1,      ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
 };
 int ropeMakerRecipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]);
 

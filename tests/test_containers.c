@@ -561,6 +561,146 @@ describe(spatial_grid) {
     }
 }
 
+// ===========================================================================
+// Phase 2: Container Item Types (basket, chest, clay pot)
+// ===========================================================================
+
+// Restore the real container definitions (previous tests clear them)
+static void RestoreRealContainerDefs(void) {
+    memset(containerDefs, 0, sizeof(containerDefs));
+    containerDefs[ITEM_BASKET]   = (ContainerDef){ .maxContents = 15, .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false };
+    containerDefs[ITEM_CHEST]    = (ContainerDef){ .maxContents = 20, .spoilageModifier = 0.7f, .weatherProtection = true,  .acceptsLiquids = false };
+    containerDefs[ITEM_CLAY_POT] = (ContainerDef){ .maxContents = 5,  .spoilageModifier = 0.5f, .weatherProtection = true,  .acceptsLiquids = true  };
+}
+
+static void SetupWithRealDefs(void) {
+    InitTestGrid(8, 8);
+    ClearItems();
+    RestoreRealContainerDefs();
+}
+
+describe(container_item_types) {
+    it("should have IF_CONTAINER flag on container items") {
+        expect(ItemIsContainer(ITEM_BASKET));
+        expect(ItemIsContainer(ITEM_CLAY_POT));
+        expect(ItemIsContainer(ITEM_CHEST));
+    }
+
+    it("should NOT have IF_CONTAINER on non-container items") {
+        expect(!ItemIsContainer(ITEM_RED));
+        expect(!ItemIsContainer(ITEM_LOG));
+        expect(!ItemIsContainer(ITEM_ROCK));
+        expect(!ItemIsContainer(ITEM_PLANKS));
+        expect(!ItemIsContainer(ITEM_CORDAGE));
+    }
+
+    it("should have correct basket definition") {
+        RestoreRealContainerDefs();
+        const ContainerDef* def = GetContainerDef(ITEM_BASKET);
+        expect(def != NULL);
+        expect(def->maxContents == 15);
+        expect(def->spoilageModifier == 1.0f);
+        expect(def->weatherProtection == false);
+        expect(def->acceptsLiquids == false);
+    }
+
+    it("should have correct chest definition") {
+        RestoreRealContainerDefs();
+        const ContainerDef* def = GetContainerDef(ITEM_CHEST);
+        expect(def != NULL);
+        expect(def->maxContents == 20);
+        expect(def->spoilageModifier == 0.7f);
+        expect(def->weatherProtection == true);
+        expect(def->acceptsLiquids == false);
+    }
+
+    it("should have correct clay pot definition") {
+        RestoreRealContainerDefs();
+        const ContainerDef* def = GetContainerDef(ITEM_CLAY_POT);
+        expect(def != NULL);
+        expect(def->maxContents == 5);
+        expect(def->spoilageModifier == 0.5f);
+        expect(def->weatherProtection == true);
+        expect(def->acceptsLiquids == true);
+    }
+
+    it("should return NULL for non-container item types") {
+        RestoreRealContainerDefs();
+        // Non-containers have maxContents=0 in the defs table
+        expect(GetContainerDef(ITEM_LOG) == NULL);
+        expect(GetContainerDef(ITEM_ROCK) == NULL);
+        expect(GetContainerDef(ITEM_PLANKS) == NULL);
+    }
+
+    it("should allow baskets to be stackable") {
+        expect(ItemIsStackable(ITEM_BASKET));
+        expect(ItemMaxStack(ITEM_BASKET) == 10);
+    }
+
+    it("should allow clay pots to be stackable") {
+        expect(ItemIsStackable(ITEM_CLAY_POT));
+        expect(ItemMaxStack(ITEM_CLAY_POT) == 10);
+    }
+
+    it("should NOT allow chests to be stackable") {
+        expect(!ItemIsStackable(ITEM_CHEST));
+        expect(ItemMaxStack(ITEM_CHEST) == 1);
+    }
+
+    it("should put items into a real basket container") {
+        SetupWithRealDefs();
+        int basket = SpawnItem(4, 4, 0, ITEM_BASKET);
+        int rock = SpawnItem(4, 4, 0, ITEM_ROCK);
+
+        expect(CanPutItemInContainer(rock, basket));
+        PutItemInContainer(rock, basket);
+        expect(items[rock].containedIn == basket);
+        expect(items[rock].state == ITEM_IN_CONTAINER);
+        expect(items[basket].contentCount == 1);
+    }
+
+    it("should respect basket capacity of 15 stacks") {
+        SetupWithRealDefs();
+        int basket = SpawnItem(4, 4, 0, ITEM_BASKET);
+
+        // Fill with 15 different item types (using ITEM_RED through various types)
+        for (int i = 0; i < 15; i++) {
+            int item = SpawnItemWithMaterial(4, 4, 0, ITEM_RED + (i % 3), i % 3);
+            // Make each unique by using different material so they don't merge
+            items[item].material = (uint8_t)i;  // unique material per item
+            PutItemInContainer(item, basket);
+        }
+        expect(items[basket].contentCount == 15);
+        expect(IsContainerFull(basket));
+
+        // 16th should fail
+        int extra = SpawnItem(4, 4, 0, ITEM_DIRT);
+        expect(!CanPutItemInContainer(extra, basket));
+    }
+
+    it("should respect clay pot capacity of 5 stacks") {
+        SetupWithRealDefs();
+        int pot = SpawnItem(4, 4, 0, ITEM_CLAY_POT);
+
+        for (int i = 0; i < 5; i++) {
+            int item = SpawnItem(4, 4, 0, ITEM_RED);
+            items[item].material = (uint8_t)i;
+            PutItemInContainer(item, pot);
+        }
+        expect(items[pot].contentCount == 5);
+        expect(IsContainerFull(pot));
+
+        int extra = SpawnItem(4, 4, 0, ITEM_DIRT);
+        expect(!CanPutItemInContainer(extra, pot));
+    }
+
+    it("should have correct weights") {
+        expect(ItemWeight(ITEM_BASKET) == 1.0f);
+        expect(ItemWeight(ITEM_CLAY_POT) == 3.0f);
+        expect(ItemWeight(ITEM_CHEST) == 8.0f);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -588,6 +728,7 @@ int main(int argc, char* argv[]) {
     test(iteration);
     test(weight);
     test(spatial_grid);
+    test(container_item_types);
 
     return summary();
 }

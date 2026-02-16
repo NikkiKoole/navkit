@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 50
+#define CURRENT_SAVE_VERSION 51
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -118,6 +118,29 @@ typedef struct {
     float unreachableCooldown;
     int stackCount;
 } ItemV49;
+
+// Version 50 constants (before container items: basket, clay pot, chest)
+#define V50_ITEM_TYPE_COUNT 28
+
+// V50 Stockpile struct (before container item types added)
+// v50 had 28 item types, v51 adds ITEM_BASKET, ITEM_CLAY_POT, ITEM_CHEST at end (indices 28-30)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V50_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+} StockpileV50;
 
 // Version 34 constants (before short string/cordage items)
 #define V34_ITEM_TYPE_COUNT 24

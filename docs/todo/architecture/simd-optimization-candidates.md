@@ -90,19 +90,73 @@ These structural changes often outperform SIMD at NavKit's current scale:
 ### Hot/Cold Struct Splitting
 Move rarely-accessed fields out of frequently-iterated structs.
 
+#### Mover — **Critical** (by far the worst offender)
+
+The Mover struct embeds `Point path[1024]` — that's `12 bytes × 1024 = 12,288 bytes` of path data
+inline in every Mover. The full struct is **~12,400 bytes**, not ~120 bytes as initially estimated.
+
 ```
-Current Mover (120+ bytes, all in one struct):
-  HOT:  x, y, z, speed, pathIndex, avoidX, avoidY, active     (~32 bytes)
-  COLD: goal, path[1024], capabilities, diagnostics, hunger... (~rest)
+Current reality:
+  Mover array: 10k × 12.4KB = 124MB
+  Hot fields:  x, y, z, speed, pathIndex, avoidX, avoidY, active  (~32 bytes)
+  The path:    path[1024] alone is 12,288 bytes (99.7% of the struct)
 
-Split into:
-  MoverPos   moverPos[MAX_MOVERS];    // 32 bytes × 10k = 320KB (fits L2)
-  MoverState moverState[MAX_MOVERS];  // everything else
+Every movers[i].x skips 12KB of path data to reach movers[i+1].x.
+That's ~194 cache line misses per mover just to read position.
 ```
 
-Movement loop only touches `moverPos[]` — cache hit rate goes from ~25% to ~100%.
+Loops affected every frame:
+- `BuildMoverSpatialGrid()` — reads `active`, `x`, `y` (needs 8 bytes, fetches 12KB)
+- Avoidance pass — reads position + `avoidX/avoidY`
+- Movement phase — reads position + speed + pathIndex
+- Rendering — reads position + visual fields
 
-Applies to: Mover, Item, Workshop (anything iterated frequently but only partially read).
+**The path array is the main problem.** It was added as a simple "get it working" approach —
+every mover carries a 1024-entry fixed buffer even if their path is 3 steps long. This is both
+wasteful in memory and catastrophic for cache performance.
+
+**Possible approaches (not mutually exclusive):**
+
+1. **Separate path storage** — Move paths into their own pool/container:
+   ```
+   MoverPath moverPaths[MAX_MOVERS];   // or a shared path pool
+   ```
+   The mover struct drops from 12.4KB to ~120 bytes immediately. Paths are only accessed
+   during the movement phase, not during spatial grid builds or rendering.
+
+2. **Shared path pool with variable-length paths** — Instead of 1024 Points per mover,
+   allocate from a shared buffer. Most paths are short (< 50 steps). A pool of e.g. 200K
+   Points could serve 10K movers with average path length 20, vs the current 10M Points
+   allocated. Paths get an offset+length into the pool.
+
+3. **Hot/cold split on the remaining fields** — After extracting paths, the ~120-byte
+   Mover can be further split:
+   ```
+   MoverHot   moverHot[MAX_MOVERS];    // x,y,z,speed,pathIdx,avoid,active (~40B)
+   MoverCold  moverCold[MAX_MOVERS];   // goal,capabilities,hunger,diagnostics (~80B)
+   ```
+   10k × 40B = 400KB (fits L2) vs 10k × 120B = 1.2MB.
+
+Step 1 (path extraction) gives the biggest win by far. Step 3 is a nice-to-have after that.
+
+#### Item — **Minor win, only matters at scale**
+
+Item struct is ~40 bytes with no embedded arrays — already fairly compact.
+
+```
+Hot fields (every frame):   active, x, y, z, state, type, material  (~16 bytes)
+Cold fields (job assign):   reservedBy, unreachableCooldown, containedIn, contentCount, contentTypeMask
+```
+
+At 25k items × 40B = 1MB — fits in L3, borderline for L2. A split to ~20 bytes hot would
+halve that to 500KB but the gain is modest compared to the Mover situation. Worth revisiting
+if item counts grow significantly (15k+) or if profiling shows item iteration as a bottleneck.
+
+#### Job, Stockpile, Workshop — **Not worth splitting**
+
+- **Job**: Iterated via `activeJobList[]` indirection (typically 10-100 active), not streamed.
+- **Stockpile**: Max 64, ~8KB each, iterated infrequently (not per-frame).
+- **Workshop**: Max 256, iterated only during job assignment and passive ticks.
 
 ### Active-Cell Lists (vs Full Grid Scan)
 Instead of scanning 512×512×16 cells and skipping 99% of them:
@@ -161,7 +215,7 @@ Current layouts and SIMD-friendliness:
 
 | System | Struct | Size | Layout | SIMD-Friendly? |
 |--------|--------|------|--------|----------------|
-| Movers | `Mover` | ~120B | AoS | Poor (cache waste) |
+| Movers | `Mover` | ~12.4KB (path[1024] inline!) | AoS | Terrible (99% cache waste) |
 | Items | `Item` | ~40B | AoS | Moderate |
 | Water | `WaterCell` | ~8B | AoS 3D grid | Good (compact) |
 | Temperature | `TempCell` | ~6B | AoS 3D grid | Good (compact) |
@@ -209,7 +263,8 @@ Adding `__restrict` qualifiers and `-ffast-math` can unlock auto-vectorization w
 |----------|------|----------|--------|------|
 | 1 | Spatial grid double-compute | Cache cell indices between passes | Trivial | 2× for function |
 | 2 | Column height cache | `columnTop[y][x]` updated on terrain change | Small | 3-5× for snow/rain/sky |
-| 3 | Mover hot/cold split | Separate position struct from state | Moderate | 1.5-2× for movement |
+| 3 | **Mover path extraction** | Move path[1024] out of Mover struct | Moderate | **10-50× cache improvement** for spatial grid/rendering (124MB→1.2MB) |
+| 3b | Mover hot/cold split | Further split position from state (after path extraction) | Small | 1.5-2× for movement |
 | 4 | Active-cell lists for CA | Track unstable cells explicitly | Moderate | 2-10× for sparse grids |
 | 5 | SoA mover positions | Separate x[]/y[]/z[] arrays | Large | 2-4× for movement+spatial |
 | 6 | SIMD intrinsics | Manual vectorization of hot loops | Large | 2-4× per loop |

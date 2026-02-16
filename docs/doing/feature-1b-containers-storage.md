@@ -622,11 +622,11 @@ Chest (3/20 stacks)
 
 ## Current State (Handoff Notes)
 
-**Save version:** 50
+**Save version:** 51
 
 **Test suites:** 28 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-1 complete.** Next up is Phase 2.
+**Phases 0-2 complete.** Next up is Phase 3.
 
 ### Key Architecture (for continuing work)
 
@@ -638,7 +638,6 @@ Chest (3/20 stacks)
 
 - **Item containment (Phase 1):** `containedIn`, `contentCount`, `contentTypeMask` on Item struct
   - `containers.c`/`containers.h`: Put/Remove/Spill/Move/ForEach/IsAccessible/GetWeight
-  - `containerDefs[ITEM_TYPE_COUNT]` table — zero-initialized, Phase 2 populates for basket/chest/pot
   - `ITEM_IN_CONTAINER` state, `IF_CONTAINER` flag (bit 6)
   - `contentTypeMask` is bloom filter — set on Put, never cleared on Remove, reset on Spill
   - Forward decl of `SpillContainerContents` in items.c (containers.c included after in unity build)
@@ -646,29 +645,41 @@ Chest (3/20 stacks)
   - `SplitStack` inherits containedIn + increments parent contentCount
   - Tests use `SetupContainerType(ITEM_RED, maxContents)` to temporarily make any type a container
 
+- **Container items (Phase 2):** ITEM_BASKET, ITEM_CLAY_POT, ITEM_CHEST
+  - `containerDefs[ITEM_TYPE_COUNT]` in `containers.c` — statically initialized with designated initializers
+  - Basket: maxContents=15, spoilage 1.0, no weather, no liquids. Crafted at rope maker (CORDAGE x2)
+  - Clay Pot: maxContents=5, spoilage 0.5, weather protection, accepts liquids. Crafted at kiln (CLAY x2 + fuel)
+  - Chest: maxContents=20, spoilage 0.7, weather protection, no liquids. Crafted at sawmill (PLANKS x4)
+  - Basket/pot stackable (maxStack 10), chest not stackable (maxStack 1)
+  - Placeholder sprites: crate_green (basket), crate_red (pot), crate_blue (chest)
+  - Stockpile filters: keys '2' (baskets), '3' (clay pots), '4' (chests)
+
 ### Build Commands
 - `make path` to build, `make test` to run all 28 suites
 - `touch src/unity.c` forces rebuild (unity build includes all .c files)
 - Both `test_unity.c` AND `unity.c` need new `.c` includes for new modules
 - Both `saveload.c` AND `inspect.c` need parallel save migration updates
 
-### Files Modified by Phase 0+1
+### Files Modified by Phase 0-2
 | File | Purpose |
 |------|---------|
-| `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state |
+| `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state, ITEM_BASKET/CLAY_POT/CHEST types |
 | `src/entities/item_defs.h` | IF_CONTAINER flag (bit 6), ItemIsContainer macro |
+| `src/entities/item_defs.c` | Container item definitions (flags, weight, maxStack, sprites) |
 | `src/entities/items.c` | SpawnItem init, DeleteItem spill/decrement, forward decl of SpillContainerContents |
 | `src/entities/stacking.c` | SplitStack inherits containedIn |
 | `src/entities/stacking.h` | MergeItemIntoStack, SplitStack declarations |
-| `src/entities/containers.c` | **NEW** — all container operations |
-| `src/entities/containers.h` | **NEW** — ContainerDef, container API |
-| `src/core/save_migrations.h` | v50, ItemV49 struct |
-| `src/core/saveload.c` | v49→v50 item migration |
-| `src/core/inspect.c` | Parallel v49→v50 migration |
+| `src/entities/containers.c` | All container operations + containerDefs table |
+| `src/entities/containers.h` | ContainerDef, container API |
+| `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill) |
+| `src/entities/stockpiles.c` | Stockpile filter entries for 3 container types |
+| `src/core/save_migrations.h` | v51, StockpileV50 struct, ItemV49 struct |
+| `src/core/saveload.c` | v49→v50 item migration, v50→v51 stockpile migration |
+| `src/core/inspect.c` | Parallel v50→v51 migration |
 | `src/unity.c` | includes containers.c |
 | `tests/test_unity.c` | includes containers.c |
 | `tests/test_stacking.c` | 22 tests, 60 assertions |
-| `tests/test_containers.c` | **NEW** — 32 tests, 94 assertions |
+| `tests/test_containers.c` | 45 tests, 139 assertions (Phase 1: 32/94, Phase 2: 13/45) |
 
 ---
 
@@ -790,10 +801,10 @@ Chest (3/20 stacks)
 - 12 describe blocks: container_def, put_item_in_container, remove_from_container, container_queries, accessibility, move_container, spill_contents, delete_container, split_in_container, iteration, weight, spatial_grid
 - All 28 test suites pass (26,590 total assertions, 0 failures)
 
-### Phase 2: Container Items & Crafting
+### Phase 2: Container Items & Crafting — COMPLETE ✅
 **Goal:** Container items exist and can be crafted.
 
-**Save version:** 50 → 51
+**Save version:** 50 → 51 (done)
 
 1. Add `ITEM_BASKET`, `ITEM_CHEST`, `ITEM_CLAY_POT` to items.h enum
 2. Add item definitions to item_defs.c:
@@ -811,12 +822,23 @@ Chest (3/20 stacks)
 8. Update save migration: V_PREV_ITEM_TYPE_COUNT = 28, new count = 31
 9. Update unity.c and test_unity.c if new .c files added
 
-**Tests (~15 assertions):**
-- Container items craftable at workshops
-- ContainerDef returns correct values for each type
-- IF_CONTAINER flag set on container items, not on others
-- Baskets/pots stackable, chests not (maxStack 1)
-- Stockpile filter accepts/rejects container items
+**Implementation notes:**
+- `containerDefs[]` changed from zero-initialized to static designated initializers (no runtime init needed)
+- Placeholder sprites: SPRITE_crate_green (basket), SPRITE_crate_red (pot), SPRITE_crate_blue (chest)
+- Stockpile filter keys: '2' (baskets), '3' (clay pots), '4' (chests) — numbers since alphabet is nearly exhausted
+- `StockpileV50` migration struct copies all fields (cells, slots, reservedBy, slotCounts, slotTypes, slotMaterials, priority, groundItemIdx, freeSlotCount) — not just the simple fields earlier migrations used
+- Test `RestoreRealContainerDefs()` helper needed because Phase 1 tests `ClearContainerDefs()` wipes the static initializers
+- No new .c files — no unity.c/test_unity.c changes needed
+
+**Tests (13 tests, 45 assertions):** `tests/test_containers.c` — `container_item_types` describe block
+- IF_CONTAINER flag on container items, NOT on non-containers (5 types checked)
+- GetContainerDef returns correct values for basket, chest, clay pot (all fields verified)
+- GetContainerDef returns NULL for non-container types (3 types checked)
+- Basket/pot stackable with maxStack=10, chest NOT stackable with maxStack=1
+- Real basket container: put item in, verify containedIn/state/contentCount
+- Basket capacity: fill 15 unique stacks → full, 16th rejected
+- Clay pot capacity: fill 5 unique stacks → full, 6th rejected
+- Correct weights: basket=1.0, pot=3.0, chest=8.0
 
 ### Phase 3: Stockpile Container Integration
 **Goal:** Containers work as stockpile storage, items hauled into containers.

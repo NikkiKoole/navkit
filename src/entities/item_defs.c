@@ -39,5 +39,8 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_CORDAGE]      = { "Cordage",      SPRITE_cordage,      IF_STACKABLE, 20, MAT_NONE, 0.5f, 0.0f },
     [ITEM_BERRIES]      = { "Berries",      SPRITE_bush,         IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.3f, 0.3f },
     [ITEM_DRIED_BERRIES]= { "Dried Berries",SPRITE_grass_trampled,IF_STACKABLE | IF_EDIBLE, 20, MAT_NONE, 0.2f, 0.25f },
+    [ITEM_BASKET]       = { "Basket",       SPRITE_crate_green,  IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 1.0f, 0.0f },
+    [ITEM_CLAY_POT]     = { "Clay Pot",     SPRITE_crate_red,    IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 3.0f, 0.0f },
+    [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f },
 };
 #undef MN

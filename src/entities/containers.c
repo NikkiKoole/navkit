@@ -2,9 +2,12 @@
 #include "item_defs.h"
 #include "stacking.h"
 
-// Container definitions table — entries are zero-initialized (maxContents=0 means not a container).
-// Phase 2 will populate entries for ITEM_BASKET, ITEM_CHEST, ITEM_CLAY_POT.
-ContainerDef containerDefs[ITEM_TYPE_COUNT] = {0};
+// Container definitions table — entries with maxContents=0 mean "not a container".
+ContainerDef containerDefs[ITEM_TYPE_COUNT] = {
+    [ITEM_BASKET]   = { .maxContents = 15, .spoilageModifier = 1.0f, .weatherProtection = false, .acceptsLiquids = false },
+    [ITEM_CHEST]    = { .maxContents = 20, .spoilageModifier = 0.7f, .weatherProtection = true,  .acceptsLiquids = false },
+    [ITEM_CLAY_POT] = { .maxContents = 5,  .spoilageModifier = 0.5f, .weatherProtection = true,  .acceptsLiquids = true  },
+};
 
 const ContainerDef* GetContainerDef(ItemType type) {
     if (type < 0 || type >= ITEM_TYPE_COUNT) return NULL;

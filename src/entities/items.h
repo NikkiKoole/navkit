@@ -35,6 +35,9 @@ typedef enum {
     ITEM_CORDAGE,       // Braided rope from string
     ITEM_BERRIES,       // Fresh berries (edible)
     ITEM_DRIED_BERRIES, // Dried berries (edible, longer lasting)
+    ITEM_BASKET,        // Woven basket (cordage container)
+    ITEM_CLAY_POT,      // Fired clay pot (kiln container)
+    ITEM_CHEST,         // Wooden chest (planks container)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 
