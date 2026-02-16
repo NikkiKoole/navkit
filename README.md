@@ -9,17 +9,15 @@
 
 3D grid-based colony simulation framework. Pathfinding (A*, HPA*, JPS), jobs, movers, items, stockpiles, and cellular automata simulations (water, fire, smoke). C + raylib.
 
-See [src/README.md](src/README.md) for architecture details.
-
 ## Structure
 
 | Directory | Description |
 |-----------|-------------|
-| **`/src`** | **Main project** — Grid pathfinding (A*, HPA*, JPS), movers, jobs, items, stockpiles, water/fire/smoke simulation — [overview](documentation/overview.md) |
-| `/experiments/steering` | Old experiment: steering behaviors, flocking, social force model |
-| `/experiments/crowd` | Old experiment: crowd simulation testbed |
+| **`/src`** | **Main project** (~50k lines of C) — grid pathfinding (A*, HPA*, JPS, JPS+), movers, jobs, items, stockpiles, workshops, water/fire/smoke/temperature simulation |
+| `/tests` | Unit tests and benchmarks (c89spec framework) |
+| `/docs` | Design docs, task tracking (todo/doing/done workflow) |
 | `/tools` | Atlas generator, font embedder |
-| `/documentation` | Design docs — [todo](documentation/todo.md) |
+| `/experiments` | Old experiments: steering behaviors, crowd simulation |
 
 ## Build
 

@@ -4,6 +4,7 @@
 #include "../world/material.h"
 #include "../entities/workshops.h"
 #include "../entities/item_defs.h"
+#include "../entities/containers.h"
 #include "../entities/jobs.h"
 #include "../world/designations.h"
 #include "../simulation/trees.h"
@@ -77,13 +78,29 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     snprintf(titleBuf, sizeof(titleBuf), "Stockpile #%d", spIdx);
     snprintf(priorityBuf, sizeof(priorityBuf), "Priority: %d", sp->priority);
     snprintf(stackBuf, sizeof(stackBuf), "Stack size: %d", sp->maxStackSize);
+    // Container info
+    char containerBuf[48];
+    int installedContainers = CountInstalledContainers(spIdx);
+    if (sp->maxContainers > 0) {
+        snprintf(containerBuf, sizeof(containerBuf), "Containers: %d/%d", installedContainers, sp->maxContainers);
+    } else {
+        containerBuf[0] = '\0';
+    }
     snprintf(storageBuf, sizeof(storageBuf), "Storage: %d/%d (%d cells)", totalItems, maxCapacity, activeCells);
     char fillMeter[64];
     BuildFillMeter(fillMeter, sizeof(fillMeter), GetStockpileFillRatio(spIdx), 10);
     snprintf(fillBuf, sizeof(fillBuf), "Fill: %s", fillMeter);
-    // Cell contents with item name
+    // Cell contents with item name — check if slot is a container
     char cellBuf[80];
-    if (cellCount > 0 && slotIdx >= 0 && slotIdx < totalSlots) {
+    bool cellIsContainer = false;
+    if (slotIdx >= 0 && slotIdx < totalSlots && IsSlotContainer(spIdx, slotIdx)) {
+        cellIsContainer = true;
+        int containerIdx = sp->slots[slotIdx];
+        const ContainerDef* def = GetContainerDef(items[containerIdx].type);
+        int maxC = def ? def->maxContents : 0;
+        snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %s %d/%d stacks",
+                 cellX, cellY, ItemName(items[containerIdx].type), cellCount, maxC);
+    } else if (cellCount > 0 && slotIdx >= 0 && slotIdx < totalSlots) {
         ItemType st = sp->slotTypes[slotIdx];
         uint8_t sm = sp->slotMaterials[slotIdx];
         if (sm == MAT_NONE) sm = DefaultMaterialForItemType(st);
@@ -99,7 +116,9 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     } else {
         snprintf(cellBuf, sizeof(cellBuf), "Cell (%d,%d): %d/%d items", cellX, cellY, cellCount, sp->maxStackSize);
     }
-    const char* helpText = "+/- priority, [/] stack, X toggle all, 1-4 wood";
+    const char* helpText = sp->maxContainers > 0
+        ? "+/- priority, [/] stack, {/} containers, X toggle all"
+        : "+/- priority, [/] stack, X toggle all, 1-4 wood";
 
     // Pre-build filter entry strings ("k:Name") and measure widths
     char filterEntries[32][20];  // "k:DisplayName" per filter
@@ -122,10 +141,12 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 
     // Calculate box width: use a target content width, capped to keep tooltip reasonable
     int maxContentW = 420;
+    bool showContainerLine = containerBuf[0] != '\0';
     int headerWidths[] = {
         MeasureTextUI(titleBuf, 14),
         MeasureTextUI(priorityBuf, 14),
         MeasureTextUI(stackBuf, 14),
+        showContainerLine ? MeasureTextUI(containerBuf, 14) : 0,
         MeasureTextUI(storageBuf, 14),
         MeasureTextUI(fillBuf, 14),
         MeasureTextUI(cellBuf, 14),
@@ -156,8 +177,8 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
 
     int padding = 6;
     int lineH = 16;
-    // 6 header lines + "Filters:" label + filterRows + "Wood:" label + matRows + help
-    int totalLines = 6 + 1 + filterRows + 1 + matRows + 1;
+    // header lines + optional container line + "Filters:" label + filterRows + "Wood:" label + matRows + help
+    int totalLines = 6 + (showContainerLine ? 1 : 0) + 1 + filterRows + 1 + matRows + 1;
     int boxW = maxContentW + padding * 2;
     int boxH = lineH * totalLines + padding * 2;
 
@@ -182,6 +203,11 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(stackBuf, tx + padding, y, 14, WHITE);
     y += lineH;
 
+    if (showContainerLine) {
+        DrawTextShadow(containerBuf, tx + padding, y, 14, WHITE);
+        y += lineH;
+    }
+
     bool overfull = IsStockpileOverfull(spIdx);
     DrawTextShadow(storageBuf, tx + padding, y, 14, overfull ? RED : WHITE);
     y += lineH;
@@ -189,7 +215,14 @@ static void DrawStockpileTooltip(int spIdx, Vector2 mouse, Vector2 mouseGrid) {
     DrawTextShadow(fillBuf, tx + padding, y, 14, WHITE);
     y += lineH;
 
-    bool cellFull = cellCount >= sp->maxStackSize;
+    bool cellFull = false;
+    if (cellIsContainer) {
+        int ci = sp->slots[slotIdx];
+        const ContainerDef* def = (ci >= 0 && ci < MAX_ITEMS) ? GetContainerDef(items[ci].type) : NULL;
+        cellFull = def && cellCount >= def->maxContents;
+    } else {
+        cellFull = cellCount >= sp->maxStackSize;
+    }
     DrawTextShadow(cellBuf, tx + padding, y, 14, cellFull ? ORANGE : WHITE);
     y += lineH;
 

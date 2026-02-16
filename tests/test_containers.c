@@ -6,6 +6,7 @@
 #include "../src/entities/item_defs.h"
 #include "../src/entities/stacking.h"
 #include "../src/entities/containers.h"
+#include "../src/entities/stockpiles.h"
 #include "../src/world/material.h"
 #include "test_helpers.h"
 #include <string.h>
@@ -701,6 +702,319 @@ describe(container_item_types) {
     }
 }
 
+// ===========================================================================
+// Phase 3: Stockpile Container Integration
+// ===========================================================================
+
+static void StockpileSetup(void) {
+    InitTestGrid(8, 8);
+    ClearItems();
+    ClearStockpiles();
+    RestoreRealContainerDefs();
+}
+
+describe(stockpile_containers) {
+    it("should install container in stockpile slot when maxContainers > 0") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        expect(items[basket].state == ITEM_IN_STOCKPILE);
+        expect(IsSlotContainer(sp, 0));
+        expect(CountInstalledContainers(sp) == 1);
+        // slotCounts should be 0 (container is empty)
+        expect(stockpiles[sp].slotCounts[0] == 0);
+    }
+
+    it("should store container as regular item when maxContainers == 0") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        // maxContainers defaults to 0
+
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        expect(items[basket].state == ITEM_IN_STOCKPILE);
+        // Should be a normal slot, not a container slot
+        expect(!IsSlotContainer(sp, 0));
+        expect(CountInstalledContainers(sp) == 0);
+        expect(stockpiles[sp].slotCounts[0] == 1);
+    }
+
+    it("should route items into container slot") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        // Install a basket
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+        expect(IsSlotContainer(sp, 0));
+
+        // Place a rock into the same slot — should go inside the basket
+        int rock = SpawnItem(0, 0, 0, ITEM_ROCK);
+        PlaceItemInStockpile(sp, 0, 0, rock);
+
+        expect(items[rock].containedIn == basket);
+        expect(items[rock].state == ITEM_IN_CONTAINER);
+        expect(items[basket].contentCount == 1);
+        expect(stockpiles[sp].slotCounts[0] == 1);
+    }
+
+    it("should merge same-type items in container slot") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        int rock1 = SpawnItemWithMaterial(0, 0, 0, ITEM_ROCK, MAT_GRANITE);
+        items[rock1].stackCount = 3;
+        PlaceItemInStockpile(sp, 0, 0, rock1);
+        expect(items[basket].contentCount == 1);
+
+        int rock2 = SpawnItemWithMaterial(0, 0, 0, ITEM_ROCK, MAT_GRANITE);
+        items[rock2].stackCount = 2;
+        PlaceItemInStockpile(sp, 0, 0, rock2);
+
+        // rock2 should have been merged into rock1
+        expect(items[rock1].stackCount == 5);
+        expect(items[basket].contentCount == 1);
+        expect(stockpiles[sp].slotCounts[0] == 1);
+    }
+
+    it("should support mixed item types in single container") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        int rock = SpawnItem(0, 0, 0, ITEM_ROCK);
+        PlaceItemInStockpile(sp, 0, 0, rock);
+        int log = SpawnItem(0, 0, 0, ITEM_LOG);
+        PlaceItemInStockpile(sp, 0, 0, log);
+        int dirt = SpawnItem(0, 0, 0, ITEM_DIRT);
+        PlaceItemInStockpile(sp, 0, 0, dirt);
+
+        expect(items[basket].contentCount == 3);
+        expect(stockpiles[sp].slotCounts[0] == 3);
+        expect(items[rock].containedIn == basket);
+        expect(items[log].containedIn == basket);
+        expect(items[dirt].containedIn == basket);
+    }
+
+    it("should respect container capacity") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        // Clay pot has capacity 5
+        int pot = SpawnItem(0, 0, 0, ITEM_CLAY_POT);
+        PlaceItemInStockpile(sp, 0, 0, pot);
+        expect(IsSlotContainer(sp, 0));
+
+        // Fill all 5 slots
+        for (int i = 0; i < 5; i++) {
+            int item = SpawnItem(0, 0, 0, ITEM_RED);
+            items[item].material = (uint8_t)i;  // unique so they don't merge
+            PlaceItemInStockpile(sp, 0, 0, item);
+        }
+        expect(items[pot].contentCount == 5);
+        expect(stockpiles[sp].slotCounts[0] == 5);
+
+        // 6th item should NOT go into the full container via FindFreeStockpileSlot
+        int outX, outY;
+        // The container slot should be full, so FindFreeStockpileSlot should skip it
+        // and find an empty bare slot instead
+        bool found = FindFreeStockpileSlot(sp, ITEM_RED, MAT_NONE, &outX, &outY);
+        expect(found);
+        // Should be a different slot, not (0,0)
+        expect(outX != 0 || outY != 0);
+    }
+
+    it("should enforce maxContainers limit") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 3, 1);
+        SetStockpileMaxContainers(sp, 2);
+
+        // Install first two containers
+        int b1 = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, b1);
+        int b2 = SpawnItem(CELL_SIZE, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 1, 0, b2);
+
+        expect(CountInstalledContainers(sp) == 2);
+        expect(IsSlotContainer(sp, 0));
+        expect(IsSlotContainer(sp, 1));
+
+        // Third container should be stored as regular item (limit reached)
+        int b3 = SpawnItem(2 * CELL_SIZE, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 2, 0, b3);
+
+        expect(!IsSlotContainer(sp, 2));
+        expect(CountInstalledContainers(sp) == 2);
+        expect(stockpiles[sp].slotCounts[2] == 1);  // stored as regular stack
+    }
+
+    it("should prefer container slots in FindFreeStockpileSlot") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 1);
+        SetStockpileMaxContainers(sp, 2);
+
+        // Install basket in slot 0
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+        expect(IsSlotContainer(sp, 0));
+        // FindFreeStockpileSlot should prefer the container slot
+        int outX, outY;
+        bool found = FindFreeStockpileSlot(sp, ITEM_ROCK, MAT_GRANITE, &outX, &outY);
+        expect(found);
+        expect(outX == 0);
+        expect(outY == 0);
+    }
+
+    it("should not put containers inside containers via FindFreeStockpileSlot") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 1);
+        SetStockpileMaxContainers(sp, 2);
+
+        // Install basket in slot 0
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        // Finding slot for another basket should NOT return the container slot
+        int outX, outY;
+        bool found = FindFreeStockpileSlot(sp, ITEM_BASKET, MAT_NONE, &outX, &outY);
+        expect(found);
+        // Should be slot 1 (empty), not slot 0 (container)
+        expect(outX == 1);
+    }
+
+    it("should spill container contents when stockpile deleted") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        int rock = SpawnItem(0, 0, 0, ITEM_ROCK);
+        PlaceItemInStockpile(sp, 0, 0, rock);
+        int log = SpawnItem(0, 0, 0, ITEM_LOG);
+        PlaceItemInStockpile(sp, 0, 0, log);
+
+        expect(items[basket].contentCount == 2);
+
+        DeleteStockpile(sp);
+
+        // Container contents should be spilled
+        expect(items[rock].containedIn == -1);
+        expect(items[rock].state == ITEM_ON_GROUND);
+        expect(items[log].containedIn == -1);
+        expect(items[log].state == ITEM_ON_GROUND);
+        // Basket itself should be on ground too
+        expect(items[basket].state == ITEM_ON_GROUND);
+        expect(items[basket].contentCount == 0);
+    }
+
+    it("should account for container capacity in fill ratio") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 1, 1);  // 1 cell stockpile
+        SetStockpileMaxContainers(sp, 1);
+
+        // Install a clay pot (capacity 5) in the single slot
+        int pot = SpawnItem(0, 0, 0, ITEM_CLAY_POT);
+        PlaceItemInStockpile(sp, 0, 0, pot);
+        expect(IsSlotContainer(sp, 0));
+
+        // Empty container: fill ratio should be 0
+        float ratio = GetStockpileFillRatio(sp);
+        expect(ratio < 0.01f);
+
+        // Add 1 item: fill ratio should be 1/5 = 0.2
+        int rock = SpawnItem(0, 0, 0, ITEM_ROCK);
+        PlaceItemInStockpile(sp, 0, 0, rock);
+        ratio = GetStockpileFillRatio(sp);
+        expect(ratio > 0.19f && ratio < 0.21f);
+
+        // Add 4 more items: fill ratio should be 5/5 = 1.0
+        for (int i = 0; i < 4; i++) {
+            int item = SpawnItem(0, 0, 0, ITEM_RED);
+            items[item].material = (uint8_t)(i + 1);
+            PlaceItemInStockpile(sp, 0, 0, item);
+        }
+        ratio = GetStockpileFillRatio(sp);
+        expect(ratio > 0.99f && ratio < 1.01f);
+    }
+
+    it("should detect container slots with IsSlotContainer") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 1);
+        SetStockpileMaxContainers(sp, 1);
+
+        // Slot 0: empty
+        expect(!IsSlotContainer(sp, 0));
+        expect(!IsSlotContainer(sp, 1));
+
+        // Install basket in slot 0
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+        expect(IsSlotContainer(sp, 0));
+        expect(!IsSlotContainer(sp, 1));
+
+        // Place a non-container in slot 1
+        int rock = SpawnItem(CELL_SIZE, 0, 0, ITEM_ROCK);
+        PlaceItemInStockpile(sp, 1, 0, rock);
+        expect(IsSlotContainer(sp, 0));
+        expect(!IsSlotContainer(sp, 1));
+    }
+
+    it("should get and set maxContainers") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+
+        expect(GetStockpileMaxContainers(sp) == 0);
+        SetStockpileMaxContainers(sp, 5);
+        expect(GetStockpileMaxContainers(sp) == 5);
+        SetStockpileMaxContainers(sp, 0);
+        expect(GetStockpileMaxContainers(sp) == 0);
+        // Negative clamps to 0
+        SetStockpileMaxContainers(sp, -1);
+        expect(GetStockpileMaxContainers(sp) == 0);
+    }
+
+    it("should handle free slot count with containers") {
+        StockpileSetup();
+        int sp = CreateStockpile(0, 0, 0, 2, 1);
+        SetStockpileMaxContainers(sp, 2);
+
+        // Install basket (capacity 15) in slot 0
+        int basket = SpawnItem(0, 0, 0, ITEM_BASKET);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+
+        RebuildStockpileFreeSlotCounts();
+        // Slot 0 = container with 15 capacity, slot 1 = bare with maxStackSize capacity
+        // Both should be "free"
+        expect(stockpiles[sp].freeSlotCount == 2);
+
+        // Fill the container
+        for (int i = 0; i < 15; i++) {
+            int item = SpawnItem(0, 0, 0, ITEM_RED);
+            items[item].material = (uint8_t)i;
+            PlaceItemInStockpile(sp, 0, 0, item);
+        }
+        RebuildStockpileFreeSlotCounts();
+        // Container slot is full, bare slot still free
+        expect(stockpiles[sp].freeSlotCount == 1);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -729,6 +1043,7 @@ int main(int argc, char* argv[]) {
     test(weight);
     test(spatial_grid);
     test(container_item_types);
+    test(stockpile_containers);
 
     return summary();
 }

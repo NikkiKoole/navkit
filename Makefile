@@ -84,9 +84,17 @@ test_hunger_SRC      := tests/test_hunger.c
 test_stacking_SRC    := tests/test_stacking.c
 test_containers_SRC  := tests/test_containers.c
 
+# ---------------------------------------------------------------------------
+# Unity build dependency tracking
+# ---------------------------------------------------------------------------
+# Both unity.c and test_unity.c #include all .c/.h files, but make doesn't
+# know about those includes. Without this, changing a header (e.g. adding an
+# enum value) won't trigger a rebuild, causing stale-object bugs.
+GAME_SOURCES := $(wildcard src/*.h src/*.c src/**/*.h src/**/*.c tests/test_unity.c)
+
 # Precompile test_unity.o once (the expensive part)
-$(TEST_UNITY_OBJ): tests/test_unity.c $(RAYLIB_LIB) | $(BINDIR)
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(TEST_UNITY_OBJ): $(GAME_SOURCES) $(RAYLIB_LIB) | $(BINDIR)
+	$(CC) $(CFLAGS) -c -o $@ tests/test_unity.c
 
 # Soundsystem test - standalone, no test_unity.c needed
 test_soundsystem_SRC := tests/test_soundsystem.c
@@ -98,6 +106,10 @@ $(BINDIR):
 
 $(RAYLIB_BUILDDIR):
 	mkdir -p $(RAYLIB_BUILDDIR)
+
+# Unity build targets need to rebuild when any source file changes
+$(BINDIR)/path: $(GAME_SOURCES)
+$(BINDIR)/path8: $(GAME_SOURCES)
 
 # Pattern rule: build executable targets from their corresponding _SRC
 # (only matches direct children of BINDIR, not subdirectories or .o files)

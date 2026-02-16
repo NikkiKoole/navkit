@@ -2,6 +2,7 @@
 #include "mover.h"
 #include "items.h"
 #include "stacking.h"
+#include "containers.h"
 #include "jobs.h"
 #include "../world/cell_defs.h"
 #include <string.h>
@@ -152,7 +153,13 @@ void RebuildStockpileFreeSlotCounts(void) {
             int worldY = sp->y + ly;
             if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
             
-            if (sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize) {
+            // Container slots use container capacity, bare slots use maxStackSize
+            if (IsSlotContainer(i, s)) {
+                const ContainerDef* def = GetContainerDef(items[sp->slots[s]].type);
+                if (def && items[sp->slots[s]].contentCount + sp->reservedBy[s] < def->maxContents) {
+                    freeCount++;
+                }
+            } else if (sp->slotCounts[s] + sp->reservedBy[s] < sp->maxStackSize) {
                 freeCount++;
             }
         }
@@ -263,6 +270,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
                 sp->slotTypes[s] = -1;  // no type
                 sp->slotMaterials[s] = MAT_NONE; // no material
                 sp->groundItemIdx[s] = -1; // no ground item blocking
+                sp->slotIsContainer[s] = false;
             }
             
             // Initialize free slot count (so WorkGiver_Haul works before a rebuild)
@@ -278,9 +286,10 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             }
             sp->freeSlotCount = freeCount;
             
-            // Default priority and stack size
+            // Default priority, stack size, and container limit
             sp->priority = 5;
             sp->maxStackSize = MAX_STACK_SIZE;
+            sp->maxContainers = 0;
             
             stockpileCount++;
             InvalidateStockpileSlotCacheAll();  // New stockpile added
@@ -294,7 +303,15 @@ void DeleteStockpile(int index) {
     if (index >= 0 && index < MAX_STOCKPILES && stockpiles[index].active) {
         Stockpile* sp = &stockpiles[index];
         
-        // Drop all ITEM_IN_STOCKPILE items to ground before deleting
+        // Spill container contents and drop all ITEM_IN_STOCKPILE items to ground
+        int totalSlots = sp->width * sp->height;
+        for (int s = 0; s < totalSlots; s++) {
+            if (!sp->cells[s]) continue;
+            if (sp->slots[s] >= 0 && sp->slots[s] < MAX_ITEMS
+                && items[sp->slots[s]].active && items[sp->slots[s]].contentCount > 0) {
+                SpillContainerContents(sp->slots[s]);
+            }
+        }
         for (int i = 0; i < itemHighWaterMark; i++) {
             if (!items[i].active) continue;
             if (items[i].state != ITEM_IN_STOCKPILE) continue;
@@ -488,6 +505,31 @@ bool FindFreeStockpileSlot(int stockpileIdx, ItemType type, uint8_t material, in
     if (!StockpileAcceptsItem(stockpileIdx, type, material)) return false;
 
     MaterialType mat = (MaterialType)ResolveItemMaterial(type, material);
+    
+    // Pass 0: find a container slot with room (containers are preferred storage)
+    // Don't put containers inside containers via this path — container installation
+    // is handled separately in PlaceItemInStockpile
+    if (!ItemIsContainer(type)) {
+        for (int ly = 0; ly < sp->height; ly++) {
+            for (int lx = 0; lx < sp->width; lx++) {
+                int idx = SlotIndex(sp, lx, ly);
+                if (!sp->cells[idx]) continue;
+                if (sp->groundItemIdx[idx] >= 0) continue;
+                if (!IsSlotContainer(stockpileIdx, idx)) continue;
+
+                int worldX = sp->x + lx;
+                int worldY = sp->y + ly;
+                if (!IsCellWalkableAt(sp->z, worldY, worldX)) continue;
+
+                int containerIdx = sp->slots[idx];
+                const ContainerDef* def = GetContainerDef(items[containerIdx].type);
+                if (!def || items[containerIdx].contentCount + sp->reservedBy[idx] >= def->maxContents) continue;
+                *outX = worldX;
+                *outY = worldY;
+                return true;
+            }
+        }
+    }
     
     // First pass: find a partial stack of same type that still has room
     // (accounting for both existing items and pending reservations)
@@ -715,6 +757,33 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     
     if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
     
+    if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
+    sp->groundItemIdx[idx] = -1;  // item is being placed in slot, not on ground
+    
+    // If slot has a container, route item into it
+    if (IsSlotContainer(stockpileIdx, idx)) {
+        int containerIdx = sp->slots[idx];
+        PutItemInContainer(itemIdx, containerIdx);
+        sp->slotCounts[idx] = items[containerIdx].contentCount;
+        return;
+    }
+    
+    // Check if this is a container being installed as a slot
+    if (ItemIsContainer(items[itemIdx].type) && sp->maxContainers > 0
+        && sp->slotCounts[idx] == 0 && sp->slots[idx] == -1) {
+        int installed = CountInstalledContainers(stockpileIdx);
+        if (installed < sp->maxContainers) {
+            // Install container as the slot's storage unit
+            items[itemIdx].state = ITEM_IN_STOCKPILE;
+            sp->slots[idx] = itemIdx;
+            sp->slotTypes[idx] = items[itemIdx].type;
+            sp->slotMaterials[idx] = ResolveItemMaterial(items[itemIdx].type, items[itemIdx].material);
+            sp->slotCounts[idx] = 0;  // container is empty
+            sp->slotIsContainer[idx] = true;
+            return;
+        }
+    }
+    
     // Validate slot types and materials match if slot already has items
     if (sp->slotTypes[idx] >= 0 && sp->slotTypes[idx] != items[itemIdx].type) {
         return;
@@ -723,8 +792,6 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     if (sp->slotCounts[idx] > 0 && sp->slotMaterials[idx] != incomingMat) {
         return;
     }
-    
-    if (sp->reservedBy[idx] > 0) sp->reservedBy[idx]--;  // one reservation fulfilled
     
     // If slot already has an item, merge stacks (incoming item may be deleted)
     if (sp->slotCounts[idx] > 0 && sp->slots[idx] >= 0 && sp->slots[idx] < MAX_ITEMS
@@ -767,6 +834,7 @@ void ClearStockpileSlot(Stockpile* sp, int slotIdx) {
     sp->slotTypes[slotIdx] = -1;
     sp->slotMaterials[slotIdx] = MAT_NONE;
     sp->slotCounts[slotIdx] = 0;
+    sp->slotIsContainer[slotIdx] = false;
 }
 
 // Remove an item from a stockpile slot at world position (x, y, z)
@@ -985,16 +1053,20 @@ float GetStockpileFillRatio(int stockpileIdx) {
     if (!sp->active) return 0.0f;
 
     int totalItems = 0;
-    int activeCells = 0;
+    int maxCapacity = 0;
     int totalSlots = sp->width * sp->height;
 
     for (int i = 0; i < totalSlots; i++) {
         if (!sp->cells[i]) continue;
-        activeCells++;
         totalItems += sp->slotCounts[i];
+        if (IsSlotContainer(stockpileIdx, i)) {
+            const ContainerDef* def = GetContainerDef(items[sp->slots[i]].type);
+            maxCapacity += def ? def->maxContents : sp->maxStackSize;
+        } else {
+            maxCapacity += sp->maxStackSize;
+        }
     }
 
-    int maxCapacity = activeCells * sp->maxStackSize;
     if (maxCapacity <= 0) return 0.0f;
     return (float)totalItems / (float)maxCapacity;
 }
@@ -1130,4 +1202,44 @@ int FindGroundItemOnStockpile(int* outStockpileIdx, bool* outIsAbsorb) {
     }
     
     return -1;  // no ground items on stockpile tiles
+}
+
+// =============================================================================
+// Container Slot Support
+// =============================================================================
+
+void SetStockpileMaxContainers(int stockpileIdx, int maxContainers) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return;
+    if (maxContainers < 0) maxContainers = 0;
+    sp->maxContainers = maxContainers;
+    InvalidateStockpileSlotCacheAll();
+}
+
+int GetStockpileMaxContainers(int stockpileIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return 0;
+    if (!stockpiles[stockpileIdx].active) return 0;
+    return stockpiles[stockpileIdx].maxContainers;
+}
+
+int CountInstalledContainers(int stockpileIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return 0;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return 0;
+
+    int count = 0;
+    int totalSlots = sp->width * sp->height;
+    for (int s = 0; s < totalSlots; s++) {
+        if (sp->slotIsContainer[s]) count++;
+    }
+    return count;
+}
+
+bool IsSlotContainer(int stockpileIdx, int slotIdx) {
+    if (stockpileIdx < 0 || stockpileIdx >= MAX_STOCKPILES) return false;
+    Stockpile* sp = &stockpiles[stockpileIdx];
+    if (!sp->active) return false;
+    if (slotIdx < 0 || slotIdx >= sp->width * sp->height) return false;
+    return sp->slotIsContainer[slotIdx];
 }

@@ -868,11 +868,41 @@ bool LoadWorld(const char* filename) {
             memcpy(stockpiles[i].slotMaterials, v50_sp.slotMaterials, sizeof(v50_sp.slotMaterials));
             stockpiles[i].maxStackSize = v50_sp.maxStackSize;
             stockpiles[i].priority = v50_sp.priority;
+            stockpiles[i].maxContainers = 0;
+            memset(stockpiles[i].slotIsContainer, 0, sizeof(stockpiles[i].slotIsContainer));
             memcpy(stockpiles[i].groundItemIdx, v50_sp.groundItemIdx, sizeof(v50_sp.groundItemIdx));
             stockpiles[i].freeSlotCount = v50_sp.freeSlotCount;
         }
+    } else if (version < 52) {
+        // v51: no maxContainers field
+        StockpileV51 v51_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v51_sp, sizeof(StockpileV51), 1, f);
+            stockpiles[i].x = v51_sp.x;
+            stockpiles[i].y = v51_sp.y;
+            stockpiles[i].z = v51_sp.z;
+            stockpiles[i].width = v51_sp.width;
+            stockpiles[i].height = v51_sp.height;
+            stockpiles[i].active = v51_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v51_sp.allowedTypes,
+                   sizeof(v51_sp.allowedTypes));
+            memcpy(stockpiles[i].allowedMaterials, v51_sp.allowedMaterials,
+                   sizeof(v51_sp.allowedMaterials));
+            memcpy(stockpiles[i].cells, v51_sp.cells, sizeof(v51_sp.cells));
+            memcpy(stockpiles[i].slots, v51_sp.slots, sizeof(v51_sp.slots));
+            memcpy(stockpiles[i].reservedBy, v51_sp.reservedBy, sizeof(v51_sp.reservedBy));
+            memcpy(stockpiles[i].slotCounts, v51_sp.slotCounts, sizeof(v51_sp.slotCounts));
+            memcpy(stockpiles[i].slotTypes, v51_sp.slotTypes, sizeof(v51_sp.slotTypes));
+            memcpy(stockpiles[i].slotMaterials, v51_sp.slotMaterials, sizeof(v51_sp.slotMaterials));
+            stockpiles[i].maxStackSize = v51_sp.maxStackSize;
+            stockpiles[i].priority = v51_sp.priority;
+            stockpiles[i].maxContainers = 0;  // NEW: default to no containers
+            memset(stockpiles[i].slotIsContainer, 0, sizeof(stockpiles[i].slotIsContainer));
+            memcpy(stockpiles[i].groundItemIdx, v51_sp.groundItemIdx, sizeof(v51_sp.groundItemIdx));
+            stockpiles[i].freeSlotCount = v51_sp.freeSlotCount;
+        }
     } else {
-        // v51+ format - direct read
+        // v52+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 

@@ -51,6 +51,9 @@ typedef struct {
     int maxStackSize;      // per-stockpile stack limit (1-MAX_STACK_SIZE, default MAX_STACK_SIZE)
     // Priority support
     int priority;          // higher = better storage (1-9, default 5)
+    // Container support
+    int maxContainers;     // max container items allowed as slots (0 = no containers, default 0)
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // true if slot is an installed container
     // Ground item cache (avoids expensive FindGroundItemAtTile calls)
     int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE]; // item index on this slot, -1 if none
     // Free slot cache (avoids scanning all tiles when stockpile is full)
@@ -166,5 +169,11 @@ void InvalidateStockpileSlotCacheAll(void);  // Mark entire cache dirty (call wh
 // Fill/overfull metrics
 float GetStockpileFillRatio(int stockpileIdx);
 bool IsStockpileOverfull(int stockpileIdx);
+
+// Container slot support
+void SetStockpileMaxContainers(int stockpileIdx, int maxContainers);
+int GetStockpileMaxContainers(int stockpileIdx);
+int CountInstalledContainers(int stockpileIdx);
+bool IsSlotContainer(int stockpileIdx, int slotIdx);
 
 #endif

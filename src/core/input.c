@@ -1600,13 +1600,26 @@ void HandleInput(void) {
             if (sp->priority > 1) { sp->priority--; AddMessage(TextFormat("Stockpile priority: %d", sp->priority), WHITE); }
         }
         if (IsKeyPressed(KEY_RIGHT_BRACKET)) {
-            int newSize = sp->maxStackSize + 1;
-            if (newSize <= MAX_STACK_SIZE) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
+            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+                // Shift+] = increase max containers
+                int newMax = sp->maxContainers + 1;
+                SetStockpileMaxContainers(hoveredStockpile, newMax);
+                AddMessage(TextFormat("Max containers: %d", sp->maxContainers), WHITE);
+            } else {
+                int newSize = sp->maxStackSize + 1;
+                if (newSize <= MAX_STACK_SIZE) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
+            }
             return;
         }
         if (IsKeyPressed(KEY_LEFT_BRACKET)) {
-            int newSize = sp->maxStackSize - 1;
-            if (newSize >= 1) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
+            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+                // Shift+[ = decrease max containers
+                int newMax = sp->maxContainers - 1;
+                if (newMax >= 0) { SetStockpileMaxContainers(hoveredStockpile, newMax); AddMessage(TextFormat("Max containers: %d", sp->maxContainers), WHITE); }
+            } else {
+                int newSize = sp->maxStackSize - 1;
+                if (newSize >= 1) { SetStockpileMaxStackSize(hoveredStockpile, newSize); AddMessage(TextFormat("Stack size: %d", sp->maxStackSize), WHITE); }
+            }
             return;
         }
         // Filter toggles - only in normal mode (R/G/B/O aren't used by other modes)

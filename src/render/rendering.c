@@ -1880,41 +1880,73 @@ static void DrawStockpileItems(void) {
                 int slotIdx = dy * sp->width + dx;
                 if (!sp->cells[slotIdx]) continue;
 
-                int count = sp->slotCounts[slotIdx];
-                if (count <= 0) continue;
-
                 int gx = sp->x + dx;
                 int gy = sp->y + dy;
+
+                // Check if slot has a container or bare items
+                int slotItemIdx = sp->slots[slotIdx];
+                bool isContainer = slotItemIdx >= 0 && slotItemIdx < MAX_ITEMS
+                    && items[slotItemIdx].active && ItemIsContainer(items[slotItemIdx].type);
+
+                if (!isContainer && sp->slotCounts[slotIdx] <= 0) continue;
+                if (isContainer && sp->slots[slotIdx] < 0) continue;
 
                 if (belowView && !IsCellVisibleFromAbove(gx, gy, sp->z + 1, viewZ)) continue;
 
                 float sx = offset.x + gx * size;
                 float sy = offset.y + gy * size;
 
-                ItemType type = sp->slotTypes[slotIdx];
-                int sprite = ItemSpriteForTypeMaterial(type, sp->slotMaterials[slotIdx]);
-                int visibleCount = count > 5 ? 5 : count;
-                float itemSize = size * ITEM_SIZE_STOCKPILE;
-                float stackOffset = size * 0.08f;
                 Color lightTint = GetLightColor(gx, gy, sp->z, skyColor);
-                Color tint = MultiplyColor(MaterialTint((MaterialType)sp->slotMaterials[slotIdx]), lightTint);
-                Color borderTint = MultiplyColor(ItemBorderTint(type), lightTint);
-                if (belowView) {
-                    tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
-                    tint = FloorDarkenTint(tint);
-                    borderTint = MultiplyColor(borderTint, GetDepthTint(sp->z, viewZ));
-                    borderTint = FloorDarkenTint(borderTint);
-                }
 
-                for (int s = 0; s < visibleCount; s++) {
-                    float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
-                    float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
+                if (isContainer) {
+                    // Draw container sprite (single, larger)
+                    ItemType ctype = items[slotItemIdx].type;
+                    int sprite = ItemSpriteForTypeMaterial(ctype, items[slotItemIdx].material);
+                    float itemSize = size * ITEM_SIZE_STOCKPILE * 1.2f;
+                    Color tint = MultiplyColor(MaterialTint((MaterialType)items[slotItemIdx].material), lightTint);
+                    Color borderTint = MultiplyColor(ItemBorderTint(ctype), lightTint);
+                    if (belowView) {
+                        tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
+                        tint = FloorDarkenTint(tint);
+                        borderTint = MultiplyColor(borderTint, GetDepthTint(sp->z, viewZ));
+                        borderTint = FloorDarkenTint(borderTint);
+                    }
+                    float itemX = sx + size * 0.5f - itemSize * 0.5f;
+                    float itemY = sy + size * 0.5f - itemSize * 0.5f;
                     Rectangle destItem = { itemX, itemY, itemSize, itemSize };
-                    if (ItemUsesBorder(type)) {
+                    if (ItemUsesBorder(ctype)) {
                         DrawItemWithBorder(sprite, destItem, tint, borderTint);
                     } else {
                         Rectangle srcItem = SpriteGetRect(sprite);
                         DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                    }
+                } else {
+                    // Draw bare item stacks (existing logic)
+                    int count = sp->slotCounts[slotIdx];
+                    ItemType type = sp->slotTypes[slotIdx];
+                    int sprite = ItemSpriteForTypeMaterial(type, sp->slotMaterials[slotIdx]);
+                    int visibleCount = count > 5 ? 5 : count;
+                    float itemSize = size * ITEM_SIZE_STOCKPILE;
+                    float stackOffset = size * 0.08f;
+                    Color tint = MultiplyColor(MaterialTint((MaterialType)sp->slotMaterials[slotIdx]), lightTint);
+                    Color borderTint = MultiplyColor(ItemBorderTint(type), lightTint);
+                    if (belowView) {
+                        tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
+                        tint = FloorDarkenTint(tint);
+                        borderTint = MultiplyColor(borderTint, GetDepthTint(sp->z, viewZ));
+                        borderTint = FloorDarkenTint(borderTint);
+                    }
+
+                    for (int s = 0; s < visibleCount; s++) {
+                        float itemX = sx + size * 0.5f - itemSize * 0.5f - s * stackOffset;
+                        float itemY = sy + size * 0.5f - itemSize * 0.5f - s * stackOffset;
+                        Rectangle destItem = { itemX, itemY, itemSize, itemSize };
+                        if (ItemUsesBorder(type)) {
+                            DrawItemWithBorder(sprite, destItem, tint, borderTint);
+                        } else {
+                            Rectangle srcItem = SpriteGetRect(sprite);
+                            DrawTexturePro(atlas, srcItem, destItem, (Vector2){0, 0}, 0, tint);
+                        }
                     }
                 }
             }

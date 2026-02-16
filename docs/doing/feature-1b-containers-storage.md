@@ -622,11 +622,11 @@ Chest (3/20 stacks)
 
 ## Current State (Handoff Notes)
 
-**Save version:** 51
+**Save version:** 52
 
-**Test suites:** 28 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
+**Test suites:** 29 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-2 complete.** Next up is Phase 3.
+**Phases 0-3 complete.** Next up is Phase 4.
 
 ### Key Architecture (for continuing work)
 
@@ -654,13 +654,25 @@ Chest (3/20 stacks)
   - Placeholder sprites: crate_green (basket), crate_red (pot), crate_blue (chest)
   - Stockpile filters: keys '2' (baskets), '3' (clay pots), '4' (chests)
 
+- **Stockpile container integration (Phase 3):** `maxContainers` on Stockpile, `slotIsContainer[]` per-slot flag
+  - `PlaceItemInStockpile`: routes items into containers (PutItemInContainer), installs containers as slot storage, clears groundItemIdx on placement
+  - `FindFreeStockpileSlot` Pass 0: prefers container slots (skips for container item types to avoid nesting)
+  - `IsSlotContainer`/`CountInstalledContainers` use explicit `slotIsContainer[]` flag (not ItemIsContainer on slot item — that would false-positive on stored container items)
+  - `ClearStockpileSlot` clears `slotIsContainer` flag
+  - `DeleteStockpile` spills container contents before dropping items
+  - `RebuildStockpileFreeSlotCounts`/`GetStockpileFillRatio` account for container capacity
+  - Rendering: container slots draw larger (1.2×) container sprite
+  - Tooltips: show "Containers: X/Y" and per-cell container contents
+  - Input: Shift+[/] adjusts maxContainers
+  - Save migration: StockpileV51 struct, v51→v52 adds maxContainers + slotIsContainer (both default 0/false)
+
 ### Build Commands
-- `make path` to build, `make test` to run all 28 suites
+- `make path` to build, `make test` to run all suites
 - `touch src/unity.c` forces rebuild (unity build includes all .c files)
 - Both `test_unity.c` AND `unity.c` need new `.c` includes for new modules
 - Both `saveload.c` AND `inspect.c` need parallel save migration updates
 
-### Files Modified by Phase 0-2
+### Files Modified by Phase 0-3
 | File | Purpose |
 |------|---------|
 | `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state, ITEM_BASKET/CLAY_POT/CHEST types |
@@ -672,14 +684,18 @@ Chest (3/20 stacks)
 | `src/entities/containers.c` | All container operations + containerDefs table |
 | `src/entities/containers.h` | ContainerDef, container API |
 | `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill) |
-| `src/entities/stockpiles.c` | Stockpile filter entries for 3 container types |
-| `src/core/save_migrations.h` | v51, StockpileV50 struct, ItemV49 struct |
-| `src/core/saveload.c` | v49→v50 item migration, v50→v51 stockpile migration |
-| `src/core/inspect.c` | Parallel v50→v51 migration |
+| `src/entities/stockpiles.h` | Stockpile struct: maxContainers, slotIsContainer[]; container slot API |
+| `src/entities/stockpiles.c` | Container slot integration (PlaceItem, FindFreeSlot, Install, Fill ratio, Free count) |
+| `src/render/rendering.c` | DrawStockpileItems: container slot rendering (1.2× sprite) |
+| `src/render/tooltips.c` | DrawStockpileTooltip: container info display |
+| `src/core/input.c` | Shift+[/] maxContainers controls |
+| `src/core/save_migrations.h` | v52, StockpileV51/V50 structs, ItemV49 struct |
+| `src/core/saveload.c` | v49→v50 item migration, v50→v51→v52 stockpile migrations |
+| `src/core/inspect.c` | Parallel v50→v51→v52 migrations |
 | `src/unity.c` | includes containers.c |
 | `tests/test_unity.c` | includes containers.c |
 | `tests/test_stacking.c` | 22 tests, 60 assertions |
-| `tests/test_containers.c` | 45 tests, 139 assertions (Phase 1: 32/94, Phase 2: 13/45) |
+| `tests/test_containers.c` | 59 tests, 201 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62) |
 
 ---
 
@@ -840,10 +856,10 @@ Chest (3/20 stacks)
 - Clay pot capacity: fill 5 unique stacks → full, 6th rejected
 - Correct weights: basket=1.0, pot=3.0, chest=8.0
 
-### Phase 3: Stockpile Container Integration
+### Phase 3: Stockpile Container Integration — COMPLETE ✅
 **Goal:** Containers work as stockpile storage, items hauled into containers.
 
-**Save version:** 51 → 52
+**Save version:** 51 → 52 (done)
 
 1. Add `int maxContainers` to Stockpile struct (default 0)
 2. `GetSlotCapacity(stockpileIdx, slotX, slotY)`:
@@ -891,6 +907,23 @@ Chest (3/20 stacks)
 - Delivery race: delivery to full container cancelled, item safe-dropped
 - Save/load round-trip with containers in stockpile
 - Stockpile fill ratio accounts for container contents
+
+**Implementation notes:**
+- `slotIsContainer[]` per-slot bool added to Stockpile struct — required because `ItemIsContainer` on slot item can't distinguish installed containers from stored container items (false positive when maxContainers==0 or limit exceeded)
+- `PlaceItemInStockpile` clears `groundItemIdx[idx]` on placement — `SpawnItem` calls `MarkStockpileGroundItem` which can leave stale entries that block `FindFreeStockpileSlot`
+- `CountInstalledContainers` counts `slotIsContainer[]` flags (not ItemIsContainer scan)
+- `ClearStockpileSlot` clears `slotIsContainer` flag
+- Container installation path: `ItemIsContainer && maxContainers > 0 && slotCounts==0 && slots==-1 && installed < maxContainers` → sets slotIsContainer=true, slotCounts=0
+- Container slot capacity uses `ContainerDef.maxContents` (not maxStackSize) in FindFreeSlot, FreeSlotCounts, FillRatio
+- `containerSlotCache` NOT implemented (doc planned it) — not needed, Pass 0 scan is fast enough for current stockpile sizes
+
+**Tests (15 tests, 62 assertions):** `tests/test_containers.c` — `describe(stockpile_containers)`
+- Container installed when maxContainers > 0; stored as regular item when maxContainers == 0
+- Item routing into container slot; stack merging inside containers; mixed types
+- Container capacity enforcement; maxContainers limit enforcement
+- FindFreeStockpileSlot prefers container slots; skips containers for container item types
+- Stockpile deletion spills container contents; fill ratio with containers
+- IsSlotContainer detection; get/set maxContainers with clamping; free slot count
 
 ### Phase 4: Container-Aware Item Search + Extraction
 **Goal:** Workshops, builders, and farmers can find and use items inside containers.
