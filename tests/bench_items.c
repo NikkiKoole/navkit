@@ -53,6 +53,7 @@
 #include "../src/entities/items.h"
 #include "../src/entities/jobs.h"
 #include "../src/entities/stockpiles.h"
+#include "../src/entities/containers.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -368,6 +369,92 @@ static void BenchCraftInputSearch(void) {
 }
 
 // =============================================================================
+// 6. Container filter change scan
+//    Simulates scanning container slots for illegal items after a filter change.
+//    This is the hot path for Phase 6 (Filter Change Cleanup).
+// =============================================================================
+static void BenchContainerFilterScan(void) {
+    printf("--- Container filter change scan ---\n");
+
+    SetupBenchGrid();
+    ClearItems();
+    ClearStockpiles();
+
+    // Create stockpile with containers holding mixed items
+    int containerCounts[] = {4, 16, 64};
+    int numCounts = sizeof(containerCounts) / sizeof(containerCounts[0]);
+
+    for (int c = 0; c < numCounts; c++) {
+        int targetContainers = containerCounts[c];
+        ClearItems();
+        ClearStockpiles();
+
+        // Create enough stockpile tiles for the containers
+        int spW = targetContainers < 8 ? targetContainers : 8;
+        int spH = (targetContainers + spW - 1) / spW;
+        int sp = CreateStockpile(10, 10, 0, spW, spH);
+        SetStockpileMaxContainers(sp, targetContainers);
+
+        // Install baskets and fill them with mixed item types
+        int totalContained = 0;
+        for (int i = 0; i < targetContainers && i < spW * spH; i++) {
+            int lx = i % spW;
+            int ly = i / spW;
+            int worldX = 10 + lx;
+            int worldY = 10 + ly;
+            float x = worldX * CELL_SIZE + CELL_SIZE * 0.5f;
+            float y = worldY * CELL_SIZE + CELL_SIZE * 0.5f;
+
+            int basket = SpawnItem(x, y, 0, ITEM_BASKET);
+            PlaceItemInStockpile(sp, worldX, worldY, basket);
+
+            // Put 10 items of varying types in each basket
+            ItemType types[] = {ITEM_LOG, ITEM_ROCK, ITEM_PLANKS, ITEM_CLAY, ITEM_GRASS};
+            for (int t = 0; t < 10 && t < 15; t++) {
+                int item = SpawnItem(x, y, 0, types[t % 5]);
+                PutItemInContainer(item, basket);
+                totalContained++;
+            }
+        }
+
+        // Benchmark: scan all container slots, check each contained item against filter
+        // This simulates what Phase 6 maintenance does after a filter change
+        int numIterations = 10000;
+        volatile int illegalCount = 0;
+        double start = GetBenchTime();
+        for (int iter = 0; iter < numIterations; iter++) {
+            Stockpile* spPtr = &stockpiles[sp];
+            int totalSlots = spPtr->width * spPtr->height;
+            for (int s = 0; s < totalSlots; s++) {
+                if (!spPtr->cells[s]) continue;
+                if (!IsSlotContainer(sp, s)) continue;
+
+                int containerIdx = spPtr->slots[s];
+                if (containerIdx < 0 || !items[containerIdx].active) continue;
+
+                // Scan container contents for items that don't match filter
+                for (int j = 0; j < itemHighWaterMark; j++) {
+                    if (!items[j].active) continue;
+                    if (items[j].containedIn != containerIdx) continue;
+                    // Simulate filter check: ITEM_ROCK no longer accepted
+                    if (items[j].type == ITEM_ROCK) {
+                        illegalCount++;
+                    }
+                }
+            }
+        }
+        double elapsed = (GetBenchTime() - start) * 1000.0;
+        (void)illegalCount;
+
+        printf("  %2d containers (%3d items): %8.3fms (%d scans, %.3fus each)\n",
+               targetContainers, totalContained, elapsed, numIterations,
+               (elapsed / numIterations) * 1000.0);
+    }
+
+    printf("\n");
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 int main(int argc, char* argv[]) {
@@ -376,13 +463,14 @@ int main(int argc, char* argv[]) {
 
     SetTraceLogLevel(LOG_NONE);
 
-    printf("\n=== ITEM SYSTEM BENCHMARKS (pre-containers baseline) ===\n\n");
+    printf("\n=== ITEM SYSTEM BENCHMARKS ===\n\n");
 
     BenchBuildSpatialGrid();
     BenchItemLinearScan();
     BenchAssignJobsHaul();
     BenchStockpileCache();
     BenchCraftInputSearch();
+    BenchContainerFilterScan();
 
     printf("Done.\n");
     return 0;

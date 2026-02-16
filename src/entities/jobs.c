@@ -3325,6 +3325,45 @@ static void AssignJobs_P3c_Rehaul(void) {
 }
 
 __attribute__((noinline))
+static void AssignJobs_P3e_ContainerCleanup(void) {
+    for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
+        Stockpile* sp = &stockpiles[spIdx];
+        if (!sp->active) continue;
+        if (sp->maxContainers == 0) continue;
+
+        int totalSlots = sp->width * sp->height;
+        for (int slotIdx = 0; slotIdx < totalSlots && idleMoverCount > 0; slotIdx++) {
+            if (!sp->slotIsContainer[slotIdx]) continue;
+            int containerIdx = sp->slots[slotIdx];
+            if (containerIdx < 0 || !items[containerIdx].active) continue;
+            if (items[containerIdx].contentCount == 0) continue;
+
+            // Scan items contained in this container
+            for (int j = 0; j < itemHighWaterMark && idleMoverCount > 0; j++) {
+                if (!items[j].active) continue;
+                if (items[j].containedIn != containerIdx) continue;
+                if (items[j].reservedBy != -1) continue;
+
+                if (!StockpileAcceptsItem(spIdx, items[j].type, items[j].material)) {
+                    // Extract from container — item becomes ITEM_ON_GROUND at container pos
+                    ExtractItemFromContainer(j);
+
+                    // Try to haul to a stockpile that accepts it, or safe-drop
+                    int destSlotX, destSlotY;
+                    int destSp = FindStockpileForItemCached(items[j].type, items[j].material, &destSlotX, &destSlotY);
+                    if (destSp >= 0) {
+                        TryAssignItemToMover(j, destSp, destSlotX, destSlotY, false);
+                        InvalidateStockpileSlotCache(items[j].type, items[j].material);
+                    } else {
+                        TryAssignItemToMover(j, -1, -1, -1, true);
+                    }
+                }
+            }
+        }
+    }
+}
+
+__attribute__((noinline))
 static void AssignJobs_P3d_Consolidate(void) {
     for (int spIdx = 0; spIdx < MAX_STOCKPILES && idleMoverCount > 0; spIdx++) {
         if (!stockpiles[spIdx].active) continue;
@@ -3463,6 +3502,8 @@ void AssignJobs(void) {
         if (idleMoverCount == 0) return;
     }
     AssignJobs_P3c_Rehaul();
+    if (idleMoverCount == 0) return;
+    AssignJobs_P3e_ContainerCleanup();
     if (idleMoverCount == 0) return;
     AssignJobs_P3d_Consolidate();
     if (idleMoverCount == 0) return;

@@ -7,6 +7,7 @@
 #include "../src/entities/stacking.h"
 #include "../src/entities/containers.h"
 #include "../src/entities/stockpiles.h"
+#include "../src/entities/jobs.h"
 #include "../src/world/material.h"
 #include "test_helpers.h"
 #include <string.h>
@@ -1417,6 +1418,143 @@ describe(container_hauling) {
     }
 }
 
+// ===========================================================================
+// Filter Change Cleanup (Phase 6)
+// ===========================================================================
+
+static void FilterCleanupSetup(void) {
+    InitTestGridFromAscii(
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n"
+        "..........\n");
+    moverPathAlgorithm = PATH_ALGO_ASTAR;
+    ClearMovers();
+    ClearItems();
+    ClearStockpiles();
+    RestoreRealContainerDefs();
+    // Create one idle mover
+    Mover* m = &movers[0];
+    Point goal = {1, 1, 0};
+    InitMover(m, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+    moverCount = 1;
+}
+
+describe(container_filter_cleanup) {
+    it("should extract illegal items from container after filter change") {
+        FilterCleanupSetup();
+
+        // Stockpile at (5,5) accepts baskets + logs + rocks
+        int sp = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        // Place basket in stockpile with a log inside
+        float sx = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float sy = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int basket = SpawnItem(sx, sy, 0, ITEM_BASKET);
+        int log = SpawnItem(sx, sy, 0, ITEM_LOG);
+        PutItemInContainer(log, basket);
+        PlaceItemInStockpile(sp, 5, 5, basket);
+
+        // Verify initial state
+        expect(items[log].containedIn == basket);
+        expect(items[log].state == ITEM_IN_CONTAINER);
+
+        // Disallow logs from this stockpile
+        SetStockpileFilter(sp, ITEM_LOG, false);
+
+        // Run AssignJobs — should extract log from basket
+        AssignJobs();
+
+        // Log should be extracted from container
+        expect(items[log].containedIn == -1);
+        expect(items[log].state != ITEM_IN_CONTAINER);
+
+        // Basket should still be installed as container slot
+        expect(IsSlotContainer(sp, 0));
+        expect(items[basket].state == ITEM_IN_STOCKPILE);
+    }
+
+    it("should leave legal items in container untouched") {
+        FilterCleanupSetup();
+
+        int sp = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        float sx = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float sy = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int basket = SpawnItem(sx, sy, 0, ITEM_BASKET);
+        int log = SpawnItem(sx, sy, 0, ITEM_LOG);
+        int rock = SpawnItem(sx, sy, 0, ITEM_ROCK);
+        PutItemInContainer(log, basket);
+        PutItemInContainer(rock, basket);
+        PlaceItemInStockpile(sp, 5, 5, basket);
+
+        // Disallow rocks only
+        SetStockpileFilter(sp, ITEM_ROCK, false);
+
+        AssignJobs();
+
+        // Rock extracted, log stays
+        expect(items[rock].containedIn == -1);
+        expect(items[log].containedIn == basket);
+        expect(items[log].state == ITEM_IN_CONTAINER);
+        expect(items[basket].contentCount == 1);
+    }
+
+    it("should not extract items when all types still allowed") {
+        FilterCleanupSetup();
+
+        int sp = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        float sx = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float sy = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int basket = SpawnItem(sx, sy, 0, ITEM_BASKET);
+        int log = SpawnItem(sx, sy, 0, ITEM_LOG);
+        PutItemInContainer(log, basket);
+        PlaceItemInStockpile(sp, 5, 5, basket);
+
+        // Don't change any filters — everything still allowed
+        AssignJobs();
+
+        // Log should remain in container
+        expect(items[log].containedIn == basket);
+        expect(items[log].state == ITEM_IN_CONTAINER);
+        expect(items[basket].contentCount == 1);
+    }
+
+    it("should keep empty container as slot after all contents cleared") {
+        FilterCleanupSetup();
+
+        int sp = CreateStockpile(5, 5, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 4);
+
+        float sx = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float sy = 5 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int basket = SpawnItem(sx, sy, 0, ITEM_BASKET);
+        int log = SpawnItem(sx, sy, 0, ITEM_LOG);
+        PutItemInContainer(log, basket);
+        PlaceItemInStockpile(sp, 5, 5, basket);
+
+        // Disallow logs
+        SetStockpileFilter(sp, ITEM_LOG, false);
+
+        AssignJobs();
+
+        // Container should still be installed even though empty now
+        expect(IsSlotContainer(sp, 0));
+        expect(items[basket].state == ITEM_IN_STOCKPILE);
+        expect(items[basket].contentCount == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -1450,6 +1588,7 @@ int main(int argc, char* argv[]) {
     test(outermost_container);
     test(container_extraction);
     test(container_hauling);
+    test(container_filter_cleanup);
 
     return summary();
 }

@@ -626,7 +626,7 @@ Chest (3/20 stacks)
 
 **Test suites:** 29 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-5 complete.** Next up is Phase 6 (Filter Change Cleanup).
+**Phases 0-6 complete.** Next up is Phase 7 (Spoilage & Weather Modification, deferred until F1 food).
 
 ### Key Architecture (for continuing work)
 
@@ -686,7 +686,7 @@ Chest (3/20 stacks)
 - Both `test_unity.c` AND `unity.c` need new `.c` includes for new modules
 - Both `saveload.c` AND `inspect.c` need parallel save migration updates
 
-### Files Modified by Phase 0-5
+### Files Modified by Phase 0-6
 | File | Purpose |
 |------|---------|
 | `src/entities/items.h` | Item struct (stackCount, containedIn, contentCount, contentTypeMask), ITEM_IN_CONTAINER state, ITEM_BASKET/CLAY_POT/CHEST types |
@@ -700,7 +700,7 @@ Chest (3/20 stacks)
 | `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill), container search in fuel/input availability (Phase 4) |
 | `src/entities/stockpiles.h` | Stockpile struct: maxContainers, slotIsContainer[]; container slot API; SyncStockpileContainerSlotCount (Phase 4) |
 | `src/entities/stockpiles.c` | Container slot integration (PlaceItem, FindFreeSlot, Install, Fill ratio, Free count); SyncStockpileContainerSlotCount (Phase 4) |
-| `src/entities/jobs.c` | Container search fallbacks (Phase 4); ExtractItemFromContainer (Phase 4); MoveContainer calls at 6 carry sites (Phase 5) |
+| `src/entities/jobs.c` | Container search fallbacks (Phase 4); ExtractItemFromContainer (Phase 4); MoveContainer calls at 6 carry sites (Phase 5); AssignJobs_P3e_ContainerCleanup (Phase 6) |
 | `src/entities/mover.c` | Weight calc uses GetContainerTotalWeight; ClearMovers calls MoveContainer on drop (Phase 5) |
 | `src/render/rendering.c` | DrawStockpileItems: container slot rendering (1.2× sprite) |
 | `src/render/tooltips.c` | DrawStockpileTooltip: container info display |
@@ -711,7 +711,7 @@ Chest (3/20 stacks)
 | `src/unity.c` | includes containers.c |
 | `tests/test_unity.c` | includes containers.c |
 | `tests/test_stacking.c` | 22 tests, 60 assertions |
-| `tests/test_containers.c` | 81 tests, 266 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62, Phase 4: 14/40, Phase 5: 7/25) |
+| `tests/test_containers.c` | 85 tests, 282 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62, Phase 4: 14/40, Phase 5: 7/25, Phase 6: 4/16) |
 
 ---
 
@@ -993,21 +993,21 @@ Chest (3/20 stacks)
 - Safe-dropped container keeps contents intact at new position
 - Full container installs in stockpile with contents intact
 
-### Phase 6: Filter Change Cleanup
+### Phase 6: Filter Change Cleanup — COMPLETE
 **Goal:** Changing stockpile filters correctly handles items already inside containers.
 
-1. On stockpile filter change, scan containers in the stockpile
-2. For each contained item whose type is no longer accepted:
-   - Generate extract + clear job (same as existing JOBTYPE_CLEAR pattern)
-   - Mover walks to container, SplitStack if needed, RemoveItemFromContainer
-   - Drops extracted item outside stockpile
-3. Integrate into stockpile maintenance pass (P1 in AssignJobs)
+**Implementation:**
+- `AssignJobs_P3e_ContainerCleanup()` in jobs.c — runs after P3c_Rehaul, before P3d_Consolidate
+- Scans stockpiles with `maxContainers > 0`, iterates `slotIsContainer[]` slots
+- For each container slot, scans items with `containedIn == containerIdx`
+- If `StockpileAcceptsItem` fails: `ExtractItemFromContainer` + `TryAssignItemToMover` (haul to accepting stockpile, or safe-drop)
+- Extracted items become `ITEM_ON_GROUND` at container position; normal rehaul picks them up on subsequent frames if no mover available immediately
 
-**Tests (~10 assertions):**
+**Tests (4 tests, 16 assertions):**
 - Filter change: illegal items extracted from containers
 - Filter change: legal items remain in containers untouched
-- Filter change: stack split when some units should stay (e.g., mixed material stack — actually N/A since stacks are homogeneous)
-- Container becomes empty after all contents cleared: remains as container slot
+- No false extractions when filters unchanged
+- Container remains as installed slot after all contents cleared
 
 ### Phase 7: Spoilage & Weather Modification (requires F1 food)
 **Goal:** Containers affect item preservation.
@@ -1216,15 +1216,15 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 
 ## Test Expectations
 
-- **Actual (Phases 0-5):** 103 tests, 326 assertions (22/60 stacking + 81/266 containers)
+- **Actual (Phases 0-6):** 107 tests, 342 assertions (22/60 stacking + 85/282 containers)
 - Phase 0: 22 tests, 60 assertions (stackCount, merge, split, craft output, stockpile merge/split, SafeDrop, save migration, regression)
 - Phase 1: 32 tests, 94 assertions (containment model, nesting, move, spill, safe-drop, bitmask, save/load, contentCount integrity)
 - Phase 2: 13 tests, 45 assertions (container items, crafting, flags, defs)
 - Phase 3: 15 tests, 62 assertions (stockpile integration, slot cache, maxContainers, mixed types, race conditions)
 - Phase 4: 14 tests, 40 assertions (container-aware search, bitmask filtering, extraction, stockpile sync, nested search)
 - Phase 5: 7 tests, 25 assertions (carry contents movement, nested recursive, weight, accessibility, safe-drop, stockpile install)
+- Phase 6: 4 tests, 16 assertions (filter change extraction, legal items untouched, no false extraction, empty container stays)
 - **Estimated (remaining):**
-- Phase 6: ~10 (filter change cleanup)
 - Phase 7: ~10 (spoilage, weather — deferred until F1)
 
 ---

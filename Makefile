@@ -307,6 +307,7 @@ test-quick: test_pathing test_steering test_jobs test_water test_groundwear test
 # Benchmark targets - link against precompiled test_unity.o
 bench_jobs_SRC := tests/bench_jobs.c
 bench_items_SRC := tests/bench_items.c
+bench_rehaul_mini_SRC := tests/bench_rehaul_mini.c
 
 # Job system benchmark
 bench_jobs: $(TEST_UNITY_OBJ)
@@ -317,6 +318,11 @@ bench_jobs: $(TEST_UNITY_OBJ)
 bench_items: $(TEST_UNITY_OBJ)
 	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_items_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	./$(BINDIR)/bench_items
+
+# Rehaul-only benchmark (fast, for filter change testing)
+bench_rehaul_mini: $(TEST_UNITY_OBJ)
+	$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(bench_rehaul_mini_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	./$(BINDIR)/bench_rehaul_mini
 
 # Run all benchmarks
 bench: bench_jobs bench_items
