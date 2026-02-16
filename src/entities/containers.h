@@ -43,4 +43,17 @@ void ForEachContainedItemRecursive(int containerIdx, ContainerContentCallback cb
 // Weight (recursive — container + all contents)
 float GetContainerTotalWeight(int containerIdx);
 
+// Walk up containedIn chain, return topmost container (or itemIdx if not contained)
+int GetOutermostContainer(int itemIdx);
+
+// Search containers in range for an item matching type.
+// Uses bloom filter for fast reject, IsItemAccessible to skip locked containers.
+// extraFilter is optional (NULL = no extra filtering).
+// Returns contained item index, sets *outContainerIdx to outermost container (-1 if not found).
+typedef bool (*ContainerItemFilter)(int itemIdx, void* data);
+int FindItemInContainers(ItemType type, int z, int searchCenterX, int searchCenterY,
+                         int searchRadius, int excludeItemIdx,
+                         ContainerItemFilter extraFilter, void* filterData,
+                         int* outContainerIdx);
+
 #endif

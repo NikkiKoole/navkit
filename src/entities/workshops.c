@@ -3,6 +3,7 @@
 #include "mover.h"
 #include "jobs.h"
 #include "item_defs.h"
+#include "containers.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../simulation/smoke.h"
@@ -170,6 +171,7 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
+        if (item->state == ITEM_IN_CONTAINER) continue;
         if (!RecipeInputMatches(recipe, item)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
@@ -185,6 +187,15 @@ static bool WorkshopHasInputForRecipe(Workshop* ws, const Recipe* recipe, int se
         return true;
     }
 
+    // Check containers
+    if (recipe->inputItemMatch != ITEM_MATCH_ANY_FUEL) {
+        int containerIdx = -1;
+        if (FindItemInContainers(recipe->inputType, ws->z, ws->x, ws->y,
+                                  searchRadius, -1, NULL, NULL, &containerIdx) >= 0) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -196,6 +207,7 @@ bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
+        if (item->state == ITEM_IN_CONTAINER) continue;
         if (!(ItemFlags(item->type) & IF_FUEL)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
@@ -210,6 +222,17 @@ bool WorkshopHasFuelForRecipe(Workshop* ws, int searchRadius) {
 
         return true;
     }
+
+    // Check containers for fuel items
+    for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+        if (!(ItemFlags(t) & IF_FUEL)) continue;
+        int containerIdx = -1;
+        if (FindItemInContainers(t, ws->z, ws->x, ws->y, searchRadius,
+                                  -1, NULL, NULL, &containerIdx) >= 0) {
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -222,6 +245,7 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
     for (int i = 0; i < itemHighWaterMark; i++) {
         Item* item = &items[i];
         if (!item->active) continue;
+        if (item->state == ITEM_IN_CONTAINER) continue;
         if (!(ItemFlags(item->type) & IF_FUEL)) continue;
         if (item->reservedBy != -1) continue;
         if (item->unreachableCooldown > 0.0f) continue;
@@ -237,6 +261,21 @@ int FindNearestFuelItem(Workshop* ws, int searchRadius) {
         bestDistSq = distSq;
         bestIdx = i;
     }
+
+    // Check containers for fuel items
+    if (bestIdx < 0) {
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) {
+            if (!(ItemFlags(t) & IF_FUEL)) continue;
+            int containerIdx = -1;
+            int found = FindItemInContainers(t, ws->z, ws->x, ws->y, searchRadius,
+                                              -1, NULL, NULL, &containerIdx);
+            if (found >= 0) {
+                bestIdx = found;
+                break;
+            }
+        }
+    }
+
     return bestIdx;
 }
 

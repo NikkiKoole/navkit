@@ -626,7 +626,7 @@ Chest (3/20 stacks)
 
 **Test suites:** 29 (pathing, mover, steering, jobs, water, groundwear, fire, temperature, steam, materials, time, time_specs, high_speed, trees, terrain, grid_audit, floordirt, mud, seasons, weather, wind, snow, thunderstorm, lighting, workshop_linking, hunger, stacking, containers, soundsystem)
 
-**Phases 0-3 complete.** Next up is Phase 4.
+**Phases 0-4 complete.** Next up is Phase 5 (Container Hauling — Full Containers).
 
 ### Key Architecture (for continuing work)
 
@@ -666,6 +666,20 @@ Chest (3/20 stacks)
   - Input: Shift+[/] adjusts maxContainers
   - Save migration: StockpileV51 struct, v51→v52 adds maxContainers + slotIsContainer (both default 0/false)
 
+- **Container-aware item search (Phase 4):** `FindItemInContainers()` + `ExtractItemFromContainer()` in jobs.c
+  - `FindItemInContainers(type, z, centerX, centerY, radius, excludeIdx, filter, filterData, *outContainerIdx)` — scans top-level containers (via `GetContainerDef`, NOT `ItemIsContainer`), recurses into sub-containers via `SearchContainerForItem`
+  - `GetOutermostContainer(itemIdx)` — walks `containedIn` chain to topmost parent
+  - Bloom filter (`ContainerMightHaveType`) used per-level in `SearchContainerForItem`, NOT at top level (grandchild types not in outer container's bloom filter)
+  - `ExtractItemFromContainer(itemIdx)` in jobs.c — static helper: `RemoveItemFromContainer` + `SyncStockpileContainerSlotCount`
+  - `SyncStockpileContainerSlotCount(containerIdx)` in stockpiles.c — finds stockpile slot holding the container, syncs `slotCounts[slot] = items[containerIdx].contentCount`
+  - Existing search loops got `ITEM_IN_CONTAINER` exclusion to prevent accidental matches
+  - Container search fallback added to: WorkGiver_Craft (input1, input2), WorkGiver_DeliverToPassiveWorkshop, FindNearestRecipeItem, FindNearestFuelItem, WorkshopHasFuelForRecipe, WorkshopHasInputForRecipe
+  - Extraction added to: CRAFT_STEP_PICKING_UP (input1, input2, fuel), RunJob_HaulToBlueprint, RunJob_DeliverToWorkshop
+  - `ITEM_MATCH_ANY_FUEL` recipes: container search iterates all fuel-flagged ItemTypes (can't use single-type lookup)
+  - `ContainerItemFilter` typedef for custom filter callbacks in `FindItemInContainers`
+  - **Gotcha**: `ItemIsContainer()` checks `itemDefs[t].flags & IF_CONTAINER` (compile-time, only real types). `GetContainerDef()` checks `containerDefs[type].maxContents > 0` (runtime, works with test setup). Must use `GetContainerDef` for container detection in search functions.
+  - **Gotcha**: Bloom filter on outer container does NOT include grandchild types. Only direct children are tracked. Top-level `FindItemInContainers` skips bloom filter check; per-level `SearchContainerForItem` uses it.
+
 ### Build Commands
 - `make path` to build, `make test` to run all suites
 - `touch src/unity.c` forces rebuild (unity build includes all .c files)
@@ -681,11 +695,12 @@ Chest (3/20 stacks)
 | `src/entities/items.c` | SpawnItem init, DeleteItem spill/decrement, forward decl of SpillContainerContents |
 | `src/entities/stacking.c` | SplitStack inherits containedIn |
 | `src/entities/stacking.h` | MergeItemIntoStack, SplitStack declarations |
-| `src/entities/containers.c` | All container operations + containerDefs table |
-| `src/entities/containers.h` | ContainerDef, container API |
-| `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill) |
-| `src/entities/stockpiles.h` | Stockpile struct: maxContainers, slotIsContainer[]; container slot API |
-| `src/entities/stockpiles.c` | Container slot integration (PlaceItem, FindFreeSlot, Install, Fill ratio, Free count) |
+| `src/entities/containers.c` | All container operations + containerDefs table + FindItemInContainers/GetOutermostContainer (Phase 4) |
+| `src/entities/containers.h` | ContainerDef, container API, ContainerItemFilter typedef (Phase 4) |
+| `src/entities/workshops.c` | Basket recipe (rope maker), pot recipe (kiln), chest recipe (sawmill), container search in fuel/input availability (Phase 4) |
+| `src/entities/stockpiles.h` | Stockpile struct: maxContainers, slotIsContainer[]; container slot API; SyncStockpileContainerSlotCount (Phase 4) |
+| `src/entities/stockpiles.c` | Container slot integration (PlaceItem, FindFreeSlot, Install, Fill ratio, Free count); SyncStockpileContainerSlotCount (Phase 4) |
+| `src/entities/jobs.c` | Container search fallbacks in WorkGiver_Craft/FindNearestRecipeItem/DeliverToPassiveWorkshop; ExtractItemFromContainer in all pickup steps (Phase 4) |
 | `src/render/rendering.c` | DrawStockpileItems: container slot rendering (1.2× sprite) |
 | `src/render/tooltips.c` | DrawStockpileTooltip: container info display |
 | `src/core/input.c` | Shift+[/] maxContainers controls |
@@ -695,7 +710,7 @@ Chest (3/20 stacks)
 | `src/unity.c` | includes containers.c |
 | `tests/test_unity.c` | includes containers.c |
 | `tests/test_stacking.c` | 22 tests, 60 assertions |
-| `tests/test_containers.c` | 59 tests, 201 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62) |
+| `tests/test_containers.c` | 74 tests, 241 assertions (Phase 1: 32/94, Phase 2: 13/45, Phase 3: 15/62, Phase 4: 14/40) |
 
 ---
 
@@ -925,42 +940,32 @@ Chest (3/20 stacks)
 - Stockpile deletion spills container contents; fill ratio with containers
 - IsSlotContainer detection; get/set maxContainers with clamping; free slot count
 
-### Phase 4: Container-Aware Item Search + Extraction
+### Phase 4: Container-Aware Item Search + Extraction — COMPLETE ✅
 **Goal:** Workshops, builders, and farmers can find and use items inside containers.
 
-1. Implement `FindItemIncludingContainers(type, material, x, y, z, radius, *outContainerIdx)`:
-   - Check spatial grid for loose items first (fast path)
-   - Then scan containers in range:
-     - `ContainerMightHaveType` bitmask check (fast reject)
-     - `IsItemAccessible` check
-     - `ForEachContainedItem` looking for matching type+material
-     - Recurse into sub-containers that pass bitmask check
-   - Return contained item index + outermost container index
-2. Modify workshop input search to use `FindItemIncludingContainers`
-3. Modify building material search to use `FindItemIncludingContainers`
-4. Implement extraction pre-step in job fetch flow:
-   - When target item has `containedIn != -1`
-   - If recipe needs N < stackCount: `SplitStack(targetItem, N)`, extract split item
-   - Else: extract whole item via `RemoveItemFromContainer(targetItem)`
-   - Walk to outermost container position
-   - Extract (instant) → pick up → carry
-5. Reserve individual item (not container) during extraction
-6. Handle edge cases: container moved/reserved while en route → cancel + retry
+**Save version:** 52 (unchanged — no data model changes)
 
-**Tests (~25 assertions):**
-- FindItemIncludingContainers: finds loose item (fast path)
-- FindItemIncludingContainers: finds item inside container
-- FindItemIncludingContainers: finds item inside nested container (bag in chest)
-- FindItemIncludingContainers: skips items in reserved/carried containers
-- FindItemIncludingContainers: bitmask rejects containers without matching type
-- FindItemIncludingContainers: bitmask false positive handled (scans but finds nothing)
-- Workshop job fetches item from container (full flow)
-- Workshop job splits stack when recipe needs fewer than available
-- Multiple movers extract different items from same container simultaneously
-- Multiple movers extract different items from same stack (split + split)
-- Mover en route when container moved → job cancels gracefully
-- Item extraction decrements contentCount correctly
-- Container with one item removed: still functional, still in stockpile
+**Approach:** Added `FindItemInContainers()` in containers.c as a fallback search after existing item scans. Added `ExtractItemFromContainer()` helper in jobs.c for instant extraction at pickup. No new job steps — extraction is a pre-step check before existing `ITEM_CARRIED` state change.
+
+**Implementation notes:**
+- `FindItemInContainers(type, z, centerX, centerY, radius, excludeIdx, filter, filterData, *outContainerIdx)` — scans top-level containers via `GetContainerDef`, recurses into sub-containers via `SearchContainerForItem`
+- `GetOutermostContainer(itemIdx)` — walks `containedIn` chain to topmost container
+- Bloom filter (`ContainerMightHaveType`) used per-level in `SearchContainerForItem`, NOT at top level (grandchild types not in outer container's bloom filter)
+- `ExtractItemFromContainer(itemIdx)` in jobs.c calls `RemoveItemFromContainer` + `SyncStockpileContainerSlotCount` 
+- `SyncStockpileContainerSlotCount(containerIdx)` in stockpiles.c — finds stockpile slot holding the container and syncs `slotCounts`
+- Existing search loops in WorkGiver_Craft, WorkGiver_DeliverToPassiveWorkshop got `ITEM_IN_CONTAINER` exclusion to prevent accidental matches
+- Container search added as fallback to: WorkGiver_Craft (input1, input2), FindNearestRecipeItem (blueprint haul), FindNearestFuelItem, WorkshopHasFuelForRecipe, WorkshopHasInputForRecipe
+- Extraction added to: CRAFT_STEP_PICKING_UP (input1, input2, fuel), RunJob_HaulToBlueprint, RunJob_DeliverToWorkshop
+- `ITEM_MATCH_ANY_FUEL` recipes: container search iterates all fuel-flagged ItemTypes (not a single type lookup)
+- Forward declaration of `ExtractItemFromContainer` needed in jobs.c (used before definition)
+
+**Tests (14 tests, 40 assertions):** `tests/test_containers.c` — `describe(container_search)`, `describe(outermost_container)`, `describe(container_extraction)`
+- FindItemInContainers: finds item in container, nested container, respects z-level/radius/exclusion
+- FindItemInContainers: skips reserved containers, carried containers, reserved items
+- FindItemInContainers: bloom filter rejects non-matching types
+- GetOutermostContainer: returns self for non-contained, walks chain for nested
+- Extraction: RemoveItemFromContainer makes item ITEM_ON_GROUND, syncs stockpile slotCounts
+- Multiple extractions from same container, SplitStack + extraction
 
 ### Phase 5: Container Hauling (Full Containers)
 **Goal:** Movers can carry full containers.
@@ -1092,9 +1097,15 @@ void ForEachContainedItem(int containerIdx, ContainerContentCallback cb, void* d
 void ForEachContainedItemRecursive(int containerIdx, ContainerContentCallback cb, void* data);
 
 // Search (finds items inside containers with bitmask pre-filter)
-int FindItemIncludingContainers(ItemType type, uint8_t material,
-                                 float nearX, float nearY, int nearZ,
-                                 int searchRadius, int* outContainerIdx);
+typedef bool (*ContainerItemFilter)(int itemIdx, void* data);
+int FindItemInContainers(ItemType type, int z, int searchCenterX, int searchCenterY,
+                         int searchRadius, int excludeItemIdx,
+                         ContainerItemFilter extraFilter, void* filterData,
+                         int* outContainerIdx);
+int GetOutermostContainer(int itemIdx);
+
+// Stockpile sync after extraction
+void SyncStockpileContainerSlotCount(int containerIdx);  // in stockpiles.c
 ```
 
 ### Changes to Stockpile struct (stockpiles.h)
@@ -1117,8 +1128,8 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 | ItemState enum | +1 value (ITEM_IN_CONTAINER) |
 | Stacking | Source of truth moves from Stockpile.slotCounts to Item.stackCount |
 | Spatial grid | Skip ITEM_IN_CONTAINER items |
-| Item search | New FindItemIncludingContainers with bitmask pre-filter |
-| Job fetch step | Extract-from-container pre-step + SplitStack when needed |
+| Item search | FindItemInContainers with bitmask pre-filter + custom filter callback. Added as fallback to 7 search sites in jobs.c/workshops.c |
+| Job fetch step | ExtractItemFromContainer pre-step in 6 pickup steps + SyncStockpileContainerSlotCount |
 | DeleteItem | Spill contents (safe-drop) before deleting container |
 | Haul jobs | Deliver into container (merge or new stack) |
 | Mover carry | Contents move with carried container, weight cached |
@@ -1207,15 +1218,16 @@ bool SlotCanAcceptItem(int stockpileIdx, int slotX, int slotY, ItemType type, ui
 
 ## Test Expectations
 
-- ~155 total new assertions across all phases
-- Phase 0: 25 (stackCount, merge, split, craft output, stockpile merge/split, SafeDrop, save migration, regression)
-- Phase 1: 30 (containment model, nesting, move, spill, safe-drop, bitmask, save/load, contentCount integrity)
-- Phase 2: 15 (container items, crafting, flags, defs)
-- Phase 3: 30 (stockpile integration, slot cache, maxContainers, mixed types, race conditions)
-- Phase 4: 25 (container-aware search, bitmask filtering, extraction, split, concurrent access)
-- Phase 5: 15 (carry full containers, weight, reservation)
-- Phase 6: 10 (filter change cleanup)
-- Phase 7: 10 (spoilage, weather — deferred until F1)
+- **Actual (Phases 0-4):** 96 tests, 301 assertions (22/60 stacking + 74/241 containers)
+- Phase 0: 22 tests, 60 assertions (stackCount, merge, split, craft output, stockpile merge/split, SafeDrop, save migration, regression)
+- Phase 1: 32 tests, 94 assertions (containment model, nesting, move, spill, safe-drop, bitmask, save/load, contentCount integrity)
+- Phase 2: 13 tests, 45 assertions (container items, crafting, flags, defs)
+- Phase 3: 15 tests, 62 assertions (stockpile integration, slot cache, maxContainers, mixed types, race conditions)
+- Phase 4: 14 tests, 40 assertions (container-aware search, bitmask filtering, extraction, stockpile sync, nested search)
+- **Estimated (remaining):**
+- Phase 5: ~15 (carry full containers, weight, reservation)
+- Phase 6: ~10 (filter change cleanup)
+- Phase 7: ~10 (spoilage, weather — deferred until F1)
 
 ---
 

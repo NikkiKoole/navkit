@@ -1,6 +1,7 @@
 #include "containers.h"
 #include "item_defs.h"
 #include "stacking.h"
+#include "mover.h"  // CELL_SIZE
 
 // Container definitions table — entries with maxContents=0 mean "not a container".
 ContainerDef containerDefs[ITEM_TYPE_COUNT] = {
@@ -229,4 +230,92 @@ float GetContainerTotalWeight(int containerIdx) {
     float total = ItemWeight(items[containerIdx].type) * items[containerIdx].stackCount;
     ForEachContainedItemRecursive(containerIdx, WeightSumCallback, &total);
     return total;
+}
+
+int GetOutermostContainer(int itemIdx) {
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS) return itemIdx;
+    int current = itemIdx;
+    while (items[current].containedIn != -1) {
+        current = items[current].containedIn;
+    }
+    return current;
+}
+
+// Search inside a single container (and nested sub-containers) for matching item
+static int SearchContainerForItem(int containerIdx, ItemType type, int excludeItemIdx,
+                                  ContainerItemFilter extraFilter, void* filterData,
+                                  int* outContainerIdx) {
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (items[i].containedIn != containerIdx) continue;
+
+        // Check sub-containers recursively
+        if (items[i].contentCount > 0 && ContainerMightHaveType(i, type)) {
+            int found = SearchContainerForItem(i, type, excludeItemIdx,
+                                               extraFilter, filterData, outContainerIdx);
+            if (found >= 0) return found;
+        }
+
+        // Check this item
+        if (items[i].type != type) continue;
+        if (i == excludeItemIdx) continue;
+        if (items[i].reservedBy != -1) continue;
+        if (items[i].unreachableCooldown > 0.0f) continue;
+        if (extraFilter && !extraFilter(i, filterData)) continue;
+
+        if (outContainerIdx) *outContainerIdx = GetOutermostContainer(containerIdx);
+        return i;
+    }
+    return -1;
+}
+
+int FindItemInContainers(ItemType type, int z, int searchCenterX, int searchCenterY,
+                         int searchRadius, int excludeItemIdx,
+                         ContainerItemFilter extraFilter, void* filterData,
+                         int* outContainerIdx) {
+    if (outContainerIdx) *outContainerIdx = -1;
+
+    int bestItemIdx = -1;
+    int bestContainerIdx = -1;
+    int bestDistSq = searchRadius * searchRadius;
+
+    for (int i = 0; i < itemHighWaterMark; i++) {
+        if (!items[i].active) continue;
+        if (!GetContainerDef(items[i].type)) continue;
+        if (items[i].contentCount <= 0) continue;
+        if ((int)items[i].z != z) continue;
+
+        // Only search top-level containers (not nested ones — those are reached via recursion)
+        if (items[i].containedIn != -1) continue;
+
+        // Distance check (tile coords)
+        int tileX = (int)(items[i].x / CELL_SIZE);
+        int tileY = (int)(items[i].y / CELL_SIZE);
+        int dx = tileX - searchCenterX;
+        int dy = tileY - searchCenterY;
+        int distSq = dx * dx + dy * dy;
+        if (distSq > bestDistSq) continue;
+
+        // Bloom filter fast reject — only for direct children.
+        // Skip this check entirely since nested containers mean the outer's
+        // bloom filter may not include grandchild types. The per-level bloom
+        // filter check in SearchContainerForItem handles sub-containers.
+
+        // Skip if container is reserved or carried
+        if (items[i].reservedBy != -1) continue;
+        if (items[i].state == ITEM_CARRIED) continue;
+
+        // Search inside this container
+        int foundContainer = -1;
+        int found = SearchContainerForItem(i, type, excludeItemIdx,
+                                           extraFilter, filterData, &foundContainer);
+        if (found >= 0 && distSq < bestDistSq) {
+            bestDistSq = distSq;
+            bestItemIdx = found;
+            bestContainerIdx = foundContainer;
+        }
+    }
+
+    if (outContainerIdx) *outContainerIdx = bestContainerIdx;
+    return bestItemIdx;
 }

@@ -1015,6 +1015,255 @@ describe(stockpile_containers) {
     }
 }
 
+// ===========================================================================
+// Phase 4: Container-Aware Search + Extraction
+// ===========================================================================
+
+static void SearchSetup(void) {
+    InitTestGrid(8, 8);
+    ClearItems();
+    ClearStockpiles();
+    ClearContainerDefs();
+    SetupContainerType(ITEM_RED, 10);  // ITEM_RED as container for testing
+}
+
+describe(container_search) {
+    it("should find item inside container") {
+        SearchSetup();
+        // Create container at tile (3,3)
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        // Put an ITEM_BLUE inside
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == blue);
+        expect(containerIdx == basket);
+    }
+
+    it("should find item in nested container") {
+        SearchSetup();
+        SetupContainerType(ITEM_GREEN, 10);  // ITEM_GREEN as inner container
+        int outer = SpawnItemWithMaterial(4 * CELL_SIZE + 16, 4 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int inner = SpawnItemWithMaterial(0, 0, 0, ITEM_GREEN, MAT_NONE);
+        PutItemInContainer(inner, outer);
+        int target = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(target, inner);
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 4, 4, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == target);
+        expect(containerIdx == outer);  // outermost container
+    }
+
+    it("should return -1 when bloom filter rejects") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+
+        // Search for ITEM_LOG which is not in the container
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_LOG, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);
+        expect(containerIdx == -1);
+    }
+
+    it("should skip reserved containers") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+        items[basket].reservedBy = 0;  // Container reserved by mover 0
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);  // Skipped because container is reserved
+    }
+
+    it("should skip carried containers") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+        items[basket].state = ITEM_CARRIED;
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);
+    }
+
+    it("should skip reserved items inside container") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+        items[blue].reservedBy = 0;  // Item itself is reserved
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);
+    }
+
+    it("should respect z-level") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 1, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+
+        // Search z=0, container is at z=1
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);
+    }
+
+    it("should respect search radius") {
+        SearchSetup();
+        // Container at tile (7,7), searching from (0,0) with radius 5
+        int basket = SpawnItemWithMaterial(7 * CELL_SIZE + 16, 7 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 0, 0, 5, -1, NULL, NULL, &containerIdx);
+        expect(found == -1);  // Too far
+
+        // Same search with larger radius
+        found = FindItemInContainers(ITEM_BLUE, 0, 0, 0, 50, -1, NULL, NULL, &containerIdx);
+        expect(found == blue);
+    }
+
+    it("should exclude specific item index") {
+        SearchSetup();
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+
+        // Exclude the item we'd find
+        int containerIdx = -1;
+        int found = FindItemInContainers(ITEM_BLUE, 0, 3, 3, 50, blue, NULL, NULL, &containerIdx);
+        expect(found == -1);
+    }
+}
+
+describe(outermost_container) {
+    it("should return self for non-contained item") {
+        Setup();
+        int item = SpawnItemWithMaterial(100, 100, 0, ITEM_BLUE, MAT_NONE);
+        expect(GetOutermostContainer(item) == item);
+    }
+
+    it("should walk chain to outermost") {
+        Setup();
+        SetupContainerType(ITEM_RED, 10);
+        SetupContainerType(ITEM_GREEN, 10);
+        int chest = SpawnItemWithMaterial(100, 100, 0, ITEM_RED, MAT_NONE);
+        int bag = SpawnItemWithMaterial(0, 0, 0, ITEM_GREEN, MAT_NONE);
+        PutItemInContainer(bag, chest);
+        int seed = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(seed, bag);
+
+        expect(GetOutermostContainer(seed) == chest);
+        expect(GetOutermostContainer(bag) == chest);
+        expect(GetOutermostContainer(chest) == chest);
+    }
+}
+
+describe(container_extraction) {
+    it("should extract item from container") {
+        Setup();
+        SetupContainerType(ITEM_RED, 10);
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int blue = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        PutItemInContainer(blue, basket);
+        expect(items[blue].state == ITEM_IN_CONTAINER);
+        expect(items[blue].containedIn == basket);
+
+        RemoveItemFromContainer(blue);
+        expect(items[blue].state == ITEM_ON_GROUND);
+        expect(items[blue].containedIn == -1);
+        expect(items[basket].contentCount == 0);
+    }
+
+    it("should sync stockpile slotCounts on extraction") {
+        InitTestGrid(8, 8);
+        ClearItems();
+        ClearStockpiles();
+        RestoreRealContainerDefs();
+
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileMaxContainers(sp, 2);
+        for (int t = 0; t < ITEM_TYPE_COUNT; t++) SetStockpileFilter(sp, t, true);
+
+        // Install a basket in the stockpile
+        int basket = SpawnItemWithMaterial(0 * CELL_SIZE + 16, 0 * CELL_SIZE + 16, 0, ITEM_BASKET, MAT_NONE);
+        PlaceItemInStockpile(sp, 0, 0, basket);
+        expect(stockpiles[sp].slotIsContainer[0] == true);
+
+        // Put items in the container
+        int rock1 = SpawnItemWithMaterial(100, 100, 0, ITEM_ROCK, MAT_GRANITE);
+        PlaceItemInStockpile(sp, 0, 0, rock1);
+        expect(items[rock1].containedIn == basket);
+        expect(stockpiles[sp].slotCounts[0] == 1);
+
+        int rock2 = SpawnItemWithMaterial(100, 100, 0, ITEM_ROCK, MAT_SANDSTONE);
+        PlaceItemInStockpile(sp, 0, 0, rock2);
+        expect(stockpiles[sp].slotCounts[0] == 2);
+
+        // Extract one item
+        int parent = items[rock1].containedIn;
+        RemoveItemFromContainer(rock1);
+        SyncStockpileContainerSlotCount(parent);
+        expect(stockpiles[sp].slotCounts[0] == 1);
+        expect(items[basket].contentCount == 1);
+    }
+
+    it("should handle multiple extractions from same container") {
+        Setup();
+        SetupContainerType(ITEM_RED, 10);
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+
+        int a = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        int b = SpawnItemWithMaterial(0, 0, 0, ITEM_GREEN, MAT_NONE);
+        int c = SpawnItemWithMaterial(0, 0, 0, ITEM_LOG, MAT_OAK);
+        PutItemInContainer(a, basket);
+        PutItemInContainer(b, basket);
+        PutItemInContainer(c, basket);
+        expect(items[basket].contentCount == 3);
+
+        RemoveItemFromContainer(a);
+        expect(items[basket].contentCount == 2);
+        RemoveItemFromContainer(b);
+        expect(items[basket].contentCount == 1);
+        RemoveItemFromContainer(c);
+        expect(items[basket].contentCount == 0);
+    }
+
+    it("should split stack and extract partial amount") {
+        Setup();
+        SetupContainerType(ITEM_RED, 10);
+        int basket = SpawnItemWithMaterial(3 * CELL_SIZE + 16, 3 * CELL_SIZE + 16, 0, ITEM_RED, MAT_NONE);
+        int stack = SpawnItemWithMaterial(0, 0, 0, ITEM_BLUE, MAT_NONE);
+        items[stack].stackCount = 10;
+        PutItemInContainer(stack, basket);
+
+        // Split 3 from the stack inside the container
+        int split = SplitStack(stack, 3);
+        expect(split >= 0);
+        expect(items[split].containedIn == basket);
+        expect(items[split].stackCount == 3);
+        expect(items[stack].stackCount == 7);
+        expect(items[basket].contentCount == 2);  // original + split
+
+        // Extract the split portion
+        RemoveItemFromContainer(split);
+        expect(items[split].state == ITEM_ON_GROUND);
+        expect(items[split].containedIn == -1);
+        expect(items[basket].contentCount == 1);  // original remains
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -1044,6 +1293,9 @@ int main(int argc, char* argv[]) {
     test(spatial_grid);
     test(container_item_types);
     test(stockpile_containers);
+    test(container_search);
+    test(outermost_container);
+    test(container_extraction);
 
     return summary();
 }

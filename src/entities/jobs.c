@@ -2,6 +2,7 @@
 #include "items.h"
 #include "item_defs.h"
 #include "stacking.h"
+#include "containers.h"
 #include "mover.h"
 #include "workshops.h"
 #include "../core/time.h"
@@ -562,6 +563,7 @@ Job* GetJob(int jobId) {
 
 // Forward declaration for helper function used by drivers
 static void ClearSourceStockpileSlot(Item* item);
+static void ExtractItemFromContainer(int itemIdx);
 
 // Haul job driver: pick up item -> carry to stockpile -> drop
 JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
@@ -1779,8 +1781,12 @@ JobRunResult RunJob_HaulToBlueprint(Job* job, void* moverPtr, float dt) {
         }
 
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Extract from container if needed
+            if (item->containedIn != -1) {
+                ExtractItemFromContainer(itemIdx);
+            }
             // Pick up the item
-            if (item->state == ITEM_IN_STOCKPILE) {
+            else if (item->state == ITEM_IN_STOCKPILE) {
                 ClearSourceStockpileSlot(item);
             }
             item->state = ITEM_CARRIED;
@@ -2024,8 +2030,12 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* item = &items[itemIdx];
 
+            // Extract from container if needed
+            if (item->containedIn != -1) {
+                ExtractItemFromContainer(itemIdx);
+            }
             // Pick up the item
-            if (item->state == ITEM_IN_STOCKPILE) {
+            else if (item->state == ITEM_IN_STOCKPILE) {
                 // Clear source stockpile slot when picking up
                 RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
             }
@@ -2140,8 +2150,12 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* item2 = &items[item2Idx];
 
+            // Extract from container if needed
+            if (item2->containedIn != -1) {
+                ExtractItemFromContainer(item2Idx);
+            }
             // Pick up from stockpile if needed
-            if (item2->state == ITEM_IN_STOCKPILE) {
+            else if (item2->state == ITEM_IN_STOCKPILE) {
                 RemoveItemFromStockpileSlot(item2->x, item2->y, (int)item2->z);
             }
 
@@ -2248,8 +2262,12 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* fuelItem = &items[fuelIdx];
 
+            // Extract from container if needed
+            if (fuelItem->containedIn != -1) {
+                ExtractItemFromContainer(fuelIdx);
+            }
             // Pick up from stockpile if needed
-            if (fuelItem->state == ITEM_IN_STOCKPILE) {
+            else if (fuelItem->state == ITEM_IN_STOCKPILE) {
                 RemoveItemFromStockpileSlot(fuelItem->x, fuelItem->y, (int)fuelItem->z);
             }
 
@@ -2446,7 +2464,11 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
         }
 
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
-            if (item->state == ITEM_IN_STOCKPILE) {
+            // Extract from container if needed
+            if (item->containedIn != -1) {
+                ExtractItemFromContainer(itemIdx);
+            }
+            else if (item->state == ITEM_IN_STOCKPILE) {
                 RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
             }
             item->state = ITEM_CARRIED;
@@ -2819,6 +2841,14 @@ static void IdleMoverSearchCallback(int moverIdx, float distSq, void* userData) 
 // Helper: clear item from source stockpile slot when re-hauling
 static void ClearSourceStockpileSlot(Item* item) {
     RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
+}
+
+// Extract item from container before pickup (instant, no work timer).
+// Updates stockpile slotCounts if container is in a stockpile slot.
+static void ExtractItemFromContainer(int itemIdx) {
+    int parentContainer = items[itemIdx].containedIn;
+    RemoveItemFromContainer(itemIdx);
+    SyncStockpileContainerSlotCount(parentContainer);
 }
 
 // Helper: safe-drop an item near a mover at a walkable cell
@@ -3676,6 +3706,15 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
             }
         }
 
+        // Fallback: search inside containers
+        if (bestItemIdx < 0 && recipe->inputItemMatch != ITEM_MATCH_ANY_FUEL) {
+            int containerIdx = -1;
+            int moverTileX = (int)(m->x / CELL_SIZE);
+            int moverTileY = (int)(m->y / CELL_SIZE);
+            bestItemIdx = FindItemInContainers(recipe->inputType, moverZ, moverTileX, moverTileY,
+                                               100, -1, NULL, NULL, &containerIdx);
+        }
+
         if (bestItemIdx < 0) continue;
 
         // Check reachability
@@ -4381,6 +4420,7 @@ int WorkGiver_Craft(int moverIdx) {
             for (int i = 0; i < itemHighWaterMark; i++) {
                 Item* item = &items[i];
                 if (!item->active) continue;
+                if (item->state == ITEM_IN_CONTAINER) continue;
                 if (!RecipeInputMatches(recipe, item)) continue;
                 if (item->reservedBy != -1) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
@@ -4396,6 +4436,13 @@ int WorkGiver_Craft(int moverIdx) {
 
                 bestDistSq = distSq;
                 itemIdx = i;
+            }
+
+            // Fallback: search inside containers
+            if (itemIdx < 0 && recipe->inputItemMatch != ITEM_MATCH_ANY_FUEL) {
+                int containerIdx = -1;
+                itemIdx = FindItemInContainers(recipe->inputType, ws->z, ws->x, ws->y,
+                                               searchRadius, -1, NULL, NULL, &containerIdx);
             }
 
             if (itemIdx < 0) continue;  // No materials available
@@ -4443,6 +4490,7 @@ int WorkGiver_Craft(int moverIdx) {
                 for (int i = 0; i < itemHighWaterMark; i++) {
                     Item* item2 = &items[i];
                     if (!item2->active) continue;
+                    if (item2->state == ITEM_IN_CONTAINER) continue;
                     if (item2->type != recipe->inputType2) continue;
                     if (item2->reservedBy != -1) continue;
                     if (item2->unreachableCooldown > 0.0f) continue;
@@ -4459,6 +4507,14 @@ int WorkGiver_Craft(int moverIdx) {
                     best2DistSq = dist2Sq;
                     item2Idx = i;
                 }
+
+                // Fallback: search inside containers for second input
+                if (item2Idx < 0) {
+                    int containerIdx = -1;
+                    item2Idx = FindItemInContainers(recipe->inputType2, ws->z, ws->x, ws->y,
+                                                    searchRadius, itemIdx, NULL, NULL, &containerIdx);
+                }
+
                 if (item2Idx < 0) continue;  // Second input not available
 
                 // Verify second input is reachable from workshop
@@ -5580,6 +5636,32 @@ static int FindNearestRecipeItem(int moverTileX, int moverTileY, int moverZ, flo
         if (distSq < bestDistSq) {
             bestDistSq = distSq;
             bestItemIdx = j;
+        }
+    }
+
+    // Fallback: search inside containers
+    if (bestItemIdx < 0) {
+        // Try each accepted item type via container search
+        for (int a = 0; a < input->altCount && bestItemIdx < 0; a++) {
+            ItemType altType = input->alternatives[a].itemType;
+
+            // Check locking
+            if (delivery->chosenAlternative >= 0) {
+                ItemType lockedType = input->alternatives[delivery->chosenAlternative].itemType;
+                if (altType != lockedType) continue;
+            }
+
+            int containerIdx = -1;
+            bestItemIdx = FindItemInContainers(altType, moverZ, moverTileX, moverTileY,
+                                               100, -1, NULL, NULL, &containerIdx);
+
+            // Check material locking on found item
+            if (bestItemIdx >= 0 && delivery->chosenAlternative >= 0 &&
+                delivery->deliveredMaterial != MAT_NONE) {
+                MaterialType mat = (MaterialType)items[bestItemIdx].material;
+                if (mat == MAT_NONE) mat = (MaterialType)DefaultMaterialForItemType(items[bestItemIdx].type);
+                if (mat != delivery->deliveredMaterial) bestItemIdx = -1;
+            }
         }
     }
 

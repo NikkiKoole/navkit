@@ -175,5 +175,6 @@ void SetStockpileMaxContainers(int stockpileIdx, int maxContainers);
 int GetStockpileMaxContainers(int stockpileIdx);
 int CountInstalledContainers(int stockpileIdx);
 bool IsSlotContainer(int stockpileIdx, int slotIdx);
+void SyncStockpileContainerSlotCount(int containerIdx);  // Update slotCounts after extraction
 
 #endif

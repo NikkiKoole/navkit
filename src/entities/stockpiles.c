@@ -1243,3 +1243,21 @@ bool IsSlotContainer(int stockpileIdx, int slotIdx) {
     if (slotIdx < 0 || slotIdx >= sp->width * sp->height) return false;
     return sp->slotIsContainer[slotIdx];
 }
+
+void SyncStockpileContainerSlotCount(int containerIdx) {
+    if (containerIdx < 0 || containerIdx >= MAX_ITEMS) return;
+    if (!items[containerIdx].active) return;
+    if (items[containerIdx].state != ITEM_IN_STOCKPILE) return;
+
+    // Find which stockpile slot holds this container
+    for (int s = 0; s < stockpileCount; s++) {
+        Stockpile* sp = &stockpiles[s];
+        if (!sp->active) continue;
+        for (int idx = 0; idx < sp->width * sp->height; idx++) {
+            if (!sp->slotIsContainer[idx]) continue;
+            if (sp->slots[idx] != containerIdx) continue;
+            sp->slotCounts[idx] = items[containerIdx].contentCount;
+            return;
+        }
+    }
+}
