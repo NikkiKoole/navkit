@@ -111,6 +111,9 @@ void ClearStockpileSlot(Stockpile* sp, int slotIdx);
 // Slot cleanup - clear slot state when item leaves stockpile (delete, push, drop)
 void RemoveItemFromStockpileSlot(float x, float y, int z);
 
+// Sync slotCounts to match item's stackCount (after SplitStack reduces it)
+void SyncStockpileSlotCount(float x, float y, int z);
+
 // Gather zones
 void ClearGatherZones(void);
 int CreateGatherZone(int x, int y, int z, int width, int height);

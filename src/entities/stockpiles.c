@@ -852,6 +852,21 @@ void RemoveItemFromStockpileSlot(float x, float y, int z) {
     ClearStockpileSlot(&stockpiles[sourceSp], idx);
 }
 
+void SyncStockpileSlotCount(float x, float y, int z) {
+    int sourceSp = -1;
+    if (!IsPositionInStockpile(x, y, z, &sourceSp) || sourceSp < 0) return;
+
+    int lx = (int)(x / CELL_SIZE) - stockpiles[sourceSp].x;
+    int ly = (int)(y / CELL_SIZE) - stockpiles[sourceSp].y;
+    if (lx < 0 || lx >= stockpiles[sourceSp].width || ly < 0 || ly >= stockpiles[sourceSp].height) return;
+
+    int idx = ly * stockpiles[sourceSp].width + lx;
+    int slotItem = stockpiles[sourceSp].slots[idx];
+    if (slotItem >= 0 && items[slotItem].active) {
+        stockpiles[sourceSp].slotCounts[idx] = items[slotItem].stackCount;
+    }
+}
+
 // =============================================================================
 // Gather Zones (stub implementations)
 // =============================================================================

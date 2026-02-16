@@ -6,6 +6,8 @@
 #include "../src/entities/item_defs.h"
 #include "../src/entities/stacking.h"
 #include "../src/entities/stockpiles.h"
+#include "../src/entities/jobs.h"
+#include "../src/entities/workshops.h"
 #include "test_helpers.h"
 #include <string.h>
 
@@ -305,6 +307,160 @@ describe(roundtrip) {
     }
 }
 
+// ===========================================================================
+// Craft pickup should split stacks
+// ===========================================================================
+describe(craft_pickup_split) {
+    it("should split stack when recipe needs fewer than stackCount") {
+        // Story: Sawmill has "Build Chest" bill (needs 4 planks).
+        // Stockpile has a stack of 10 planks. Mover picks up for crafting.
+        // Expected: mover carries 4 planks, stockpile keeps 6.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        // Create sawmill at (5,1) — "Build Chest" is recipe index 2
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+
+        // Create a stockpile with 10 planks in one slot
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_PLANKS, true);
+        float slotX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int plankIdx = SpawnItemWithMaterial(slotX, slotY, 0.0f, ITEM_PLANKS, MAT_OAK);
+        items[plankIdx].stackCount = 10;
+        int freeX, freeY;
+        FindFreeStockpileSlot(sp, ITEM_PLANKS, MAT_OAK, &freeX, &freeY);
+        PlaceItemInStockpile(sp, freeX, freeY, plankIdx);
+
+        // Verify stockpile has the stack
+        Stockpile* spPtr = &stockpiles[sp];
+        int lx = freeX - spPtr->x;
+        int ly = freeY - spPtr->y;
+        int slotIdx = ly * spPtr->width + lx;
+        expect(spPtr->slots[slotIdx] == plankIdx);
+        expect(spPtr->slotCounts[slotIdx] == 10);
+
+        // Set up mover right next to the planks (so pickup is immediate)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, slotX, slotY, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        // Create craft job manually at PICKING_UP step
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetWorkshop = wsIdx;
+        job->targetBillIdx = 0;  // Will look up recipe from bill
+        job->targetItem = plankIdx;
+        job->carryingItem = -1;
+        job->fuelItem = -1;
+        job->step = CRAFT_STEP_PICKING_UP;
+        m->currentJobId = jobId;
+
+        // Add "Build Chest" bill (recipe index 2 at sawmill)
+        AddBill(wsIdx, 2, BILL_DO_X_TIMES, 0);
+        workshops[wsIdx].assignedCrafter = 0;
+
+        // Run one step of the craft job
+        JobRunResult result = RunJob_Craft(job, m, TICK_DT);
+
+        // Job should be running (moved to next step)
+        expect(result == JOBRUN_RUNNING);
+        expect(job->step == CRAFT_STEP_MOVING_TO_WORKSHOP);
+
+        // Mover should be carrying 4 planks (recipe inputCount)
+        int carriedIdx = job->carryingItem;
+        expect(carriedIdx >= 0);
+        expect(items[carriedIdx].active == true);
+        expect(items[carriedIdx].type == ITEM_PLANKS);
+        expect(items[carriedIdx].stackCount == 4);
+        expect(items[carriedIdx].state == ITEM_CARRIED);
+
+        // Stockpile should still have 6 planks remaining
+        expect(spPtr->slots[slotIdx] >= 0);
+        int remainIdx = spPtr->slots[slotIdx];
+        expect(items[remainIdx].active == true);
+        expect(items[remainIdx].stackCount == 6);
+        expect(spPtr->slotCounts[slotIdx] == 6);
+    }
+
+    it("should take whole stack when recipe needs exactly stackCount") {
+        // Stockpile has exactly 4 planks, recipe needs 4. No split needed.
+        InitGridFromAsciiWithChunkSize(
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n"
+            "..........\n", 10, 10);
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        ClearJobs();
+
+        int wsIdx = CreateWorkshop(5, 1, 0, WORKSHOP_SAWMILL);
+
+        int sp = CreateStockpile(0, 0, 0, 2, 2);
+        SetStockpileFilter(sp, ITEM_PLANKS, true);
+        float slotX = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        float slotY = 0 * CELL_SIZE + CELL_SIZE * 0.5f;
+        int plankIdx = SpawnItemWithMaterial(slotX, slotY, 0.0f, ITEM_PLANKS, MAT_OAK);
+        items[plankIdx].stackCount = 4;
+        int freeX, freeY;
+        FindFreeStockpileSlot(sp, ITEM_PLANKS, MAT_OAK, &freeX, &freeY);
+        PlaceItemInStockpile(sp, freeX, freeY, plankIdx);
+
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, slotX, slotY, 0.0f, goal, 200.0f);
+        moverCount = 1;
+
+        int jobId = CreateJob(JOBTYPE_CRAFT);
+        Job* job = GetJob(jobId);
+        job->assignedMover = 0;
+        job->targetWorkshop = wsIdx;
+        job->targetBillIdx = 0;
+        job->targetItem = plankIdx;
+        job->carryingItem = -1;
+        job->fuelItem = -1;
+        job->step = CRAFT_STEP_PICKING_UP;
+        m->currentJobId = jobId;
+
+        AddBill(wsIdx, 2, BILL_DO_X_TIMES, 0);
+        workshops[wsIdx].assignedCrafter = 0;
+
+        JobRunResult result = RunJob_Craft(job, m, TICK_DT);
+
+        expect(result == JOBRUN_RUNNING);
+        // Mover carries whole stack (4 planks)
+        int carriedIdx = job->carryingItem;
+        expect(carriedIdx >= 0);
+        expect(items[carriedIdx].stackCount == 4);
+
+        // Stockpile slot should be cleared
+        Stockpile* spPtr = &stockpiles[sp];
+        int lx = freeX - spPtr->x;
+        int ly = freeY - spPtr->y;
+        int slotIdx = ly * spPtr->width + lx;
+        expect(spPtr->slots[slotIdx] == -1);
+        expect(spPtr->slotCounts[slotIdx] == 0);
+    }
+}
+
 int main(int argc, char* argv[]) {
     bool verbose = false;
     bool quiet = false;
@@ -325,6 +481,7 @@ int main(int argc, char* argv[]) {
     test(stack_count_basics);
     test(stockpile_stacking);
     test(roundtrip);
+    test(craft_pickup_split);
 
     return summary();
 }

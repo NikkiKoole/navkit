@@ -2035,6 +2035,23 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* item = &items[itemIdx];
 
+            // Split stack if we need fewer than available
+            int needed = recipe->inputCount;
+            if (item->stackCount > needed) {
+                bool wasInStockpile = (item->state == ITEM_IN_STOCKPILE);
+                int splitIdx = SplitStack(itemIdx, needed);
+                if (splitIdx < 0) return JOBRUN_FAIL;
+                // Split-off inherits state — set to ON_GROUND so it doesn't
+                // interfere with the original's stockpile slot
+                items[splitIdx].state = ITEM_ON_GROUND;
+                // Update stockpile slot count to reflect reduced stack
+                if (wasInStockpile) {
+                    SyncStockpileSlotCount(item->x, item->y, (int)item->z);
+                }
+                itemIdx = splitIdx;
+                item = &items[splitIdx];
+            }
+
             // Extract from container if needed
             if (item->containedIn != -1) {
                 ExtractItemFromContainer(itemIdx);
