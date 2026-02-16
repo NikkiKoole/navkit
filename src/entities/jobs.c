@@ -2035,31 +2035,14 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* item = &items[itemIdx];
 
-            // Split stack if we need fewer than available
-            int needed = recipe->inputCount;
-            if (item->stackCount > needed) {
-                bool wasInStockpile = (item->state == ITEM_IN_STOCKPILE);
-                int splitIdx = SplitStack(itemIdx, needed);
-                if (splitIdx < 0) return JOBRUN_FAIL;
-                // Split-off inherits state — set to ON_GROUND so it doesn't
-                // interfere with the original's stockpile slot
-                items[splitIdx].state = ITEM_ON_GROUND;
-                // Update stockpile slot count to reflect reduced stack
-                if (wasInStockpile) {
-                    SyncStockpileSlotCount(item->x, item->y, (int)item->z);
-                }
-                itemIdx = splitIdx;
-                item = &items[splitIdx];
-            }
+            // Take only what the recipe needs (splits stack if necessary)
+            itemIdx = TakeFromStockpileSlot(itemIdx, recipe->inputCount);
+            if (itemIdx < 0) return JOBRUN_FAIL;
+            item = &items[itemIdx];
 
             // Extract from container if needed
             if (item->containedIn != -1) {
                 ExtractItemFromContainer(itemIdx);
-            }
-            // Pick up the item
-            else if (item->state == ITEM_IN_STOCKPILE) {
-                // Clear source stockpile slot when picking up
-                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
             }
 
             item->state = ITEM_CARRIED;
@@ -2172,13 +2155,14 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* item2 = &items[item2Idx];
 
+            // Take only what the recipe needs (splits stack if necessary)
+            item2Idx = TakeFromStockpileSlot(item2Idx, recipe->inputCount2);
+            if (item2Idx < 0) return JOBRUN_FAIL;
+            item2 = &items[item2Idx];
+
             // Extract from container if needed
             if (item2->containedIn != -1) {
                 ExtractItemFromContainer(item2Idx);
-            }
-            // Pick up from stockpile if needed
-            else if (item2->state == ITEM_IN_STOCKPILE) {
-                RemoveItemFromStockpileSlot(item2->x, item2->y, (int)item2->z);
             }
 
             item2->state = ITEM_CARRIED;
@@ -2284,13 +2268,15 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
             }
             Item* fuelItem = &items[fuelIdx];
 
+            // Take 1 fuel unit (splits stack if necessary)
+            fuelIdx = TakeFromStockpileSlot(fuelIdx, 1);
+            if (fuelIdx < 0) return JOBRUN_FAIL;
+            fuelItem = &items[fuelIdx];
+            job->fuelItem = fuelIdx;
+
             // Extract from container if needed
             if (fuelItem->containedIn != -1) {
                 ExtractItemFromContainer(fuelIdx);
-            }
-            // Pick up from stockpile if needed
-            else if (fuelItem->state == ITEM_IN_STOCKPILE) {
-                RemoveItemFromStockpileSlot(fuelItem->x, fuelItem->y, (int)fuelItem->z);
             }
 
             fuelItem->state = ITEM_CARRIED;
@@ -2486,13 +2472,16 @@ JobRunResult RunJob_DeliverToWorkshop(Job* job, void* moverPtr, float dt) {
         }
 
         if (distSq < PICKUP_RADIUS * PICKUP_RADIUS) {
+            // Take 1 unit (splits stack if necessary)
+            itemIdx = TakeFromStockpileSlot(itemIdx, 1);
+            if (itemIdx < 0) return JOBRUN_FAIL;
+            item = &items[itemIdx];
+
             // Extract from container if needed
             if (item->containedIn != -1) {
                 ExtractItemFromContainer(itemIdx);
             }
-            else if (item->state == ITEM_IN_STOCKPILE) {
-                RemoveItemFromStockpileSlot(item->x, item->y, (int)item->z);
-            }
+
             item->state = ITEM_CARRIED;
             job->carryingItem = itemIdx;
             job->targetItem = -1;
@@ -3699,9 +3688,10 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
         if (ws->passiveReady) continue;  // Skip workshops that are already burning
         if (ws->billCount == 0) continue;
 
-        // Find first runnable bill
+        // Find first runnable, non-suspended bill
         int billIdx = -1;
         for (int b = 0; b < ws->billCount; b++) {
+            if (ws->bills[b].suspended) continue;
             if (ShouldBillRun(ws, &ws->bills[b])) {
                 billIdx = b;
                 break;
@@ -3711,22 +3701,23 @@ int WorkGiver_DeliverToPassiveWorkshop(int moverIdx) {
 
         const Recipe* recipe = &workshopDefs[ws->type].recipes[ws->bills[billIdx].recipeIdx];
 
-        // Count items already on work tile + reserved for delivery to this workshop
+        // Count units already on work tile + reserved for delivery to this workshop
         int inputOnTile = 0;
         for (int j = 0; j < itemHighWaterMark; j++) {
             Item* item = &items[j];
             if (!item->active) continue;
             if (!RecipeInputMatches(recipe, item)) continue;
 
-            // Item already on work tile
+            // Item already on work tile — count stackCount
             int ix = (int)(item->x / CELL_SIZE);
             int iy = (int)(item->y / CELL_SIZE);
             if (ix == ws->workTileX && iy == ws->workTileY && (int)item->z == ws->z &&
                 item->state == ITEM_ON_GROUND) {
-                inputOnTile++;
+                inputOnTile += item->stackCount;
             }
 
             // Item reserved for delivery to this workshop (being fetched or carried)
+            // Count as 1 unit per delivery job (movers carry 1 at a time)
             if (item->reservedBy >= 0 && item->reservedBy < moverCount) {
                 Mover* carrier = &movers[item->reservedBy];
                 if (carrier->currentJobId >= 0) {
@@ -3840,9 +3831,10 @@ int WorkGiver_IgniteWorkshop(int moverIdx) {
         if (ws->assignedCrafter >= 0) continue;   // Someone already assigned
         if (ws->billCount == 0) continue;
 
-        // Find first runnable bill
+        // Find first runnable, non-suspended bill
         int billIdx = -1;
         for (int b = 0; b < ws->billCount; b++) {
+            if (ws->bills[b].suspended) continue;
             if (ShouldBillRun(ws, &ws->bills[b])) {
                 billIdx = b;
                 break;
@@ -4484,7 +4476,7 @@ int WorkGiver_Craft(int moverIdx) {
             int itemIdx = -1;
             int bestDistSq = searchRadius * searchRadius;
 
-            // Search for closest unreserved item of the required type
+            // Search for closest unreserved item of the required type with enough stack
             for (int i = 0; i < itemHighWaterMark; i++) {
                 Item* item = &items[i];
                 if (!item->active) continue;
@@ -4493,6 +4485,7 @@ int WorkGiver_Craft(int moverIdx) {
                 if (item->reservedBy != -1) continue;
                 if (item->unreachableCooldown > 0.0f) continue;
                 if ((int)item->z != ws->z) continue;
+                if (item->stackCount < recipe->inputCount) continue;
 
                 // Check distance from workshop
                 int itemTileX = (int)(item->x / CELL_SIZE);

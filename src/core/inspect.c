@@ -157,6 +157,7 @@ static void print_item(int idx) {
         printf("Type: %s\n", typeName);
     }
     printf("State: %s\n", item->state < 3 ? itemStateNames[item->state] : "?");
+    if (item->stackCount > 1) printf("Stack count: %d\n", item->stackCount);
     printf("Reserved by mover: %d%s\n", item->reservedBy, 
            item->reservedBy >= 0 ? "" : " (none)");
     printf("Unreachable cooldown: %.2f\n", item->unreachableCooldown);
@@ -873,6 +874,7 @@ static void print_items(const char* filterType) {
         printf("Item %d: %s at (%d,%d,z%d) %s", 
                i, typeName, cellX, cellY, cellZ,
                item->state < 3 ? itemStateNames[item->state] : "?");
+        if (item->stackCount > 1) printf(" [x%d]", item->stackCount);
         if (item->reservedBy >= 0) printf(" [reserved by mover %d]", item->reservedBy);
         if (item->unreachableCooldown > 0) printf(" [UNREACHABLE %.1fs]", item->unreachableCooldown);
         printf("\n");

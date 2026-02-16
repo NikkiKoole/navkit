@@ -420,7 +420,7 @@ int main(int argc, char** argv) {
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     if (quiet) set_quiet_mode(1);
 
-    printf("Running wind tests...\n");
+
 
     test(wind_dot_product);
     test(wind_smoke_bias);

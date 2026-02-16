@@ -604,6 +604,27 @@ void PassiveWorkshopsTick(float dt) {
         if (!ws->active) continue;
         if (!workshopDefs[ws->type].passive) continue;
 
+        // Auto-resume bills suspended due to no storage
+        {
+            int rc;
+            const Recipe* recipes = GetRecipesForWorkshop(ws->type, &rc);
+            for (int b = 0; b < ws->billCount; b++) {
+                Bill* bill = &ws->bills[b];
+                if (!bill->suspended || !bill->suspendedNoStorage) continue;
+                if (bill->recipeIdx < 0 || bill->recipeIdx >= rc) continue;
+                const Recipe* recipe = &recipes[bill->recipeIdx];
+                uint8_t mat = DefaultMaterialForItemType(recipe->inputType);
+                int outSlotX, outSlotY;
+                if (FindStockpileForItem(recipe->outputType, mat, &outSlotX, &outSlotY) >= 0) {
+                    if (recipe->outputType2 == ITEM_NONE ||
+                        FindStockpileForItem(recipe->outputType2, mat, &outSlotX, &outSlotY) >= 0) {
+                        bill->suspended = false;
+                        bill->suspendedNoStorage = false;
+                    }
+                }
+            }
+        }
+
         // Find first runnable bill
         int activeBillIdx = -1;
         for (int b = 0; b < ws->billCount; b++) {
@@ -637,7 +658,7 @@ void PassiveWorkshopsTick(float dt) {
         if (bill->recipeIdx < 0 || bill->recipeIdx >= recipeCount) continue;
         const Recipe* recipe = &recipes[bill->recipeIdx];
 
-        // Check: are required inputs present on the work tile?
+        // Check: are required input units present on the work tile?
         int inputCount = 0;
         for (int i = 0; i < itemHighWaterMark; i++) {
             Item* item = &items[i];
@@ -648,7 +669,7 @@ void PassiveWorkshopsTick(float dt) {
             if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
             if ((int)item->z != ws->z) continue;
             if (!RecipeInputMatches(recipe, item)) continue;
-            inputCount++;
+            inputCount += item->stackCount;
             if (inputCount >= recipe->inputCount) break;
         }
 
@@ -683,10 +704,10 @@ void PassiveWorkshopsTick(float dt) {
         }
 
         if (ws->passiveProgress >= 1.0f) {
-            // Consume input(s)
-            int consumed = 0;
+            // Consume input(s), accounting for stacked items
+            int remaining = recipe->inputCount;
             MaterialType inputMat = MAT_NONE;
-            for (int i = 0; i < itemHighWaterMark && consumed < recipe->inputCount; i++) {
+            for (int i = 0; i < itemHighWaterMark && remaining > 0; i++) {
                 Item* item = &items[i];
                 if (!item->active) continue;
                 if (item->state != ITEM_ON_GROUND) continue;
@@ -695,12 +716,20 @@ void PassiveWorkshopsTick(float dt) {
                 if (tileX != ws->workTileX || tileY != ws->workTileY) continue;
                 if ((int)item->z != ws->z) continue;
                 if (!RecipeInputMatches(recipe, item)) continue;
-                if (consumed == 0) {
+                if (inputMat == MAT_NONE) {
                     inputMat = (MaterialType)item->material;
                     if (inputMat == MAT_NONE) inputMat = (MaterialType)DefaultMaterialForItemType(item->type);
                 }
-                DeleteItem(i);
-                consumed++;
+                if (item->stackCount <= remaining) {
+                    // Consume entire stack
+                    remaining -= item->stackCount;
+                    DeleteItem(i);
+                } else {
+                    // Consume partial stack — split off remainder
+                    SplitStack(i, item->stackCount - remaining);
+                    remaining = 0;
+                    DeleteItem(i);
+                }
             }
 
             // Spawn output(s) at output tile

@@ -113,6 +113,13 @@ void RemoveItemFromStockpileSlot(float x, float y, int z);
 
 // Sync slotCounts to match item's stackCount (after SplitStack reduces it)
 void SyncStockpileSlotCount(float x, float y, int z);
+void SyncStockpileSlotCountForItem(int itemIdx);
+
+// Take 'count' units from a stockpile item. If item has more than needed,
+// splits the stack (remainder stays in stockpile). Returns the item index
+// the caller should use (may be a new split-off item, or the original if
+// taking all). Returns -1 on failure.
+int TakeFromStockpileSlot(int itemIdx, int count);
 
 // Gather zones
 void ClearGatherZones(void);

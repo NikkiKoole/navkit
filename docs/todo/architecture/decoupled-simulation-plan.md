@@ -1,4 +1,4 @@
-# Plan: Decoupled Simulation + Multiple Views Architecture
+ # Plan: Decoupled Simulation + Multiple Views Architecture
 
 **Status**: Planning document (not yet implementing)
 

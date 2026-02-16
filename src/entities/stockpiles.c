@@ -365,7 +365,7 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
             if (!sp->cells[idx]) continue;  // already inactive
             
             // Drop any items in this slot to the ground and clear reservations
-            if (sp->slotCounts[idx] > 0) {
+            {
                 // Find items at this tile and set them to ground state
                 for (int i = 0; i < itemHighWaterMark; i++) {
                     if (!items[i].active) continue;
@@ -375,7 +375,6 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
                     int itemZ = (int)items[i].z;
                     if (itemTileX == wx && itemTileY == wy && itemZ == sp->z) {
                         items[i].state = ITEM_ON_GROUND;
-                        // Clear item reservations when dropping to ground
                         items[i].reservedBy = -1;
                     }
                 }
@@ -865,6 +864,54 @@ void SyncStockpileSlotCount(float x, float y, int z) {
     if (slotItem >= 0 && items[slotItem].active) {
         stockpiles[sourceSp].slotCounts[idx] = items[slotItem].stackCount;
     }
+}
+
+void SyncStockpileSlotCountForItem(int itemIdx) {
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
+    for (int i = 0; i < MAX_STOCKPILES; i++) {
+        if (!stockpiles[i].active) continue;
+        Stockpile* sp = &stockpiles[i];
+        int totalSlots = sp->width * sp->height;
+        for (int s = 0; s < totalSlots; s++) {
+            if (sp->slots[s] == itemIdx) {
+                sp->slotCounts[s] = items[itemIdx].stackCount;
+                return;
+            }
+        }
+    }
+}
+
+int TakeFromStockpileSlot(int itemIdx, int count) {
+    if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return -1;
+    if (count <= 0) return -1;
+    if (items[itemIdx].state != ITEM_IN_STOCKPILE) return itemIdx; // not in stockpile, just return as-is
+
+    if (items[itemIdx].stackCount <= count) {
+        // Taking all — find and clear the stockpile slot holding this item
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            if (!stockpiles[i].active) continue;
+            Stockpile* sp = &stockpiles[i];
+            int totalSlots = sp->width * sp->height;
+            for (int s = 0; s < totalSlots; s++) {
+                if (sp->slots[s] == itemIdx) {
+                    ClearStockpileSlot(sp, s);
+                    return itemIdx;
+                }
+            }
+        }
+        // Slot not found (shouldn't happen) — return item anyway
+        return itemIdx;
+    }
+
+    // Taking partial — split off what we need, remainder stays
+    int splitIdx = SplitStack(itemIdx, count);
+    if (splitIdx < 0) return -1;
+    items[splitIdx].state = ITEM_ON_GROUND;
+    // Transfer reservation from original to split-off (original stays in stockpile unreserved)
+    items[splitIdx].reservedBy = items[itemIdx].reservedBy;
+    items[itemIdx].reservedBy = -1;
+    SyncStockpileSlotCountForItem(itemIdx);
+    return splitIdx;
 }
 
 // =============================================================================

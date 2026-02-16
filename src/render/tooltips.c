@@ -488,8 +488,13 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
 
     const char* stateNames[] = {"Ground", "Carried", "Stockpile"};
 
+    int totalUnits = 0;
+    for (int i = 0; i < itemCount; i++) {
+        totalUnits += items[itemIndices[i]].stackCount;
+    }
+
     char lines[17][64];
-    snprintf(lines[0], sizeof(lines[0]), "Cell (%d,%d): %d item%s", cellX, cellY, itemCount, itemCount == 1 ? "" : "s");
+    snprintf(lines[0], sizeof(lines[0]), "Cell (%d,%d): %d unit%s", cellX, cellY, totalUnits, totalUnits == 1 ? "" : "s");
 
     int lineCount = 1;
     for (int i = 0; i < itemCount && lineCount < 17; i++) {
@@ -498,7 +503,11 @@ static void DrawItemTooltip(int* itemIndices, int itemCount, Vector2 mouse, int 
         char typeName[64];
         FormatItemName(item, typeName, sizeof(typeName));
         const char* stateName = (item->state >= 0 && item->state < 3) ? stateNames[item->state] : "?";
-        snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
+        if (item->stackCount > 1) {
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s x%d (%s)", idx, typeName, item->stackCount, stateName);
+        } else {
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "#%d: %s (%s)", idx, typeName, stateName);
+        }
         lineCount++;
     }
 

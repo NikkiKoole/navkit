@@ -415,7 +415,7 @@ int main(int argc, char** argv) {
     if (!test_verbose) SetTraceLogLevel(LOG_NONE);
     if (quiet) set_quiet_mode(1);
 
-    printf("Running thunderstorm tests...\n");
+
 
     test(lightning_strike_basics);
     test(lightning_flash_visuals);
