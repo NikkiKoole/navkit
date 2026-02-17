@@ -9,6 +9,7 @@
 #include "../src/entities/workshops.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
+#include "../src/simulation/balance.h"
 #include "../src/entities/furniture.h"
 #include "../src/simulation/weather.h"
 #include "../src/core/time.h"
@@ -42,6 +43,7 @@ static void SetupClean(void) {
     ClearJobs();
     ClearPlants();
     InitDesignations();
+    InitBalance();
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
     daysPerSeason = 7;

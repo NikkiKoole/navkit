@@ -2,23 +2,25 @@
 // Saplings grow into trunks, trunks grow upward, branches/leaves spawn by type
 
 #include "trees.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../entities/items.h"
 #include "../world/material.h"
 #include <stdlib.h>
+#include <math.h>
 
-// Growth parameters - runtime configurable
-int saplingGrowTicks = 100;       // Ticks before sapling becomes trunk
-int trunkGrowTicks = 50;          // Ticks between trunk growing upward
+// Growth parameters - runtime configurable (game-hours)
+float saplingGrowGH = 0.667f;    // Game-hours before sapling becomes trunk
+float trunkGrowGH = 0.333f;      // Game-hours between trunk growing upward
 
-// Growth parameters - compile-time constants
-#define LEAF_DECAY_TICKS 30       // Ticks before orphan leaf decays
+// Growth parameters - compile-time constants (game-hours)
+#define LEAF_DECAY_GH 0.2f       // Game-hours before orphan leaf decays
 #define LEAF_TRUNK_CHECK_DIST 4   // Max distance to check for trunk connection
 
 // Simple timer grid for growth (could be optimized with a list later)
-int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Target height per tree (set when sapling becomes trunk, based on position)
 int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
@@ -70,7 +72,7 @@ void InitTrees(void) {
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
-                growthTimer[z][y][x] = 0;
+                growthTimer[z][y][x] = 0.0f;
                 targetHeight[z][y][x] = 0;
                 treeHarvestState[z][y][x] = 0;
             }
@@ -346,7 +348,7 @@ static void GrowCell(int x, int y, int z) {
         targetHeight[z][y][x] = minH + (hash % heightRange);
 
         // Stagger trunk growth timer to avoid all trunks growing at once
-        growthTimer[z][y][x] = hash % trunkGrowTicks;
+        growthTimer[z][y][x] = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(trunkGrowGH), GameHoursToGameSeconds(trunkGrowGH));
 
         // Tree starts fully harvestable
         treeHarvestState[z][y][x] = TREE_HARVEST_MAX;
@@ -373,7 +375,7 @@ static void GrowCell(int x, int y, int z) {
                 grid[z + 1][y][x] = CELL_TREE_TRUNK;
                 SetWallMaterial(x, y, z + 1, treeMat);
                 MarkChunkDirty(x, y, z + 1);
-                growthTimer[z + 1][y][x] = 0;
+                growthTimer[z + 1][y][x] = 0.0f;
             }
         } else {
             // Reached target height or blocked - taper top, spawn branches and leaves
@@ -396,13 +398,16 @@ static void GrowCell(int x, int y, int z) {
 
 // Run one tick of tree growth simulation
 void TreesTick(float dt) {
-    (void)dt;
-
     bool hasGrowing = (treeActiveCells > 0);
     bool hasRegen = (treeRegenCells > 0);
 
     // Early exit: nothing to grow and nothing to regenerate
     if (!hasGrowing && !hasRegen) return;
+
+    float saplingThreshold = GameHoursToGameSeconds(saplingGrowGH);
+    float trunkThreshold = GameHoursToGameSeconds(trunkGrowGH);
+    float regenThreshold = GameHoursToGameSeconds(TREE_HARVEST_REGEN_GH);
+    float leafThreshold = GameHoursToGameSeconds(LEAF_DECAY_GH);
 
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
@@ -411,28 +416,28 @@ void TreesTick(float dt) {
 
                 if (cell == CELL_SAPLING) {
                     if (!hasGrowing) continue;
-                    growthTimer[z][y][x]++;
-                    if (growthTimer[z][y][x] >= saplingGrowTicks) {
+                    growthTimer[z][y][x] += dt;
+                    if (growthTimer[z][y][x] >= saplingThreshold) {
                         GrowCell(x, y, z);
                     }
                 } else if (cell == CELL_TREE_TRUNK) {
                     // Growth: only topmost trunk, only when trees are growing
                     if (hasGrowing &&
                         (z + 1 >= gridDepth || grid[z + 1][y][x] != CELL_TREE_TRUNK)) {
-                        growthTimer[z][y][x]++;
-                        if (growthTimer[z][y][x] >= trunkGrowTicks) {
+                        growthTimer[z][y][x] += dt;
+                        if (growthTimer[z][y][x] >= trunkThreshold) {
                             GrowCell(x, y, z);
-                            growthTimer[z][y][x] = 0;
+                            growthTimer[z][y][x] = 0.0f;
                         }
                     }
 
                     // Harvest regen on trunk base cells only
                     if (hasRegen && (z == 0 || grid[z - 1][y][x] != CELL_TREE_TRUNK)) {
                         if (treeHarvestState[z][y][x] < TREE_HARVEST_MAX) {
-                            growthTimer[z][y][x]++;
-                            if (growthTimer[z][y][x] >= TREE_HARVEST_REGEN_TICKS) {
+                            growthTimer[z][y][x] += dt;
+                            if (growthTimer[z][y][x] >= regenThreshold) {
                                 treeHarvestState[z][y][x]++;
-                                growthTimer[z][y][x] = 0;
+                                growthTimer[z][y][x] = 0.0f;
                                 if (treeHarvestState[z][y][x] >= TREE_HARVEST_MAX) {
                                     treeRegenCells--;
                                 }
@@ -441,10 +446,10 @@ void TreesTick(float dt) {
                     }
                 } else if (cell == CELL_TREE_LEAVES) {
                     if (!hasGrowing) continue;
-                    growthTimer[z][y][x]++;
-                    if (growthTimer[z][y][x] >= LEAF_DECAY_TICKS) {
+                    growthTimer[z][y][x] += dt;
+                    if (growthTimer[z][y][x] >= leafThreshold) {
                         GrowCell(x, y, z);
-                        growthTimer[z][y][x] = 0;
+                        growthTimer[z][y][x] = 0.0f;
                     }
                 }
             }
@@ -524,7 +529,7 @@ void PlaceSapling(int x, int y, int z, MaterialType treeMat) {
     SetWallMaterial(x, y, z, treeMat);
 
     unsigned int hash = PositionHash(x, y, z);
-    growthTimer[z][y][x] = hash % saplingGrowTicks;
+    growthTimer[z][y][x] = fmodf((float)(hash % 10000) / 10000.0f * GameHoursToGameSeconds(saplingGrowGH), GameHoursToGameSeconds(saplingGrowGH));
     treeActiveCells++;
     MarkChunkDirty(x, y, z);
 }

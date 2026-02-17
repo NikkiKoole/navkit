@@ -459,11 +459,11 @@ void DrawUI(void) {
         // --- Trees ---
         if (SectionHeader(ix, y, "Trees", &sectionTrees)) {
             y += 18;
-            DraggableIntT(ix, y, "Sapling Grow", &saplingGrowTicks, 10.0f, 10, 36000,
-                TextFormat("Time for sapling to become trunk: %.1f seconds (%d ticks)", saplingGrowTicks / 60.0f, saplingGrowTicks));
+            DraggableFloatT(ix, y, "Sapling Grow", &saplingGrowGH, 0.05f, 0.01f, 100.0f,
+                TextFormat("Time for sapling to become trunk: %.2f game-hours (%.1fs)", saplingGrowGH, GameHoursToGameSeconds(saplingGrowGH)));
             y += 22;
-            DraggableIntT(ix, y, "Trunk Grow", &trunkGrowTicks, 5.0f, 5, 500,
-                TextFormat("Time between trunk growth stages: %.1f seconds (%d ticks)", trunkGrowTicks / 60.0f, trunkGrowTicks));
+            DraggableFloatT(ix, y, "Trunk Grow", &trunkGrowGH, 0.02f, 0.01f, 50.0f,
+                TextFormat("Time between trunk growth stages: %.2f game-hours (%.1fs)", trunkGrowGH, GameHoursToGameSeconds(trunkGrowGH)));
             y += 22;
             ToggleBoolT(ix, y, "Sapling Regrowth", &saplingRegrowthEnabled,
                 "Enable natural sapling spawning on untrampled grass. Saplings appear over time in wilderness areas.");

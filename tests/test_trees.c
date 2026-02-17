@@ -125,27 +125,27 @@ static bool ChopFirstFelledTrunk(void) {
 // =============================================================================
 
 describe(tree_basic_growth) {
-    it("should grow sapling into trunk after enough ticks") {
+    it("should grow sapling into trunk after enough time") {
         SetupBasicGrid();
         InitTrees();
         ClearItems();
-        
+
         // Place sapling at z=1 (above dirt)
         PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
-        
+
         // Run growth ticks until sapling becomes trunk
-        int originalTicks = saplingGrowTicks;
-        saplingGrowTicks = 10;  // Speed up for test
-        
+        float originalGH = saplingGrowGH;
+        saplingGrowGH = 0.01f;  // Speed up for test (~0.025s threshold)
+
         for (int i = 0; i < 15; i++) {
-            TreesTick(0.0f);
+            TreesTick(1.0f);
         }
-        
+
         // Sapling should have become trunk
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
-        
-        saplingGrowTicks = originalTicks;
+
+        saplingGrowGH = originalGH;
     }
     
     it("should grow full tree with TreeGrowFull") {
@@ -309,8 +309,8 @@ describe(sapling_gather_job) {
         expect(grid[saplingZ][saplingY][saplingX] == CELL_SAPLING);
         
         // Disable tree growth for this test (prevent sapling from growing into trunk)
-        int originalGrowTicks = saplingGrowTicks;
-        saplingGrowTicks = 100000;  // Very long time
+        float originalGrowGH = saplingGrowGH;
+        saplingGrowGH = 100000.0f;  // Very long time
         
         // Designate sapling for gathering
         DesignateGatherSapling(saplingX, saplingY, saplingZ);
@@ -345,8 +345,8 @@ describe(sapling_gather_job) {
         // Verify mover is back to idle
         expect(m->currentJobId == -1);
         
-        // Restore growth ticks
-        saplingGrowTicks = originalGrowTicks;
+        // Restore growth setting
+        saplingGrowGH = originalGrowGH;
     }
 }
 
@@ -614,61 +614,61 @@ describe(sapling_growth_blocking) {
     it("should not grow sapling into trunk when item is on tile") {
         SetupBasicGrid();
         InitTrees();
-        
+
         // Place sapling
         PlaceSapling(5, 5, 1, MAT_OAK);
         expect(grid[1][5][5] == CELL_SAPLING);
-        
+
         // Place item on same tile and rebuild spatial grid
         SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_RED);
         BuildItemSpatialGrid();
-        
+
         // Speed up growth
-        int originalTicks = saplingGrowTicks;
-        saplingGrowTicks = 5;
-        
+        float originalGH = saplingGrowGH;
+        saplingGrowGH = 0.01f;
+
         // Run many growth ticks
         for (int i = 0; i < 100; i++) {
-            TreesTick(0.0f);
+            TreesTick(1.0f);
         }
-        
+
         // Sapling should NOT have become trunk (item blocks it)
         expect(grid[1][5][5] == CELL_SAPLING);
-        
-        saplingGrowTicks = originalTicks;
+
+        saplingGrowGH = originalGH;
     }
-    
+
     it("should grow sapling into trunk after item is removed") {
         SetupBasicGrid();
         InitTrees();
-        
+
         // Place sapling
         PlaceSapling(5, 5, 1, MAT_OAK);
-        
+
         // Place item on same tile and rebuild spatial grid
         int itemIdx = SpawnItem(5 * CELL_SIZE + CELL_SIZE * 0.5f, 5 * CELL_SIZE + CELL_SIZE * 0.5f, 1.0f, ITEM_RED);
         BuildItemSpatialGrid();
-        
-        int originalTicks = saplingGrowTicks;
-        saplingGrowTicks = 5;
-        
+
+        float originalGH = saplingGrowGH;
+        saplingGrowGH = 0.01f;
+
         // Run some ticks - should not grow
         for (int i = 0; i < 20; i++) {
-            TreesTick(0.0f);
+            TreesTick(1.0f);
         }
         expect(grid[1][5][5] == CELL_SAPLING);
-        
+
         // Remove item and rebuild grid
         DeleteItem(itemIdx);
         BuildItemSpatialGrid();
-        
+
         // Run more ticks - should grow now
         for (int i = 0; i < 20; i++) {
-            TreesTick(0.0f);
+            TreesTick(1.0f);
         }
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
-        
-        saplingGrowTicks = originalTicks;
+
+        saplingGrowGH = originalGH;
     }
     
     it("should not spawn sapling where item exists") {
@@ -838,17 +838,17 @@ describe(tree_full_lifecycle) {
         expect(grid[1][5][5] == CELL_SAPLING);
         
         // 2. Fast-forward tree growth
-        int originalTicks = saplingGrowTicks;
-        int originalTrunkTicks = trunkGrowTicks;
-        saplingGrowTicks = 1;
-        trunkGrowTicks = 1;
-        
+        float originalGH = saplingGrowGH;
+        float originalTrunkGH = trunkGrowGH;
+        saplingGrowGH = 0.001f;
+        trunkGrowGH = 0.001f;
+
         for (int i = 0; i < 50; i++) {
-            TreesTick(0.0f);
+            TreesTick(1.0f);
         }
-        
-        saplingGrowTicks = originalTicks;
-        trunkGrowTicks = originalTrunkTicks;
+
+        saplingGrowGH = originalGH;
+        trunkGrowGH = originalTrunkGH;
         
         // Tree should have grown
         expect(grid[1][5][5] == CELL_TREE_TRUNK);
