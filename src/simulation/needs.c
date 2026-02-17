@@ -165,14 +165,14 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // STARVING — cancel job, seek food
                 if (m->currentJobId >= 0) CancelJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
-            } else if (m->energy < ENERGY_EXHAUSTED_THRESHOLD) {
+            } else if (m->energy < balance.energyExhaustedThreshold) {
                 // EXHAUSTED — cancel job, seek rest
                 if (m->currentJobId >= 0) CancelJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
             } else if (m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
-            } else if (m->energy < ENERGY_TIRED_THRESHOLD && m->currentJobId < 0) {
+            } else if (m->energy < balance.energyTiredThreshold && m->currentJobId < 0) {
                 // TIRED — seek rest (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
             }
@@ -255,7 +255,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                     if (fi >= 0 && fi < MAX_FURNITURE) ReleaseFurniture(fi, moverIdx);
                     m->freetimeState = FREETIME_NONE;
                     m->needTarget = -1;
-                    m->needSearchCooldown = REST_SEARCH_COOLDOWN;
+                    m->needSearchCooldown = GameHoursToGameSeconds(balance.restSearchCooldownGH);
                     break;
                 }
 
@@ -278,11 +278,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > REST_SEEK_TIMEOUT) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.restSeekTimeoutGH)) {
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;
-                m->needSearchCooldown = REST_SEARCH_COOLDOWN;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.restSearchCooldownGH);
             }
             break;
         }
@@ -292,7 +292,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             m->timeWithoutProgress = 0.0f;
 
             // Recover energy — use furniture rate if available, else ground rate
-            float rate = ENERGY_GROUND_RATE;
+            float rate = RatePerGameSecond(balance.groundRecoveryPerGH);
             if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE &&
                 furniture[m->needTarget].active) {
                 rate = GetFurnitureDef(furniture[m->needTarget].type)->restRate;
@@ -301,7 +301,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             if (m->energy > 1.0f) m->energy = 1.0f;
 
             // Wake condition: energy recovered enough
-            if (m->energy >= ENERGY_WAKE_THRESHOLD) {
+            if (m->energy >= balance.energyWakeThreshold) {
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;

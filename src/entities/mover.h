@@ -41,15 +41,6 @@ typedef enum {
     FREETIME_RESTING,        // Sleeping/sitting, recovering energy
 } FreetimeState;
 
-// Energy constants
-#define ENERGY_DRAIN_IDLE    0.010f   // Per real second
-#define ENERGY_DRAIN_WORKING 0.018f   // Per real second
-#define ENERGY_TIRED_THRESHOLD    0.3f  // Seek rest when idle
-#define ENERGY_EXHAUSTED_THRESHOLD 0.1f // Interrupt job
-#define ENERGY_GROUND_RATE 0.012f     // Recovery per second (no furniture)
-#define ENERGY_WAKE_THRESHOLD 0.8f    // Wake up when energy reaches this
-#define REST_SEARCH_COOLDOWN 5.0f     // Seconds between rest search attempts
-#define REST_SEEK_TIMEOUT 10.0f       // Give up seeking rest after this
 
 // Mover struct (no Color - that's raylib specific, for rendering only)
 typedef struct Mover {

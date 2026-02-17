@@ -783,8 +783,8 @@ void NeedsTick(void) {
 
         // Drain energy (not while resting)
         if (m->freetimeState != FREETIME_RESTING) {
-            float drainRate = (m->currentJobId >= 0) ? ENERGY_DRAIN_WORKING : ENERGY_DRAIN_IDLE;
-            m->energy -= drainRate * dt;
+            float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+            m->energy -= RatePerGameSecond(drainPerGH) * dt;
             if (m->energy < 0.0f) m->energy = 0.0f;
         }
 

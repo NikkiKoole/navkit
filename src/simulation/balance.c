@@ -16,6 +16,8 @@ void InitBalance(void) {
     balance.eatingDurationGH      =  0.5f;
     balance.foodSearchCooldownGH  =  0.25f;
     balance.foodSeekTimeoutGH     =  0.5f;
+    balance.restSearchCooldownGH  =  2.0f;
+    balance.restSeekTimeoutGH     =  4.0f;
 
     // Thresholds (0-1 scale)
     balance.hungerSeekThreshold      = 0.3f;

@@ -146,7 +146,7 @@ describe(mover_gets_tired_and_sleeps) {
 
         // Player expects: mover should have woken up and be available again
         expect(movers[mi].freetimeState == FREETIME_NONE);
-        expect(movers[mi].energy >= ENERGY_WAKE_THRESHOLD);
+        expect(movers[mi].energy >= balance.energyWakeThreshold);
 
         if (test_verbose) {
             printf("  Mover recovered from 0.1 in %d ticks (%.1f seconds)\n",
@@ -363,7 +363,7 @@ describe(full_day_cycle) {
 
         // Phase 1: Simulate idle drain until mover becomes tired
         int ticksUntilTired = 0;
-        while (movers[mi].energy >= ENERGY_TIRED_THRESHOLD && ticksUntilTired < 10000) {
+        while (movers[mi].energy >= balance.energyTiredThreshold && ticksUntilTired < 10000) {
             movers[mi].hunger = 1.0f; // keep fed
             SimNeedsTick();
             ticksUntilTired++;
@@ -371,7 +371,7 @@ describe(full_day_cycle) {
 
         // Mover should have become tired and started resting
         // (energy dropped below 0.3, freetime triggered rest)
-        expect(movers[mi].energy < ENERGY_TIRED_THRESHOLD);
+        expect(movers[mi].energy < balance.energyTiredThreshold);
 
         // Give it one more tick to enter resting if not already
         movers[mi].hunger = 1.0f;
@@ -393,7 +393,7 @@ describe(full_day_cycle) {
 
         // Player expects: mover eventually wakes up refreshed and ready to work
         expect(movers[mi].freetimeState == FREETIME_NONE);
-        expect(movers[mi].energy >= ENERGY_WAKE_THRESHOLD);
+        expect(movers[mi].energy >= balance.energyWakeThreshold);
 
         if (test_verbose) {
             printf("  Mover slept for %d ticks (%.1f seconds), energy now %.2f\n",
@@ -543,7 +543,7 @@ describe(furniture_rest_seeking) {
 
         // Player expects: mover woke up and bed is free
         expect(movers[mi].freetimeState == FREETIME_NONE);
-        expect(movers[mi].energy >= ENERGY_WAKE_THRESHOLD);
+        expect(movers[mi].energy >= balance.energyWakeThreshold);
         expect(furniture[fi].occupant == -1);
     }
 
