@@ -9,18 +9,18 @@
 
 ## What Changes
 
-Movers get an **energy** stat that drains while awake. When exhausted, they seek rest. **Furniture** is a new entity pool. Primitive rest (leaf pile, grass mat) uses raw materials via the construction system. Proper furniture (plank bed, chair, table) is crafted at a **carpenter's bench** then installed via construction blueprint. Furniture placement lives under the existing Construction action menu.
+Movers get an **energy** stat that drains while awake. When exhausted, they seek rest. **Furniture** is a new entity pool. Primitive rest (leaf pile) uses raw materials via the construction system. Proper furniture (plank bed, chair) is crafted at a **carpenter's bench** then installed via construction blueprint. Furniture placement lives under the existing Construction action menu.
 
 ---
 
 ## Design Decisions (Resolved)
 
-1. **Furniture walkability**: per-type flag. Beds block (`CELL_FLAG_WORKSHOP_BLOCK`). Chairs/tables/mats add movement cost via `GetCellMoveCost()`.
-2. **Primitive beds**: leaf pile (LEAVES x4, direct construction) and grass mat (crafted at rope maker, then placed). No workshop needed for leaf pile.
+1. **Furniture walkability**: per-type flag. Beds block (`CELL_FLAG_WORKSHOP_BLOCK`). Chairs add movement cost via `GetCellMoveCost()`.
+2. **Primitive beds**: leaf pile (LEAVES x4, direct construction). No workshop needed.
 3. **Placement flow**: all furniture placed via construction blueprints under the BUILD menu. Raw-material furniture (leaf pile) = mover hauls leaves to site and builds. Pre-crafted furniture (plank bed) = mover hauls the item to site and installs.
 4. **Shared freetime fields**: sleep reuses `needTarget`, `needProgress`, `needSearchCooldown` from F1. Only new Mover field is `float energy`.
 5. **Furniture pool**: fixed-size array like workshops/animals. Linear scan for lookup (MAX_FURNITURE is small).
-6. **Sprites**: 5 new sprites needed in atlas. Placeholder color blocks are fine for Phase 1.
+6. **Sprites**: 3 new sprites needed in atlas. Placeholder color blocks are fine for Phase 1.
 
 ---
 
@@ -38,12 +38,11 @@ Drain:
 Recovery:
   ground:     0.012/s
   leaf pile:  0.020/s
-  grass mat:  0.028/s
-  chair:      0.020/s
+  chair:      0.015/s
   plank bed:  0.040/s
 ```
 
-### Worked Example (default 60s day, 1x speed)
+### Worked Example (default 60s day, 1x speed — all rates use `gameDeltaTime` so they scale with game speed automatically)
 
 ```
 Mover spawns at energy 1.0.
@@ -54,7 +53,7 @@ Total cycle: ~60s real = 1 game day. Feels right.
 
 Without bed (ground): 0.012/s * 58s to recover 0.3→1.0. Almost a full day wasted.
 Leaf pile: 0.020/s * 35s. Better but still slow.
-Grass mat: 0.028/s * 25s. Reasonable.
+Chair: 0.015/s * 47s. Worse than leaf pile — chairs aren't for sleeping.
 ```
 
 ### Thresholds
@@ -83,10 +82,8 @@ Hunger always wins over energy at equal severity — you can't sleep if you're s
 typedef enum {
     FURNITURE_NONE = 0,
     FURNITURE_LEAF_PILE,
-    FURNITURE_GRASS_MAT,
     FURNITURE_PLANK_BED,
     FURNITURE_CHAIR,
-    FURNITURE_TABLE,
     FURNITURE_TYPE_COUNT,
 } FurnitureType;
 
@@ -116,11 +113,9 @@ extern int furnitureCount;
 
 static const FurnitureDef furnitureDefs[FURNITURE_TYPE_COUNT] = {
     [FURNITURE_NONE]       = { "None",       0.0f,   false, 0  },
-    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.020f, false, 14 },  // 0.71x speed
-    [FURNITURE_GRASS_MAT]  = { "Grass Mat",  0.028f, false, 12 },  // 0.83x speed
+    [FURNITURE_LEAF_PILE]  = { "Leaf Pile",  0.020f, false, 12 },  // 0.83x speed
     [FURNITURE_PLANK_BED]  = { "Plank Bed",  0.040f, true,  0  },  // blocking
-    [FURNITURE_CHAIR]      = { "Chair",      0.020f, false, 14 },  // 0.71x speed
-    [FURNITURE_TABLE]      = { "Table",      0.0f,   false, 14 },  // 0.71x speed
+    [FURNITURE_CHAIR]      = { "Chair",      0.015f, false, 11 },  // 0.91x speed, rest worse than leaf pile
 };
 ```
 
@@ -176,13 +171,11 @@ typedef enum {
 
 ```c
 // Add to ItemType enum in items.h:
-ITEM_GRASS_MAT,     // Crafted at rope maker, placed as furniture
 ITEM_PLANK_BED,     // Crafted at carpenter, placed as furniture
 ITEM_CHAIR,         // Crafted at carpenter, placed as furniture
-ITEM_TABLE,         // Crafted at carpenter, placed as furniture
 ```
 
-All get `IF_STACKABLE | IF_BUILDING_MAT` flags. Material inherited from input.
+Both get `IF_STACKABLE | IF_BUILDING_MAT` flags. Material inherited from input.
 
 ---
 
@@ -200,10 +193,8 @@ BUILD_FURNITURE,   // NEW — completion spawns Furniture entity
 ```c
 // Add to ConstructionRecipeIndex enum:
 CONSTRUCTION_LEAF_PILE,     // LEAVES x4 → FURNITURE_LEAF_PILE
-CONSTRUCTION_GRASS_MAT,     // ITEM_GRASS_MAT x1 → FURNITURE_GRASS_MAT
 CONSTRUCTION_PLANK_BED,     // ITEM_PLANK_BED x1 → FURNITURE_PLANK_BED
 CONSTRUCTION_CHAIR,         // ITEM_CHAIR x1 → FURNITURE_CHAIR
-CONSTRUCTION_TABLE,         // ITEM_TABLE x1 → FURNITURE_TABLE
 ```
 
 Each recipe needs a `furnitureType` field on ConstructionRecipe (or derive from recipe index via lookup table).
@@ -228,20 +219,30 @@ resultFurniture: FURNITURE_PLANK_BED
 
 ### CompleteBlueprint Modification
 
-In `designations.c:CompleteBlueprint()`, add a case for `BUILD_FURNITURE`:
+In `designations.c:CompleteBlueprint()`, add an `if` block for `BUILD_FURNITURE` (existing code uses if-chains, not switch/case):
 
 ```c
-case BUILD_FURNITURE: {
+if (recipe->buildCategory == BUILD_FURNITURE) {
     FurnitureType ftype = GetFurnitureTypeForRecipe(recipe->recipeIndex);
-    int fi = SpawnFurniture(bp->x, bp->y, bp->z, ftype, resultMaterial);
+    int fi = SpawnFurniture(bp->x, bp->y, bp->z, ftype, finalMat);
     if (fi >= 0 && furnitureDefs[ftype].blocking) {
         SET_CELL_FLAG(bp->x, bp->y, bp->z, CELL_FLAG_WORKSHOP_BLOCK);
         PushMoversOutOfCell(bp->x, bp->y, bp->z);
     }
     InvalidatePathsThroughCell(bp->x, bp->y, bp->z);
-    break;
 }
 ```
+
+Note: use `finalMat` (the local variable from `GetRecipeFinalMaterial`), not `resultMaterial`.
+
+### Placement Validation
+
+Before creating a furniture blueprint, validate that the target cell:
+1. Is walkable (same as existing blueprint validation)
+2. Has no existing furniture (`GetFurnitureAt(x, y, z) < 0`)
+3. Has no `CELL_FLAG_WORKSHOP_BLOCK` set (prevents placing inside workshops)
+
+This check goes in `input.c` where the blueprint is created, not in `CompleteBlueprint`. Reject silently or show a status message.
 
 ---
 
@@ -264,12 +265,6 @@ WORKSHOP_CARPENTER,
 |--------|-------|--------|------|
 | Craft Plank Bed | PLANKS x4 | ITEM_PLANK_BED | 8s |
 | Craft Chair | PLANKS x2 | ITEM_CHAIR | 5s |
-| Craft Table | PLANKS x3 | ITEM_TABLE | 6s |
-
-**Rope Maker Addition:**
-| Recipe | Input | Output | Time |
-|--------|-------|--------|------|
-| Weave Grass Mat | DRIED_GRASS x3 + SHORT_STRING x1 | ITEM_GRASS_MAT | 5s |
 
 ---
 
@@ -303,9 +298,9 @@ Inside ACTION_WORK_FURNITURE, player presses R to cycle furniture recipes (same 
 
 ---
 
-## Sleep Behavior (in needs.c)
+## Sleep Behavior
 
-### Energy Drain (in NeedsTick)
+### Energy Drain (in NeedsTick — mover.c, not needs.c)
 
 ```c
 // After hunger drain, add:
@@ -322,19 +317,28 @@ Energy does NOT drain during RESTING state.
 
 Add cases after existing FREETIME_EATING handling:
 
-**FREETIME_NONE — extended priority check:**
+**FREETIME_NONE — full priority chain (replaces existing hunger-only checks):**
 ```c
-// After existing hunger checks:
-if (m->energy < ENERGY_EXHAUSTED_THRESHOLD && m->currentJobId >= 0) {
-    CancelJob(m->currentJobId);
-    m->currentJobId = -1;
-}
-if (m->energy < ENERGY_TIRED_THRESHOLD && m->currentJobId < 0 && m->needSearchCooldown <= 0.0f) {
-    StartRestSearch(m, moverIdx);
+// Priority: starving > exhausted > hungry > tired
+// Use else-if so only one action fires per tick.
+if (m->hunger < HUNGER_CANCEL_THRESHOLD) {
+    // STARVING — cancel job, seek food
+    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+    if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+} else if (m->energy < ENERGY_EXHAUSTED_THRESHOLD) {
+    // EXHAUSTED — cancel job, seek rest
+    if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+    if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
+} else if (m->hunger < HUNGER_SEARCH_THRESHOLD && m->currentJobId < 0) {
+    // HUNGRY — seek food (don't cancel jobs)
+    if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+} else if (m->energy < ENERGY_TIRED_THRESHOLD && m->currentJobId < 0) {
+    // TIRED — seek rest (don't cancel jobs)
+    if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
 }
 ```
 
-But respect priority: starving > exhausted > hungry > tired. Check hunger thresholds first.
+This replaces the existing hunger-only checks in FREETIME_NONE — it's not added after them.
 
 **StartRestSearch:**
 1. Scan furniture pool for unoccupied furniture, prefer highest restRate, weight by distance
@@ -406,7 +410,18 @@ void ReleaseFurniture(int furnitureIdx, int moverIdx) {
         furniture[furnitureIdx].occupant = -1;
     }
 }
+
+// Call when a mover is deleted/deactivated — scans furniture pool for stale occupants
+void ReleaseFurnitureForMover(int moverIdx) {
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (furniture[i].active && furniture[i].occupant == moverIdx) {
+            furniture[i].occupant = -1;
+        }
+    }
+}
 ```
+
+**Important:** `ReleaseFurnitureForMover` must be called from any mover deletion/deactivation path (e.g., `ClearMovers()`, mover death if added later). Otherwise a deleted mover leaves a permanently reserved furniture slot.
 
 ---
 
@@ -425,11 +440,11 @@ if (fi >= 0) {
 
 This automatically propagates to A*/HPA* pathfinding and mover movement. Movers prefer to path around furniture but can walk through non-blocking pieces.
 
-**Note:** `GetFurnitureAt` must be fast. Options:
-- Linear scan (MAX_FURNITURE=512, called per pathfinding step — potentially hot). Acceptable for now.
-- If profiling shows issues: add a `furnitureGrid[z][y][x]` (uint16_t, stores furniture pool index+1, 0=empty). Same pattern as mudGrid/snowGrid. Adds memory but O(1) lookup.
+**Note:** `GetCellMoveCost` is a `static inline` function in `cell_defs.h`. Calling `GetFurnitureAt()` there would require `cell_defs.h` to include `furniture.h`, creating a header dependency. Two options:
+- **Option A (recommended):** Add a `uint8_t furnitureMoveCostGrid[z][y][x]` (0=no furniture, >0=move cost). Updated on SpawnFurniture/RemoveFurniture. O(1) lookup, no header dependency — `GetCellMoveCost` just reads the grid directly. Same pattern as mudGrid/snowGrid.
+- **Option B:** Forward-declare `GetFurnitureAt()` and `GetFurnitureMoveCost()` in `cell_defs.h` with `int` return types (no struct dependency). Works but slightly awkward.
 
-Start with linear scan. Add grid if needed.
+Start with Option A. The grid costs `MAX_GRID_DEPTH * MAX_GRID_HEIGHT * MAX_GRID_WIDTH` bytes (same as snowGrid) and keeps the hot path fast.
 
 ---
 
@@ -466,9 +481,9 @@ Energy: 45%  Resting (Plank Bed)  Full in 3.5h
 
 ## Save Version Impact
 
-Bump save version (currently 48 → 49).
+Bump save version (currently 52 → 53). No old saves exist, so no migration code needed — just bump the version and write the new format.
 
-**New Mover field**: `float energy` (default 1.0 for legacy movers).
+**New Mover field**: `float energy` (written/read alongside existing fields, init 1.0).
 
 **New entity section**: FURNITURE
 ```
@@ -476,23 +491,16 @@ furnitureCount
 furniture[0..count-1]: { x, y, z, active, type, material, occupant }
 ```
 
-**New FreetimeState values**: old saves will have freetimeState 0/1/2 which map correctly (NONE/SEEKING_FOOD/EATING). New values 3/4 only appear in new saves.
-
-**New items**: ITEM_GRASS_MAT, ITEM_PLANK_BED, ITEM_CHAIR, ITEM_TABLE — requires:
-- Legacy `V48_ITEM_TYPE_COUNT` constant in `save_migrations.h`
-- Stockpile allowedTypes migration (expand array, default new entries to false)
-- Parallel migration in both `saveload.c` and `inspect.c`
+**New items**: ITEM_PLANK_BED, ITEM_CHAIR — increases ITEM_TYPE_COUNT from 31 to 33. Stockpile `allowedTypes` array grows accordingly.
 
 ---
 
 ## Sprites Needed
 
-5 new entries in `atlas8x8.h`:
+3 new entries in `atlas8x8.h`:
 - `SPRITE_furniture_leaf_pile`
-- `SPRITE_furniture_grass_mat`
 - `SPRITE_furniture_bed`
 - `SPRITE_furniture_chair`
-- `SPRITE_furniture_table`
 
 Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted brown for bed). Replace with real art later.
 
@@ -511,26 +519,25 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 | File | Changes |
 |------|---------|
 | `src/entities/mover.h` | Add `float energy` to Mover struct. Add FREETIME_SEEKING_REST/RESTING to enum. Add energy constants. |
-| `src/entities/mover.c` | Init energy=1.0 in InitMover(). |
-| `src/simulation/needs.h` | Declare energy drain function if separate, or keep in NeedsTick. |
-| `src/simulation/needs.c` | Energy drain in NeedsTick(). SEEKING_REST/RESTING states in ProcessMoverFreetime(). StartRestSearch(), rest search helpers. Starvation interrupt during rest. |
-| `src/entities/items.h` | Add ITEM_GRASS_MAT, ITEM_PLANK_BED, ITEM_CHAIR, ITEM_TABLE to enum. |
+| `src/entities/mover.c` | Init energy=1.0 in InitMover(). Energy drain in NeedsTick() (lives here, not needs.c). Call `ReleaseFurnitureForMover()` in ClearMovers(). |
+| `src/simulation/needs.h` | No new declarations needed (NeedsTick is in mover.h). |
+| `src/simulation/needs.c` | SEEKING_REST/RESTING states in ProcessMoverFreetime(). StartRestSearch(), rest search helpers. Starvation interrupt during rest. |
+| `src/entities/items.h` | Add ITEM_PLANK_BED, ITEM_CHAIR to enum. |
 | `src/entities/item_defs.c` | Definitions for new items (stackable, building_mat). |
 | `src/entities/workshops.h` | Add WORKSHOP_CARPENTER to enum. |
-| `src/entities/workshops.c` | Carpenter workshop def (template, size). Carpenter recipes. Grass mat recipe on rope maker. |
-| `src/world/construction.h` | Add BUILD_FURNITURE to BuildCategory. Add CONSTRUCTION_LEAF_PILE through CONSTRUCTION_TABLE to recipe enum. Add furnitureType field to ConstructionRecipe (or lookup table). |
-| `src/world/construction.c` | Define 5 furniture construction recipes. |
+| `src/entities/workshops.c` | Carpenter workshop def (template, size). Carpenter recipes (plank bed, chair). |
+| `src/world/construction.h` | Add BUILD_FURNITURE to BuildCategory. Add CONSTRUCTION_LEAF_PILE/PLANK_BED/CHAIR to recipe enum. Add furnitureType field to ConstructionRecipe (or lookup table). |
+| `src/world/construction.c` | Define 3 furniture construction recipes. |
 | `src/world/designations.c` | Handle BUILD_FURNITURE in CompleteBlueprint(). |
 | `src/world/cell_defs.h` | Add furniture check in GetCellMoveCost(). |
 | `src/core/input_mode.h` | Add ACTION_WORK_FURNITURE. |
 | `src/core/action_registry.c` | Registry entry for ACTION_WORK_FURNITURE. |
 | `src/core/input.c` | Handle ACTION_WORK_FURNITURE (recipe cycling, blueprint creation). Add selectedFurnitureRecipe static. |
-| `src/core/saveload.c` | Save/load furniture pool. Energy field on movers. Item type migration. |
-| `src/core/inspect.c` | Parallel migration. Furniture inspection. |
-| `src/core/save_migrations.h` | V48_ITEM_TYPE_COUNT constant. |
+| `src/core/saveload.c` | Bump SAVE_VERSION to 53. Save/load furniture pool. Energy field on movers. New item types in format. |
+| `src/core/inspect.c` | Furniture inspection output. |
 | `src/render/rendering.c` | Render furniture sprites at furniture positions. |
 | `src/render/tooltips.c` | Energy display in mover tooltip. |
-| `assets/atlas8x8.h` | 5 new sprite entries. |
+| `assets/atlas8x8.h` | 3 new sprite entries. |
 | `src/unity.c` | Add `#include "entities/furniture.c"` |
 | `tests/test_unity.c` | Add `#include "test_furniture.c"` |
 
@@ -549,7 +556,8 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 6. RESTING: recover at ENERGY_GROUND_RATE, wake at 0.8, starvation interrupts
 7. Bump save version, migration (energy defaults to 1.0)
 8. Energy in mover tooltip
-9. **Tests**: drain rates, threshold triggers, ground rest recovery, wake condition, starvation interrupt, priority ordering (6-8 tests, ~20 assertions)
+9. Sleeping visual cue: tint sleeping movers blue-gray or draw "Z" text above them (a stationary mover with no feedback looks like a bug during playtesting)
+10. **Tests**: drain rates, threshold triggers, ground rest recovery, wake condition, starvation interrupt, priority ordering (6-8 tests, ~20 assertions)
 
 ### Phase 2: Furniture Entity Pool (~1 session)
 **Goal**: Furniture can be created programmatically and affects walkability/movement.
@@ -570,30 +578,28 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 1. StartRestSearch: scan furniture pool, prefer best restRate, reserve occupant
 2. SEEKING_REST with furniture target: validate each tick, arrival check, timeout
 3. RESTING with furniture: recover at furniture rate (not ground rate)
-4. Priority: plank bed > grass mat > leaf pile > chair > ground
+4. Priority: plank bed > leaf pile > chair > ground
 5. Release furniture on wake/interrupt
 6. **Tests**: mover finds best furniture, reserves it, sleeps, recovers at correct rate, wakes, releases. Two movers competing for one bed. Starvation interrupt releases bed. (5-6 tests, ~20 assertions)
 
 ### Phase 4: Construction Integration (~1-2 sessions)
 **Goal**: Player can place furniture via construction menu.
 
-1. BUILD_FURNITURE category, 5 construction recipes
+1. BUILD_FURNITURE category, 3 construction recipes
 2. CompleteBlueprint handles BUILD_FURNITURE → SpawnFurniture
 3. ACTION_WORK_FURNITURE with recipe cycling
 4. Leaf pile recipe (LEAVES x4)
-5. New items: ITEM_GRASS_MAT, ITEM_PLANK_BED, ITEM_CHAIR, ITEM_TABLE
+5. New items: ITEM_PLANK_BED, ITEM_CHAIR
 6. Item defs, stockpile filters
-7. Save migration for new items (V48_ITEM_TYPE_COUNT, both saveload.c and inspect.c)
-8. **Tests**: blueprint created, materials delivered, completion spawns furniture entity, furniture is functional for rest (3-4 tests, ~10 assertions)
+7. **Tests**: blueprint created, materials delivered, completion spawns furniture entity, furniture is functional for rest (3-4 tests, ~10 assertions)
 
-### Phase 5: Carpenter's Bench + Rope Maker Recipe (~1 session)
-**Goal**: Workshops produce furniture items.
+### Phase 5: Carpenter's Bench (~1 session)
+**Goal**: Workshop produces furniture items.
 
 1. WORKSHOP_CARPENTER: template, workshop def
-2. Carpenter recipes: plank bed, chair, table
-3. Rope maker recipe: grass mat (DRIED_GRASS x3 + SHORT_STRING x1)
-4. Action registry entry for placing carpenter (under WORKSHOP category)
-5. **Tests**: carpenter crafts bed item, rope maker crafts grass mat (2-3 tests, ~8 assertions)
+2. Carpenter recipes: plank bed, chair
+3. Action registry entry for placing carpenter (under WORKSHOP category)
+4. **Tests**: carpenter crafts bed item, carpenter crafts chair (2-3 tests, ~8 assertions)
 
 ### Phase 6: Hunger/Sleep Interaction (~0.5 session)
 **Goal**: Hunger drains during sleep, starvation wakes mover.
@@ -603,16 +609,16 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 3. **Tests**: sleeping mover's hunger drains, wakes when starving, eats, returns to bed (2-3 tests, ~8 assertions)
 
 ### Deferred
+- Grass mat (FURNITURE_GRASS_MAT, ITEM_GRASS_MAT, rope maker recipe — add when rope maker has more recipes to justify the supply chain)
+- Table (FURNITURE_TABLE, ITEM_TABLE, carpenter recipe — add when mood/room system gives it a purpose)
 - Night-time drain multiplier (wait for gameplay feel)
-- Sleeping animation/sprite
 - Furniture deconstruction (add when needed)
-- Table mood bonus (wait for mood system)
 
 ---
 
 ## Test Scenarios (Concrete)
 
-All tests use `InitGridWithSizeAndChunkSize(16, 16, 16, 16)` unless noted.
+All tests use `InitGridWithSizeAndChunkSize(16, 16, 16, 16)` unless noted. Test setup must call `ClearFurniture()` alongside `ClearMovers()`, `ClearItems()`, `ClearStockpiles()`, `ClearWorkshops()`.
 
 ### Energy Drain
 ```
@@ -685,6 +691,6 @@ Next tick: expect FREETIME_SEEKING_FOOD
 ## Total Estimates
 
 - ~25-30 tests, ~80-100 assertions
-- ~600-800 lines new code (furniture.c ~200, needs.c extensions ~150, construction/workshop ~100, input/action ~80, save/render/tooltip ~100)
-- 1 new entity pool, 1 new workshop, 4 new items, 5 construction recipes, 5 sprites
-- Save version 48 → 49
+- ~500-650 lines new code (furniture.c ~200, needs.c extensions ~150, construction/workshop ~80, input/action ~60, save/render/tooltip ~80)
+- 1 new entity pool, 1 new workshop, 2 new items, 3 construction recipes, 3 sprites
+- Save version 52 → 53 (no migration needed — no old saves)
