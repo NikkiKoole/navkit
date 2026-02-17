@@ -97,6 +97,12 @@ bool hillsWaterConnectivityReport = true;
 bool hillsWaterConnectivityFixSmall = false;
 int hillsWaterConnectivitySmallThreshold = 30;
 
+// UI mode: dev (full panels) vs play (minimal HUD)
+bool devUI = true;
+
+// Terrain gen: skip building placement in HillsSoilsWater
+bool hillsSkipBuildings = false;
+
 // Super-groups
 bool sectionWorld = false;
 bool sectionEntities = false;
@@ -1620,7 +1626,7 @@ int main(int argc, char** argv) {
         PROFILE_END(DrawUI);
 
         // Input mode bar at bottom - individual buttons (after DrawUI so ui_begin_frame has run)
-        {
+        if (devUI) {
             int barH = 28;
             int barY = GetScreenHeight() - barH - 6;
             int barX = 150;  // After Z level display

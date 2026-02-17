@@ -1095,10 +1095,9 @@ void UpdateMovers(void) {
         }
 
         Point target = m->path[m->pathIndex];
-        
+
         // Skip if marked for repath (by LOS check in phase 1, or wall-push above)
         if (m->needsRepath) continue;
-
         float tx = target.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float ty = target.y * CELL_SIZE + CELL_SIZE * 0.5f;
 
@@ -1382,7 +1381,7 @@ void ProcessMoverRepaths(void) {
         double pathStart = GetTime();
         int len = FindPath(algo, start, m->goal, tempPath, MAX_PATH);
         double pathTime = (GetTime() - pathStart) * 1000.0;
-        
+
         // A* fallback disabled: HPA* handles ramps correctly now.
         // The fallback was burning 6-14s on large grids confirming unreachable paths.
         // Re-enable if HPA* misses valid ramp paths (check test_pathfinding.c hpa_fallback).

@@ -47,6 +47,7 @@ float hillsWaterWetnessBias = 0.15f;
 bool hillsWaterConnectivityReport = false;
 bool hillsWaterConnectivityFixSmall = true;
 int hillsWaterConnectivitySmallThreshold = 50;
+bool hillsSkipBuildings = false;
 
 // World systems
 #include "../src/world/cell_defs.c"

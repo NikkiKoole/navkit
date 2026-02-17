@@ -130,6 +130,12 @@ extern int hillsWaterConnectivitySmallThreshold;
 extern MaterialType currentTreeType;
 extern const char* treeTypeNames[];
 
+// UI mode: dev (full panels) vs play (minimal HUD)
+extern bool devUI;
+
+// Terrain gen: skip building placement in HillsSoilsWater
+extern bool hillsSkipBuildings;
+
 // UI section collapse state — super-groups
 extern bool sectionWorld;
 extern bool sectionEntities;

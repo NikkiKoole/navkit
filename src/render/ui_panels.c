@@ -14,6 +14,7 @@
 #include "../simulation/balance.h"
 #include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
+#include "../core/input_mode.h"
 #include "../world/designations.h"
 #include "../ui/cutscene.h"
 #include <time.h>
@@ -169,7 +170,141 @@ void SpawnMoversDemo(int count);
 void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue);
 
 
+// Start a new game: randomize seed, generate 128x128 HillsSoilsWater, spawn 1 mover
+static void StartNewGame(void) {
+    // Randomize seed
+    worldSeed = (uint64_t)time(NULL) ^ ((uint64_t)GetRandomValue(0, 0x7FFFFFFF) << 16);
+
+    // Set grid to 128x128 before generating (InitGrid inside generator preserves these)
+    InitGridWithSizeAndChunkSize(128, 128, 8, 8);
+
+    // Clear entities not covered by InitGrid()
+    ClearAnimals();
+    ClearFurniture();
+    InitPlants();
+
+    // Generate HillsSoilsWater terrain (calls InitGrid internally, which clears movers/items/etc)
+    currentTerrain = 19;
+    hillsSkipBuildings = true;
+    GenerateCurrentTerrain();
+    hillsSkipBuildings = false;
+
+    // Init all systems
+    InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
+    InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
+    InitDesignations();
+    InitSimActivity();
+    InitWater();
+    InitFire();
+    InitSmoke();
+    InitSteam();
+    InitTemperature();
+    InitGroundWear();
+    InitFloorDirt();
+    InitSnow();
+    InitLighting();
+    BuildEntrances();
+    BuildGraph();
+
+    // Spawn 1 mover at a walkable cell
+    SpawnMoversDemo(1);
+
+    // Center camera on the mover and follow it
+    if (moverCount > 0) {
+        Mover* m = &movers[0];
+        currentViewZ = (int)m->z;
+        offset.x = GetScreenWidth() / 2.0f - m->x * zoom;
+        offset.y = GetScreenHeight() / 2.0f - m->y * zoom;
+        followMoverIdx = 0;
+    }
+
+    AddMessage("New game started", GREEN);
+}
+
+// Minimal player HUD — speed controls, mover count, new game
+static void DrawPlayerHUD(void) {
+    ui_begin_frame();
+
+    // Speed controls top-left, below FPS
+    float y = 30;
+    float bx = 10;
+    bool clicked = false;
+    bx += PushButtonInline(bx, y, paused ? ">>" : "||", &clicked);
+    if (clicked) paused = !paused;
+    bx += 4;
+    clicked = false; bx += PushButtonInline(bx, y, "1x", &clicked); if (clicked) { gameSpeed = 1.0f; paused = false; }
+    bx += 4;
+    clicked = false; bx += PushButtonInline(bx, y, "2x", &clicked); if (clicked) { gameSpeed = 2.0f; paused = false; }
+    bx += 4;
+    clicked = false; bx += PushButtonInline(bx, y, "3x", &clicked); if (clicked) { gameSpeed = 3.0f; paused = false; }
+    y += 22;
+
+    // Mover count
+    int active = CountActiveMovers();
+    if (active > 0) {
+        DrawTextShadow(TextFormat("Movers: %d", active), 10, (int)y, 14, LIGHTGRAY);
+        y += 18;
+    }
+
+    // Designation buttons
+    y += 4;
+    clicked = false;
+    bool harvestActive = (inputAction == ACTION_WORK_HARVEST_BERRY);
+    if (PushButton(10, y, harvestActive ? "* Harvest Berries *" : "Harvest Berries")) {
+        if (harvestActive) {
+            InputMode_ExitToNormal();
+        } else {
+            inputMode = MODE_WORK;
+            workSubMode = SUBMODE_HARVEST;
+            inputAction = ACTION_WORK_HARVEST_BERRY;
+        }
+    }
+    y += 22;
+
+    bool gatherTreeActive = (inputAction == ACTION_WORK_GATHER_TREE);
+    if (PushButton(10, y, gatherTreeActive ? "* Gather Tree *" : "Gather Tree")) {
+        if (gatherTreeActive) {
+            InputMode_ExitToNormal();
+        } else {
+            inputMode = MODE_WORK;
+            workSubMode = SUBMODE_HARVEST;
+            inputAction = ACTION_WORK_GATHER_TREE;
+        }
+    }
+    y += 22;
+
+    bool gatherGrassActive = (inputAction == ACTION_WORK_GATHER_GRASS);
+    if (PushButton(10, y, gatherGrassActive ? "* Gather Grass *" : "Gather Grass")) {
+        if (gatherGrassActive) {
+            InputMode_ExitToNormal();
+        } else {
+            inputMode = MODE_WORK;
+            workSubMode = SUBMODE_HARVEST;
+            inputAction = ACTION_WORK_GATHER_GRASS;
+        }
+    }
+    y += 26;
+
+    // New Game button
+    if (PushButton(10, y, "New Game")) {
+        StartNewGame();
+    }
+    y += 22;
+
+    // Hint text
+    if (inputAction != ACTION_NONE) {
+        DrawTextShadow("L-drag designate  R-drag cancel  ESC: back", 10, (int)y, 12, (Color){180, 180, 100, 255});
+        y += 16;
+    }
+    DrawTextShadow("F1: dev UI", 10, (int)y, 12, (Color){100, 100, 100, 255});
+}
+
 void DrawUI(void) {
+    if (!devUI) {
+        DrawPlayerHUD();
+        return;
+    }
+
     ui_begin_frame();
     float y = 30.0f;
     float x = 10.0f;
@@ -267,6 +402,7 @@ void DrawUI(void) {
             }
             y += 22;
             if (PushButton(ix, y, "Generate Terrain")) {
+                InitPlants();
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitDesignations();

@@ -9,6 +9,7 @@
 #include "designations.h"
 #include "../simulation/water.h"
 #include "../simulation/trees.h"
+#include "../simulation/plants.h"
 #include "../game_state.h"
 #include <math.h>
 #include <string.h>
@@ -2398,7 +2399,7 @@ void GenerateHillsSoilsWater(void) {
             }
         }
 
-        int buildingAttempts = 60;
+        int buildingAttempts = hillsSkipBuildings ? 0 : 60;
         int placed = 0;
         for (int attempt = 0; attempt < buildingAttempts && placed < 6; attempt++) {
             int kind = GetRandomValue(0, 2);  // 0: tower, 1: gallery, 2: council
@@ -2448,15 +2449,17 @@ void GenerateHillsSoilsWater(void) {
         // Tree placement (typed, bias by wetness/slope/near-water)
         // ----------------------------------------------------------------
         int treePlaced = 0;
+        int treeSkipWater = 0, treeSkipCant = 0, treeSkipDensity = 0;
         float treeScale = 0.028f;
+        float nMin = 999.0f, nMax = -999.0f;
         int nearWaterRadius = 3;
         for (int y = 0; y < gridHeight; y++) {
             for (int x = 0; x < gridWidth; x++) {
                 int idx = y * gridWidth + x;
-                if (waterMask[idx]) continue;
+                if (waterMask[idx]) { treeSkipWater++; continue; }
 
                 int baseZ = surface[idx];
-                if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) continue;
+                if (!CanPlaceWorldGenTreeAt(x, y, baseZ)) { treeSkipCant++; continue; }
 
                 int height = heightmap[idx];
                 int slope = 0;
@@ -2483,21 +2486,161 @@ void GenerateHillsSoilsWater(void) {
                 if (nearWater) wetness += hillsWaterWetnessBias;
                 wetness = Clamp01(wetness);
 
+                // Noise controls forest clustering: low noise = dense forest, high = sparse
                 float n = OctavePerlin(x * treeScale, y * treeScale, 3, 0.5f);
-                float density = 0.10f;
-                if (wetness > 0.75f) density *= 0.75f;
-                if (wetness < 0.30f) density *= 0.65f;
-                if (slope >= 2) density *= 0.6f;
-                if (n > density) continue;
+                if (n < nMin) nMin = n;
+                if (n > nMax) nMax = n;
+
+                // Convert noise to placement chance: n<0.35 = dense forest (40%),
+                // n 0.35-0.55 = moderate (15%), n 0.55-0.7 = sparse (5%), n>0.7 = none
+                float chance;
+                if (n < 0.35f) chance = 0.40f;
+                else if (n < 0.55f) chance = 0.15f;
+                else if (n < 0.70f) chance = 0.05f;
+                else { treeSkipDensity++; continue; }
+
+                // Reduce density on very wet, very dry, or steep terrain
+                if (wetness > 0.75f) chance *= 0.75f;
+                if (wetness < 0.30f) chance *= 0.65f;
+                if (slope >= 2) chance *= 0.6f;
+
+                if ((GetRandomValue(0, 999) / 1000.0f) > chance) { treeSkipDensity++; continue; }
 
                 MaterialType treeMat = PickTreeTypeForWorldGen(GetWallMaterial(x, y, baseZ), wetness, slope, nearWater, n);
                 PlaceWorldGenTree(x, y, baseZ, treeMat, true);
                 treePlaced++;
             }
         }
-        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d trees", treePlaced);
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d trees (skipWater=%d skipCant=%d skipDensity=%d) noise range [%.4f, %.4f]",
+                 treePlaced, treeSkipWater, treeSkipCant, treeSkipDensity, nMin, nMax);
+
+        // ----------------------------------------------------------------
+        // Berry bush placement (near forest edges, medium elevation)
+        // ----------------------------------------------------------------
+        int bushPlaced = 0;
+        float bushScale = 0.045f;  // Different noise scale from trees
+        float bushNoiseOffset = 100.0f;  // Offset so noise differs from tree noise
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                int idx = y * gridWidth + x;
+                if (waterMask[idx]) continue;
+
+                int baseZ = surface[idx];
+                int walkZ = baseZ + 1;
+                if (walkZ >= gridDepth) continue;
+
+                // Must have solid ground below and air at walk level
+                if (!CellIsSolid(grid[baseZ][y][x])) continue;
+                if (grid[walkZ][y][x] != CELL_AIR) continue;
+
+                // Skip granite (rocky ground)
+                if (GetWallMaterial(x, y, baseZ) == MAT_GRANITE) continue;
+
+                // Count nearby trees — prefer forest edges (1-3 trees nearby, not deep forest)
+                int nearbyTrees = 0;
+                for (int dy = -2; dy <= 2; dy++) {
+                    for (int dx = -2; dx <= 2; dx++) {
+                        int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        int nz = surface[ny * gridWidth + nx] + 1;
+                        if (nz < gridDepth && grid[nz][ny][nx] == CELL_TREE_TRUNK) nearbyTrees++;
+                    }
+                }
+
+                // Prefer forest edges: 1-4 trees nearby
+                float bushChance = 0.0f;
+                if (nearbyTrees >= 1 && nearbyTrees <= 4) bushChance = 0.08f;
+                else if (nearbyTrees == 0) bushChance = 0.02f;  // Rare in open field
+                // Skip dense forest (>4 trees)
+                if (bushChance <= 0.0f) continue;
+
+                // Use noise for clustering (only place in low-noise patches)
+                float n = OctavePerlin((x + bushNoiseOffset) * bushScale, (y + bushNoiseOffset) * bushScale, 2, 0.5f);
+                if (n > 0.45f) continue;  // Only place in ~45% of area (clustered)
+
+                if ((GetRandomValue(0, 999) / 1000.0f) > bushChance) continue;
+
+                grid[walkZ][y][x] = CELL_BUSH;
+                int plantIdx = SpawnPlant(x, y, walkZ, PLANT_BERRY_BUSH);
+                if (plantIdx >= 0) {
+                    // Start some bushes already ripe for early game food
+                    int roll = GetRandomValue(0, 2);
+                    if (roll == 0) {
+                        plants[plantIdx].stage = PLANT_STAGE_RIPE;
+                    } else if (roll == 1) {
+                        plants[plantIdx].stage = PLANT_STAGE_BUDDING;
+                        plants[plantIdx].growthProgress = (float)GetRandomValue(0, 100) / 100.0f;
+                    }
+                }
+                bushPlaced++;
+            }
+        }
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: placed %d berry bushes", bushPlaced);
+
+        // ----------------------------------------------------------------
+        // Scatter loose rocks and sticks on the ground
+        // ----------------------------------------------------------------
+        int rocksPlaced = 0, sticksPlaced = 0;
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                int idx = y * gridWidth + x;
+                if (waterMask[idx]) continue;
+
+                int baseZ = surface[idx];
+                int walkZ = baseZ + 1;
+                if (walkZ >= gridDepth) continue;
+                if (!CellIsSolid(grid[baseZ][y][x])) continue;
+                if (grid[walkZ][y][x] != CELL_AIR) continue;
+
+                // Rocks: ~1.5% chance, prefer rocky/high terrain
+                MaterialType mat = GetWallMaterial(x, y, baseZ);
+                float rockChance = 0.015f;
+                if (mat == MAT_GRANITE || mat == MAT_SANDSTONE || mat == MAT_SLATE) rockChance = 0.04f;
+                if (heightmap[idx] > (maxHeight * 2 / 3)) rockChance *= 1.5f;
+
+                if ((GetRandomValue(0, 999) / 1000.0f) < rockChance) {
+                    SpawnItemWithMaterial(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                                         y * CELL_SIZE + CELL_SIZE / 2.0f,
+                                         walkZ * CELL_SIZE, ITEM_ROCK, (uint8_t)mat);
+                    rocksPlaced++;
+                    continue;  // Don't place both rock and sticks on same cell
+                }
+
+                // Sticks: ~1% near trees
+                int nearTrees = 0;
+                for (int dy = -2; dy <= 2; dy++) {
+                    for (int dx = -2; dx <= 2; dx++) {
+                        int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || nx >= gridWidth || ny < 0 || ny >= gridHeight) continue;
+                        int nz = surface[ny * gridWidth + nx] + 1;
+                        if (nz < gridDepth && grid[nz][ny][nx] == CELL_TREE_TRUNK) nearTrees++;
+                    }
+                }
+                if (nearTrees > 0 && (GetRandomValue(0, 999) / 1000.0f) < 0.01f) {
+                    SpawnItem(x * CELL_SIZE + CELL_SIZE / 2.0f,
+                              y * CELL_SIZE + CELL_SIZE / 2.0f,
+                              walkZ * CELL_SIZE, ITEM_STICKS);
+                    sticksPlaced++;
+                }
+            }
+        }
+        TraceLog(LOG_INFO, "GenerateHillsSoilsWater: scattered %d rocks, %d sticks", rocksPlaced, sticksPlaced);
 
         free(surface);
+    }
+
+    // Initialize vegetation on all natural dirt cells (wear=0 → tall grass)
+    for (int z = 0; z < gridDepth; z++) {
+        for (int y = 0; y < gridHeight; y++) {
+            for (int x = 0; x < gridWidth; x++) {
+                if (!CellIsSolid(grid[z][y][x])) continue;
+                if (!IsWallNatural(x, y, z)) continue;
+                if (GetWallMaterial(x, y, z) != MAT_DIRT) continue;
+                if (wearGrid[z][y][x] == 0) {
+                    SetVegetation(x, y, z, VEG_GRASS_TALLER);
+                }
+            }
+        }
     }
 
     ReportWalkableComponents("HillsSoilsWater");

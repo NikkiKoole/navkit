@@ -1907,6 +1907,12 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_PERIOD) && currentViewZ < gridDepth - 1) currentViewZ++;
     if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
 
+    // Toggle dev/play UI
+    if (IsKeyPressed(KEY_F1)) {
+        devUI = !devUI;
+        if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
+    }
+
     // Pause
     if (IsKeyPressed(KEY_SPACE)) paused = !paused;
 
@@ -1941,8 +1947,9 @@ void HandleInput(void) {
             shouldQuit = true;
             return;
         } else if (inputAction != ACTION_NONE || inputMode != MODE_NORMAL) {
-            // Back out of menus
-            InputMode_Back();
+            // Back out of menus (player mode: go straight to normal)
+            if (devUI) InputMode_Back();
+            else InputMode_ExitToNormal();
             return;
         } else {
             // At root - show quit confirm
@@ -1969,15 +1976,15 @@ void HandleInput(void) {
     // ========================================================================
     
     if (inputMode == MODE_NORMAL) {
-        if (CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
-        if (CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
-        if (CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
+        if (devUI && CheckKey(KEY_D)) { inputMode = MODE_DRAW; return; }
+        if (devUI && CheckKey(KEY_W)) { inputMode = MODE_WORK; return; }
+        if (devUI && CheckKey(KEY_S)) { inputMode = MODE_SANDBOX; return; }
         
         // Skip grid interactions if UI wants mouse
         if (ui_wants_mouse()) return;
         
-        // Quick edit: left-click = wall, right-click = erase (when enabled)
-        if (quickEditEnabled) {
+        // Quick edit: left-click = wall, right-click = erase (when enabled, dev UI only)
+        if (quickEditEnabled && devUI) {
             Vector2 gp = ScreenToGrid(GetMousePosition());
             int x = (int)gp.x, y = (int)gp.y;
             if (x >= 0 && x < gridWidth && y >= 0 && y < gridHeight) {

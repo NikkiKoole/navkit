@@ -129,6 +129,7 @@ Several gaps identified above have since been addressed:
 - **Snow** accumulates on exposed cells, melts into mud, extinguishes fire
 - **Mud** from rain/snowmelt with movement penalties
 - Rain now correctly stops at roofs and constructed floors
+- **Fire/smoke wetness interaction**: wet cells suppress fire spread, rain extinguishes exposed fires, wet fuel smolders with extra smoke
 
 ### Animals (Chapters 2 & 6) — IN PROGRESS
 - **Three behavior types**: simple grazers, steering grazers (with flocking), and predators
@@ -146,5 +147,26 @@ Several gaps identified above have since been addressed:
 ### Bushes (Chapter 6) — NEW
 - Walkable ground vegetation cell type (CELL_BUSH)
 
+### Containers (Chapters 3 & 5) — DONE
+- **Three container types**: ITEM_BASKET (15 stacks), ITEM_CHEST (20 stacks), ITEM_CLAY_POT (5 stacks)
+- **Stockpile integration**: containers install as slot storage, auto-route items into containers
+- **Container-aware search**: crafting and hauling jobs find items inside containers
+- **Container hauling**: full weight calculation, contents move with container
+
+### Hunger & Foraging (Chapters 1 & 2) — PARTIAL
+- **Hunger system**: Mover.hunger (0-1), drain rate, speed penalty when starving, balance-tunable thresholds
+- **Berry foraging**: DESIGNATION_HARVEST_BERRY, berry bushes via plant entity system
+- **Food items**: ITEM_BERRIES (0.3 nutrition), ITEM_DRIED_BERRIES (0.25 nutrition), IF_EDIBLE flag
+- Still missing: cooking, farming, hunting/butchering, thirst/drinking
+
+### Fatigue & Furniture (Chapters 1 & 5) — PARTIAL
+- **Energy system**: Mover.energy (0-1), drain rates for working/idle, night penalty, balance-tunable
+- **Furniture**: FURNITURE_PLANK_BED, FURNITURE_LEAF_PILE, FURNITURE_CHAIR with occupant tracking
+- **Freetime states**: movers seek rest autonomously when energy drops
+- Still missing: tables, shelves, full sleep/wake cycle gameplay
+
+### Workshops (Chapter 3) — 8 TYPES
+- Added **WORKSHOP_CARPENTER** since original doc (was 7, now 8)
+
 ### Remaining Big Gaps
-The core survival loop is still missing: **hunger, health, clothing, tools, doors, furniture, and skill progression**. These remain the highest-impact features for turning the simulation into a game.
+The core survival loop is partially in place (hunger, energy, foraging) but still missing: **thirst, health/HP, tools/knapping, clothing, doors, hunting/butchering, and skill progression**. These remain the highest-impact features for turning the simulation into a game.
