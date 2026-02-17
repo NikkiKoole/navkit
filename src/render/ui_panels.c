@@ -11,6 +11,7 @@
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
 #include "../simulation/temperature.h"
+#include "../simulation/balance.h"
 #include "../simulation/floordirt.h"
 #include "../core/sim_manager.h"
 #include "../world/designations.h"
@@ -1094,6 +1095,119 @@ void DrawUI(void) {
                 TextFormat("Temperature swing above/below base. 0=flat. Range: %dC to %dC.",
                            baseSurfaceTemp - seasonalAmplitude, baseSurfaceTemp + seasonalAmplitude));
         }
+        y += 22;
+
+        // --- Balance ---
+        if (SectionHeader(ix, y, "Mover Balance", &sectionBalance)) {
+            y += 18;
+            bool changed = false;
+
+            // Movement speed
+            float tilesPerGameSec = balance.baseMoverSpeed / (float)CELL_SIZE;
+            float oldBaseSpeed = balance.baseMoverSpeed;
+            DraggableFloatT(ix, y, "Base Speed (px/s)", &balance.baseMoverSpeed, 10.0f, 50.0f, 800.0f,
+                TextFormat("Base mover speed in pixels/sec. = %.1f tiles/game-sec.", tilesPerGameSec));
+            y += 22;
+            // Rescale all existing movers proportionally when base speed changes
+            if (balance.baseMoverSpeed != oldBaseSpeed && oldBaseSpeed > 0) {
+                float scale = balance.baseMoverSpeed / oldBaseSpeed;
+                for (int i = 0; i < moverCount; i++) {
+                    if (movers[i].active) movers[i].speed *= scale;
+                }
+            }
+            DraggableFloatT(ix, y, "Speed Variance", &balance.moverSpeedVariance, 0.05f, 0.0f, 0.5f,
+                TextFormat("Random speed spread per mover: +/-%.0f%%. Range: %.1f - %.1f tiles/game-sec.",
+                           balance.moverSpeedVariance * 100.0f,
+                           tilesPerGameSec * (1.0f - balance.moverSpeedVariance),
+                           tilesPerGameSec * (1.0f + balance.moverSpeedVariance)));
+            y += 22;
+
+            // Day budget (game-hours)
+            DrawTextShadow("Day Budget (game-hours):", ix, y, 14, GRAY);
+            y += 18;
+            changed |= DraggableFloatT(ix, y, "Work Hours/Day", &balance.workHoursPerDay, 0.5f, 1.0f, 24.0f,
+                "Design target: how many hours per day a mover should work.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Sleep (Plank Bed)", &balance.sleepHoursInBed, 0.5f, 1.0f, 24.0f,
+                "Game-hours to recover from exhausted to rested in a plank bed.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Sleep (Ground)", &balance.sleepOnGround, 0.5f, 1.0f, 48.0f,
+                "Game-hours to recover from exhausted to rested on bare ground.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Hours to Starve", &balance.hoursToStarve, 0.5f, 1.0f, 48.0f,
+                "Game-hours from full hunger to starvation.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Exhaust (Working)", &balance.hoursToExhaustWorking, 0.5f, 1.0f, 48.0f,
+                "Game-hours of continuous work before exhaustion.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Exhaust (Idle)", &balance.hoursToExhaustIdle, 0.5f, 1.0f, 48.0f,
+                "Game-hours of idling before exhaustion.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Eating Duration", &balance.eatingDurationGH, 0.05f, 0.05f, 4.0f,
+                "Game-hours spent eating a meal.");
+            y += 22;
+
+            // Thresholds
+            y += 4;
+            DrawTextShadow("Thresholds (0-1):", ix, y, 14, GRAY);
+            y += 18;
+            changed |= DraggableFloatT(ix, y, "Hunger Seek", &balance.hungerSeekThreshold, 0.05f, 0.05f, 0.9f,
+                "Seek food when hunger drops below this (idle).");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Hunger Critical", &balance.hungerCriticalThreshold, 0.01f, 0.01f, 0.5f,
+                "Cancel current job to find food.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Energy Tired", &balance.energyTiredThreshold, 0.05f, 0.05f, 0.9f,
+                "Seek rest when energy drops below this (idle).");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Energy Exhausted", &balance.energyExhaustedThreshold, 0.01f, 0.01f, 0.5f,
+                "Cancel current job to find rest.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Energy Wake", &balance.energyWakeThreshold, 0.05f, 0.3f, 1.0f,
+                "Stop sleeping when energy reaches this.");
+            y += 22;
+
+            // Multipliers
+            y += 4;
+            DrawTextShadow("Multipliers:", ix, y, 14, GRAY);
+            y += 18;
+            changed |= DraggableFloatT(ix, y, "Night Energy", &balance.nightEnergyMult, 0.05f, 0.5f, 3.0f,
+                "Energy drain multiplier at night.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Carrying Energy", &balance.carryingEnergyMult, 0.05f, 0.5f, 3.0f,
+                "Energy drain multiplier when hauling.");
+            y += 22;
+            changed |= DraggableFloatT(ix, y, "Hunger Speed Min", &balance.hungerSpeedPenaltyMin, 0.05f, 0.1f, 1.0f,
+                "Minimum speed multiplier when starving.");
+            y += 22;
+
+            // Recalc derived rates if anything changed
+            if (changed) RecalcBalanceTable();
+
+            // Derived rates (read-only)
+            y += 4;
+            DrawTextShadow("Derived Rates (per game-hour):", ix, y, 14, GRAY);
+            y += 18;
+            DrawTextShadow(TextFormat("Hunger drain:      %.4f/gh", balance.hungerDrainPerGH), ix, y, 14, WHITE);
+            y += 16;
+            DrawTextShadow(TextFormat("Energy drain (work): %.4f/gh", balance.energyDrainWorkPerGH), ix, y, 14, WHITE);
+            y += 16;
+            DrawTextShadow(TextFormat("Energy drain (idle): %.4f/gh", balance.energyDrainIdlePerGH), ix, y, 14, WHITE);
+            y += 16;
+            DrawTextShadow(TextFormat("Bed recovery:      %.4f/gh", balance.bedRecoveryPerGH), ix, y, 14, WHITE);
+            y += 16;
+            DrawTextShadow(TextFormat("Ground recovery:   %.4f/gh", balance.groundRecoveryPerGH), ix, y, 14, WHITE);
+            y += 22;
+
+            // Reset button
+            {
+                bool clicked = false;
+                PushButtonInline(ix, y, "Reset Defaults", &clicked);
+                if (clicked) InitBalance();
+            }
+            y += 22;
+        }
+        y += 22;
     }
     y += 22;
 

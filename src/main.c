@@ -138,6 +138,7 @@ bool sectionMemEntities = false;
 bool sectionMemSpatial = false;
 bool sectionJobs = false;
 bool sectionTime = false;
+bool sectionBalance = false;
 bool sectionWeather = false;
 bool sectionLighting = false;
 
@@ -469,7 +470,7 @@ void AddMoversDemo(int count) {
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
         float z = (float)start.z;
-        float speed = MOVER_SPEED + GetRandomValue(-30, 30);
+        float speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
 
         startPos = start;
         goalPos = goal;
@@ -519,7 +520,7 @@ void SpawnMoversDemo(int count) {
         float x = start.x * CELL_SIZE + CELL_SIZE * 0.5f;
         float y = start.y * CELL_SIZE + CELL_SIZE * 0.5f;
         float z = (float)start.z;
-        float speed = MOVER_SPEED + GetRandomValue(-30, 30);
+        float speed = balance.baseMoverSpeed * (1.0f + balance.moverSpeedVariance * (GetRandomValue(-100, 100) / 100.0f));
 
         startPos = start;
         goalPos = goal;
@@ -660,6 +661,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
                 grid[z][y][x] = CELL_AIR;
+    InitBalance();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
     InitSimActivity();
@@ -667,7 +669,7 @@ static int RunHeadless(const char* loadFile, int ticks, int argc, char** argv) {
     InitSteam();
     InitLighting();
     InitPlants();
-    
+
     // Handle .gz decompression
     const char* actualFile = loadFile;
     char tempFile[512] = {0};
@@ -1007,6 +1009,7 @@ int main(int argc, char** argv) {
         for (int y = 0; y < gridHeight; y++)
             for (int x = 0; x < gridWidth; x++)
                 grid[z][y][x] = CELL_AIR;
+    InitBalance();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
     InitSimActivity();

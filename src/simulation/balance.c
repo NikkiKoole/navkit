@@ -26,6 +26,10 @@ void InitBalance(void) {
     balance.energyExhaustedThreshold = 0.1f;
     balance.energyWakeThreshold      = 0.8f;
 
+    // Movement
+    balance.baseMoverSpeed       = 200.0f;
+    balance.moverSpeedVariance   = 0.25f;
+
     // Multipliers
     balance.nightEnergyMult       = 1.2f;
     balance.carryingEnergyMult    = 1.1f;

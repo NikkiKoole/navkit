@@ -172,6 +172,7 @@ extern bool sectionMemEntities;
 extern bool sectionMemSpatial;
 extern bool sectionJobs;
 extern bool sectionTime;
+extern bool sectionBalance;
 extern bool sectionWeather;
 extern bool sectionLighting;
 

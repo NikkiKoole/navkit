@@ -39,6 +39,10 @@ typedef struct {
     float bedRecoveryPerGH;
     float groundRecoveryPerGH;
 
+    // === MOVEMENT ===
+    float baseMoverSpeed;           // 200.0 (pixels/sec, before variance)
+    float moverSpeedVariance;       // 0.25 (±25% random per mover)
+
     // === MULTIPLIERS (for system interactions) ===
     float nightEnergyMult;          // 1.2
     float carryingEnergyMult;       // 1.1

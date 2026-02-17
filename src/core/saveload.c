@@ -16,6 +16,7 @@ void RebuildPostLoadState(void);
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
+#include "../simulation/balance.h"
 #include "../core/sim_manager.h"
 #include "../world/material.h"
 #include "save_migrations.h"
@@ -109,6 +110,26 @@ void RebuildPostLoadState(void);
     X(float, snowMeltingRate) \
     /* Lightning */ \
     X(float, lightningInterval)
+
+#define BALANCE_SETTINGS_TABLE(X) \
+    X(float, balance.baseMoverSpeed) \
+    X(float, balance.moverSpeedVariance) \
+    X(float, balance.workHoursPerDay) \
+    X(float, balance.sleepHoursInBed) \
+    X(float, balance.sleepOnGround) \
+    X(float, balance.hoursToStarve) \
+    X(float, balance.hoursToExhaustWorking) \
+    X(float, balance.hoursToExhaustIdle) \
+    X(float, balance.eatingDurationGH) \
+    X(float, balance.hungerSeekThreshold) \
+    X(float, balance.hungerCriticalThreshold) \
+    X(float, balance.energyTiredThreshold) \
+    X(float, balance.energyExhaustedThreshold) \
+    X(float, balance.energyWakeThreshold) \
+    X(float, balance.nightEnergyMult) \
+    X(float, balance.carryingEnergyMult) \
+    X(float, balance.hungerSpeedPenaltyMin) \
+    X(float, balance.hungerPenaltyThreshold)
 
 bool SaveWorld(const char* filename) {
     FILE* f = fopen(filename, "wb");
@@ -370,6 +391,7 @@ bool SaveWorld(const char* filename) {
     // Simulation settings (generated from SETTINGS_TABLE macro)
     #define WRITE_SETTING(type, name) fwrite(&name, sizeof(type), 1, f);
     SETTINGS_TABLE(WRITE_SETTING)
+    BALANCE_SETTINGS_TABLE(WRITE_SETTING)
     #undef WRITE_SETTING
 
     // Simulation accumulators (static locals, saved via getters)
@@ -1237,7 +1259,17 @@ bool LoadWorld(const char* filename) {
     } else {
         #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
         SETTINGS_TABLE(READ_SETTING)
+        if (version >= 57) {
+            BALANCE_SETTINGS_TABLE(READ_SETTING)
+        }
         #undef READ_SETTING
+    }
+
+    // v56 and earlier: balance table not saved, use defaults
+    if (version < 57) {
+        InitBalance();
+    } else {
+        RecalcBalanceTable();
     }
 
     // Simulation accumulators (static locals, loaded via setters)
