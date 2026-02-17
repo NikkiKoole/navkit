@@ -16,7 +16,7 @@
 
 #define MAX_VISIBLE_DEPTH    9
 #define SOURCE_MARKER_INSET  0.3f
-#define RAMP_OVERLAY_ALPHA   64
+#define RAMP_OVERLAY_ALPHA   96
 
 // Helper: calculate visible cell range with view frustum culling
 static void GetVisibleCellRange(float size, int* minX, int* minY, int* maxX, int* maxY) {
@@ -300,6 +300,9 @@ static Color GetDepthTintDarkened(int itemZ, int viewZ) {
 
 // Helper: check if a cell at (x, y, cellZ) is visible from viewZ
 static bool IsCellVisibleFromAbove(int x, int y, int cellZ, int viewZ) {
+    if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
+    if (cellZ < 0) cellZ = 0;
+    if (viewZ > gridDepth) viewZ = gridDepth;
     for (int zCheck = cellZ; zCheck < viewZ; zCheck++) {
         if (CellIsSolid(grid[zCheck][y][x]) || HAS_FLOOR(x, y, zCheck)) {
             return false;
@@ -328,7 +331,13 @@ static void DrawDeeperLevelCells(float size, int z, int minX, int minY, int maxX
                         if (cellAtDepth == CELL_WALL && !IsWallNatural(x, y, zDepth)) {
                             tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, zDepth)));
                         }
-                        if (CellIsRamp(cellAtDepth)) tint.a = RAMP_OVERLAY_ALPHA;
+                        if (CellIsRamp(cellAtDepth)) {
+                            MaterialType rampMat = GetWallMaterial(x, y, zDepth);
+                            if (rampMat != MAT_NONE) {
+                                tint = MultiplyColor(tint, MaterialTint(rampMat));
+                            }
+                            tint.a = RAMP_OVERLAY_ALPHA;
+                        }
                         DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
                         if (cellAtDepth == CELL_WALL) {
@@ -384,7 +393,13 @@ static void DrawGroundLevel(float size, int z, int minX, int minY, int maxX, int
                     Rectangle src = SpriteGetRect(sprite);
                     Color lightTint = GetLightColor(x, y, z, skyColor);
                     Color tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
-                    if (CellIsRamp(cellBelow)) tint.a = RAMP_OVERLAY_ALPHA;
+                    if (CellIsRamp(cellBelow)) {
+                        MaterialType rampMat = GetWallMaterial(x, y, zBelow);
+                        if (rampMat != MAT_NONE) {
+                            tint = MultiplyColor(tint, MaterialTint(rampMat));
+                        }
+                        tint.a = RAMP_OVERLAY_ALPHA;
+                    }
                     DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
                 }
 
@@ -472,7 +487,13 @@ static void DrawCellGrid(void) {
             if (cell == CELL_WALL && !IsWallNatural(x, y, z)) {
                 tint = MultiplyColor(tint, MaterialTint(GetWallMaterial(x, y, z)));
             }
-            if (CellIsRamp(cell)) tint.a = RAMP_OVERLAY_ALPHA;
+            if (CellIsRamp(cell)) {
+                MaterialType rampMat = GetWallMaterial(x, y, z);
+                if (rampMat != MAT_NONE) {
+                    tint = MultiplyColor(tint, MaterialTint(rampMat));
+                }
+                tint.a = RAMP_OVERLAY_ALPHA;
+            }
             DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
 
             if (cell == CELL_WALL) {
@@ -484,7 +505,12 @@ static void DrawCellGrid(void) {
     // Draw wall cutaway effect - dark top with real wall texture visible at edges
     // This shows you're looking at the "cut" top of walls at eye level
     {
-        Color cutawayColor = (Color){30, 30, 35, 255};  // Dark gray/black
+        // Scale cutaway darkness with sky brightness so it's always darker than surroundings
+        float skyBright = (skyColor.r + skyColor.g + skyColor.b) / (3.0f * 255.0f);
+        unsigned char cr = (unsigned char)(30.0f * skyBright);
+        unsigned char cg = (unsigned char)(30.0f * skyBright);
+        unsigned char cb = (unsigned char)(35.0f * skyBright);
+        Color cutawayColor = (Color){cr, cg, cb, 255};
         float edgeWidth = size * 0.2f;  // 20% of cell size - wall texture visible at edges
 
         for (int y = minY; y < maxY; y++) {
@@ -518,6 +544,56 @@ static void DrawCellGrid(void) {
                 if (fillW > 0 && fillH > 0) {
                     DrawRectangle((int)fillX, (int)fillY, (int)(fillW + 0.5f), (int)(fillH + 0.5f), cutawayColor);
                 }
+            }
+        }
+    }
+}
+
+// Draw ramps as a late pass — after grass, mud, snow, clouds so they're always visible
+// Covers all visible depths (same range as DrawDeeperLevelCells + ground + current)
+void DrawRampOverlay(void) {
+    float size = CELL_SIZE * zoom;
+    int z = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    int minX, minY, maxX, maxY;
+    GetVisibleCellRange(size, &minX, &minY, &maxX, &maxY);
+
+    // Draw ramps at all visible depths: z-MAX_VISIBLE_DEPTH through z
+    int zStart = z - MAX_VISIBLE_DEPTH;
+    if (zStart < 0) zStart = 0;
+
+    for (int zd = zStart; zd <= z; zd++) {
+        for (int y = minY; y < maxY; y++) {
+            for (int x = minX; x < maxX; x++) {
+                CellType cell = grid[zd][y][x];
+                if (!CellIsRamp(cell)) continue;
+                if (!IsCellVisibleFromAbove(x, y, zd + 1, z)) continue;
+
+                Rectangle dest = {offset.x + x * size, offset.y + y * size, size, size};
+                int sprite = GetWallSpriteAt(x, y, zd, cell);
+                Rectangle src = SpriteGetRect(sprite);
+
+                // Tinting: match what DrawDeeperLevelCells / DrawGroundLevel / DrawCurrentLayer do
+                Color lightTint = GetLightColor(x, y, zd + 1, skyColor);
+                Color tint;
+                if (zd <= z - 2) {
+                    // Deeper level: depth tint
+                    tint = MultiplyColor(GetDepthTintDarkened(zd, z), lightTint);
+                } else if (zd == z - 1) {
+                    // Ground level: floor darken
+                    tint = MultiplyColor(FloorDarkenTint(WHITE), lightTint);
+                } else {
+                    // Current z: just light
+                    tint = lightTint;
+                }
+
+                MaterialType rampMat = GetWallMaterial(x, y, zd);
+                if (rampMat != MAT_NONE) {
+                    tint = MultiplyColor(tint, MaterialTint(rampMat));
+                }
+                tint.a = RAMP_OVERLAY_ALPHA;
+                DrawTexturePro(atlas, src, dest, (Vector2){0,0}, 0, tint);
             }
         }
     }
@@ -568,8 +644,8 @@ static void DrawGrassOverlay(void) {
                 // Only draw overlay where floor is dirt and current cell is empty (air) or ramp
                 if (!IsWallNatural(x, y, zBelow) || GetWallMaterial(x, y, zBelow) != MAT_DIRT) continue;
                 CellType cellHere = grid[z][y][x];
-                // Allow grass under air and ramps, skip walls/ladders/etc.
-                if (cellHere != CELL_AIR && !CellIsRamp(cellHere)) continue;
+                // Allow grass under air only, skip walls/ladders/ramps/etc.
+                if (cellHere != CELL_AIR) continue;
                 if (HAS_FLOOR(x, y, z)) continue;    // Don't draw grass under constructed floors
                 
                 VegetationType veg = GetVegetation(x, y, zBelow);

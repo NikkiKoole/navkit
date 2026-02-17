@@ -715,27 +715,251 @@ describe(eating_consumption) {
     }
 }
 
-describe(eating_starving_cancels_job) {
-    it("starving mover cancels current job") {
+describe(eating_starving_unassigns_job) {
+    it("starving mover unassigns current job") {
         SetupClean();
         int mi = SetupMover(1, 1);
         movers[mi].hunger = 0.05f; // Below hungerCriticalThreshold (0.1)
 
-        // Give mover a fake job
+        // Give mover a fake haul job
         ClearJobs();
         Job* j = &jobs[0];
         j->active = true;
         j->type = JOBTYPE_HAUL;
         j->assignedMover = mi;
         j->step = STEP_MOVING_TO_WORK;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->targetMineX = -1;
+        j->targetMineY = -1;
+        j->targetMineZ = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
         movers[mi].currentJobId = 0;
         jobHighWaterMark = 1;
         activeJobCount = 1;
 
         ProcessFreetimeNeeds();
 
-        // Job should be cancelled
+        // Mover should be detached from job
         expect(movers[mi].currentJobId == -1);
+    }
+
+    it("starving mover does NOT unassign food-producing job") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.05f;
+
+        // Give mover a harvest berry job
+        ClearJobs();
+        Job* j = &jobs[0];
+        j->active = true;
+        j->type = JOBTYPE_HARVEST_BERRY;
+        j->assignedMover = mi;
+        j->step = STEP_MOVING_TO_WORK;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->targetMineX = -1;
+        j->targetMineY = -1;
+        j->targetMineZ = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
+        movers[mi].currentJobId = 0;
+        jobHighWaterMark = 1;
+        activeJobCount = 1;
+
+        ProcessFreetimeNeeds();
+
+        // Job should NOT be unassigned — let mover finish getting food
+        expect(movers[mi].currentJobId == 0);
+    }
+
+    it("unassign preserves mine designation progress") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 0.05f;
+
+        // Set up a mine designation at (3,3,1) with 75% progress
+        grid[1][3][3] = CELL_WALL;
+        SetWallMaterial(3, 3, 1, MAT_GRANITE);
+        DesignateMine(3, 3, 1);
+        Designation* d = GetDesignation(3, 3, 1);
+        d->assignedMover = mi;
+        d->progress = 0.75f;
+
+        // Give mover a mining job targeting that designation
+        ClearJobs();
+        Job* j = &jobs[0];
+        j->active = true;
+        j->type = JOBTYPE_MINE;
+        j->assignedMover = mi;
+        j->step = STEP_WORKING;
+        j->targetMineX = 3;
+        j->targetMineY = 3;
+        j->targetMineZ = 1;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
+        j->progress = 0.75f;
+        movers[mi].currentJobId = 0;
+        jobHighWaterMark = 1;
+        activeJobCount = 1;
+
+        ProcessFreetimeNeeds();
+
+        // Mover should be detached
+        expect(movers[mi].currentJobId == -1);
+
+        // Designation should still exist with progress preserved
+        Designation* dAfter = GetDesignation(3, 3, 1);
+        expect(dAfter != NULL);
+        expect(dAfter->assignedMover == -1);  // Unassigned, available for re-pickup
+        expect(fabsf(dAfter->progress - 0.75f) < 0.001f);  // Progress preserved!
+    }
+
+    it("cancel job resets designation progress to zero") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+
+        // Set up a mine designation at (3,3,1) with 75% progress
+        grid[1][3][3] = CELL_WALL;
+        SetWallMaterial(3, 3, 1, MAT_GRANITE);
+        DesignateMine(3, 3, 1);
+        Designation* d = GetDesignation(3, 3, 1);
+        d->assignedMover = mi;
+        d->progress = 0.75f;
+
+        // Give mover a mining job
+        ClearJobs();
+        Job* j = &jobs[0];
+        j->active = true;
+        j->type = JOBTYPE_MINE;
+        j->assignedMover = mi;
+        j->step = STEP_WORKING;
+        j->targetMineX = 3;
+        j->targetMineY = 3;
+        j->targetMineZ = 1;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
+        j->progress = 0.75f;
+        movers[mi].currentJobId = 0;
+        jobHighWaterMark = 1;
+        activeJobCount = 1;
+
+        // Use CancelJob directly (not via needs system)
+        CancelJob(&movers[mi], mi);
+
+        // Designation progress should be RESET (CancelJob destroys progress)
+        Designation* dAfter = GetDesignation(3, 3, 1);
+        expect(dAfter != NULL);
+        expect(dAfter->assignedMover == -1);
+        expect(dAfter->progress == 0.0f);  // Progress lost!
+    }
+
+    it("exhausted mover unassigns job") {
+        SetupClean();
+        int mi = SetupMover(1, 1);
+        movers[mi].hunger = 1.0f;  // Not hungry
+        movers[mi].energy = 0.05f; // Below energyExhaustedThreshold
+
+        ClearJobs();
+        Job* j = &jobs[0];
+        j->active = true;
+        j->type = JOBTYPE_HAUL;
+        j->assignedMover = mi;
+        j->step = STEP_MOVING_TO_WORK;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->targetMineX = -1;
+        j->targetMineY = -1;
+        j->targetMineZ = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
+        movers[mi].currentJobId = 0;
+        jobHighWaterMark = 1;
+        activeJobCount = 1;
+
+        ProcessFreetimeNeeds();
+
+        expect(movers[mi].currentJobId == -1);
+    }
+}
+
+describe(unassign_job_pickup) {
+    it("unassigned mine designation is available for another mover") {
+        SetupClean();
+
+        int m1 = SetupMover(1, 1);
+        int m2 = SetupMover(2, 1);
+
+        // Place a wall to mine at (4,1,1)
+        grid[1][1][4] = CELL_WALL;
+        SetWallMaterial(4, 1, 1, MAT_GRANITE);
+
+        // Designate it for mining, assign to mover 1 with 75% progress
+        DesignateMine(4, 1, 1);
+        Designation* d = GetDesignation(4, 1, 1);
+        d->assignedMover = m1;
+        d->progress = 0.75f;
+
+        // Give mover 1 a mine job manually
+        ClearJobs();
+        Job* j = &jobs[0];
+        j->active = true;
+        j->type = JOBTYPE_MINE;
+        j->assignedMover = m1;
+        j->step = STEP_WORKING;
+        j->targetMineX = 4;
+        j->targetMineY = 1;
+        j->targetMineZ = 1;
+        j->targetItem = -1;
+        j->targetStockpile = -1;
+        j->targetBlueprint = -1;
+        j->targetWorkshop = -1;
+        j->carryingItem = -1;
+        j->targetItem2 = -1;
+        j->fuelItem = -1;
+        j->progress = 0.75f;
+        movers[m1].currentJobId = 0;
+        jobHighWaterMark = 1;
+        activeJobCount = 1;
+
+        // Unassign the job (mover 1 got hungry)
+        UnassignJob(&movers[m1], m1);
+
+        // Mover 1 is now idle
+        expect(movers[m1].currentJobId == -1);
+
+        // Designation still exists, progress preserved, available for pickup
+        d = GetDesignation(4, 1, 1);
+        expect(d != NULL);
+        expect(d->assignedMover == -1);
+        expect(fabsf(d->progress - 0.75f) < 0.001f);
+
+        // Mover 2 (or anyone) can now claim it since assignedMover == -1
+        // Simulate: mover 2 claims the designation
+        d->assignedMover = m2;
+        expect(d->assignedMover == m2);
+        // Progress is still 75% — mover 2 continues where mover 1 left off
+        expect(fabsf(d->progress - 0.75f) < 0.001f);
     }
 }
 
@@ -906,7 +1130,8 @@ int main(int argc, char* argv[]) {
     test(eating_food_search);
     test(eating_food_competition);
     test(eating_consumption);
-    test(eating_starving_cancels_job);
+    test(eating_starving_unassigns_job);
+    test(unassign_job_pickup);
     test(drying_rack_berries);
     test(starvation_survival);
     test(hunger_daylength_independence);

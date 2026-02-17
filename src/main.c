@@ -591,6 +591,7 @@ void SpawnStockpileWithFilters(bool allowRed, bool allowGreen, bool allowBlue) {
 void DrawCellGrid(void);
 void DrawGrassOverlay(void);
 void DrawPlantOverlay(void);
+void DrawRampOverlay(void);
 void DrawMud(void);
 void DrawWater(void);
 void DrawFire(void);
@@ -1254,6 +1255,7 @@ int main(int argc, char** argv) {
         DrawCloudShadows();  // Draw cloud shadows first (under everything)
         DrawMud();
         DrawSnow();          // Draw snow after mud
+        DrawRampOverlay();   // Draw ramps after grass/mud/snow so they're visible
         DrawWater();
         DrawFrozenWater();
         DrawFire();

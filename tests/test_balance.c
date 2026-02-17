@@ -25,7 +25,7 @@ describe(balance_init) {
         expect(balance.workHoursPerDay == 14.0f);
         expect(balance.sleepHoursInBed == 7.0f);
         expect(balance.sleepOnGround == 23.0f);
-        expect(balance.hoursToStarve == 8.0f);
+        expect(balance.hoursToStarve == 16.0f);
         expect(balance.hoursToExhaustWorking == 16.0f);
         expect(balance.hoursToExhaustIdle == 28.0f);
         expect(balance.eatingDurationGH == 0.5f);
@@ -55,8 +55,8 @@ describe(balance_derived_rates) {
     it("should derive hunger drain from hoursToStarve") {
         InitBalance();
 
-        // 1.0 / 8.0 = 0.125 per game-hour
-        expect(approx(balance.hungerDrainPerGH, 1.0f / 8.0f, 0.0001f));
+        // 1.0 / 16.0 = 0.0625 per game-hour
+        expect(approx(balance.hungerDrainPerGH, 1.0f / 16.0f, 0.0001f));
     }
 
     it("should derive energy drain rates") {

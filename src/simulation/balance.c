@@ -10,7 +10,7 @@ void InitBalance(void) {
     balance.workHoursPerDay       = 14.0f;
     balance.sleepHoursInBed       =  7.0f;
     balance.sleepOnGround         = 23.0f;
-    balance.hoursToStarve         =  8.0f;
+    balance.hoursToStarve         = 16.0f;
     balance.hoursToExhaustWorking = 16.0f;
     balance.hoursToExhaustIdle    = 28.0f;
     balance.eatingDurationGH      =  0.5f;

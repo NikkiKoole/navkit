@@ -162,18 +162,18 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
         case FREETIME_NONE: {
             // Priority: starving > exhausted > hungry > tired
             if (m->hunger < balance.hungerCriticalThreshold) {
-                // STARVING — cancel job, seek food
-                // But don't cancel food-producing jobs (harvest berry) — let the mover finish getting food
+                // STARVING — unassign job (preserves designation progress), seek food
+                // But don't interrupt food-producing jobs (harvest berry)
                 bool jobProducesFood = false;
                 if (m->currentJobId >= 0) {
                     JobType jt = jobs[m->currentJobId].type;
                     jobProducesFood = (jt == JOBTYPE_HARVEST_BERRY);
                 }
-                if (m->currentJobId >= 0 && !jobProducesFood) CancelJob(m, moverIdx);
+                if (m->currentJobId >= 0 && !jobProducesFood) UnassignJob(m, moverIdx);
                 if (!jobProducesFood && m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
             } else if (m->energy < balance.energyExhaustedThreshold) {
-                // EXHAUSTED — cancel job, seek rest
-                if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+                // EXHAUSTED — unassign job (preserves designation progress), seek rest
+                if (m->currentJobId >= 0) UnassignJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
             } else if (m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)

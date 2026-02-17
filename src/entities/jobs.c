@@ -2984,6 +2984,108 @@ void CancelJob(void* moverPtr, int moverIdx) {
     AddMoverToIdleList(moverIdx);
 }
 
+void UnassignJob(void* moverPtr, int moverIdx) {
+    Mover* m = (Mover*)moverPtr;
+    Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
+
+    if (job) {
+        // Release item reservation
+        if (job->targetItem >= 0) {
+            ReleaseItemReservation(job->targetItem);
+        }
+
+        // Release stockpile slot reservation
+        if (job->targetStockpile >= 0) {
+            ReleaseStockpileSlot(job->targetStockpile, job->targetSlotX, job->targetSlotY);
+        }
+
+        // If carrying, safe-drop the item at a walkable cell
+        SafeDropItemNearMover(job->carryingItem, m);
+
+        // Release mine designation reservation — but PRESERVE progress
+        if (job->targetMineX >= 0 && job->targetMineY >= 0 && job->targetMineZ >= 0) {
+            Designation* d = GetDesignation(job->targetMineX, job->targetMineY, job->targetMineZ);
+            if (d && d->assignedMover == moverIdx) {
+                d->assignedMover = -1;
+                // NOTE: do NOT reset d->progress — this is the key difference from CancelJob
+                InvalidateDesignationCache(d->type);
+            }
+        }
+
+        // Release blueprint reservation
+        if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
+            Blueprint* bp = &blueprints[job->targetBlueprint];
+            if (bp->active) {
+                if (job->targetItem >= 0 && items[job->targetItem].active) {
+                    const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
+                    if (recipe) {
+                        const ConstructionStage* stage = &recipe->stages[bp->stage];
+                        ItemType itemType = items[job->targetItem].type;
+                        for (int s = 0; s < stage->inputCount; s++) {
+                            StageDelivery* sd = &bp->stageDeliveries[s];
+                            if (sd->reservedCount <= 0) continue;
+                            if (!ConstructionInputAcceptsItem(&stage->inputs[s], itemType)) continue;
+                            sd->reservedCount--;
+                            break;
+                        }
+                    }
+                }
+                if (bp->assignedBuilder == moverIdx) {
+                    bp->assignedBuilder = -1;
+                    bp->state = BLUEPRINT_READY_TO_BUILD;
+                    bp->progress = 0.0f;
+                }
+            }
+        }
+
+        // Release second input item reservation
+        if (job->targetItem2 >= 0 && items[job->targetItem2].active) {
+            if (items[job->targetItem2].state == ITEM_CARRIED) {
+                SafeDropItemNearMover(job->targetItem2, m);
+            } else {
+                items[job->targetItem2].reservedBy = -1;
+            }
+        }
+
+        // Release fuel item reservation
+        if (job->fuelItem >= 0 && items[job->fuelItem].active) {
+            if (items[job->fuelItem].state == ITEM_CARRIED) {
+                SafeDropItemNearMover(job->fuelItem, m);
+            } else {
+                items[job->fuelItem].reservedBy = -1;
+            }
+        }
+
+        // Release workshop reservation
+        if (job->targetWorkshop >= 0 && job->targetWorkshop < MAX_WORKSHOPS) {
+            Workshop* ws = &workshops[job->targetWorkshop];
+            if (ws->active) {
+                if (ws->assignedCrafter == moverIdx) {
+                    ws->assignedCrafter = -1;
+                }
+                bool isFire = (ws->type == WORKSHOP_KILN ||
+                               ws->type == WORKSHOP_CHARCOAL_PIT ||
+                               ws->type == WORKSHOP_HEARTH);
+                if (isFire && ws->fuelTileX >= 0) {
+                    RemoveLightSource(ws->fuelTileX, ws->fuelTileY, ws->z);
+                }
+            }
+        }
+
+        // Release Job entry (WorkGiver will create a new one from the designation)
+        ReleaseJob(m->currentJobId);
+    }
+
+    // Reset mover state
+    m->currentJobId = -1;
+    ClearMoverPath(moverIdx);
+    m->needsRepath = false;
+    m->timeWithoutProgress = 0.0f;
+
+    // Add back to idle list
+    AddMoverToIdleList(moverIdx);
+}
+
 // Helper: Try to assign a job for a specific item to a nearby idle mover
 // Returns true if assignment succeeded, false otherwise
 static bool TryAssignItemToMover(int itemIdx, int spIdx, int slotX, int slotY, bool safeDrop) {

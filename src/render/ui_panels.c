@@ -239,10 +239,27 @@ static void DrawPlayerHUD(void) {
     clicked = false; bx += PushButtonInline(bx, y, "3x", &clicked); if (clicked) { gameSpeed = 3.0f; paused = false; }
     y += 22;
 
-    // Mover count
+    // Mover count + Find button
     int active = CountActiveMovers();
     if (active > 0) {
+        bx = 10;
+        bx += MeasureText(TextFormat("Movers: %d", active), 14) + 4;
         DrawTextShadow(TextFormat("Movers: %d", active), 10, (int)y, 14, LIGHTGRAY);
+        clicked = false;
+        bx += 4;
+        PushButtonInline(bx, y, "Find", &clicked);
+        if (clicked && moverCount > 0) {
+            // Find first active mover and center camera on them
+            for (int i = 0; i < moverCount; i++) {
+                if (movers[i].active) {
+                    followMoverIdx = i;
+                    currentViewZ = (int)movers[i].z;
+                    offset.x = GetScreenWidth() / 2.0f - movers[i].x * zoom;
+                    offset.y = GetScreenHeight() / 2.0f - movers[i].y * zoom;
+                    break;
+                }
+            }
+        }
         y += 18;
     }
 
@@ -269,6 +286,17 @@ static void DrawPlayerHUD(void) {
             inputMode = MODE_WORK;
             workSubMode = SUBMODE_HARVEST;
             inputAction = ACTION_WORK_GATHER_TREE;
+        }
+    }
+    y += 22;
+
+    bool stockpileActive = (inputAction == ACTION_DRAW_STOCKPILE);
+    if (PushButton(10, y, stockpileActive ? "* Place Stockpile *" : "Place Stockpile")) {
+        if (stockpileActive) {
+            InputMode_ExitToNormal();
+        } else {
+            inputMode = MODE_DRAW;
+            inputAction = ACTION_DRAW_STOCKPILE;
         }
     }
     y += 22;

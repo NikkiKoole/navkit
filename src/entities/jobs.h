@@ -241,4 +241,8 @@ int WorkGiver_Clean(int moverIdx);
 // Job cancellation (releases all reservations, safe-drops carried items, returns mover to idle)
 void CancelJob(void* mover, int moverIdx);  // void* to avoid circular dependency with mover.h
 
+// Job unassignment (like CancelJob but preserves designation progress)
+// Use when mover needs to temporarily stop working (hunger/exhaustion interrupt)
+void UnassignJob(void* mover, int moverIdx);
+
 #endif
