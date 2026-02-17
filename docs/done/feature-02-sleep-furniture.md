@@ -597,31 +597,32 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 
 **Files changed**: `needs.c`, `tooltips.c`
 
-### Phase 4: Construction Integration (~1-2 sessions)
+### Phase 4: Construction Integration — COMPLETE ✅
 **Goal**: Player can place furniture via construction menu.
 
-1. BUILD_FURNITURE category, 3 construction recipes
-2. CompleteBlueprint handles BUILD_FURNITURE → SpawnFurniture
-3. ACTION_WORK_FURNITURE with recipe cycling
-4. Leaf pile recipe (LEAVES x4)
-5. New items: ITEM_PLANK_BED, ITEM_CHAIR
-6. Item defs, stockpile filters
-7. **Tests**: blueprint created, materials delivered, completion spawns furniture entity, furniture is functional for rest (3-4 tests, ~10 assertions)
+1. ✅ BUILD_FURNITURE category, 3 construction recipes (leaf pile, plank bed, chair)
+2. ✅ CompleteBlueprint handles BUILD_FURNITURE → SpawnFurniture
+3. ✅ ACTION_WORK_FURNITURE with recipe cycling (key U in build mode, R to cycle)
+4. ✅ Leaf pile recipe (LEAVES x4), Plank Bed (ITEM_PLANK_BED x1), Chair (ITEM_CHAIR x1)
+5. ✅ New items: ITEM_PLANK_BED, ITEM_CHAIR (ITEM_TYPE_COUNT 31→33)
+6. ✅ Item defs, save version 54→55 with stockpile migration
+7. Commit: `83792c5`
 
-### Phase 5: Carpenter's Bench (~1 session)
+### Phase 5: Carpenter's Bench — COMPLETE ✅
 **Goal**: Workshop produces furniture items.
 
-1. WORKSHOP_CARPENTER: template, workshop def
-2. Carpenter recipes: plank bed, chair
-3. Action registry entry for placing carpenter (under WORKSHOP category)
-4. **Tests**: carpenter crafts bed item, carpenter crafts chair (2-3 tests, ~8 assertions)
+1. ✅ WORKSHOP_CARPENTER: 3x3 template (.O. / #X# / ...), non-passive
+2. ✅ Carpenter recipes: Craft Plank Bed (4 planks, 8s), Craft Chair (2 planks, 5s)
+3. ✅ Action registry entry (key 'p' under workshop category)
+4. ✅ Fixed pre-existing IsWorkshopSubAction() pie menu bug
+5. Commit: `87ac181`
 
-### Phase 6: Hunger/Sleep Interaction (~0.5 session)
+### Phase 6: Hunger/Sleep Interaction — COMPLETE ✅ (already done in Phases 1-3)
 **Goal**: Hunger drains during sleep, starvation wakes mover.
 
-1. Hunger continues draining during FREETIME_RESTING
-2. Mover wakes when starving, seeks food, then re-seeks bed if still tired
-3. **Tests**: sleeping mover's hunger drains, wakes when starving, eats, returns to bed (2-3 tests, ~8 assertions)
+1. ✅ Hunger drains unconditionally in NeedsTick() — no sleep exemption needed
+2. ✅ FREETIME_RESTING checks hunger < starving threshold → wakes mover, releases furniture
+3. ✅ Tests: hunger_trumps_sleep (2 tests), starvation_wakes_sleeper (3 tests + bed release test)
 
 ### Deferred
 - Grass mat (FURNITURE_GRASS_MAT, ITEM_GRASS_MAT, rope maker recipe — add when rope maker has more recipes to justify the supply chain)
