@@ -337,6 +337,7 @@ int InputMode_GetBarItems(BarItem* items) {
             case ACTION_DRAW_WORKSHOP_HEARTH:
             case ACTION_DRAW_WORKSHOP_DRYING_RACK:
             case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
+            case ACTION_DRAW_WORKSHOP_CARPENTER:
                 n = AddItem(items, n, "L-click place", 0, -1, false, true, false);
                 break;
             case ACTION_DRAW_SOIL_DIRT:

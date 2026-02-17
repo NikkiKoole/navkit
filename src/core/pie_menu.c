@@ -32,7 +32,12 @@ static int menuCount = 0;
 static bool IsWorkshopSubAction(InputAction action) {
     return (action == ACTION_DRAW_WORKSHOP_STONECUTTER ||
             action == ACTION_DRAW_WORKSHOP_SAWMILL ||
-            action == ACTION_DRAW_WORKSHOP_KILN);
+            action == ACTION_DRAW_WORKSHOP_KILN ||
+            action == ACTION_DRAW_WORKSHOP_CHARCOAL_PIT ||
+            action == ACTION_DRAW_WORKSHOP_HEARTH ||
+            action == ACTION_DRAW_WORKSHOP_DRYING_RACK ||
+            action == ACTION_DRAW_WORKSHOP_ROPE_MAKER ||
+            action == ACTION_DRAW_WORKSHOP_CARPENTER);
 }
 
 // Helper: Check if action is a soil subcategory

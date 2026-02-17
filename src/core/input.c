@@ -2400,6 +2400,9 @@ void HandleInput(void) {
             case ACTION_DRAW_WORKSHOP_ROPE_MAKER:
                 if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_ROPE_MAKER);
                 break;
+            case ACTION_DRAW_WORKSHOP_CARPENTER:
+                if (leftClick) ExecutePlaceWorkshop(dragStartX, dragStartY, z, WORKSHOP_CARPENTER);
+                break;
             case ACTION_DRAW_SOIL_DIRT:
                 if (leftClick) {
                     if (shift) {

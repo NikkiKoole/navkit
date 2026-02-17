@@ -72,6 +72,12 @@ Recipe ropeMakerRecipes[] = {
 };
 int ropeMakerRecipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]);
 
+Recipe carpenterRecipes[] = {
+    { "Craft Plank Bed", ITEM_PLANKS, 4, ITEM_NONE, 0, ITEM_PLANK_BED, 1, ITEM_NONE, 0, 8.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+    { "Craft Chair",     ITEM_PLANKS, 2, ITEM_NONE, 0, ITEM_CHAIR, 1,     ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+};
+int carpenterRecipeCount = sizeof(carpenterRecipes) / sizeof(carpenterRecipes[0]);
+
 // Workshop definitions table (consolidates templates, recipes, and metadata)
 const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
     [WORKSHOP_STONECUTTER] = {
@@ -156,6 +162,19 @@ const WorkshopDef workshopDefs[WORKSHOP_TYPE_COUNT] = {
                     "O.",
         .recipes = ropeMakerRecipes,
         .recipeCount = sizeof(ropeMakerRecipes) / sizeof(ropeMakerRecipes[0]),
+        .passive = false
+    },
+    [WORKSHOP_CARPENTER] = {
+        .type = WORKSHOP_CARPENTER,
+        .name = "CARPENTER",
+        .displayName = "Carpenter",
+        .width = 3,
+        .height = 3,
+        .template = ".O."
+                    "#X#"
+                    "...",
+        .recipes = carpenterRecipes,
+        .recipeCount = sizeof(carpenterRecipes) / sizeof(carpenterRecipes[0]),
         .passive = false
     },
 };
