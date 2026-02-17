@@ -6,9 +6,9 @@
 #include "../world/material.h"
 #include "../entities/items.h"
 
-// Runtime configurable growth parameters
-extern int saplingGrowTicks;     // Ticks before sapling becomes trunk (default 100)
-extern int trunkGrowTicks;       // Ticks between trunk growth (default 50)
+// Runtime configurable growth parameters (game-hours)
+extern float saplingGrowGH;     // Game-hours before sapling becomes trunk
+extern float trunkGrowGH;       // Game-hours between trunk growth stages
 
 // Tree type helpers (now use MaterialType directly)
 const char* TreeTypeName(MaterialType mat);
@@ -16,14 +16,14 @@ ItemType SaplingItemFromTreeType(MaterialType mat);
 ItemType LeafItemFromTreeType(MaterialType mat);
 
 // Growth grids (exposed for save/load)
-extern int growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+extern float growthTimer[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 extern int targetHeight[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Harvest state (stored on trunk base cell only)
 // 0 = depleted, TREE_HARVEST_MAX = fully harvestable
 // Regen uses growthTimer on the base cell (idle on mature trees)
 #define TREE_HARVEST_MAX 2
-#define TREE_HARVEST_REGEN_TICKS 3600  // Ticks to regen one harvest level (~60s at 60fps)
+#define TREE_HARVEST_REGEN_GH 24.0f  // Game-hours to regen one harvest level
 extern uint8_t treeHarvestState[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
 // Initialize tree growth system

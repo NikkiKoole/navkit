@@ -17,6 +17,7 @@
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
 #include "../simulation/lighting.h"
+#include "../simulation/balance.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -906,7 +907,7 @@ JobRunResult RunJob_Mine(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress mining
-        job->progress += dt / MINE_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(MINE_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -976,7 +977,7 @@ JobRunResult RunJob_Channel(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress channeling
-        job->progress += dt / CHANNEL_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(CHANNEL_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1050,7 +1051,7 @@ JobRunResult RunJob_DigRamp(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress digging
-        job->progress += dt / DIG_RAMP_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(DIG_RAMP_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1118,7 +1119,7 @@ JobRunResult RunJob_RemoveFloor(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress floor removal
-        job->progress += dt / REMOVE_FLOOR_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(REMOVE_FLOOR_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1190,7 +1191,7 @@ JobRunResult RunJob_RemoveRamp(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress ramp removal
-        job->progress += dt / REMOVE_RAMP_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(REMOVE_RAMP_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1262,7 +1263,7 @@ JobRunResult RunJob_Chop(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress tree chopping
-        job->progress += dt / CHOP_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(CHOP_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1325,7 +1326,7 @@ JobRunResult RunJob_ChopFelled(Job* job, void* moverPtr, float dt) {
 
         return JOBRUN_RUNNING;
     } else if (job->step == STEP_WORKING) {
-        job->progress += dt / CHOP_FELLED_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(CHOP_FELLED_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1455,7 +1456,7 @@ JobRunResult RunJob_PlantSapling(Job* job, void* moverPtr, float dt) {
         int itemIdx = job->carryingItem;
 
         // Progress planting
-        job->progress += dt / PLANT_SAPLING_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(PLANT_SAPLING_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1541,7 +1542,7 @@ JobRunResult RunJob_GatherSapling(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         // Progress gathering
-        job->progress += dt / GATHER_SAPLING_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(GATHER_SAPLING_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1599,7 +1600,7 @@ JobRunResult RunJob_GatherGrass(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
     else if (job->step == STEP_WORKING) {
-        job->progress += dt / GATHER_GRASS_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(GATHER_GRASS_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1654,7 +1655,7 @@ JobRunResult RunJob_HarvestBerry(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
     else if (job->step == STEP_WORKING) {
-        job->progress += dt / HARVEST_BERRY_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(HARVEST_BERRY_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -1720,7 +1721,7 @@ JobRunResult RunJob_GatherTree(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         mover->timeWithoutProgress = 0;  // Intentionally still while working
-        job->progress += dt / GATHER_TREE_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(GATHER_TREE_WORK_TIME);
         d->progress = job->progress;
 
         if (job->progress >= 1.0f) {
@@ -2321,7 +2322,7 @@ JobRunResult RunJob_Craft(Job* job, void* moverPtr, float dt) {
 
         case CRAFT_STEP_WORKING: {
             // Progress crafting — mover is stationary but making progress
-            job->progress += dt / job->workRequired;
+            job->progress += dt / GameHoursToGameSeconds(job->workRequired);
             mover->timeWithoutProgress = 0.0f;
             ws->lastWorkTime = (float)gameTime;
 
@@ -2574,7 +2575,7 @@ JobRunResult RunJob_IgniteWorkshop(Job* job, void* moverPtr, float dt) {
         return JOBRUN_RUNNING;
     }
     else if (job->step == STEP_WORKING) {
-        job->progress += dt / job->workRequired;
+        job->progress += dt / GameHoursToGameSeconds(job->workRequired);
         mover->timeWithoutProgress = 0.0f;
 
         if (job->progress >= 1.0f) {
@@ -2638,7 +2639,7 @@ JobRunResult RunJob_Clean(Job* job, void* moverPtr, float dt) {
     }
     else if (job->step == STEP_WORKING) {
         mover->timeWithoutProgress = 0.0f;  // Intentionally stationary while cleaning
-        job->progress += dt / CLEAN_WORK_TIME;
+        job->progress += dt / GameHoursToGameSeconds(CLEAN_WORK_TIME);
         d->progress = job->progress;  // Sync to designation for progress bar rendering
 
         if (job->progress >= 1.0f) {

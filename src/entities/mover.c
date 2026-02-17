@@ -22,6 +22,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
+#include "../simulation/balance.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -776,14 +777,14 @@ void NeedsTick(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
 
-        // Drain hunger
-        m->hunger -= HUNGER_DRAIN_RATE * dt;
+        // Drain hunger (rate in game-hours, converted to per-game-second)
+        m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
         if (m->hunger < 0.0f) m->hunger = 0.0f;
 
         // Drain energy (not while resting)
         if (m->freetimeState != FREETIME_RESTING) {
-            float drainRate = (m->currentJobId >= 0) ? ENERGY_DRAIN_WORKING : ENERGY_DRAIN_IDLE;
-            m->energy -= drainRate * dt;
+            float drainPerGH = (m->currentJobId >= 0) ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+            m->energy -= RatePerGameSecond(drainPerGH) * dt;
             if (m->energy < 0.0f) m->energy = 0.0f;
         }
 
@@ -876,6 +877,7 @@ static void AssignNewMoverGoal(Mover* m) {
 
 void UpdateMovers(void) {
     float dt = gameDeltaTime;  // Use game time so movers scale with gameSpeed
+    float dayLengthSpeedScale = 60.0f / dayLength;  // Normalize movement per game-hour
     
     // Phase 1: LOS checks (optionally staggered - each mover checks every 3 frames)
     PROFILE_BEGIN(LOS);
@@ -1108,7 +1110,7 @@ void UpdateMovers(void) {
         // Waypoint arrival check
         // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)
         // Knot fix: advance to next waypoint at larger radius without snapping position
-        float arrivalRadius = m->speed * dt;
+        float arrivalRadius = m->speed * dayLengthSpeedScale * dt;
         bool shouldSnap = true;
         
         if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
@@ -1183,21 +1185,21 @@ void UpdateMovers(void) {
                 }
             }
             
-            // Hunger speed penalty (linear 1.0→0.5 as hunger goes 0.2→0.0)
-            if (m->hunger < HUNGER_PENALTY_THRESHOLD) {
-                float t = m->hunger / HUNGER_PENALTY_THRESHOLD;  // 0..1
-                float hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+            // Hunger speed penalty (linear 1.0→min as hunger goes threshold→0.0)
+            if (m->hunger < balance.hungerPenaltyThreshold) {
+                float t = m->hunger / balance.hungerPenaltyThreshold;  // 0..1
+                float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
                 terrainSpeedMult *= hungerMult;
             }
             
             // Base velocity toward waypoint
-            float effectiveSpeed = m->speed * terrainSpeedMult;
+            float effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;
             float vy = dyf * invDist * effectiveSpeed;
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
-                float avoidScale = m->speed * avoidStrengthOpen;
+                float avoidScale = m->speed * dayLengthSpeedScale * avoidStrengthOpen;
                 
                 // Knot fix: reduce avoidance near waypoint so mover can reach it
                 if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {

@@ -87,8 +87,8 @@ void RebuildPostLoadState(void);
     X(float, wearRecoveryInterval) \
     X(int, wearMax) \
     /* Trees */ \
-    X(int, saplingGrowTicks) \
-    X(int, trunkGrowTicks) \
+    X(float, saplingGrowGH) \
+    X(float, trunkGrowGH) \
     X(bool, saplingRegrowthEnabled) \
     X(float, saplingRegrowthChance) \
     X(int, saplingMinTreeDistance) \
@@ -273,7 +273,7 @@ bool SaveWorld(const char* filename) {
     // Tree growth timer grid
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
-            fwrite(growthTimer[z][y], sizeof(int), gridWidth, f);
+            fwrite(growthTimer[z][y], sizeof(float), gridWidth, f);
         }
     }
 
@@ -656,9 +656,20 @@ bool LoadWorld(const char* filename) {
     }
 
     // Tree growth timer grid
-    for (int z = 0; z < gridDepth; z++) {
-        for (int y = 0; y < gridHeight; y++) {
-            fread(growthTimer[z][y], sizeof(int), gridWidth, f);
+    if (version >= 56) {
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(growthTimer[z][y], sizeof(float), gridWidth, f);
+            }
+        }
+    } else {
+        // v55 and earlier: int grid, discard and zero out
+        int oldRow[MAX_GRID_WIDTH];
+        for (int z = 0; z < gridDepth; z++) {
+            for (int y = 0; y < gridHeight; y++) {
+                fread(oldRow, sizeof(int), gridWidth, f);
+                memset(growthTimer[z][y], 0, sizeof(float) * gridWidth);
+            }
         }
     }
 
@@ -1201,9 +1212,33 @@ bool LoadWorld(const char* filename) {
     }
     
     // Simulation settings (generated from SETTINGS_TABLE macro)
-    #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
-    SETTINGS_TABLE(READ_SETTING)
-    #undef READ_SETTING
+    if (version < 56) {
+        // v55 and earlier: saplingGrowTicks/trunkGrowTicks were int fields.
+        // The X-macro will read 4 bytes of int data into the float variable.
+        // We use a separate V53 settings table to read old format, then convert.
+        #define READ_SETTING_V53(type, name) fread(&name, sizeof(type), 1, f);
+        // Read all fields before Trees section using their current types
+        // (they haven't changed), then read the two tree ints, then continue.
+        // Actually simpler: since int and float are both 4 bytes, just read
+        // the raw bytes, then reinterpret the tree fields.
+        SETTINGS_TABLE(READ_SETTING_V53)
+        #undef READ_SETTING_V53
+
+        // The two tree fields were read as float but contain int bit patterns.
+        // Reinterpret and convert: oldTicks / 60.0 * 0.4
+        int oldSaplingTicks, oldTrunkTicks;
+        memcpy(&oldSaplingTicks, &saplingGrowGH, sizeof(int));
+        memcpy(&oldTrunkTicks, &trunkGrowGH, sizeof(int));
+        saplingGrowGH = (float)oldSaplingTicks / 60.0f * 0.4f;
+        trunkGrowGH = (float)oldTrunkTicks / 60.0f * 0.4f;
+        // Clamp to sane defaults if conversion produces garbage
+        if (saplingGrowGH <= 0.0f || saplingGrowGH > 1000.0f) saplingGrowGH = 0.667f;
+        if (trunkGrowGH <= 0.0f || trunkGrowGH > 1000.0f) trunkGrowGH = 0.333f;
+    } else {
+        #define READ_SETTING(type, name) fread(&name, sizeof(type), 1, f);
+        SETTINGS_TABLE(READ_SETTING)
+        #undef READ_SETTING
+    }
 
     // Simulation accumulators (static locals, loaded via setters)
     float accum;

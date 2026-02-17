@@ -1,6 +1,7 @@
 #include "water.h"
 #include "steam.h"
 #include "temperature.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -14,7 +15,7 @@ WaterCell waterGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 // Global state
 bool waterEnabled = true;
 bool waterEvaporationEnabled = true;
-float waterEvapInterval = WATER_EVAP_INTERVAL_DEFAULT;
+float waterEvapInterval = 4.0f;  // 4.0 game-hours (was 10.0 game-seconds at dayLength=60)
 int waterUpdateCount = 0;
 
 // Speed multipliers for movers walking through water
@@ -25,8 +26,8 @@ float waterSpeedDeep = 0.35f;       // Level 5-7: major slowdown (65%)
 // Mud speed multiplier
 float mudSpeedMultiplier = 0.6f;    // 40% slowdown on muddy terrain
 
-// Wetness sync interval (how often water sets cell wetness on soil)
-float wetnessSyncInterval = 2.0f;
+// Wetness sync interval (game-hours, how often water sets cell wetness on soil)
+float wetnessSyncInterval = 0.8f;  // 0.8 game-hours (was 2.0 game-seconds)
 
 // Internal accumulators
 static float waterEvapAccum = 0.0f;
@@ -615,8 +616,9 @@ void UpdateWater(void) {
     waterEvapAccum += gameDeltaTime;
     
     // Check if evaporation interval has elapsed
-    bool doEvap = waterEvapAccum >= waterEvapInterval;
-    if (doEvap) waterEvapAccum -= waterEvapInterval;
+    float evapIntervalGS = GameHoursToGameSeconds(waterEvapInterval);
+    bool doEvap = waterEvapAccum >= evapIntervalGS;
+    if (doEvap) waterEvapAccum -= evapIntervalGS;
     
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {
@@ -652,8 +654,9 @@ void UpdateWater(void) {
     
     // Sync water presence to cell wetness on soil (interval-based)
     wetnessSyncAccum += gameDeltaTime;
-    if (wetnessSyncAccum >= wetnessSyncInterval) {
-        wetnessSyncAccum -= wetnessSyncInterval;
+    float wetnessIntervalGS = GameHoursToGameSeconds(wetnessSyncInterval);
+    if (wetnessSyncAccum >= wetnessIntervalGS) {
+        wetnessSyncAccum -= wetnessIntervalGS;
         for (int z = 0; z < gridDepth; z++) {
             for (int y = 0; y < gridHeight; y++) {
                 for (int x = 0; x < gridWidth; x++) {
@@ -775,7 +778,7 @@ void UpdateWaterFreezing(void) {
 static float rainTimeRemaining = 0.0f;
 static float rainSpawnAccum = 0.0f;
 static int rainIntensity = 0;         // cells per spawn wave
-static float rainSpawnInterval = 0.3f; // game-seconds between waves
+static float rainSpawnInterval = 0.12f; // game-hours between waves (was 0.3 game-seconds)
 
 bool IsRaining(void) { return rainTimeRemaining > 0.0f; }
 
@@ -806,7 +809,8 @@ void SpawnSkyWater(int coverage) {
     int totalCells = gridWidth * gridHeight;
     // Cells per wave = coverage% of map / number of waves in duration
     float duration = 30.0f;
-    int totalWaves = (int)(duration / rainSpawnInterval);
+    float rainSpawnIntervalGS = GameHoursToGameSeconds(rainSpawnInterval);
+    int totalWaves = (int)(duration / rainSpawnIntervalGS);
     if (totalWaves < 1) totalWaves = 1;
     int totalDrops = (totalCells * coverage) / 100;
     
@@ -822,8 +826,9 @@ void UpdateRain(void) {
     rainTimeRemaining -= gameDeltaTime;
     rainSpawnAccum += gameDeltaTime;
     
-    if (rainSpawnAccum >= rainSpawnInterval) {
-        rainSpawnAccum -= rainSpawnInterval;
+    float rainSpawnIntervalGS = GameHoursToGameSeconds(rainSpawnInterval);
+    if (rainSpawnAccum >= rainSpawnIntervalGS) {
+        rainSpawnAccum -= rainSpawnIntervalGS;
         SpawnRainWave(rainIntensity);
     }
     

@@ -100,8 +100,8 @@ describe(lightning_strike_basics) {
         
         // Reset lightning timer to force immediate strike check
         ResetLightningTimer();
-        SetLightningInterval(0.1f);
-        
+        SetLightningInterval(0.04f);  // 0.04 GH = 0.1s at dayLength=60
+
         // UpdateLightning should eventually strike something
         int fireFound = 0;
         for (int tick = 0; tick < 200 && !fireFound; tick++) {
@@ -132,7 +132,7 @@ describe(lightning_strike_basics) {
         
         // Force many lightning strikes
         ResetLightningTimer();
-        SetLightningInterval(0.01f);
+        SetLightningInterval(0.004f);
         for (int i = 0; i < 500; i++) {
             gameDeltaTime = 0.01f;
             UpdateLightning(gameDeltaTime);
@@ -167,8 +167,8 @@ describe(lightning_strike_basics) {
         weatherState.intensity = 1.0f;
         
         ResetLightningTimer();
-        SetLightningInterval(0.5f);
-        
+        SetLightningInterval(0.2f);
+
         // Run many ticks - eventually something should catch fire
         int anyFire = 0;
         for (int i = 0; i < 500 && !anyFire; i++) {
@@ -199,7 +199,7 @@ describe(lightning_strike_basics) {
         weatherState.intensity = 1.0f;
         
         ResetLightningTimer();
-        SetLightningInterval(0.01f);
+        SetLightningInterval(0.004f);
         for (int i = 0; i < 1000; i++) {
             gameDeltaTime = 0.01f;
             UpdateLightning(gameDeltaTime);
@@ -215,8 +215,8 @@ describe(lightning_strike_basics) {
         weatherState.current = WEATHER_THUNDERSTORM;
         weatherState.intensity = 1.0f;
         
-        // Set a long interval
-        SetLightningInterval(10.0f);
+        // Set a long interval (4 game-hours = 10 game-seconds at dayLength=60)
+        SetLightningInterval(4.0f);
         ResetLightningTimer();
         
         // 5 seconds should NOT trigger
@@ -244,7 +244,7 @@ describe(lightning_flash_visuals) {
         weatherState.current = WEATHER_THUNDERSTORM;
         weatherState.intensity = 1.0f;
         
-        SetLightningInterval(0.5f);  // Set interval first
+        SetLightningInterval(0.2f);  // Set interval first (0.2 GH = 0.5s at dayLength=60)
         ResetLightningTimer();        // Then reset to that interval
         
         float flashBefore = GetLightningFlashIntensity();

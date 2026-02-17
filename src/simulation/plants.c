@@ -3,6 +3,7 @@
 // Growth is season-modulated: summer=1.0, spring=0.3, autumn=0.5, winter=0.0
 
 #include "plants.h"
+#include "balance.h"
 #include "weather.h"
 #include "../entities/items.h"
 #include "../entities/mover.h"  // CELL_SIZE
@@ -11,8 +12,8 @@
 Plant plants[MAX_PLANTS];
 int plantCount = 0;
 
-// Growth rate: base seconds per stage transition (at summer 1.0x)
-#define BERRY_BUSH_GROWTH_TIME 120.0f  // 2 game-minutes per stage at full rate
+// Growth rate: game-hours per stage transition (at summer 1.0x)
+#define BERRY_BUSH_GROWTH_GH 48.0f  // Game-hours per stage at full rate
 
 static float SeasonalGrowthRate(void) {
     Season season = GetCurrentSeason();
@@ -90,7 +91,7 @@ void PlantsTick(float dt) {
     float rate = SeasonalGrowthRate();
     if (rate <= 0.0f) return;  // No growth in winter
 
-    float increment = (dt * rate) / BERRY_BUSH_GROWTH_TIME;
+    float increment = (dt * rate) / GameHoursToGameSeconds(BERRY_BUSH_GROWTH_GH);
 
     for (int i = 0; i < plantCount; i++) {
         Plant* p = &plants[i];

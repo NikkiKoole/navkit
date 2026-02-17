@@ -85,6 +85,7 @@ test_stacking_SRC    := tests/test_stacking.c
 test_containers_SRC  := tests/test_containers.c
 test_sleep_SRC       := tests/test_sleep.c
 test_furniture_SRC   := tests/test_furniture.c
+test_balance_SRC     := tests/test_balance.c
 
 # ---------------------------------------------------------------------------
 # Unity build dependency tracking
@@ -297,6 +298,11 @@ test_furniture: $(TEST_UNITY_OBJ)
 	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_furniture_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
 	-@./$(BINDIR)/test_furniture -q
 
+test_balance: $(TEST_UNITY_OBJ)
+	@echo "Running balance tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_balance_SRC) $(TEST_UNITY_OBJ) $(LDFLAGS)
+	-@./$(BINDIR)/test_balance -q
+
 # Soundsystem tests - standalone audio library tests
 test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
@@ -305,7 +311,7 @@ test_soundsystem: $(BINDIR)
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
-test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_soundsystem
+test: test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_trees test_terrain test_grid_audit test_floordirt test_mud test_seasons test_weather test_wind test_snow test_thunderstorm test_lighting test_workshop_linking test_hunger test_stacking test_containers test_sleep test_furniture test_balance test_soundsystem
 
 # Full stress tests - mover tests use 20 iterations
 test-full: $(TEST_UNITY_OBJ)
@@ -456,4 +462,4 @@ asan: $(RAYLIB_LIB) | $(BINDIR)
 release: $(RAYLIB_LIB) | $(BINDIR)
 	$(CC) -std=c11 -O3 -DNDEBUG -I. -Wall -Wextra -o $(BINDIR)/path_release $(path_SRC) $(LDFLAGS)
 
-.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows
+.PHONY: all clean clean-raylib clean-atlas test test-legacy test-both test_pathing test_mover test_steering test_jobs test_water test_groundwear test_fire test_temperature test_steam test_materials test_time test_time_specs test_high_speed test_soundsystem test_floordirt test_lighting test_weather test_wind test_hunger test_balance path steer crowd soundsystem-demo sound-phrase-wav asan debug fast release slices atlas embed_font embed scw_embed sample_embed path8 path16 path-sound bench bench_jobs bench_items windows

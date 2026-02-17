@@ -303,7 +303,7 @@ describe(high_speed_simulation_stability) {
             }
         }
         
-        fireSpreadInterval = 1.0f;
+        fireSpreadInterval = 0.4f;
         fireSpreadBase = 30;
         fireSpreadPerLevel = 10;
         fireEnabled = true;
@@ -333,8 +333,8 @@ describe(high_speed_simulation_stability) {
         ResetTestState(12345);
         
         SetAmbientSurfaceTemp(20);
-        heatTransferInterval = 0.1f;
-        tempDecayInterval = 0.5f;
+        heatTransferInterval = 0.04f;
+        tempDecayInterval = 0.2f;
         temperatureEnabled = true;
         gameSpeed = 100.0f;
         

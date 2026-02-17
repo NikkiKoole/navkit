@@ -1,6 +1,7 @@
 #include "weather.h"
 #include "temperature.h"
 #include "water.h"
+#include "balance.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
@@ -26,11 +27,11 @@ int seasonalAmplitude = 25;                  // Temp swing ±25 from base (winte
 
 WeatherState weatherState;
 bool weatherEnabled = false;  // Off by default; InitWeather() enables it
-float weatherMinDuration = 30.0f;
-float weatherMaxDuration = 120.0f;
-float rainWetnessInterval = 5.0f;
-float heavyRainWetnessInterval = 2.0f;
-float intensityRampSpeed = 0.2f;
+float weatherMinDuration = 12.0f;          // 12.0 game-hours (was 30.0 game-seconds)
+float weatherMaxDuration = 48.0f;          // 48.0 game-hours (was 120.0 game-seconds)
+float rainWetnessInterval = 2.0f;          // 2.0 game-hours (was 5.0 game-seconds)
+float heavyRainWetnessInterval = 0.8f;     // 0.8 game-hours (was 2.0 game-seconds)
+float intensityRampSpeed = 0.5f;           // 0.5 per game-hour (was 0.2 per game-second, rate conversion)
 
 float windDryingMultiplier = 1.5f;  // How much wind accelerates drying (default 1.5x at strength 3)
 
@@ -133,7 +134,9 @@ void InitWeather(void) {
     memset(&weatherState, 0, sizeof(weatherState));
     weatherState.current = WEATHER_CLEAR;
     weatherState.previous = WEATHER_CLEAR;
-    weatherState.transitionTimer = weatherMinDuration + ((float)(rand() % 1000) / 1000.0f) * (weatherMaxDuration - weatherMinDuration);
+    float minDurGS = GameHoursToGameSeconds(weatherMinDuration);
+    float maxDurGS = GameHoursToGameSeconds(weatherMaxDuration);
+    weatherState.transitionTimer = minDurGS + ((float)(rand() % 1000) / 1000.0f) * (maxDurGS - minDurGS);
     weatherState.transitionDuration = weatherState.transitionTimer;
     weatherState.intensity = 1.0f;
     weatherState.windDirX = 0.0f;
@@ -147,7 +150,7 @@ void InitWeather(void) {
     targetWindStrength = 0.0f;
     
     // Initialize lightning (Phase 5)
-    lightningTimer = lightningInterval;
+    lightningTimer = GameHoursToGameSeconds(lightningInterval);
     lightningFlashTimer = 0.0f;
 }
 
@@ -265,12 +268,13 @@ static void ApplyRainWetness(void) {
     WeatherType w = weatherState.current;
     if (w != WEATHER_RAIN && w != WEATHER_HEAVY_RAIN && w != WEATHER_THUNDERSTORM) return;
 
-    float interval = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM)
+    float intervalGH = (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM)
                      ? heavyRainWetnessInterval : rainWetnessInterval;
+    float intervalGS = GameHoursToGameSeconds(intervalGH);
 
     rainWetnessAccum += gameDeltaTime;
-    if (rainWetnessAccum < interval) return;
-    rainWetnessAccum -= interval;
+    if (rainWetnessAccum < intervalGS) return;
+    rainWetnessAccum -= intervalGS;
 
     // Iterate surface cells: find topmost solid ground for each (x,y)
     for (int y = 0; y < gridHeight; y++) {
@@ -356,7 +360,7 @@ void UpdateWeather(void) {
 
     // Ramp intensity toward 1.0
     if (weatherState.intensity < 1.0f) {
-        weatherState.intensity += intensityRampSpeed * gameDeltaTime;
+        weatherState.intensity += RatePerGameSecond(intensityRampSpeed) * gameDeltaTime;
         if (weatherState.intensity > 1.0f) weatherState.intensity = 1.0f;
     }
 
@@ -366,8 +370,10 @@ void UpdateWeather(void) {
         // Time for a weather change
         weatherState.previous = weatherState.current;
         weatherState.current = PickNextWeather(weatherState.current);
-        weatherState.transitionTimer = weatherMinDuration +
-            ((float)(rand() % 1000)) / 1000.0f * (weatherMaxDuration - weatherMinDuration);
+        float minDurGS = GameHoursToGameSeconds(weatherMinDuration);
+        float maxDurGS = GameHoursToGameSeconds(weatherMaxDuration);
+        weatherState.transitionTimer = minDurGS +
+            ((float)(rand() % 1000)) / 1000.0f * (maxDurGS - minDurGS);
         weatherState.transitionDuration = weatherState.transitionTimer;
         weatherState.intensity = 0.0f;  // Start ramping up
     }
@@ -415,9 +421,9 @@ void SetWeatherWindAccum(float v) { weatherWindAccum = v; }
 // Same layout as vegetationGrid
 uint8_t snowGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 
-// Snow tunables
-float snowAccumulationRate = 0.1f;    // Seconds per snow level increase (default 0.1 = 10s per level)
-float snowMeltingRate = 0.05f;        // Seconds per snow level decrease (default 0.05 = 20s per level)
+// Snow tunables (game-hours): 1/rate = game-hours per snow level change
+float snowAccumulationRate = 0.25f;   // 1/0.25 = 4 GH per level (was 0.1, 1/0.1 = 10 game-seconds)
+float snowMeltingRate = 0.125f;       // 1/0.125 = 8 GH per level (was 0.05, 1/0.05 = 20 game-seconds)
 
 // Internal accumulator for snow changes
 static float snowAccum = 0.0f;
@@ -450,7 +456,8 @@ void UpdateSnow(void) {
     if (gameDeltaTime <= 0.0f) return;
     
     snowAccum += gameDeltaTime;
-    if (snowAccum < 0.1f) return;  // Update every 0.1 seconds
+    float snowTickGS = GameHoursToGameSeconds(0.04f);  // Update every 0.04 game-hours
+    if (snowAccum < snowTickGS) return;
     float elapsedTime = snowAccum;
     snowAccum = 0.0f;
     
@@ -474,7 +481,7 @@ void UpdateSnow(void) {
                 // Snow accumulation
                 if (isSnowing && exposed && isFreezing && currentSnow < 3) {
                     snowAccumGrid[z][y][x] += elapsedTime * weatherState.intensity;
-                    float threshold = 1.0f / snowAccumulationRate;  // e.g., 0.1 -> 10 seconds per level
+                    float threshold = GameHoursToGameSeconds(1.0f / snowAccumulationRate);
                     if (snowAccumGrid[z][y][x] >= threshold) {
                         snowAccumGrid[z][y][x] = 0.0f;
                         SetSnowLevel(x, y, z, currentSnow + 1);
@@ -484,7 +491,7 @@ void UpdateSnow(void) {
                 // Snow melting
                 if (!isFreezing && currentSnow > 0) {
                     snowAccumGrid[z][y][x] += elapsedTime;
-                    float threshold = 1.0f / snowMeltingRate;  // e.g., 0.05 -> 20 seconds per level
+                    float threshold = GameHoursToGameSeconds(1.0f / snowMeltingRate);
                     if (snowAccumGrid[z][y][x] >= threshold) {
                         snowAccumGrid[z][y][x] = 0.0f;
                         SetSnowLevel(x, y, z, currentSnow - 1);
@@ -595,14 +602,14 @@ float GetCloudShadow(int x, int y, float time) {
 // LIGHTNING SYSTEM (Phase 5)
 // =============================================================================
 
-float lightningInterval = 5.0f;  // Default 5 seconds between strikes
+float lightningInterval = 2.0f;  // Default 2.0 game-hours between strikes
 
-void SetLightningInterval(float seconds) {
-    lightningInterval = seconds;
+void SetLightningInterval(float gameHours) {
+    lightningInterval = gameHours;
 }
 
 void ResetLightningTimer(void) {
-    lightningTimer = lightningInterval;
+    lightningTimer = GameHoursToGameSeconds(lightningInterval);
 }
 
 void TriggerLightningFlash(void) {
@@ -710,13 +717,13 @@ void UpdateLightning(float dt) {
     
     // Only strike during thunderstorms
     if (weatherState.current != WEATHER_THUNDERSTORM) {
-        lightningTimer = lightningInterval;  // Reset timer when not storming
+        lightningTimer = GameHoursToGameSeconds(lightningInterval);  // Reset timer when not storming
         return;
     }
-    
+
     lightningTimer -= dt;
     if (lightningTimer <= 0.0f) {
-        lightningTimer = lightningInterval;  // Reset for next strike
+        lightningTimer = GameHoursToGameSeconds(lightningInterval);  // Reset for next strike
         TryLightningStrike();  // This triggers a new flash
     }
 }

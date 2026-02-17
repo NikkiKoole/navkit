@@ -54,20 +54,20 @@ typedef struct {
     float unreachableCooldown;  // Seconds before retrying if unreachable
 } Designation;
 
-// Work time for mining/channeling/removing (in seconds at 60 ticks/sec)
-#define MINE_WORK_TIME 2.0f
-#define CHANNEL_WORK_TIME 2.0f
-#define DIG_RAMP_WORK_TIME 2.0f      // Similar to mining - carving a ramp
-#define REMOVE_FLOOR_WORK_TIME 1.0f  // Faster than mining - just removing
-#define REMOVE_RAMP_WORK_TIME 1.0f   // Similar to floor removal
-#define CHOP_WORK_TIME 3.0f          // Chopping trees takes longer
-#define CHOP_FELLED_WORK_TIME 2.0f   // Chopping fallen trunks
-#define GATHER_SAPLING_WORK_TIME 1.0f // Quick to dig up a sapling
-#define PLANT_SAPLING_WORK_TIME 1.5f  // Planting takes a bit longer
-#define GATHER_GRASS_WORK_TIME 1.0f   // Quick to gather grass
-#define GATHER_TREE_WORK_TIME 2.0f   // Gather materials from living tree
-#define CLEAN_WORK_TIME 3.0f          // Cleaning a dirty floor
-#define HARVEST_BERRY_WORK_TIME 1.0f  // Picking berries from bush
+// Work time for mining/channeling/removing (in game-hours, converted via GameHoursToGameSeconds at usage)
+#define MINE_WORK_TIME 0.8f
+#define CHANNEL_WORK_TIME 0.8f
+#define DIG_RAMP_WORK_TIME 0.8f      // Similar to mining - carving a ramp
+#define REMOVE_FLOOR_WORK_TIME 0.4f  // Faster than mining - just removing
+#define REMOVE_RAMP_WORK_TIME 0.4f   // Similar to floor removal
+#define CHOP_WORK_TIME 1.2f          // Chopping trees takes longer
+#define CHOP_FELLED_WORK_TIME 0.8f   // Chopping fallen trunks
+#define GATHER_SAPLING_WORK_TIME 0.4f // Quick to dig up a sapling
+#define PLANT_SAPLING_WORK_TIME 0.6f  // Planting takes a bit longer
+#define GATHER_GRASS_WORK_TIME 0.4f   // Quick to gather grass
+#define GATHER_TREE_WORK_TIME 0.8f   // Gather materials from living tree
+#define CLEAN_WORK_TIME 1.2f          // Cleaning a dirty floor
+#define HARVEST_BERRY_WORK_TIME 0.4f  // Picking berries from bush
 
 // Storage: one designation per cell (sparse would be better for huge maps, but this is simple)
 extern Designation designations[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];

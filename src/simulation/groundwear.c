@@ -1,5 +1,6 @@
 #include "groundwear.h"
 #include "weather.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/material.h"
@@ -25,7 +26,7 @@ int wearGrassToDirt = WEAR_GRASS_TO_DIRT_DEFAULT;
 int wearDirtToGrass = WEAR_DIRT_TO_GRASS_DEFAULT;
 int wearTrampleAmount = WEAR_TRAMPLE_AMOUNT_DEFAULT;
 int wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
-float wearRecoveryInterval = 5.0f;  // Decay wear every 5 game-seconds
+float wearRecoveryInterval = 2.0f;  // Decay wear every 2.0 game-hours
 
 // Sapling regrowth settings
 bool saplingRegrowthEnabled = false;
@@ -165,8 +166,9 @@ void UpdateGroundWear(void) {
     wearRecoveryAccum += gameDeltaTime;
     
     // Only decay wear when interval elapses
-    if (wearRecoveryAccum < wearRecoveryInterval) return;
-    wearRecoveryAccum -= wearRecoveryInterval;
+    float wearIntervalGS = GameHoursToGameSeconds(wearRecoveryInterval);
+    if (wearRecoveryAccum < wearIntervalGS) return;
+    wearRecoveryAccum -= wearIntervalGS;
     
     // Process all cells at all z-levels
     for (int z = 0; z < gridDepth; z++) {

@@ -1,6 +1,7 @@
 #include "animals.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
+#include "../core/time.h"
 #include "../simulation/water.h"
 #include "../simulation/groundwear.h"
 #include "../entities/mover.h"  // For CELL_SIZE, movers[], moverCount
@@ -195,7 +196,7 @@ static void BehaviorSimpleGrazer(Animal* a, float dt) {
             }
         } else {
             // Move toward target
-            float moveAmount = a->speed * dt;
+            float moveAmount = a->speed * (60.0f / dayLength) * dt;
             if (moveAmount > dist) moveAmount = dist;
             a->x += (dx / dist) * moveAmount;
             a->y += (dy / dist) * moveAmount;
@@ -327,12 +328,13 @@ static void BehaviorSteeringGrazer(Animal* a, float dt) {
     Boid boid;
     boid.pos = (Vector2){ a->x, a->y };
     boid.vel = (Vector2){ a->velX, a->velY };
+    float animalSpeedScale = 60.0f / dayLength;
     if (panicked) {
-        boid.maxSpeed = STEERING_MAX_SPEED * 1.3f;  // Sprint when panicked
-        boid.maxForce = STEERING_MAX_FORCE * 1.5f;   // Sharper turns
+        boid.maxSpeed = STEERING_MAX_SPEED * 1.3f * animalSpeedScale;
+        boid.maxForce = STEERING_MAX_FORCE * 1.5f * animalSpeedScale;
     } else {
-        boid.maxSpeed = STEERING_MAX_SPEED;
-        boid.maxForce = STEERING_MAX_FORCE;
+        boid.maxSpeed = STEERING_MAX_SPEED * animalSpeedScale;
+        boid.maxForce = STEERING_MAX_FORCE * animalSpeedScale;
     }
 
     ctx_clear(&steeringCtx);
@@ -558,8 +560,9 @@ static void BehaviorPredator(Animal* a, float dt) {
     Boid boid;
     boid.pos = (Vector2){ a->x, a->y };
     boid.vel = (Vector2){ a->velX, a->velY };
-    boid.maxSpeed = PREDATOR_MAX_SPEED;
-    boid.maxForce = PREDATOR_MAX_FORCE;
+    float predatorSpeedScale = 60.0f / dayLength;
+    boid.maxSpeed = PREDATOR_MAX_SPEED * predatorSpeedScale;
+    boid.maxForce = PREDATOR_MAX_FORCE * predatorSpeedScale;
 
     ctx_clear(&steeringCtx);
 

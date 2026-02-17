@@ -28,7 +28,7 @@ static void SetupDirtGrid(void) {
     InitFloorDirt();
     InitTime();
     // Fast wetness sync for testing
-    wetnessSyncInterval = 0.5f;
+    wetnessSyncInterval = 0.2f;  // 0.2 game-hours (= 0.5s at dayLength=60)
 }
 
 // =============================================================================

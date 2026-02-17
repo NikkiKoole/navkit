@@ -14,6 +14,7 @@
 #include "../src/entities/workshops.h"
 #include "../src/world/designations.h"
 #include "../src/simulation/trees.h"
+#include "../src/simulation/balance.h"
 #include "../src/core/time.h"
 
 #include <string.h>
@@ -8274,7 +8275,7 @@ describe(job_lifecycle) {
         job->fuelItem = -1;
         job->step = CRAFT_STEP_WORKING;
         job->progress = 0.0f;
-        job->workRequired = 4.0f;
+        job->workRequired = 1.6f;
         m->currentJobId = jobId;
 
         // Run until crafting completes (job finishes)
@@ -8870,7 +8871,7 @@ describe(workshop_lifecycle) {
         job->fuelItem = -1;
         job->step = CRAFT_STEP_WORKING;
         job->progress = 0.0f;
-        job->workRequired = 2.0f;  // recipe 1 work time
+        job->workRequired = 0.8f;  // recipe 1 work time
         m->currentJobId = jobId;
 
         // Player removes bill #0 (Saw Planks)
@@ -8891,7 +8892,7 @@ describe(workshop_lifecycle) {
         // because that would mean it's executing the WRONG recipe
         
         // The bug: job->targetBillIdx=1 now points to the OLD bill #2 (Saw Planks, recipe 0)
-        // But the job was set up for recipe 1 (Cut Sticks, workRequired=2.0)
+        // But the job was set up for recipe 1 (Cut Sticks, workRequired=0.8)
         // This creates inconsistency
         
         Job* checkJob = GetJob(jobId);
@@ -8902,8 +8903,8 @@ describe(workshop_lifecycle) {
             // More importantly: if the bill shifted, the recipe should still match
             // what the job was set up for. Otherwise the mover is crafting the wrong thing!
             Bill* currentBill = &ws->bills[job->targetBillIdx];
-            // The job was set up for "Cut Sticks" (recipe 1, workRequired 2.0)
-            // If it's now pointing to "Saw Planks" (recipe 0, workRequired 4.0), that's wrong!
+            // The job was set up for "Cut Sticks" (recipe 1, workRequired 0.8)
+            // If it's now pointing to "Saw Planks" (recipe 0, workRequired 1.6), that's wrong!
             expect(currentBill->recipeIdx == 1);  // Should still be "Cut Sticks"
         }
         // OR the job should have been cancelled/failed (mover is idle)
@@ -11179,7 +11180,7 @@ describe(semi_passive_workshop) {
         WorkGiver_IgniteWorkshop(0);
 
         // Tick until ignition completes
-        float activeTime = charcoalPitRecipes[0].workRequired;
+        float activeTime = GameHoursToGameSeconds(charcoalPitRecipes[0].workRequired);
         int ticks = (int)(activeTime / TICK_DT) + 100;  // extra margin
         for (int i = 0; i < ticks; i++) {
             JobsTick();
@@ -11251,7 +11252,7 @@ describe(semi_passive_workshop) {
         ws->passiveReady = true;
 
         // Tick until passive timer completes
-        float passiveTime = charcoalPitRecipes[0].passiveWorkRequired;
+        float passiveTime = GameHoursToGameSeconds(charcoalPitRecipes[0].passiveWorkRequired);
         int ticks = (int)(passiveTime / TICK_DT) + 100;
         for (int i = 0; i < ticks; i++) {
             PassiveWorkshopsTick(TICK_DT);
@@ -11316,7 +11317,7 @@ describe(semi_passive_workshop) {
         WorkGiver_IgniteWorkshop(0);
 
         // Tick until ignition completes
-        float activeTime = charcoalPitRecipes[0].workRequired;
+        float activeTime = GameHoursToGameSeconds(charcoalPitRecipes[0].workRequired);
         int ticks = (int)(activeTime / TICK_DT) + 100;
         for (int i = 0; i < ticks; i++) {
             JobsTick();
@@ -11354,7 +11355,7 @@ describe(semi_passive_workshop) {
         expect(ws->passiveReady == false);
 
         // Tick until completion
-        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        float passiveTime = GameHoursToGameSeconds(dryingRackRecipes[0].passiveWorkRequired);
         int ticks = (int)(passiveTime / TICK_DT) + 100;
         for (int i = 0; i < ticks; i++) {
             PassiveWorkshopsTick(TICK_DT);
@@ -11418,9 +11419,9 @@ describe(semi_passive_workshop) {
         }
         moverCount = 4;
 
-        // Run sim — passive timer is 10s = 600 ticks, plus delivery time
+        // Run sim — passive timer plus delivery time
         // Should complete well within 3000 ticks
-        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        float passiveTime = GameHoursToGameSeconds(dryingRackRecipes[0].passiveWorkRequired);
         int maxTicks = (int)(passiveTime / TICK_DT) + 3000;
 
         bool completed = false;
@@ -11483,8 +11484,8 @@ describe(semi_passive_workshop) {
         }
         moverCount = 4;
 
-        // 60s burn + delivery time, should complete well within 6000 ticks (100s)
-        float passiveTime = charcoalPitRecipes[0].passiveWorkRequired;
+        // Passive burn + delivery time, should complete well within extra ticks
+        float passiveTime = GameHoursToGameSeconds(charcoalPitRecipes[0].passiveWorkRequired);
         int maxTicks = (int)(passiveTime / TICK_DT) + 3000;
 
         bool completed = false;
@@ -11593,7 +11594,7 @@ describe(semi_passive_workshop) {
         moverCount = 1;
 
         // Run sim — hauler delivers grass, then passive timer should complete
-        float passiveTime = dryingRackRecipes[0].passiveWorkRequired;
+        float passiveTime = GameHoursToGameSeconds(dryingRackRecipes[0].passiveWorkRequired);
         int maxTicks = (int)(passiveTime / TICK_DT) + 2000;  // delivery time + full passive timer
 
         bool completed = false;

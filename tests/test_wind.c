@@ -124,8 +124,8 @@ describe(wind_smoke_bias) {
             for (int i = 0; i < 20; i++) {
                 SetSmokeLevel(cx, cy, cz, 3);  // Keep replenishing center
                 gameDeltaTime = TICK_DT;
-                smokeRiseInterval = 999.0f;  // Disable rising
-                smokeDissipationTime = 999.0f;  // Disable dissipation
+                smokeRiseInterval = 400.0f;  // Disable rising
+                smokeDissipationTime = 400.0f;  // Disable dissipation
                 if (test_verbose && trial == 0 && i == 0) {
                     printf("Before UpdateSmoke: center=%d\n",
                            GetSmokeLevel(cx, cy, cz));
@@ -180,8 +180,8 @@ describe(wind_smoke_bias) {
 
             for (int i = 0; i < 10; i++) {
                 gameDeltaTime = TICK_DT;
-                smokeRiseInterval = 999.0f;
-                smokeDissipationTime = 999.0f;
+                smokeRiseInterval = 400.0f;
+                smokeDissipationTime = 400.0f;
                 UpdateSmoke();
             }
 
@@ -235,7 +235,7 @@ describe(wind_fire_spread) {
             fireGrid[0][cy][cx].fuel = 100;
 
             // Run fire spread for fewer ticks
-            fireSpreadInterval = TICK_DT;  // Spread every tick
+            fireSpreadInterval = TICK_DT * 0.4f;  // Spread every tick
             for (int i = 0; i < 5; i++) {  // Only 5 ticks, not 30
                 gameDeltaTime = TICK_DT;
                 UpdateFire();
@@ -276,7 +276,7 @@ describe(wind_fire_spread) {
             SetFireLevel(cx, cy, 0, 5);
             fireGrid[0][cy][cx].fuel = 100;
 
-            fireSpreadInterval = TICK_DT;
+            fireSpreadInterval = TICK_DT * 0.4f;
             for (int i = 0; i < 30; i++) {
                 gameDeltaTime = TICK_DT;
                 UpdateFire();
@@ -304,7 +304,7 @@ describe(wind_drying) {
         SetupWindGrid();
         SetWind(0.0f, 0.0f, 0.0f);
         groundWearEnabled = true;
-        wearRecoveryInterval = TICK_DT;  // Process every tick
+        wearRecoveryInterval = TICK_DT * 0.4f;  // Process every tick
 
         // Wet some cells
         for (int x = 0; x < 8; x++) {
@@ -326,7 +326,7 @@ describe(wind_drying) {
         SetupWindGrid();
         SetWind(1.0f, 0.0f, 3.0f);
         groundWearEnabled = true;
-        wearRecoveryInterval = TICK_DT;
+        wearRecoveryInterval = TICK_DT * 0.4f;
 
         for (int x = 0; x < 8; x++) {
             SET_CELL_WETNESS(x, 3, 0, 3);
@@ -350,7 +350,7 @@ describe(wind_drying) {
         SetupWindGrid();
         SetWind(1.0f, 0.0f, 3.0f);
         groundWearEnabled = true;
-        wearRecoveryInterval = TICK_DT;
+        wearRecoveryInterval = TICK_DT * 0.4f;
 
         // Place roof over cell (3,3)
         grid[2][3][3] = CELL_WALL;

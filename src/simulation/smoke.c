@@ -1,5 +1,6 @@
 #include "smoke.h"
 #include "weather.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -14,9 +15,9 @@ SmokeCell smokeGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool smokeEnabled = true;
 int smokeUpdateCount = 0;
 
-// Tweakable parameters (game-time based)
-float smokeRiseInterval = 0.1f;      // Rise attempt every 0.1 game-seconds
-float smokeDissipationTime = 5.0f;   // Smoke dissipates over 5 game-seconds per level
+// Tweakable parameters (game-hours, converted to game-seconds at point of use)
+float smokeRiseInterval = 0.04f;     // Rise attempt every 0.04 game-hours
+float smokeDissipationTime = 2.0f;   // Smoke dissipates over 2.0 game-hours per level
 int smokeGenerationRate = 3;         // Fire level / 3 = smoke generated
 
 // Internal accumulators for game-time
@@ -491,14 +492,15 @@ void UpdateSmoke(void) {
     smokeDissipationAccum += gameDeltaTime;
 
     // Check if intervals have elapsed
-    bool doRise = smokeRiseAccum >= smokeRiseInterval;
+    float riseIntervalGS = GameHoursToGameSeconds(smokeRiseInterval);
+    bool doRise = smokeRiseAccum >= riseIntervalGS;
     // Dissipation interval is per level, so we check against smokeDissipationTime / SMOKE_MAX_LEVEL
-    float dissipationInterval = smokeDissipationTime / (float)SMOKE_MAX_LEVEL;
+    float dissipationInterval = GameHoursToGameSeconds(smokeDissipationTime) / (float)SMOKE_MAX_LEVEL;
     bool doDissipate = smokeDissipationAccum >= dissipationInterval;
 
     // Reset accumulators when intervals elapse
     if (doRise) {
-        smokeRiseAccum -= smokeRiseInterval;
+        smokeRiseAccum -= riseIntervalGS;
         // Increment generation to reset "has risen" tracking for this tick
         smokeRiseGeneration++;
         if (smokeRiseGeneration == 0) {
