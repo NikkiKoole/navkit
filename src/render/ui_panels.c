@@ -189,12 +189,11 @@ static void StartNewGame(void) {
     GenerateCurrentTerrain();
     hillsSkipBuildings = false;
 
-    // Init all systems
+    // Init all systems — water/sim counters rebuilt AFTER generation to preserve placed water
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitItemSpatialGrid(gridWidth, gridHeight, gridDepth);
     InitDesignations();
-    InitSimActivity();
-    InitWater();
+    RebuildSimActivityCounts();
     InitFire();
     InitSmoke();
     InitSteam();
@@ -434,8 +433,7 @@ void DrawUI(void) {
                 GenerateCurrentTerrain();
                 InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
                 InitDesignations();
-                InitSimActivity();
-                InitWater();
+                RebuildSimActivityCounts();
                 InitFire();
                 InitSmoke();
                 InitSteam();

@@ -2016,7 +2016,6 @@ void GenerateHillsSoilsWater(void) {
     InitGrid();
     SeedTerrain();
     InitPerlin((int)worldSeed);
-    InitWater();
 
     float scale = 0.01f + (GetRandomValue(0, 40) / 1000.0f);          // 0.01 to 0.05
     int octaves = 2 + GetRandomValue(0, 4);                           // 2 to 6
@@ -2088,97 +2087,260 @@ void GenerateHillsSoilsWater(void) {
     }
 
     // --------------------------------------------------------------------
-    // Rivers
+    // Rivers (midpoint displacement + sine meander)
     // --------------------------------------------------------------------
-    float meanderScale = 0.015f;
-    int riverCount = ClampInt(hillsWaterRiverCount, 0, 6);
-    if (gridWidth * gridHeight <= 80 * 80 && riverCount > 1) riverCount = 1;
-    int maxSteps = gridWidth + gridHeight;
+    {
+        int riverCount = ClampInt(hillsWaterRiverCount, 0, 6);
+        if (gridWidth * gridHeight <= 80 * 80 && riverCount > 1) riverCount = 1;
 
-    for (int r = 0; r < riverCount; r++) {
-        int sourceX = -1, sourceY = -1;
-        for (int attempts = 0; attempts < 200; attempts++) {
-            int x = GetRandomValue(2, gridWidth - 3);
-            int y = GetRandomValue(2, gridHeight - 3);
-            int h = heightmap[y * gridWidth + x];
-            float hNorm = (float)(h - minHeight) / (float)(maxHeight - minHeight);
-            if (hNorm > 0.7f) {
-                sourceX = x;
-                sourceY = y;
-                break;
+        for (int r = 0; r < riverCount; r++) {
+            // --- Pick start point: high terrain near a random edge ---
+            int startEdge = GetRandomValue(0, 3); // 0=north, 1=south, 2=west, 3=east
+            int endEdge = (startEdge <= 1) ? (1 - startEdge) : (5 - startEdge); // opposite
+
+            int startX, startY, endX, endY;
+
+            // Find high point near start edge
+            int bestStartH = -1;
+            startX = gridWidth / 2; startY = gridHeight / 2;
+            for (int attempts = 0; attempts < 100; attempts++) {
+                int x, y;
+                switch (startEdge) {
+                    case 0: x = GetRandomValue(2, gridWidth - 3); y = GetRandomValue(2, gridHeight / 4); break;
+                    case 1: x = GetRandomValue(2, gridWidth - 3); y = GetRandomValue(gridHeight * 3 / 4, gridHeight - 3); break;
+                    case 2: x = GetRandomValue(2, gridWidth / 4); y = GetRandomValue(2, gridHeight - 3); break;
+                    default: x = GetRandomValue(gridWidth * 3 / 4, gridWidth - 3); y = GetRandomValue(2, gridHeight - 3); break;
+                }
+                int h = heightmap[y * gridWidth + x];
+                if (h > bestStartH) {
+                    bestStartH = h;
+                    startX = x;
+                    startY = y;
+                }
             }
-        }
-        if (sourceX < 0) continue;
 
-        int cx = sourceX;
-        int cy = sourceY;
-        int riverSeed = GetRandomValue(0, 10000);
+            // Find low point near end edge
+            int bestEndH = maxHeight + 1;
+            endX = gridWidth / 2; endY = gridHeight / 2;
+            for (int attempts = 0; attempts < 100; attempts++) {
+                int x, y;
+                switch (endEdge) {
+                    case 0: x = GetRandomValue(2, gridWidth - 3); y = GetRandomValue(2, gridHeight / 4); break;
+                    case 1: x = GetRandomValue(2, gridWidth - 3); y = GetRandomValue(gridHeight * 3 / 4, gridHeight - 3); break;
+                    case 2: x = GetRandomValue(2, gridWidth / 4); y = GetRandomValue(2, gridHeight - 3); break;
+                    default: x = GetRandomValue(gridWidth * 3 / 4, gridWidth - 3); y = GetRandomValue(2, gridHeight - 3); break;
+                }
+                int h = heightmap[y * gridWidth + x];
+                if (h < bestEndH) {
+                    bestEndH = h;
+                    endX = x;
+                    endY = y;
+                }
+            }
 
-        for (int step = 0; step < maxSteps; step++) {
-            int idx = cy * gridWidth + cx;
+            // --- Midpoint displacement to build control points ---
+            // Start with 2 endpoints, subdivide 4 times
+            #define MAX_RIVER_CTRL 33  // 2 + up to 31 from 4 levels of subdivision
+            float ctrlX[MAX_RIVER_CTRL], ctrlY[MAX_RIVER_CTRL];
+            int ctrlCount = 2;
+            ctrlX[0] = (float)startX; ctrlY[0] = (float)startY;
+            ctrlX[1] = (float)endX;   ctrlY[1] = (float)endY;
 
-            int baseRadius = ClampInt(hillsWaterRiverWidth, 1, 4);
-            int radius = baseRadius + GetRandomValue(-1, 1);
-            radius = ClampInt(radius, 1, 4);
-            int depth = 1 + (radius >= 3 ? 1 : 0);
+            float jitter = (float)(gridWidth > gridHeight ? gridWidth : gridHeight) / 4.0f;
 
-            for (int dy = -radius; dy <= radius; dy++) {
-                for (int dx = -radius; dx <= radius; dx++) {
-                    if (dx*dx + dy*dy > radius*radius) continue;
-                    int nx = cx + dx;
-                    int ny = cy + dy;
-                    if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
+            for (int level = 0; level < 4; level++) {
+                // Insert midpoints between each pair (backwards to avoid index shifting)
+                int newCount = ctrlCount * 2 - 1;
+                if (newCount > MAX_RIVER_CTRL) newCount = MAX_RIVER_CTRL;
 
-                    int nidx = ny * gridWidth + nx;
-                    int currentHeight = heightmap[nidx];
-                    int bedZ = currentHeight - 1 - depth;
-                    if (bedZ < 0) bedZ = 0;
-
-                    for (int z = bedZ + 1; z <= currentHeight; z++) {
-                        grid[z][ny][nx] = CELL_AIR;
-                        SET_CELL_SURFACE(nx, ny, z, SURFACE_BARE);
+                // Copy old points to even indices
+                for (int i = ctrlCount - 1; i >= 0; i--) {
+                    int newIdx = i * 2;
+                    if (newIdx < MAX_RIVER_CTRL) {
+                        ctrlX[newIdx] = ctrlX[i];
+                        ctrlY[newIdx] = ctrlY[i];
                     }
+                }
 
-                    heightmap[nidx] = bedZ;
-                    waterMask[nidx] = true;
-                    riverMask[nidx] = true;
+                // Insert midpoints at odd indices with perpendicular jitter
+                for (int i = 0; i < ctrlCount - 1; i++) {
+                    int midIdx = i * 2 + 1;
+                    if (midIdx >= MAX_RIVER_CTRL) break;
+                    int prevIdx = i * 2;
+                    int nextIdx = (i + 1) * 2;
 
-                    int waterZ = bedZ + 1;
-                    if (waterZ < gridDepth) {
-                        SetWaterLevel(nx, ny, waterZ, WATER_MAX_LEVEL);
+                    float mx = (ctrlX[prevIdx] + ctrlX[nextIdx]) * 0.5f;
+                    float my = (ctrlY[prevIdx] + ctrlY[nextIdx]) * 0.5f;
+
+                    // Perpendicular direction to segment
+                    float segDx = ctrlX[nextIdx] - ctrlX[prevIdx];
+                    float segDy = ctrlY[nextIdx] - ctrlY[prevIdx];
+                    float segLen = sqrtf(segDx * segDx + segDy * segDy);
+                    if (segLen < 0.001f) segLen = 1.0f;
+                    float perpX = -segDy / segLen;
+                    float perpY =  segDx / segLen;
+
+                    float offset = ((float)GetRandomValue(-1000, 1000) / 1000.0f) * jitter;
+                    mx += perpX * offset;
+                    my += perpY * offset;
+
+                    // Clamp to map bounds
+                    if (mx < 2) mx = 2;
+                    if (mx > gridWidth - 3) mx = (float)(gridWidth - 3);
+                    if (my < 2) my = 2;
+                    if (my > gridHeight - 3) my = (float)(gridHeight - 3);
+
+                    ctrlX[midIdx] = mx;
+                    ctrlY[midIdx] = my;
+                }
+
+                ctrlCount = newCount;
+                if (ctrlCount > MAX_RIVER_CTRL) ctrlCount = MAX_RIVER_CTRL;
+                jitter *= 0.5f;
+            }
+
+            // --- Interpolate smooth path at 1-cell spacing ---
+            int maxPathLen = gridWidth + gridHeight + 200;
+            float* pathX = (float*)malloc(maxPathLen * sizeof(float));
+            float* pathY = (float*)malloc(maxPathLen * sizeof(float));
+            if (!pathX || !pathY) { free(pathX); free(pathY); continue; }
+            int pathLen = 0;
+
+            for (int i = 0; i < ctrlCount - 1 && pathLen < maxPathLen - 1; i++) {
+                float ax = ctrlX[i], ay = ctrlY[i];
+                float bx = ctrlX[i + 1], by = ctrlY[i + 1];
+                float dx = bx - ax, dy = by - ay;
+                float dist = sqrtf(dx * dx + dy * dy);
+                int steps = (int)(dist + 0.5f);
+                if (steps < 1) steps = 1;
+
+                for (int s = 0; s < steps && pathLen < maxPathLen; s++) {
+                    float t = (float)s / (float)steps;
+                    pathX[pathLen] = ax + dx * t;
+                    pathY[pathLen] = ay + dy * t;
+                    pathLen++;
+                }
+            }
+            // Add final point
+            if (pathLen < maxPathLen) {
+                pathX[pathLen] = ctrlX[ctrlCount - 1];
+                pathY[pathLen] = ctrlY[ctrlCount - 1];
+                pathLen++;
+            }
+
+            // --- Apply sine meander perpendicular to flow ---
+            float meanderAmp = 3.0f;
+            float meanderFreq = 0.08f;
+            for (int i = 1; i < pathLen - 1; i++) {
+                // Flow direction from neighbors
+                float flowDx = pathX[i + 1] - pathX[i - 1];
+                float flowDy = pathY[i + 1] - pathY[i - 1];
+                float flowLen = sqrtf(flowDx * flowDx + flowDy * flowDy);
+                if (flowLen < 0.001f) continue;
+                float perpX = -flowDy / flowLen;
+                float perpY =  flowDx / flowLen;
+
+                float wobble = sinf((float)i * meanderFreq) * meanderAmp;
+                pathX[i] += perpX * wobble;
+                pathY[i] += perpY * wobble;
+
+                // Clamp
+                if (pathX[i] < 2) pathX[i] = 2;
+                if (pathX[i] > gridWidth - 3) pathX[i] = (float)(gridWidth - 3);
+                if (pathY[i] < 2) pathY[i] = 2;
+                if (pathY[i] > gridHeight - 3) pathY[i] = (float)(gridHeight - 3);
+            }
+
+            // --- Carve river along path ---
+            int baseWidth = ClampInt(hillsWaterRiverWidth, 1, 4);
+            float runningBed = -1.0f;
+            int waterCellsPlaced = 0;
+            int cellsCarved = 0;
+
+            for (int i = 0; i < pathLen; i++) {
+                int cx = (int)(pathX[i] + 0.5f);
+                int cy = (int)(pathY[i] + 0.5f);
+                if (cx < 1 || cx >= gridWidth - 1 || cy < 1 || cy >= gridHeight - 1) continue;
+
+                // Width grows from 1 to baseWidth along the path
+                float progress = (float)i / (float)(pathLen - 1);
+                int radius = 1 + (int)(progress * (baseWidth - 1) + 0.5f);
+                if (radius < 1) radius = 1;
+                if (radius > baseWidth) radius = baseWidth;
+
+                // Find local terrain height at center
+                int terrainH = heightmap[cy * gridWidth + cx];
+
+                // Smooth bed: follows terrain down freely, smooths over small rises
+                float targetBed = (float)(terrainH - 1 - (radius >= 3 ? 1 : 0));
+                if (targetBed < 0) targetBed = 0;
+                if (runningBed < 0) {
+                    runningBed = targetBed;
+                } else if (targetBed <= runningBed) {
+                    // Terrain goes down — follow it down freely
+                    runningBed = targetBed;
+                } else {
+                    // Terrain rises — smooth over bumps, only rise slowly
+                    runningBed = runningBed * 0.9f + targetBed * 0.1f;
+                }
+                int bedZ = (int)(runningBed + 0.5f);
+                if (bedZ < 0) bedZ = 0;
+                // Never carve above local terrain
+                if (bedZ > terrainH - 1) bedZ = terrainH - 1;
+                if (bedZ < 0) bedZ = 0;
+
+                // Carve cells in circular area
+                for (int dy = -radius; dy <= radius; dy++) {
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        if (dx * dx + dy * dy > radius * radius) continue;
+                        int nx = cx + dx;
+                        int ny = cy + dy;
+                        if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
+
+                        int nidx = ny * gridWidth + nx;
+                        int currentHeight = heightmap[nidx];
+
+                        // Clamp bed to local terrain
+                        int localBed = bedZ;
+                        if (localBed > currentHeight - 1) localBed = currentHeight - 1;
+                        if (localBed < 0) localBed = 0;
+
+                        // Clear terrain above bed
+                        for (int z = localBed + 1; z <= currentHeight; z++) {
+                            grid[z][ny][nx] = CELL_AIR;
+                            SET_CELL_SURFACE(nx, ny, z, SURFACE_BARE);
+                        }
+
+                        heightmap[nidx] = localBed;
+                        waterMask[nidx] = true;
+                        riverMask[nidx] = true;
+
+                        // Place water one level above bed
+                        int waterZ = localBed + 1;
+                        if (waterZ < gridDepth) {
+                            SetWaterLevel(nx, ny, waterZ, WATER_MAX_LEVEL);
+                            waterCellsPlaced++;
+                        }
+                        cellsCarved++;
+                    }
+                }
+
+                // Place water sources along the river to keep it filled
+                if (i % 8 == 0) {
+                    int sourceWaterZ = bedZ + 1;
+                    if (sourceWaterZ < gridDepth) {
+                        SetWaterSource(cx, cy, sourceWaterZ, true);
+                        SetWaterLevel(cx, cy, sourceWaterZ, WATER_MAX_LEVEL);
                     }
                 }
             }
 
-            int sourceWaterZ = heightmap[idx] + 1;
-            if (step == 0 && sourceWaterZ < gridDepth) {
-                SetWaterSource(cx, cy, sourceWaterZ, true);
-            }
+            TraceLog(LOG_INFO, "River %d: carved %d cells, placed %d water cells, baseWidth=%d",
+                     r, cellsCarved, waterCellsPlaced, baseWidth);
 
-            if (cx == 0 || cy == 0 || cx == gridWidth - 1 || cy == gridHeight - 1) {
-                break;
-            }
-
-            int bestX = cx;
-            int bestY = cy;
-            float bestScore = 1e9f;
-            for (int d = 0; d < 4; d++) {
-                int nx = cx + (d == 0 ? -1 : d == 1 ? 1 : 0);
-                int ny = cy + (d == 2 ? -1 : d == 3 ? 1 : 0);
-                if (nx < 1 || nx >= gridWidth - 1 || ny < 1 || ny >= gridHeight - 1) continue;
-                int nidx = ny * gridWidth + nx;
-                float meander = OctavePerlin((nx + riverSeed) * meanderScale, (ny + riverSeed) * meanderScale, 2, 0.5f);
-                float score = (float)heightmap[nidx] + meander * 2.0f;
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestX = nx;
-                    bestY = ny;
-                }
-            }
-
-            if (bestX == cx && bestY == cy) break;
-            cx = bestX;
-            cy = bestY;
+            free(pathX);
+            free(pathY);
+            #undef MAX_RIVER_CTRL
         }
     }
 

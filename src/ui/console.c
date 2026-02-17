@@ -832,8 +832,7 @@ static void Cmd_Terrain(int argc, const char** argv) {
     GenerateCurrentTerrain();
     InitMoverSpatialGrid(gridWidth * CELL_SIZE, gridHeight * CELL_SIZE);
     InitDesignations();
-    InitSimActivity();
-    InitWater();
+    RebuildSimActivityCounts();
     InitFire();
     InitSmoke();
     InitSteam();
