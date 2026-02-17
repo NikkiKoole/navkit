@@ -810,6 +810,10 @@ void DrawUI(void) {
                 ClearFire();
             }
             y += 22;
+            DrawTextShadow("Wetness: damp -50% spread, wet -90%, soaked blocks", ix, y, 14, GRAY);
+            y += 16;
+            DrawTextShadow("Rain: exposed fires lose levels (20%/40% per fuel tick)", ix, y, 14, GRAY);
+            y += 18;
 
             // Advanced: spread chance formula
             if (SectionHeader(ix + 10, y, "Advanced", &sectionFireAdvanced)) {
@@ -852,6 +856,8 @@ void DrawUI(void) {
             if (PushButton(ix, y, "Clear Smoke")) {
                 ClearSmoke();
             }
+            y += 22;
+            DrawTextShadow("Wet cells: 2-3x smoke. Rain: slower rise/dissipation", ix, y, 14, GRAY);
         }
         y += 22;
 

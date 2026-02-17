@@ -348,7 +348,16 @@ static bool FireTrySpread(int x, int y, int z) {
             spreadPercent = spreadPercent * fireWaterReduction / 100;
             if (spreadPercent < 5) spreadPercent = 5;
         }
-        
+
+        // Wetness reduces spread chance
+        {
+            int wetness = GET_CELL_WETNESS(nx, ny, nz);
+            if (wetness >= 3) continue;  // Soaked: fire cannot spread
+            if (wetness == 2) spreadPercent = spreadPercent * 10 / 100;  // Wet: 90% reduction
+            else if (wetness == 1) spreadPercent = spreadPercent * 50 / 100;  // Damp: 50% reduction
+            if (spreadPercent < 1) spreadPercent = 1;
+        }
+
         if ((rand() % 100) < spreadPercent) {
             // Ignite neighbor
             neighbor->fuel = GetFuelAt(nx, ny, nz);
@@ -397,7 +406,23 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
         cell->fuel = 0;
         return true;
     }
-    
+
+    // Rain gradually extinguishes exposed fires
+    if (doFuel && IsExposedToSky(x, y, z)) {
+        WeatherType w = weatherState.current;
+        int rainChance = 0;
+        if (w == WEATHER_RAIN) rainChance = 20;
+        else if (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM) rainChance = 40;
+        if (rainChance > 0 && (rand() % 100) < rainChance) {
+            SetFireLevel(x, y, z, cell->level - 1);
+            if (cell->level == 0) {
+                cell->fuel = 0;
+                return true;
+            }
+            changed = true;
+        }
+    }
+
     // Fuel consumption (on fuel interval)
     if (doFuel) {
         if (cell->fuel > 0) {
@@ -449,7 +474,15 @@ static bool ProcessFireCell(int x, int y, int z, bool doSpread, bool doFuel) {
     
     // Fire intensity grows if there's fuel
     if (cell->fuel > 2 && cell->level < FIRE_MAX_LEVEL) {
-        if ((rand() % 3) == 0) {
+        // Wet fuel caps max fire level
+        int maxLevel = FIRE_MAX_LEVEL;
+        {
+            int wetness = GET_CELL_WETNESS(x, y, z);
+            if (wetness == 1) maxLevel = 5;       // Damp
+            else if (wetness == 2) maxLevel = 3;   // Wet
+            else if (wetness >= 3) maxLevel = 2;   // Soaked: barely smolders
+        }
+        if (cell->level < maxLevel && (rand() % 3) == 0) {
             SetFireLevel(x, y, z, cell->level + 1);
             changed = true;
         }

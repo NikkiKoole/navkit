@@ -146,6 +146,13 @@ void GenerateSmokeFromFire(int x, int y, int z, int fireLevel) {
     int smokeAmount = fireLevel / smokeGenerationRate;
     if (smokeAmount < 1 && fireLevel > 0) smokeAmount = 1;
 
+    // Wet cells produce more smoke (smoldering)
+    {
+        int wetness = GET_CELL_WETNESS(x, y, z);
+        if (wetness == 1) smokeAmount *= 2;          // Damp: 2x
+        else if (wetness >= 2) smokeAmount *= 3;     // Wet/soaked: 3x
+    }
+
     // Add smoke to current cell and cell above
     AddSmoke(x, y, z, smokeAmount);
 
@@ -493,9 +500,24 @@ void UpdateSmoke(void) {
 
     // Check if intervals have elapsed
     float riseIntervalGS = GameHoursToGameSeconds(smokeRiseInterval);
-    bool doRise = smokeRiseAccum >= riseIntervalGS;
     // Dissipation interval is per level, so we check against smokeDissipationTime / SMOKE_MAX_LEVEL
     float dissipationInterval = GameHoursToGameSeconds(smokeDissipationTime) / (float)SMOKE_MAX_LEVEL;
+
+    // Rain slows smoke rise and dissipation (humid air)
+    {
+        WeatherType w = weatherState.current;
+        if (w == WEATHER_HEAVY_RAIN || w == WEATHER_THUNDERSTORM) {
+            riseIntervalGS *= 2.0f;       // Heavy rain: 2x slower rise
+            dissipationInterval *= 1.5f;   // Humid air holds smoke
+        } else if (w == WEATHER_RAIN) {
+            riseIntervalGS *= 1.5f;        // Light rain: 1.5x slower rise
+            dissipationInterval *= 1.5f;
+        } else if (w == WEATHER_MIST) {
+            dissipationInterval *= 1.5f;   // Mist: slower dissipation only
+        }
+    }
+
+    bool doRise = smokeRiseAccum >= riseIntervalGS;
     bool doDissipate = smokeDissipationAccum >= dissipationInterval;
 
     // Reset accumulators when intervals elapse
