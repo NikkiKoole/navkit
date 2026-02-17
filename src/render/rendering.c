@@ -2207,6 +2207,7 @@ static const Color designationOverlayColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_GATHER_GRASS]   = {200, 230, 100, 200},
     [DESIGNATION_GATHER_TREE]    = {160, 180, 80, 200},
     [DESIGNATION_CLEAN]          = {180, 220, 255, 200},
+    [DESIGNATION_HARVEST_BERRY]  = {200, 100, 220, 200},
 };
 
 static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
@@ -2223,6 +2224,7 @@ static const Color designationProgressColors[DESIGNATION_TYPE_COUNT] = {
     [DESIGNATION_GATHER_GRASS]   = {160, 200, 60, 255},
     [DESIGNATION_GATHER_TREE]    = {130, 160, 50, 255},
     [DESIGNATION_CLEAN]          = {150, 200, 240, 255},
+    [DESIGNATION_HARVEST_BERRY]  = {220, 120, 240, 255},
 };
 
 // Active job overlay colors, indexed by JobType
@@ -2237,6 +2239,7 @@ static const Color jobOverlayColors[JOBTYPE_COUNT] = {
     [JOBTYPE_GATHER_SAPLING] = {180, 255, 180, 180},
     [JOBTYPE_PLANT_SAPLING]  = {80, 200, 100, 180},
     [JOBTYPE_CLEAN]          = {200, 230, 255, 180},
+    [JOBTYPE_HARVEST_BERRY]  = {220, 140, 240, 180},
 };
 
 static void DrawMiningDesignations(void) {
