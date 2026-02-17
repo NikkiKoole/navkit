@@ -301,17 +301,87 @@ The last row is the key validation: changing dayLength should affect **nothing**
 
 ---
 
+## The Rule: Game-Time vs Real-Time
+
+**Everything that changes world state uses game-time. Only engine internals use real-time.**
+
+| Game-time (scales with dayLength) | Real-time (fixed) |
+|-----------------------------------|-------------------|
+| Hunger/energy drain & recovery | Tick rate (60 Hz) |
+| Fire spread, fuel consumption | Frame timing |
+| Water flow, evaporation | Input polling |
+| Smoke/steam rise & dissipation | Animation frame durations |
+| Temperature transfer & decay | |
+| Weather durations, rain/snow rates | |
+| Plant/tree growth | |
+| Workshop work times (active + passive) | |
+| Job work durations (mining, chopping, etc.) | |
+| Mover movement speed | |
+| Ground wear recovery | |
+| Mud drying, wetness sync | |
+
+Why no exceptions for simulations like fire? If fire stays in real-seconds, a house burns in 30 real-seconds regardless of dayLength — but that's 30 game-hours on fast mode vs 1 game-hour on slow mode. Completely different gameplay. The "it looks slow" concern is solved by game speed controls, not by baking real-time assumptions into rates.
+
+---
+
 ## Application to NavKit Systems
 
-### Current Systems (need conversion)
+### Full Audit of Current Systems (all need conversion)
 
-| System | Current unit | Should be |
-|--------|-------------|-----------|
-| Hunger drain | per real-second (mover.h) | per game-hour |
-| Energy drain | per real-second (feature-02 doc) | per game-hour |
-| Food spoilage | (planned, not implemented) | per game-hour |
-| Drying rack | passive timer (workshops.c) | per game-hour |
-| Plant growth | per tick (plants.c) | per game-hour with season multiplier |
+**Mover Needs** (mover.h, needs.c):
+| Constant | Current value | Current unit | Should be |
+|----------|--------------|--------------|-----------|
+| `HUNGER_DRAIN_RATE` | `1/(60*60*8)` | per real-second | per game-hour via balance table |
+| `ENERGY_DRAIN_IDLE` | `0.010` | per real-second | per game-hour |
+| `ENERGY_DRAIN_WORKING` | `0.018` | per real-second | per game-hour |
+| `ENERGY_GROUND_RATE` | `0.012` | per real-second | per game-hour |
+| `EATING_DURATION` | `2.0` | real seconds | game-hours |
+| `FOOD_SEARCH_COOLDOWN` | `5.0` | real seconds | game-hours |
+| `REST_SEARCH_COOLDOWN` | `5.0` | real seconds | game-hours |
+
+**Job Work Times** (designations.h) — all 13 durations are real-seconds:
+| Constant | Value | Should be |
+|----------|-------|-----------|
+| `MINE_WORK_TIME` | `2.0s` | game-hours (fraction) |
+| `CHOP_WORK_TIME` | `3.0s` | game-hours |
+| `CLEAN_WORK_TIME` | `3.0s` | game-hours |
+| `HARVEST_BERRY_WORK_TIME` | `1.0s` | game-hours |
+| ... (9 more) | `1.0-2.0s` | game-hours |
+
+**Workshop Recipes** (workshops.c) — all 17 active + 5 passive timers are real-seconds:
+| Category | Range | Should be |
+|----------|-------|-----------|
+| Active work (sawing, firing, etc.) | `2.0-6.0s` | game-hours |
+| Passive work (charring, drying) | `10.0-60.0s` | game-hours |
+
+**Simulation Systems** — all intervals/rates are real-seconds:
+| System | Constants | Should be |
+|--------|-----------|-----------|
+| Fire | `fireSpreadInterval` 0.2s, `fireFuelInterval` 0.1s | game-time intervals |
+| Water | `waterEvapInterval` 10s, `wetnessSyncInterval` 2s, `rainSpawnInterval` 0.3s | game-time intervals |
+| Smoke | `smokeRiseInterval` 0.1s, `smokeDissipationTime` 5s | game-time intervals |
+| Steam | `steamRiseInterval` 0.5s | game-time intervals |
+| Temperature | `heatTransferInterval` 0.1s, `tempDecayInterval` 0.1s | game-time intervals |
+| Weather | `weatherMinDuration` 30s, `weatherMaxDuration` 120s, `rainWetnessInterval` 2-5s | game-time |
+| Snow | `snowAccumulationRate` 0.1s/level, `snowMeltingRate` 0.05s/level | game-time |
+| Ground wear | `wearRecoveryInterval` 5s | game-time |
+
+**Growth Systems** — tick-based, doubly broken:
+| Constant | Value | Should be |
+|----------|-------|-----------|
+| `saplingGrowTicks` | 100 ticks | game-hours |
+| `trunkGrowTicks` | 50 ticks | game-hours |
+| `TREE_HARVEST_REGEN_TICKS` | 3600 ticks | game-hours |
+| `BERRY_BUSH_GROWTH_TIME` | 120s per stage | game-hours with season multiplier |
+
+**Movement** — real pixels/second:
+| Constant | Value | Should be |
+|----------|-------|-----------|
+| `MOVER_SPEED` | 200 px/s | px per game-second (scaled by dayLength) |
+| `ANIMAL_SPEED` | 60 px/s | px per game-second |
+| `TRAIN_DEFAULT_SPEED` | 3 cells/s | cells per game-second |
+
+**Already safe** (~30 constants): thresholds (0-1 scale), multipliers, percentages, temperatures. These don't depend on time.
 
 ### Future Systems (design in game-hours from the start)
 
@@ -335,22 +405,36 @@ Don't refactor everything at once. Adopt gradually:
 - `GameHoursToRealSeconds()`, `RatePerRealSecond()`
 - Keep existing constants but document their game-hour equivalents in comments
 
-### Step 2: Convert hunger to game-hours
+### Step 2: Convert hunger to game-hours (proof of concept)
 - Replace `HUNGER_DRAIN_RATE` with `balance.hungerDrainPerGH` + conversion
 - Verify: changing dayLength doesn't change gameplay feel
+- This validates the pattern before touching more systems
 
-### Step 3: Implement energy using game-hours from the start (Feature 02)
+### Step 3: Convert energy (Feature 02)
 - All energy rates in the balance table
 - Tooltip shows game-hour projections
 
-### Step 4: Consolidate remaining systems
-- Plant growth, workshop timers, weather rates
-- Each system conversion is small and independent
+### Step 4: Convert simulation systems
+- Fire, water, smoke, steam, temperature — change intervals to game-time
+- Each sim system is independent, can be done one at a time
+- Test: run at dayLength=24 and dayLength=720, verify same game-hour behavior
 
-### Step 5: Debug panel
+### Step 5: Convert job/workshop work times
+- All designation work times and recipe work times through conversion
+- These are small fractions of a game-hour
+
+### Step 6: Convert growth systems
+- Trees (tick-based → game-hours), plants, ground wear recovery
+- Most impactful for long-term gameplay feel
+
+### Step 7: Convert movement speeds
+- Mover/animal/train speeds scale with dayLength
+- A mover should cross the same number of tiles per game-hour regardless of dayLength
+
+### Step 8: Debug panel + day forecast
 - Sliders for budget values
 - Live recalc
-- Day schedule forecast
+- Day schedule forecast test
 
 ---
 
