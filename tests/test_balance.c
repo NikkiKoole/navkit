@@ -2,6 +2,13 @@
 #include "../vendor/raylib.h"
 #include "../src/simulation/balance.h"
 #include "../src/core/time.h"
+#include "../src/world/grid.h"
+#include "../src/world/cell_defs.h"
+#include "../src/entities/mover.h"
+#include "../src/entities/jobs.h"
+#include "../src/entities/items.h"
+#include "../src/entities/stockpiles.h"
+#include "../src/entities/workshops.h"
 #include <math.h>
 
 static bool test_verbose = false;
@@ -206,6 +213,93 @@ describe(balance_budget_consistency) {
     }
 }
 
+// Helper: run a mover for a given number of game-hours and return distance traveled
+static float RunMoverForGameHours(float gameHours, float testDayLength) {
+    // Set up grid: 64x4 walkable corridor at z=1 with solid floor at z=0
+    InitGridWithSizeAndChunkSize(64, 4, 64, 4);
+    for (int x = 0; x < 64; x++) {
+        for (int y = 0; y < 4; y++) {
+            grid[0][y][x] = CELL_WALL;
+            grid[1][y][x] = CELL_AIR;
+        }
+    }
+    ClearMovers();
+    ClearJobs();
+    ClearItems();
+    ClearStockpiles();
+    ClearWorkshops();
+    InitMoverSpatialGrid(64 * CELL_SIZE, 4 * CELL_SIZE);
+
+    dayLength = testDayLength;
+    gameSpeed = 1.0f;
+    gameDeltaTime = TICK_DT * gameSpeed;
+
+    // Create a long straight path from x=2 to x=60 along y=2, z=1
+    Point path[59];
+    int pathLen = 0;
+    for (int x = 60; x >= 2; x--) {
+        path[pathLen++] = (Point){ x, 2, 1 };
+    }
+
+    Mover* m = &movers[0];
+    float startX = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+    float startY = 2 * CELL_SIZE + CELL_SIZE * 0.5f;
+    InitMoverWithPath(m, startX, startY, 1.0f, path[0], 200.0f, path, pathLen);
+    m->active = true;
+    moverCount = 1;
+
+    // Run for gameHours worth of ticks
+    float gameSeconds = GameHoursToGameSeconds(gameHours);
+    int ticks = (int)(gameSeconds / TICK_DT);
+
+    for (int t = 0; t < ticks; t++) {
+        currentTick = t;
+        gameDeltaTime = TICK_DT * gameSpeed;
+        UpdateMovers();
+    }
+
+    float dx = m->x - startX;
+    float dy = m->y - startY;
+    return sqrtf(dx * dx + dy * dy);
+}
+
+describe(balance_movement_scaling) {
+    it("mover should travel same distance per game-hour at different dayLengths") {
+        InitBalance();
+
+        float dist60 = RunMoverForGameHours(1.0f, 60.0f);
+        float dist720 = RunMoverForGameHours(1.0f, 720.0f);
+
+        if (test_verbose) {
+            printf("  dayLength=60:  dist=%.1f px in 1 GH\n", dist60);
+            printf("  dayLength=720: dist=%.1f px in 1 GH\n", dist720);
+            printf("  ratio: %.3f (should be ~1.0)\n", dist720 / dist60);
+        }
+
+        // Allow 15% tolerance — waypoint snap overhead differs with arrival radius
+        float ratio = dist720 / dist60;
+        expect(ratio > 0.85f);
+        expect(ratio < 1.15f);
+    }
+
+    it("mover distance should scale linearly with game-hours") {
+        InitBalance();
+
+        float dist1 = RunMoverForGameHours(1.0f, 60.0f);
+        float dist2 = RunMoverForGameHours(2.0f, 60.0f);
+
+        if (test_verbose) {
+            printf("  1 GH: %.1f px, 2 GH: %.1f px, ratio: %.3f\n",
+                   dist1, dist2, dist2 / dist1);
+        }
+
+        // 2 hours should be ~2x distance (within 5%)
+        float ratio = dist2 / dist1;
+        expect(ratio > 1.90f);
+        expect(ratio < 2.10f);
+    }
+}
+
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == 'v') test_verbose = true;
@@ -219,6 +313,7 @@ int main(int argc, char **argv) {
     test(balance_derived_rates);
     test(balance_time_conversion);
     test(balance_budget_consistency);
+    test(balance_movement_scaling);
 
     dayLength = savedDayLength;
     return 0;

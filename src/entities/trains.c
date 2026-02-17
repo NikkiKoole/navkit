@@ -128,7 +128,7 @@ void TrainsTick(float dt) {
             continue;
         }
 
-        t->progress += t->speed * gdt;
+        t->progress += t->speed * (60.0f / dayLength) * gdt;
 
         while (t->progress >= 1.0f) {
             t->progress -= 1.0f;

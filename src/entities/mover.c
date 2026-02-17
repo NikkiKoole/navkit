@@ -877,6 +877,7 @@ static void AssignNewMoverGoal(Mover* m) {
 
 void UpdateMovers(void) {
     float dt = gameDeltaTime;  // Use game time so movers scale with gameSpeed
+    float dayLengthSpeedScale = 60.0f / dayLength;  // Normalize movement per game-hour
     
     // Phase 1: LOS checks (optionally staggered - each mover checks every 3 frames)
     PROFILE_BEGIN(LOS);
@@ -1109,7 +1110,7 @@ void UpdateMovers(void) {
         // Waypoint arrival check
         // Original: snap to waypoint when very close (m->speed * dt, ~1.67px)
         // Knot fix: advance to next waypoint at larger radius without snapping position
-        float arrivalRadius = m->speed * dt;
+        float arrivalRadius = m->speed * dayLengthSpeedScale * dt;
         bool shouldSnap = true;
         
         if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS) {
@@ -1192,13 +1193,13 @@ void UpdateMovers(void) {
             }
             
             // Base velocity toward waypoint
-            float effectiveSpeed = m->speed * terrainSpeedMult;
+            float effectiveSpeed = m->speed * dayLengthSpeedScale * terrainSpeedMult;
             float vx = dxf * invDist * effectiveSpeed;
             float vy = dyf * invDist * effectiveSpeed;
             
             // Apply precomputed avoidance from phase 2
             if (useMoverAvoidance || useWallRepulsion) {
-                float avoidScale = m->speed * avoidStrengthOpen;
+                float avoidScale = m->speed * dayLengthSpeedScale * avoidStrengthOpen;
                 
                 // Knot fix: reduce avoidance near waypoint so mover can reach it
                 if (useKnotFix && dist < KNOT_FIX_ARRIVAL_RADIUS * 2.0f) {
