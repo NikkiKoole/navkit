@@ -709,3 +709,59 @@ Next tick: expect FREETIME_SEEKING_FOOD
 - ~500-650 lines new code (furniture.c ~200, needs.c extensions ~150, construction/workshop ~80, input/action ~60, save/render/tooltip ~80)
 - 1 new entity pool, 1 new workshop, 2 new items, 3 construction recipes, 3 sprites
 - Save version 52 → 54 (v53 = energy, v54 = furniture pool)
+
+---
+
+## Session Handoff — Phase 4 Continuation
+
+**Status**: Phases 1-3 complete and committed. Phase 4 (Construction Integration) is next.
+
+### What's Done
+- Energy system (drain, thresholds, ground rest recovery) — `needs.c`
+- Furniture entity pool (spawn, remove, blocking/move cost, occupant reservation, save/load) — `furniture.h`, `furniture.c`
+- Rest-seeking AI (scan furniture, score by quality/distance, reserve, walk to, rest, release) — `needs.c`
+- Save version 54, 31 test suites all green
+- Commit: includes all of Phases 1-3
+
+### Phase 4: What Needs to Happen
+
+**Goal**: Player can place furniture via the construction menu. Movers haul materials to blueprints and build them. Completed blueprints spawn furniture entities.
+
+**Key changes**:
+
+1. **New items** in `items.h` / `item_defs.c`:
+   - `ITEM_PLANK_BED` (crafted at carpenter's bench — Phase 5)
+   - `ITEM_CHAIR` (crafted at carpenter's bench — Phase 5)
+   - Bump `ITEM_TYPE_COUNT`, add to itemDefs table, sprites, stockpile filters
+
+2. **Construction recipes** in `construction.h` / `construction.c`:
+   - Add `BUILD_FURNITURE` category (or similar) to `ConstructionType` enum
+   - 3 recipes: Leaf Pile (LEAVES x4), Plank Bed (ITEM_PLANK_BED x1), Chair (ITEM_CHAIR x1)
+   - Leaf pile is "raw" construction (mover hauls leaves to site). Bed/chair are "install" (mover hauls pre-crafted item)
+
+3. **CompleteBlueprint** in `designations.c`:
+   - When construction type is furniture, call `SpawnFurniture()` instead of placing a cell
+   - Map construction recipe → FurnitureType (leaf pile recipe → FURNITURE_LEAF_PILE, etc.)
+
+4. **Action registry** in `action_registry.c` / `input_mode.h`:
+   - `ACTION_WORK_FURNITURE` (or under existing BUILD category)
+   - Key 'u' for furniture submenu (check availability)
+   - Recipe cycling within the furniture category
+
+5. **Save version**: Will need bump to 55 if adding new items (ITEM_TYPE_COUNT changes affect stockpile filters in save data)
+
+### Key Files to Read First
+- `src/entities/construction.h` — ConstructionType enum, ConstructionRecipe struct
+- `src/entities/construction.c` — Recipe table, blueprint creation
+- `src/entities/designations.c` — `CompleteBlueprint()` function (this is where furniture spawn goes)
+- `src/core/input.c` — Action execution handlers
+- `src/core/action_registry.c` — ACTION_REGISTRY[] entries
+- `src/core/input_mode.h` — Action enum
+- `src/entities/items.h` — ItemType enum, ITEM_TYPE_COUNT
+- `src/entities/item_defs.c` — itemDefs[] table
+
+### Known Gotchas
+- Adding items bumps ITEM_TYPE_COUNT → affects stockpile `allowedTypes[]` array size → requires save migration with legacy constant in `save_migrations.h`
+- Both `saveload.c` AND `inspect.c` need parallel migration code
+- Construction recipes may need a new "install pre-crafted item" pattern vs current "haul raw materials" pattern — check how existing recipes work before designing
+- Phase 5 (Carpenter's Bench) creates the bed/chair *items*; Phase 4 *places* them. So Phase 4 leaf pile is the only one testable end-to-end without Phase 5. Bed/chair placement can be tested by spawning items directly in tests.
