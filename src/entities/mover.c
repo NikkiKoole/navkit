@@ -9,6 +9,7 @@
 #include "jobs.h"
 #include "stockpiles.h"
 #include "workshops.h"
+#include "furniture.h"
 #include "../world/designations.h"
 #include "../simulation/water.h"
 #include "../simulation/fire.h"
@@ -650,6 +651,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->timeWithoutProgress = 0.0f;
     // Hunger / needs
     m->hunger = 1.0f;
+    m->energy = 1.0f;
     m->freetimeState = FREETIME_NONE;
     m->needTarget = -1;
     m->needProgress = 0.0f;
@@ -701,6 +703,7 @@ void ClearMovers(void) {
         }
         
         ReleaseAllSlotsForMover(i);
+        ReleaseFurnitureForMover(i);
     }
     
     // Clear all item reservations
@@ -776,6 +779,13 @@ void NeedsTick(void) {
         // Drain hunger
         m->hunger -= HUNGER_DRAIN_RATE * dt;
         if (m->hunger < 0.0f) m->hunger = 0.0f;
+
+        // Drain energy (not while resting)
+        if (m->freetimeState != FREETIME_RESTING) {
+            float drainRate = (m->currentJobId >= 0) ? ENERGY_DRAIN_WORKING : ENERGY_DRAIN_IDLE;
+            m->energy -= drainRate * dt;
+            if (m->energy < 0.0f) m->energy = 0.0f;
+        }
 
         // Tick search cooldown
         if (m->needSearchCooldown > 0.0f) {

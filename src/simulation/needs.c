@@ -1,10 +1,14 @@
 // needs.c - Mover needs system (freetime state machine)
 // Hungry movers autonomously find food in stockpiles and eat it.
+// Tired movers autonomously find a rest spot and sleep.
 //
 // State machine:
 //   FREETIME_NONE → (hunger < threshold) → FREETIME_SEEKING_FOOD
 //   FREETIME_SEEKING_FOOD → (arrived at food) → FREETIME_EATING
 //   FREETIME_EATING → (done eating) → FREETIME_NONE
+//   FREETIME_NONE → (energy < threshold) → FREETIME_SEEKING_REST
+//   FREETIME_SEEKING_REST → (arrived/ground) → FREETIME_RESTING
+//   FREETIME_RESTING → (energy >= wake threshold) → FREETIME_NONE
 
 #include "needs.h"
 #include "../entities/mover.h"
@@ -12,6 +16,7 @@
 #include "../entities/item_defs.h"
 #include "../entities/jobs.h"
 #include "../entities/stockpiles.h"
+#include "../entities/furniture.h"
 #include "../world/pathfinding.h"
 #include "../core/time.h"
 #include <math.h>
@@ -106,17 +111,74 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     m->needsRepath = true;
 }
 
+static void StartRestSearch(Mover* m, int moverIdx) {
+    // Scan furniture pool for best unoccupied furniture
+    // Prefer highest restRate, weight by distance
+    int bestIdx = -1;
+    float bestScore = -1.0f;
+    float mx = m->x, my = m->y;
+    int mz = (int)m->z;
+
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (!furniture[i].active) continue;
+        if (furniture[i].occupant >= 0) continue;  // Already occupied
+        if (furniture[i].z != mz) continue;  // Same z-level only
+
+        const FurnitureDef* def = GetFurnitureDef(furniture[i].type);
+        if (def->restRate <= 0.0f) continue;  // Not restable
+
+        float fx = furniture[i].x * CELL_SIZE + CELL_SIZE / 2.0f;
+        float fy = furniture[i].y * CELL_SIZE + CELL_SIZE / 2.0f;
+        float dx = mx - fx;
+        float dy = my - fy;
+        float dist = sqrtf(dx * dx + dy * dy);
+
+        // Score: restRate / (1 + dist/CELL_SIZE) — prefer better furniture nearby
+        float score = def->restRate / (1.0f + dist / CELL_SIZE);
+        if (score > bestScore) {
+            bestScore = score;
+            bestIdx = i;
+        }
+    }
+
+    if (bestIdx >= 0) {
+        // Reserve furniture and path to it
+        furniture[bestIdx].occupant = moverIdx;
+        m->freetimeState = FREETIME_SEEKING_REST;
+        m->needTarget = bestIdx;
+        m->needProgress = 0.0f;
+
+        // Set goal to furniture position
+        m->goal = (Point){furniture[bestIdx].x, furniture[bestIdx].y, furniture[bestIdx].z};
+        m->needsRepath = true;
+    } else {
+        // No furniture available — ground rest at current position
+        m->freetimeState = FREETIME_RESTING;
+        m->needTarget = -1;
+        m->needProgress = 0.0f;
+        m->pathLength = 0;
+        m->pathIndex = -1;
+    }
+}
+
 static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     switch (m->freetimeState) {
         case FREETIME_NONE: {
-            // Starving mover with a job → cancel job to eat
-            if (m->hunger < HUNGER_CANCEL_THRESHOLD && m->currentJobId >= 0) {
-                CancelJob(m, moverIdx);
-            }
-
-            // Hungry, no job, no cooldown → search for food
-            if (m->hunger < HUNGER_SEARCH_THRESHOLD && m->currentJobId < 0 && m->needSearchCooldown <= 0.0f) {
-                StartFoodSearch(m, moverIdx);
+            // Priority: starving > exhausted > hungry > tired
+            if (m->hunger < HUNGER_CANCEL_THRESHOLD) {
+                // STARVING — cancel job, seek food
+                if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+                if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+            } else if (m->energy < ENERGY_EXHAUSTED_THRESHOLD) {
+                // EXHAUSTED — cancel job, seek rest
+                if (m->currentJobId >= 0) CancelJob(m, moverIdx);
+                if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
+            } else if (m->hunger < HUNGER_SEARCH_THRESHOLD && m->currentJobId < 0) {
+                // HUNGRY — seek food (don't cancel jobs)
+                if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
+            } else if (m->energy < ENERGY_TIRED_THRESHOLD && m->currentJobId < 0) {
+                // TIRED — seek rest (don't cancel jobs)
+                if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
             }
             break;
         }
@@ -184,6 +246,78 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
                 m->needProgress = 0.0f;
+            }
+            break;
+        }
+
+        case FREETIME_SEEKING_REST: {
+            int fi = m->needTarget;
+            if (fi >= 0) {
+                // Validate furniture still exists and is reserved by us
+                if (fi >= MAX_FURNITURE || !furniture[fi].active || furniture[fi].occupant != moverIdx) {
+                    // Lost reservation — reset
+                    if (fi >= 0 && fi < MAX_FURNITURE) ReleaseFurniture(fi, moverIdx);
+                    m->freetimeState = FREETIME_NONE;
+                    m->needTarget = -1;
+                    m->needSearchCooldown = REST_SEARCH_COOLDOWN;
+                    break;
+                }
+
+                // Check arrival — adjacent to furniture cell (blocking furniture can't be entered)
+                float fx = furniture[fi].x * CELL_SIZE + CELL_SIZE / 2.0f;
+                float fy = furniture[fi].y * CELL_SIZE + CELL_SIZE / 2.0f;
+                float dx = m->x - fx;
+                float dy = m->y - fy;
+                float distSq = dx * dx + dy * dy;
+                float arrivalR = CELL_SIZE * 1.5f;  // Adjacent cell distance
+
+                if ((int)m->z == furniture[fi].z && distSq < arrivalR * arrivalR) {
+                    m->freetimeState = FREETIME_RESTING;
+                    m->needProgress = 0.0f;
+                    m->pathLength = 0;
+                    m->pathIndex = -1;
+                    break;
+                }
+            }
+
+            // Timeout
+            m->needProgress += gameDeltaTime;
+            if (m->needProgress > REST_SEEK_TIMEOUT) {
+                ReleaseFurniture(m->needTarget, moverIdx);
+                m->needTarget = -1;
+                m->freetimeState = FREETIME_NONE;
+                m->needSearchCooldown = REST_SEARCH_COOLDOWN;
+            }
+            break;
+        }
+
+        case FREETIME_RESTING: {
+            // Reset stuck detector (mover is intentionally still)
+            m->timeWithoutProgress = 0.0f;
+
+            // Recover energy — use furniture rate if available, else ground rate
+            float rate = ENERGY_GROUND_RATE;
+            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE &&
+                furniture[m->needTarget].active) {
+                rate = GetFurnitureDef(furniture[m->needTarget].type)->restRate;
+            }
+            m->energy += rate * gameDeltaTime;
+            if (m->energy > 1.0f) m->energy = 1.0f;
+
+            // Wake condition: energy recovered enough
+            if (m->energy >= ENERGY_WAKE_THRESHOLD) {
+                ReleaseFurniture(m->needTarget, moverIdx);
+                m->needTarget = -1;
+                m->freetimeState = FREETIME_NONE;
+                break;
+            }
+
+            // Starvation interrupt: wake up to eat
+            if (m->hunger < HUNGER_CANCEL_THRESHOLD) {
+                ReleaseFurniture(m->needTarget, moverIdx);
+                m->needTarget = -1;
+                m->freetimeState = FREETIME_NONE;
+                // Next tick: hunger check will trigger SEEKING_FOOD
             }
             break;
         }

@@ -4,7 +4,7 @@ Save/load, input handling, time, inspector, simulation manager.
 
 ## Save System
 
-**Save version**: v52 (see `CURRENT_SAVE_VERSION` in `save_migrations.h`). Strict version matching during dev — old saves error out cleanly.
+**Save version**: v54 (see `CURRENT_SAVE_VERSION` in `save_migrations.h`). Strict version matching during dev — old saves error out cleanly.
 
 ### Grid Write Order (saveload.c)
 

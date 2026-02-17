@@ -6,6 +6,7 @@ bool SaveWorld(const char* filename);
 bool LoadWorld(const char* filename);
 void RebuildPostLoadState(void);
 #include "../entities/workshops.h"
+#include "../entities/furniture.h"
 #include "../simulation/fire.h"
 #include "../simulation/smoke.h"
 #include "../simulation/steam.h"
@@ -345,6 +346,14 @@ bool SaveWorld(const char* filename) {
     fwrite(&plantCount, sizeof(plantCount), 1, f);
     fwrite(plants, sizeof(Plant), plantCount, f);
     
+    // Furniture (v54+)
+    fwrite(&furnitureCount, sizeof(furnitureCount), 1, f);
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (furniture[i].active) {
+            fwrite(&furniture[i], sizeof(Furniture), 1, f);
+        }
+    }
+    
     // === VIEW SECTION ===
     marker = MARKER_VIEW;
     fwrite(&marker, sizeof(marker), 1, f);
@@ -407,6 +416,16 @@ void RebuildPostLoadState(void) {
     blueprintCount = 0;
     for (int i = 0; i < MAX_BLUEPRINTS; i++) {
         if (blueprints[i].active) blueprintCount++;
+    }
+    
+    // Rebuild furniture move cost grid and clear stale occupants
+    RebuildFurnitureMoveCostGrid();
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        if (furniture[i].active && furniture[i].occupant >= 0) {
+            if (furniture[i].occupant >= moverCount || !movers[furniture[i].occupant].active) {
+                furniture[i].occupant = -1;
+            }
+        }
     }
     
     // Rebuild job free list (not saved, must be reconstructed from gaps)
@@ -969,8 +988,44 @@ bool LoadWorld(const char* filename) {
     
     // Movers
     fread(&moverCount, sizeof(moverCount), 1, f);
-    if (version >= 48) {
+    if (version >= 53) {
         fread(movers, sizeof(Mover), moverCount, f);
+    } else if (version >= 48) {
+        // V48-V52 movers don't have energy field — read with old struct, then copy
+        for (int i = 0; i < moverCount; i++) {
+            MoverV52 old;
+            fread(&old, sizeof(MoverV52), 1, f);
+            Mover* m = &movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = 1.0f;  // Init new field
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+        }
     } else {
         // V47 movers don't have hunger/needs fields — read with old struct, then copy
         for (int i = 0; i < moverCount; i++) {
@@ -1000,8 +1055,9 @@ bool LoadWorld(const char* filename) {
             m->lastJobTargetZ = old.lastJobTargetZ;
             m->lastJobEndTick = old.lastJobEndTick;
             m->capabilities = old.capabilities;
-            // Init new hunger/needs fields
+            // Init new hunger/needs/energy fields
             m->hunger = 1.0f;
+            m->energy = 1.0f;
             m->freetimeState = FREETIME_NONE;
             m->needTarget = -1;
             m->needProgress = 0.0f;
@@ -1070,6 +1126,23 @@ bool LoadWorld(const char* filename) {
         }
     } else {
         InitPlants();
+    }
+    
+    // Furniture (v54+)
+    if (version >= 54) {
+        int savedCount;
+        fread(&savedCount, sizeof(savedCount), 1, f);
+        ClearFurniture();
+        for (int i = 0; i < savedCount; i++) {
+            Furniture f_tmp;
+            fread(&f_tmp, sizeof(Furniture), 1, f);
+            if (f_tmp.active) {
+                furniture[i] = f_tmp;
+            }
+        }
+        furnitureCount = savedCount;
+    } else {
+        ClearFurniture();
     }
     
     // === VIEW SECTION ===

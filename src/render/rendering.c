@@ -6,6 +6,7 @@
 #include "../core/input_mode.h"
 #include "../core/time.h"
 #include "../entities/workshops.h"
+#include "../entities/furniture.h"
 #include "../entities/item_defs.h"
 #include "../simulation/floordirt.h"
 #include "../simulation/lighting.h"
@@ -1951,6 +1952,45 @@ static void DrawStockpileItems(void) {
                 }
             }
         }
+    }
+}
+
+static void DrawFurniture(void) {
+    float size = CELL_SIZE * zoom;
+    int viewZ = currentViewZ;
+    Color skyColor = GetSkyColorForTime(timeOfDay);
+
+    for (int i = 0; i < MAX_FURNITURE; i++) {
+        Furniture* f = &furniture[i];
+        if (!f->active) continue;
+        if (f->z > viewZ || f->z < viewZ - MAX_VISIBLE_DEPTH) continue;
+
+        bool belowView = f->z < viewZ;
+        if (belowView && !IsCellVisibleFromAbove(f->x, f->y, f->z + 1, viewZ)) continue;
+
+        float sx = offset.x + f->x * size;
+        float sy = offset.y + f->y * size;
+
+        // Placeholder tint per furniture type
+        Color tint;
+        switch (f->type) {
+            case FURNITURE_LEAF_PILE:  tint = (Color){100, 160, 80, 255};  break;  // Green
+            case FURNITURE_PLANK_BED:  tint = (Color){140, 100, 60, 255};  break;  // Brown
+            case FURNITURE_CHAIR:      tint = (Color){180, 160, 120, 255}; break;  // Tan
+            default:                   tint = WHITE; break;
+        }
+
+        Color lightTint = GetLightColor(f->x, f->y, f->z, skyColor);
+        tint = MultiplyColor(tint, lightTint);
+
+        if (belowView) {
+            tint = MultiplyColor(tint, GetDepthTint(f->z, viewZ));
+            tint = FloorDarkenTint(tint);
+        }
+
+        Rectangle src = SpriteGetRect(SPRITE_generic);
+        Rectangle dest = { sx, sy, size, size };
+        DrawTexturePro(atlas, src, dest, (Vector2){0, 0}, 0, tint);
     }
 }
 

@@ -383,6 +383,13 @@ static inline int GetCellMoveCost(int x, int y, int z) {
         if (snowCost > cost) cost = snowCost;
     }
     
+    // Furniture movement penalty (non-blocking furniture)
+    {
+        extern uint8_t furnitureMoveCostGrid[][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
+        int furnCost = furnitureMoveCostGrid[z][y][x];
+        if (furnCost > cost) cost = furnCost;
+    }
+    
     // Bush — walkable vegetation, slows movement
     if (grid[z][y][x] == CELL_BUSH) {
         int bushCost = 20;  // 0.5x speed

@@ -606,6 +606,7 @@ void DrawGatherZones(void);
 void DrawStockpileTiles(void);
 void DrawStockpileItems(void);
 void DrawWorkshops(void);
+void DrawFurniture(void);
 void DrawLinkingModeHighlights(void);
 void DrawWorkshopStatusOverlay(void);
 void DrawHaulDestinations(void);
@@ -1257,6 +1258,7 @@ int main(int argc, char** argv) {
         }
         DrawStockpileTiles();
         DrawWorkshops();
+        DrawFurniture();
         DrawLinkingModeHighlights();  // Highlight workshop and stockpile during linking
         DrawWorkshopStatusOverlay();   // Status icons on workshops
         DrawHaulDestinations();

@@ -3,6 +3,7 @@
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include "../entities/workshops.h"
+#include "../entities/furniture.h"
 #include "../entities/item_defs.h"
 #include "../entities/containers.h"
 #include "../entities/jobs.h"
@@ -312,6 +313,36 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
             lineColors[lineCount++] = ORANGE;
         } else if (m->freetimeState == FREETIME_EATING) {
             snprintf(lines[lineCount], sizeof(lines[0]), "  Eating (%.0f%%)", (m->needProgress / 2.0f) * 100.0f);
+            lineColors[lineCount++] = GREEN;
+        }
+    }
+
+    // Energy
+    {
+        const char* energyLabel;
+        Color energyColor;
+        if (m->energy > 0.5f) { energyLabel = "Rested"; energyColor = GREEN; }
+        else if (m->energy > 0.3f) { energyLabel = "Drowsy"; energyColor = YELLOW; }
+        else if (m->energy > 0.1f) { energyLabel = "Tired"; energyColor = ORANGE; }
+        else { energyLabel = "Exhausted"; energyColor = RED; }
+        snprintf(lines[lineCount], sizeof(lines[0]), "Energy: %.0f%% (%s)", m->energy * 100.0f, energyLabel);
+        lineColors[lineCount++] = energyColor;
+
+        if (m->freetimeState == FREETIME_SEEKING_REST) {
+            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
+                snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking %s...",
+                         GetFurnitureDef(furniture[m->needTarget].type)->name);
+            } else {
+                snprintf(lines[lineCount], sizeof(lines[0]), "  Seeking rest...");
+            }
+            lineColors[lineCount++] = ORANGE;
+        } else if (m->freetimeState == FREETIME_RESTING) {
+            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
+                snprintf(lines[lineCount], sizeof(lines[0]), "  Resting (%s)",
+                         GetFurnitureDef(furniture[m->needTarget].type)->name);
+            } else {
+                snprintf(lines[lineCount], sizeof(lines[0]), "  Resting (ground)");
+            }
             lineColors[lineCount++] = GREEN;
         }
     }

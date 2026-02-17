@@ -280,8 +280,8 @@ ACTION_WORK_FURNITURE,   // Category — shows furniture sub-options
 {
     .action = ACTION_WORK_FURNITURE,
     .name = "FURNITURE",
-    .barDisplayText = "Furniture",
-    .barKey = 'f',
+    .barDisplayText = "fUrniture",
+    .barKey = 'u',
     .requiredMode = MODE_WORK,
     .requiredSubMode = SUBMODE_BUILD,
     .parentAction = ACTION_NONE,
@@ -481,7 +481,7 @@ Energy: 45%  Resting (Plank Bed)  Full in 3.5h
 
 ## Save Version Impact
 
-Bump save version (currently 52 → 53). No old saves exist, so no migration code needed — just bump the version and write the new format.
+Phase 1 bumped save version 52 → 53 (energy field). Phase 2 bumped 53 → 54 (furniture pool). V48-V52 migration via `MoverV52` legacy struct in `save_migrations.h` (energy defaults to 1.0). Both `saveload.c` and `inspect.c` have parallel migration paths.
 
 **New Mover field**: `float energy` (written/read alongside existing fields, init 1.0).
 
@@ -533,7 +533,7 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 | `src/core/input_mode.h` | Add ACTION_WORK_FURNITURE. |
 | `src/core/action_registry.c` | Registry entry for ACTION_WORK_FURNITURE. |
 | `src/core/input.c` | Handle ACTION_WORK_FURNITURE (recipe cycling, blueprint creation). Add selectedFurnitureRecipe static. |
-| `src/core/saveload.c` | Bump SAVE_VERSION to 53. Save/load furniture pool. Energy field on movers. New item types in format. |
+| `src/core/saveload.c` | SAVE_VERSION 53 (energy) then 54 (furniture pool). Save/load furniture pool. Energy field on movers. New item types in format. |
 | `src/core/inspect.c` | Furniture inspection output. |
 | `src/render/rendering.c` | Render furniture sprites at furniture positions. |
 | `src/render/tooltips.c` | Energy display in mover tooltip. |
@@ -545,42 +545,57 @@ Placeholder: use existing sprites with tint (e.g., `SPRITE_crate_green` tinted b
 
 ## Implementation Phases
 
-### Phase 1: Energy + Ground Sleep (~1-2 sessions)
+### Phase 1: Energy + Ground Sleep (COMPLETE ✅)
 **Goal**: Movers get tired and sleep on the ground. No furniture yet.
 
-1. Add `float energy` to Mover, init 1.0
-2. Energy drain in NeedsTick() (working vs idle rate)
-3. Add FREETIME_SEEKING_REST, FREETIME_RESTING to enum
-4. Priority logic in ProcessMoverFreetime: starving > exhausted > hungry > tired
-5. Ground rest: SEEKING_REST with needTarget=-1 skips to RESTING immediately at current position
-6. RESTING: recover at ENERGY_GROUND_RATE, wake at 0.8, starvation interrupts
-7. Bump save version, migration (energy defaults to 1.0)
-8. Energy in mover tooltip
-9. Sleeping visual cue: tint sleeping movers blue-gray or draw "Z" text above them (a stationary mover with no feedback looks like a bug during playtesting)
-10. **Tests**: drain rates, threshold triggers, ground rest recovery, wake condition, starvation interrupt, priority ordering (6-8 tests, ~20 assertions)
+1. ✅ Added `float energy` to Mover struct, init 1.0 in `InitMover()`
+2. ✅ Energy drain in `NeedsTick()` (idle 0.010/s, working 0.018/s, skipped during RESTING)
+3. ✅ Added `FREETIME_SEEKING_REST`, `FREETIME_RESTING` to `FreetimeState` enum
+4. ✅ Full priority chain in `ProcessMoverFreetime`: starving > exhausted > hungry > tired
+5. ✅ Ground rest: `StartRestSearch()` skips straight to RESTING with `needTarget=-1` (no furniture)
+6. ✅ RESTING state: recover at `ENERGY_GROUND_RATE`, wake at 0.8, starvation interrupt
+7. ✅ Save version 52→53 with `MoverV52` migration struct (both `saveload.c` and `inspect.c`)
+8. ✅ Energy tooltip: Rested/Drowsy/Tired/Exhausted labels + "Seeking rest..."/"Resting (ground)" states
+9. TODO: Sleeping visual cue (tint sleeping movers blue-gray or draw "Z" text)
+10. ✅ **Tests**: 14 player-story tests in `tests/test_sleep.c` — full day cycle, exhaustion interrupts work, hunger trumps sleep, starvation wakes sleeper
 
-### Phase 2: Furniture Entity Pool (~1 session)
+**Files changed**: `mover.h`, `mover.c`, `needs.c`, `save_migrations.h`, `saveload.c`, `inspect.c`, `tooltips.c`, `core/CLAUDE.md`
+**Files created**: `tests/test_sleep.c`
+**Makefile**: Added `test_sleep` target
+
+### Phase 2: Furniture Entity Pool (COMPLETE ✅)
 **Goal**: Furniture can be created programmatically and affects walkability/movement.
 
-1. New files: furniture.h, furniture.c
-2. FurnitureDef table, Furniture pool
-3. SpawnFurniture, RemoveFurniture, GetFurnitureAt, ClearFurniture
-4. Blocking: SET/CLEAR CELL_FLAG_WORKSHOP_BLOCK + PushMoversOutOfCell
-5. Movement penalty: GetCellMoveCost check
-6. InvalidatePathsThroughCell on spawn/remove
-7. Save/load furniture pool
-8. Rendering (placeholder sprites)
-9. **Tests**: spawn/remove, blocking affects walkability, non-blocking affects move cost, occupant reserve/release, GetFurnitureAt lookup (5-6 tests, ~15 assertions)
+1. ✅ New files: `src/entities/furniture.h`, `src/entities/furniture.c`
+2. ✅ FurnitureDef table (NONE/LEAF_PILE/PLANK_BED/CHAIR) with `_Static_assert`
+3. ✅ SpawnFurniture, RemoveFurniture, GetFurnitureAt, ClearFurniture, RebuildFurnitureMoveCostGrid
+4. ✅ Blocking: SET/CLEAR CELL_FLAG_WORKSHOP_BLOCK + PushMoversOutOfCell + MarkChunkDirty
+5. ✅ Movement penalty: `furnitureMoveCostGrid[z][y][x]` (Option A — O(1) lookup, extern in cell_defs.h, no header dependency)
+6. ✅ InvalidatePathsThroughCell + MarkChunkDirty on spawn/remove
+7. ✅ Save/load furniture pool (v54, variable-count pattern: count + active entries). RebuildPostLoadState rebuilds move cost grid + clears stale occupants
+8. ✅ Rendering: `DrawFurniture()` with placeholder tints (green=leaf pile, brown=bed, tan=chair), called after DrawWorkshops in main.c
+9. ✅ Occupant reserve/release: ReleaseFurniture, ReleaseFurnitureForMover (called from ClearMovers)
+10. ✅ One-furniture-per-cell enforced in SpawnFurniture
+11. ✅ Inspect output: furniture count in summary
+12. ✅ **Tests**: 10 tests, 45 assertions in `tests/test_furniture.c` — blocking/walkability, move cost, spawn/remove, occupant reserve/release, GetFurnitureAt, defs validation
+13. ✅ Fixed missing test_sleep Makefile target from Phase 1
 
-### Phase 3: Furniture Rest Seeking (~1 session)
+**Save version**: 53 → 54
+**Files created**: `src/entities/furniture.h`, `src/entities/furniture.c`, `tests/test_furniture.c`
+**Files changed**: `unity.c`, `test_unity.c`, `cell_defs.h`, `mover.c`, `save_migrations.h`, `saveload.c`, `inspect.c`, `rendering.c`, `main.c`, `Makefile`
+
+### Phase 3: Furniture Rest Seeking (COMPLETE ✅)
 **Goal**: Tired movers find and use furniture to rest.
 
-1. StartRestSearch: scan furniture pool, prefer best restRate, reserve occupant
-2. SEEKING_REST with furniture target: validate each tick, arrival check, timeout
-3. RESTING with furniture: recover at furniture rate (not ground rate)
-4. Priority: plank bed > leaf pile > chair > ground
-5. Release furniture on wake/interrupt
-6. **Tests**: mover finds best furniture, reserves it, sleeps, recovers at correct rate, wakes, releases. Two movers competing for one bed. Starvation interrupt releases bed. (5-6 tests, ~20 assertions)
+1. ✅ StartRestSearch: scans furniture pool, scores by `restRate / (1 + dist/CELL_SIZE)`, reserves best occupant
+2. ✅ SEEKING_REST with furniture target: validates each tick (active + occupant match), arrival check (1.5 cell radius for adjacent), timeout with release
+3. ✅ RESTING with furniture: recovers at furniture-specific rate (bed 0.040/s vs ground 0.012/s)
+4. ✅ Priority: best restRate weighted by distance (bed > leaf pile > chair > ground)
+5. ✅ Release furniture on wake (energy >= 0.8) and starvation interrupt (hunger < 0.1)
+6. ✅ Tooltip shows furniture name: "Seeking Plank Bed..." / "Resting (Plank Bed)"
+7. ✅ **Tests**: 6 player-story tests in `tests/test_sleep.c` — mover chooses bed over ground, picks best furniture, two movers compete for one bed, bed recovery faster than ground, wake releases reservation, starvation releases reservation
+
+**Files changed**: `needs.c`, `tooltips.c`
 
 ### Phase 4: Construction Integration (~1-2 sessions)
 **Goal**: Player can place furniture via construction menu.
@@ -693,4 +708,4 @@ Next tick: expect FREETIME_SEEKING_FOOD
 - ~25-30 tests, ~80-100 assertions
 - ~500-650 lines new code (furniture.c ~200, needs.c extensions ~150, construction/workshop ~80, input/action ~60, save/render/tooltip ~80)
 - 1 new entity pool, 1 new workshop, 2 new items, 3 construction recipes, 3 sprites
-- Save version 52 → 53 (no migration needed — no old saves)
+- Save version 52 → 54 (v53 = energy, v54 = furniture pool)
