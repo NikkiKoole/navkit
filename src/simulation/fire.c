@@ -5,6 +5,7 @@
 #include "groundwear.h"
 #include "lighting.h"
 #include "weather.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -20,9 +21,9 @@ FireCell fireGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool fireEnabled = true;
 int fireUpdateCount = 0;
 
-// Tweakable parameters (game-time based)
-float fireSpreadInterval = 0.2f;   // Spread attempt every 0.2 game-seconds
-float fireFuelInterval = 0.1f;     // Consume fuel every 0.1 game-seconds
+// Tweakable parameters (game-hours, converted to game-seconds at point of use)
+float fireSpreadInterval = 0.08f;  // Spread attempt every 0.08 game-hours
+float fireFuelInterval = 0.04f;    // Consume fuel every 0.04 game-hours
 int fireWaterReduction = 25;       // 25% spread chance near water
 
 // Fire spread formula: spreadPercent = fireSpreadBase + (level * fireSpreadPerLevel)
@@ -511,11 +512,13 @@ void UpdateFire(void) {
     fireFuelAccum += gameDeltaTime;
     
     // Check if we should do spread/fuel this tick
-    bool doSpread = fireSpreadAccum >= fireSpreadInterval;
-    bool doFuel = fireFuelAccum >= fireFuelInterval;
-    
-    if (doSpread) fireSpreadAccum -= fireSpreadInterval;
-    if (doFuel) fireFuelAccum -= fireFuelInterval;
+    float spreadIntervalGS = GameHoursToGameSeconds(fireSpreadInterval);
+    float fuelIntervalGS = GameHoursToGameSeconds(fireFuelInterval);
+    bool doSpread = fireSpreadAccum >= spreadIntervalGS;
+    bool doFuel = fireFuelAccum >= fuelIntervalGS;
+
+    if (doSpread) fireSpreadAccum -= spreadIntervalGS;
+    if (doFuel) fireFuelAccum -= fuelIntervalGS;
     
     // Process from bottom to top (simple iteration, keeps early exit optimization)
     for (int z = 0; z < gridDepth; z++) {

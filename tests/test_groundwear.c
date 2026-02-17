@@ -269,7 +269,7 @@ describe(surface_overlay_updates) {
         
         // Use fast decay for testing
         wearDecayRate = 50;
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         
         expect(GetVegetation(2, 0, 0) == VEG_NONE);
         
@@ -314,7 +314,7 @@ describe(wear_decay) {
         
         // Set decay interval to fast for testing
         float originalInterval = wearRecoveryInterval;
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         
         int initialWear = GetGroundWear(2, 0, 0);
         
@@ -338,7 +338,7 @@ describe(wear_decay) {
         groundWearEnabled = true;
         
         // Set decay interval to longer than one tick
-        wearRecoveryInterval = 0.1f;
+        wearRecoveryInterval = 0.04f;
         wearDecayRate = 10;
         
         // Set initial wear
@@ -357,7 +357,7 @@ describe(wear_decay) {
         expect(GetGroundWear(2, 0, 0) < 100);
         
         // Restore default values
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         wearDecayRate = WEAR_DECAY_RATE_DEFAULT;
     }
     
@@ -373,7 +373,7 @@ describe(wear_decay) {
         groundWearEnabled = true;
         
         wearDecayRate = 10;
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         
         // Set wear lower than decay rate
         wearGrid[0][0][2] = 5;
@@ -407,7 +407,7 @@ describe(wear_decay) {
         wearGrid[2][0][2] = 100;
         
         wearDecayRate = 10;
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         
         UpdateGroundWear();
         
@@ -446,7 +446,7 @@ describe(groundwear_full_cycle) {
         wearGrassToDirt = 100;  // This is the threshold for BARE surface
         wearTrampleAmount = 50;
         wearDecayRate = 30;
-        wearRecoveryInterval = 0.01f;
+        wearRecoveryInterval = 0.004f;
         
         // Start with tall grass
         expect(GetVegetation(2, 0, 0) == VEG_GRASS_TALL);

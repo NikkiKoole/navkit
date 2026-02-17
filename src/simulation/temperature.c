@@ -1,5 +1,6 @@
 #include "temperature.h"
 #include "weather.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/cell_defs.h"
 #include "../core/time.h"
@@ -13,11 +14,11 @@ TempCell temperatureGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool temperatureEnabled = true;
 int tempUpdateCount = 0;
 
-// Tweakable parameters (temps in Celsius, time in game-seconds)
+// Tweakable parameters (temps in Celsius, time in game-hours)
 int ambientSurfaceTemp = TEMP_AMBIENT_DEFAULT;  // 20C
 int ambientDepthDecay = 0;                       // Celsius per z-level underground
-float heatTransferInterval = 0.1f;               // Transfer heat every 0.1 game-seconds
-float tempDecayInterval = 0.1f;                  // Decay toward ambient every 0.1 game-seconds
+float heatTransferInterval = 0.04f;              // Transfer heat every 0.04 game-hours
+float tempDecayInterval = 0.04f;                 // Decay toward ambient every 0.04 game-hours
 int insulationTier1Rate = HEAT_TRANSFER_WOOD;   // 20%
 int insulationTier2Rate = HEAT_TRANSFER_STONE;  // 5%
 int heatSourceTemp = 200;                        // 200C (fire/furnace)
@@ -355,12 +356,14 @@ void UpdateTemperature(void) {
     tempDecayAccum += gameDeltaTime;
     
     // Check if intervals have elapsed
-    bool doTransfer = heatTransferAccum >= heatTransferInterval;
-    bool doDecay = tempDecayAccum >= tempDecayInterval;
-    
+    float transferIntervalGS = GameHoursToGameSeconds(heatTransferInterval);
+    float decayIntervalGS = GameHoursToGameSeconds(tempDecayInterval);
+    bool doTransfer = heatTransferAccum >= transferIntervalGS;
+    bool doDecay = tempDecayAccum >= decayIntervalGS;
+
     // Reset accumulators when intervals elapse
-    if (doTransfer) heatTransferAccum -= heatTransferInterval;
-    if (doDecay) tempDecayAccum -= tempDecayInterval;
+    if (doTransfer) heatTransferAccum -= transferIntervalGS;
+    if (doDecay) tempDecayAccum -= decayIntervalGS;
     
     // Early exit if nothing to do this tick (keep previous count for reporting)
     if (!doTransfer && !doDecay) {

@@ -545,7 +545,7 @@ describe(sapling_regrowth) {
         saplingMinTreeDistance = 1;    // Allow close saplings
         
         float originalInterval = wearRecoveryInterval;
-        wearRecoveryInterval = 0.001f;  // Very fast updates
+        wearRecoveryInterval = 0.0004f;  // Very fast updates
         
         int saplingsBefore = CountCellType(CELL_SAPLING);
         
@@ -586,7 +586,7 @@ describe(sapling_regrowth) {
         saplingRegrowthChance = 9999;  // Almost always spawn (if allowed)
         
         float originalInterval = wearRecoveryInterval;
-        wearRecoveryInterval = 0.001f;
+        wearRecoveryInterval = 0.0004f;
         
         int saplingsBefore = CountCellType(CELL_SAPLING);
         
@@ -692,7 +692,7 @@ describe(sapling_growth_blocking) {
         saplingRegrowthChance = 9999;
         
         float originalInterval = wearRecoveryInterval;
-        wearRecoveryInterval = 0.001f;
+        wearRecoveryInterval = 0.0004f;
         
         int saplingsBefore = CountCellType(CELL_SAPLING);
         

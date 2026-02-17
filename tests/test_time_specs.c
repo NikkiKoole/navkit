@@ -17,6 +17,7 @@
 #include "../src/simulation/water.h"
 #include "../src/simulation/temperature.h"
 #include "../src/simulation/groundwear.h"
+#include "../src/simulation/balance.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -89,7 +90,7 @@ describe(spec_fire_spread) {
             }
         }
         
-        fireSpreadInterval = 5.0f;  // Fire spreads every 5 seconds
+        fireSpreadInterval = 2.0f;  // Fire spreads every 2 game-hours (= 5s at dayLength=60)
         fireEnabled = true;
         gameSpeed = 1.0f;
         
@@ -117,7 +118,7 @@ describe(spec_fire_spread) {
             }
         }
         
-        fireSpreadInterval = 1.0f;  // Fire spreads every 1 second
+        fireSpreadInterval = 0.4f;  // Fire spreads every 0.4 game-hours (= 1s at dayLength=60)
         fireSpreadBase = 50;        // High spread chance
         fireSpreadPerLevel = 10;
         fireEnabled = true;
@@ -147,7 +148,7 @@ describe(spec_fire_spread) {
         ResetTestState(99999);
         fireSpreadBase = 50;
         fireSpreadPerLevel = 10;
-        fireSpreadInterval = 0.5f;
+        fireSpreadInterval = 0.2f;
         fireEnabled = true;
         gameSpeed = 1.0f;
         SetFireLevel(8, 4, 0, FIRE_MAX_LEVEL);
@@ -166,7 +167,7 @@ describe(spec_fire_spread) {
         ResetTestState(99999);  // Same seed for fair comparison
         fireSpreadBase = 5;
         fireSpreadPerLevel = 2;
-        fireSpreadInterval = 0.5f;
+        fireSpreadInterval = 0.2f;
         fireEnabled = true;
         gameSpeed = 1.0f;
         SetFireLevel(8, 4, 0, FIRE_MAX_LEVEL);
@@ -187,17 +188,17 @@ describe(spec_smoke_dissipation) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        smokeDissipationTime = 7.0f;  // 7 seconds for full dissipation (all 7 levels)
-        smokeRiseInterval = 100.0f;   // Disable rising for this test
+        smokeDissipationTime = 2.8f;  // 2.8 game-hours (= 7s at dayLength=60)
+        smokeRiseInterval = 40.0f;   // Disable rising for this test
         smokeEnabled = true;
         gameSpeed = 1.0f;
-        
+
         // Place max level smoke
         SetSmokeLevel(8, 4, 0, SMOKE_MAX_LEVEL);
         expect(GetSmokeLevel(8, 4, 0) == SMOKE_MAX_LEVEL);
-        
+
         // Run for full dissipation time plus margin
-        RunGameSeconds(smokeDissipationTime + 2.0f);
+        RunGameSeconds(GameHoursToGameSeconds(smokeDissipationTime) + 2.0f);
         
         // Smoke should be gone
         expect(GetSmokeLevel(8, 4, 0) == 0);
@@ -207,8 +208,8 @@ describe(spec_smoke_dissipation) {
         SetupTestGrid();
         ResetTestState(12345);
         
-        smokeDissipationTime = 14.0f;  // 14 seconds = 2s per level
-        smokeRiseInterval = 100.0f;    // Disable rising
+        smokeDissipationTime = 5.6f;   // 5.6 game-hours (= 14s at dayLength=60)
+        smokeRiseInterval = 40.0f;     // Disable rising
         smokeEnabled = true;
         gameSpeed = 1.0f;
         
@@ -241,7 +242,7 @@ describe(spec_steam_rise) {
         // Warm up temperature grid
         for (int i = 0; i < 50; i++) UpdateTemperature();
         
-        steamRiseInterval = 1.0f;  // Rise every 1 second
+        steamRiseInterval = 0.4f;  // Rise every 0.4 game-hours (= 1s at dayLength=60)
         gameSpeed = 1.0f;
         
         // Place steam at z=0
@@ -270,9 +271,9 @@ describe(spec_temperature_decay) {
         ResetTestState(12345);
         
         SetAmbientSurfaceTemp(20);
-        tempDecayInterval = 0.5f;
+        tempDecayInterval = 0.2f;
         heatDecayPercent = 10;
-        heatTransferInterval = 100.0f;  // Disable transfer for this test
+        heatTransferInterval = 40.0f;  // Disable transfer for this test
         temperatureEnabled = true;
         gameSpeed = 1.0f;
         
@@ -293,9 +294,9 @@ describe(spec_temperature_decay) {
         ResetTestState(12345);
         
         SetAmbientSurfaceTemp(20);
-        tempDecayInterval = 0.5f;
+        tempDecayInterval = 0.2f;
         heatDecayPercent = 10;
-        heatTransferInterval = 100.0f;
+        heatTransferInterval = 40.0f;
         temperatureEnabled = true;
         gameSpeed = 1.0f;
         
@@ -315,8 +316,8 @@ describe(spec_temperature_decay) {
         // Test slow decay
         SetupTestGrid();
         SetAmbientSurfaceTemp(20);
-        tempDecayInterval = 0.5f;
-        heatTransferInterval = 100.0f;
+        tempDecayInterval = 0.2f;
+        heatTransferInterval = 40.0f;
         temperatureEnabled = true;
         gameSpeed = 1.0f;
         
@@ -329,8 +330,8 @@ describe(spec_temperature_decay) {
         // Test fast decay
         SetupTestGrid();
         SetAmbientSurfaceTemp(20);
-        tempDecayInterval = 0.5f;
-        heatTransferInterval = 100.0f;
+        tempDecayInterval = 0.2f;
+        heatTransferInterval = 40.0f;
         temperatureEnabled = true;
         gameSpeed = 1.0f;
         
@@ -357,8 +358,8 @@ describe(spec_heat_physics) {
         InitTemperature();  // Re-init so cells start at correct ambient (20)
         
         SetAmbientSurfaceTemp(20);
-        heatTransferInterval = 0.1f;
-        tempDecayInterval = 100.0f;  // Disable decay
+        heatTransferInterval = 0.04f;
+        tempDecayInterval = 40.0f;  // Disable decay
         heatRiseBoost = 200;         // Heat rises 2x faster
         heatSinkReduction = 50;      // Heat sinks 0.5x speed
         temperatureEnabled = true;
@@ -461,7 +462,7 @@ describe(spec_ground_wear) {
         wearGrassToDirt = 100;
         wearDirtToGrass = 50;  // Unused now - surface is based on wear thresholds
         wearDecayRate = 10;
-        wearRecoveryInterval = 0.5f;
+        wearRecoveryInterval = 0.2f;
         groundWearEnabled = true;
         gameSpeed = 1.0f;
         
@@ -512,7 +513,7 @@ describe(spec_game_speed) {
             }
         }
         ResetTestState(99999);
-        fireSpreadInterval = 0.5f;
+        fireSpreadInterval = 0.2f;
         fireSpreadBase = 100;       // Guaranteed spread
         fireSpreadPerLevel = 0;
         fireEnabled = true;

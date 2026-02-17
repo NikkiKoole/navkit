@@ -13,8 +13,8 @@
 // Pressure settings
 #define WATER_PRESSURE_SEARCH_LIMIT 64  // Max cells to search when tracing pressure
 
-// Evaporation (default: shallow water evaporates every 10 game-seconds)
-#define WATER_EVAP_INTERVAL_DEFAULT 10.0f
+// Evaporation (default: shallow water evaporates every 4.0 game-hours)
+#define WATER_EVAP_INTERVAL_DEFAULT 4.0f
 
 // Performance tuning
 #define WATER_MAX_UPDATES_PER_TICK 4096  // Cap cells processed per tick

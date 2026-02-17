@@ -401,18 +401,21 @@ All use the same `RatePerRealSecond(ratePerGH)` conversion. All scale with dayLe
 
 Don't refactor everything at once. Adopt gradually:
 
-### Step 1: Add balance.h with conversion functions
-- `GameHoursToRealSeconds()`, `RatePerRealSecond()`
-- Keep existing constants but document their game-hour equivalents in comments
+### Step 1: Add balance.h with conversion functions ✅
+- `BalanceTable` struct, `GameHoursToGameSeconds()`, `RatePerGameSecond()`
+- `InitBalance()` + `RecalcBalanceTable()` derive rates from budgets
+- Test suite validates conversions at multiple dayLengths
 
-### Step 2: Convert hunger to game-hours (proof of concept)
-- Replace `HUNGER_DRAIN_RATE` with `balance.hungerDrainPerGH` + conversion
-- Verify: changing dayLength doesn't change gameplay feel
-- This validates the pattern before touching more systems
+### Step 2: Convert hunger to game-hours ✅
+- Removed `HUNGER_DRAIN_RATE`, `HUNGER_PENALTY_THRESHOLD`, `HUNGER_PENALTY_MIN` defines
+- All hunger constants now read from `balance.*` via conversion functions
+- Eating duration, search cooldown, seek timeout also converted to game-hours
+- Tests verify dayLength-independence (drain per GH same at 24s/60s/720s)
 
-### Step 3: Convert energy (Feature 02)
-- All energy rates in the balance table
-- Tooltip shows game-hour projections
+### Step 3: Convert energy (Feature 02) — BLOCKED
+- **Blocked on**: sleep/energy feature (Feature 02) not yet on this branch
+- Energy fields exist in BalanceTable but Mover has no `energy` field yet
+- Will convert when sleep feature is merged/ported to this branch
 
 ### Step 4: Convert simulation systems
 - Fire, water, smoke, steam, temperature — change intervals to game-time

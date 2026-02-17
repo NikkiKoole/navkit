@@ -2,6 +2,7 @@
 #include "water.h"
 #include "temperature.h"
 #include "weather.h"
+#include "balance.h"
 #include "../core/sim_manager.h"
 #include "../world/grid.h"
 #include "../world/cell_defs.h"
@@ -16,8 +17,8 @@ SteamCell steamGrid[MAX_GRID_DEPTH][MAX_GRID_HEIGHT][MAX_GRID_WIDTH];
 bool steamEnabled = true;
 int steamUpdateCount = 0;
 
-// Tweakable parameters (game-time based, temps in Celsius)
-float steamRiseInterval = 0.5f;     // Rise attempt every 0.5 game-seconds
+// Tweakable parameters (game-hours for time, temps in Celsius)
+float steamRiseInterval = 0.2f;     // Rise attempt every 0.2 game-hours
 int steamCondensationTemp = 60;     // 60C - steam lingers longer before condensing
 int steamGenerationTemp = 100;      // 100C (boiling point)
 int steamCondensationChance = 3;    // 1 in N ticks attempts condensation
@@ -403,9 +404,10 @@ void UpdateSteam(void) {
     steamRiseAccum += gameDeltaTime;
     
     // Check if rise interval has elapsed
-    bool doRise = steamRiseAccum >= steamRiseInterval;
+    float riseIntervalGS = GameHoursToGameSeconds(steamRiseInterval);
+    bool doRise = steamRiseAccum >= riseIntervalGS;
     if (doRise) {
-        steamRiseAccum -= steamRiseInterval;
+        steamRiseAccum -= riseIntervalGS;
         
         // Increment generation for rise tracking (prevents cascading through z-levels)
         steamRiseGeneration++;

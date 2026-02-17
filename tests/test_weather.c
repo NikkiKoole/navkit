@@ -279,7 +279,7 @@ describe(rain_wetness) {
     it("should increase wetness on exposed dirt during rain") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
-        rainWetnessInterval = 0.5f;  // Fast for testing
+        rainWetnessInterval = 0.2f;  // Fast for testing
         // Run enough ticks for wetness to increase
         for (int i = 0; i < 120; i++) {
             gameDeltaTime = TICK_DT;
@@ -298,7 +298,7 @@ describe(rain_wetness) {
     it("should not increase wetness on sheltered cells") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
-        rainWetnessInterval = 0.5f;
+        rainWetnessInterval = 0.2f;
         // Shelter cell (3,2)
         PlaceRoof(3, 2);
         SET_CELL_WETNESS(3, 2, 0, 0);
@@ -312,7 +312,7 @@ describe(rain_wetness) {
     it("should create mud on exposed dirt during heavy rain") {
         SetupWeatherGrid();
         ForceWeather(WEATHER_HEAVY_RAIN);
-        heavyRainWetnessInterval = 0.3f;
+        heavyRainWetnessInterval = 0.12f;
         // Run long enough for wetness to reach 2+ on some cells
         for (int i = 0; i < 600; i++) {
             gameDeltaTime = TICK_DT;
@@ -333,7 +333,7 @@ describe(rain_wetness) {
         // Change cell to granite
         SetWallMaterial(3, 2, 0, MAT_GRANITE);
         ForceWeather(WEATHER_RAIN);
-        rainWetnessInterval = 0.5f;
+        rainWetnessInterval = 0.2f;
         SET_CELL_WETNESS(3, 2, 0, 0);
         for (int i = 0; i < 300; i++) {
             gameDeltaTime = TICK_DT;
@@ -346,8 +346,8 @@ describe(rain_wetness) {
         // Test with RAIN - use long intervals so wetness doesn't cap at max(3)
         SetupWeatherGrid();
         ForceWeather(WEATHER_RAIN);
-        rainWetnessInterval = 3.0f;
-        heavyRainWetnessInterval = 1.5f;
+        rainWetnessInterval = 1.2f;
+        heavyRainWetnessInterval = 0.6f;
         // 120 ticks = 2 seconds: RAIN gets 0 increments (interval=3s), HEAVY_RAIN gets 1 (interval=1.5s)
         for (int i = 0; i < 120; i++) {
             gameDeltaTime = TICK_DT;
@@ -361,8 +361,8 @@ describe(rain_wetness) {
         // Test with HEAVY_RAIN (same duration)
         SetupWeatherGrid();
         ForceWeather(WEATHER_HEAVY_RAIN);
-        rainWetnessInterval = 3.0f;
-        heavyRainWetnessInterval = 1.5f;
+        rainWetnessInterval = 1.2f;
+        heavyRainWetnessInterval = 0.6f;
         for (int i = 0; i < 120; i++) {
             gameDeltaTime = TICK_DT;
             UpdateWeather();
