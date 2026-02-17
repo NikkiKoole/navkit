@@ -29,6 +29,7 @@ float soilPileRadius = 3.0f;  // How far soil can spread in pile mode
 static int selectedWallRecipe = CONSTRUCTION_DRY_STONE_WALL;
 static int selectedFloorRecipe = CONSTRUCTION_PLANK_FLOOR;
 static int selectedLadderRecipe = CONSTRUCTION_LADDER;
+static int selectedFurnitureRecipe = CONSTRUCTION_LEAF_PILE;
 
 // Right-click tap detection for pie menu
 static Vector2 rightClickStart = {0};
@@ -48,6 +49,11 @@ const char* GetSelectedFloorRecipeName(void) {
 
 const char* GetSelectedLadderRecipeName(void) {
     const ConstructionRecipe* recipe = GetConstructionRecipe(selectedLadderRecipe);
+    return recipe ? recipe->name : "?";
+}
+
+const char* GetSelectedFurnitureRecipeName(void) {
+    const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
     return recipe ? recipe->name : "?";
 }
 
@@ -878,6 +884,23 @@ static void ExecuteDesignateRamp(int x1, int y1, int x2, int y2, int z) {
     }
     if (count > 0) {
         AddMessage(TextFormat("Created %d ramp blueprint%s", count, count > 1 ? "s" : ""), BLUE);
+    }
+}
+
+static void ExecuteDesignateFurniture(int x1, int y1, int x2, int y2, int z) {
+    int count = 0;
+    for (int dy = y1; dy <= y2; dy++) {
+        for (int dx = x1; dx <= x2; dx++) {
+            int bpIdx = CreateRecipeBlueprint(dx, dy, z, selectedFurnitureRecipe);
+            if (bpIdx >= 0) {
+                count++;
+            }
+        }
+    }
+    if (count > 0) {
+        const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
+        AddMessage(TextFormat("Created %d %s blueprint%s", count,
+                   recipe ? recipe->name : "furniture", count > 1 ? "s" : ""), BLUE);
     }
 }
 
@@ -2205,6 +2228,22 @@ void HandleInput(void) {
             return;
         }
     }
+    if (inputAction == ACTION_WORK_FURNITURE) {
+        if (IsKeyPressed(KEY_R)) {
+            int indices[16];
+            int count = GetConstructionRecipeIndicesForCategory(BUILD_FURNITURE, indices, 16);
+            if (count > 0) {
+                int cur = -1;
+                for (int i = 0; i < count; i++) {
+                    if (indices[i] == selectedFurnitureRecipe) { cur = i; break; }
+                }
+                selectedFurnitureRecipe = indices[(cur + 1) % count];
+                const ConstructionRecipe* recipe = GetConstructionRecipe(selectedFurnitureRecipe);
+                AddMessage(TextFormat("Furniture recipe: %s", recipe ? recipe->name : "?"), BLUE);
+            }
+            return;
+        }
+    }
 
     // ========================================================================
     // Sandbox tree type cycling
@@ -2451,6 +2490,10 @@ void HandleInput(void) {
                 break;
             case ACTION_WORK_RAMP:
                 if (leftClick) ExecuteDesignateRamp(x1, y1, x2, y2, z);
+                else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
+                break;
+            case ACTION_WORK_FURNITURE:
+                if (leftClick) ExecuteDesignateFurniture(x1, y1, x2, y2, z);
                 else ExecuteCancelBuild(x1, y1, x2, y2, z);  // Reuse cancel logic
                 break;
             case ACTION_WORK_GATHER:

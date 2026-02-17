@@ -16,6 +16,7 @@ typedef enum {
     BUILD_FLOOR,
     BUILD_LADDER,
     BUILD_RAMP,
+    BUILD_FURNITURE,
     BUILD_CATEGORY_COUNT,
 } BuildCategory;
 
@@ -62,6 +63,9 @@ typedef enum {
     CONSTRUCTION_BRICK_FLOOR,       // 1 stage: 2 bricks
     CONSTRUCTION_THATCH_FLOOR,      // 2 stages: 1 dirt/gravel/sand → 1 dried grass
     CONSTRUCTION_LADDER,            // 1 stage: 1 log or planks
+    CONSTRUCTION_LEAF_PILE,         // 1 stage: 4 leaves (furniture)
+    CONSTRUCTION_PLANK_BED,         // 1 stage: 1 plank bed item (furniture)
+    CONSTRUCTION_CHAIR,             // 1 stage: 1 chair item (furniture)
     CONSTRUCTION_RECIPE_COUNT,
 } ConstructionRecipeIndex;
 

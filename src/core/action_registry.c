@@ -486,6 +486,19 @@ const ActionDef ACTION_REGISTRY[] = {
         .canDrag = false,
         .canErase = true
     },
+    {
+        .action = ACTION_WORK_FURNITURE,
+        .name = "FURNITURE",
+        .barDisplayText = "Furniture",
+        .barText = "L-drag designate  R-drag cancel  [R]Cycle recipe  [ESC]Back",
+        .barKey = 'u',
+        .barUnderlinePos = 1,
+        .requiredMode = MODE_WORK,
+        .requiredSubMode = SUBMODE_BUILD,
+        .parentAction = ACTION_NONE,
+        .canDrag = true,
+        .canErase = true
+    },
     
     // ========================================================================
     // MODE_WORK > SUBMODE_HARVEST actions

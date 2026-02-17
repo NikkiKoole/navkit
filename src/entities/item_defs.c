@@ -42,5 +42,7 @@ const ItemDef itemDefs[ITEM_TYPE_COUNT] = {
     [ITEM_BASKET]       = { "Basket",       SPRITE_crate_green,  IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 1.0f, 0.0f },
     [ITEM_CLAY_POT]     = { "Clay Pot",     SPRITE_crate_red,    IF_STACKABLE | IF_CONTAINER, 10, MAT_NONE, 3.0f, 0.0f },
     [ITEM_CHEST]        = { "Chest",        SPRITE_crate_blue,   IF_CONTAINER, 1, MAT_NONE, 8.0f, 0.0f },
+    [ITEM_PLANK_BED]    = { "Plank Bed",   SPRITE_block_wood,   MN, 1, MAT_OAK, 15.0f, 0.0f },
+    [ITEM_CHAIR]        = { "Chair",       SPRITE_block_wood,   MN, 1, MAT_OAK, 8.0f, 0.0f },
 };
 #undef MN

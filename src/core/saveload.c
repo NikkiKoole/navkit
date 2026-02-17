@@ -920,8 +920,40 @@ bool LoadWorld(const char* filename) {
             memcpy(stockpiles[i].groundItemIdx, v51_sp.groundItemIdx, sizeof(v51_sp.groundItemIdx));
             stockpiles[i].freeSlotCount = v51_sp.freeSlotCount;
         }
+    } else if (version < 55) {
+        // v52-v54: 31 item types, migrate to 33
+        StockpileV54 v54_sp;
+        for (int i = 0; i < MAX_STOCKPILES; i++) {
+            fread(&v54_sp, sizeof(StockpileV54), 1, f);
+            stockpiles[i].x = v54_sp.x;
+            stockpiles[i].y = v54_sp.y;
+            stockpiles[i].z = v54_sp.z;
+            stockpiles[i].width = v54_sp.width;
+            stockpiles[i].height = v54_sp.height;
+            stockpiles[i].active = v54_sp.active;
+            memcpy(stockpiles[i].allowedTypes, v54_sp.allowedTypes,
+                   sizeof(v54_sp.allowedTypes));
+            // Default new item types to true
+            for (int t = V54_ITEM_TYPE_COUNT; t < ITEM_TYPE_COUNT; t++) {
+                stockpiles[i].allowedTypes[t] = true;
+            }
+            memcpy(stockpiles[i].allowedMaterials, v54_sp.allowedMaterials,
+                   sizeof(v54_sp.allowedMaterials));
+            memcpy(stockpiles[i].cells, v54_sp.cells, sizeof(v54_sp.cells));
+            memcpy(stockpiles[i].slots, v54_sp.slots, sizeof(v54_sp.slots));
+            memcpy(stockpiles[i].reservedBy, v54_sp.reservedBy, sizeof(v54_sp.reservedBy));
+            memcpy(stockpiles[i].slotCounts, v54_sp.slotCounts, sizeof(v54_sp.slotCounts));
+            memcpy(stockpiles[i].slotTypes, v54_sp.slotTypes, sizeof(v54_sp.slotTypes));
+            memcpy(stockpiles[i].slotMaterials, v54_sp.slotMaterials, sizeof(v54_sp.slotMaterials));
+            stockpiles[i].maxStackSize = v54_sp.maxStackSize;
+            stockpiles[i].priority = v54_sp.priority;
+            stockpiles[i].maxContainers = v54_sp.maxContainers;
+            memcpy(stockpiles[i].slotIsContainer, v54_sp.slotIsContainer, sizeof(v54_sp.slotIsContainer));
+            memcpy(stockpiles[i].groundItemIdx, v54_sp.groundItemIdx, sizeof(v54_sp.groundItemIdx));
+            stockpiles[i].freeSlotCount = v54_sp.freeSlotCount;
+        }
     } else {
-        // v52+ format - direct read
+        // v55+ format - direct read
         fread(stockpiles, sizeof(Stockpile), MAX_STOCKPILES, f);
     }
 

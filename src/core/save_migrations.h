@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 54
+#define CURRENT_SAVE_VERSION 55
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -192,6 +192,31 @@ typedef struct {
     unsigned long lastJobEndTick;
     MoverCapabilities capabilities;
 } MoverV52;
+
+// Version 54 constants (before plank bed/chair items)
+#define V54_ITEM_TYPE_COUNT 31
+
+// V54 Stockpile struct (before plank bed/chair addition)
+// v54 had 31 item types, v55 adds ITEM_PLANK_BED and ITEM_CHAIR at end (indices 31-32)
+typedef struct {
+    int x, y, z;
+    int width, height;
+    bool active;
+    bool allowedTypes[V54_ITEM_TYPE_COUNT];
+    bool allowedMaterials[MAT_COUNT];
+    bool cells[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slots[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int reservedBy[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int slotCounts[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    ItemType slotTypes[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    uint8_t slotMaterials[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int maxStackSize;
+    int priority;
+    int maxContainers;
+    bool slotIsContainer[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
+    int freeSlotCount;
+} StockpileV54;
 
 // Version 34 constants (before short string/cordage items)
 #define V34_ITEM_TYPE_COUNT 24

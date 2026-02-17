@@ -38,6 +38,8 @@ typedef enum {
     ITEM_BASKET,        // Woven basket (cordage container)
     ITEM_CLAY_POT,      // Fired clay pot (kiln container)
     ITEM_CHEST,         // Wooden chest (planks container)
+    ITEM_PLANK_BED,     // Crafted bed (furniture, placed via construction)
+    ITEM_CHAIR,         // Crafted chair (furniture, placed via construction)
     ITEM_TYPE_COUNT    // Must be last - number of item types
 } ItemType;
 

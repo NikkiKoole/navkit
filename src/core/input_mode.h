@@ -59,6 +59,7 @@ typedef enum {
     ACTION_WORK_FLOOR,
     ACTION_WORK_LADDER,
     ACTION_WORK_RAMP,
+    ACTION_WORK_FURNITURE,
     // Work > Harvest actions
     ACTION_WORK_CHOP,
     ACTION_WORK_CHOP_FELLED,
@@ -145,6 +146,7 @@ int InputMode_GetBarItems(BarItem* items);  // Returns count of items
 const char* GetSelectedWallRecipeName(void);
 const char* GetSelectedFloorRecipeName(void);
 const char* GetSelectedLadderRecipeName(void);
+const char* GetSelectedFurnitureRecipeName(void);
 
 // Trigger a bar item action (called when button clicked)
 void InputMode_TriggerKey(int key);

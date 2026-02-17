@@ -12,6 +12,7 @@
 #include "../simulation/plants.h"
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
+#include "../entities/furniture.h"
 #include "../game_state.h"
 #include <string.h>
 #include <math.h>
@@ -1840,6 +1841,9 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
         // Can't replace existing ramps or ladders
         CellType ct = grid[z][y][x];
         if (CellIsDirectionalRamp(ct) || CellIsLadder(ct)) return -1;
+    } else if (recipe->buildCategory == BUILD_FURNITURE) {
+        if (!IsCellWalkableAt(z, y, x)) return -1;
+        if (GetFurnitureAt(x, y, z) >= 0) return -1;
     }
 
     // Already has a blueprint?
@@ -2221,6 +2225,20 @@ void CompleteBlueprint(int blueprintIdx) {
 
         MarkChunkDirty(x, y, z);
         if (z + 1 < gridDepth) MarkChunkDirty(x, y, z + 1);
+    }
+
+    if (recipe->buildCategory == BUILD_FURNITURE) {
+        FurnitureType ft = FURNITURE_NONE;
+        if (bp->recipeIndex == CONSTRUCTION_LEAF_PILE) ft = FURNITURE_LEAF_PILE;
+        else if (bp->recipeIndex == CONSTRUCTION_PLANK_BED) ft = FURNITURE_PLANK_BED;
+        else if (bp->recipeIndex == CONSTRUCTION_CHAIR) ft = FURNITURE_CHAIR;
+        if (ft != FURNITURE_NONE) {
+            SpawnFurniture(x, y, z, ft, (uint8_t)finalMat);
+        }
+        bp->active = false;
+        bp->assignedBuilder = -1;
+        blueprintCount--;
+        return;
     }
 
     bp->active = false;

@@ -248,6 +248,60 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_LEAF_PILE] = {
+        .name = "Leaf Pile",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_LEAVES }},
+                .altCount = 1,
+                .count = 4,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // inherited from leaves material
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_PLANK_BED] = {
+        .name = "Plank Bed",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_PLANK_BED }},
+                .altCount = 1,
+                .count = 1,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 3.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // inherited from bed item material
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
+    [CONSTRUCTION_CHAIR] = {
+        .name = "Chair",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_CHAIR }},
+                .altCount = 1,
+                .count = 1,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,    // inherited from chair item material
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
 };
 
 const ConstructionRecipe* GetConstructionRecipe(int recipeIndex) {
