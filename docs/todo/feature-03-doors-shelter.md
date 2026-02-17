@@ -3,151 +3,280 @@
 > **Priority**: Tier 1 — Survival Loop
 > **Why now**: Buildings are open mazes. Weather/temperature exist but have no gameplay impact on colonists.
 > **Systems used**: Construction, weather, temperature, lighting, wind
-> **Depends on**: Feature 2 (furniture makes rooms useful)
+> **Depends on**: Feature 2 (furniture makes rooms useful) — COMPLETE
 > **Opens**: Clothing matters more (F7), room quality for moods (F10)
 
 ---
 
 ## What Changes
 
-**Doors** are a new cell type: walkable by movers but block wind, rain, and temperature exchange. **Enclosed rooms** are detected automatically — a room with walls, floor, ceiling, and doors becomes **sheltered**. Shelter protects from rain/snow, reduces wind chill, and holds heat better. Beds inside shelter give bonus rest.
+**Doors** are a new cell type: always walkable by movers but block fluids, light, and temperature exchange. **Enclosed rooms** are detected via flood-fill — a room bounded by walls, doors, floors, and ceilings becomes **sheltered**. Shelter protects from rain/snow, blocks wind effects, retains heat, and gives a rest bonus for beds.
 
 This is the feature that makes *building* meaningful. You're not just placing walls — you're creating shelter from the storm.
 
 ---
 
-## Design
+## Design Decisions
 
-### Doors
+### 1. Doors are always walkable (no open/close state)
 
-A door is a **cell type** (CELL_DOOR) that:
-- Is **walkable** (movers and animals pass through)
-- **Blocks wind** (wind chill doesn't pass through)
-- **Blocks rain/snow** (IsExposedToSky returns false for cells behind doors at same z)
-- **Reduces temperature transfer** (acts as insulator between inside/outside)
-- Can be **opened/closed** visually (door sprite changes when mover passes)
+**Decision**: Doors have NO open/close state. They are always passable by movers but always block fluids, light, and temperature.
 
-**Construction recipe**: 3 planks → door (at carpenter's bench from F2)
+**Rationale**: Adding per-cell door state would require:
+- A new `doorStateGrid[z][y][x]` (512KB+ memory)
+- Conditional checks in every fluid/light/pathfinding function
+- Mover proximity detection for auto-open/close
+- Visual state sync
 
-### Enclosed Room Detection
+This is massive complexity for cosmetic benefit. The gameplay value is shelter detection, not door animation. Movers walking through a "closed-looking" door is a standard colony sim convention (DF, RimWorld).
 
-An enclosed room is a connected set of air cells on the same z-level where every boundary is either:
-- A wall (CELL_WALL)
-- A door (CELL_DOOR)
-- A floor above (ceiling)
-- A floor below (ground)
+**Implementation**: `CELL_DOOR` gets flags: walkable (no `CF_BLOCKS_MOVEMENT`), blocks fluids (`CF_BLOCKS_FLUIDS`), solid for support (`CF_SOLID`). Single static cell type, no dynamic state.
 
-**Algorithm**: Flood-fill from any interior cell. If the fill reaches map edge or open sky without hitting wall/door on all sides → not enclosed. Cache result per room, invalidate when walls/doors/floors change.
+**Revisit when**: Lock/unlock mechanics are needed (prison, security).
 
-**Room properties:**
-- `isEnclosed`: bool
-- `cellCount`: number of cells in room
-- `hasDoor`: at least one door in boundary
-- `temperature`: average interior temperature (insulated from exterior)
+### 2. Doors are a cell type, not furniture
 
-### Shelter Effects
+**Decision**: `CELL_DOOR` in the CellType enum, placed via `BUILD_DOOR` construction category.
 
-| Condition | Outside | Sheltered Room |
-|-----------|---------|----------------|
-| Rain wetness | Full | None |
-| Snow accumulation | Full | None |
-| Wind chill | Full | None (doors block) |
-| Temperature | Ambient | Insulated (slower exchange with outside) |
-| Rest bonus (bed) | 1.0× | 1.25× (faster energy recovery) |
-| Cloud shadow | Yes | No |
+**Rationale**: Doors fill a cell slot like walls. They need to interact with the cell grid for pathfinding, fluid blocking, sky exposure checks, temperature insulation, and lighting. Making them furniture would require special-casing every system that reads the cell grid.
 
-### Weather Protection
+**Consequence**: A cell can be either a door OR have furniture, not both (same as walls).
 
-The weather system already tracks `IsExposedToSky()`. Extend this:
-- Enclosed rooms: all cells marked as sheltered
-- Rain doesn't increase wetness on sheltered cells
-- Snow doesn't accumulate on sheltered cells
-- Wind chill doesn't apply to movers in sheltered cells
+### 3. Shelter = "not exposed to sky" (no room detection in Phase 1)
 
-### Temperature Insulation
+**Decision**: Defer full room/region flood-fill detection. Instead, leverage the existing `IsExposedToSky()` function which already scans upward for solid cells/floors.
 
-Rooms with doors act as thermal zones:
-- Temperature inside changes slower (walls + doors = insulation)
-- A hearth inside a room heats the room effectively (heat stays in)
-- This makes the hearth workshop functionally useful — it heats your home
+**Rationale**: `IsExposedToSky()` (weather.c:247-258) already does exactly what shelter needs — it traces upward from z+1 and returns false if any solid cell or floor exists above. Rain (`ApplyRainWetness`), snow, and wind drying already check this. A room with walls + ceiling (floor on z+1) is already sheltered from rain/snow without ANY code changes to the weather system.
+
+The missing piece is **horizontal** shelter: wind chill and temperature insulation. Wind is a global vector (not per-cell propagation), so "wind blocked by doors" just means "mover is not exposed to sky." Temperature already uses insulation tiers per cell — doors just need an appropriate tier.
+
+**Full room detection** (flood-fill, region IDs, enclosed flag) is deferred to a later phase or feature. The 80% gameplay value comes from roof + walls + doors blocking vertical weather, which already works.
+
+**Revisit when**: Room quality system (F10) needs to know room boundaries, size, and contents.
+
+### 4. Door placement: walkable cell with wall neighbors
+
+**Decision**: Doors require the cell to be walkable AND have at least one wall neighbor (cardinal). This prevents placing doors in open fields.
+
+**Rationale**: A door in the middle of a field makes no sense. Requiring a wall neighbor ensures doors are placed in wall gaps — the natural pattern. This is a soft constraint (1+ wall neighbor, not exactly 2) to support corner doors and wide doorways.
+
+### 5. No save version bump needed for CELL_DOOR
+
+**Decision**: Adding a new CellType enum value doesn't affect save format.
+
+**Rationale**: The grid is saved as `CellType grid[z][y][x]` — it's an enum stored as int. New enum values are backward-compatible (old saves just won't have any CELL_DOOR cells). Construction recipes don't affect save format. The carpenter recipe addition is just a code change.
+
+**Exception**: If we add a `shelterGrid` or `regionGrid`, that would need a save version bump. But per Decision 3, shelter is derived on-demand (not persisted).
+
+---
+
+## Codebase Analysis
+
+### What already works for shelter (no changes needed)
+
+| System | Why it works | Key function |
+|--------|-------------|--------------|
+| Rain wetness | Checks `IsExposedToSky()` — roof blocks rain | `ApplyRainWetness()` weather.c:284 |
+| Snow accumulation | Checks `IsExposedToSky()` — roof blocks snow | `UpdateSnow()` |
+| Wind drying | Checks `IsExposedToSky()` | groundwear.c:231 |
+| Cloud shadows | Applied to surface — interior cells don't get shadows | rendering.c |
+
+### What needs changes
+
+| System | Current behavior | Change needed | Effort |
+|--------|-----------------|---------------|--------|
+| Cell types | No CELL_DOOR | Add enum + cellDefs entry | Small |
+| `IsExposedToSky()` | Checks `cell != CELL_AIR` | Already blocks for CELL_DOOR (it's not CELL_AIR) — **works automatically** | None |
+| Pathfinding | Doors don't exist | CELL_DOOR is walkable (no CF_BLOCKS_MOVEMENT) | Small |
+| Fluid blocking | Checks `CellAllowsFluids()` | CELL_DOOR has CF_BLOCKS_FLUIDS — **works automatically** | None |
+| Sky light | Blocks at solid/floor | Need to block at CELL_DOOR too | Small |
+| Block light | Stops at `CellIsSolid()` | Need to also stop at CELL_DOOR | Small |
+| Temperature | Insulation tiers per cell | Add door insulation tier (between air and wood) | Small |
+| Construction | No BUILD_DOOR | Add category + recipe + placement handler | Medium |
+| Rest bonus | Fixed rate per furniture | Check `IsExposedToSky()` for shelter bonus | Small |
+| Rendering | No door sprite | Need door sprite + draw logic | Small |
+
+### Key insight: `IsExposedToSky()` does the heavy lifting
+
+```c
+bool IsExposedToSky(int x, int y, int z) {
+    for (int zz = z + 1; zz < gridDepth; zz++) {
+        CellType cell = grid[zz][y][x];
+        if (cell != CELL_AIR) return false;  // ANY non-air cell blocks
+        if (HAS_FLOOR(x, y, zz)) return false;
+    }
+    return true;
+}
+```
+
+Since `CELL_DOOR != CELL_AIR`, a door placed above a cell would block sky exposure. But doors are placed horizontally (in walls), not as ceilings. The roof is what blocks sky — typically a floor on z+1 or solid terrain. Doors contribute to **horizontal** enclosure, not vertical.
+
+For weather protection, the roof is what matters. Doors matter for:
+1. Temperature insulation (reducing heat transfer at doorways)
+2. Visual/logical completeness (a "room" has doors)
+3. Future room detection (doors as boundary markers)
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Door Cell Type
-1. Add CELL_DOOR to cell types
-2. Walkable, but blocks fluids (wind, rain) like walls
-3. Door construction recipe (3 planks at carpenter's bench)
-4. Door sprite (open/closed variants)
-5. Place via blueprint system
-6. **Test**: Door is walkable, blocks IsExposedToSky for cells behind it
+### Phase 1: Door Cell Type + Construction (~1 session)
 
-### Phase 2: Room Detection
-1. Flood-fill algorithm for enclosed space detection
-2. Room struct: cell list, enclosed flag, properties
-3. Cache rooms, invalidate on construction changes
-4. Mark cells as `sheltered` when inside enclosed room
-5. **Test**: Room with walls + door is detected as enclosed, open room is not
+**Goal**: Players can build doors. Doors are walkable, block fluids, block light.
 
-### Phase 3: Weather Protection
-1. Rain skips sheltered cells (no wetness increase)
-2. Snow skips sheltered cells (no accumulation)
-3. Wind chill doesn't apply to movers in sheltered cells
-4. **Test**: Rain outside, dry inside. Snow outside, clear inside.
+**Files changed**:
+- `src/world/grid.h` — Add `CELL_DOOR` to CellType enum
+- `src/world/cell_defs.c` — Add cellDefs entry: no CF_BLOCKS_MOVEMENT, has CF_BLOCKS_FLUIDS, has CF_SOLID (so floor above works as ceiling)
+- `src/world/construction.h` — Add `BUILD_DOOR` to BuildCategory, `CONSTRUCTION_DOOR` to recipe enum
+- `src/world/construction.c` — Door recipe: 3 planks, 3s build time, material inherited from planks
+- `src/world/designations.c`:
+  - `CreateRecipeBlueprint()`: BUILD_DOOR precondition — walkable + at least 1 cardinal wall neighbor
+  - `CompleteBlueprint()`: BUILD_DOOR handler — set `grid[z][y][x] = CELL_DOOR`, set wall material, invalidate paths
+- `src/core/input_mode.h` — Add `ACTION_WORK_DOOR`
+- `src/core/action_registry.c` — Registry entry (key 'd' under SUBMODE_BUILD)
+- `src/core/input.c` — Execution handler + placement function
+- `src/core/input_mode.c` — Bar item
+- `src/simulation/lighting.c` — Block sky light and block light at CELL_DOOR cells (2 checks)
+- `src/render/rendering.c` — Door sprite rendering
 
-### Phase 4: Temperature Insulation
-1. Doors reduce temperature transfer rate (like walls but less)
-2. Enclosed rooms retain heat from hearth
-3. Hearth in room → room stays warm
-4. **Test**: Room with hearth stays warmer than outside
+**Walkability detail**: CELL_DOOR must NOT have CF_BLOCKS_MOVEMENT (movers walk through). It SHOULD have CF_SOLID so that the cell above it has support (a floor can rest on a door like on a wall — this makes ceiling detection work). It has CF_BLOCKS_FLUIDS so water/smoke/steam don't pass through.
 
-### Phase 5: Rest Bonus
-1. Beds in sheltered rooms give 1.25× energy recovery
-2. Visual indicator: room state shown in tooltip
-3. **Test**: Sleeping in sheltered room restores energy faster
+**`GetCellMoveCost` consideration**: Doors could have a small movement cost penalty (e.g., 11 instead of 10) to make movers slightly prefer open paths. Optional — start with baseline cost 10.
+
+**Lighting changes** (lighting.c):
+- Sky light column scan: treat CELL_DOOR like solid (blocks sky light propagation downward)
+- Block light BFS: treat CELL_DOOR as blocking (light doesn't pass through closed doors)
+
+**Tests** (~10 assertions):
+- Door cell is walkable (mover can path through)
+- Door blocks fluids (water doesn't spread through)
+- Door blocks sky light
+- Door blocks block light
+- `IsExposedToSky()` returns false for cell with door above (already works since CELL_DOOR != CELL_AIR)
+- Blueprint placement requires wall neighbor
+- Blueprint placement rejected in open field (no wall neighbors)
+- Completed blueprint places CELL_DOOR in grid
+
+### Phase 2: Temperature Insulation (~0.5 session)
+
+**Goal**: Doors act as thermal insulators. Rooms with hearths retain heat.
+
+**Files changed**:
+- `src/simulation/temperature.c` — Add door insulation tier lookup
+- `src/simulation/temperature.h` — Add `INSULATION_TIER_DOOR` constant
+
+**How temperature already works** (temperature.c):
+- `GetInsulationTier(x, y, z)` returns tier based on cell type
+- Tiers: AIR=100% transfer, WOOD=20%, STONE=5%
+- Heat transfer between neighbors: `transfer = (tempDiff * transferRate) / 100`
+- Higher insulation tier = less transfer
+
+**Door insulation**: Add `INSULATION_TIER_DOOR` = 40 (between air at 100 and wood at 20). Doors insulate less than walls but still significantly reduce heat flow. This means a room with walls + doors retains hearth heat, but doorways leak some warmth.
+
+**`GetInsulationTier` change**: Add `case CELL_DOOR: return INSULATION_TIER_DOOR;`
+
+**Tests** (~6 assertions):
+- Door cell has correct insulation tier
+- Room with walls + door + hearth stays warmer than outside
+- Doorway leaks some heat (temp at door < room center, > outside)
+
+### Phase 3: Rest Bonus in Sheltered Cells (~0.5 session)
+
+**Goal**: Beds under a roof give 1.25x energy recovery.
+
+**Files changed**:
+- `src/simulation/needs.c` — In FREETIME_RESTING, multiply recovery rate by 1.25 if mover cell is not exposed to sky
+- `src/render/tooltips.c` — Show "Sheltered" indicator in furniture/mover tooltip
+
+**Implementation**: In the FREETIME_RESTING case (needs.c:294), after computing `rate`:
+```c
+// Shelter bonus: roof overhead means better rest
+int moverCellX = (int)(m->x / CELL_SIZE);
+int moverCellY = (int)(m->y / CELL_SIZE);
+int moverCellZ = (int)m->z;
+if (!IsExposedToSky(moverCellX, moverCellY, moverCellZ)) {
+    rate *= 1.25f;
+}
+```
+
+**Tests** (~4 assertions):
+- Mover resting under roof recovers faster than outside
+- Mover resting in open air gets base rate
+- Bonus stacks with furniture rate (bed in shelter = bed rate * 1.25)
+
+### Phase 4 (Deferred): Full Room Detection
+
+**Goal**: Flood-fill to detect enclosed rooms, assign region IDs, track room properties.
+
+**Why deferred**: The 80% gameplay value (weather protection + thermal insulation + rest bonus) is achieved with phases 1-3 using `IsExposedToSky()`. Full room detection is needed for:
+- Room quality scoring (F10 moods)
+- "This room needs a door" warnings
+- Per-room temperature averaging
+- Room size limits for insulation
+
+**Sketch**: New `src/world/rooms.c` with flood-fill BFS. `regionGrid[z][y][x]` stores region ID. Walls/doors are boundaries. Recompute when terrain changes (similar to `RecomputeLighting()`). Max 100 cells per room.
 
 ---
 
-## Connections
+## Carpenter Recipe Addition
 
-- **Uses construction**: Doors built like walls
-- **Uses weather**: Rain, snow, wind already simulated — doors gate their indoor effects
-- **Uses temperature**: Hearth already produces heat — rooms retain it
-- **Uses F2 (furniture)**: Beds inside rooms get rest bonus
-- **Opens for F7 (Clothing)**: Shelter vs clothing as two ways to handle cold
-- **Opens for F10 (Moods)**: Room quality (size, furniture, light) affects mood
+The door recipe goes on the existing carpenter's bench (WORKSHOP_CARPENTER from F2):
 
----
+```c
+{ "Craft Door", ITEM_PLANKS, 3, ITEM_NONE, 0, ITEM_DOOR, 1, ITEM_NONE, 0, 5.0f, 0, MAT_MATCH_ANY, MAT_NONE, 0, ITEM_MATCH_EXACT },
+```
 
-## Design Notes
+**Wait** — this means we need `ITEM_DOOR` as a new item type. The door is crafted as an item, then placed via construction (like ITEM_PLANK_BED → BUILD_FURNITURE pattern from F2).
 
-### Why Not Windows?
+**Alternative**: Door construction directly consumes planks (no intermediate item). Like wall/floor construction — haul 3 planks to blueprint site, build door.
 
-Windows could come later as a variant: blocks rain but not light, partial wind reduction. For now, doors are the critical missing piece. Windows are polish.
+**Recommendation**: Direct construction from planks (no ITEM_DOOR). Simpler. Matches wall construction pattern. The carpenter recipe is unnecessary — planks → door at the build site, just like planks → plank wall.
 
-### Room Size Limits
-
-Don't over-engineer room detection. A simple flood fill with a max cell count (e.g., 100) prevents pathological cases. Rooms larger than that are "open halls" — sheltered from rain but not insulated.
-
-### Door Auto-Open
-
-Doors should visually open when a mover approaches and close after they pass. This is purely cosmetic — for pathfinding purposes, doors are always walkable. No lock/unlock mechanic needed yet.
+**Decision**: No ITEM_DOOR, no carpenter recipe. Door is a **direct construction recipe**: 3 planks, 3s build time, BUILD_DOOR category. Same as plank wall/floor. This avoids a save version bump (no new item type).
 
 ---
 
-## Save Version Impact
+## Door Removal
 
-- New cell type: CELL_DOOR
-- Room detection cache (rebuilt on load, not saved)
-- Sheltered flag per cell (derived, not saved)
-- Carpenter's bench recipe addition
+Doors should be removable. Follow the existing wall removal pattern:
+- Designation: ACTION_WORK_REMOVE_DOOR (or reuse ACTION_WORK_REMOVE_WALL if the logic generalizes)
+- Job: walk to door, remove it (2s), drop planks
+- Cell reverts to CELL_AIR
+
+**Simplest approach**: Check if existing "remove wall" logic can handle CELL_DOOR. If `ExecuteDesignateRemoveWall` checks for `IsWallCell()`, we'd need to extend it or add a separate action.
+
+---
+
+## Rendering
+
+Door sprite: use a simple vertical bar sprite (like a gate). Tinted by material (oak door = wood color). Rendered at full cell height.
+
+For Phase 1, a placeholder sprite (reuse SPRITE_wall or similar with distinct tint) is fine.
+
+---
+
+## Summary: What's Actually Needed
+
+| Phase | Files | New lines (est.) | Save version? |
+|-------|-------|-------------------|---------------|
+| Phase 1: Door cell + construction | grid.h, cell_defs.c, construction.h/.c, designations.c, input*.c/.h, action_registry.c, lighting.c, rendering.c | ~150 | No |
+| Phase 2: Temperature insulation | temperature.c/.h | ~15 | No |
+| Phase 3: Rest bonus | needs.c, tooltips.c | ~15 | No |
+| **Total** | ~12 files | ~180 lines | **No** |
 
 ## Test Expectations
 
-- ~25-35 new assertions
-- Door walkability and fluid blocking
-- Room detection (enclosed vs open)
-- Rain/snow protection inside rooms
-- Temperature insulation
-- Rest bonus in sheltered rooms
+- Phase 1: ~10 assertions (walkability, fluid blocking, light blocking, construction)
+- Phase 2: ~6 assertions (insulation tier, room heating)
+- Phase 3: ~4 assertions (rest bonus under roof)
+- **Total**: ~20 new assertions across 3 phases
+
+## Connections
+
+- **Uses construction**: Doors built like walls (direct plank consumption)
+- **Uses weather**: Rain/snow already respect `IsExposedToSky()` — roof is the key, doors complete the enclosure
+- **Uses temperature**: Existing insulation tier system — doors get their own tier
+- **Uses lighting**: Sky light + block light already propagate through BFS — doors block both
+- **Uses F2 (furniture)**: Rest bonus for beds in sheltered cells
+- **Opens for F7 (Clothing)**: Shelter vs clothing as two ways to handle cold
+- **Opens for F10 (Moods)**: Room detection + quality scoring (deferred Phase 4)
