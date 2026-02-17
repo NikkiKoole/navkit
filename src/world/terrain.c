@@ -2791,6 +2791,118 @@ void GenerateHillsSoilsWater(void) {
         free(surface);
     }
 
+    // --- Cave generation: drunkard's walk caves in hillsides ---
+    {
+        int caveCount = 6;
+        int cavesGenerated = 0;
+        int minCaveZ = minHeight + 1;  // Above water table
+
+        for (int cave = 0; cave < caveCount; cave++) {
+            // Find a hillside entrance: solid cell with air neighbor at same z
+            int entranceX = -1, entranceY = -1, entranceZ = -1;
+            int attempts = 0;
+            int maxAttempts = 2000;
+
+            while (attempts < maxAttempts) {
+                int x = 2 + GetRandomValue(0, gridWidth - 5);
+                int y = 2 + GetRandomValue(0, gridHeight - 5);
+                int idx = y * gridWidth + x;
+
+                // Skip water cells
+                if (waterMask[idx]) { attempts++; continue; }
+
+                int h = heightmap[idx];
+                // Try z-levels from mid-height down to minCaveZ
+                for (int z = h - 1; z >= minCaveZ; z--) {
+                    if (grid[z][y][x] != CELL_WALL) continue;
+                    // Need solid ground below for walkability
+                    if (z > 0 && grid[z - 1][y][x] != CELL_WALL) continue;
+
+                    // Check for air neighbor horizontally (hillside face)
+                    int dx4[] = {1, -1, 0, 0};
+                    int dy4[] = {0, 0, 1, -1};
+                    bool hasAirNeighbor = false;
+                    for (int d = 0; d < 4; d++) {
+                        int nx = x + dx4[d];
+                        int ny = y + dy4[d];
+                        if (nx < 2 || nx >= gridWidth - 2 || ny < 2 || ny >= gridHeight - 2) continue;
+                        if (grid[z][ny][nx] == CELL_AIR) {
+                            hasAirNeighbor = true;
+                            break;
+                        }
+                    }
+                    if (hasAirNeighbor) {
+                        entranceX = x;
+                        entranceY = y;
+                        entranceZ = z;
+                        break;
+                    }
+                }
+                if (entranceX >= 0) break;
+                attempts++;
+            }
+
+            if (entranceX < 0) {
+                TraceLog(LOG_WARNING, "CAVE %d: failed to find entrance after %d attempts (minCaveZ=%d)", cave + 1, maxAttempts, minCaveZ);
+                continue;
+            }
+
+            // Carve entrance cell
+            grid[entranceZ][entranceY][entranceX] = CELL_AIR;
+            int carved = 1;
+
+            // Drunkard's walk inward from entrance
+            int wx = entranceX;
+            int wy = entranceY;
+            int wz = entranceZ;
+            int steps = 80 + GetRandomValue(0, 60);  // 80-140 steps
+            int dx4[] = {1, -1, 0, 0};
+            int dy4[] = {0, 0, 1, -1};
+
+            for (int step = 0; step < steps; step++) {
+                // Random direction
+                int dir = GetRandomValue(0, 3);
+                int nx = wx + dx4[dir];
+                int ny = wy + dy4[dir];
+
+                // Stay within bounds (2 cells from edges)
+                if (nx < 2 || nx >= gridWidth - 2 || ny < 2 || ny >= gridHeight - 2) continue;
+                // Don't carve into water
+                if (waterMask[ny * gridWidth + nx]) continue;
+                // Only carve solid cells with solid ground below
+                if (wz > 0 && grid[wz - 1][ny][nx] != CELL_WALL) continue;
+
+                wx = nx;
+                wy = ny;
+
+                // Carve: 30% chance for 3x3 room, otherwise single cell
+                bool makeRoom = (GetRandomValue(0, 99) < 30);
+                int radius = makeRoom ? 1 : 0;
+
+                for (int ry = -radius; ry <= radius; ry++) {
+                    for (int rx = -radius; rx <= radius; rx++) {
+                        int cx = wx + rx;
+                        int cy = wy + ry;
+                        if (cx < 2 || cx >= gridWidth - 2 || cy < 2 || cy >= gridHeight - 2) continue;
+                        if (waterMask[cy * gridWidth + cx]) continue;
+                        if (grid[wz][cy][cx] == CELL_WALL) {
+                            // Ensure solid floor below
+                            if (wz > 0 && grid[wz - 1][cy][cx] != CELL_WALL) continue;
+                            grid[wz][cy][cx] = CELL_AIR;
+                            carved++;
+                        }
+                    }
+                }
+            }
+
+            cavesGenerated++;
+            TraceLog(LOG_WARNING, "CAVE %d: entrance=(%d,%d,z=%d), carved %d cells, found after %d attempts",
+                     cavesGenerated, entranceX, entranceY, entranceZ, carved, attempts);
+        }
+
+        TraceLog(LOG_WARNING, "CAVES: generated %d/%d caves", cavesGenerated, caveCount);
+    }
+
     // Initialize vegetation on all natural dirt cells (wear=0 → tall grass)
     for (int z = 0; z < gridDepth; z++) {
         for (int y = 0; y < gridHeight; y++) {
