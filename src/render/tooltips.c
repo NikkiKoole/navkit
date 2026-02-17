@@ -10,6 +10,7 @@
 #include "../world/designations.h"
 #include "../simulation/trees.h"
 #include "../simulation/floordirt.h"
+#include "../simulation/balance.h"
 
 static void FormatItemName(const Item* item, char* out, size_t outSize) {
     const char* base = (item->type < ITEM_TYPE_COUNT) ? ItemName(item->type) : "?";
@@ -305,7 +306,10 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         else if (m->hunger > 0.3f) { hungerLabel = "Peckish"; hungerColor = YELLOW; }
         else if (m->hunger > 0.1f) { hungerLabel = "Hungry"; hungerColor = ORANGE; }
         else { hungerLabel = "Starving"; hungerColor = RED; }
-        snprintf(lines[lineCount], sizeof(lines[0]), "Hunger: %.0f%% (%s)", m->hunger * 100.0f, hungerLabel);
+        float hoursToStarve = (balance.hungerDrainPerGH > 0)
+            ? m->hunger / balance.hungerDrainPerGH : 999.0f;
+        snprintf(lines[lineCount], sizeof(lines[0]), "Hunger: %.0f%% (%s) — starving in %.1fh",
+                 m->hunger * 100.0f, hungerLabel, hoursToStarve);
         lineColors[lineCount++] = hungerColor;
 
         if (m->freetimeState == FREETIME_SEEKING_FOOD) {
@@ -325,7 +329,27 @@ static void DrawMoverTooltip(int moverIdx, Vector2 mouse) {
         else if (m->energy > 0.3f) { energyLabel = "Drowsy"; energyColor = YELLOW; }
         else if (m->energy > 0.1f) { energyLabel = "Tired"; energyColor = ORANGE; }
         else { energyLabel = "Exhausted"; energyColor = RED; }
-        snprintf(lines[lineCount], sizeof(lines[0]), "Energy: %.0f%% (%s)", m->energy * 100.0f, energyLabel);
+        // Energy projection
+        char energyProj[32] = "";
+        if (m->freetimeState == FREETIME_RESTING) {
+            float recoveryPerGH = balance.groundRecoveryPerGH;
+            const char* restOn = "ground";
+            if (m->needTarget >= 0 && m->needTarget < MAX_FURNITURE && furniture[m->needTarget].active) {
+                recoveryPerGH = balance.bedRecoveryPerGH;
+                restOn = "bed";
+            }
+            if (recoveryPerGH > 0) {
+                float hoursToRested = (balance.energyWakeThreshold - m->energy) / recoveryPerGH;
+                if (hoursToRested > 0) snprintf(energyProj, sizeof(energyProj), " — rested in %.1fh (%s)", hoursToRested, restOn);
+            }
+        } else {
+            float drainPerGH = job ? balance.energyDrainWorkPerGH : balance.energyDrainIdlePerGH;
+            if (drainPerGH > 0) {
+                float hoursToTired = (m->energy - balance.energyTiredThreshold) / drainPerGH;
+                if (hoursToTired > 0) snprintf(energyProj, sizeof(energyProj), " — tired in %.1fh", hoursToTired);
+            }
+        }
+        snprintf(lines[lineCount], sizeof(lines[0]), "Energy: %.0f%% (%s)%s", m->energy * 100.0f, energyLabel, energyProj);
         lineColors[lineCount++] = energyColor;
 
         if (m->freetimeState == FREETIME_SEEKING_REST) {
