@@ -494,21 +494,24 @@ void DrawUI(void) {
             // Advanced sub-section
             if (SectionHeader(ix + 10, y, "Advanced", &sectionEntropyAdvanced)) {
                 y += 18;
-                DraggableIntT(ix + 10, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
-                    "Wear added each time a mover steps on a tile. Higher = paths form faster.");
+                {
+                    int stepsToPath = wearTrampleAmount > 0 ? wearGrassToDirt / wearTrampleAmount : 9999;
+                    DraggableIntT(ix + 10, y, "Trample Amount", &wearTrampleAmount, 1.0f, 1, 100,
+                        TextFormat("%d wear per step. %d steps to form a path.", wearTrampleAmount, stepsToPath));
+                }
                 y += 22;
                 DraggableIntT(ix + 10, y, "Grass->Dirt Threshold", &wearGrassToDirt, 50.0f, 100, 10000,
-                    "Wear level at which grass becomes dirt. At 1000 with trample=1, it takes 1000 mover steps to wear a path.");
+                    TextFormat("Grass becomes dirt at %d wear.", wearGrassToDirt));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Dirt->Grass Threshold", &wearDirtToGrass, 50.0f, 0, 5000,
-                    "Wear level below which dirt recovers to grass. Should be lower than Grass->Dirt to create hysteresis.");
+                    TextFormat("Dirt regrows grass below %d wear. Gap of %d creates path persistence.",
+                               wearDirtToGrass, wearGrassToDirt - wearDirtToGrass));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Decay Rate", &wearDecayRate, 1.0f, 1, 100,
-                    "Wear removed per decay tick. Higher = faster path recovery.");
+                    TextFormat("%d wear recovered per tick.", wearDecayRate));
                 y += 22;
                 DraggableFloatT(ix + 10, y, "Recovery Interval (s)", &wearRecoveryInterval, 0.5f, 0.1f, 60.0f,
-                    TextFormat("Game-seconds between wear decay ticks. At %.1fs, wear decays %.1f times per second.",
-                               wearRecoveryInterval, 1.0f / wearRecoveryInterval));
+                    TextFormat("Wear decays every %.1f game-seconds.", wearRecoveryInterval));
                 y += 22;
                 int decaySteps = (wearMax - wearDirtToGrass) / wearDecayRate;
                 float gameSecondsToRegrow = decaySteps * wearRecoveryInterval;
@@ -718,9 +721,12 @@ void DrawUI(void) {
             ToggleBoolT(ix, y, "Evaporation", &waterEvaporationEnabled,
                 "When enabled, shallow water (level 1) has a chance to evaporate each tick. Disable for testing water mechanics.");
             y += 22;
-            DraggableFloatT(ix, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
-                TextFormat("Game-seconds between evaporation attempts for shallow water. At %.0fs, puddles last ~%.0f seconds.",
-                           waterEvapInterval, waterEvapInterval));
+            {
+                float evapGH = waterEvapInterval / (dayLength / 24.0f);
+                DraggableFloatT(ix, y, "Evap Interval (s)", &waterEvapInterval, 1.0f, 1.0f, 120.0f,
+                    TextFormat("Puddles evaporate every %.1f game-seconds (%.2f game-hours).",
+                               waterEvapInterval, evapGH));
+            }
             y += 22;
             if (PushButton(ix, y, "Clear Water")) {
                 ClearWater();
@@ -752,20 +758,27 @@ void DrawUI(void) {
                 y += 18;
                 DrawTextShadow("Mover Speed in Water:", ix + 10, y, 14, GRAY);
                 y += 18;
-                DraggableFloatT(ix + 10, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
-                    "Speed multiplier in shallow water (levels 1-2). Lower = slower movement.");
-                y += 22;
-                DraggableFloatT(ix + 10, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
-                    "Speed multiplier in medium water (levels 3-4). Lower = slower movement.");
-                y += 22;
-                DraggableFloatT(ix + 10, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
-                    "Speed multiplier in deep water (levels 5-7). Lower = slower movement.");
-                y += 22;
-                DraggableFloatT(ix + 10, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
-                    "Speed multiplier on muddy terrain (soil with wetness >= 2).");
+                {
+                    float baseTPS = balance.baseMoverSpeed / (float)CELL_SIZE;
+                    DraggableFloatT(ix + 10, y, "Shallow (1-2)", &waterSpeedShallow, 0.05f, 0.1f, 1.0f,
+                        TextFormat("%.0f%% speed in shallow water (%.1f tiles/gs).",
+                                   waterSpeedShallow * 100.0f, baseTPS * waterSpeedShallow));
+                    y += 22;
+                    DraggableFloatT(ix + 10, y, "Medium (3-4)", &waterSpeedMedium, 0.05f, 0.1f, 1.0f,
+                        TextFormat("%.0f%% speed in medium water (%.1f tiles/gs).",
+                                   waterSpeedMedium * 100.0f, baseTPS * waterSpeedMedium));
+                    y += 22;
+                    DraggableFloatT(ix + 10, y, "Deep (5-7)", &waterSpeedDeep, 0.05f, 0.1f, 1.0f,
+                        TextFormat("%.0f%% speed in deep water (%.1f tiles/gs).",
+                                   waterSpeedDeep * 100.0f, baseTPS * waterSpeedDeep));
+                    y += 22;
+                    DraggableFloatT(ix + 10, y, "Mud Speed", &mudSpeedMultiplier, 0.05f, 0.1f, 1.0f,
+                        TextFormat("%.0f%% speed on mud (%.1f tiles/gs).",
+                                   mudSpeedMultiplier * 100.0f, baseTPS * mudSpeedMultiplier));
+                }
                 y += 22;
                 DraggableFloatT(ix + 10, y, "Wetness Sync", &wetnessSyncInterval, 0.5f, 0.5f, 30.0f,
-                    "Game-seconds between water-to-wetness sync. Lower = soil gets wet faster from water.");
+                    TextFormat("Soil absorbs water every %.1fs. Lower = ground gets wet faster.", wetnessSyncInterval));
             }
         }
         y += 22;
@@ -777,15 +790,21 @@ void DrawUI(void) {
                 "Master toggle for fire simulation. Fire consumes fuel, spreads to neighbors, and generates smoke.");
             y += 22;
             DraggableFloatT(ix, y, "Spread Interval (s)", &fireSpreadInterval, 0.1f, 0.1f, 10.0f,
-                TextFormat("Game-seconds between fire spread attempts. At %.1fs, fire tries to spread %.1f times per second.",
+                TextFormat("Fire tries to spread every %.1f game-seconds (%.1f attempts/gs).",
                            fireSpreadInterval, 1.0f / fireSpreadInterval));
             y += 22;
-            DraggableFloatT(ix, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
-                TextFormat("Game-seconds between fuel consumption ticks. At %.1fs, fuel depletes %.1f times per second.",
-                           fireFuelInterval, 1.0f / fireFuelInterval));
+            {
+                // Wood fuel ~10, so burn time = fuel * fuelInterval
+                float woodBurnGS = 10.0f * fireFuelInterval;
+                float woodBurnGH = woodBurnGS / (dayLength / 24.0f);
+                DraggableFloatT(ix, y, "Fuel Interval (s)", &fireFuelInterval, 0.1f, 0.1f, 10.0f,
+                    TextFormat("Fuel consumed every %.1f game-seconds.\nWood wall burns for ~%.0fs (~%.1f game-hours).",
+                               fireFuelInterval, woodBurnGS, woodBurnGH));
+            }
             y += 22;
             DraggableIntT(ix, y, "Water Reduction %", &fireWaterReduction, 1.0f, 1, 100,
-                "Spread chance multiplier for cells adjacent to water. At 25%, fire spreads 4x slower near water.");
+                TextFormat("Fire spreads %.1fx slower near water (%d%% chance reduction).",
+                           100.0f / (float)fireWaterReduction, fireWaterReduction));
             y += 22;
             if (PushButton(ix, y, "Clear Fire")) {
                 ClearFire();
@@ -816,16 +835,19 @@ void DrawUI(void) {
             ToggleBoolT(ix, y, "Enabled", &smokeEnabled,
                 "Master toggle for smoke simulation. Smoke rises, spreads horizontally, fills enclosed spaces, and gradually dissipates.");
             y += 22;
-            DraggableFloatT(ix, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
-                TextFormat("Game-seconds between smoke rise attempts. At %.2fs, smoke rises %.1f times per game-second.",
-                           smokeRiseInterval, 1.0f / smokeRiseInterval));
-            y += 22;
-            DraggableFloatT(ix, y, "Dissipation Time (s)", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
-                TextFormat("Game-seconds for smoke to fully dissipate (all 7 levels). At %.1fs, each level fades in ~%.2fs.",
-                           smokeDissipationTime, smokeDissipationTime / 7.0f));
-            y += 22;
-            DraggableIntT(ix, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
-                "Smoke generated = fire level / this value. Lower = more smoke per fire. At 3, a level-6 fire produces 2 smoke.");
+            {
+                float dissipGH = smokeDissipationTime / (dayLength / 24.0f);
+                DraggableFloatT(ix, y, "Rise Interval (s)", &smokeRiseInterval, 0.01f, 0.01f, 2.0f,
+                    TextFormat("Smoke rises one Z-level every %.2f game-seconds.", smokeRiseInterval));
+                y += 22;
+                DraggableFloatT(ix, y, "Dissipation Time", &smokeDissipationTime, 0.1f, 0.5f, 30.0f,
+                    TextFormat("Smoke fully clears in %.1f game-seconds (%.2f game-hours).",
+                               smokeDissipationTime, dissipGH));
+                y += 22;
+                DraggableIntT(ix, y, "Generation Rate", &smokeGenerationRate, 1.0f, 1, 10,
+                    TextFormat("Smoke per tick = fire level / %d. A level-6 fire produces %d smoke.",
+                               smokeGenerationRate, 6 / smokeGenerationRate));
+            }
             y += 22;
             if (PushButton(ix, y, "Clear Smoke")) {
                 ClearSmoke();
@@ -840,8 +862,7 @@ void DrawUI(void) {
                 "Master toggle for steam simulation. Steam rises from boiling water, spreads, and condenses back to water when cooled.");
             y += 22;
             DraggableFloatT(ix, y, "Rise Interval (s)", &steamRiseInterval, 0.01f, 0.01f, 2.0f,
-                TextFormat("Game-seconds between steam rise attempts. At %.2fs, steam rises %.1f times per game-second.",
-                           steamRiseInterval, 1.0f / steamRiseInterval));
+                TextFormat("Steam rises one Z-level every %.2f game-seconds.", steamRiseInterval));
             y += 22;
             if (PushButton(ix, y, "Clear Steam")) {
                 ClearSteam();
@@ -852,16 +873,16 @@ void DrawUI(void) {
             if (SectionHeader(ix + 10, y, "Advanced", &sectionSteamAdvanced)) {
                 y += 18;
                 DraggableIntT(ix + 10, y, "Condensation Temp", &steamCondensationTemp, 5.0f, 0, 100,
-                    TextFormat("Temperature below which steam condenses to water: %d C.", steamCondensationTemp));
+                    TextFormat("Steam condenses to water below %dC.", steamCondensationTemp));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Generation Temp", &steamGenerationTemp, 5.0f, 80, 150,
-                    TextFormat("Temperature at which water boils to steam: %d C.", steamGenerationTemp));
+                    TextFormat("Water boils to steam above %dC.", steamGenerationTemp));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Condensation Chance", &steamCondensationChance, 1.0f, 1, 600,
-                    TextFormat("1 in %d ticks attempts condensation. Higher = slower condensation.", steamCondensationChance));
+                    TextFormat("1-in-%d chance per tick. Higher = steam lingers longer.", steamCondensationChance));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Rise Flow", &steamRiseFlow, 1.0f, 1, STEAM_MAX_LEVEL,
-                    TextFormat("Units of steam that rise per attempt: %d. Higher = faster rising.", steamRiseFlow));
+                    TextFormat("%d units rise per tick. Higher = faster vertical movement.", steamRiseFlow));
             }
         }
         y += 22;
@@ -874,19 +895,19 @@ void DrawUI(void) {
                 "Master toggle for temperature simulation. Heat transfers between cells, affected by insulation.");
             y += 22;
             DraggableIntT(ix, y, "Surface Ambient", &ambientSurfaceTemp, 1.0f, -50, 200,
-                TextFormat("Surface temperature: %d C. 0=freeze, 20=room temp, 100=boiling.",
-                           ambientSurfaceTemp));
+                TextFormat("%dC. (0=freeze, 20=room temp, 100=boiling).", ambientSurfaceTemp));
             y += 22;
             DraggableIntT(ix, y, "Depth Decay", &ambientDepthDecay, 1.0f, 0, 20,
-                "Temperature decrease per Z-level underground. At 5, z=-10 is 50 degrees colder than surface.");
+                TextFormat("%dC per Z-level underground. z=-10 = %dC.",
+                           ambientDepthDecay, ambientSurfaceTemp - ambientDepthDecay * 10));
             y += 22;
             DraggableFloatT(ix, y, "Transfer Interval (s)", &heatTransferInterval, 0.1f, 0.1f, 60.0f,
-                TextFormat("Game-seconds between heat transfer steps. At %.1fs, heat transfers %.1f times per second.",
-                           heatTransferInterval, 1.0f / heatTransferInterval));
+                TextFormat("Heat spreads between cells every %.1f game-seconds. Lower = faster heat flow.",
+                           heatTransferInterval));
             y += 22;
             DraggableFloatT(ix, y, "Decay Interval (s)", &tempDecayInterval, 0.1f, 0.1f, 60.0f,
-                TextFormat("Game-seconds between temperature decay steps. At %.1fs, decay happens %.1f times per second.",
-                           tempDecayInterval, 1.0f / tempDecayInterval));
+                TextFormat("Temperature decays toward ambient every %.1f game-seconds. Lower = faster cooling.",
+                           tempDecayInterval));
             y += 22;
             if (PushButton(ix, y, "Reset to Ambient")) {
                 ClearTemperature();
@@ -897,30 +918,30 @@ void DrawUI(void) {
             if (SectionHeader(ix + 10, y, "Advanced", &sectionTemperatureAdvanced)) {
                 y += 18;
                 DraggableIntT(ix + 10, y, "Wood Insulation %", &insulationTier1Rate, 1.0f, 1, 100,
-                    "Heat transfer rate through wood walls. Lower = better insulation. At 20%, wood blocks 80% of heat.");
+                    TextFormat("Wood passes %d%% of heat (blocks %d%%).", insulationTier1Rate, 100 - insulationTier1Rate));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Stone Insulation %", &insulationTier2Rate, 1.0f, 1, 100,
-                    "Heat transfer rate through stone walls. Lower = better insulation. At 5%, stone blocks 95% of heat.");
+                    TextFormat("Stone passes %d%% of heat (blocks %d%%).", insulationTier2Rate, 100 - insulationTier2Rate));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Heat Source Temp", &heatSourceTemp, 5.0f, 100, 1000,
-                    TextFormat("Temperature of heat sources (fire/furnace): %d C.", heatSourceTemp));
+                    TextFormat("Fire/furnace temperature: %dC.", heatSourceTemp));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Cold Source Temp", &coldSourceTemp, 5.0f, -100, 0,
-                    TextFormat("Temperature of cold sources (ice/freezer): %d C.", coldSourceTemp));
+                    TextFormat("Ice/freezer temperature: %dC.", coldSourceTemp));
                 y += 22;
                 DrawTextShadow("Heat Physics:", ix + 10, y, 14, GRAY);
                 y += 18;
                 DraggableIntT(ix + 10, y, "Heat Rise Boost %", &heatRiseBoost, 5.0f, 50, 300,
-                    "Heat transfer boost when rising (hot air rises). Higher = stronger convection.");
+                    TextFormat("%d%% upward transfer bonus (hot air rises).", heatRiseBoost));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Heat Sink Reduction %", &heatSinkReduction, 5.0f, 10, 100,
-                    "Heat transfer reduction when sinking. Lower = heat stays up longer.");
+                    TextFormat("%d%% downward transfer rate. Lower = heat stays up longer.", heatSinkReduction));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Decay Rate %", &heatDecayPercent, 1.0f, 1, 50,
-                    "Percentage of temperature difference that decays toward ambient each interval.");
+                    TextFormat("%d%% of excess heat lost per interval. Higher = faster cooling.", heatDecayPercent));
                 y += 22;
                 DraggableIntT(ix + 10, y, "Diagonal Transfer %", &diagonalTransferPercent, 5.0f, 30, 100,
-                    "Diagonal heat transfer as percentage of orthogonal. Due to ~1.4x distance.");
+                    TextFormat("%d%% of orthogonal transfer rate diagonally (~1.4x distance).", diagonalTransferPercent));
             }
         }
     }
@@ -980,25 +1001,27 @@ void DrawUI(void) {
             ToggleBool(ix, y, "Weather Enabled", &weatherEnabled);
             y += 22;
             DraggableFloatT(ix, y, "Min Duration", &weatherMinDuration, 1.0f, 5.0f, 300.0f,
-                "Minimum game-seconds per weather state.");
+                TextFormat("Shortest weather spell: %.0f game-hours.", weatherMinDuration));
             y += 22;
             DraggableFloatT(ix, y, "Max Duration", &weatherMaxDuration, 1.0f, 10.0f, 600.0f,
-                "Maximum game-seconds per weather state.");
+                TextFormat("Longest weather spell: %.0f game-hours.", weatherMaxDuration));
             y += 22;
             DraggableFloatT(ix, y, "Rain Wetness Interval", &rainWetnessInterval, 0.5f, 0.5f, 30.0f,
-                "Seconds between wetness increments during rain.");
+                TextFormat("Ground gets wetter every %.1f game-hours during rain.", rainWetnessInterval));
             y += 22;
             DraggableFloatT(ix, y, "Heavy Rain Interval", &heavyRainWetnessInterval, 0.5f, 0.5f, 15.0f,
-                "Seconds between wetness increments during heavy rain.");
+                TextFormat("Ground gets wetter every %.1f game-hours during heavy rain.", heavyRainWetnessInterval));
             y += 22;
             DraggableFloatT(ix, y, "Lightning Interval", &lightningInterval, 1.0f, 0.5f, 30.0f,
-                "Seconds between lightning strikes during thunderstorms.");
+                TextFormat("Lightning strikes every %.1f game-hours in thunderstorms.", lightningInterval));
             y += 22;
             DraggableFloatT(ix, y, "Snow Accumulation", &snowAccumulationRate, 0.01f, 0.01f, 1.0f,
-                "Snow level increase rate. 0.1 = 10 seconds per level.");
+                TextFormat("Snow builds at %.2f levels/gh. Full cover (7) in ~%.0f game-hours.",
+                           snowAccumulationRate, snowAccumulationRate > 0 ? 7.0f / snowAccumulationRate : 999.0f));
             y += 22;
             DraggableFloatT(ix, y, "Snow Melting", &snowMeltingRate, 0.01f, 0.01f, 0.5f,
-                "Snow level decrease rate. 0.05 = 20 seconds per level.");
+                TextFormat("Snow melts at %.2f levels/gh. Full melt in ~%.0f game-hours.",
+                           snowMeltingRate, snowMeltingRate > 0 ? 7.0f / snowMeltingRate : 999.0f));
         }
         y += 22;
 
