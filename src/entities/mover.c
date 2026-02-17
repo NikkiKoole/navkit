@@ -22,6 +22,7 @@
 #include "../simulation/lighting.h"
 #include "../simulation/weather.h"
 #include "../simulation/plants.h"
+#include "../simulation/balance.h"
 #include "../../shared/profiler.h"
 #include "../../shared/ui.h"
 #include "../../vendor/raylib.h"
@@ -776,8 +777,8 @@ void NeedsTick(void) {
         Mover* m = &movers[i];
         if (!m->active) continue;
 
-        // Drain hunger
-        m->hunger -= HUNGER_DRAIN_RATE * dt;
+        // Drain hunger (rate in game-hours, converted to per-game-second)
+        m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
         if (m->hunger < 0.0f) m->hunger = 0.0f;
 
         // Drain energy (not while resting)
@@ -1183,10 +1184,10 @@ void UpdateMovers(void) {
                 }
             }
             
-            // Hunger speed penalty (linear 1.0→0.5 as hunger goes 0.2→0.0)
-            if (m->hunger < HUNGER_PENALTY_THRESHOLD) {
-                float t = m->hunger / HUNGER_PENALTY_THRESHOLD;  // 0..1
-                float hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+            // Hunger speed penalty (linear 1.0→min as hunger goes threshold→0.0)
+            if (m->hunger < balance.hungerPenaltyThreshold) {
+                float t = m->hunger / balance.hungerPenaltyThreshold;  // 0..1
+                float hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
                 terrainSpeedMult *= hungerMult;
             }
             

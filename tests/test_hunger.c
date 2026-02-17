@@ -9,6 +9,7 @@
 #include "../src/entities/workshops.h"
 #include "../src/simulation/plants.h"
 #include "../src/simulation/needs.h"
+#include "../src/simulation/balance.h"
 #include "../src/simulation/weather.h"
 #include "../src/core/time.h"
 #include "../src/world/designations.h"
@@ -42,8 +43,10 @@ static void SetupClean(void) {
     ClearJobs();
     ClearPlants();
     InitDesignations();
+    InitBalance();
     gameDeltaTime = TICK_DT;
     gameSpeed = 1.0f;
+    dayLength = 60.0f;
     daysPerSeason = 7;
     dayNumber = 8; // Summer (day 7 in year = summer day 0)
 }
@@ -121,9 +124,9 @@ describe(hunger_speed_penalty) {
 
         // Speed penalty is applied in UpdateMovers, but we can check the math directly
         float hungerMult = 1.0f;
-        if (movers[mi].hunger < HUNGER_PENALTY_THRESHOLD) {
-            float t = movers[mi].hunger / HUNGER_PENALTY_THRESHOLD;
-            hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+        if (movers[mi].hunger < balance.hungerPenaltyThreshold) {
+            float t = movers[mi].hunger / balance.hungerPenaltyThreshold;
+            hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
         }
         expect(hungerMult == 1.0f);
     }
@@ -131,12 +134,12 @@ describe(hunger_speed_penalty) {
     it("mover at threshold has no penalty") {
         SetupClean();
         int mi = SetupMover(1, 1);
-        movers[mi].hunger = HUNGER_PENALTY_THRESHOLD;
+        movers[mi].hunger = balance.hungerPenaltyThreshold;
 
         float hungerMult = 1.0f;
-        if (movers[mi].hunger < HUNGER_PENALTY_THRESHOLD) {
-            float t = movers[mi].hunger / HUNGER_PENALTY_THRESHOLD;
-            hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+        if (movers[mi].hunger < balance.hungerPenaltyThreshold) {
+            float t = movers[mi].hunger / balance.hungerPenaltyThreshold;
+            hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
         }
         expect(hungerMult == 1.0f);
     }
@@ -147,22 +150,22 @@ describe(hunger_speed_penalty) {
         movers[mi].hunger = 0.0f;
 
         float hungerMult = 1.0f;
-        if (movers[mi].hunger < HUNGER_PENALTY_THRESHOLD) {
-            float t = movers[mi].hunger / HUNGER_PENALTY_THRESHOLD;
-            hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+        if (movers[mi].hunger < balance.hungerPenaltyThreshold) {
+            float t = movers[mi].hunger / balance.hungerPenaltyThreshold;
+            hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
         }
-        expect(fabsf(hungerMult - HUNGER_PENALTY_MIN) < 0.001f);
+        expect(fabsf(hungerMult - balance.hungerSpeedPenaltyMin) < 0.001f);
     }
 
     it("half-starved mover gets intermediate penalty") {
         SetupClean();
         int mi = SetupMover(1, 1);
-        movers[mi].hunger = HUNGER_PENALTY_THRESHOLD * 0.5f;
+        movers[mi].hunger = balance.hungerPenaltyThreshold * 0.5f;
 
         float hungerMult = 1.0f;
-        if (movers[mi].hunger < HUNGER_PENALTY_THRESHOLD) {
-            float t = movers[mi].hunger / HUNGER_PENALTY_THRESHOLD;
-            hungerMult = HUNGER_PENALTY_MIN + t * (1.0f - HUNGER_PENALTY_MIN);
+        if (movers[mi].hunger < balance.hungerPenaltyThreshold) {
+            float t = movers[mi].hunger / balance.hungerPenaltyThreshold;
+            hungerMult = balance.hungerSpeedPenaltyMin + t * (1.0f - balance.hungerSpeedPenaltyMin);
         }
         // Should be 0.75 (halfway between 0.5 and 1.0)
         expect(fabsf(hungerMult - 0.75f) < 0.001f);
@@ -716,7 +719,7 @@ describe(eating_starving_cancels_job) {
     it("starving mover cancels current job") {
         SetupClean();
         int mi = SetupMover(1, 1);
-        movers[mi].hunger = 0.05f; // Below HUNGER_CANCEL_THRESHOLD (0.1)
+        movers[mi].hunger = 0.05f; // Below hungerCriticalThreshold (0.1)
 
         // Give mover a fake job
         ClearJobs();
@@ -807,6 +810,73 @@ describe(starvation_survival) {
 }
 
 // =============================================================================
+// dayLength Independence
+// =============================================================================
+
+describe(hunger_daylength_independence) {
+    it("hunger drain per game-hour is the same regardless of dayLength") {
+        // At different dayLengths, draining for 1 game-hour should drain the same amount
+        float drainAmounts[3];
+        float dayLengths[] = { 24.0f, 60.0f, 720.0f };
+
+        for (int d = 0; d < 3; d++) {
+            SetupClean();
+            dayLength = dayLengths[d];
+            int mi = SetupMover(1, 1);
+            movers[mi].hunger = 1.0f;
+
+            // Simulate 1 game-hour worth of game-seconds
+            float oneGameHourGS = GameHoursToGameSeconds(1.0f);
+            int ticks = (int)(oneGameHourGS / TICK_DT);
+            gameDeltaTime = TICK_DT;
+
+            for (int i = 0; i < ticks; i++) {
+                NeedsTick();
+            }
+
+            drainAmounts[d] = 1.0f - movers[mi].hunger;
+            if (test_verbose) {
+                printf("  dayLength=%.0f: drain=%.6f over %d ticks (%.2f game-sec)\n",
+                       dayLengths[d], drainAmounts[d], ticks, oneGameHourGS);
+            }
+        }
+
+        // All should be approximately equal (1/8 = 0.125 per game-hour)
+        float expected = balance.hungerDrainPerGH;
+        for (int d = 0; d < 3; d++) {
+            expect(fabsf(drainAmounts[d] - expected) < 0.01f);
+        }
+    }
+
+    it("full starvation takes hoursToStarve game-hours at any dayLength") {
+        float dayLengths[] = { 24.0f, 60.0f, 720.0f };
+
+        for (int d = 0; d < 3; d++) {
+            SetupClean();
+            dayLength = dayLengths[d];
+            int mi = SetupMover(1, 1);
+            movers[mi].hunger = 1.0f;
+
+            // Simulate hoursToStarve game-hours
+            float starvationGS = GameHoursToGameSeconds(balance.hoursToStarve);
+            int ticks = (int)(starvationGS / TICK_DT);
+            gameDeltaTime = TICK_DT;
+
+            for (int i = 0; i < ticks; i++) {
+                NeedsTick();
+            }
+
+            if (test_verbose) {
+                printf("  dayLength=%.0f: hunger=%.6f after %d ticks\n",
+                       dayLengths[d], movers[mi].hunger, ticks);
+            }
+            // Should be very close to 0 (within rounding from discrete ticks)
+            expect(movers[mi].hunger < 0.02f);
+        }
+    }
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -839,6 +909,8 @@ int main(int argc, char* argv[]) {
     test(eating_starving_cancels_job);
     test(drying_rack_berries);
     test(starvation_survival);
+    test(hunger_daylength_independence);
 
+    dayLength = 60.0f; // restore
     return summary();
 }

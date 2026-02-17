@@ -41,11 +41,6 @@ typedef enum {
     FREETIME_RESTING,        // Sleeping/sitting, recovering energy
 } FreetimeState;
 
-// Hunger constants
-#define HUNGER_DRAIN_RATE (1.0f / (60.0f * 60.0f * 8.0f))  // Full→starving in 8 game-hours (480 ticks/hour)
-#define HUNGER_PENALTY_THRESHOLD 0.2f  // Below this, speed penalty kicks in
-#define HUNGER_PENALTY_MIN 0.5f        // Minimum speed multiplier when starving (50%)
-
 // Energy constants
 #define ENERGY_DRAIN_IDLE    0.010f   // Per real second
 #define ENERGY_DRAIN_WORKING 0.018f   // Per real second

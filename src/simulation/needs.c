@@ -11,6 +11,7 @@
 //   FREETIME_RESTING → (energy >= wake threshold) → FREETIME_NONE
 
 #include "needs.h"
+#include "balance.h"
 #include "../entities/mover.h"
 #include "../entities/items.h"
 #include "../entities/item_defs.h"
@@ -21,11 +22,6 @@
 #include "../core/time.h"
 #include <math.h>
 
-#define HUNGER_SEARCH_THRESHOLD 0.3f   // Start seeking food below this
-#define HUNGER_CANCEL_THRESHOLD 0.1f   // Cancel current job below this
-#define EATING_DURATION 2.0f           // Seconds to eat
-#define FOOD_SEARCH_COOLDOWN 5.0f      // Seconds between search attempts
-#define FOOD_SEEK_TIMEOUT 10.0f        // Give up seeking after this many seconds
 
 // Find nearest edible item in a stockpile (reserved by nobody)
 // Returns item index or -1
@@ -82,19 +78,19 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     int itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
 
     // If starving and no stockpile food, try ground items
-    if (itemIdx < 0 && m->hunger < HUNGER_CANCEL_THRESHOLD) {
+    if (itemIdx < 0 && m->hunger < balance.hungerCriticalThreshold) {
         itemIdx = FindNearestEdibleOnGround(m->x, m->y, (int)m->z);
     }
 
     if (itemIdx < 0) {
         // No food found — set cooldown
-        m->needSearchCooldown = FOOD_SEARCH_COOLDOWN;
+        m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
         return;
     }
 
     // Reserve the item
     if (!ReserveItem(itemIdx, moverIdx)) {
-        m->needSearchCooldown = FOOD_SEARCH_COOLDOWN;
+        m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
         return;
     }
 
@@ -165,7 +161,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
     switch (m->freetimeState) {
         case FREETIME_NONE: {
             // Priority: starving > exhausted > hungry > tired
-            if (m->hunger < HUNGER_CANCEL_THRESHOLD) {
+            if (m->hunger < balance.hungerCriticalThreshold) {
                 // STARVING — cancel job, seek food
                 if (m->currentJobId >= 0) CancelJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
@@ -173,7 +169,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 // EXHAUSTED — cancel job, seek rest
                 if (m->currentJobId >= 0) CancelJob(m, moverIdx);
                 if (m->needSearchCooldown <= 0.0f) StartRestSearch(m, moverIdx);
-            } else if (m->hunger < HUNGER_SEARCH_THRESHOLD && m->currentJobId < 0) {
+            } else if (m->hunger < balance.hungerSeekThreshold && m->currentJobId < 0) {
                 // HUNGRY — seek food (don't cancel jobs)
                 if (m->needSearchCooldown <= 0.0f) StartFoodSearch(m, moverIdx);
             } else if (m->energy < ENERGY_TIRED_THRESHOLD && m->currentJobId < 0) {
@@ -193,7 +189,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 }
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needSearchCooldown = FOOD_SEARCH_COOLDOWN;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
                 break;
             }
 
@@ -215,11 +211,11 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Timeout check
             m->needProgress += gameDeltaTime;
-            if (m->needProgress > FOOD_SEEK_TIMEOUT) {
+            if (m->needProgress > GameHoursToGameSeconds(balance.foodSeekTimeoutGH)) {
                 ReleaseItemReservation(ti);
                 m->freetimeState = FREETIME_NONE;
                 m->needTarget = -1;
-                m->needSearchCooldown = FOOD_SEARCH_COOLDOWN;
+                m->needSearchCooldown = GameHoursToGameSeconds(balance.foodSearchCooldownGH);
             }
             break;
         }
@@ -236,7 +232,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             m->timeWithoutProgress = 0.0f;
 
             m->needProgress += gameDeltaTime;
-            if (m->needProgress >= EATING_DURATION) {
+            if (m->needProgress >= GameHoursToGameSeconds(balance.eatingDurationGH)) {
                 // Consume food: restore hunger, delete item
                 float nutrition = ItemNutrition(items[ti].type);
                 m->hunger += nutrition;
@@ -313,7 +309,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
             }
 
             // Starvation interrupt: wake up to eat
-            if (m->hunger < HUNGER_CANCEL_THRESHOLD) {
+            if (m->hunger < balance.hungerCriticalThreshold) {
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;

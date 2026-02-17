@@ -20,6 +20,8 @@ typedef struct {
     float hoursToExhaustWorking;    // 16.0
     float hoursToExhaustIdle;       // 28.0
     float eatingDurationGH;         //  0.5
+    float foodSearchCooldownGH;     //  0.25
+    float foodSeekTimeoutGH;        //  0.5
 
     // === THRESHOLDS (0-1 scale, not time-dependent) ===
     float hungerSeekThreshold;      // 0.3
