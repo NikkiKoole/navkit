@@ -2,6 +2,7 @@
 // A learning environment for signal-based automation:
 //   Switch (source) -> Wire -> Logic Gates -> Wire -> Light (sink)
 //   + Processor (tiny emulator with 6 opcodes)
+//   + Fluid layer: Pipe/Pump/Drain/Valve/Tank/PressureLight
 //
 // Controls:
 //   1-9,0  Select component / eraser
@@ -55,6 +56,22 @@ typedef enum {
     COMP_PROCESSOR,
     COMP_CLOCK,     // Source: auto-toggles every N ticks (click to change speed 1-8)
     COMP_REPEATER,  // Directional: delays signal 1-4 ticks, one-way (diode)
+    COMP_PULSE,     // Directional: on rising edge, outputs 1 for N ticks (click to change 1-8)
+    COMP_PIPE,      // Fluid: carries fluid, pressure equalizes with adjacent pipes
+    COMP_PUMP,      // Fluid source: adds pressure (setting 1-8 = rate)
+    COMP_DRAIN,     // Fluid sink: removes pressure (setting 1-8 = rate)
+    COMP_VALVE,     // Fluid gate: directional pipe, open when adjacent wire has signal
+    COMP_TANK,      // Fluid storage: high capacity (0-1024)
+    COMP_PRESSURE_LIGHT, // Fluid→signal bridge: lights up when adjacent pipe pressure > threshold
+    COMP_DIAL,           // Source: emits analog value 0-15 (click to change)
+    COMP_COMPARATOR,     // Directional: outputs 1 if back-side analog >= threshold (click to set)
+    COMP_DISPLAY,        // Shows numeric value of adjacent signal
+    COMP_BELT,           // Logistics: moves cargo in facing direction
+    COMP_LOADER,         // Logistics source: generates cargo (click to set type 1-15)
+    COMP_UNLOADER,       // Logistics sink: consumes cargo, emits signal = consumed type
+    COMP_GRABBER,        // Logistics inserter: moves cargo from back to front, signal-controlled
+    COMP_SPLITTER,       // Logistics: alternates cargo left/right
+    COMP_FILTER,         // Logistics: only passes cargo matching set type (click to set)
     COMP_COUNT
 } ComponentType;
 
@@ -94,6 +111,9 @@ typedef struct {
     int setting;        // clock: period (1-8 ticks), repeater: delay (1-4 ticks)
     int timer;          // clock: ticks until toggle, repeater: delay buffer index
     int delayBuf[4];    // repeater: circular buffer of delayed signal values
+    int fluidLevel;     // 0-255 pressure for pipes (0-1024 for tanks)
+    int cargo;          // 0 = empty, 1-15 = item type/color on belt
+    bool altToggle;     // splitter: alternates left/right each item
 } Cell;
 
 typedef struct {
@@ -135,6 +155,12 @@ static int editField = 0;  // 0=opcode, 1=argA, 2=argB, 3=argC
 // Signal animation (pulse glow)
 static float pulseTime = 0.0f;
 
+// Forward declarations (needed by preset builders)
+static void UpdateSignals(void);
+static void UpdateProcessors(void);
+static void UpdateFluids(void);
+static void UpdateBelts(void);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -154,6 +180,22 @@ static const char *CompName(ComponentType t) {
         case COMP_PROCESSOR:  return "Processor";
         case COMP_CLOCK:      return "Clock";
         case COMP_REPEATER:   return "Repeater";
+        case COMP_PULSE:      return "Pulse";
+        case COMP_PIPE:       return "Pipe";
+        case COMP_PUMP:       return "Pump";
+        case COMP_DRAIN:      return "Drain";
+        case COMP_VALVE:      return "Valve";
+        case COMP_TANK:       return "Tank";
+        case COMP_PRESSURE_LIGHT: return "PrLight";
+        case COMP_DIAL:       return "Dial";
+        case COMP_COMPARATOR: return "Compare";
+        case COMP_DISPLAY:    return "Display";
+        case COMP_BELT:       return "Belt";
+        case COMP_LOADER:     return "Loader";
+        case COMP_UNLOADER:   return "Unloader";
+        case COMP_GRABBER:    return "Grabber";
+        case COMP_SPLITTER:   return "Splitter";
+        case COMP_FILTER:     return "Filter";
         default:              return "?";
     }
 }
@@ -284,6 +326,31 @@ static void PlaceComponent(int gx, int gy, ComponentType type) {
     if (type == COMP_REPEATER) {
         grid[gy][gx].setting = 1;  // default delay: 1 tick
     }
+    if (type == COMP_PULSE) {
+        grid[gy][gx].setting = 5;  // default pulse duration: 5 ticks
+    }
+    if (type == COMP_PUMP) {
+        grid[gy][gx].setting = 4;  // default pump rate
+    }
+    if (type == COMP_DRAIN) {
+        grid[gy][gx].setting = 4;  // default drain rate
+    }
+    if (type == COMP_VALVE) {
+        // Valve uses facing for directionality
+    }
+    if (type == COMP_DIAL) {
+        grid[gy][gx].setting = 8;  // default analog value: 8
+        grid[gy][gx].state = true;
+    }
+    if (type == COMP_COMPARATOR) {
+        grid[gy][gx].setting = 5;  // default threshold: 5
+    }
+    if (type == COMP_LOADER) {
+        grid[gy][gx].setting = 1;  // default cargo type: 1
+    }
+    if (type == COMP_FILTER) {
+        grid[gy][gx].setting = 1;  // default filter: type 1
+    }
 }
 
 static void ClearGrid(void) {
@@ -344,34 +411,66 @@ static void BuildPresetAnd(int ox, int oy) {
 }
 
 // Preset 3: NOR latch — two NOR gates cross-connected with repeaters
+// Uses pulse extenders on button inputs so a quick tap reliably flips the latch.
+// Layout (9x8):
+//   Row 0: R button -> Pulse -> wire -> NOR1 north input
+//   Row 1: NOR1 (east) -> Q output -> Light
+//   Row 2-4: Cross-feedback paths (col 2 for Q̄, col 6 for Q)
+//   Row 5: NOR2 (west) <- Q̄ output <- Light
+//   Row 6-7: S button -> Pulse -> wire -> NOR2 south input
+// Key: NOR1 faces EAST, NOR2 faces WEST, feedback through separate columns
 static void BuildPresetNorLatch(int ox, int oy) {
-    // Top Button -> NOR1
+    // R (Reset) button -> pulse extender -> NOR1 north input
     PlaceAt(ox, oy, COMP_BUTTON, DIR_NORTH);
     PlaceWire(ox + 1, oy);
-    // NOR1 at (ox+2, oy+1) facing east, top button hits its right-side input
-    PlaceAt(ox + 2, oy + 1, COMP_NOR, DIR_EAST);
-    PlaceWire(ox + 3, oy + 1);
-    PlaceWire(ox + 4, oy + 1);
-    // Light on output
-    PlaceAt(ox + 5, oy + 1, COMP_LIGHT, DIR_EAST);
-    // Feedback: NOR1 output down to NOR2 input via repeater
-    PlaceWire(ox + 4, oy + 2);
-    PlaceWire(ox + 4, oy + 3);
-    PlaceAt(ox + 3, oy + 3, COMP_REPEATER, DIR_WEST);
+    PlaceAt(ox + 2, oy, COMP_PULSE, DIR_EAST);  // extends tap to 5 ticks
+    PlaceWire(ox + 3, oy);
+    PlaceWire(ox + 4, oy);
+
+    // NOR1 at (ox+4, oy+1) facing east
+    PlaceAt(ox + 4, oy + 1, COMP_NOR, DIR_EAST);
+    // Q output: wire east -> light
+    PlaceWire(ox + 5, oy + 1);
+    PlaceWire(ox + 6, oy + 1);
+    PlaceAt(ox + 7, oy + 1, COMP_LIGHT, DIR_EAST);
+
+    // Q feedback path: column 6 going down from Q output
+    PlaceWire(ox + 6, oy + 2);
+    PlaceWire(ox + 6, oy + 3);
+    PlaceWire(ox + 6, oy + 4);
+    // Repeater delivers Q to NOR2 north input
+    PlaceAt(ox + 5, oy + 4, COMP_REPEATER, DIR_WEST);
+    PlaceWire(ox + 4, oy + 4);  // NOR2 north input
+
+    // NOR2 at (ox+4, oy+5) facing west
+    PlaceAt(ox + 4, oy + 5, COMP_NOR, DIR_WEST);
+    // Q̄ output: wire west -> light
+    PlaceWire(ox + 3, oy + 5);
+    PlaceWire(ox + 2, oy + 5);
+    PlaceAt(ox + 1, oy + 5, COMP_LIGHT, DIR_EAST);
+
+    // Q̄ feedback path: column 2 going up from Q̄ output
+    PlaceWire(ox + 2, oy + 4);
     PlaceWire(ox + 2, oy + 3);
-    // NOR2 at (ox+2, oy+4) facing east, feedback hits its right-side input (top)
-    // Bottom Button -> NOR2
-    PlaceAt(ox, oy + 5, COMP_BUTTON, DIR_NORTH);
-    PlaceWire(ox + 1, oy + 5);
-    PlaceAt(ox + 2, oy + 4, COMP_NOR, DIR_EAST);
-    PlaceWire(ox + 3, oy + 4);
-    PlaceWire(ox + 4, oy + 4);
-    // Feedback: NOR2 output up to NOR1 input via repeater
-    PlaceWire(ox + 4, oy + 5);
-    PlaceWire(ox + 4, oy + 6);
-    PlaceAt(ox + 3, oy + 6, COMP_REPEATER, DIR_WEST);
-    PlaceWire(ox + 2, oy + 6);
     PlaceWire(ox + 2, oy + 2);
+    // Repeater delivers Q̄ to NOR1 south input
+    PlaceAt(ox + 3, oy + 2, COMP_REPEATER, DIR_EAST);
+    PlaceWire(ox + 4, oy + 2);  // NOR1 south input
+
+    // S (Set) button -> pulse extender -> NOR2 south input
+    PlaceWire(ox + 4, oy + 6);
+    PlaceWire(ox + 4, oy + 7);
+    PlaceWire(ox + 3, oy + 7);
+    PlaceAt(ox + 2, oy + 7, COMP_PULSE, DIR_EAST);  // extends tap to 5 ticks
+    PlaceWire(ox + 1, oy + 7);
+    PlaceAt(ox, oy + 7, COMP_BUTTON, DIR_NORTH);
+
+    // Simulate pressing S button for a few ticks to break symmetry
+    // and settle the latch into a stable Q=0, Q̄=1 initial state
+    grid[oy + 7][ox].state = true;
+    for (int i = 0; i < 10; i++) { UpdateSignals(); UpdateProcessors(); }
+    grid[oy + 7][ox].state = false;
+    for (int i = 0; i < 10; i++) { UpdateSignals(); UpdateProcessors(); }
 }
 
 // Preset 4: Blinker — Clock -> Light
@@ -411,13 +510,177 @@ static void BuildPresetXor(int ox, int oy) {
     PlaceWire(ox + 3, oy + 2);      // connect to XOR's south input
 }
 
+// Preset 7: Half Adder — two Switches -> XOR (sum) + AND (carry) -> two Lights
+// Layout (9x5): Gap rows keep gate outputs from merging with input wires.
+// Repeaters split A/B signals to both gates independently.
+//   Row 0: SwA -> wire -> REP -> wire        (A signal, split left/right)
+//   Row 1:          A↓                 A↓    (drop to gate inputs)
+//   Row 2:        XOR→ wire SumL    AND→ wire CarryL
+//   Row 3:          B↑                 B↑    (rise to gate inputs)
+//   Row 4: SwB -> wire -> REP -> wire        (B signal, split left/right)
+static void BuildPresetHalfAdder(int ox, int oy) {
+    // Switch A (top row) — repeater splits signal for XOR and AND
+    PlaceAt(ox, oy, COMP_SWITCH, DIR_NORTH);
+    PlaceWire(ox + 1, oy);
+    PlaceWire(ox + 2, oy);
+    PlaceWire(ox + 3, oy);
+    PlaceAt(ox + 4, oy, COMP_REPEATER, DIR_EAST);
+    PlaceWire(ox + 5, oy);
+    PlaceWire(ox + 6, oy);
+
+    // A drops down to gate north inputs
+    PlaceWire(ox + 2, oy + 1);  // XOR north input via A-left network
+    PlaceWire(ox + 6, oy + 1);  // AND north input via A-right network
+
+    // XOR gate -> Sum light
+    PlaceAt(ox + 2, oy + 2, COMP_XOR, DIR_EAST);
+    PlaceWire(ox + 3, oy + 2);
+    PlaceAt(ox + 4, oy + 2, COMP_LIGHT, DIR_EAST);
+
+    // AND gate -> Carry light
+    PlaceAt(ox + 6, oy + 2, COMP_AND, DIR_EAST);
+    PlaceWire(ox + 7, oy + 2);
+    PlaceAt(ox + 8, oy + 2, COMP_LIGHT, DIR_EAST);
+
+    // B rises up to gate south inputs
+    PlaceWire(ox + 2, oy + 3);  // XOR south input via B-left network
+    PlaceWire(ox + 6, oy + 3);  // AND south input via B-right network
+
+    // Switch B (bottom row) — repeater splits signal for XOR and AND
+    PlaceAt(ox, oy + 4, COMP_SWITCH, DIR_NORTH);
+    PlaceWire(ox + 1, oy + 4);
+    PlaceWire(ox + 2, oy + 4);
+    PlaceWire(ox + 3, oy + 4);
+    PlaceAt(ox + 4, oy + 4, COMP_REPEATER, DIR_EAST);
+    PlaceWire(ox + 5, oy + 4);
+    PlaceWire(ox + 6, oy + 4);
+}
+
+// Preset 8: Ring Oscillator — 3 NOT gates in a loop, self-oscillating
+// Layout: triangle of NOT gates connected by wires, with a light tap
+//   NOT1 (east) -> wire -> NOT2 (south) -> wire -> NOT3 (west) -> wire -> back to NOT1
+static void BuildPresetRingOsc(int ox, int oy) {
+    // NOT1 at (ox+1, oy) facing east
+    PlaceAt(ox + 1, oy, COMP_NOT, DIR_EAST);
+    PlaceWire(ox + 2, oy);       // NOT1 output
+    PlaceWire(ox + 3, oy);
+
+    // NOT2 at (ox+3, oy+1) facing south
+    PlaceAt(ox + 3, oy + 1, COMP_NOT, DIR_SOUTH);
+    PlaceWire(ox + 3, oy + 2);   // NOT2 output
+    PlaceWire(ox + 2, oy + 2);
+
+    // NOT3 at (ox+1, oy+2) facing west
+    PlaceAt(ox + 1, oy + 2, COMP_NOT, DIR_WEST);
+    PlaceWire(ox, oy + 2);       // NOT3 output
+    PlaceWire(ox, oy + 1);
+    PlaceWire(ox, oy);           // feeds back to NOT1 input
+
+    // Light taps off NOT1's output to show the oscillation
+    PlaceWire(ox + 2, oy + 1);
+    PlaceAt(ox + 2, oy + 1, COMP_LIGHT, DIR_EAST);
+
+    // Kick-start: seed one wire so oscillation begins immediately
+    signalGrid[0][oy][ox + 2] = 1;
+    signalGrid[1][oy][ox + 2] = 1;
+}
+
+// Preset 9: Pump Loop — Pump -> pipe chain -> drain + pressure light
+static void BuildPresetPumpLoop(int ox, int oy) {
+    PlaceAt(ox, oy + 1, COMP_PUMP, DIR_NORTH);
+    grid[oy + 1][ox].setting = 4;
+    for (int i = 1; i <= 6; i++) {
+        PlaceAt(ox + i, oy + 1, COMP_PIPE, DIR_NORTH);
+    }
+    PlaceAt(ox + 7, oy + 1, COMP_DRAIN, DIR_NORTH);
+    grid[oy + 1][ox + 7].setting = 2;
+    // Pressure light taps off middle of chain
+    PlaceAt(ox + 3, oy, COMP_PRESSURE_LIGHT, DIR_NORTH);
+    // Wire from pressure light to electrical light
+    PlaceWire(ox + 4, oy);
+    PlaceAt(ox + 5, oy, COMP_LIGHT, DIR_EAST);
+    // Let it run a bit to build pressure
+    for (int i = 0; i < 30; i++) { UpdateSignals(); UpdateProcessors(); UpdateFluids(); }
+}
+
+// Preset 10: Signal Valve — Switch -> wire -> valve, pump on one side, light on the other
+static void BuildPresetSignalValve(int ox, int oy) {
+    // Pump at left
+    PlaceAt(ox, oy + 1, COMP_PUMP, DIR_NORTH);
+    grid[oy + 1][ox].setting = 6;
+    // Pipe to valve
+    PlaceAt(ox + 1, oy + 1, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 2, oy + 1, COMP_PIPE, DIR_NORTH);
+    // Valve in the middle (facing east)
+    PlaceAt(ox + 3, oy + 1, COMP_VALVE, DIR_EAST);
+    // Pipe from valve to pressure light
+    PlaceAt(ox + 4, oy + 1, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 5, oy + 1, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 6, oy + 1, COMP_PRESSURE_LIGHT, DIR_NORTH);
+    // Wire from pressure light to electrical light
+    PlaceWire(ox + 7, oy + 1);
+    PlaceAt(ox + 8, oy + 1, COMP_LIGHT, DIR_EAST);
+    // Switch + wire controlling the valve (above it)
+    PlaceAt(ox + 1, oy, COMP_SWITCH, DIR_NORTH);
+    PlaceWire(ox + 2, oy);
+    PlaceWire(ox + 3, oy);  // adjacent to valve = controls it
+    // Pre-fill left side of pipe
+    for (int i = 0; i < 20; i++) { UpdateSignals(); UpdateProcessors(); UpdateFluids(); }
+}
+
+// Preset 11: Analog Demo — Dial -> wire -> comparator -> light + display
+static void BuildPresetAnalog(int ox, int oy) {
+    PlaceAt(ox, oy + 1, COMP_DIAL, DIR_NORTH);
+    grid[oy + 1][ox].setting = 8;
+    PlaceWire(ox + 1, oy + 1);
+    PlaceWire(ox + 2, oy + 1);
+    // Display shows raw analog value
+    PlaceAt(ox + 2, oy, COMP_DISPLAY, DIR_NORTH);
+    // Comparator with threshold 5
+    PlaceAt(ox + 3, oy + 1, COMP_COMPARATOR, DIR_EAST);
+    grid[oy + 1][ox + 3].setting = 5;
+    // Output to light (on when dial >= 5)
+    PlaceWire(ox + 4, oy + 1);
+    PlaceAt(ox + 5, oy + 1, COMP_LIGHT, DIR_EAST);
+}
+
+// Preset 12: Belt Line — Loader -> belts -> splitter -> two unloaders
+static void BuildPresetBeltLine(int ox, int oy) {
+    // Loader (type 1 = red) feeds belt chain
+    PlaceAt(ox, oy + 1, COMP_LOADER, DIR_EAST);
+    grid[oy + 1][ox].setting = 1;
+    // Belt chain
+    for (int i = 1; i <= 4; i++) {
+        PlaceAt(ox + i, oy + 1, COMP_BELT, DIR_EAST);
+    }
+    // Splitter at the end
+    PlaceAt(ox + 5, oy + 1, COMP_SPLITTER, DIR_EAST);
+    // Top output belt -> unloader
+    PlaceAt(ox + 6, oy, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 7, oy, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 8, oy, COMP_UNLOADER, DIR_EAST);
+    // Bottom output belt -> unloader
+    PlaceAt(ox + 6, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 7, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 8, oy + 2, COMP_UNLOADER, DIR_EAST);
+    // Wire from top unloader to display
+    PlaceWire(ox + 9, oy);
+    PlaceAt(ox + 9, oy + 1, COMP_DISPLAY, DIR_NORTH);
+}
+
 static Preset presets[] = {
     { "NOT",          "Switch -> NOT -> Light",              BuildPresetNot,         6, 3 },
     { "AND",          "2 Switches -> AND -> Light",          BuildPresetAnd,         6, 3 },
     { "XOR",          "2 Switches -> XOR -> Light",          BuildPresetXor,         6, 3 },
     { "Blinker",      "Clock -> Light",                      BuildPresetBlinker,     3, 3 },
     { "Pulse Extend", "Button -> Repeater(4) -> Light",      BuildPresetPulseExtend, 5, 3 },
-    { "NOR Latch",    "2 NOR gates, cross-feedback, memory", BuildPresetNorLatch,    6, 7 },
+    { "NOR Latch",    "NOR gates + pulse extenders, memory", BuildPresetNorLatch,    8, 8 },
+    { "Half Adder",   "XOR=sum, AND=carry, binary math",    BuildPresetHalfAdder,   9, 5 },
+    { "Ring Osc",     "3 NOT gates in a loop, auto-osc",    BuildPresetRingOsc,     4, 3 },
+    { "Pump Loop",    "Pump -> pipes -> drain + light",      BuildPresetPumpLoop,    8, 2 },
+    { "Sig Valve",    "Switch controls valve, fluid->light", BuildPresetSignalValve, 9, 2 },
+    { "Analog",       "Dial -> display + comparator -> light", BuildPresetAnalog,    6, 2 },
+    { "Belt Line",    "Loader -> belts -> splitter -> unload", BuildPresetBeltLine,  10, 4 },
 };
 #define PRESET_COUNT (sizeof(presets) / sizeof(presets[0]))
 
@@ -431,9 +694,41 @@ static int selectedPreset = -1;  // -1 = not in preset mode
 static int bfsQueueX[GRID_W * GRID_H];
 static int bfsQueueY[GRID_W * GRID_H];
 
+// Helper: seed a wire cell with an analog value (max wins)
+static int bfsSeedVal[GRID_H][GRID_W]; // track value per queued wire
+static void SeedWire(int newSig[][GRID_W], int nx, int ny, int value,
+                     int *qTail) {
+    if (!InGrid(nx, ny) || grid[ny][nx].type != COMP_WIRE) return;
+    if (newSig[ny][nx] >= value) return; // already has equal or higher value
+    newSig[ny][nx] = value;
+    bfsSeedVal[ny][nx] = value;
+    bfsQueueX[*qTail] = nx;
+    bfsQueueY[*qTail] = ny;
+    (*qTail)++;
+}
+
+// Helper: seed all 4 adjacent wires from an omnidirectional source
+static void SeedAdjacentWires(int newSig[][GRID_W], int x, int y, int value,
+                              int *qTail) {
+    for (int d = 0; d < 4; d++) {
+        int dx, dy;
+        DirOffset((Direction)d, &dx, &dy);
+        SeedWire(newSig, x + dx, y + dy, value, qTail);
+    }
+}
+
+// Helper: seed the wire in the facing direction
+static void SeedFacingWire(int newSig[][GRID_W], int x, int y, Direction facing,
+                           int value, int *qTail) {
+    int dx, dy;
+    DirOffset(facing, &dx, &dy);
+    SeedWire(newSig, x + dx, y + dy, value, qTail);
+}
+
 static void UpdateSignals(void) {
     int newSig[GRID_H][GRID_W];
     memset(newSig, 0, sizeof(newSig));
+    memset(bfsSeedVal, 0, sizeof(bfsSeedVal));
 
     // Phase 1: Compute gate outputs using PREVIOUS signal state, seed wires from sources
     int qHead = 0, qTail = 0;
@@ -447,23 +742,19 @@ static void UpdateSignals(void) {
                 case COMP_BUTTON: {
                     c->signalOut = c->state ? 1 : 0;
                     if (!c->signalOut) break;
-                    // Seed adjacent wire cells
-                    for (int d = 0; d < 4; d++) {
-                        int dx, dy;
-                        DirOffset((Direction)d, &dx, &dy);
-                        int nx = x + dx, ny = y + dy;
-                        if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE && !newSig[ny][nx]) {
-                            newSig[ny][nx] = 1;
-                            bfsQueueX[qTail] = nx;
-                            bfsQueueY[qTail] = ny;
-                            qTail++;
-                        }
-                    }
+                    SeedAdjacentWires(newSig, x, y, 1, &qTail);
+                    break;
+                }
+
+                case COMP_DIAL: {
+                    // Analog source: emits setting value (0-15)
+                    c->signalOut = c->setting;
+                    if (!c->signalOut) break;
+                    SeedAdjacentWires(newSig, x, y, c->setting, &qTail);
                     break;
                 }
 
                 case COMP_CLOCK: {
-                    // Auto-toggle: decrement timer, toggle state when it hits 0
                     c->timer--;
                     if (c->timer <= 0) {
                         c->state = !c->state;
@@ -471,23 +762,11 @@ static void UpdateSignals(void) {
                     }
                     c->signalOut = c->state ? 1 : 0;
                     if (!c->signalOut) break;
-                    // Seed adjacent wire cells (omnidirectional like switch)
-                    for (int d = 0; d < 4; d++) {
-                        int dx, dy;
-                        DirOffset((Direction)d, &dx, &dy);
-                        int nx = x + dx, ny = y + dy;
-                        if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE && !newSig[ny][nx]) {
-                            newSig[ny][nx] = 1;
-                            bfsQueueX[qTail] = nx;
-                            bfsQueueY[qTail] = ny;
-                            qTail++;
-                        }
-                    }
+                    SeedAdjacentWires(newSig, x, y, 1, &qTail);
                     break;
                 }
 
                 case COMP_REPEATER: {
-                    // Read input from back side
                     int dx, dy;
                     DirOffset(OppositeDir(c->facing), &dx, &dy);
                     int inX = x + dx, inY = y + dy;
@@ -495,11 +774,9 @@ static void UpdateSignals(void) {
                     if (InGrid(inX, inY)) input = signalGrid[sigRead][inY][inX];
                     c->signalIn = input;
 
-                    // Push into delay buffer, read from delayed position
                     int delay = c->setting;
                     if (delay < 1) delay = 1;
                     if (delay > 4) delay = 4;
-                    // Shift buffer: [0] is oldest, [delay-1] is newest
                     for (int i = 0; i < delay - 1; i++) {
                         c->delayBuf[i] = c->delayBuf[i + 1];
                     }
@@ -509,14 +786,32 @@ static void UpdateSignals(void) {
                     c->signalOut = output;
                     c->state = (output != 0);
                     if (output) {
-                        DirOffset(c->facing, &dx, &dy);
-                        int outX = x + dx, outY = y + dy;
-                        if (InGrid(outX, outY) && grid[outY][outX].type == COMP_WIRE && !newSig[outY][outX]) {
-                            newSig[outY][outX] = 1;
-                            bfsQueueX[qTail] = outX;
-                            bfsQueueY[qTail] = outY;
-                            qTail++;
-                        }
+                        SeedFacingWire(newSig, x, y, c->facing, output, &qTail);
+                    }
+                    break;
+                }
+
+                case COMP_PULSE: {
+                    int dx, dy;
+                    DirOffset(OppositeDir(c->facing), &dx, &dy);
+                    int inX = x + dx, inY = y + dy;
+                    int input = 0;
+                    if (InGrid(inX, inY)) input = signalGrid[sigRead][inY][inX];
+                    c->signalIn = input;
+
+                    if (input && !c->delayBuf[0]) {
+                        c->timer = c->setting;
+                    }
+                    c->delayBuf[0] = input;
+
+                    if (c->timer > 0) {
+                        c->timer--;
+                        c->signalOut = 1;
+                        c->state = true;
+                        SeedFacingWire(newSig, x, y, c->facing, 1, &qTail);
+                    } else {
+                        c->signalOut = 0;
+                        c->state = false;
                     }
                     break;
                 }
@@ -531,14 +826,7 @@ static void UpdateSignals(void) {
                     c->signalIn = input;
                     c->signalOut = output;
                     if (output) {
-                        DirOffset(c->facing, &dx, &dy);
-                        int outX = x + dx, outY = y + dy;
-                        if (InGrid(outX, outY) && grid[outY][outX].type == COMP_WIRE && !newSig[outY][outX]) {
-                            newSig[outY][outX] = 1;
-                            bfsQueueX[qTail] = outX;
-                            bfsQueueY[qTail] = outY;
-                            qTail++;
-                        }
+                        SeedFacingWire(newSig, x, y, c->facing, output, &qTail);
                     }
                     break;
                 }
@@ -565,20 +853,12 @@ static void UpdateSignals(void) {
                     c->signalIn = inA | (inB << 1);
                     c->signalOut = output;
                     if (output) {
-                        DirOffset(c->facing, &dx, &dy);
-                        int outX = x + dx, outY = y + dy;
-                        if (InGrid(outX, outY) && grid[outY][outX].type == COMP_WIRE && !newSig[outY][outX]) {
-                            newSig[outY][outX] = 1;
-                            bfsQueueX[qTail] = outX;
-                            bfsQueueY[qTail] = outY;
-                            qTail++;
-                        }
+                        SeedFacingWire(newSig, x, y, c->facing, output, &qTail);
                     }
                     break;
                 }
 
                 case COMP_LATCH: {
-                    // SR latch: right side = SET, left side = RESET
                     Direction setDir, resetDir;
                     GateInputDirs(c->facing, &setDir, &resetDir);
                     int dx, dy;
@@ -588,22 +868,30 @@ static void UpdateSignals(void) {
                     DirOffset(resetDir, &dx, &dy);
                     if (InGrid(x + dx, y + dy)) resetIn = signalGrid[sigRead][y + dy][x + dx];
 
-                    // SET wins over RESET if both active
                     if (setIn && !resetIn) c->state = true;
                     else if (resetIn && !setIn) c->state = false;
-                    // Both on or both off: keep current state (memory!)
 
                     c->signalIn = setIn | (resetIn << 1);
                     c->signalOut = c->state ? 1 : 0;
                     if (c->signalOut) {
-                        DirOffset(c->facing, &dx, &dy);
-                        int outX = x + dx, outY = y + dy;
-                        if (InGrid(outX, outY) && grid[outY][outX].type == COMP_WIRE && !newSig[outY][outX]) {
-                            newSig[outY][outX] = 1;
-                            bfsQueueX[qTail] = outX;
-                            bfsQueueY[qTail] = outY;
-                            qTail++;
-                        }
+                        SeedFacingWire(newSig, x, y, c->facing, 1, &qTail);
+                    }
+                    break;
+                }
+
+                case COMP_COMPARATOR: {
+                    // Reads analog value from back side, outputs 1 if >= threshold
+                    int dx, dy;
+                    DirOffset(OppositeDir(c->facing), &dx, &dy);
+                    int inX = x + dx, inY = y + dy;
+                    int input = 0;
+                    if (InGrid(inX, inY)) input = signalGrid[sigRead][inY][inX];
+                    c->signalIn = input;
+                    int output = (input >= c->setting) ? 1 : 0;
+                    c->signalOut = output;
+                    c->state = (output != 0);
+                    if (output) {
+                        SeedFacingWire(newSig, x, y, c->facing, output, &qTail);
                     }
                     break;
                 }
@@ -614,17 +902,19 @@ static void UpdateSignals(void) {
         }
     }
 
-    // Phase 2: BFS flood-fill signal through connected wires
+    // Phase 2: BFS flood-fill signal through connected wires (propagates max value)
     while (qHead < qTail) {
         int wx = bfsQueueX[qHead];
         int wy = bfsQueueY[qHead];
+        int val = bfsSeedVal[wy][wx];
         qHead++;
         for (int d = 0; d < 4; d++) {
             int dx, dy;
             DirOffset((Direction)d, &dx, &dy);
             int nx = wx + dx, ny = wy + dy;
-            if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE && !newSig[ny][nx]) {
-                newSig[ny][nx] = 1;
+            if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE && newSig[ny][nx] < val) {
+                newSig[ny][nx] = val;
+                bfsSeedVal[ny][nx] = val;
                 bfsQueueX[qTail] = nx;
                 bfsQueueY[qTail] = ny;
                 qTail++;
@@ -632,7 +922,7 @@ static void UpdateSignals(void) {
         }
     }
 
-    // Phase 3: Copy result into signal grid and update lights
+    // Phase 3: Copy result into signal grid and update lights/displays
     memcpy(signalGrid[sigWrite], newSig, sizeof(newSig));
     sigRead = sigWrite;
     sigWrite = 1 - sigWrite;
@@ -646,11 +936,25 @@ static void UpdateSignals(void) {
                     int dx, dy;
                     DirOffset((Direction)d, &dx, &dy);
                     int nx = x + dx, ny = y + dy;
-                    if (InGrid(nx, ny) && newSig[ny][nx])
-                        sig = 1;
+                    if (InGrid(nx, ny) && newSig[ny][nx] > sig)
+                        sig = newSig[ny][nx];
                 }
                 c->signalIn = sig;
-                c->state = (sig != 0);
+                c->state = (sig > 0);
+            }
+            if (c->type == COMP_DISPLAY) {
+                // Read max adjacent signal value
+                int maxSig = 0;
+                for (int d = 0; d < 4; d++) {
+                    int dx, dy;
+                    DirOffset((Direction)d, &dx, &dy);
+                    int nx = x + dx, ny = y + dy;
+                    if (InGrid(nx, ny) && newSig[ny][nx] > maxSig)
+                        maxSig = newSig[ny][nx];
+                }
+                c->signalIn = maxSig;
+                c->setting = maxSig; // store for rendering
+                c->state = (maxSig > 0);
             }
         }
     }
@@ -731,6 +1035,377 @@ static void UpdateProcessors(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Simulation: Fluid pressure equalization
+// ---------------------------------------------------------------------------
+static bool IsFluidCell(ComponentType t) {
+    return t == COMP_PIPE || t == COMP_PUMP || t == COMP_DRAIN ||
+           t == COMP_VALVE || t == COMP_TANK || t == COMP_PRESSURE_LIGHT;
+}
+
+static bool IsValveOpen(int x, int y) {
+    // Valve is open when any adjacent wire has signal
+    for (int d = 0; d < 4; d++) {
+        int dx, dy;
+        DirOffset((Direction)d, &dx, &dy);
+        int nx = x + dx, ny = y + dy;
+        if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE && signalGrid[sigRead][ny][nx])
+            return true;
+    }
+    return false;
+}
+
+static bool IsPumpActive(int x, int y) {
+    // Pump is active if any adjacent wire has signal, or if no adjacent wire exists (standalone)
+    bool hasWire = false;
+    bool hasSignal = false;
+    for (int d = 0; d < 4; d++) {
+        int dx, dy;
+        DirOffset((Direction)d, &dx, &dy);
+        int nx = x + dx, ny = y + dy;
+        if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE) {
+            hasWire = true;
+            if (signalGrid[sigRead][ny][nx]) hasSignal = true;
+        }
+    }
+    return !hasWire || hasSignal;
+}
+
+static int FluidMaxLevel(ComponentType t) {
+    return (t == COMP_TANK) ? 1024 : 255;
+}
+
+static void UpdateFluids(void) {
+    int newFluid[GRID_H][GRID_W];
+    // Copy current levels
+    for (int y = 0; y < GRID_H; y++)
+        for (int x = 0; x < GRID_W; x++)
+            newFluid[y][x] = grid[y][x].fluidLevel;
+
+    // Pressure equalization between connected fluid cells
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            Cell *c = &grid[y][x];
+            if (!IsFluidCell(c->type)) continue;
+            if (c->type == COMP_VALVE && !IsValveOpen(x, y)) continue;
+
+            int myLevel = c->fluidLevel;
+            int myMax = FluidMaxLevel(c->type);
+
+            // Gather connected fluid neighbors
+            int neighborCount = 0;
+            int neighborX[4], neighborY[4];
+            for (int d = 0; d < 4; d++) {
+                int dx, dy;
+                DirOffset((Direction)d, &dx, &dy);
+                int nx = x + dx, ny = y + dy;
+                if (!InGrid(nx, ny)) continue;
+                Cell *nc = &grid[ny][nx];
+                if (!IsFluidCell(nc->type)) continue;
+                if (nc->type == COMP_VALVE && !IsValveOpen(nx, ny)) continue;
+                neighborX[neighborCount] = nx;
+                neighborY[neighborCount] = ny;
+                neighborCount++;
+            }
+
+            if (neighborCount == 0) continue;
+
+            // Equalize: transfer pressure toward average
+            for (int i = 0; i < neighborCount; i++) {
+                int nx = neighborX[i], ny = neighborY[i];
+                int nLevel = grid[ny][nx].fluidLevel;
+                int diff = myLevel - nLevel;
+                int transfer = diff / (neighborCount + 1);
+                if (transfer > 0) {
+                    newFluid[y][x] -= transfer;
+                    newFluid[ny][nx] += transfer;
+                    // Clamp both sides
+                    int nMax = FluidMaxLevel(grid[ny][nx].type);
+                    if (newFluid[ny][nx] > nMax) newFluid[ny][nx] = nMax;
+                    if (newFluid[y][x] > myMax) newFluid[y][x] = myMax;
+                    if (newFluid[y][x] < 0) newFluid[y][x] = 0;
+                }
+            }
+        }
+    }
+
+    // Pumps: add pressure
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type == COMP_PUMP && IsPumpActive(x, y)) {
+                int rate = grid[y][x].setting * 8;
+                newFluid[y][x] += rate;
+                int mx = FluidMaxLevel(COMP_PUMP);
+                if (newFluid[y][x] > mx) newFluid[y][x] = mx;
+                grid[y][x].state = true;
+            } else if (grid[y][x].type == COMP_PUMP) {
+                grid[y][x].state = false;
+            }
+        }
+    }
+
+    // Drains: remove pressure
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type == COMP_DRAIN) {
+                int rate = grid[y][x].setting * 8;
+                newFluid[y][x] -= rate;
+                if (newFluid[y][x] < 0) newFluid[y][x] = 0;
+            }
+        }
+    }
+
+    // Valves: update state (open/closed) for rendering
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type == COMP_VALVE) {
+                grid[y][x].state = IsValveOpen(x, y);
+            }
+        }
+    }
+
+    // Pressure lights: check adjacent pipe pressure, emit signal if > threshold
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type == COMP_PRESSURE_LIGHT) {
+                int maxPressure = 0;
+                for (int d = 0; d < 4; d++) {
+                    int dx, dy;
+                    DirOffset((Direction)d, &dx, &dy);
+                    int nx = x + dx, ny = y + dy;
+                    if (InGrid(nx, ny) && IsFluidCell(grid[ny][nx].type)) {
+                        if (grid[ny][nx].fluidLevel > maxPressure)
+                            maxPressure = grid[ny][nx].fluidLevel;
+                    }
+                }
+                // Emit analog value proportional to pressure (0-15, scaled from 0-255)
+                int analogOut = maxPressure / 17; // 255/15 ≈ 17
+                if (analogOut > 15) analogOut = 15;
+                grid[y][x].state = (analogOut > 0);
+                grid[y][x].signalOut = analogOut;
+                // Seed adjacent wires with analog value
+                if (analogOut > 0) {
+                    for (int d = 0; d < 4; d++) {
+                        int dx, dy;
+                        DirOffset((Direction)d, &dx, &dy);
+                        int nx = x + dx, ny = y + dy;
+                        if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE) {
+                            if (signalGrid[sigRead][ny][nx] < analogOut)
+                                signalGrid[sigRead][ny][nx] = analogOut;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Copy new fluid levels back
+    for (int y = 0; y < GRID_H; y++)
+        for (int x = 0; x < GRID_W; x++)
+            grid[y][x].fluidLevel = newFluid[y][x];
+}
+
+// ---------------------------------------------------------------------------
+// Simulation: Belt logistics (item transport)
+// ---------------------------------------------------------------------------
+static bool IsBeltTarget(ComponentType t) {
+    return t == COMP_BELT || t == COMP_UNLOADER || t == COMP_SPLITTER || t == COMP_FILTER;
+}
+
+static Color CargoColor(int cargo) {
+    // 15 distinct colors for cargo types 1-15
+    switch (cargo) {
+        case 1:  return RED;
+        case 2:  return (Color){50, 200, 50, 255};   // green
+        case 3:  return BLUE;
+        case 4:  return YELLOW;
+        case 5:  return PURPLE;
+        case 6:  return ORANGE;
+        case 7:  return (Color){0, 200, 200, 255};    // cyan
+        case 8:  return WHITE;
+        case 9:  return PINK;
+        case 10: return (Color){180, 120, 60, 255};   // brown
+        case 11: return LIME;
+        case 12: return SKYBLUE;
+        case 13: return MAGENTA;
+        case 14: return GOLD;
+        case 15: return MAROON;
+        default: return GRAY;
+    }
+}
+
+static void UpdateBelts(void) {
+    // Snapshot cargo to avoid order-dependent movement
+    int oldCargo[GRID_H][GRID_W];
+    for (int y = 0; y < GRID_H; y++)
+        for (int x = 0; x < GRID_W; x++)
+            oldCargo[y][x] = grid[y][x].cargo;
+
+    // Phase 1: Belts move cargo in facing direction
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_BELT) continue;
+            if (oldCargo[y][x] == 0) continue;
+
+            int dx, dy;
+            DirOffset(grid[y][x].facing, &dx, &dy);
+            int nx = x + dx, ny = y + dy;
+            if (!InGrid(nx, ny)) continue;
+            Cell *next = &grid[ny][nx];
+
+            // Can push to belt, unloader, splitter, or filter
+            if (IsBeltTarget(next->type) && next->cargo == 0) {
+                next->cargo = oldCargo[y][x];
+                grid[y][x].cargo = 0;
+            }
+        }
+    }
+
+    // Phase 2: Filters — only pass matching cargo, block others
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_FILTER) continue;
+            if (grid[y][x].cargo == 0) continue;
+
+            // Only pass if cargo matches filter setting
+            if (grid[y][x].cargo != grid[y][x].setting) continue;
+
+            int dx, dy;
+            DirOffset(grid[y][x].facing, &dx, &dy);
+            int nx = x + dx, ny = y + dy;
+            if (!InGrid(nx, ny)) continue;
+            Cell *next = &grid[ny][nx];
+            if (IsBeltTarget(next->type) && next->cargo == 0) {
+                next->cargo = grid[y][x].cargo;
+                grid[y][x].cargo = 0;
+            }
+        }
+    }
+
+    // Phase 3: Splitters — alternate left/right output
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_SPLITTER) continue;
+            if (grid[y][x].cargo == 0) continue;
+
+            Direction leftDir, rightDir;
+            GateInputDirs(grid[y][x].facing, &rightDir, &leftDir);
+
+            // Try preferred side first, then other
+            Direction first = grid[y][x].altToggle ? leftDir : rightDir;
+            Direction second = grid[y][x].altToggle ? rightDir : leftDir;
+
+            int dx, dy;
+            bool placed = false;
+            DirOffset(first, &dx, &dy);
+            int nx = x + dx, ny = y + dy;
+            if (InGrid(nx, ny) && IsBeltTarget(grid[ny][nx].type) && grid[ny][nx].cargo == 0) {
+                grid[ny][nx].cargo = grid[y][x].cargo;
+                grid[y][x].cargo = 0;
+                grid[y][x].altToggle = !grid[y][x].altToggle;
+                placed = true;
+            }
+            if (!placed) {
+                DirOffset(second, &dx, &dy);
+                nx = x + dx; ny = y + dy;
+                if (InGrid(nx, ny) && IsBeltTarget(grid[ny][nx].type) && grid[ny][nx].cargo == 0) {
+                    grid[ny][nx].cargo = grid[y][x].cargo;
+                    grid[y][x].cargo = 0;
+                    grid[y][x].altToggle = !grid[y][x].altToggle;
+                }
+            }
+        }
+    }
+
+    // Phase 4: Loaders — generate cargo into adjacent belt in facing direction
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_LOADER) continue;
+
+            int dx, dy;
+            DirOffset(grid[y][x].facing, &dx, &dy);
+            int nx = x + dx, ny = y + dy;
+            if (!InGrid(nx, ny)) continue;
+            Cell *next = &grid[ny][nx];
+            if (IsBeltTarget(next->type) && next->cargo == 0) {
+                next->cargo = grid[y][x].setting;
+                grid[y][x].state = true;
+            } else {
+                grid[y][x].state = false;
+            }
+        }
+    }
+
+    // Phase 5: Unloaders — consume cargo, emit signal value
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_UNLOADER) continue;
+            if (grid[y][x].cargo > 0) {
+                grid[y][x].signalOut = grid[y][x].cargo;
+                grid[y][x].state = true;
+                grid[y][x].cargo = 0;
+                // Emit to adjacent wires
+                for (int d = 0; d < 4; d++) {
+                    int dx, dy;
+                    DirOffset((Direction)d, &dx, &dy);
+                    int nx = x + dx, ny = y + dy;
+                    if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE) {
+                        if (signalGrid[sigRead][ny][nx] < grid[y][x].signalOut)
+                            signalGrid[sigRead][ny][nx] = grid[y][x].signalOut;
+                    }
+                }
+            } else {
+                grid[y][x].signalOut = 0;
+                grid[y][x].state = false;
+            }
+        }
+    }
+
+    // Phase 6: Grabbers — move cargo from back cell to front cell (signal-controlled)
+    for (int y = 0; y < GRID_H; y++) {
+        for (int x = 0; x < GRID_W; x++) {
+            if (grid[y][x].type != COMP_GRABBER) continue;
+
+            // Check if signal-controlled: active if adjacent wire has signal, or no wire = always on
+            bool hasWire = false, hasSignal = false;
+            for (int d = 0; d < 4; d++) {
+                int dx, dy;
+                DirOffset((Direction)d, &dx, &dy);
+                int nx = x + dx, ny = y + dy;
+                if (InGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE) {
+                    hasWire = true;
+                    if (signalGrid[sigRead][ny][nx] > 0) hasSignal = true;
+                }
+            }
+            bool active = !hasWire || hasSignal;
+            grid[y][x].state = active;
+            if (!active) continue;
+
+            // Grab from back, place on front
+            int dx, dy;
+            DirOffset(OppositeDir(grid[y][x].facing), &dx, &dy);
+            int srcX = x + dx, srcY = y + dy;
+            DirOffset(grid[y][x].facing, &dx, &dy);
+            int dstX = x + dx, dstY = y + dy;
+
+            if (!InGrid(srcX, srcY) || !InGrid(dstX, dstY)) continue;
+
+            Cell *src = &grid[srcY][srcX];
+            Cell *dst = &grid[dstY][dstX];
+
+            // Source must have cargo (belt/filter/splitter types)
+            int srcCargo = src->cargo;
+            if (srcCargo == 0) continue;
+
+            // Destination must accept cargo
+            if (IsBeltTarget(dst->type) && dst->cargo == 0) {
+                dst->cargo = srcCargo;
+                src->cargo = 0;
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 static Color CompColor(ComponentType t, bool state) {
@@ -748,6 +1423,22 @@ static Color CompColor(ComponentType t, bool state) {
         case COMP_PROCESSOR: return (Color){140, 60, 200, 255};
         case COMP_CLOCK:     return state ? (Color){255, 160, 0, 255} : (Color){120, 70, 0, 255};
         case COMP_REPEATER:  return state ? (Color){0, 200, 200, 255} : (Color){0, 80, 80, 255};
+        case COMP_PULSE:     return state ? (Color){255, 100, 255, 255} : (Color){100, 40, 100, 255};
+        case COMP_PIPE:      return (Color){30, 60, 160, 255};
+        case COMP_PUMP:      return state ? (Color){30, 180, 160, 255} : (Color){20, 80, 70, 255};
+        case COMP_DRAIN:     return (Color){20, 40, 120, 255};
+        case COMP_VALVE:     return state ? (Color){30, 100, 200, 255} : (Color){60, 40, 40, 255};
+        case COMP_TANK:      return (Color){20, 40, 100, 255};
+        case COMP_PRESSURE_LIGHT: return state ? (Color){50, 200, 230, 255} : (Color){20, 60, 80, 255};
+        case COMP_DIAL:      return (Color){200, 160, 40, 255};
+        case COMP_COMPARATOR:return state ? (Color){220, 120, 40, 255} : (Color){100, 55, 20, 255};
+        case COMP_DISPLAY:   return (Color){20, 20, 30, 255};
+        case COMP_BELT:      return (Color){100, 90, 60, 255};
+        case COMP_LOADER:    return state ? (Color){60, 160, 60, 255} : (Color){40, 80, 40, 255};
+        case COMP_UNLOADER:  return state ? (Color){160, 60, 60, 255} : (Color){80, 40, 40, 255};
+        case COMP_GRABBER:   return state ? (Color){160, 140, 40, 255} : (Color){80, 70, 20, 255};
+        case COMP_SPLITTER:  return (Color){80, 80, 120, 255};
+        case COMP_FILTER:    return (Color){120, 80, 100, 255};
         default:             return DARKGRAY;
     }
 }
@@ -817,9 +1508,13 @@ static void DrawComponents(void) {
                         }
                     }
                     Color wireCol = col;
-                    if (signalGrid[sigRead][y][x]) {
+                    int sigVal = signalGrid[sigRead][y][x];
+                    if (sigVal > 0) {
+                        float intensity = (float)sigVal / 15.0f;
                         float pulse = 0.6f + 0.4f * sinf(pulseTime * 6.0f);
-                        wireCol = (Color){0, (unsigned char)(255 * pulse), 0, 255};
+                        unsigned char g = (unsigned char)(80 + 175 * intensity * pulse);
+                        unsigned char r = (unsigned char)(40 * intensity * pulse);
+                        wireCol = (Color){r, g, 0, 255};
                     }
                     bool any = false;
                     for (int d = 0; d < 4; d++) {
@@ -923,24 +1618,258 @@ static void DrawComponents(void) {
                     break;
                 }
 
-                case COMP_REPEATER: {
+                case COMP_REPEATER:
+                case COMP_PULSE: {
                     DrawRectangleRec(r, col);
                     DrawArrow(cx, cy, c->facing, WHITE);
-                    // Show delay ticks as dots
                     int edge = CELL_SIZE / 2 - 1;
                     {
                         int dx, dy;
-                        // Output dot (green) on facing side
                         DirOffset(c->facing, &dx, &dy);
                         DrawCircle(cx + dx * edge, cy + dy * edge, 3, GREEN);
-                        // Input dot (orange) on back side
                         DirOffset(OppositeDir(c->facing), &dx, &dy);
                         DrawCircle(cx + dx * edge, cy + dy * edge, 3, ORANGE);
                     }
-                    // Show delay number
                     char delBuf[4];
                     snprintf(delBuf, sizeof(delBuf), "%d", c->setting);
                     DrawTextShadow(delBuf, cx - 3, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_PIPE: {
+                    // Blue rectangle, brightness scales with pressure
+                    int level = c->fluidLevel;
+                    int maxLvl = FluidMaxLevel(COMP_PIPE);
+                    float frac = (float)level / (float)maxLvl;
+                    unsigned char b = (unsigned char)(80 + 175 * frac);
+                    unsigned char g = (unsigned char)(40 + 180 * frac);
+                    Color pipeCol = {0, g, b, 255};
+                    DrawRectangleRec(r, pipeCol);
+                    // Draw connections to adjacent fluid cells
+                    for (int d = 0; d < 4; d++) {
+                        int dx, dy;
+                        DirOffset((Direction)d, &dx, &dy);
+                        int nx = x + dx, ny = y + dy;
+                        if (InGrid(nx, ny) && IsFluidCell(grid[ny][nx].type)) {
+                            int ex = cx + dx * (CELL_SIZE / 2);
+                            int ey = cy + dy * (CELL_SIZE / 2);
+                            DrawLineEx((Vector2){(float)cx, (float)cy},
+                                       (Vector2){(float)ex, (float)ey}, 3.0f, pipeCol);
+                        }
+                    }
+                    break;
+                }
+
+                case COMP_PUMP: {
+                    DrawRectangleRec(r, col);
+                    char pBuf[8];
+                    snprintf(pBuf, sizeof(pBuf), "P%d", c->setting);
+                    DrawTextShadow(pBuf, cx - 6, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_DRAIN: {
+                    DrawRectangleRec(r, col);
+                    char dBuf[8];
+                    snprintf(dBuf, sizeof(dBuf), "D%d", c->setting);
+                    DrawTextShadow(dBuf, cx - 6, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_VALVE: {
+                    // Pipe-colored when open, dark when closed, with direction arrow
+                    int level = c->fluidLevel;
+                    float frac = (float)level / 255.0f;
+                    Color vCol = c->state
+                        ? (Color){0, (unsigned char)(60 + 160 * frac), (unsigned char)(100 + 155 * frac), 255}
+                        : (Color){60, 40, 40, 255};
+                    DrawRectangleRec(r, vCol);
+                    DrawArrow(cx, cy, c->facing, WHITE);
+                    // Draw bar across when closed
+                    if (!c->state) {
+                        int dx, dy;
+                        DirOffset(c->facing, &dx, &dy);
+                        int perpX = -dy, perpY = dx;
+                        int s = CELL_SIZE / 2 - 2;
+                        DrawLineEx((Vector2){(float)(cx + perpX * s), (float)(cy + perpY * s)},
+                                   (Vector2){(float)(cx - perpX * s), (float)(cy - perpY * s)}, 3.0f, RED);
+                    }
+                    DrawTextShadow("V", cx - 3, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_TANK: {
+                    int level = c->fluidLevel;
+                    int maxLvl = FluidMaxLevel(COMP_TANK);
+                    float frac = (float)level / (float)maxLvl;
+                    unsigned char b = (unsigned char)(40 + 180 * frac);
+                    unsigned char g = (unsigned char)(20 + 120 * frac);
+                    Color tankCol = {0, g, b, 255};
+                    // Slightly larger visual
+                    Rectangle tr = {r.x - 1, r.y - 1, r.width + 2, r.height + 2};
+                    DrawRectangleRec(tr, tankCol);
+                    DrawRectangleLinesEx(r, 1, (Color){60, 60, 100, 255});
+                    char tBuf[8];
+                    snprintf(tBuf, sizeof(tBuf), "T");
+                    DrawTextShadow(tBuf, cx - 3, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_PRESSURE_LIGHT: {
+                    DrawCircle(cx, cy, CELL_SIZE / 2 - 1, col);
+                    if (c->state) {
+                        DrawCircle(cx, cy, CELL_SIZE / 2 + 3, (Color){50, 200, 230, 40});
+                    }
+                    break;
+                }
+
+                case COMP_DIAL: {
+                    // Golden knob showing value
+                    DrawRectangleRec(r, col);
+                    char dialBuf[4];
+                    snprintf(dialBuf, sizeof(dialBuf), "%d", c->setting);
+                    int tw = MeasureTextUI(dialBuf, 10);
+                    DrawTextShadow(dialBuf, cx - tw / 2, cy - 5, 10, BLACK);
+                    break;
+                }
+
+                case COMP_COMPARATOR: {
+                    DrawRectangleRec(r, col);
+                    DrawArrow(cx, cy, c->facing, WHITE);
+                    int edge = CELL_SIZE / 2 - 1;
+                    {
+                        int dx, dy;
+                        DirOffset(c->facing, &dx, &dy);
+                        DrawCircle(cx + dx * edge, cy + dy * edge, 3, GREEN);
+                        DirOffset(OppositeDir(c->facing), &dx, &dy);
+                        DrawCircle(cx + dx * edge, cy + dy * edge, 3, ORANGE);
+                    }
+                    // Show threshold
+                    char cmpBuf[4];
+                    snprintf(cmpBuf, sizeof(cmpBuf), "%d", c->setting);
+                    DrawTextShadow(cmpBuf, cx - 3, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_DISPLAY: {
+                    // Dark screen with big number
+                    DrawRectangleRec(r, col);
+                    DrawRectangleLinesEx(r, 1, (Color){60, 60, 70, 255});
+                    int val = c->setting; // set by UpdateSignals
+                    char dispBuf[4];
+                    if (val > 9) {
+                        snprintf(dispBuf, sizeof(dispBuf), "%X", val); // hex for 10-15
+                    } else {
+                        snprintf(dispBuf, sizeof(dispBuf), "%d", val);
+                    }
+                    Color numCol = val > 0
+                        ? (Color){(unsigned char)(80 + 175.0f * val / 15.0f),
+                                  (unsigned char)(200.0f * val / 15.0f),
+                                  40, 255}
+                        : (Color){50, 50, 50, 255};
+                    int tw = MeasureTextUI(dispBuf, 14);
+                    DrawTextShadow(dispBuf, cx - tw / 2, cy - 7, 14, numCol);
+                    break;
+                }
+
+                case COMP_BELT: {
+                    DrawRectangleRec(r, col);
+                    // Animated chevrons showing direction
+                    float anim = fmodf(pulseTime * 3.0f, 1.0f);
+                    int dx, dy;
+                    DirOffset(c->facing, &dx, &dy);
+                    for (int i = 0; i < 2; i++) {
+                        float offset = (anim + i * 0.5f);
+                        if (offset > 1.0f) offset -= 1.0f;
+                        float px = (float)cx + dx * (offset - 0.5f) * CELL_SIZE * 0.8f;
+                        float py = (float)cy + dy * (offset - 0.5f) * CELL_SIZE * 0.8f;
+                        unsigned char a = (unsigned char)(100 + 100 * (1.0f - offset));
+                        Color chevCol = {a, a, (unsigned char)(a / 2), 255};
+                        int perpX = -dy, perpY = dx;
+                        DrawLineEx((Vector2){px - perpX * 3 - dx * 2, py - perpY * 3 - dy * 2},
+                                   (Vector2){px, py}, 1.5f, chevCol);
+                        DrawLineEx((Vector2){px + perpX * 3 - dx * 2, py + perpY * 3 - dy * 2},
+                                   (Vector2){px, py}, 1.5f, chevCol);
+                    }
+                    // Draw cargo dot
+                    if (c->cargo > 0) {
+                        DrawCircle(cx, cy, 4, CargoColor(c->cargo));
+                        DrawCircleLines(cx, cy, 4, BLACK);
+                    }
+                    break;
+                }
+
+                case COMP_LOADER: {
+                    DrawRectangleRec(r, col);
+                    DrawArrow(cx, cy, c->facing, WHITE);
+                    // Show cargo type as colored dot
+                    DrawCircle(cx, cy - 2, 3, CargoColor(c->setting));
+                    char ldBuf[4];
+                    snprintf(ldBuf, sizeof(ldBuf), "%d", c->setting);
+                    DrawTextShadow(ldBuf, cx + 3, cy - 5, 10, WHITE);
+                    break;
+                }
+
+                case COMP_UNLOADER: {
+                    DrawRectangleRec(r, col);
+                    // Down arrow / sink indicator
+                    DrawTextShadow("U", cx - 3, cy - 5, 10, WHITE);
+                    if (c->cargo > 0) {
+                        DrawCircle(cx, cy + 4, 3, CargoColor(c->cargo));
+                    }
+                    break;
+                }
+
+                case COMP_GRABBER: {
+                    DrawRectangleRec(r, col);
+                    // Draw grabber arm: line from back to front
+                    int dx, dy;
+                    DirOffset(c->facing, &dx, &dy);
+                    int edge = CELL_SIZE / 2 - 2;
+                    DrawLineEx((Vector2){(float)(cx - dx * edge), (float)(cy - dy * edge)},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)},
+                               3.0f, c->state ? YELLOW : GRAY);
+                    // Arrow tip
+                    DrawCircle(cx + dx * edge, cy + dy * edge, 3, c->state ? GREEN : GRAY);
+                    DrawCircle(cx - dx * edge, cy - dy * edge, 3, ORANGE);
+                    break;
+                }
+
+                case COMP_SPLITTER: {
+                    DrawRectangleRec(r, col);
+                    // Y-shape: input from back, outputs to sides
+                    int dx, dy;
+                    DirOffset(OppositeDir(c->facing), &dx, &dy);
+                    int edge = CELL_SIZE / 2 - 2;
+                    DrawLineEx((Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)},
+                               (Vector2){(float)cx, (float)cy}, 2.0f, WHITE);
+                    Direction leftDir, rightDir;
+                    GateInputDirs(c->facing, &rightDir, &leftDir);
+                    DirOffset(leftDir, &dx, &dy);
+                    DrawLineEx((Vector2){(float)cx, (float)cy},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)}, 2.0f, WHITE);
+                    DirOffset(rightDir, &dx, &dy);
+                    DrawLineEx((Vector2){(float)cx, (float)cy},
+                               (Vector2){(float)(cx + dx * edge), (float)(cy + dy * edge)}, 2.0f, WHITE);
+                    DrawTextShadow("Y", cx - 3, cy - 5, 10, WHITE);
+                    if (c->cargo > 0) {
+                        DrawCircle(cx, cy, 3, CargoColor(c->cargo));
+                    }
+                    break;
+                }
+
+                case COMP_FILTER: {
+                    DrawRectangleRec(r, col);
+                    DrawArrow(cx, cy, c->facing, WHITE);
+                    // Show filter type as colored dot
+                    DrawCircle(cx, cy - 2, 3, CargoColor(c->setting));
+                    char fBuf[4];
+                    snprintf(fBuf, sizeof(fBuf), "F%d", c->setting);
+                    DrawTextShadow(fBuf, cx - 5, cy - 5, 10, WHITE);
+                    if (c->cargo > 0 && c->cargo != c->setting) {
+                        // Blocked cargo shown dimmer
+                        DrawCircle(cx - 4, cy + 4, 2, CargoColor(c->cargo));
+                    }
                     break;
                 }
 
@@ -952,49 +1881,153 @@ static void DrawComponents(void) {
 }
 
 // ---------------------------------------------------------------------------
-// UI: Bottom palette bar
+// UI: Bottom palette bar (two rows: electrical + fluid)
 // ---------------------------------------------------------------------------
+#define PALETTE_ROW_H  24
+#define PALETTE_PAD    4
+#define PALETTE_ROWS   4
+#define PALETTE_BAR_H  (PALETTE_ROW_H * PALETTE_ROWS + PALETTE_PAD * (PALETTE_ROWS + 1))
+
+// Row 1: Electrical/signal components
+static const ComponentType electricalItems[] = {
+    COMP_SWITCH, COMP_BUTTON, COMP_LIGHT, COMP_WIRE, COMP_NOT,
+    COMP_AND, COMP_OR, COMP_XOR, COMP_NOR, COMP_LATCH, COMP_CLOCK, COMP_REPEATER, COMP_PULSE,
+    COMP_DIAL, COMP_COMPARATOR
+};
+static const char *electricalKeys[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "Q", "W", "E", "A", "X", "V" };
+#define ELECTRICAL_COUNT (int)(sizeof(electricalItems) / sizeof(electricalItems[0]))
+
+// Row 2: Fluid components
+static const ComponentType fluidItems[] = {
+    COMP_PIPE, COMP_PUMP, COMP_DRAIN, COMP_VALVE, COMP_TANK, COMP_PRESSURE_LIGHT
+};
+static const char *fluidKeys[] = { "S", "D", "G", "H", "J", "K" };
+#define FLUID_COUNT (int)(sizeof(fluidItems) / sizeof(fluidItems[0]))
+
+// Row 3: Belt/logistics components
+static const ComponentType beltItems[] = {
+    COMP_BELT, COMP_LOADER, COMP_UNLOADER, COMP_GRABBER, COMP_SPLITTER, COMP_FILTER
+};
+static const char *beltKeys[] = { ",", ".", "/", ";", "'", "\\" };
+#define BELT_COUNT (int)(sizeof(beltItems) / sizeof(beltItems[0]))
+
+// Row 4: Processor + Display + Eraser
+static const ComponentType processorItems[] = {
+    COMP_PROCESSOR, COMP_DISPLAY, COMP_EMPTY
+};
+static const char *processorKeys[] = { "Z", "B", "0" };
+#define PROCESSOR_COUNT (int)(sizeof(processorItems) / sizeof(processorItems[0]))
+
+static void DrawPaletteRow(const ComponentType *items, const char **keyLabels, int count,
+                           int rowY, Color tintColor) {
+    for (int i = 0; i < count; i++) {
+        int bx = 6 + i * (SCREEN_WIDTH - 12) / count;
+        int itemW = (SCREEN_WIDTH - 12) / count - 4;
+        bool sel = (selectedComp == items[i]);
+        Color bg = sel ? tintColor : (Color){40, 40, 45, 255};
+        DrawRectangle(bx, rowY, itemW, PALETTE_ROW_H, bg);
+        if (sel) DrawRectangleLinesEx((Rectangle){(float)bx, (float)rowY, (float)itemW, (float)PALETTE_ROW_H}, 2, WHITE);
+
+        char label[32];
+        snprintf(label, sizeof(label), "%s:%s", keyLabels[i], CompName(items[i]));
+        DrawTextShadow(label, bx + 4, rowY + 7, 10, WHITE);
+    }
+}
+
+static bool HandlePaletteRowClick(const ComponentType *items, int count, int rowY, int mx, int my) {
+    if (my < rowY || my > rowY + PALETTE_ROW_H) return false;
+    for (int i = 0; i < count; i++) {
+        int bx = 6 + i * (SCREEN_WIDTH - 12) / count;
+        int itemW = (SCREEN_WIDTH - 12) / count - 4;
+        if (mx >= bx && mx <= bx + itemW) {
+            selectedComp = items[i];
+            return true;
+        }
+    }
+    return false;
+}
+
 static void DrawPalette(void) {
-    int barY = SCREEN_HEIGHT - 50;
-    DrawRectangle(0, barY, SCREEN_WIDTH, 50, (Color){20, 20, 25, 255});
+    int barY = SCREEN_HEIGHT - PALETTE_BAR_H;
+    DrawRectangle(0, barY, SCREEN_WIDTH, PALETTE_BAR_H, (Color){20, 20, 25, 255});
 
     if (selectedPreset >= 0) {
-        // Preset mode: show presets
+        // Preset mode: show presets across entire bar
+        int rowY = barY + PALETTE_PAD;
+        int rowH = PALETTE_BAR_H - PALETTE_PAD * 2;
         for (int i = 0; i < (int)PRESET_COUNT; i++) {
             int bx = 6 + i * (SCREEN_WIDTH - 12) / (int)PRESET_COUNT;
             int itemW = (SCREEN_WIDTH - 12) / (int)PRESET_COUNT - 4;
             bool sel = (i == selectedPreset);
             Color bg = sel ? (Color){80, 60, 20, 255} : (Color){40, 40, 45, 255};
-            DrawRectangle(bx, barY + 5, itemW, 40, bg);
-            if (sel) DrawRectangleLinesEx((Rectangle){(float)bx, (float)(barY + 5), (float)itemW, 40}, 2, YELLOW);
+            DrawRectangle(bx, rowY, itemW, rowH, bg);
+            if (sel) DrawRectangleLinesEx((Rectangle){(float)bx, (float)rowY, (float)itemW, (float)rowH}, 2, YELLOW);
 
             char label[48];
             snprintf(label, sizeof(label), "%d:%s", i + 1, presets[i].name);
-            DrawTextShadow(label, bx + 4, barY + 10, 10, WHITE);
-            DrawTextShadow(presets[i].description, bx + 4, barY + 24, 10, (Color){160, 160, 160, 255});
+            DrawTextShadow(label, bx + 4, rowY + 5, 10, WHITE);
+            DrawTextShadow(presets[i].description, bx + 4, rowY + 19, 10, (Color){160, 160, 160, 255});
         }
     } else {
-        // Normal mode: show components
-        const ComponentType items[] = {
-            COMP_SWITCH, COMP_BUTTON, COMP_LIGHT, COMP_WIRE, COMP_NOT,
-            COMP_AND, COMP_OR, COMP_XOR, COMP_NOR, COMP_LATCH, COMP_CLOCK, COMP_REPEATER, COMP_EMPTY
-        };
-        const char *keyLabels[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "Q", "W", "E", "0" };
-        int count = sizeof(items) / sizeof(items[0]);
+        // Row 1: Electrical/signal
+        int row1Y = barY + PALETTE_PAD;
+        DrawPaletteRow(electricalItems, electricalKeys, ELECTRICAL_COUNT,
+                       row1Y, (Color){70, 70, 80, 255});
 
-        for (int i = 0; i < count; i++) {
-            int bx = 6 + i * (SCREEN_WIDTH - 12) / count;
-            bool selected = (selectedComp == items[i]);
-            int itemW = (SCREEN_WIDTH - 12) / count - 4;
-            Color bg = selected ? (Color){70, 70, 80, 255} : (Color){40, 40, 45, 255};
-            DrawRectangle(bx, barY + 5, itemW, 40, bg);
-            if (selected) DrawRectangleLinesEx((Rectangle){(float)bx, (float)(barY + 5), (float)itemW, 40}, 2, WHITE);
+        // Row 2: Fluid — tinted blue
+        int row2Y = row1Y + PALETTE_ROW_H + PALETTE_PAD;
+        DrawPaletteRow(fluidItems, fluidKeys, FLUID_COUNT,
+                       row2Y, (Color){40, 60, 90, 255});
 
-            char label[32];
-            snprintf(label, sizeof(label), "%s:%s", keyLabels[i], CompName(items[i]));
-            DrawTextShadow(label, bx + 4, barY + 15, 10, WHITE);
-        }
+        // Row 3: Belt/logistics — tinted brown
+        int row3Y = row2Y + PALETTE_ROW_H + PALETTE_PAD;
+        DrawPaletteRow(beltItems, beltKeys, BELT_COUNT,
+                       row3Y, (Color){80, 70, 40, 255});
+
+        // Row 4: Processor + Display + Eraser — tinted purple
+        int row4Y = row3Y + PALETTE_ROW_H + PALETTE_PAD;
+        DrawPaletteRow(processorItems, processorKeys, PROCESSOR_COUNT,
+                       row4Y, (Color){70, 40, 90, 255});
+
+        // Row labels
+        DrawTextShadow("SIGNAL", SCREEN_WIDTH - 52, row1Y + 7, 10, (Color){100, 100, 110, 255});
+        DrawTextShadow("FLUID", SCREEN_WIDTH - 48, row2Y + 7, 10, (Color){60, 100, 140, 255});
+        DrawTextShadow("BELT", SCREEN_WIDTH - 40, row3Y + 7, 10, (Color){140, 120, 60, 255});
+        DrawTextShadow("CPU", SCREEN_WIDTH - 36, row4Y + 7, 10, (Color){120, 80, 160, 255});
     }
+}
+
+// Returns true if click was consumed by palette
+static bool HandlePaletteClick(int mx, int my) {
+    int barY = SCREEN_HEIGHT - PALETTE_BAR_H;
+    if (my < barY) return false;
+
+    if (selectedPreset >= 0) {
+        // Preset mode click
+        int rowY = barY + PALETTE_PAD;
+        int rowH = PALETTE_BAR_H - PALETTE_PAD * 2;
+        if (my >= rowY && my <= rowY + rowH) {
+            for (int i = 0; i < (int)PRESET_COUNT; i++) {
+                int bx = 6 + i * (SCREEN_WIDTH - 12) / (int)PRESET_COUNT;
+                int itemW = (SCREEN_WIDTH - 12) / (int)PRESET_COUNT - 4;
+                if (mx >= bx && mx <= bx + itemW) {
+                    selectedPreset = i;
+                    return true;
+                }
+            }
+        }
+        return true; // consumed even if not on a button
+    }
+
+    int row1Y = barY + PALETTE_PAD;
+    int row2Y = row1Y + PALETTE_ROW_H + PALETTE_PAD;
+    int row3Y = row2Y + PALETTE_ROW_H + PALETTE_PAD;
+    int row4Y = row3Y + PALETTE_ROW_H + PALETTE_PAD;
+    if (HandlePaletteRowClick(electricalItems, ELECTRICAL_COUNT, row1Y, mx, my)) return true;
+    if (HandlePaletteRowClick(fluidItems, FLUID_COUNT, row2Y, mx, my)) return true;
+    if (HandlePaletteRowClick(beltItems, BELT_COUNT, row3Y, mx, my)) return true;
+    if (HandlePaletteRowClick(processorItems, PROCESSOR_COUNT, row4Y, mx, my)) return true;
+    return true; // consumed (in bar area)
 }
 
 // ---------------------------------------------------------------------------
@@ -1128,6 +2161,61 @@ static void DrawCellTooltip(int gx, int gy) {
                  CompName(c->type), gx, gy,
                  c->state ? "ON" : "OFF",
                  c->setting, DirName(c->facing));
+    } else if (c->type == COMP_PULSE) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] state=%s duration=%d timer=%d dir=%s (click to change duration)",
+                 CompName(c->type), gx, gy,
+                 c->state ? "ON" : "OFF",
+                 c->setting, c->timer, DirName(c->facing));
+    } else if (c->type == COMP_PIPE || c->type == COMP_TANK) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] pressure=%d/%d",
+                 CompName(c->type), gx, gy,
+                 c->fluidLevel, FluidMaxLevel(c->type));
+    } else if (c->type == COMP_PUMP) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] rate=%d active=%s pressure=%d (click to change rate)",
+                 CompName(c->type), gx, gy,
+                 c->setting, c->state ? "YES" : "NO", c->fluidLevel);
+    } else if (c->type == COMP_DRAIN) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] rate=%d pressure=%d (click to change rate)",
+                 CompName(c->type), gx, gy,
+                 c->setting, c->fluidLevel);
+    } else if (c->type == COMP_VALVE) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] %s pressure=%d dir=%s",
+                 CompName(c->type), gx, gy,
+                 c->state ? "OPEN" : "CLOSED", c->fluidLevel, DirName(c->facing));
+    } else if (c->type == COMP_PRESSURE_LIGHT) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] %s out=%d (pressure->analog 0-15)",
+                 CompName(c->type), gx, gy,
+                 c->state ? "ON" : "OFF", c->signalOut);
+    } else if (c->type == COMP_DIAL) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] value=%d (click to change 0-15)",
+                 CompName(c->type), gx, gy, c->setting);
+    } else if (c->type == COMP_COMPARATOR) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] %s threshold=%d input=%d dir=%s (click to change)",
+                 CompName(c->type), gx, gy,
+                 c->state ? "ON" : "OFF",
+                 c->setting, c->signalIn, DirName(c->facing));
+    } else if (c->type == COMP_DISPLAY) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] value=%d",
+                 CompName(c->type), gx, gy, c->setting);
+    } else if (c->type == COMP_BELT) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] dir=%s cargo=%d",
+                 CompName(c->type), gx, gy, DirName(c->facing), c->cargo);
+    } else if (c->type == COMP_LOADER) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] type=%d dir=%s (click to change type)",
+                 CompName(c->type), gx, gy, c->setting, DirName(c->facing));
+    } else if (c->type == COMP_UNLOADER) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] last=%d (consumes cargo, emits signal)",
+                 CompName(c->type), gx, gy, c->signalOut);
+    } else if (c->type == COMP_GRABBER) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] %s dir=%s (signal-controlled inserter)",
+                 CompName(c->type), gx, gy, c->state ? "ACTIVE" : "IDLE", DirName(c->facing));
+    } else if (c->type == COMP_SPLITTER) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] dir=%s next=%s cargo=%d",
+                 CompName(c->type), gx, gy, DirName(c->facing),
+                 c->altToggle ? "LEFT" : "RIGHT", c->cargo);
+    } else if (c->type == COMP_FILTER) {
+        snprintf(buf, sizeof(buf), "%s [%d,%d] pass=%d dir=%s cargo=%d (click to change)",
+                 CompName(c->type), gx, gy, c->setting, DirName(c->facing), c->cargo);
     } else {
         snprintf(buf, sizeof(buf), "%s [%d,%d] state=%s sigIn=%d sigOut=%d dir=%s",
                  CompName(c->type), gx, gy,
@@ -1151,6 +2239,11 @@ static void HandleInput(void) {
     int gx, gy;
     GridFromScreen(mx, my, &gx, &gy);
 
+    // Palette click — consume mouse clicks on the bottom bar
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && mode == MODE_PLACE) {
+        if (HandlePaletteClick(mx, my)) return;
+    }
+
     // F key: toggle preset mode
     if (IsKeyPressed(KEY_F) && mode == MODE_PLACE) {
         if (selectedPreset >= 0) {
@@ -1168,6 +2261,10 @@ static void HandleInput(void) {
         if (IsKeyPressed(KEY_FOUR) && PRESET_COUNT > 3)  selectedPreset = 3;
         if (IsKeyPressed(KEY_FIVE) && PRESET_COUNT > 4)  selectedPreset = 4;
         if (IsKeyPressed(KEY_SIX) && PRESET_COUNT > 5)   selectedPreset = 5;
+        if (IsKeyPressed(KEY_SEVEN) && PRESET_COUNT > 6) selectedPreset = 6;
+        if (IsKeyPressed(KEY_EIGHT) && PRESET_COUNT > 7) selectedPreset = 7;
+        if (IsKeyPressed(KEY_NINE) && PRESET_COUNT > 8)  selectedPreset = 8;
+        if (IsKeyPressed(KEY_ZERO) && PRESET_COUNT > 9)  selectedPreset = 9;
 
         // Click to stamp preset at cursor
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && InGrid(gx, gy)) {
@@ -1195,6 +2292,23 @@ static void HandleInput(void) {
         if (IsKeyPressed(KEY_Q))     selectedComp = COMP_LATCH;
         if (IsKeyPressed(KEY_W))     selectedComp = COMP_CLOCK;
         if (IsKeyPressed(KEY_E))     selectedComp = COMP_REPEATER;
+        if (IsKeyPressed(KEY_A))     selectedComp = COMP_PULSE;
+        if (IsKeyPressed(KEY_S))     selectedComp = COMP_PIPE;
+        if (IsKeyPressed(KEY_D))     selectedComp = COMP_PUMP;
+        if (IsKeyPressed(KEY_G))     selectedComp = COMP_DRAIN;
+        if (IsKeyPressed(KEY_H))     selectedComp = COMP_VALVE;
+        if (IsKeyPressed(KEY_J))     selectedComp = COMP_TANK;
+        if (IsKeyPressed(KEY_K))     selectedComp = COMP_PRESSURE_LIGHT;
+        if (IsKeyPressed(KEY_X))     selectedComp = COMP_DIAL;
+        if (IsKeyPressed(KEY_V))     selectedComp = COMP_COMPARATOR;
+        if (IsKeyPressed(KEY_Z))     selectedComp = COMP_PROCESSOR;
+        if (IsKeyPressed(KEY_B))     selectedComp = COMP_DISPLAY;
+        if (IsKeyPressed(KEY_COMMA))      selectedComp = COMP_BELT;
+        if (IsKeyPressed(KEY_PERIOD))     selectedComp = COMP_LOADER;
+        if (IsKeyPressed(KEY_SLASH))      selectedComp = COMP_UNLOADER;
+        if (IsKeyPressed(KEY_SEMICOLON))  selectedComp = COMP_GRABBER;
+        if (IsKeyPressed(KEY_APOSTROPHE)) selectedComp = COMP_SPLITTER;
+        if (IsKeyPressed(KEY_BACKSLASH))  selectedComp = COMP_FILTER;
         if (IsKeyPressed(KEY_ZERO))  selectedComp = COMP_EMPTY;
     }
 
@@ -1215,6 +2329,8 @@ static void HandleInput(void) {
     if (IsKeyPressed(KEY_T) && simPaused) {
         UpdateSignals();
         UpdateProcessors();
+        UpdateFluids();
+        UpdateBelts();
     }
 
     // Processor editor
@@ -1264,6 +2380,20 @@ static void HandleInput(void) {
                 } else if (selectedComp == COMP_REPEATER && clicked->type == COMP_REPEATER) {
                     clicked->setting = (clicked->setting % 4) + 1;
                     memset(clicked->delayBuf, 0, sizeof(clicked->delayBuf));
+                } else if (selectedComp == COMP_PULSE && clicked->type == COMP_PULSE) {
+                    clicked->setting = (clicked->setting % 8) + 1;
+                } else if (selectedComp == COMP_PUMP && clicked->type == COMP_PUMP) {
+                    clicked->setting = (clicked->setting % 8) + 1;
+                } else if (selectedComp == COMP_DRAIN && clicked->type == COMP_DRAIN) {
+                    clicked->setting = (clicked->setting % 8) + 1;
+                } else if (selectedComp == COMP_DIAL && clicked->type == COMP_DIAL) {
+                    clicked->setting = (clicked->setting + 1) % 16; // 0-15
+                } else if (selectedComp == COMP_COMPARATOR && clicked->type == COMP_COMPARATOR) {
+                    clicked->setting = (clicked->setting % 15) + 1; // 1-15
+                } else if (selectedComp == COMP_LOADER && clicked->type == COMP_LOADER) {
+                    clicked->setting = (clicked->setting % 15) + 1; // 1-15
+                } else if (selectedComp == COMP_FILTER && clicked->type == COMP_FILTER) {
+                    clicked->setting = (clicked->setting % 15) + 1; // 1-15
                 } else {
                     PlaceComponent(gx, gy, selectedComp);
                 }
@@ -1274,7 +2404,14 @@ static void HandleInput(void) {
                 if (clicked->type != COMP_BUTTON) {
                     bool isClickConfig = (selectedComp == COMP_SWITCH && clicked->type == COMP_SWITCH)
                                       || (selectedComp == COMP_CLOCK && clicked->type == COMP_CLOCK)
-                                      || (selectedComp == COMP_REPEATER && clicked->type == COMP_REPEATER);
+                                      || (selectedComp == COMP_REPEATER && clicked->type == COMP_REPEATER)
+                                      || (selectedComp == COMP_PULSE && clicked->type == COMP_PULSE)
+                                      || (selectedComp == COMP_PUMP && clicked->type == COMP_PUMP)
+                                      || (selectedComp == COMP_DRAIN && clicked->type == COMP_DRAIN)
+                                      || (selectedComp == COMP_DIAL && clicked->type == COMP_DIAL)
+                                      || (selectedComp == COMP_COMPARATOR && clicked->type == COMP_COMPARATOR)
+                                      || (selectedComp == COMP_LOADER && clicked->type == COMP_LOADER)
+                                      || (selectedComp == COMP_FILTER && clicked->type == COMP_FILTER);
                     if (!isClickConfig) {
                         PlaceComponent(gx, gy, selectedComp);
                     }
@@ -1364,6 +2501,8 @@ int main(void) {
                 tickTimer -= TICK_INTERVAL;
                 UpdateSignals();
                 UpdateProcessors();
+                UpdateFluids();
+                UpdateBelts();
             }
         }
 
