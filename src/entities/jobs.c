@@ -526,6 +526,7 @@ int CreateJob(JobType type) {
     activeJobList[activeJobCount++] = jobId;
     jobIsActive[jobId] = true;
 
+    EventLog("Job %d created type=%s", jobId, JobTypeName(type));
     return jobId;
 }
 
@@ -533,6 +534,7 @@ void ReleaseJob(int jobId) {
     if (jobId < 0 || jobId >= MAX_JOBS) return;
     if (!jobs[jobId].active) return;
 
+    EventLog("Job %d released type=%s mover=%d", jobId, JobTypeName(jobs[jobId].type), jobs[jobId].assignedMover);
     // Mark as inactive
     jobs[jobId].active = false;
     jobs[jobId].type = JOBTYPE_NONE;
@@ -622,6 +624,8 @@ JobRunResult RunJob_Haul(Job* job, void* moverPtr, float dt) {
             }
 
             item->state = ITEM_CARRIED;
+            EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
+                     itemIdx, ItemName(item->type), item->stackCount, mover - movers, job - jobs);
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -752,6 +756,8 @@ JobRunResult RunJob_Clear(Job* job, void* moverPtr, float dt) {
                 ClearSourceStockpileSlot(item);
             }
             item->state = ITEM_CARRIED;
+            EventLog("Item %d (%s x%d) picked up by mover %d for job %d",
+                     itemIdx, ItemName(item->type), item->stackCount, mover - movers, job - jobs);
             job->carryingItem = itemIdx;
             job->targetItem = -1;
             job->step = STEP_CARRYING;
@@ -2712,6 +2718,7 @@ void JobsTick(void) {
         JobRunResult result = driver(job, m, gameDeltaTime);
 
         if (result == JOBRUN_DONE) {
+            EventLog("Job %d DONE type=%s mover=%d", m->currentJobId, JobTypeName(job->type), i);
             // Record diagnostics before releasing
             m->lastJobType = job->type;
             m->lastJobResult = 0;  // DONE
@@ -2727,6 +2734,7 @@ void JobsTick(void) {
             AddMoverToIdleList(i);
         }
         else if (result == JOBRUN_FAIL) {
+            EventLog("Job %d FAIL type=%s mover=%d step=%d", m->currentJobId, JobTypeName(job->type), i, job->step);
             // Record diagnostics before cancelling
             m->lastJobType = job->type;
             m->lastJobResult = 1;  // FAIL
@@ -2882,6 +2890,9 @@ void CancelJob(void* moverPtr, int moverIdx) {
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
     if (job) {
+        EventLog("CancelJob %d type=%s mover=%d item=%d stockpile=%d blueprint=%d",
+                 m->currentJobId, JobTypeName(job->type), moverIdx,
+                 job->targetItem, job->targetStockpile, job->targetBlueprint);
         // Release item reservation
         if (job->targetItem >= 0) {
             ReleaseItemReservation(job->targetItem);
@@ -2931,6 +2942,8 @@ void CancelJob(void* moverPtr, int moverIdx) {
                     bp->assignedBuilder = -1;
                     bp->state = BLUEPRINT_READY_TO_BUILD;  // Revert to ready state
                     bp->progress = 0.0f;  // Reset progress
+                    EventLog("Blueprint %d at (%d,%d,z%d) -> READY_TO_BUILD (build cancelled by mover %d)",
+                             job->targetBlueprint, bp->x, bp->y, bp->z, moverIdx);
                 }
             }
         }
@@ -2991,6 +3004,7 @@ void UnassignJob(void* moverPtr, int moverIdx) {
     Job* job = (m->currentJobId >= 0) ? GetJob(m->currentJobId) : NULL;
 
     if (job) {
+        EventLog("UnassignJob %d type=%s mover=%d", m->currentJobId, JobTypeName(job->type), moverIdx);
         // Release item reservation
         if (job->targetItem >= 0) {
             ReleaseItemReservation(job->targetItem);
@@ -3038,6 +3052,8 @@ void UnassignJob(void* moverPtr, int moverIdx) {
                     bp->assignedBuilder = -1;
                     bp->state = BLUEPRINT_READY_TO_BUILD;
                     bp->progress = 0.0f;
+                    EventLog("Blueprint %d at (%d,%d,z%d) -> READY_TO_BUILD (unassigned mover %d)",
+                             job->targetBlueprint, bp->x, bp->y, bp->z, moverIdx);
                 }
             }
         }
@@ -5616,6 +5632,8 @@ int WorkGiver_Build(int moverIdx) {
     // Reserve blueprint
     bp->assignedBuilder = moverIdx;
     bp->state = BLUEPRINT_BUILDING;
+    EventLog("Blueprint %d at (%d,%d,z%d) -> BUILDING by mover %d",
+             bestBpIdx, bp->x, bp->y, bp->z, moverIdx);
 
     // Update mover
     m->currentJobId = jobId;
@@ -5664,6 +5682,8 @@ int WorkGiver_BlueprintClear(int moverIdx) {
         // If no items left at all, transition to AWAITING_MATERIALS
         if (!anyItemsLeft) {
             bp->state = BLUEPRINT_AWAITING_MATERIALS;
+            EventLog("Blueprint %d at (%d,%d,z%d) -> AWAITING_MATERIALS (site cleared)",
+                     bpIdx, bp->x, bp->y, bp->z);
             continue;
         }
 

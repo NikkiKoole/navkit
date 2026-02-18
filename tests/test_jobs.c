@@ -4897,6 +4897,67 @@ describe(building_haul_job) {
         CancelJob(m, 0);
         expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
     }
+
+    it("should deliver full stack count to blueprint not just 1") {
+        InitTestGridFromAscii(
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n"
+            "........\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        ClearWorkshops();
+        InitDesignations();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Grass pile blueprint at (6,6) needs 10 grass
+        int bpIdx = CreateRecipeBlueprint(6, 6, 0, CONSTRUCTION_GRASS_PILE);
+        expect(bpIdx >= 0);
+        expect(blueprints[bpIdx].state == BLUEPRINT_AWAITING_MATERIALS);
+
+        // Create a stockpile at (2,0)-(3,0) with a stacked grass item (5 grass in one stack)
+        int spIdx = CreateStockpile(2, 0, 0, 2, 1);
+        expect(spIdx >= 0);
+        int grassIdx = SpawnItem(2 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GRASS);
+        items[grassIdx].stackCount = 5;
+        PlaceItemInStockpile(spIdx, 0, 0, grassIdx);
+
+        // Also spawn 5 more loose grass nearby (so blueprint can eventually get all 10)
+        for (int i = 0; i < 5; i++) {
+            SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_GRASS);
+        }
+
+        // Run simulation — mover should haul stacked grass to blueprint
+        int delivered = 0;
+        for (int i = 0; i < 4000; i++) {
+            Tick();
+            AssignJobs();
+            JobsTick();
+
+            delivered = blueprints[bpIdx].stageDeliveries[0].deliveredCount;
+
+            // After first delivery trip of the stacked item, check the count
+            // The stacked item of 5 should contribute 5 to deliveredCount, not 1
+            if (delivered > 0 && !items[grassIdx].active) break;
+        }
+
+        // BUG: without fix, delivered will be 1 (only counted 1 from the stack of 5)
+        // The 5-stack should deliver 5 to the blueprint
+        expect(delivered >= 5);
+    }
 }
 
 describe(building_job_execution) {

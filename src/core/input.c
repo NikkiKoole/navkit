@@ -1932,9 +1932,22 @@ void HandleInput(void) {
             time_t now = time(NULL);
             struct tm* t = localtime(&now);
             char cmd[256];
-            snprintf(cmd, sizeof(cmd), "gzip -c saves/debug_save.bin > saves/%04d-%02d-%02d_%02d-%02d-%02d.bin.gz",
+            char timestamp[32];
+            snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d-%02d-%02d",
                 t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+            snprintf(cmd, sizeof(cmd), "gzip -c saves/debug_save.bin > saves/%s.bin.gz", timestamp);
             system(cmd);
+            // Dump event log alongside save
+            char logPath[128];
+            snprintf(logPath, sizeof(logPath), "saves/%s.events.log", timestamp);
+            EventLogDump(logPath);
+            // Auto-audit: warn if violations found
+            int violations = RunStateAudit(true);
+            if (violations > 0) {
+                char auditMsg[64];
+                snprintf(auditMsg, sizeof(auditMsg), "Audit: %d violations (see console)", violations);
+                AddMessage(auditMsg, RED);
+            }
         }
     }
     if (IsKeyPressed(KEY_F6)) {
@@ -1942,6 +1955,20 @@ void HandleInput(void) {
             InputMode_Reset();
             AddMessage("World loaded", GREEN);
         }
+    }
+
+    // Audit / Event log
+    if (IsKeyPressed(KEY_F7)) {
+        int violations = RunStateAudit(true);
+        if (violations == 0) {
+            AddMessage("Audit: 0 violations", GREEN);
+        }
+    }
+    if (IsKeyPressed(KEY_F8)) {
+        EventLogDump("navkit_events.log");
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Event log dumped (%d entries)", EventLogCount());
+        AddMessage(msg, GREEN);
     }
 
     // ========================================================================

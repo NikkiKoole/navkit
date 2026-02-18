@@ -77,6 +77,7 @@ double survivalDuration = 0.0;
 #include "../src/simulation/floordirt.c"
 #include "../src/simulation/temperature.c"
 #include "../src/simulation/weather.c"
+#include "../src/core/event_log.c"
 #include "../src/simulation/trees.c"
 #include "../src/simulation/lighting.c"
 #include "../src/simulation/plants.c"
@@ -101,4 +102,5 @@ double survivalDuration = 0.0;
 #include "../src/entities/workshops.c"
 #include "../src/entities/furniture.c"
 #include "../src/entities/jobs.c"
+#include "../src/core/state_audit.c"
 #include "../src/core/saveload.c"

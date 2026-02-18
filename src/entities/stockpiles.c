@@ -293,6 +293,7 @@ int CreateStockpile(int x, int y, int z, int width, int height) {
             
             stockpileCount++;
             InvalidateStockpileSlotCacheAll();  // New stockpile added
+            EventLog("Stockpile %d created at (%d,%d,z%d) %dx%d", i, x, y, z, sp->width, sp->height);
             return i;
         }
     }
@@ -328,6 +329,7 @@ void DeleteStockpile(int index) {
             }
         }
         
+        EventLog("Stockpile %d deleted at (%d,%d,z%d)", index, sp->x, sp->y, sp->z);
         sp->active = false;
         stockpileCount--;
         InvalidateStockpileSlotCacheAll();  // Stockpile deleted
@@ -380,6 +382,7 @@ void RemoveStockpileCells(int stockpileIdx, int x1, int y1, int x2, int y2) {
                 }
             }
             
+            EventLog("Stockpile %d cell (%d,%d) deactivated (world %d,%d,z%d)", stockpileIdx, lx, ly, wx, wy, sp->z);
             sp->cells[idx] = false;
             // Clear slot data including reservations
             sp->slots[idx] = -1;
@@ -752,7 +755,10 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
     int idx = SlotIndex(sp, lx, ly);
     
     // Validate cell is active before placing item
-    if (!sp->cells[idx]) return;
+    if (!sp->cells[idx]) {
+        EventLog("PlaceItem REJECTED: item %d -> stockpile %d slot (%d,%d) cell inactive", itemIdx, stockpileIdx, slotX, slotY);
+        return;
+    }
     
     if (itemIdx < 0 || itemIdx >= MAX_ITEMS || !items[itemIdx].active) return;
     
@@ -805,6 +811,7 @@ void PlaceItemInStockpile(int stockpileIdx, int slotX, int slotY, int itemIdx) {
         sp->slotMaterials[idx] = incomingMat;
         sp->slotCounts[idx] = items[itemIdx].stackCount;
     }
+    EventLog("Item %d (%s) placed in stockpile %d slot (%d,%d)", itemIdx, ItemName(items[itemIdx].type), stockpileIdx, slotX, slotY);
 }
 
 // Slot state helpers - update slot fields atomically

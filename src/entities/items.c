@@ -3,6 +3,7 @@
 #include "mover.h"  // for CELL_SIZE
 #include "../world/grid.h"   // for gridWidth, gridHeight, gridDepth
 #include "../world/material.h"  // for MaterialType
+#include "../core/event_log.h"
 #include "../world/cell_defs.h"  // for IsCellWalkableAt
 #include "stockpiles.h"  // for MarkStockpileGroundItem
 #include <math.h>
@@ -84,6 +85,8 @@ void SpillContainerContents(int containerIdx);
 
 void DeleteItem(int index) {
     if (index >= 0 && index < MAX_ITEMS && items[index].active) {
+        EventLog("DeleteItem %d (%s) at (%.0f,%.0f,z%.0f) state=%d",
+                 index, ItemName(items[index].type), items[index].x, items[index].y, items[index].z, items[index].state);
         // If this is a container with contents, spill them first
         if (items[index].contentCount > 0) {
             SpillContainerContents(index);
@@ -251,6 +254,9 @@ void ItemsTick(float dt) {
 void SetItemUnreachableCooldown(int itemIndex, float cooldown) {
     if (itemIndex >= 0 && itemIndex < MAX_ITEMS && items[itemIndex].active) {
         items[itemIndex].unreachableCooldown = cooldown;
+        EventLog("Item %d (%s) marked unreachable for %.1fs at (%d,%d,z%d)",
+                 itemIndex, ItemName(items[itemIndex].type), cooldown,
+                 (int)(items[itemIndex].x / CELL_SIZE), (int)(items[itemIndex].y / CELL_SIZE), (int)items[itemIndex].z);
     }
 }
 

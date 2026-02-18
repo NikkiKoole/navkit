@@ -3,6 +3,7 @@
 #include "water.h"
 #include "balance.h"
 #include "../world/grid.h"
+#include "../core/event_log.h"
 #include "../world/cell_defs.h"
 #include "../world/material.h"
 #include <math.h>
@@ -370,6 +371,7 @@ void UpdateWeather(void) {
         // Time for a weather change
         weatherState.previous = weatherState.current;
         weatherState.current = PickNextWeather(weatherState.current);
+        EventLog("Weather: %s -> %s", GetWeatherName(weatherState.previous), GetWeatherName(weatherState.current));
         float minDurGS = GameHoursToGameSeconds(weatherMinDuration);
         float maxDurGS = GameHoursToGameSeconds(weatherMaxDuration);
         weatherState.transitionTimer = minDurGS +

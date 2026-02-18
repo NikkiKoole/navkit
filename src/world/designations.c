@@ -13,6 +13,8 @@
 #include "../core/sim_manager.h"
 #include "../entities/jobs.h"    // for CancelJob, GetJob forward declarations
 #include "../entities/furniture.h"
+#include "../entities/stacking.h"
+#include "../core/event_log.h"
 #include "../game_state.h"
 #include <string.h>
 #include <math.h>
@@ -1735,6 +1737,11 @@ bool DesignateHarvestBerry(int x, int y, int z) {
         return false;
     }
 
+    // Auto-correct z-level: if no plant here but there's one at z-1 (bush visible from above)
+    if (!IsPlantRipe(x, y, z) && z > 0 && IsPlantRipe(x, y, z - 1)) {
+        z = z - 1;
+    }
+
     if (designations[z][y][x].type != DESIGNATION_NONE) {
         return false;
     }
@@ -1872,6 +1879,9 @@ int CreateRecipeBlueprint(int x, int y, int z, int recipeIndex) {
     }
     if (hasItems) {
         bp->state = BLUEPRINT_CLEARING;
+        EventLog("Blueprint %d at (%d,%d,z%d) recipe=%d -> CLEARING", idx, x, y, z, bp->recipeIndex);
+    } else {
+        EventLog("Blueprint %d at (%d,%d,z%d) recipe=%d -> AWAITING_MATERIALS", idx, x, y, z, bp->recipeIndex);
     }
 
     blueprintCount++;
@@ -2019,7 +2029,22 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
     if (targetSlot < 0) return;  // no matching slot (shouldn't happen if WorkGiver is correct)
 
     StageDelivery* sd = &bp->stageDeliveries[targetSlot];
-    sd->deliveredCount++;
+    int remaining = stage->inputs[targetSlot].count - sd->deliveredCount;
+    int stackCount = items[itemIdx].stackCount;
+    if (stackCount < 1) stackCount = 1;
+    int toDeliver = (stackCount < remaining) ? stackCount : remaining;
+
+    // If stack has more than needed, split off excess before consuming
+    if (stackCount > toDeliver) {
+        int excessIdx = SplitStack(itemIdx, stackCount - toDeliver);
+        if (excessIdx >= 0) {
+            // Drop excess on the ground at the blueprint location
+            items[excessIdx].state = ITEM_ON_GROUND;
+            items[excessIdx].reservedBy = -1;
+        }
+    }
+
+    sd->deliveredCount += toDeliver;
     if (sd->reservedCount > 0) sd->reservedCount--;
     sd->deliveredMaterial = mat;
 
@@ -2033,12 +2058,14 @@ void DeliverMaterialToBlueprint(int blueprintIdx, int itemIdx) {
         }
     }
 
-    // Consume the item
+    // Consume the delivered portion
     DeleteItem(itemIdx);
 
     // Check if all slots for current stage are filled
     if (BlueprintStageFilled(bp)) {
         bp->state = BLUEPRINT_READY_TO_BUILD;
+        EventLog("Blueprint %d at (%d,%d,z%d) -> READY_TO_BUILD (stage %d filled)",
+                 blueprintIdx, bp->x, bp->y, bp->z, bp->stage);
     }
 }
 
@@ -2149,6 +2176,8 @@ void CompleteBlueprint(int blueprintIdx) {
         bp->state = BLUEPRINT_AWAITING_MATERIALS;
         bp->assignedBuilder = -1;
         bp->progress = 0.0f;
+        EventLog("Blueprint %d at (%d,%d,z%d) advanced to stage %d -> AWAITING_MATERIALS",
+                 (int)(bp - blueprints), bp->x, bp->y, bp->z, bp->stage);
         return;  // don't deactivate — more stages to go
     }
 

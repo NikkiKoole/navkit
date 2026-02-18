@@ -1030,7 +1030,7 @@ int InspectSaveFile(int argc, char** argv) {
     int opt_path_algo = PATH_ALGO_ASTAR;  // default to A* for backwards compat
     int opt_map_x = -1, opt_map_y = -1, opt_map_z = -1, opt_map_r = 10;
     bool opt_stuck = false, opt_reserved = false, opt_jobs_active = false, opt_designations = false;
-    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false;
+    bool opt_entrances = false, opt_items = false, opt_temp = false, opt_orphaned = false, opt_audit = false;
     int opt_entrances_z = -1, opt_temp_z = -1;
     const char* opt_items_filter = NULL;
     
@@ -1065,6 +1065,7 @@ int InspectSaveFile(int argc, char** argv) {
         else if (strcmp(argv[i], "--reserved") == 0) opt_reserved = true;
         else if (strcmp(argv[i], "--jobs-active") == 0) opt_jobs_active = true;
         else if (strcmp(argv[i], "--orphaned") == 0) opt_orphaned = true;
+        else if (strcmp(argv[i], "--audit") == 0) opt_audit = true;
         else if (strcmp(argv[i], "--entrances") == 0) {
             opt_entrances = true;
             if (i+1 < argc && argv[i+1][0] != '-') opt_entrances_z = atoi(argv[++i]);
@@ -1665,7 +1666,7 @@ int InspectSaveFile(int argc, char** argv) {
                      opt_stockpile >= 0 || opt_workshop >= 0 || opt_blueprint >= 0 ||
                      opt_cell_x >= 0 || opt_path_x1 >= 0 || opt_map_x >= 0 || 
                      opt_designations || opt_stuck || opt_reserved || opt_jobs_active ||
-                     opt_entrances || opt_items || opt_temp || opt_orphaned);
+                     opt_entrances || opt_items || opt_temp || opt_orphaned || opt_audit);
     
     if (!anyQuery) {
         printf("Save file: %s (%ld bytes)\n", filename, fileSize);
@@ -1721,7 +1722,7 @@ int InspectSaveFile(int argc, char** argv) {
         printf("\nOptions: --mover N, --item N, --job N, --stockpile N, --workshop N, --blueprint N\n");
         printf("         --cell X,Y,Z, --path X1,Y1,Z1 X2,Y2,Z2 [--algo astar|hpa|jps|jps+]\n");
         printf("         --map X,Y,Z [R], --designations, --stuck, --reserved, --jobs-active\n");
-        printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned\n");
+        printf("         --entrances [Z], --items [TYPE], --temp [Z], --orphaned, --audit\n");
     }
     
     // Handle queries
@@ -1747,6 +1748,34 @@ int InspectSaveFile(int argc, char** argv) {
     if (opt_items) print_items(opt_items_filter);
     if (opt_temp) print_temp(opt_temp_z);
     if (opt_orphaned) print_orphaned();
+    
+    if (opt_audit) {
+        // Bridge inspect data to game globals so audit functions work
+        setup_pathfinding_globals();
+        memcpy(items, insp_items, sizeof(Item) * insp_itemHWM);
+        itemHighWaterMark = insp_itemHWM;
+        memcpy(stockpiles, insp_stockpiles, sizeof(Stockpile) * MAX_STOCKPILES);
+        memcpy(movers, insp_movers, sizeof(Mover) * insp_moverCount);
+        moverCount = insp_moverCount;
+        // Init job pool (allocates activeJobList) then copy data
+        InitJobPool();
+        memcpy(jobs, insp_jobs, sizeof(Job) * insp_jobHWM);
+        jobHighWaterMark = insp_jobHWM;
+        // Rebuild active job list from inspect data
+        activeJobCount = 0;
+        for (int j = 0; j < insp_jobHWM; j++) {
+            if (jobs[j].active) {
+                activeJobList[activeJobCount++] = j;
+            }
+        }
+        memcpy(blueprints, insp_blueprints, sizeof(Blueprint) * MAX_BLUEPRINTS);
+        
+        SetAuditOutputStdout(true);
+        int violations = RunStateAudit(true);
+        SetAuditOutputStdout(false);
+        (void)violations;
+        FreeJobPool();
+    }
     
     cleanup();
     return 0;

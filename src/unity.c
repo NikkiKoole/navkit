@@ -29,6 +29,7 @@
 #include "simulation/floordirt.c"
 #include "simulation/temperature.c"
 #include "simulation/weather.c"
+#include "core/event_log.c"
 #include "simulation/trees.c"
 #include "simulation/lighting.c"
 #include "simulation/plants.c"
@@ -50,6 +51,7 @@
 #include "entities/trains.c"
 #include "entities/mover.c"
 #include "entities/jobs.c"
+#include "core/state_audit.c"
 
 // Core systems
 #include "core/time.c"

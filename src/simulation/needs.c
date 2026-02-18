@@ -33,12 +33,12 @@ static int FindNearestEdibleInStockpile(float x, float y, int z) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_IN_STOCKPILE) continue;
         if (items[i].reservedBy != -1) continue;
-        if ((int)items[i].z != z) continue;
         if (!ItemIsEdible(items[i].type)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
-        float distSq = dx * dx + dy * dy;
+        float dz = ((int)items[i].z - z) * CELL_SIZE;
+        float distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < bestDistSq) {
             bestDistSq = distSq;
             bestIdx = i;
@@ -58,12 +58,12 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
         if (!items[i].active) continue;
         if (items[i].state != ITEM_ON_GROUND) continue;
         if (items[i].reservedBy != -1) continue;
-        if ((int)items[i].z != z) continue;
         if (!ItemIsEdible(items[i].type)) continue;
 
         float dx = items[i].x - x;
         float dy = items[i].y - y;
-        float distSq = dx * dx + dy * dy;
+        float dz = ((int)items[i].z - z) * CELL_SIZE;
+        float distSq = dx * dx + dy * dy + dz * dz;
         if (distSq < bestDistSq) {
             bestDistSq = distSq;
             bestIdx = i;
@@ -93,6 +93,7 @@ static void StartFoodSearch(Mover* m, int moverIdx) {
     }
 
     // Set up seeking state
+    EventLog("Mover %d SEEKING_FOOD item=%d (%s)", moverIdx, itemIdx, ItemName(items[itemIdx].type));
     m->freetimeState = FREETIME_SEEKING_FOOD;
     m->needTarget = itemIdx;
     m->needProgress = 0.0f;
@@ -137,6 +138,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
 
     if (bestIdx >= 0) {
         // Reserve furniture and path to it
+        EventLog("Mover %d SEEKING_REST furniture=%d (%s)", moverIdx, bestIdx, GetFurnitureDef(furniture[bestIdx].type)->name);
         furniture[bestIdx].occupant = moverIdx;
         m->freetimeState = FREETIME_SEEKING_REST;
         m->needTarget = bestIdx;
@@ -147,6 +149,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
         m->needsRepath = true;
     } else {
         // No furniture available — ground rest at current position
+        EventLog("Mover %d RESTING on ground", moverIdx);
         m->freetimeState = FREETIME_RESTING;
         m->needTarget = -1;
         m->needProgress = 0.0f;
@@ -242,6 +245,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
                 float nutrition = ItemNutrition(items[ti].type);
                 m->hunger += nutrition;
                 if (m->hunger > 1.0f) m->hunger = 1.0f;
+                EventLog("Mover %d ate item %d (%s), hunger=%.0f%%", moverIdx, ti, ItemName(items[ti].type), m->hunger * 100.0f);
                 DeleteItem(ti);
 
                 m->freetimeState = FREETIME_NONE;
@@ -307,6 +311,7 @@ static void ProcessMoverFreetime(Mover* m, int moverIdx) {
 
             // Wake condition: energy recovered enough
             if (m->energy >= balance.energyWakeThreshold) {
+                EventLog("Mover %d woke up, energy=%.0f%%", moverIdx, m->energy * 100.0f);
                 ReleaseFurniture(m->needTarget, moverIdx);
                 m->needTarget = -1;
                 m->freetimeState = FREETIME_NONE;

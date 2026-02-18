@@ -1,5 +1,6 @@
 #include "stacking.h"
 #include "item_defs.h"
+#include "../core/event_log.h"
 
 int MergeItemIntoStack(int existingIdx, int incomingIdx) {
     if (existingIdx < 0 || existingIdx >= MAX_ITEMS) return 0;
@@ -15,12 +16,16 @@ int MergeItemIntoStack(int existingIdx, int incomingIdx) {
     if (toMerge <= room) {
         // Full merge — incoming item is consumed
         items[existingIdx].stackCount += toMerge;
+        EventLog("Stack merge: item %d (%s) absorbed item %d (x%d), now x%d",
+                 existingIdx, ItemName(items[existingIdx].type), incomingIdx, toMerge, items[existingIdx].stackCount);
         DeleteItem(incomingIdx);
         return toMerge;
     } else {
         // Partial merge — incoming item keeps the remainder
         items[existingIdx].stackCount = maxStack;
         items[incomingIdx].stackCount -= room;
+        EventLog("Stack partial merge: item %d (%s) took %d from item %d, now x%d / x%d",
+                 existingIdx, ItemName(items[existingIdx].type), room, incomingIdx, items[existingIdx].stackCount, items[incomingIdx].stackCount);
         return room;
     }
 }
@@ -55,5 +60,7 @@ int SplitStack(int itemIdx, int count) {
         }
     }
 
+    EventLog("Stack split: item %d (%s) split off x%d as item %d, remainder x%d",
+             itemIdx, ItemName(items[itemIdx].type), count, newIdx, items[itemIdx].stackCount);
     return newIdx;
 }

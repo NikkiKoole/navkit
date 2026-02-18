@@ -739,6 +739,8 @@ void ClearMovers(void) {
             // Revert building state to ready (if it was being built)
             if (blueprints[i].state == BLUEPRINT_BUILDING) {
                 blueprints[i].state = BLUEPRINT_READY_TO_BUILD;
+                EventLog("Blueprint %d at (%d,%d,z%d) -> READY_TO_BUILD (mover deactivated)",
+                         i, blueprints[i].x, blueprints[i].y, blueprints[i].z);
             }
         }
     }
@@ -793,6 +795,7 @@ void NeedsTick(void) {
                 }
                 m->freetimeState = FREETIME_NONE;
                 m->active = false;
+                EventLog("Mover %d died of starvation (timer=%.1fs)", i, m->starvationTimer);
                 TraceLog(LOG_WARNING, "Mover %d died of starvation", i);
                 AddMessage("Your mover starved to death.", RED);
                 continue;
@@ -1052,6 +1055,7 @@ void UpdateMovers(void) {
                 }
                 if (!pushed) {
                     m->active = false;
+                    EventLog("Mover %d deactivated: trapped in wall at (%d,%d,%d)", i, currentX, currentY, currentZ);
                     TraceLog(LOG_WARNING, "Mover %d deactivated: stuck in blocked cell with no escape", i);
                     AddMessage(TextFormat("Mover %d lost: trapped in wall at (%d,%d,%d)",
                                          i, currentX, currentY, currentZ), RED);
@@ -1106,8 +1110,8 @@ void UpdateMovers(void) {
                         m->repathCooldown = REPATH_COOLDOWN_FRAMES;
                     }
                 }
-            } else if (m->currentJobId < 0) {
-                // Only deactivate if not on a job
+            } else if (m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
+                // Only deactivate if truly idle (no job, no active needs)
                 m->active = false;
             }
             continue;
