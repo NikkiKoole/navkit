@@ -1916,7 +1916,7 @@ void HandleInput(void) {
     if (IsKeyPressed(KEY_COMMA) && currentViewZ > 0) currentViewZ--;
 
     // Toggle dev/play UI
-    if (IsKeyPressed(KEY_F1)) {
+    if (IsKeyPressed(KEY_TAB)) {
         devUI = !devUI;
         if (!devUI) InputMode_ExitToNormal();  // Exit any active mode
     }

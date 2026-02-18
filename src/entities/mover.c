@@ -1089,9 +1089,8 @@ void UpdateMovers(void) {
                 }
             }
             
-            if (endlessMoverMode && m->currentJobId < 0) {
-                // Only assign random goals to movers without jobs
-                // (movers with jobs should use repath logic instead)
+            if (endlessMoverMode && m->currentJobId < 0 && m->freetimeState == FREETIME_NONE) {
+                // Only assign random goals to idle movers without jobs or active needs
                 if (m->repathCooldown > 0) {
                     m->repathCooldown--;
                     continue;

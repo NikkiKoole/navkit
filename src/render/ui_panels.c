@@ -326,7 +326,7 @@ static void DrawPlayerHUD(void) {
             inputAction = ACTION_WORK_GATHER_GRASS;
         }
     }
-    y += 4;
+    y += 22;
 
     // Furniture placement buttons (progressive: only show when materials exist)
     if (hasLeaves) {
@@ -406,7 +406,7 @@ static void DrawPlayerHUD(void) {
         DrawTextShadow("L-drag designate  R-drag cancel  ESC: back", 10, (int)y, 12, (Color){180, 180, 100, 255});
         y += 16;
     }
-    DrawTextShadow("F1: dev UI", 10, (int)y, 12, (Color){100, 100, 100, 255});
+    DrawTextShadow("TAB: dev UI", 10, (int)y, 12, (Color){100, 100, 100, 255});
 }
 
 void DrawUI(void) {
