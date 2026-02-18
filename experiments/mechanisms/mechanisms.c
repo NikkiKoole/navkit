@@ -46,54 +46,71 @@ void MechGateInputDirs(Direction facing, Direction *inA, Direction *inB) {
     *inB = (Direction)((facing + 3) % 4);
 }
 
+// ---------------------------------------------------------------------------
+// Component metadata table
+// ---------------------------------------------------------------------------
+// Key codes: use raylib constants. We include them as literal ints to avoid
+// depending on raylib in the simulation code. Values from raylib.h:
+enum {
+    MKEY_0=48,MKEY_1=49,MKEY_2=50,MKEY_3=51,MKEY_4=52,MKEY_5=53,MKEY_6=54,MKEY_7=55,MKEY_8=56,MKEY_9=57,
+    MKEY_A=65,MKEY_B=66,MKEY_D=68,MKEY_E=69,MKEY_H=72,MKEY_J=74,MKEY_K=75,MKEY_Q=81,MKEY_S=83,MKEY_V=86,MKEY_W=87,MKEY_X=88,MKEY_Z=90,
+    MKEY_COMMA=44,MKEY_PERIOD=46,MKEY_SLASH=47,MKEY_SEMICOLON=59,MKEY_APOSTROPHE=39,MKEY_BACKSLASH=92,MKEY_LBRACKET=91,MKEY_RBRACKET=93,
+    MKEY_F1=290,MKEY_F2=291,MKEY_F3=292,MKEY_F4=293,MKEY_F5=294,MKEY_F6=295,MKEY_F7=296,MKEY_F8=297,MKEY_F9=298,MKEY_F10=299,MKEY_F11=300,MKEY_F12=301
+};
+
+//                          name        tooltip                                                                                                          colorR,G,B     activeR,G,B    layer             drawStyle       label  dir    click  key          keyLabel
+static const CompMeta compMeta[COMP_COUNT] = {
+[COMP_EMPTY]          = { "Eraser",    "Eraser. Click to remove any component. Shortcut: 0 or right-click.",                                             40,40,45,      0,0,0,         LAYER_SIGNAL,     DRAW_NONE,      "",    false, false, MKEY_0,      "0"  },
+[COMP_SWITCH]         = { "Switch",    "Toggle on/off with click. Powers adjacent wires. Use as manual input for any circuit.",                           120,100,20,    255,255,0,     LAYER_SIGNAL,     DRAW_LABEL,     "S",   false, true,  MKEY_1,      "1"  },
+[COMP_BUTTON]         = { "Button",    "Emits a brief pulse while held. Good for triggering one-shot events like latches or pulses.",                     120,40,40,     255,100,100,   LAYER_SIGNAL,     DRAW_LABEL,     "B",   false, false, MKEY_2,      "2"  },
+[COMP_LIGHT]          = { "Light",     "Lights up when it receives signal. The simplest output — use to visualize any wire state.",                       40,60,40,      50,230,50,     LAYER_SIGNAL,     DRAW_CIRCLE,    "",    false, false, MKEY_3,      "3"  },
+[COMP_WIRE]           = { "Wire",      "Carries signal between components. Connects in all 4 directions. The backbone of every circuit.",                 80,80,80,      0,0,0,         LAYER_SIGNAL,     DRAW_CONNECTED, "",    false, false, MKEY_4,      "4"  },
+[COMP_NOT]            = { "NOT",       "Outputs 1 when input is 0, and vice versa. Directional. Essential for inverters and oscillators.",                200,60,60,     0,0,0,         LAYER_SIGNAL,     DRAW_GATE,      "!",   true,  false, MKEY_5,      "5"  },
+[COMP_AND]            = { "AND",       "Outputs 1 only when both side inputs are on. Directional. Use for conditional logic and gating.",                 60,60,200,     0,0,0,         LAYER_SIGNAL,     DRAW_GATE,      "&",   true,  false, MKEY_6,      "6"  },
+[COMP_OR]             = { "OR",        "Outputs 1 when either side input is on. Directional. Combines multiple signal sources.",                          60,180,60,     0,0,0,         LAYER_SIGNAL,     DRAW_GATE,      "|",   true,  false, MKEY_7,      "7"  },
+[COMP_XOR]            = { "XOR",       "Outputs 1 when exactly one input is on. Directional. Key building block for adders and toggles.",                 180,60,180,    0,0,0,         LAYER_SIGNAL,     DRAW_GATE,      "^",   true,  false, MKEY_8,      "8"  },
+[COMP_NOR]            = { "NOR",       "Outputs 1 only when both inputs are off. Directional. Two NOR gates make an SR latch (memory).",                  200,100,60,    0,0,0,         LAYER_SIGNAL,     DRAW_GATE,      "V",   true,  false, MKEY_9,      "9"  },
+[COMP_LATCH]          = { "Latch",     "Set/Reset memory cell. Set input turns it on, reset turns it off, stays until changed.",                          100,85,20,     255,220,50,    LAYER_SIGNAL,     DRAW_GATE,      "M",   true,  false, MKEY_Q,      "Q"  },
+[COMP_PROCESSOR]      = { "CPU",       "Tiny 6-opcode CPU. Reads/writes ports on 4 sides. Press P to edit program. The ultimate component.",             140,60,200,    0,0,0,         LAYER_CPU,        DRAW_LABEL,     "C",   false, false, MKEY_Z,      "Z"  },
+[COMP_CLOCK]          = { "Clock",     "Auto-toggles every N ticks (click to change period 1-8). Use for blinking, timing, and sequencing.",              120,70,0,      255,160,0,     LAYER_SIGNAL,     DRAW_CUSTOM,    "",    false, true,  MKEY_W,      "W"  },
+[COMP_REPEATER]       = { "Repeater",  "Delays signal by N ticks (click to change 1-4). Directional. Use to time circuits or extend pulses.",            0,80,80,       0,200,200,     LAYER_SIGNAL,     DRAW_GATE,      "",    true,  true,  MKEY_E,      "E"  },
+[COMP_PULSE]          = { "Pulse",     "Stretches a brief input into a longer pulse (click to change duration 1-8). Good after buttons.",                 100,40,100,    255,100,255,   LAYER_SIGNAL,     DRAW_GATE,      "",    true,  true,  MKEY_A,      "A"  },
+[COMP_PIPE]           = { "Pipe",      "Carries fluid pressure between neighbors. Equalizes with adjacent pipes and tanks each tick.",                    30,60,160,     0,0,0,         LAYER_FLUID,      DRAW_CONNECTED, "",    false, false, MKEY_S,      "S"  },
+[COMP_PUMP]           = { "Pump",      "Generates/drains fluid (click rate, neg=drain). Wire-gated. Adjacent shaft boosts rate.",         20,80,70,      30,180,160,    LAYER_FLUID,      DRAW_CUSTOM,    "",    false, true,  MKEY_D,      "D"  },
+[COMP_VALVE]          = { "Valve",     "Blocks fluid flow unless adjacent wire has signal. Directional. Use switches to control fluid routing.",          60,40,40,      30,100,200,    LAYER_FLUID,      DRAW_CUSTOM,    "V",   true,  false, MKEY_H,      "H"  },
+[COMP_TANK]           = { "Tank",      "Stores fluid up to 1024 pressure (4x pipe capacity). Acts as a buffer to smooth pressure spikes.",                20,40,100,     0,0,0,         LAYER_FLUID,      DRAW_CUSTOM,    "T",   false, false, MKEY_J,      "J"  },
+[COMP_PRESSURE_LIGHT] = { "PrLight",   "Converts fluid pressure to analog signal 0-15. Bridges the fluid and signal layers.",                            20,60,80,      50,200,230,    LAYER_FLUID,      DRAW_CIRCLE,    "",    false, false, MKEY_K,      "K"  },
+[COMP_DIAL]           = { "Dial",      "Outputs an analog value 0-15 (click to change). Source for analog circuits, displays, comparators.",              200,160,40,    0,0,0,         LAYER_SIGNAL,     DRAW_CUSTOM,    "",    false, true,  MKEY_X,      "X"  },
+[COMP_COMPARATOR]     = { "Compare",   "Outputs 1 when analog input >= threshold (click to set 1-15). Directional. Analog-to-digital.",                  100,55,20,     220,120,40,    LAYER_SIGNAL,     DRAW_GATE,      "",    true,  true,  MKEY_V,      "V"  },
+[COMP_DISPLAY]        = { "Display",   "Shows the analog value (0-15) from an adjacent wire as a colored number. Passive readout.",                       20,20,30,      0,0,0,         LAYER_CPU,        DRAW_CUSTOM,    "",    false, false, MKEY_B,      "B"  },
+[COMP_BELT]           = { "Belt",      "Moves cargo one cell per tick in its facing direction. Chain belts together for conveyor lines.",                  100,90,60,     0,0,0,         LAYER_BELT,       DRAW_CUSTOM,    "",    true,  false, MKEY_COMMA,  ","  },
+[COMP_LOADER]         = { "Loader",    "Spawns cargo onto next belt (click type 1-15). Wire-gated: place wire adjacent to control.",                    40,80,40,      60,160,60,     LAYER_BELT,       DRAW_CUSTOM,    "",    true,  true,  MKEY_PERIOD, "."  },
+[COMP_UNLOADER]       = { "Unloader",  "Consumes cargo and holds last type as persistent signal. Bridges belts to wires.",                   80,40,40,      160,60,60,     LAYER_BELT,       DRAW_LABEL,     "U",   true,  false, MKEY_SLASH,  "/"  },
+[COMP_GRABBER]        = { "Grabber",   "Signal-controlled inserter. Moves cargo from behind to ahead when wire signal is on. Directional.",               80,70,20,      160,140,40,    LAYER_BELT,       DRAW_CUSTOM,    "",    true,  false, MKEY_SEMICOLON,";" },
+[COMP_SPLITTER]       = { "Splitter",  "Alternates cargo left and right. Directional. Use to balance two output lines from one input.",                   80,80,120,     0,0,0,         LAYER_BELT,       DRAW_CUSTOM,    "Y",   true,  false, MKEY_APOSTROPHE,"'" },
+[COMP_FILTER]         = { "Filter",    "Only passes cargo matching its type (click to set 1-15). Rejects others. Directional sorter.",                    120,80,100,    0,0,0,         LAYER_BELT,       DRAW_CUSTOM,    "",    true,  true,  MKEY_BACKSLASH,"\\" },
+[COMP_COMPRESSOR]     = { "Compress",  "Merges two side belt inputs into one dual-cargo item. Directional. Doubles belt throughput.",                      100,80,120,    0,0,0,         LAYER_BELT,       DRAW_CUSTOM,    "><",  true,  false, MKEY_LBRACKET,"[" },
+[COMP_DECOMPRESSOR]   = { "Decomp",   "Splits dual-cargo: primary forward, secondary to side. Directional. Reverses a compressor.",                      80,100,120,    0,0,0,         LAYER_BELT,       DRAW_CUSTOM,    "<>",  true,  false, MKEY_RBRACKET,"]" },
+[COMP_CRANK]          = { "Crank",     "Click to engage/disengage. Outputs constant torque to the shaft network. The primary power source.",              140,100,40,    220,160,60,    LAYER_MECHANICAL, DRAW_CUSTOM,    "",    false, true,  MKEY_F1,     "F1" },
+[COMP_SPRING]         = { "Spring",    "Winds up over time. Signal on adjacent wire releases stored energy as a torque burst. Click: capacity.",          120,80,30,     200,140,50,    LAYER_MECHANICAL, DRAW_CUSTOM,    "",    false, true,  MKEY_F2,     "F2" },
+[COMP_SHAFT]          = { "Shaft",     "Carries mechanical speed between neighbors. All connected shafts share speed. Like wire, but for torque.",        180,140,80,    0,0,0,         LAYER_MECHANICAL, DRAW_CONNECTED, "",    false, false, MKEY_F3,     "F3" },
+[COMP_CLUTCH]         = { "Clutch",    "Disconnects the shaft network when no wire signal. Engage via adjacent wire. Mechanical valve.",                  80,60,30,      200,160,70,    LAYER_MECHANICAL, DRAW_LABEL,     "CL",  false, false, MKEY_F4,     "F4" },
+[COMP_FLYWHEEL]       = { "Flywhl",   "Adds inertia to the network (click to set 1-8). Resists speed changes — smooths out torque spikes.",              120,120,130,   0,0,0,         LAYER_MECHANICAL, DRAW_CUSTOM,    "",    false, true,  MKEY_F5,     "F5" },
+[COMP_ESCAPEMENT]     = { "Escape",   "Converts shaft speed into periodic signal pulses. Faster speed = faster ticks. Directional output.",              140,120,40,    220,190,60,    LAYER_MECHANICAL, DRAW_GATE,      "E",   true,  false, MKEY_F6,     "F6" },
+[COMP_CAM_SHAFT]      = { "CamSh",    "8-bit pattern sequencer driven by shaft speed. Outputs signal when current bit is set. Click: pattern.",           130,110,40,    200,170,60,    LAYER_MECHANICAL, DRAW_CUSTOM,    "",    true,  true,  MKEY_F7,     "F7" },
+[COMP_HAMMER]         = { "Hammer",    "Strikes when shaft speed > 5. Consumes torque as load (click: 1-8). Visual up/down animation.",                   100,100,110,   180,180,180,   LAYER_MECHANICAL, DRAW_CUSTOM,    "",    false, true,  MKEY_F8,     "F8" },
+[COMP_LEVER_ARM]      = { "Lever",     "Extends when shaft speed > 1 and emits wire signal. Directional. Bridges mechanical to signal layer.",            90,90,100,     170,170,180,   LAYER_MECHANICAL, DRAW_GATE,      "L",   true,  true,  MKEY_F9,     "F9" },
+[COMP_GOVERNOR]       = { "Gov",       "Outputs analog signal 0-15 proportional to shaft speed. Bridges mechanical to signal for feedback loops.",        140,120,50,    220,190,80,    LAYER_MECHANICAL, DRAW_CUSTOM,    "",    false, false, MKEY_F10,    "F10"},
+};
+
+const CompMeta *MechGetCompMeta(ComponentType t) {
+    if (t < 0 || t >= COMP_COUNT) return &compMeta[COMP_EMPTY];
+    return &compMeta[t];
+}
+
 const char *MechCompName(ComponentType t) {
-    switch (t) {
-        case COMP_EMPTY:      return "Eraser";
-        case COMP_SWITCH:     return "Switch";
-        case COMP_BUTTON:     return "Button";
-        case COMP_LIGHT:      return "Light";
-        case COMP_WIRE:       return "Wire";
-        case COMP_NOT:        return "NOT";
-        case COMP_AND:        return "AND";
-        case COMP_OR:         return "OR";
-        case COMP_XOR:        return "XOR";
-        case COMP_NOR:        return "NOR";
-        case COMP_LATCH:      return "Latch";
-        case COMP_PROCESSOR:  return "Processor";
-        case COMP_CLOCK:      return "Clock";
-        case COMP_REPEATER:   return "Repeater";
-        case COMP_PULSE:      return "Pulse";
-        case COMP_PIPE:       return "Pipe";
-        case COMP_PUMP:       return "Pump";
-        case COMP_DRAIN:      return "Drain";
-        case COMP_VALVE:      return "Valve";
-        case COMP_TANK:       return "Tank";
-        case COMP_PRESSURE_LIGHT: return "PrLight";
-        case COMP_DIAL:       return "Dial";
-        case COMP_COMPARATOR: return "Compare";
-        case COMP_DISPLAY:    return "Display";
-        case COMP_BELT:       return "Belt";
-        case COMP_LOADER:     return "Loader";
-        case COMP_UNLOADER:   return "Unloader";
-        case COMP_GRABBER:    return "Grabber";
-        case COMP_SPLITTER:   return "Splitter";
-        case COMP_FILTER:     return "Filter";
-        case COMP_COMPRESSOR: return "Compress";
-        case COMP_DECOMPRESSOR: return "Decomp";
-        case COMP_CRANK:      return "Crank";
-        case COMP_SPRING:     return "Spring";
-        case COMP_SHAFT:      return "Shaft";
-        case COMP_GEAR:       return "Gear";
-        case COMP_GEAR_RATIO: return "GRatio";
-        case COMP_CLUTCH:     return "Clutch";
-        case COMP_FLYWHEEL:   return "Flywhl";
-        case COMP_ESCAPEMENT: return "Escape";
-        case COMP_CAM_SHAFT:  return "CamSh";
-        case COMP_HAMMER:     return "Hammer";
-        case COMP_LEVER_ARM:  return "Lever";
-        case COMP_GOVERNOR:   return "Gov";
-        default:              return "?";
-    }
+    if (t < 0 || t >= COMP_COUNT) return "?";
+    return compMeta[t].name;
 }
 
 const char *MechOpName(OpCode op) {
@@ -219,9 +236,6 @@ static void PlaceComponentInternal(int gx, int gy, ComponentType type, Direction
     if (type == COMP_PUMP) {
         grid[gy][gx].setting = 4;
     }
-    if (type == COMP_DRAIN) {
-        grid[gy][gx].setting = 4;
-    }
     if (type == COMP_DIAL) {
         grid[gy][gx].setting = 8;
         grid[gy][gx].state = true;
@@ -241,9 +255,6 @@ static void PlaceComponentInternal(int gx, int gy, ComponentType type, Direction
     }
     if (type == COMP_SPRING) {
         grid[gy][gx].setting = 8;
-    }
-    if (type == COMP_GEAR_RATIO) {
-        grid[gy][gx].setting = 2;
     }
     if (type == COMP_FLYWHEEL) {
         grid[gy][gx].setting = 5;
@@ -625,8 +636,11 @@ void MechUpdateProcessors(void) {
 // ---------------------------------------------------------------------------
 // Simulation: Fluid pressure equalization
 // ---------------------------------------------------------------------------
+// Forward declaration (needed by shaft-driven pump, defined in mechanical section)
+static bool IsMechCell(ComponentType t);
+
 static bool IsFluidCell(ComponentType t) {
-    return t == COMP_PIPE || t == COMP_PUMP || t == COMP_DRAIN ||
+    return t == COMP_PIPE || t == COMP_PUMP ||
            t == COMP_VALVE || t == COMP_TANK || t == COMP_PRESSURE_LIGHT;
 }
 
@@ -710,28 +724,40 @@ void MechUpdateFluids(void) {
         }
     }
 
-    // Pumps
+    // Pumps (positive setting = generate, negative = drain)
+    // Wire-gated (same as before) + shaft-driven: adjacent shaft speed boosts rate
     for (int y = 0; y < MECH_GRID_H; y++) {
         for (int x = 0; x < MECH_GRID_W; x++) {
-            if (grid[y][x].type == COMP_PUMP && IsPumpActive(x, y)) {
-                int rate = grid[y][x].setting * 8;
+            if (grid[y][x].type != COMP_PUMP) continue;
+            int setting = grid[y][x].setting;
+
+            // Check adjacent mechanical cells for shaft speed boost
+            float shaftBoost = 0;
+            for (int d = 0; d < 4; d++) {
+                int dx, dy;
+                MechDirOffset((Direction)d, &dx, &dy);
+                int nx = x + dx, ny = y + dy;
+                if (MechInGrid(nx, ny) && IsMechCell(grid[ny][nx].type)) {
+                    if (grid[ny][nx].mechSpeed > shaftBoost)
+                        shaftBoost = grid[ny][nx].mechSpeed;
+                }
+            }
+
+            if (setting > 0 && IsPumpActive(x, y)) {
+                int rate = setting * 8;
+                if (shaftBoost > 0) rate = (int)(rate * (1.0f + shaftBoost / 20.0f));
                 newFluid[y][x] += rate;
                 int mx = FluidMaxLevel(COMP_PUMP);
                 if (newFluid[y][x] > mx) newFluid[y][x] = mx;
                 grid[y][x].state = true;
-            } else if (grid[y][x].type == COMP_PUMP) {
-                grid[y][x].state = false;
-            }
-        }
-    }
-
-    // Drains
-    for (int y = 0; y < MECH_GRID_H; y++) {
-        for (int x = 0; x < MECH_GRID_W; x++) {
-            if (grid[y][x].type == COMP_DRAIN) {
-                int rate = grid[y][x].setting * 8;
+            } else if (setting < 0) {
+                int rate = (-setting) * 8;
+                if (shaftBoost > 0) rate = (int)(rate * (1.0f + shaftBoost / 20.0f));
                 newFluid[y][x] -= rate;
                 if (newFluid[y][x] < 0) newFluid[y][x] = 0;
+                grid[y][x].state = true;
+            } else {
+                grid[y][x].state = false;
             }
         }
     }
@@ -977,10 +1003,11 @@ void MechUpdateBelts(void) {
         }
     }
 
-    // Phase 4: Loaders
+    // Phase 4: Loaders (wire-gated: if adjacent wire exists, only loads when signal)
     for (int y = 0; y < MECH_GRID_H; y++) {
         for (int x = 0; x < MECH_GRID_W; x++) {
             if (grid[y][x].type != COMP_LOADER) continue;
+            if (!IsPumpActive(x, y)) { grid[y][x].state = false; continue; }
 
             int dx, dy;
             MechDirOffset(grid[y][x].facing, &dx, &dy);
@@ -997,25 +1024,28 @@ void MechUpdateBelts(void) {
     }
 
     // Phase 5: Unloaders
+    // Persistent signal: holds last-received cargo type until new cargo arrives.
+    // setting stores the last cargo type (persistent memory).
     for (int y = 0; y < MECH_GRID_H; y++) {
         for (int x = 0; x < MECH_GRID_W; x++) {
             if (grid[y][x].type != COMP_UNLOADER) continue;
             if (grid[y][x].cargo > 0) {
-                grid[y][x].signalOut = grid[y][x].cargo;
-                grid[y][x].state = true;
+                grid[y][x].setting = grid[y][x].cargo;  // remember last cargo type
                 grid[y][x].cargo = 0;
+            }
+            int lastCargo = grid[y][x].setting;
+            grid[y][x].signalOut = lastCargo;
+            grid[y][x].state = (lastCargo > 0);
+            if (lastCargo > 0) {
                 for (int d = 0; d < 4; d++) {
                     int dx, dy;
                     MechDirOffset((Direction)d, &dx, &dy);
                     int nx = x + dx, ny = y + dy;
                     if (MechInGrid(nx, ny) && grid[ny][nx].type == COMP_WIRE) {
-                        if (signalGrid[sigRead][ny][nx] < grid[y][x].signalOut)
-                            signalGrid[sigRead][ny][nx] = grid[y][x].signalOut;
+                        if (signalGrid[sigRead][ny][nx] < lastCargo)
+                            signalGrid[sigRead][ny][nx] = lastCargo;
                     }
                 }
-            } else {
-                grid[y][x].signalOut = 0;
-                grid[y][x].state = false;
             }
         }
     }
@@ -1066,9 +1096,9 @@ void MechUpdateBelts(void) {
 // ---------------------------------------------------------------------------
 static bool IsMechCell(ComponentType t) {
     return t == COMP_CRANK || t == COMP_SPRING || t == COMP_SHAFT ||
-           t == COMP_GEAR || t == COMP_GEAR_RATIO || t == COMP_CLUTCH ||
-           t == COMP_FLYWHEEL || t == COMP_ESCAPEMENT || t == COMP_CAM_SHAFT ||
-           t == COMP_HAMMER || t == COMP_LEVER_ARM || t == COMP_GOVERNOR;
+           t == COMP_CLUTCH || t == COMP_FLYWHEEL || t == COMP_ESCAPEMENT ||
+           t == COMP_CAM_SHAFT || t == COMP_HAMMER || t == COMP_LEVER_ARM ||
+           t == COMP_GOVERNOR;
 }
 
 static bool IsClutchEngaged(int x, int y) {
@@ -1381,20 +1411,6 @@ void MechBuildPresetAnd(int ox, int oy) {
     MechPlaceWire(ox + 3, oy + 2);
 }
 
-void MechBuildPresetXor(int ox, int oy) {
-    PlaceAt(ox, oy, COMP_SWITCH, DIR_NORTH);
-    MechPlaceWire(ox + 1, oy);
-    MechPlaceWire(ox + 2, oy);
-    MechPlaceWire(ox + 3, oy);
-    PlaceAt(ox + 3, oy + 1, COMP_XOR, DIR_EAST);
-    MechPlaceWire(ox + 4, oy + 1);
-    PlaceAt(ox + 5, oy + 1, COMP_LIGHT, DIR_EAST);
-    PlaceAt(ox, oy + 2, COMP_SWITCH, DIR_NORTH);
-    MechPlaceWire(ox + 1, oy + 2);
-    MechPlaceWire(ox + 2, oy + 2);
-    MechPlaceWire(ox + 3, oy + 2);
-}
-
 void MechBuildPresetBlinker(int ox, int oy) {
     PlaceAt(ox, oy + 1, COMP_CLOCK, DIR_NORTH);
     Cell *clk = &grid[oy + 1][ox];
@@ -1402,16 +1418,6 @@ void MechBuildPresetBlinker(int ox, int oy) {
     clk->timer = 3;
     MechPlaceWire(ox + 1, oy + 1);
     PlaceAt(ox + 2, oy + 1, COMP_LIGHT, DIR_EAST);
-}
-
-void MechBuildPresetPulseExtend(int ox, int oy) {
-    PlaceAt(ox, oy + 1, COMP_BUTTON, DIR_NORTH);
-    MechPlaceWire(ox + 1, oy + 1);
-    PlaceAt(ox + 2, oy + 1, COMP_REPEATER, DIR_EAST);
-    grid[oy + 1][ox + 2].setting = 4;
-    memset(grid[oy + 1][ox + 2].delayBuf, 0, sizeof(grid[oy + 1][ox + 2].delayBuf));
-    MechPlaceWire(ox + 3, oy + 1);
-    PlaceAt(ox + 4, oy + 1, COMP_LIGHT, DIR_EAST);
 }
 
 void MechBuildPresetNorLatch(int ox, int oy) {
@@ -1488,34 +1494,14 @@ void MechBuildPresetHalfAdder(int ox, int oy) {
     MechPlaceWire(ox + 6, oy + 4);
 }
 
-void MechBuildPresetRingOsc(int ox, int oy) {
-    PlaceAt(ox + 1, oy, COMP_NOT, DIR_EAST);
-    MechPlaceWire(ox + 2, oy);
-    MechPlaceWire(ox + 3, oy);
-
-    PlaceAt(ox + 3, oy + 1, COMP_NOT, DIR_SOUTH);
-    MechPlaceWire(ox + 3, oy + 2);
-    MechPlaceWire(ox + 2, oy + 2);
-
-    PlaceAt(ox + 1, oy + 2, COMP_NOT, DIR_WEST);
-    MechPlaceWire(ox, oy + 2);
-    MechPlaceWire(ox, oy + 1);
-    MechPlaceWire(ox, oy);
-
-    PlaceAt(ox + 2, oy + 1, COMP_LIGHT, DIR_EAST);
-
-    signalGrid[0][oy][ox + 2] = 1;
-    signalGrid[1][oy][ox + 2] = 1;
-}
-
 void MechBuildPresetPumpLoop(int ox, int oy) {
     PlaceAt(ox, oy + 1, COMP_PUMP, DIR_NORTH);
     grid[oy + 1][ox].setting = 4;
     for (int i = 1; i <= 6; i++) {
         PlaceAt(ox + i, oy + 1, COMP_PIPE, DIR_NORTH);
     }
-    PlaceAt(ox + 7, oy + 1, COMP_DRAIN, DIR_NORTH);
-    grid[oy + 1][ox + 7].setting = 2;
+    PlaceAt(ox + 7, oy + 1, COMP_PUMP, DIR_NORTH);
+    grid[oy + 1][ox + 7].setting = -2;  // negative = drain
     PlaceAt(ox + 3, oy, COMP_PRESSURE_LIGHT, DIR_NORTH);
     MechPlaceWire(ox + 4, oy);
     PlaceAt(ox + 5, oy, COMP_LIGHT, DIR_EAST);
@@ -1570,38 +1556,6 @@ void MechBuildPresetBeltLine(int ox, int oy) {
     PlaceAt(ox + 9, oy + 1, COMP_DISPLAY, DIR_NORTH);
 }
 
-void MechBuildPresetCompress(int ox, int oy) {
-    PlaceAt(ox, oy, COMP_LOADER, DIR_EAST);
-    grid[oy][ox].setting = 1;
-    PlaceAt(ox + 1, oy, COMP_BELT, DIR_EAST);
-    PlaceAt(ox + 2, oy, COMP_BELT, DIR_SOUTH);
-
-    PlaceAt(ox, oy + 2, COMP_LOADER, DIR_EAST);
-    grid[oy + 2][ox].setting = 2;
-    PlaceAt(ox + 1, oy + 2, COMP_BELT, DIR_EAST);
-    PlaceAt(ox + 2, oy + 2, COMP_BELT, DIR_NORTH);
-
-    PlaceAt(ox + 2, oy + 1, COMP_COMPRESSOR, DIR_EAST);
-
-    for (int i = 3; i <= 6; i++) {
-        PlaceAt(ox + i, oy + 1, COMP_BELT, DIR_EAST);
-    }
-
-    PlaceAt(ox + 7, oy + 1, COMP_DECOMPRESSOR, DIR_EAST);
-
-    PlaceAt(ox + 8, oy + 1, COMP_BELT, DIR_EAST);
-    PlaceAt(ox + 9, oy + 1, COMP_BELT, DIR_EAST);
-    PlaceAt(ox + 10, oy + 1, COMP_UNLOADER, DIR_EAST);
-
-    PlaceAt(ox + 7, oy + 2, COMP_BELT, DIR_SOUTH);
-    PlaceAt(ox + 7, oy + 3, COMP_BELT, DIR_SOUTH);
-    PlaceAt(ox + 7, oy + 4, COMP_UNLOADER, DIR_SOUTH);
-}
-
-// ---------------------------------------------------------------------------
-// Mechanical preset builders
-// ---------------------------------------------------------------------------
-
 void MechBuildPresetAutoHammer(int ox, int oy) {
     // Crank -> Shaft -> Shaft -> Hammer
     PlaceAt(ox, oy, COMP_CRANK, DIR_EAST);
@@ -1610,19 +1564,6 @@ void MechBuildPresetAutoHammer(int ox, int oy) {
     PlaceAt(ox + 2, oy, COMP_SHAFT, DIR_EAST);
     PlaceAt(ox + 3, oy, COMP_HAMMER, DIR_EAST);
     // Let it spin up
-    for (int i = 0; i < 20; i++) MechUpdateMechanical();
-}
-
-void MechBuildPresetGearedMill(int ox, int oy) {
-    // Crank -> Shaft -> GearRatio(1:3) -> Shaft -> Shaft -> Hammer
-    PlaceAt(ox, oy, COMP_CRANK, DIR_EAST);
-    grid[oy][ox].state = true;
-    PlaceAt(ox + 1, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 2, oy, COMP_GEAR_RATIO, DIR_EAST);
-    grid[oy][ox + 2].setting = 3;  // 1:3 ratio (cosmetic)
-    PlaceAt(ox + 3, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 4, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 5, oy, COMP_HAMMER, DIR_EAST);
     for (int i = 0; i < 20; i++) MechUpdateMechanical();
 }
 
@@ -1637,43 +1578,6 @@ void MechBuildPresetClockTower(int ox, int oy) {
     MechPlaceWire(ox + 5, oy);
     PlaceAt(ox + 6, oy, COMP_LIGHT, DIR_EAST);
     for (int i = 0; i < 30; i++) MechTick();
-}
-
-void MechBuildPresetCamSequencer(int ox, int oy) {
-    // Crank -> Shaft -> CamShaft(east) -> Wire -> branches to 3 lights
-    PlaceAt(ox, oy + 2, COMP_CRANK, DIR_EAST);
-    grid[oy + 2][ox].state = true;
-    PlaceAt(ox + 1, oy + 2, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 2, oy + 2, COMP_CAM_SHAFT, DIR_EAST);
-    grid[oy + 2][ox + 2].setting = 0xB6;  // pattern: 10110110
-    MechPlaceWire(ox + 3, oy + 2);
-    MechPlaceWire(ox + 3, oy + 1);
-    MechPlaceWire(ox + 3, oy);
-    MechPlaceWire(ox + 3, oy + 3);
-    MechPlaceWire(ox + 3, oy + 4);
-    PlaceAt(ox + 4, oy, COMP_LIGHT, DIR_EAST);
-    PlaceAt(ox + 4, oy + 2, COMP_LIGHT, DIR_EAST);
-    PlaceAt(ox + 4, oy + 4, COMP_LIGHT, DIR_EAST);
-    for (int i = 0; i < 30; i++) MechTick();
-}
-
-void MechBuildPresetSpringTrap(int ox, int oy) {
-    // Spring -> Clutch -> Shaft -> LeverArm
-    // Switch -> Wire to clutch (triggers release)
-    PlaceAt(ox, oy + 1, COMP_SWITCH, DIR_NORTH);
-    MechPlaceWire(ox + 1, oy + 1);
-    MechPlaceWire(ox + 2, oy + 1);
-    // Spring charges over time, clutch releases on signal
-    PlaceAt(ox, oy, COMP_SPRING, DIR_EAST);
-    PlaceAt(ox + 1, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 2, oy, COMP_CLUTCH, DIR_EAST);
-    PlaceAt(ox + 3, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 4, oy, COMP_SHAFT, DIR_EAST);
-    PlaceAt(ox + 5, oy, COMP_LEVER_ARM, DIR_EAST);
-    MechPlaceWire(ox + 6, oy);
-    PlaceAt(ox + 7, oy, COMP_LIGHT, DIR_EAST);
-    // Let spring charge
-    for (int i = 0; i < 40; i++) MechTick();
 }
 
 void MechBuildPresetGovernorLoop(int ox, int oy) {
@@ -1695,5 +1599,118 @@ void MechBuildPresetGovernorLoop(int ox, int oy) {
     MechPlaceWire(ox + 3, oy + 1);
     PlaceAt(ox + 2, oy + 1, COMP_NOT, DIR_WEST);
     MechPlaceWire(ox + 1, oy + 1);
+    for (int i = 0; i < 40; i++) MechTick();
+}
+
+void MechBuildPresetDemandLoader(int ox, int oy) {
+    // Button -> Pulse(5) -> wire-gates a Loader -> Belt -> Belt -> Unloader -> wire -> Display
+    // Shows: press button to dispense exactly one burst of cargo
+    PlaceAt(ox, oy, COMP_BUTTON, DIR_NORTH);
+    MechPlaceWire(ox + 1, oy);
+    PlaceAt(ox + 2, oy, COMP_PULSE, DIR_EAST);
+    grid[oy][ox + 2].setting = 5;
+    MechPlaceWire(ox + 3, oy);
+    MechPlaceWire(ox + 3, oy + 1);  // wire down to gate the loader
+    PlaceAt(ox + 3, oy + 2, COMP_LOADER, DIR_EAST);
+    grid[oy + 2][ox + 3].setting = 4;  // yellow cargo
+    PlaceAt(ox + 4, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 5, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 6, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 7, oy + 2, COMP_UNLOADER, DIR_EAST);
+    MechPlaceWire(ox + 8, oy + 2);
+    PlaceAt(ox + 8, oy + 1, COMP_DISPLAY, DIR_NORTH);
+}
+
+void MechBuildPresetSteamHammer(int ox, int oy) {
+    // Crank -> Shaft -> [adjacent to Pump] -> Pipes -> PressureLight -> wire -> Light
+    // Also: Shaft -> Hammer (mechanical output)
+    // Shows: shaft speed boosts pump rate (mechanical -> fluid bridge)
+    PlaceAt(ox, oy + 1, COMP_CRANK, DIR_EAST);
+    grid[oy + 1][ox].state = true;
+    grid[oy + 1][ox].setting = 6;
+    PlaceAt(ox + 1, oy + 1, COMP_SHAFT, DIR_EAST);
+    PlaceAt(ox + 2, oy + 1, COMP_SHAFT, DIR_EAST);
+    PlaceAt(ox + 3, oy + 1, COMP_HAMMER, DIR_EAST);
+    // Pump adjacent to shaft at (2, oy+1) — gets speed boost
+    PlaceAt(ox + 2, oy, COMP_PUMP, DIR_NORTH);
+    grid[oy][ox + 2].setting = 2;  // low base rate, shaft will boost it
+    PlaceAt(ox + 3, oy, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 4, oy, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 5, oy, COMP_PIPE, DIR_NORTH);
+    PlaceAt(ox + 6, oy, COMP_PRESSURE_LIGHT, DIR_NORTH);
+    MechPlaceWire(ox + 7, oy);
+    PlaceAt(ox + 8, oy, COMP_LIGHT, DIR_EAST);
+    for (int i = 0; i < 30; i++) MechTick();
+}
+
+void MechBuildPresetSortingFactory(int ox, int oy) {
+    // Two clock-alternated loaders (type 1, type 2) -> belt -> splitter -> two filter lines
+    // Each filter passes its type to an unloader with persistent signal -> display
+    // Shows: filtering, splitter, persistent unloader signals, clock-paced loading
+    //
+    // Layout (7 wide x 5 tall):
+    //   row 0: Clock -> wire ---------> wire -> Loader(2)
+    //   row 1:                  NOT  -> wire -> Loader(1)
+    //   row 2:          Belt <- Belt <- Belt <- Belt
+    //   row 3: Display <- wire <- Unloader <- Belt <- Filter(1) <- Splitter
+    //   row 4: Display <- wire <- Unloader <- Belt <- Filter(2) <--/
+    //
+    // Clock alternates: when clock=ON, loader2 loads. NOT inverts for loader1.
+    PlaceAt(ox, oy, COMP_CLOCK, DIR_NORTH);
+    grid[oy][ox].setting = 6;
+    grid[oy][ox].timer = 6;
+    MechPlaceWire(ox + 1, oy);
+    MechPlaceWire(ox + 2, oy);
+    MechPlaceWire(ox + 3, oy);      // wire to loader2
+    PlaceAt(ox + 4, oy, COMP_LOADER, DIR_SOUTH);
+    grid[oy][ox + 4].setting = 2;   // green cargo
+    // NOT branch for loader1
+    PlaceAt(ox + 2, oy + 1, COMP_NOT, DIR_EAST);
+    MechPlaceWire(ox + 3, oy + 1);
+    PlaceAt(ox + 4, oy + 1, COMP_LOADER, DIR_SOUTH);
+    grid[oy + 1][ox + 4].setting = 1;  // red cargo
+    // Converge onto main belt (row 2, moving west)
+    PlaceAt(ox + 4, oy + 2, COMP_BELT, DIR_WEST);
+    PlaceAt(ox + 3, oy + 2, COMP_BELT, DIR_WEST);
+    PlaceAt(ox + 2, oy + 2, COMP_BELT, DIR_WEST);
+    PlaceAt(ox + 1, oy + 2, COMP_SPLITTER, DIR_WEST);
+    // North output: filter for type 1 (red)
+    PlaceAt(ox + 1, oy + 3, COMP_FILTER, DIR_WEST);
+    grid[oy + 3][ox + 1].setting = 1;
+    PlaceAt(ox, oy + 3, COMP_UNLOADER, DIR_WEST);
+    MechPlaceWire(ox, oy + 4);
+    PlaceAt(ox + 1, oy + 4, COMP_DISPLAY, DIR_NORTH);
+    // South output: filter for type 2 (green)
+    PlaceAt(ox + 1, oy + 5, COMP_FILTER, DIR_WEST);
+    grid[oy + 5][ox + 1].setting = 2;
+    PlaceAt(ox, oy + 5, COMP_UNLOADER, DIR_WEST);
+    MechPlaceWire(ox, oy + 6);
+    PlaceAt(ox + 1, oy + 6, COMP_DISPLAY, DIR_NORTH);
+    for (int i = 0; i < 30; i++) MechTick();
+}
+
+void MechBuildPresetClockworkBottler(int ox, int oy) {
+    // Crank -> Shaft -> Escapement -> Wire gates a Loader -> Belt -> Unloader
+    // Shows: mechanical timing controls belt logistics (3-layer: mech + signal + belt)
+    PlaceAt(ox, oy, COMP_CRANK, DIR_EAST);
+    grid[oy][ox].state = true;
+    grid[oy][ox].setting = 4;
+    PlaceAt(ox + 1, oy, COMP_SHAFT, DIR_EAST);
+    PlaceAt(ox + 2, oy, COMP_FLYWHEEL, DIR_EAST);
+    grid[oy][ox + 2].setting = 3;
+    PlaceAt(ox + 3, oy, COMP_SHAFT, DIR_EAST);
+    PlaceAt(ox + 4, oy, COMP_ESCAPEMENT, DIR_EAST);
+    MechPlaceWire(ox + 5, oy);
+    MechPlaceWire(ox + 5, oy + 1);  // wire down to gate the loader
+    PlaceAt(ox + 5, oy + 2, COMP_LOADER, DIR_EAST);
+    grid[oy + 2][ox + 5].setting = 6;  // orange cargo
+    PlaceAt(ox + 6, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 7, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 8, oy + 2, COMP_BELT, DIR_EAST);
+    PlaceAt(ox + 9, oy + 2, COMP_UNLOADER, DIR_EAST);
+    MechPlaceWire(ox + 10, oy + 2);
+    PlaceAt(ox + 10, oy + 1, COMP_DISPLAY, DIR_NORTH);
+    // Let light blink on first row too
+    PlaceAt(ox + 6, oy, COMP_LIGHT, DIR_EAST);
     for (int i = 0; i < 40; i++) MechTick();
 }

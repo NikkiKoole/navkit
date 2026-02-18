@@ -389,14 +389,14 @@ describe(fluid_system) {
         expect(MechGetCell(1, 5)->fluidLevel > 0);
     }
 
-    it("a drain should decrease pressure") {
+    it("a drain (negative pump) should decrease pressure") {
         MechInit();
         MechPlaceComponent(0, 5, COMP_PUMP, DIR_NORTH);
         MechGetCell(0, 5)->setting = 4;
         MechPlaceComponent(1, 5, COMP_PIPE, DIR_NORTH);
         MechPlaceComponent(2, 5, COMP_PIPE, DIR_NORTH);
-        MechPlaceComponent(3, 5, COMP_DRAIN, DIR_NORTH);
-        MechGetCell(3, 5)->setting = 4;
+        MechPlaceComponent(3, 5, COMP_PUMP, DIR_NORTH);
+        MechGetCell(3, 5)->setting = -4;  // negative = drain
 
         RunTicks(20);
 
@@ -616,6 +616,94 @@ describe(belt_logistics) {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-layer bridges
+// ---------------------------------------------------------------------------
+
+describe(cross_layer_bridges) {
+    it("a loader with adjacent wire should only spawn when signal is on") {
+        MechInit();
+        MechPlaceComponent(0, 5, COMP_LOADER, DIR_EAST);
+        MechGetCell(0, 5)->setting = 1;
+        MechPlaceComponent(1, 5, COMP_BELT, DIR_EAST);
+        // Wire adjacent to loader, switch further away
+        MechPlaceWire(0, 4);
+        MechPlaceComponent(0, 3, COMP_SWITCH, DIR_NORTH);
+
+        // Switch off — loader should NOT spawn (wire present but no signal)
+        MechTick();
+        expect(MechGetCell(1, 5)->cargo == 0);
+
+        // Switch on — signal propagates to wire at (0,4), loader activates
+        MechSetSwitch(0, 3, true);
+        MechTick();
+        expect(MechGetCell(1, 5)->cargo == 1);
+    }
+
+    it("a loader without any adjacent wire should always spawn") {
+        // Backward compat: no wire = always active
+        MechInit();
+        MechPlaceComponent(0, 5, COMP_LOADER, DIR_EAST);
+        MechGetCell(0, 5)->setting = 3;
+        MechPlaceComponent(1, 5, COMP_BELT, DIR_EAST);
+
+        MechTick();
+        expect(MechGetCell(1, 5)->cargo == 3);
+    }
+
+    it("a pump adjacent to a shaft should have boosted fluid rate") {
+        MechInit();
+        // Pump with shaft neighbor
+        MechPlaceComponent(0, 5, COMP_PUMP, DIR_NORTH);
+        MechGetCell(0, 5)->setting = 2;
+        MechPlaceComponent(1, 5, COMP_PIPE, DIR_NORTH);
+
+        // Shaft next to pump with pre-set speed
+        MechPlaceComponent(0, 4, COMP_SHAFT, DIR_NORTH);
+        MechGetCell(0, 4)->mechSpeed = 40.0f;  // high speed
+
+        // Also a reference pump without shaft
+        MechPlaceComponent(5, 5, COMP_PUMP, DIR_NORTH);
+        MechGetCell(5, 5)->setting = 2;
+        MechPlaceComponent(6, 5, COMP_PIPE, DIR_NORTH);
+
+        RunTicks(5);
+
+        int boosted = MechGetCell(0, 5)->fluidLevel;
+        int normal = MechGetCell(5, 5)->fluidLevel;
+        expect(boosted > normal);
+    }
+
+    it("an unloader should hold last cargo type as persistent signal") {
+        MechInit();
+        MechPlaceComponent(0, 5, COMP_BELT, DIR_EAST);
+        MechPlaceComponent(1, 5, COMP_UNLOADER, DIR_EAST);
+        MechPlaceWire(2, 5);
+
+        // Deliver cargo
+        MechGetCell(0, 5)->cargo = 7;
+        MechTick();
+
+        // Unloader consumed cargo and holds signal
+        expect(MechGetCell(1, 5)->signalOut == 7);
+        expect(MechGetCell(1, 5)->state == true);
+
+        // Next tick: no new cargo, but signal persists
+        MechTick();
+        expect(MechGetCell(1, 5)->signalOut == 7);
+        expect(MechGetCell(1, 5)->state == true);
+
+        // Many ticks later: still persistent
+        RunTicks(10);
+        expect(MechGetCell(1, 5)->signalOut == 7);
+
+        // New cargo overwrites
+        MechGetCell(0, 5)->cargo = 3;
+        MechTick();
+        expect(MechGetCell(1, 5)->signalOut == 3);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Latch / Memory
 // ---------------------------------------------------------------------------
 
@@ -737,24 +825,6 @@ describe(preset_circuits) {
         MechSetSwitch(0, 2, true);
         RunTicks(2);
         expect(light->state == true);
-    }
-
-    it("the XOR preset should work as expected") {
-        MechInit();
-        MechBuildPresetXor(0, 0);
-
-        Cell *light = MechGetCell(5, 1);
-
-        RunTicks(2);
-        expect(light->state == false);
-
-        MechSetSwitch(0, 0, true);
-        RunTicks(2);
-        expect(light->state == true);
-
-        MechSetSwitch(0, 2, true);
-        RunTicks(2);
-        expect(light->state == false);
     }
 
     it("the blinker preset should oscillate") {
@@ -1113,6 +1183,7 @@ int main(int argc, char *argv[]) {
     test(analog_signals);
     test(fluid_system);
     test(belt_logistics);
+    test(cross_layer_bridges);
     test(latch_memory);
     test(processor_logic);
     test(preset_circuits);

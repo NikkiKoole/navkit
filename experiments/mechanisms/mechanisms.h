@@ -34,8 +34,7 @@ typedef enum {
     COMP_REPEATER,
     COMP_PULSE,
     COMP_PIPE,
-    COMP_PUMP,
-    COMP_DRAIN,
+    COMP_PUMP,       // Setting > 0 = pump, setting < 0 = drain (click to toggle)
     COMP_VALVE,
     COMP_TANK,
     COMP_PRESSURE_LIGHT,
@@ -54,8 +53,6 @@ typedef enum {
     COMP_CRANK,
     COMP_SPRING,
     COMP_SHAFT,
-    COMP_GEAR,
-    COMP_GEAR_RATIO,
     COMP_CLUTCH,
     COMP_FLYWHEEL,
     COMP_ESCAPEMENT,
@@ -65,6 +62,47 @@ typedef enum {
     COMP_GOVERNOR,
     COMP_COUNT
 } ComponentType;
+
+// ---------------------------------------------------------------------------
+// Component layers (for palette grouping)
+// ---------------------------------------------------------------------------
+typedef enum {
+    LAYER_SIGNAL = 0,
+    LAYER_FLUID,
+    LAYER_BELT,
+    LAYER_CPU,
+    LAYER_MECHANICAL,
+    LAYER_COUNT
+} CompLayer;
+
+// ---------------------------------------------------------------------------
+// Draw style (for shared rendering)
+// ---------------------------------------------------------------------------
+typedef enum {
+    DRAW_NONE = 0,       // No drawing (COMP_EMPTY)
+    DRAW_LABEL,          // Filled rect + centered text label
+    DRAW_CIRCLE,         // Filled circle (lights)
+    DRAW_GATE,           // Rect + arrow + label + input/output dots
+    DRAW_CONNECTED,      // Connected lines to neighbors (wire, shaft, pipe)
+    DRAW_CUSTOM,         // Fully custom drawing (belt, flywheel, cam, etc.)
+} DrawStyle;
+
+// ---------------------------------------------------------------------------
+// Component metadata (data-driven: replaces MechCompName, CompColor, etc.)
+// ---------------------------------------------------------------------------
+typedef struct {
+    const char *name;        // Short display name ("AND", "Shaft", etc.)
+    const char *tooltip;     // Palette tooltip description
+    unsigned char colorR, colorG, colorB;       // Base color (off/inactive)
+    unsigned char activeR, activeG, activeB;    // Active/on color (0,0,0 = no active variant)
+    CompLayer layer;
+    DrawStyle drawStyle;
+    const char *label;       // 1-2 char label for DRAW_LABEL / DRAW_GATE
+    bool directional;        // Needs facing arrow + ghost preview arrow
+    bool clickConfig;        // Right-click/interact cycles a setting
+    int keyCode;             // Raylib KEY_* constant (0 = no key binding)
+    const char *keyLabel;    // Label shown in palette ("1", "F3", etc.)
+} CompMeta;
 
 typedef enum {
     DIR_NORTH = 0,
@@ -159,6 +197,7 @@ void MechGateInputDirs(Direction facing, Direction *inA, Direction *inB);
 const char *MechCompName(ComponentType t);
 const char *MechOpName(OpCode op);
 const char *MechDirName(Direction d);
+const CompMeta *MechGetCompMeta(ComponentType t);
 
 // Processor
 int MechFindProcessor(int gx, int gy);
@@ -167,24 +206,19 @@ Processor* MechGetProcessor(int idx);
 // Preset builders
 void MechBuildPresetNot(int ox, int oy);
 void MechBuildPresetAnd(int ox, int oy);
-void MechBuildPresetXor(int ox, int oy);
 void MechBuildPresetBlinker(int ox, int oy);
-void MechBuildPresetPulseExtend(int ox, int oy);
 void MechBuildPresetNorLatch(int ox, int oy);
 void MechBuildPresetHalfAdder(int ox, int oy);
-void MechBuildPresetRingOsc(int ox, int oy);
 void MechBuildPresetPumpLoop(int ox, int oy);
 void MechBuildPresetSignalValve(int ox, int oy);
 void MechBuildPresetAnalog(int ox, int oy);
 void MechBuildPresetBeltLine(int ox, int oy);
-void MechBuildPresetCompress(int ox, int oy);
-
-// Mechanical presets
 void MechBuildPresetAutoHammer(int ox, int oy);
-void MechBuildPresetGearedMill(int ox, int oy);
 void MechBuildPresetClockTower(int ox, int oy);
-void MechBuildPresetCamSequencer(int ox, int oy);
-void MechBuildPresetSpringTrap(int ox, int oy);
 void MechBuildPresetGovernorLoop(int ox, int oy);
+void MechBuildPresetDemandLoader(int ox, int oy);
+void MechBuildPresetSteamHammer(int ox, int oy);
+void MechBuildPresetSortingFactory(int ox, int oy);
+void MechBuildPresetClockworkBottler(int ox, int oy);
 
 #endif // MECHANISMS_H
