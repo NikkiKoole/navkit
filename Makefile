@@ -104,6 +104,9 @@ $(TEST_UNITY_OBJ): $(GAME_SOURCES) $(RAYLIB_LIB) | $(BINDIR)
 # Soundsystem test - standalone, no test_unity.c needed
 test_soundsystem_SRC := tests/test_soundsystem.c
 
+# Mechanisms test - standalone, no test_unity.c needed
+test_mechanisms_SRC := tests/test_mechanisms.c
+
 all: $(RAYLIB_LIB) $(addprefix $(BINDIR)/,$(TARGETS)) $(BINDIR)/path8
 
 $(BINDIR):
@@ -315,6 +318,12 @@ test_soundsystem: $(BINDIR)
 	@echo "Running soundsystem tests..."
 	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_soundsystem_SRC) -lm
 	-@./$(BINDIR)/test_soundsystem -q
+
+# Mechanisms tests - standalone automation sandbox tests
+test_mechanisms: $(BINDIR)
+	@echo "Running mechanisms tests..."
+	@$(CC) $(CFLAGS) -o $(BINDIR)/$@ $(test_mechanisms_SRC) -lm
+	-@./$(BINDIR)/test_mechanisms -q
 
 # Run all tests (mover uses 5 stress iterations by default)
 .IGNORE: test
