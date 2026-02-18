@@ -145,6 +145,15 @@ static Color ItemBorderTint(ItemType type) {
     }
 }
 
+// Per-item-type tint override (for items with MAT_NONE that need color)
+static Color ItemTypeTint(ItemType type) {
+    switch (type) {
+        case ITEM_BERRIES:      return (Color){220, 50, 50, 255};   // Red like on the bush
+        case ITEM_DRIED_BERRIES: return (Color){140, 40, 60, 255};  // Darker, dried
+        default:                return WHITE;
+    }
+}
+
 static void DrawItemWithBorder(int sprite, Rectangle frameDest, Color tint, Color borderTint) {
     Rectangle borderSrc = SpriteGetRect(SPRITE_tile_border);
     DrawTexturePro(atlas, borderSrc, frameDest, (Vector2){0,0}, 0, borderTint);
@@ -1367,7 +1376,7 @@ static void DrawCarriedItem(const Mover* m, float sx, float sy, int viewZ, Color
     int cellX = (int)(m->x / CELL_SIZE);
     int cellY = (int)(m->y / CELL_SIZE);
     Color lightTint = GetLightColor(cellX, cellY, moverZ, skyColor);
-    Color itemTint = lightTint;
+    Color itemTint = MultiplyColor(lightTint, ItemTypeTint(item->type));
     Color borderTint = MultiplyColor(ItemBorderTint(item->type), lightTint);
     if (moverZ < viewZ) {
         Color depthTint = GetDepthTint(moverZ, viewZ);
@@ -1796,6 +1805,7 @@ static void DrawItems(void) {
 
         Color lightTint = GetLightColor(cellX, cellY, itemZ, skyColor);
         Color tint = MultiplyColor(MaterialTint((MaterialType)item->material), lightTint);
+        tint = MultiplyColor(tint, ItemTypeTint(item->type));
         if (item->reservedBy >= 0) {
             tint = MultiplyColor(tint, (Color){200, 200, 200, 255});
         }
@@ -1981,6 +1991,7 @@ static void DrawStockpileItems(void) {
                     int sprite = ItemSpriteForTypeMaterial(ctype, items[slotItemIdx].material);
                     float itemSize = size * ITEM_SIZE_STOCKPILE * 1.2f;
                     Color tint = MultiplyColor(MaterialTint((MaterialType)items[slotItemIdx].material), lightTint);
+                    tint = MultiplyColor(tint, ItemTypeTint(ctype));
                     Color borderTint = MultiplyColor(ItemBorderTint(ctype), lightTint);
                     if (belowView) {
                         tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
@@ -2006,6 +2017,7 @@ static void DrawStockpileItems(void) {
                     float itemSize = size * ITEM_SIZE_STOCKPILE;
                     float stackOffset = size * 0.08f;
                     Color tint = MultiplyColor(MaterialTint((MaterialType)sp->slotMaterials[slotIdx]), lightTint);
+                    tint = MultiplyColor(tint, ItemTypeTint(type));
                     Color borderTint = MultiplyColor(ItemBorderTint(type), lightTint);
                     if (belowView) {
                         tint = MultiplyColor(tint, GetDepthTint(sp->z, viewZ));
@@ -2051,6 +2063,7 @@ static void DrawFurniture(void) {
         Color tint;
         switch (f->type) {
             case FURNITURE_LEAF_PILE:  tint = (Color){100, 160, 80, 255};  break;  // Green
+            case FURNITURE_GRASS_PILE: tint = (Color){160, 180, 80, 255};  break;  // Yellow-green
             case FURNITURE_PLANK_BED:  tint = (Color){140, 100, 60, 255};  break;  // Brown
             case FURNITURE_CHAIR:      tint = (Color){180, 160, 120, 255}; break;  // Tan
             default:                   tint = WHITE; break;

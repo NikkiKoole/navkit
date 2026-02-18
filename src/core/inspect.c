@@ -140,6 +140,19 @@ static void print_mover(int idx) {
     
     printf("Capabilities: haul=%d mine=%d build=%d plant=%d\n",
            m->capabilities.canHaul, m->capabilities.canMine, m->capabilities.canBuild, m->capabilities.canPlant);
+
+    // Needs / freetime
+    printf("Hunger: %.1f%%\n", m->hunger * 100.0f);
+    printf("Energy: %.1f%%\n", m->energy * 100.0f);
+    {
+        const char* ftNames[] = {"NONE", "SEEKING_FOOD", "EATING", "SEEKING_REST", "RESTING"};
+        int fs = m->freetimeState;
+        printf("Freetime state: %s (%d)\n", (fs >= 0 && fs <= 4) ? ftNames[fs] : "?", fs);
+    }
+    if (m->needTarget >= 0) printf("Need target: %d\n", m->needTarget);
+    if (m->needProgress > 0.0f) printf("Need progress: %.2f sec\n", m->needProgress);
+    if (m->needSearchCooldown > 0.0f) printf("Need search cooldown: %.2f sec\n", m->needSearchCooldown);
+    if (m->starvationTimer > 0.0f) printf("Starvation timer: %.2f sec\n", m->starvationTimer);
 }
 
 static void print_item(int idx) {

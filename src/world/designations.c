@@ -2230,6 +2230,7 @@ void CompleteBlueprint(int blueprintIdx) {
     if (recipe->buildCategory == BUILD_FURNITURE) {
         FurnitureType ft = FURNITURE_NONE;
         if (bp->recipeIndex == CONSTRUCTION_LEAF_PILE) ft = FURNITURE_LEAF_PILE;
+        else if (bp->recipeIndex == CONSTRUCTION_GRASS_PILE) ft = FURNITURE_GRASS_PILE;
         else if (bp->recipeIndex == CONSTRUCTION_PLANK_BED) ft = FURNITURE_PLANK_BED;
         else if (bp->recipeIndex == CONSTRUCTION_CHAIR) ft = FURNITURE_CHAIR;
         if (ft != FURNITURE_NONE) {

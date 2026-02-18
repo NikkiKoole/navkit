@@ -74,11 +74,9 @@ static int FindNearestEdibleOnGround(float x, float y, int z) {
 }
 
 static void StartFoodSearch(Mover* m, int moverIdx) {
-    // Try stockpile first
+    // Try stockpile first, then ground items
     int itemIdx = FindNearestEdibleInStockpile(m->x, m->y, (int)m->z);
-
-    // If starving and no stockpile food, try ground items
-    if (itemIdx < 0 && m->hunger < balance.hungerCriticalThreshold) {
+    if (itemIdx < 0) {
         itemIdx = FindNearestEdibleOnGround(m->x, m->y, (int)m->z);
     }
 
@@ -154,6 +152,7 @@ static void StartRestSearch(Mover* m, int moverIdx) {
         m->needProgress = 0.0f;
         m->pathLength = 0;
         m->pathIndex = -1;
+        m->goal = (Point){(int)(m->x / CELL_SIZE), (int)(m->y / CELL_SIZE), mz};
     }
 }
 

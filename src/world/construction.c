@@ -266,6 +266,24 @@ const ConstructionRecipe constructionRecipes[CONSTRUCTION_RECIPE_COUNT] = {
         .materialFromStage = 0,
         .materialFromSlot = 0,
     },
+    [CONSTRUCTION_GRASS_PILE] = {
+        .name = "Grass Pile",
+        .buildCategory = BUILD_FURNITURE,
+        .stageCount = 1,
+        .stages = {{
+            .inputs = {{
+                .alternatives = {{ .itemType = ITEM_GRASS }},
+                .altCount = 1,
+                .count = 10,
+                .anyBuildingMat = false,
+            }},
+            .inputCount = 1,
+            .buildTime = 2.0f,
+        }},
+        .resultMaterial = MAT_NONE,
+        .materialFromStage = 0,
+        .materialFromSlot = 0,
+    },
     [CONSTRUCTION_PLANK_BED] = {
         .name = "Plank Bed",
         .buildCategory = BUILD_FURNITURE,

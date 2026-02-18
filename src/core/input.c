@@ -31,6 +31,14 @@ static int selectedFloorRecipe = CONSTRUCTION_PLANK_FLOOR;
 static int selectedLadderRecipe = CONSTRUCTION_LADDER;
 static int selectedFurnitureRecipe = CONSTRUCTION_LEAF_PILE;
 
+void SetSelectedFurnitureRecipe(int recipeIndex) {
+    selectedFurnitureRecipe = recipeIndex;
+}
+
+int GetSelectedFurnitureRecipe(void) {
+    return selectedFurnitureRecipe;
+}
+
 // Right-click tap detection for pie menu
 static Vector2 rightClickStart = {0};
 static double rightClickTime = 0.0;

@@ -124,6 +124,8 @@ extern bool shouldQuit;
 void InputMode_Reset(void);
 void InputMode_Back(void);           // Go back one level (ESC / right-click)
 void InputMode_ExitToNormal(void);   // Go directly to normal (re-tap mode key)
+void SetSelectedFurnitureRecipe(int recipeIndex);
+int GetSelectedFurnitureRecipe(void);
 
 // Get display strings for input bar
 const char* InputMode_GetModeName(void);

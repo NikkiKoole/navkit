@@ -2910,7 +2910,9 @@ void CancelJob(void* moverPtr, int moverIdx) {
             Blueprint* bp = &blueprints[job->targetBlueprint];
             if (bp->active) {
                 // Decrement reservedCount for the cancelled item's slot
-                if (job->targetItem >= 0 && items[job->targetItem].active) {
+                // Note: don't check items[].active — item may have been deleted
+                // but reservedCount was incremented at job creation and must be balanced
+                if (job->targetItem >= 0) {
                     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
                     if (recipe) {
                         const ConstructionStage* stage = &recipe->stages[bp->stage];
@@ -3016,7 +3018,9 @@ void UnassignJob(void* moverPtr, int moverIdx) {
         if (job->targetBlueprint >= 0 && job->targetBlueprint < MAX_BLUEPRINTS) {
             Blueprint* bp = &blueprints[job->targetBlueprint];
             if (bp->active) {
-                if (job->targetItem >= 0 && items[job->targetItem].active) {
+                // Note: don't check items[].active — item may have been deleted
+                // but reservedCount was incremented at job creation and must be balanced
+                if (job->targetItem >= 0) {
                     const ConstructionRecipe* recipe = GetConstructionRecipe(bp->recipeIndex);
                     if (recipe) {
                         const ConstructionStage* stage = &recipe->stages[bp->stage];

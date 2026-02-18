@@ -217,9 +217,10 @@ static void StartNewGame(void) {
         followMoverIdx = 0;
     }
 
+    ResetTime();
     gameMode = GAME_MODE_SURVIVAL;
     gameOverTriggered = false;
-    survivalStartTime = gameTime;
+    survivalStartTime = 0.0;
     survivalDuration = 0.0;
     PlaySurvivalIntroCutscene();
 }
@@ -266,6 +267,15 @@ static void DrawPlayerHUD(void) {
         y += 18;
     }
 
+    // Count items for progressive UI (show buttons only when relevant)
+    bool hasAnyItems = (itemCount > 0);
+    bool hasGrass = false, hasLeaves = false;
+    for (int i = 0; i < itemHighWaterMark && (!hasGrass || !hasLeaves); i++) {
+        if (!items[i].active) continue;
+        if (items[i].type == ITEM_GRASS) hasGrass = true;
+        if (items[i].type == ITEM_LEAVES) hasLeaves = true;
+    }
+
     // Designation buttons
     y += 4;
     clicked = false;
@@ -293,16 +303,18 @@ static void DrawPlayerHUD(void) {
     }
     y += 22;
 
-    bool stockpileActive = (inputAction == ACTION_DRAW_STOCKPILE);
-    if (PushButton(10, y, stockpileActive ? "* Place Stockpile *" : "Place Stockpile")) {
-        if (stockpileActive) {
-            InputMode_ExitToNormal();
-        } else {
-            inputMode = MODE_DRAW;
-            inputAction = ACTION_DRAW_STOCKPILE;
+    if (hasAnyItems) {
+        bool stockpileActive = (inputAction == ACTION_DRAW_STOCKPILE);
+        if (PushButton(10, y, stockpileActive ? "* Place Stockpile *" : "Place Stockpile")) {
+            if (stockpileActive) {
+                InputMode_ExitToNormal();
+            } else {
+                inputMode = MODE_DRAW;
+                inputAction = ACTION_DRAW_STOCKPILE;
+            }
         }
+        y += 22;
     }
-    y += 22;
 
     bool gatherGrassActive = (inputAction == ACTION_WORK_GATHER_GRASS);
     if (PushButton(10, y, gatherGrassActive ? "* Gather Grass *" : "Gather Grass")) {
@@ -314,7 +326,39 @@ static void DrawPlayerHUD(void) {
             inputAction = ACTION_WORK_GATHER_GRASS;
         }
     }
-    y += 26;
+    y += 4;
+
+    // Furniture placement buttons (progressive: only show when materials exist)
+    if (hasLeaves) {
+        bool leafPileActive = (inputAction == ACTION_WORK_FURNITURE && GetSelectedFurnitureRecipe() == CONSTRUCTION_LEAF_PILE);
+        if (PushButton(10, y, leafPileActive ? "* Build Leaf Pile *" : "Build Leaf Pile")) {
+            if (leafPileActive) {
+                InputMode_ExitToNormal();
+            } else {
+                SetSelectedFurnitureRecipe(CONSTRUCTION_LEAF_PILE);
+                inputMode = MODE_WORK;
+                workSubMode = SUBMODE_BUILD;
+                inputAction = ACTION_WORK_FURNITURE;
+            }
+        }
+        y += 22;
+    }
+
+    if (hasGrass) {
+        bool grassPileActive = (inputAction == ACTION_WORK_FURNITURE && GetSelectedFurnitureRecipe() == CONSTRUCTION_GRASS_PILE);
+        if (PushButton(10, y, grassPileActive ? "* Build Grass Pile *" : "Build Grass Pile")) {
+            if (grassPileActive) {
+                InputMode_ExitToNormal();
+            } else {
+                SetSelectedFurnitureRecipe(CONSTRUCTION_GRASS_PILE);
+                inputMode = MODE_WORK;
+                workSubMode = SUBMODE_BUILD;
+                inputAction = ACTION_WORK_FURNITURE;
+            }
+        }
+        y += 22;
+    }
+    y += 4;
 
     // New Game button
     if (PushButton(10, y, "New Game")) {

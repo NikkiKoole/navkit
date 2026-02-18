@@ -64,6 +64,7 @@ typedef enum {
     CONSTRUCTION_THATCH_FLOOR,      // 2 stages: 1 dirt/gravel/sand → 1 dried grass
     CONSTRUCTION_LADDER,            // 1 stage: 1 log or planks
     CONSTRUCTION_LEAF_PILE,         // 1 stage: 4 leaves (furniture)
+    CONSTRUCTION_GRASS_PILE,        // 1 stage: 10 grass (furniture)
     CONSTRUCTION_PLANK_BED,         // 1 stage: 1 plank bed item (furniture)
     CONSTRUCTION_CHAIR,             // 1 stage: 1 chair item (furniture)
     CONSTRUCTION_RECIPE_COUNT,

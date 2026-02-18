@@ -4855,6 +4855,48 @@ describe(building_haul_job) {
         expect(MoverIsIdle(m));
         expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
     }
+
+    it("should decrement reservedCount when cancelled even if item was deleted") {
+        InitTestGridFromAscii(
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n"
+            "......\n");
+
+        moverPathAlgorithm = PATH_ALGO_ASTAR;
+
+        ClearMovers();
+        ClearItems();
+        ClearStockpiles();
+        InitDesignations();
+
+        // Mover at (0,0)
+        Mover* m = &movers[0];
+        Point goal = {0, 0, 0};
+        InitMover(m, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, goal, 100.0f);
+        moverCount = 1;
+
+        // Item at (1,1)
+        int itemIdx = SpawnItem(1 * CELL_SIZE + CELL_SIZE * 0.5f, 1 * CELL_SIZE + CELL_SIZE * 0.5f, 0.0f, ITEM_BLOCKS);
+
+        // Blueprint at (4,4)
+        int bpIdx = CreateRecipeBlueprint(4, 4, 0, CONSTRUCTION_DRY_STONE_WALL);
+
+        // Assign job — mover gets haul-to-blueprint
+        AssignJobs();
+        expect(MoverHasHaulToBlueprintJob(m));
+        expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 1);
+
+        // Simulate item being deleted (e.g., merged into stack)
+        DeleteItem(itemIdx);
+        expect(items[itemIdx].active == false);
+
+        // Cancel job — reservedCount must still be decremented
+        CancelJob(m, 0);
+        expect(blueprints[bpIdx].stageDeliveries[0].reservedCount == 0);
+    }
 }
 
 describe(building_job_execution) {
