@@ -629,6 +629,12 @@ void InitCutscene(const Panel* panels, int count) {
     cutsceneState.timer = 0.0f;
     cutsceneState.skipTypewriter = false;
     cutsceneState.charSoundDuration = 0.0f;
+    cutsceneState.context = CUTSCENE_NONE;
+}
+
+static void InitCutsceneWithContext(const Panel* panels, int count, CutsceneContext ctx) {
+    InitCutscene(panels, count);
+    cutsceneState.context = ctx;
 }
 
 // Find byte offset of the end of the next word from position pos in text.
@@ -799,5 +805,85 @@ bool IsCutsceneActive(void) {
 }
 
 void PlayTestCutscene(void) {
-    InitCutscene(testPanels, 16);  // All 3 panels
+    InitCutscene(testPanels, 16);
+}
+
+// ---------------------------------------------------------------------------
+// Survival Mode Cutscenes
+// ---------------------------------------------------------------------------
+
+static Panel survivalIntroPanels[] = {
+    {
+        .asciiArt =
+            "      ·÷·÷·\n"
+            "       ▲▲▼▼▼\n"
+            "   ░░▒▒▓▓█▓▓▒▒░░\n"
+            " ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░",
+        .text =
+            "\n\n\n"
+            "One awakes in the wild.|\n"
+            "\n"
+            "No tools, just bare hands.\n"
+            "You are hungry| and cold.",
+        .typewriterSpeed = 30.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            " ·░·  ·░·  ·░·\n"
+            "  ▒▓▲░░▓▓░░▲▓▒\n"
+            "   ░▓███████▓░\n"
+            "    ·▒▓▓█▓▓▒·\n"
+            "      ·÷▼÷·",
+        .text =
+            "\n\n\n"
+            "Gather what you can.\n"
+            "What is of use.\n\n"
+            "Survival begins|\n"
+            "And nothing will wait.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    },
+    {
+        .asciiArt =
+            "  ÷ ·▲ ▼ ÷▲·\n"
+            "   ▼░ ·░░▲\n"
+            "    ▒▒▓▒░\n"
+            "   ▒▓██▓▒\n"
+            "   ▓████▓",
+        .text =
+            "\n\n\n"
+            "Small things first.|\n"
+            "Twigs. Stones. Scraps.\n\n"
+            "They gather into something|\n"
+            "heavier than they were alone.",
+        .typewriterSpeed = 35.0f,
+        .dropCap = true
+    },
+};
+
+static Panel gameOverPanels[] = {
+    {
+        .asciiArt =
+            "  ░▒▓██▓▒░▼\n"
+            "   ░▒▓▓▒÷\n"
+            "     ▼▒·\n"
+            "      ÷       ▲",
+        .text =
+            "\n\n\n"
+            "The body is still now.|\n"
+            "The hunger won.\n\n"
+            "But the land remains|\n"
+            "and it will remember nothing.",
+        .typewriterSpeed = 40.0f,
+        .dropCap = true
+    },
+};
+
+void PlaySurvivalIntroCutscene(void) {
+    InitCutsceneWithContext(survivalIntroPanels, 3, CUTSCENE_INTRO);
+}
+
+void PlayGameOverCutscene(void) {
+    InitCutsceneWithContext(gameOverPanels, 1, CUTSCENE_GAME_OVER);
 }

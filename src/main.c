@@ -97,6 +97,12 @@ bool hillsWaterConnectivityReport = true;
 bool hillsWaterConnectivityFixSmall = false;
 int hillsWaterConnectivitySmallThreshold = 30;
 
+// Game mode
+GameMode gameMode = GAME_MODE_SANDBOX;
+bool gameOverTriggered = false;
+double survivalStartTime = 0.0;
+double survivalDuration = 0.0;
+
 // UI mode: dev (full panels) vs play (minimal HUD)
 bool devUI = true;
 
@@ -1221,6 +1227,14 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+        }
+
+        // Game over detection (survival mode)
+        if (gameMode == GAME_MODE_SURVIVAL && !gameOverTriggered
+            && moverCount > 0 && CountActiveMovers() == 0) {
+            survivalDuration = gameTime - survivalStartTime;
+            PlayGameOverCutscene();
+            gameOverTriggered = true;
         }
 
         if (followMoverIdx >= 0) {

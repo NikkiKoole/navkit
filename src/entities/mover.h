@@ -67,6 +67,7 @@ typedef struct Mover {
     int needTarget;             // Item index for eating (-1=none)
     float needProgress;         // Eating timer (seconds)
     float needSearchCooldown;   // Cooldown between food searches (seconds)
+    float starvationTimer;      // Game-seconds at hunger==0, resets when hunger > 0
     // Cached avoidance vector (recomputed every N frames)
     float avoidX, avoidY;
     // Job system

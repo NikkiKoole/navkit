@@ -217,7 +217,11 @@ static void StartNewGame(void) {
         followMoverIdx = 0;
     }
 
-    AddMessage("New game started", GREEN);
+    gameMode = GAME_MODE_SURVIVAL;
+    gameOverTriggered = false;
+    survivalStartTime = gameTime;
+    survivalDuration = 0.0;
+    PlaySurvivalIntroCutscene();
 }
 
 // Minimal player HUD — speed controls, mover count, new game
@@ -317,6 +321,41 @@ static void DrawPlayerHUD(void) {
         StartNewGame();
     }
     y += 22;
+
+    // Game Over overlay
+    if (gameOverTriggered && !IsCutsceneActive()) {
+        int screenW = GetScreenWidth();
+        int screenH = GetScreenHeight();
+        DrawRectangle(0, 0, screenW, screenH, (Color){0, 0, 0, 120});
+        Font font = (g_cutscene_font && g_cutscene_font->texture.id > 0)
+            ? *g_cutscene_font : GetFontDefault();
+        const char* text = "GAME OVER";
+        float fontSize = 60.0f;
+        float spacing = 3.0f;
+        Vector2 textSize = MeasureTextEx(font, text, fontSize, spacing);
+        Vector2 textPos = { (screenW - textSize.x) / 2, screenH / 3.0f };
+        DrawTextEx(font, text, textPos, fontSize, spacing, (Color){160, 82, 45, 255});
+        // Survival time score
+        int gameDays = (int)(survivalDuration / dayLength);
+        int gameHours = (int)(fmod(survivalDuration, dayLength) / dayLength * 24.0);
+        char scoreText[64];
+        if (gameDays > 0) {
+            snprintf(scoreText, sizeof(scoreText), "You survived %d day%s, %d hour%s",
+                     gameDays, gameDays == 1 ? "" : "s", gameHours, gameHours == 1 ? "" : "s");
+        } else {
+            snprintf(scoreText, sizeof(scoreText), "You survived %d hour%s", gameHours, gameHours == 1 ? "" : "s");
+        }
+        float scoreSize = 28.0f;
+        Vector2 scoreMeasure = MeasureTextEx(font, scoreText, scoreSize, 2.0f);
+        Vector2 scorePos = { (screenW - scoreMeasure.x) / 2, screenH / 3.0f + 70 };
+        DrawTextEx(font, scoreText, scorePos, scoreSize, 2.0f, (Color){242, 229, 215, 255});
+
+        const char* hint = "Press New Game to try again";
+        float hintSize = 20.0f;
+        Vector2 hintMeasure = MeasureTextEx(font, hint, hintSize, 2.0f);
+        Vector2 hintPos = { (screenW - hintMeasure.x) / 2, screenH / 3.0f + 110 };
+        DrawTextEx(font, hint, hintPos, hintSize, 2.0f, (Color){150, 150, 150, 255});
+    }
 
     // Hint text
     if (inputAction != ACTION_NONE) {

@@ -11,6 +11,12 @@ typedef struct {
     bool dropCap;               // First letter drawn large with background block
 } Panel;
 
+typedef enum {
+    CUTSCENE_NONE,
+    CUTSCENE_INTRO,
+    CUTSCENE_GAME_OVER,
+} CutsceneContext;
+
 typedef struct {
     bool active;
     const Panel* panels;
@@ -22,6 +28,7 @@ typedef struct {
     float timer;
     bool skipTypewriter;        // true when user pressed SPACE to skip typing
     float charSoundDuration;    // How long to wait before revealing next chunk
+    CutsceneContext context;    // Why this cutscene is playing
 } CutsceneState;
 
 // Global state
@@ -39,5 +46,9 @@ bool IsCutsceneActive(void);
 
 // Test cutscene (hardcoded intro)
 void PlayTestCutscene(void);
+
+// Game mode cutscenes
+void PlaySurvivalIntroCutscene(void);
+void PlayGameOverCutscene(void);
 
 #endif

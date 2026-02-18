@@ -6,7 +6,7 @@
 #include "../entities/mover.h"
 
 // Current save version (bump when save format changes)
-#define CURRENT_SAVE_VERSION 57
+#define CURRENT_SAVE_VERSION 58
 
 // ============================================================================
 // SAVE MIGRATION PATTERN (for future use when backward compatibility needed)
@@ -217,6 +217,38 @@ typedef struct {
     int groundItemIdx[MAX_STOCKPILE_SIZE * MAX_STOCKPILE_SIZE];
     int freeSlotCount;
 } StockpileV54;
+
+// V57 Mover struct (before starvationTimer field added in v58)
+typedef struct {
+    float x, y, z;
+    Point goal;
+    Point path[MAX_MOVER_PATH];
+    int pathLength;
+    int pathIndex;
+    bool active;
+    bool needsRepath;
+    int repathCooldown;
+    float speed;
+    float timeNearWaypoint;
+    float lastX, lastY, lastZ;
+    float timeWithoutProgress;
+    float fallTimer;
+    float workAnimPhase;
+    float hunger;
+    float energy;
+    int freetimeState;
+    int needTarget;
+    float needProgress;
+    float needSearchCooldown;
+    // No starvationTimer in V57
+    float avoidX, avoidY;
+    int currentJobId;
+    int lastJobType;
+    int lastJobResult;
+    int lastJobTargetX, lastJobTargetY, lastJobTargetZ;
+    unsigned long lastJobEndTick;
+    MoverCapabilities capabilities;
+} MoverV57;
 
 // Version 34 constants (before short string/cordage items)
 #define V34_ITEM_TYPE_COUNT 24

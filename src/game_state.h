@@ -130,6 +130,16 @@ extern int hillsWaterConnectivitySmallThreshold;
 extern MaterialType currentTreeType;
 extern const char* treeTypeNames[];
 
+// Game mode
+#ifndef GAME_MODE_DEFINED
+#define GAME_MODE_DEFINED
+typedef enum { GAME_MODE_SANDBOX, GAME_MODE_SURVIVAL } GameMode;
+#endif
+extern GameMode gameMode;
+extern bool gameOverTriggered;
+extern double survivalStartTime;
+extern double survivalDuration;
+
 // UI mode: dev (full panels) vs play (minimal HUD)
 extern bool devUI;
 

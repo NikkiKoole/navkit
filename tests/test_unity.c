@@ -49,6 +49,15 @@ bool hillsWaterConnectivityFixSmall = true;
 int hillsWaterConnectivitySmallThreshold = 50;
 bool hillsSkipBuildings = false;
 
+// Game mode (defaults to sandbox in tests — no starvation death)
+// Typedef here because game_state.h is included later by saveload.c
+#define GAME_MODE_DEFINED
+typedef enum { GAME_MODE_SANDBOX, GAME_MODE_SURVIVAL } GameMode;
+GameMode gameMode = GAME_MODE_SANDBOX;
+bool gameOverTriggered = false;
+double survivalStartTime = 0.0;
+double survivalDuration = 0.0;
+
 // World systems
 #include "../src/world/cell_defs.c"
 #include "../src/world/material.c"

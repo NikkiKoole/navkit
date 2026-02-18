@@ -1462,8 +1462,45 @@ int InspectSaveFile(int argc, char** argv) {
     // Movers
     fread(&insp_moverCount, 4, 1, f);
     insp_movers = malloc(insp_moverCount > 0 ? insp_moverCount * sizeof(Mover) : sizeof(Mover));
-    if (version >= 53) {
+    if (version >= 58) {
         if (insp_moverCount > 0) fread(insp_movers, sizeof(Mover), insp_moverCount, f);
+    } else if (version >= 53) {
+        // V53-V57 movers don't have starvationTimer field
+        for (int i = 0; i < insp_moverCount; i++) {
+            MoverV57 old;
+            fread(&old, sizeof(MoverV57), 1, f);
+            Mover* m = &insp_movers[i];
+            m->x = old.x; m->y = old.y; m->z = old.z;
+            m->goal = old.goal;
+            memcpy(m->path, old.path, sizeof(old.path));
+            m->pathLength = old.pathLength;
+            m->pathIndex = old.pathIndex;
+            m->active = old.active;
+            m->needsRepath = old.needsRepath;
+            m->repathCooldown = old.repathCooldown;
+            m->speed = old.speed;
+            m->timeNearWaypoint = old.timeNearWaypoint;
+            m->lastX = old.lastX; m->lastY = old.lastY; m->lastZ = old.lastZ;
+            m->timeWithoutProgress = old.timeWithoutProgress;
+            m->fallTimer = old.fallTimer;
+            m->workAnimPhase = old.workAnimPhase;
+            m->hunger = old.hunger;
+            m->energy = old.energy;
+            m->freetimeState = old.freetimeState;
+            m->needTarget = old.needTarget;
+            m->needProgress = old.needProgress;
+            m->needSearchCooldown = old.needSearchCooldown;
+            m->starvationTimer = 0.0f;  // Init new field
+            m->avoidX = old.avoidX; m->avoidY = old.avoidY;
+            m->currentJobId = old.currentJobId;
+            m->lastJobType = old.lastJobType;
+            m->lastJobResult = old.lastJobResult;
+            m->lastJobTargetX = old.lastJobTargetX;
+            m->lastJobTargetY = old.lastJobTargetY;
+            m->lastJobTargetZ = old.lastJobTargetZ;
+            m->lastJobEndTick = old.lastJobEndTick;
+            m->capabilities = old.capabilities;
+        }
     } else if (version >= 48) {
         // V48-V52 movers don't have energy field
         for (int i = 0; i < insp_moverCount; i++) {

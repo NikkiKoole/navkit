@@ -8,9 +8,12 @@
 
 - **Play mode** (F1 toggle): minimal HUD, New Game generates 128x128 map, 1 mover, camera follows
 - **Terrain gen**: hills, soils, water, trees, berry bushes, loose rocks & sticks scattered
-- **Hunger**: drains over time, speed penalty when starving, berries restore 0.3
-- **Energy**: drains over time (faster at night, faster when working), beds restore
-- **Foraging**: Harvest Berries designation, berry bushes via plant system
+- **Hunger**: drains over time (16 game-hours to starve), speed penalty below 0.2 (down to 50%), berries restore 0.3
+- **Auto-eat**: movers autonomously seek food when hungry (<0.3), drop jobs when critical (<0.1); searches stockpiles first, ground items when starving; cooldown prevents search spam
+- **Energy**: drains over time (faster when working), beds/furniture restore; exhausted movers drop jobs and seek rest
+- **Foraging**: Harvest Berries designation, berry bushes via plant system (BARE→BUDDING→RIPE growth cycle)
+- **Food items**: ITEM_BERRIES (nutrition 0.3), ITEM_DRIED_BERRIES (nutrition 0.25), both IF_EDIBLE | IF_STACKABLE
+- **Food processing**: Drying rack converts 3 berries → 2 dried berries
 - **Gathering**: Harvest Tree, Gather Grass designations in play UI
 - **Crafting**: 8 workshop types, passive workshops (drying rack, charcoal pit)
 - **Building**: walls, floors, ladders, ramps with material delivery
@@ -21,10 +24,10 @@
 
 These are the gaps that break the illusion when you press New Game and watch your mover:
 
-### 1. The mover doesn't seek food autonomously
-- Mover gets hungry but doesn't self-assign "go eat berries" or "harvest berry bush"
-- Need: auto-eat from carried/nearby food, auto-harvest when hungry and no food available
-- Related: the starving repath loop fix was a band-aid
+### ~~1. The mover doesn't seek food autonomously~~ ✅ DONE
+- Auto-eat implemented in `needs.c` — freetime state machine handles SEEKING_FOOD → EATING
+- Searches stockpiles first, ground items when critical (<0.1 hunger)
+- Cooldown prevents search spam, UnassignJob preserves designation progress
 
 ### 2. No way to drink
 - Water is everywhere (fluid sim) but mover can't interact with it
@@ -53,14 +56,14 @@ These are the gaps that break the illusion when you press New Game and watch you
 
 Focus on making one day feel real, top to bottom:
 
-1. **Auto-eat behavior** — mover eats food when hungry (from ground/stockpile/container)
+1. ~~**Auto-eat behavior**~~ ✅ DONE — freetime state machine in `needs.c`
 2. **Death from starvation** — if hunger hits 0 for too long, mover dies. Game over screen.
 3. **Doors + shelter** (Feature 03) — enclosed rooms protect from rain, retain heat
 4. **Temperature affects mover** — hypothermia/heatstroke, shelter as protection
 5. **Tools + knapping** (Feature 04) — stone-age tool progression, speed scaling
 6. **Cooking** — raw meat from hunting, cooked food from hearth (needs animals to be huntable)
 
-Items 1-2 are small and give immediate survival tension. Items 3-5 are the "second day" — reasons to build and progress. Item 6 needs hunting to work first.
+Item 2 is small and gives immediate survival tension. Items 3-5 are the "second day" — reasons to build and progress. Item 6 needs hunting to work first.
 
 ## Not in Scope (yet)
 

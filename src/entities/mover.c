@@ -657,6 +657,7 @@ void InitMover(Mover* m, float x, float y, float z, Point goal, float speed) {
     m->needTarget = -1;
     m->needProgress = 0.0f;
     m->needSearchCooldown = 0.0f;
+    m->starvationTimer = 0.0f;
     // Job system
     m->currentJobId = -1;
     // Capabilities - default to all enabled
@@ -780,6 +781,25 @@ void NeedsTick(void) {
         // Drain hunger (rate in game-hours, converted to per-game-second)
         m->hunger -= RatePerGameSecond(balance.hungerDrainPerGH) * dt;
         if (m->hunger < 0.0f) m->hunger = 0.0f;
+
+        // Starvation death (survival mode only)
+        if (m->hunger == 0.0f && gameMode == GAME_MODE_SURVIVAL) {
+            m->starvationTimer += dt;
+            if (m->starvationTimer >= GameHoursToGameSeconds(balance.starvationDeathGH)) {
+                if (m->currentJobId >= 0) CancelJob(m, i);
+                if (m->needTarget >= 0) {
+                    items[m->needTarget].reservedBy = -1;
+                    m->needTarget = -1;
+                }
+                m->freetimeState = FREETIME_NONE;
+                m->active = false;
+                TraceLog(LOG_WARNING, "Mover %d died of starvation", i);
+                AddMessage("Your mover starved to death.", RED);
+                continue;
+            }
+        } else {
+            m->starvationTimer = 0.0f;
+        }
 
         // Drain energy (not while resting)
         if (m->freetimeState != FREETIME_RESTING) {
